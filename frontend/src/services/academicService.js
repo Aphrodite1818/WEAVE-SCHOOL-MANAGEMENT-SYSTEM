@@ -58,15 +58,15 @@ export const academicService = {
   updateGradingScale: (scaleId, payload) =>
     api.patch(`/tenant-admin/academic/grading-scales/${scaleId}`, payload),
 
-  listClassSubjects: (classId, params) =>
-    api.get(`/classes/${classId}/subjects${queryString(params)}`),
-  listClassSubjectPickerOptions: async (classId, params) => {
+  listClassSubjects: async (classId, params) => {
     const [classSubjectResponse, subjectResponse] = await Promise.all([
       api.get(`/classes/${classId}/subjects${queryString(params)}`),
       api.get(`/subjects${queryString({ is_active: true, limit: 100 })}`),
     ]);
     return mergeClassSubjectPickerOptions(classSubjectResponse, subjectResponse);
   },
+  listOfferedClassSubjects: (classId, params) =>
+    api.get(`/classes/${classId}/subjects${queryString(params)}`),
   addClassSubject: (classId, payload) =>
     api.post(`/classes/${classId}/subjects`, payload),
   deactivateClassSubject: (classSubjectId) =>
@@ -92,7 +92,7 @@ export const academicService = {
     api.get(`/tenant-admin/academic/results${queryString(params)}`),
   saveAdminResult: (payload) => api.post("/tenant-admin/academic/results", payload),
   updateResultStatus: (resultId, payload) =>
-    api.patch(`/tenant-admin/academic/results/${resultId}/status` , payload),
+    api.patch(`/tenant-admin/academic/results/${resultId}/status`, payload),
 
   listMyTeacherAssignments: () => api.get("/teachers/me/academic/assignments"),
   listTeacherResults: (params) =>
