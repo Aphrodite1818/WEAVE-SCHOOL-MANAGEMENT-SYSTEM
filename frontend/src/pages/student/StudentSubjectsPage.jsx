@@ -9,45 +9,13 @@ import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
-import { studentService } from "../../services/studentService";
 import { cleanText } from "../../utils/academicDashboard";
 import { cn } from "../../utils/cn";
-import { formatMetricNumber, getAcademicContext, statusVariant } from "./studentPageUtils";
-
-function scoreSummary(result, fallback = 0) {
-  const value = formatMetricNumber(result?.total_score ?? result?.totalScore);
-  return value ?? fallback;
-}
-
-function mergeSubjectCards(subjects = [], results = [], classLabel = "Class") {
-  const resultBySubjectId = new Map();
-
-  results.forEach((result) => {
-    const subjectId = String(result.subject_id || "");
-    if (!subjectId || resultBySubjectId.has(subjectId)) return;
-    resultBySubjectId.set(subjectId, result);
-  });
-
-  return subjects.map((subject) => {
-    const result = resultBySubjectId.get(String(subject.subject_id || "")) || null;
-    return {
-      id: result?.id || subject.id,
-      subjectId: subject.subject_id,
-      subjectName: cleanText(subject.subject_name, "Subject"),
-      classLabel,
-      status: result?.status || "pending",
-      totalScore: result?.total_score ?? 0,
-      grade: result?.grade ?? "--",
-      teacherName: cleanText(result?.teacher_name, "Teacher not assigned"),
-      resultId: result?.id || null,
-    };
-  });
-}
+import { displayStatusLabel, scoreDisplayValue, statusVariant } from "./studentPageUtils";
 
 function StudentSubjectsPage() {
-  const [student, setStudent] = useState(null);
-  const [subjects, setSubjects] = useState([]);
-  const [results, setResults] = useState([]);
+  const [subjectCards, setSubjectCards] = useState([]);
+  const [context, setContext] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -60,26 +28,10 @@ function StudentSubjectsPage() {
       setLoadError(null);
 
       try {
-        const studentResponse = await studentService.getMyStudent();
+        const response = await academicService.listMySubjectCards();
         if (!mounted) return;
-
-        const studentProfile = studentResponse || null;
-        setStudent(studentProfile);
-
-        if (!studentProfile?.class_id) {
-          setSubjects([]);
-          setResults([]);
-          return;
-        }
-
-        const [subjectResponse, resultResponse] = await Promise.all([
-          academicService.listClassSubjects(studentProfile.class_id, { active_only: true }),
-          academicService.listMyResults(),
-        ]);
-
-        if (!mounted) return;
-        setSubjects(subjectResponse?.items || []);
-        setResults(resultResponse?.items || []);
+        setSubjectCards(response?.items || []);
+        setContext(response?.context || null);
       } catch (error) {
         if (mounted) setLoadError(getErrorMessage(error, "Failed to load subjects."));
       } finally {
@@ -94,13 +46,18 @@ function StudentSubjectsPage() {
     };
   }, []);
 
-  const context = useMemo(() => getAcademicContext(results, []), [results]);
   const isGridView = viewMode === "grid";
-  const classLabel = cleanText(student?.class_name, student?.class_id ? "Class" : "No class assigned");
-  const subjectCards = useMemo(
-    () => mergeSubjectCards(subjects, results, classLabel),
-    [subjects, results, classLabel]
+  const classLabel = cleanText(
+    context?.class_name
+      ? [context.class_name, context.class_arm].filter(Boolean).join(" ")
+      : null,
+    context?.class_id ? "Class" : "No class assigned"
   );
+  const academicContextLabel = useMemo(() => {
+    const session = cleanText(context?.academic_session_name, "No session");
+    const term = cleanText(context?.academic_term_name, "No term");
+    return `${session} / ${term} / ${classLabel}`;
+  }, [classLabel, context]);
 
   if (isLoading) {
     return (
@@ -114,7 +71,7 @@ function StudentSubjectsPage() {
     <DashboardLayout
       role="student"
       title="Subjects"
-      description={`${cleanText(context.sessionLabel, "No session")} / ${cleanText(context.termLabel, "No term")} / ${classLabel}`}
+      description={academicContextLabel}
       actions={
         <div className="inline-flex rounded-2xl border border-border bg-surface p-1 shadow-sm">
           <Button
@@ -152,7 +109,7 @@ function StudentSubjectsPage() {
             icon={BookOpen}
             title="No subjects available"
             description={
-              student?.class_id
+              context?.class_id
                 ? "Your class has no active subjects yet, so there are no subject cards to show."
                 : "No class has been assigned to your student profile yet."
             }
@@ -168,21 +125,24 @@ function StudentSubjectsPage() {
           )}
         >
           {subjectCards.map((card) => {
-            const statusLabel = cleanText(card.status, "Pending");
-            const totalScore = scoreSummary(card);
+            const statusLabel = displayStatusLabel(card.status, card.result_id ? "Pending" : "Awaiting marks");
+            const totalScore = scoreDisplayValue(card.total_score);
             const grade = cleanText(card.grade, "--");
+            const testScore = scoreDisplayValue(card.test_score);
+            const assessmentScore = scoreDisplayValue(card.assessment_score);
+            const examScore = scoreDisplayValue(card.exam_score);
+            const teacherName = cleanText(card.teacher_name, "Teacher not assigned");
 
             return (
               <Card
                 key={card.id}
-                as={card.resultId ? Link : "div"}
-                to={card.resultId ? `/student/subjects/${card.resultId}` : undefined}
+                as={card.result_id ? Link : "div"}
+                to={card.result_id ? `/student/subjects/${card.result_id}` : undefined}
                 className={cn(
                   "group w-full overflow-hidden rounded-[1.5rem] border border-border/80 bg-surface p-0 text-left shadow-[0_1px_0_rgba(255,255,255,0.04)] transition-all duration-200",
-                  card.resultId
+                  card.result_id
                     ? "hover:-translate-y-0.5 hover:border-border-strong hover:shadow-premium"
-                    : "cursor-default",
-                  isGridView ? "min-h-[228px]" : ""
+                    : "cursor-default"
                 )}
               >
                 {isGridView ? (
@@ -191,7 +151,7 @@ function StudentSubjectsPage() {
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-border/70 bg-surface-muted/25 text-primary">
                         <BookOpen className="h-5 w-5" />
                       </span>
-                      {card.resultId ? (
+                      {card.result_id ? (
                         <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-text-faint" />
                       ) : (
                         <span className="mt-1 text-[11px] font-medium text-text-faint">Awaiting marks</span>
@@ -199,7 +159,7 @@ function StudentSubjectsPage() {
                     </div>
 
                     <div className="mt-3 min-w-0">
-                      <h2 className="truncate text-base font-semibold text-text">{card.subjectName}</h2>
+                      <h2 className="truncate text-base font-semibold text-text">{cleanText(card.subject_name, "Subject")}</h2>
                       <p className="mt-1 text-xs font-medium text-text-muted">{classLabel}</p>
                       <div className="mt-2">
                         <Badge variant={statusVariant(card.status)}>{statusLabel}</Badge>
@@ -208,24 +168,33 @@ function StudentSubjectsPage() {
 
                     <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                       <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                          Score
-                        </p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Score</p>
                         <p className="mt-2 text-2xl font-semibold leading-none text-text">{totalScore}</p>
                       </div>
                       <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                          Grade
-                        </p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Grade</p>
                         <p className="mt-2 text-2xl font-semibold leading-none text-text">{grade}</p>
                       </div>
                     </div>
 
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Test</p>
+                        <p className="mt-1 text-sm font-semibold text-text">{testScore}</p>
+                      </div>
+                      <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Assess.</p>
+                        <p className="mt-1 text-sm font-semibold text-text">{assessmentScore}</p>
+                      </div>
+                      <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Exam</p>
+                        <p className="mt-1 text-sm font-semibold text-text">{examScore}</p>
+                      </div>
+                    </div>
+
                     <div className="mt-auto pt-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-                        Teacher
-                      </p>
-                      <p className="mt-1 truncate text-sm font-semibold text-text">{card.teacherName}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Teacher</p>
+                      <p className="mt-1 truncate text-sm font-semibold text-text">{teacherName}</p>
                     </div>
                   </div>
                 ) : (
@@ -237,39 +206,37 @@ function StudentSubjectsPage() {
                         </span>
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="truncate text-lg font-semibold text-text">{card.subjectName}</h2>
+                            <h2 className="truncate text-lg font-semibold text-text">{cleanText(card.subject_name, "Subject")}</h2>
                             <Badge variant={statusVariant(card.status)}>{statusLabel}</Badge>
                           </div>
-                          <p className="mt-1 text-sm font-medium text-text-muted">{card.classLabel || classLabel}</p>
-                          <p className="mt-2 text-sm text-text-muted">{card.teacherName}</p>
+                          <p className="mt-1 text-sm font-medium text-text-muted">{card.class_name || classLabel}</p>
+                          <p className="mt-2 text-sm text-text-muted">{teacherName}</p>
                         </div>
                       </div>
-                      {card.resultId ? (
+                      {card.result_id ? (
                         <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-text-faint" />
                       ) : (
                         <span className="mt-1 text-xs font-medium text-text-faint">Awaiting marks</span>
                       )}
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                          Total score
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-text">{totalScore}</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Test</p>
+                        <p className="mt-2 text-2xl font-semibold text-text">{testScore}</p>
                       </div>
                       <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                          Grade
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-text">{grade}</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Assessment</p>
+                        <p className="mt-2 text-2xl font-semibold text-text">{assessmentScore}</p>
                       </div>
                       <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                          Status
-                        </p>
-                        <p className="mt-2 text-base font-semibold text-text">
-                          {card.resultId ? "Full breakdown" : "Awaiting marks"}
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Exam</p>
+                        <p className="mt-2 text-2xl font-semibold text-text">{examScore}</p>
+                      </div>
+                      <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Total / Grade</p>
+                        <p className="mt-2 text-2xl font-semibold text-text">
+                          {totalScore} <span className="text-base text-text-muted">/ {grade}</span>
                         </p>
                       </div>
                     </div>

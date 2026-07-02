@@ -181,9 +181,9 @@ class StudentSubjectResultUpsert(InputBase):
     class_subject_teacher_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
-    test_score: Decimal = Field(..., ge=0, le=100)
-    assessment_score: Decimal = Field(..., ge=0, le=100)
-    exam_score: Decimal = Field(..., ge=0, le=100)
+    test_score: Decimal | None = Field(default=None, ge=0, le=100)
+    assessment_score: Decimal | None = Field(default=None, ge=0, le=100)
+    exam_score: Decimal | None = Field(default=None, ge=0, le=100)
     status: AcademicResultStatus = AcademicResultStatus.DRAFT
 
     @model_validator(mode="after")
@@ -194,9 +194,16 @@ class StudentSubjectResultUpsert(InputBase):
 
     @model_validator(mode="after")
     def validate_score_total(self):
-        total = self.test_score + self.assessment_score + self.exam_score
+        total = sum(
+            (score for score in (self.test_score, self.assessment_score, self.exam_score) if score is not None),
+            Decimal("0"),
+        )
         if total > 100:
             raise ValueError("The combined score cannot exceed 100.")
+        if str(self.status) == AcademicResultStatus.SUBMITTED.value and any(
+            score is None for score in (self.test_score, self.assessment_score, self.exam_score)
+        ):
+            raise ValueError("All three scores are required before submitting a result.")
         return self
 
 
@@ -224,17 +231,58 @@ class StudentSubjectResultResponse(OutputBase):
     academic_session_name: str | None = None
     academic_term_id: uuid.UUID
     academic_term_name: str | None = None
-    test_score: Decimal
-    assessment_score: Decimal
-    exam_score: Decimal
+    test_score: Decimal | None = None
+    assessment_score: Decimal | None = None
+    exam_score: Decimal | None = None
     total_score: Decimal
-    grade: str
+    grade: str | None = None
     remark: str | None = None
     status: AcademicResultStatus
     recorded_by_actor_type: str
     recorded_by_actor_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+
+class StudentSubjectCardResponse(OutputBase):
+    id: uuid.UUID
+    result_id: uuid.UUID | None = None
+    class_id: uuid.UUID
+    class_name: str | None = None
+    class_arm: str | None = None
+    subject_id: uuid.UUID
+    subject_name: str | None = None
+    subject_code: str | None = None
+    teacher_id: uuid.UUID | None = None
+    teacher_name: str | None = None
+    academic_session_id: uuid.UUID | None = None
+    academic_session_name: str | None = None
+    academic_term_id: uuid.UUID | None = None
+    academic_term_name: str | None = None
+    test_score: Decimal = Decimal("0")
+    assessment_score: Decimal = Decimal("0")
+    exam_score: Decimal = Decimal("0")
+    total_score: Decimal = Decimal("0")
+    grade: str | None = None
+    remark: str | None = None
+    status: str = "pending"
+    is_complete: bool = False
+
+
+class StudentSubjectCardContextResponse(OutputBase):
+    class_id: uuid.UUID | None = None
+    class_name: str | None = None
+    class_arm: str | None = None
+    academic_session_id: uuid.UUID | None = None
+    academic_session_name: str | None = None
+    academic_term_id: uuid.UUID | None = None
+    academic_term_name: str | None = None
+
+
+class StudentSubjectCardListResponse(OutputBase):
+    items: list[StudentSubjectCardResponse]
+    total: int
+    context: StudentSubjectCardContextResponse
 
 
 class StudentSubjectResultListResponse(OutputBase):

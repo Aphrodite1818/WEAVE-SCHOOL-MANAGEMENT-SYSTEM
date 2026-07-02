@@ -76,7 +76,7 @@ const blankTerm = { academic_session_id: "", name: "first_term", start_date: "",
 const blankScale = { grade: "", min_score: "", max_score: "", remark: "", is_active: true };
 const blankAssignment = { class_id: "", class_subject_id: "", subject_id: "", teacher_id: "", is_core: true };
 const blankResult = { student_id: "", test_score: "", assessment_score: "", exam_score: "", status: "draft" };
-const blankReportCard = { student_id: "" };
+const toNullableScore = (value) => (value === "" || value === null || value === undefined ? null : Number(value));
 
 const compactDate = (value) => (value ? new Date(value).toLocaleDateString() : "-");
 const cleanText = (value, fallback = "-") => (value === undefined || value === null || value === "" ? fallback : String(value));
@@ -108,7 +108,6 @@ function AcademicPage() {
   const [scaleForm, setScaleForm] = useState(blankScale);
   const [assignmentForm, setAssignmentForm] = useState(blankAssignment);
   const [resultForm, setResultForm] = useState(blankResult);
-  const [reportCardForm, setReportCardForm] = useState(blankReportCard);
   const [editingSessionId, setEditingSessionId] = useState("");
   const [editingTermId, setEditingTermId] = useState("");
   const [editingScaleId, setEditingScaleId] = useState("");
@@ -348,10 +347,6 @@ function AcademicPage() {
     setResultForm(blankResult);
   };
 
-  const resetReportCardForm = () => {
-    setReportCardForm(blankReportCard);
-  };
-
   const saveSession = async (event) => {
     event.preventDefault();
     setIsSaving("session");
@@ -509,9 +504,9 @@ function AcademicPage() {
         teacher_assignment_id: selectedAssignment.id,
         academic_session_id: filters.academic_session_id,
         academic_term_id: filters.academic_term_id,
-        test_score: Number(resultForm.test_score || 0),
-        assessment_score: Number(resultForm.assessment_score || 0),
-        exam_score: Number(resultForm.exam_score || 0),
+        test_score: toNullableScore(resultForm.test_score),
+        assessment_score: toNullableScore(resultForm.assessment_score),
+        exam_score: toNullableScore(resultForm.exam_score),
         status: resultForm.status,
       });
       setResults((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
@@ -535,34 +530,6 @@ function AcademicPage() {
       showSuccess(`Result marked ${status}.`);
     } catch (err) {
       const message = getErrorMessage(err, "Could not update result status.");
-      setError(message);
-      showError(message);
-    } finally {
-      setIsSaving("");
-    }
-  };
-
-  const generateReportCard = async (event) => {
-    event.preventDefault();
-    if (!filters.academic_session_id || !filters.academic_term_id || !reportCardForm.student_id) {
-      const message = "Choose a session, term, class, and student before generating a report card.";
-      setError(message);
-      showError(message);
-      return;
-    }
-    setIsSaving("report-card");
-    setError(null);
-    try {
-      const card = await reportCardService.generateReportCard({
-        student_id: reportCardForm.student_id,
-        academic_session_id: filters.academic_session_id,
-        academic_term_id: filters.academic_term_id,
-      });
-      setReportCards((current) => [card, ...current.filter((item) => item.id !== card.id)]);
-      resetReportCardForm();
-      showSuccess("Report card generated.");
-    } catch (err) {
-      const message = getErrorMessage(err, "Could not generate report card.");
       setError(message);
       showError(message);
     } finally {
@@ -663,17 +630,6 @@ function AcademicPage() {
       status: result.status || "draft",
     });
     scrollToForm("academic-form-result");
-  };
-
-  const startReportCardEdit = (card) => {
-    setFilters((current) => ({
-      ...current,
-      academic_session_id: card.academic_session_id || current.academic_session_id,
-      academic_term_id: card.academic_term_id || current.academic_term_id,
-      class_id: card.class_id || current.class_id,
-    }));
-    setReportCardForm({ student_id: card.student_id || "" });
-    scrollToForm("academic-form-report-card");
   };
 
   if (isLoading) {
@@ -1347,7 +1303,6 @@ function AcademicPage() {
                               <td>{classItem ? displayClass(classItem) : "-"}</td>
                               <td>
                                 <RowActions
-                                  onEdit={() => startReportCardEdit(card)}
                                   rightLabel={card.status === "published" ? "Print" : "Publish"}
                                   onRight={() => (card.status === "published" ? printReportCard(card) : publishReportCard(card))}
                                   disabled={isSaving === card.id}
@@ -1450,24 +1405,15 @@ function StatusBadge({ tone, label }) {
   return <span className={`badge ${tone}`}>{label}</span>;
 }
 
-function ReadOnlyField({ label, value }) {
-  return (
-    <div>
-      <span className="mb-1.5 block text-[11.5px] font-medium text-text-muted">{label}</span>
-      <div className="flex h-[34px] min-h-[34px] items-center rounded-lg border border-border bg-background/60 px-3 text-[13px] font-medium text-text">
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function RowActions({ onEdit, rightLabel, onRight, disabled = false, rightIcon = null }) {
   return (
     <div className="aw-actions">
-      <button type="button" className="btn-ghost" onClick={onEdit} disabled={disabled}>
-        <Pencil className="h-3.5 w-3.5" />
-        Edit
-      </button>
+      {onEdit && (
+        <button type="button" className="btn-ghost" onClick={onEdit} disabled={disabled}>
+          <Pencil className="h-3.5 w-3.5" />
+          Edit
+        </button>
+      )}
       <button type="button" className="btn-deact" onClick={onRight} disabled={disabled}>
         {rightIcon}
         {rightLabel}

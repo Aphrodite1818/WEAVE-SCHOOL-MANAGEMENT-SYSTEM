@@ -38,6 +38,9 @@ from app.modules.student_academics.schemas import (
     ClassSubjectTeacherUpdate,
     GradingScaleCreate,
     GradingScaleUpdate,
+    StudentSubjectCardContextResponse,
+    StudentSubjectCardListResponse,
+    StudentSubjectCardResponse,
     StudentSubjectResultResponse,
     StudentSubjectResultStatusUpdate,
     StudentSubjectResultUpsert,
@@ -1354,6 +1357,154 @@ class StudentAcademicService:
         )
 
     @staticmethod
+    async def list_student_subject_cards(
+        db: AsyncSession,
+        actor: Student,
+    ) -> StudentSubjectCardListResponse:
+        student = await StudentRepository.get_student_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            student_id=actor.id,
+        )
+        if student is None:
+            raise NotFoundException("Student profile not found.")
+
+        classroom = None
+        if student.class_id is not None:
+            classroom = await ClassRoomRepository.get_classroom_by_id(
+                db=db,
+                tenant_id=actor.tenant_id,
+                class_id=student.class_id,
+            )
+
+        session, term = await StudentAcademicService._resolve_student_dashboard_period(
+            db=db,
+            tenant_id=actor.tenant_id,
+            student_id=student.id,
+        )
+
+        class_subjects: list[ClassSubject] = []
+        if student.class_id is not None:
+            class_subjects, _ = await StudentAcademicRepository.list_class_subjects(
+                db=db,
+                tenant_id=actor.tenant_id,
+                class_id=student.class_id,
+                active_only=True,
+                skip=0,
+                limit=500,
+            )
+
+        result_filters = {
+            "tenant_id": actor.tenant_id,
+            "student_id": student.id,
+            "skip": 0,
+            "limit": 500,
+        }
+        if session is not None:
+            result_filters["academic_session_id"] = session.id
+        if term is not None:
+            result_filters["academic_term_id"] = term.id
+        results, _ = await StudentAcademicRepository.list_results(
+            db=db,
+            **result_filters,
+        )
+        results_by_subject_id = {result.subject_id: result for result in results}
+
+        active_assignments: list[TeacherAssignment] = []
+        if student.class_id is not None:
+            active_assignments, _ = await StudentAcademicRepository.list_teacher_assignment_rows(
+                db=db,
+                tenant_id=actor.tenant_id,
+                class_id=student.class_id,
+                active_only=True,
+                limit=500,
+            )
+        assignment_by_class_subject_id = {
+            assignment.class_subject_id: assignment for assignment in active_assignments
+        }
+
+        items: list[StudentSubjectCardResponse] = []
+        for class_subject in class_subjects:
+            result = results_by_subject_id.get(class_subject.subject_id)
+            assignment = assignment_by_class_subject_id.get(class_subject.id)
+            teacher = None
+            teacher_name = None
+            teacher_id = None
+            if assignment is not None:
+                teacher_id = assignment.teacher_id
+                teacher = await TeacherRepository.get_teacher_by_id(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    teacher_id=assignment.teacher_id,
+                )
+            if teacher is None:
+                legacy_assignment = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    class_id=class_subject.class_id,
+                    subject_id=class_subject.subject_id,
+                )
+                if legacy_assignment is not None:
+                    teacher_id = legacy_assignment.teacher_id
+                    teacher = await TeacherRepository.get_teacher_by_id(
+                        db=db,
+                        tenant_id=actor.tenant_id,
+                        teacher_id=legacy_assignment.teacher_id,
+                    )
+            if teacher is not None:
+                teacher_name = " ".join(
+                    part for part in [teacher.first_name, teacher.last_name] if part
+                ).strip() or None
+            subject = await SubjectRepository.get_subject_by_id(
+                db=db,
+                tenant_id=actor.tenant_id,
+                subject_id=class_subject.subject_id,
+            )
+            items.append(
+                await StudentAcademicService._build_student_subject_card_response(
+                    db=db,
+                    class_subject=class_subject,
+                    classroom=classroom,
+                    subject=subject,
+                    result=result,
+                    session=session,
+                    term=term,
+                    teacher_id=teacher_id,
+                    teacher_name=teacher_name,
+                )
+            )
+
+        items.sort(key=lambda item: ((item.subject_name or item.subject_code or "").lower(), str(item.subject_id)))
+        return StudentSubjectCardListResponse(
+            items=items,
+            total=len(items),
+            context=StudentSubjectCardContextResponse(
+                class_id=student.class_id,
+                class_name=classroom.name if classroom else None,
+                class_arm=classroom.arm if classroom else None,
+                academic_session_id=session.id if session else None,
+                academic_session_name=session.name if session else None,
+                academic_term_id=term.id if term else None,
+                academic_term_name=term.name.value if term else None,
+            ),
+        )
+
+    @staticmethod
+    def _is_result_complete(result: StudentSubjectResult) -> bool:
+        return all(
+            value is not None
+            for value in (
+                result.test_score,
+                result.assessment_score,
+                result.exam_score,
+            )
+        )
+
+    @staticmethod
+    def _score_or_zero(value: Decimal | None) -> Decimal:
+        return value if value is not None else Decimal("0")
+
+    @staticmethod
     async def _compute_grade(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -1367,6 +1518,137 @@ class StudentAcademicService:
         if grading_scale is None:
             raise NotFoundException("No grading scale found for the computed total score.")
         return grading_scale.grade, grading_scale.remark
+
+    @staticmethod
+    async def _resolve_result_grade(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        result: StudentSubjectResult,
+    ) -> tuple[str | None, str | None]:
+        if not StudentAcademicService._is_result_complete(result):
+            return None, None
+
+        if result.grade is not None:
+            return result.grade, result.remark
+
+        total_score = sum(
+            (
+                StudentAcademicService._score_or_zero(score)
+                for score in (result.test_score, result.assessment_score, result.exam_score)
+            ),
+            Decimal("0"),
+        )
+        grade, remark = await StudentAcademicService._compute_grade(
+            db=db,
+            tenant_id=tenant_id,
+            total_score=total_score,
+        )
+        return grade, remark
+
+    @staticmethod
+    async def _resolve_student_dashboard_period(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        student_id: uuid.UUID,
+    ) -> tuple[AcademicSession | None, AcademicTerm | None]:
+        session = await StudentAcademicRepository.get_current_academic_session(
+            db=db,
+            tenant_id=tenant_id,
+        )
+        if session is None:
+            sessions, _ = await StudentAcademicRepository.list_academic_sessions(
+                db=db,
+                tenant_id=tenant_id,
+                skip=0,
+                limit=1,
+            )
+            session = sessions[0] if sessions else None
+
+        term = await StudentAcademicRepository.get_current_term(
+            db=db,
+            tenant_id=tenant_id,
+        )
+        if term is None and session is not None:
+            terms, _ = await StudentAcademicRepository.list_terms_by_session(
+                db=db,
+                tenant_id=tenant_id,
+                academic_session_id=session.id,
+                skip=0,
+                limit=1,
+            )
+            term = terms[0] if terms else None
+
+        if session is None or term is None:
+            latest_results, _ = await StudentAcademicRepository.list_results(
+                db=db,
+                tenant_id=tenant_id,
+                student_id=student_id,
+                skip=0,
+                limit=1,
+            )
+            latest_result = latest_results[0] if latest_results else None
+            if latest_result is not None:
+                if session is None:
+                    session = await StudentAcademicRepository.get_academic_session_by_id(
+                        db=db,
+                        tenant_id=tenant_id,
+                        academic_session_id=latest_result.academic_session_id,
+                    )
+                if term is None:
+                    term = await StudentAcademicRepository.get_term_by_id(
+                        db=db,
+                        tenant_id=tenant_id,
+                        term_id=latest_result.academic_term_id,
+                    )
+
+        return session, term
+
+    @staticmethod
+    async def _build_student_subject_card_response(
+        db: AsyncSession,
+        *,
+        class_subject: ClassSubject,
+        classroom,
+        subject,
+        result: StudentSubjectResult | None,
+        session: AcademicSession | None,
+        term: AcademicTerm | None,
+        teacher_id: uuid.UUID | None,
+        teacher_name: str | None,
+    ) -> StudentSubjectCardResponse:
+        grade = None
+        remark = None
+        if result is not None:
+            grade, remark = await StudentAcademicService._resolve_result_grade(
+                db=db,
+                tenant_id=class_subject.tenant_id,
+                result=result,
+            )
+
+        return StudentSubjectCardResponse(
+            id=class_subject.id,
+            result_id=result.id if result is not None else None,
+            class_id=class_subject.class_id,
+            class_name=classroom.name if classroom else None,
+            class_arm=classroom.arm if classroom else None,
+            subject_id=class_subject.subject_id,
+            subject_name=subject.name if subject else None,
+            subject_code=subject.code if subject else None,
+            teacher_id=teacher_id,
+            teacher_name=teacher_name,
+            academic_session_id=session.id if session else None,
+            academic_session_name=session.name if session else None,
+            academic_term_id=term.id if term else None,
+            academic_term_name=term.name.value if term else None,
+            test_score=StudentAcademicService._score_or_zero(result.test_score) if result else Decimal("0"),
+            assessment_score=StudentAcademicService._score_or_zero(result.assessment_score) if result else Decimal("0"),
+            exam_score=StudentAcademicService._score_or_zero(result.exam_score) if result else Decimal("0"),
+            total_score=result.total_score if result is not None else Decimal("0"),
+            grade=grade,
+            remark=remark if remark is not None else (result.remark if result else None),
+            status=(result.status.value if hasattr(result.status, "value") else str(result.status)) if result else "pending",
+            is_complete=StudentAcademicService._is_result_complete(result) if result else False,
+        )
 
     @staticmethod
     async def _build_result_response(
@@ -1417,6 +1699,11 @@ class StudentAcademicService:
             tenant_id=result.tenant_id,
             term_id=result.academic_term_id,
         )
+        grade, remark = await StudentAcademicService._resolve_result_grade(
+            db=db,
+            tenant_id=result.tenant_id,
+            result=result,
+        )
 
         return StudentSubjectResultResponse(
             id=result.id,
@@ -1450,8 +1737,8 @@ class StudentAcademicService:
             assessment_score=result.assessment_score,
             exam_score=result.exam_score,
             total_score=result.total_score,
-            grade=result.grade,
-            remark=result.remark,
+            grade=grade,
+            remark=remark,
             status=result.status,
             recorded_by_actor_type=result.recorded_by_actor_type,
             recorded_by_actor_id=result.recorded_by_actor_id,
@@ -1493,12 +1780,27 @@ class StudentAcademicService:
         if student.class_id != class_subject.class_id:
             raise BadRequestException("Student does not belong to the selected class.")
 
-        total_score = payload.test_score + payload.assessment_score + payload.exam_score
-        grade, remark = await StudentAcademicService._compute_grade(
-            db=db,
-            tenant_id=tenant_id,
-            total_score=total_score,
+        score_values = {
+            "test_score": payload.test_score,
+            "assessment_score": payload.assessment_score,
+            "exam_score": payload.exam_score,
+        }
+        has_all_scores = all(value is not None for value in score_values.values())
+        total_score = sum(
+            (StudentAcademicService._score_or_zero(value) for value in score_values.values()),
+            Decimal("0"),
         )
+        if str(payload.status) == AcademicResultStatus.SUBMITTED.value and not has_all_scores:
+            raise BadRequestException("All three scores must be recorded before submitting a result.")
+
+        grade = None
+        remark = None
+        if has_all_scores:
+            grade, remark = await StudentAcademicService._compute_grade(
+                db=db,
+                tenant_id=tenant_id,
+                total_score=total_score,
+            )
 
         legacy_id = legacy.id if legacy is not None else payload.class_subject_teacher_id
         if legacy_id is None:
@@ -1599,6 +1901,16 @@ class StudentAcademicService:
         )
         if result is None:
             raise NotFoundException("Result not found.")
+        if str(payload.status) == AcademicResultStatus.SUBMITTED.value and not StudentAcademicService._is_result_complete(result):
+            raise BadRequestException("All three scores must be recorded before a result can be submitted.")
+        if StudentAcademicService._is_result_complete(result):
+            grade, remark = await StudentAcademicService._resolve_result_grade(
+                db=db,
+                tenant_id=actor.tenant_id,
+                result=result,
+            )
+            result.grade = grade
+            result.remark = remark
         result.status = payload.status
         saved = await StudentAcademicRepository.upsert_result(db=db, result=result)
         await db.commit()

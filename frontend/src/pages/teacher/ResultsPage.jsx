@@ -15,6 +15,7 @@ import { useToast } from "../../hooks/useToast";
 
 const emptyScores = { test_score: "", assessment_score: "", exam_score: "" };
 const scoreFields = ["test_score", "assessment_score", "exam_score"];
+const toNullableScore = (value) => (value === "" || value === null || value === undefined ? null : Number(value));
 
 function TeacherResultsPage() {
   const [assignments, setAssignments] = useState([]);
@@ -76,6 +77,7 @@ function TeacherResultsPage() {
 
   useEffect(() => {
     if (termsForSession.length > 0 && !termsForSession.some((item) => item.id === academicTermId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAcademicTermId(termsForSession.find((item) => item.is_current)?.id || termsForSession[0].id);
     }
   }, [termsForSession, academicTermId]);
@@ -166,9 +168,9 @@ function TeacherResultsPage() {
         teacher_assignment_id: selectedAssignmentId,
         academic_session_id: academicSessionId,
         academic_term_id: academicTermId,
-        test_score: Number(draft.test_score || 0),
-        assessment_score: Number(draft.assessment_score || 0),
-        exam_score: Number(draft.exam_score || 0),
+        test_score: toNullableScore(draft.test_score),
+        assessment_score: toNullableScore(draft.assessment_score),
+        exam_score: toNullableScore(draft.exam_score),
         status,
       });
       await loadResults();
@@ -254,7 +256,7 @@ function TeacherResultsPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Backend computed</p>
                     <p className="mt-1 font-semibold text-text">
                       <Calculator className="mr-1 inline h-4 w-4" />
-                      {existing ? `${existing.total_score} / ${existing.grade}` : "After save"}
+                      {existing ? `${existing.total_score} / ${existing.grade || "Pending"}` : "After save"}
                     </p>
                     <p className="text-xs text-text-muted">{existing?.remark || "Remark appears after save"}</p>
                   </div>

@@ -193,11 +193,23 @@ class ReportCardService:
                     )
             if teacher is None:
                 teacher = await TeacherRepository.get_teacher_by_id(db, actor.tenant_id, result.teacher_id)
-            teacher_name = (
-                " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip()
-                if teacher
-                else None
-            )
+                teacher_name = (
+                    " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip()
+                    if teacher
+                    else None
+                )
+            grade = result.grade
+            remark = result.remark
+            if grade is None:
+                grading_scale = await StudentAcademicRepository.find_grade_for_score(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    score=result.total_score,
+                )
+                if grading_scale is not None:
+                    grade = grading_scale.grade
+                    if remark is None:
+                        remark = grading_scale.remark
             await ReportCardRepository.create_line(
                 db,
                 ReportCardSubjectLine(
@@ -212,8 +224,8 @@ class ReportCardService:
                     assessment_score=result.assessment_score,
                     exam_score=result.exam_score,
                     total_score=result.total_score,
-                    grade=result.grade,
-                    remark=result.remark,
+                    grade=grade or "Pending",
+                    remark=remark,
                 ),
             )
 

@@ -565,3 +565,155 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         )
     ).scalars().all()
     assert len(persisted_cards) == 1
+
+
+@pytest.mark.asyncio
+async def test_student_subject_cards_show_every_class_subject_and_keep_partial_scores_ungraded(
+    api_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    tenant = await create_tenant(db_session, suffix="subjects")
+    admin = await create_tenant_admin(db_session, tenant=tenant, email="admin-subjects@example.com")
+    teacher = await create_teacher(
+        db_session,
+        tenant=tenant,
+        email="teacher-subjects@example.com",
+        first_name="Teacher",
+        last_name="Subject",
+    )
+    classroom = await create_classroom(db_session, tenant=tenant, name="JSS 2", arm="B")
+    subject_math = await create_subject(db_session, tenant=tenant, name="Mathematics", code="MTH")
+    subject_english = await create_subject(db_session, tenant=tenant, name="English", code="ENG")
+    class_subject_math = await create_class_subject(db_session, tenant=tenant, class_room=classroom, subject=subject_math)
+    class_subject_english = await create_class_subject(db_session, tenant=tenant, class_room=classroom, subject=subject_english)
+    student = await create_student(
+        db_session,
+        tenant=tenant,
+        class_room=classroom,
+        admission_number=f"{tenant.admission_number_prefix}-002",
+    )
+    await create_session_and_term(db_session, tenant=tenant)
+    academic_session = (
+        await db_session.execute(
+            select(AcademicSession).where(AcademicSession.tenant_id == tenant.id)
+        )
+    ).scalar_one()
+    academic_term = (
+        await db_session.execute(select(AcademicTerm).where(AcademicTerm.tenant_id == tenant.id))
+    ).scalar_one()
+    await create_grading_scale(db_session, tenant=tenant)
+    await db_session.commit()
+
+    admin_headers = auth_headers(
+        actor_id=admin.id,
+        actor_type="tenant_admin",
+        role="admin",
+        email=admin.email,
+        tenant_id=tenant.id,
+    )
+    teacher_headers = auth_headers(
+        actor_id=teacher.id,
+        actor_type="teacher",
+        role="teacher",
+        email=teacher.email,
+        tenant_id=tenant.id,
+    )
+    student_headers = auth_headers(
+        actor_id=student.id,
+        actor_type="student",
+        role="student",
+        email=student.admission_number,
+        tenant_id=tenant.id,
+    )
+
+    math_assignment = await api_client.post(
+        "/api/v1/tenant-admin/academic/teacher-assignments",
+        json={
+            "class_subject_id": str(class_subject_math.id),
+            "teacher_id": str(teacher.id),
+        },
+        headers=admin_headers,
+    )
+    assert math_assignment.status_code == 201
+    english_assignment = await api_client.post(
+        "/api/v1/tenant-admin/academic/teacher-assignments",
+        json={
+            "class_subject_id": str(class_subject_english.id),
+            "teacher_id": str(teacher.id),
+        },
+        headers=admin_headers,
+    )
+    assert english_assignment.status_code == 201
+
+    partial_result = await api_client.post(
+        "/api/v1/teachers/me/academic/results",
+        json={
+            "student_id": str(student.id),
+            "teacher_assignment_id": math_assignment.json()["id"],
+            "academic_session_id": str(academic_session.id),
+            "academic_term_id": str(academic_term.id),
+            "test_score": "18",
+            "assessment_score": None,
+            "exam_score": None,
+            "status": "draft",
+        },
+        headers=teacher_headers,
+    )
+    assert partial_result.status_code == 200
+    partial_payload = partial_result.json()
+    assert partial_payload["grade"] is None
+    assert float(partial_payload["test_score"]) == 18.0
+    assert partial_payload["assessment_score"] is None
+    assert partial_payload["exam_score"] is None
+
+    rejected_submit = await api_client.post(
+        "/api/v1/teachers/me/academic/results",
+        json={
+            "student_id": str(student.id),
+            "teacher_assignment_id": math_assignment.json()["id"],
+            "academic_session_id": str(academic_session.id),
+            "academic_term_id": str(academic_term.id),
+            "test_score": "18",
+            "assessment_score": None,
+            "exam_score": None,
+            "status": "submitted",
+        },
+        headers=teacher_headers,
+    )
+    assert rejected_submit.status_code == 422
+
+    student_subjects = await api_client.get(
+        "/api/v1/students/me/academic/subjects",
+        headers=student_headers,
+    )
+    assert student_subjects.status_code == 200
+    subject_items = student_subjects.json()["items"]
+    assert len(subject_items) == 2
+
+    by_subject_code = {item["subject_code"]: item for item in subject_items}
+    math_card = by_subject_code["MTH"]
+    english_card = by_subject_code["ENG"]
+
+    assert math_card["result_id"] == partial_payload["id"]
+    assert float(math_card["test_score"]) == 18.0
+    assert float(math_card["assessment_score"]) == 0.0
+    assert float(math_card["exam_score"]) == 0.0
+    assert math_card["grade"] is None
+    assert math_card["status"] == "draft"
+
+    assert english_card["result_id"] is None
+    assert float(english_card["test_score"]) == 0.0
+    assert float(english_card["assessment_score"]) == 0.0
+    assert float(english_card["exam_score"]) == 0.0
+    assert english_card["grade"] is None
+    assert english_card["status"] == "pending"
+
+    student_results = await api_client.get(
+        "/api/v1/students/me/academic/results",
+        headers=student_headers,
+    )
+    assert student_results.status_code == 200
+    result_items = student_results.json()["items"]
+    assert len(result_items) == 1
+    assert result_items[0]["grade"] is None
+    assert float(result_items[0]["total_score"]) == 18.0

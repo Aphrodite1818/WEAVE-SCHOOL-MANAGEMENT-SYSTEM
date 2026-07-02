@@ -28,6 +28,7 @@ from app.modules.student_academics.schemas import (
     GradingScaleListResponse,
     GradingScaleResponse,
     GradingScaleUpdate,
+    StudentSubjectCardListResponse,
     StudentSubjectResultListResponse,
     StudentSubjectResultResponse,
     StudentSubjectResultStatusUpdate,
@@ -457,6 +458,14 @@ async def list_my_results(
 ) -> StudentSubjectResultListResponse:
     items, total = await StudentAcademicService.list_results(db, current_student)
     return StudentSubjectResultListResponse(items=items, total=total)
+
+
+@student_router.get("/subjects", response_model=StudentSubjectCardListResponse)
+async def list_my_subject_cards(
+    db: DbSession,
+    current_student: CurrentStudent,
+) -> StudentSubjectCardListResponse:
+    return await StudentAcademicService.list_student_subject_cards(db=db, actor=current_student)
 
 
 @parent_router.get("/results", response_model=StudentSubjectResultListResponse)

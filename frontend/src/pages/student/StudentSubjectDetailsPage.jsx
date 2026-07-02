@@ -10,11 +10,10 @@ import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { cleanText } from "../../utils/academicDashboard";
-import { formatMetricNumber, getAcademicContext, statusVariant } from "./studentPageUtils";
+import { displayStatusLabel, getAcademicContext, scoreDisplayValue, statusVariant } from "./studentPageUtils";
 
-function metricValue(value, fallback = "-") {
-  if (value === undefined || value === null || value === "") return fallback;
-  return formatMetricNumber(value);
+function metricValue(value) {
+  return scoreDisplayValue(value);
 }
 
 function StudentSubjectDetailsPage() {
@@ -99,7 +98,7 @@ function StudentSubjectDetailsPage() {
                     <h2 className="truncate text-xl font-semibold text-text">
                       {cleanText(result.subject_name, "Subject")}
                     </h2>
-                    <Badge variant={statusVariant(result.status)}>{cleanText(result.status)}</Badge>
+                    <Badge variant={statusVariant(result.status)}>{displayStatusLabel(result.status)}</Badge>
                   </div>
                   <p className="mt-1 text-sm font-medium text-text-muted">
                     {cleanText(result.class_name, cleanText(context.classLabel, "Class"))}
@@ -152,7 +151,7 @@ function StudentSubjectDetailsPage() {
               </div>
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Status</p>
-                <p className="mt-2 text-base font-semibold capitalize text-text">{cleanText(result.status)}</p>
+                    <p className="mt-2 text-base font-semibold capitalize text-text">{displayStatusLabel(result.status)}</p>
               </div>
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3 sm:col-span-2 xl:col-span-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Remark</p>

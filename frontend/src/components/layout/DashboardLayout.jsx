@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -577,13 +577,14 @@ function DashboardLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileUser, setProfileUser] = useState(user);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [hasAutoOpenedOnboarding, setHasAutoOpenedOnboarding] = useState(false);
   const [onboardingStatusData, setOnboardingStatusData] = useState(null);
   const [isLoadingOnboardingState, setIsLoadingOnboardingState] = useState(Boolean(authSession.getToken()));
+  const onboardingAutoOpenKeyRef = useRef("");
 
   const pageTitle = useMemo(() => title || `${roleLabels[role] || "Workspace"} Dashboard`, [role, title]);
   const needsOnboarding =
     onboardingModalEnabled && Boolean(onboardingStatusData?.onboarding_required);
+  const onboardingAutoOpenKey = `${role}:${profileUser?.id || "anonymous"}`;
   const schoolName = resolveSchoolName({
     school_name:
       onboardingStatusData?.current_values?.school_name ||
@@ -640,20 +641,18 @@ function DashboardLayout({
   }, [onboardingModalEnabled, role]);
 
   useEffect(() => {
-    setHasAutoOpenedOnboarding(false);
-  }, [role, profileUser?.id]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem("dashboard-sidebar-collapsed", String(collapsed));
   }, [collapsed]);
 
   useEffect(() => {
-    if (isLoadingOnboardingState || !needsOnboarding || hasAutoOpenedOnboarding) return;
+    if (isLoadingOnboardingState || !needsOnboarding) return;
+    if (onboardingAutoOpenKeyRef.current === onboardingAutoOpenKey) return;
 
-    setHasAutoOpenedOnboarding(true);
-    setProfileModalOpen(true);
-  }, [hasAutoOpenedOnboarding, isLoadingOnboardingState, needsOnboarding]);
+    onboardingAutoOpenKeyRef.current = onboardingAutoOpenKey;
+    const timeoutId = window.setTimeout(() => setProfileModalOpen(true), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [isLoadingOnboardingState, needsOnboarding, onboardingAutoOpenKey]);
 
   return (
     <div className="min-h-screen bg-background text-text">
@@ -698,7 +697,7 @@ function DashboardLayout({
           schoolName={schoolName}
         />
 
-        <main id="dashboard-content" className="px-3 py-4 pb-24 sm:px-5 sm:py-5 md:px-6 md:py-6 md:pb-6 lg:px-8">
+        <main id="dashboard-content" className="px-2 py-4 pb-24 sm:px-5 sm:py-5 md:px-6 md:py-6 md:pb-6 lg:px-8">
           <div className="mx-auto flex w-full max-w-[1320px] flex-col section-gap">
             <div className="flex flex-col gap-3 rounded-[1.6rem] border border-border/60 bg-surface/65 p-4 shadow-sm backdrop-blur-sm sm:gap-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between lg:p-6">
               <div className="min-w-0">

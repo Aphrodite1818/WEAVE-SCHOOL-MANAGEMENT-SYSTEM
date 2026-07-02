@@ -137,6 +137,7 @@ export const academicService = {
   saveTeacherResult: (payload) => api.post("/teachers/me/academic/results", payload),
 
   listMyResults: () => api.get("/students/me/academic/results"),
+  listMySubjectCards: () => api.get("/students/me/academic/subjects"),
   listChildResults: (studentId) =>
     api.get(`/parents/me/children/${studentId}/academic/results`),
 };

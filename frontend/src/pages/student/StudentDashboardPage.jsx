@@ -3,11 +3,13 @@ import {
   BarChart3,
   BookOpen,
   ClipboardList,
+  ChevronRight,
   FileText,
   GraduationCap,
   Link2,
   UserRound,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
@@ -33,9 +35,11 @@ import {
 } from "../../utils/academicDashboard";
 import {
   formatMetricNumber,
+  displayStatusLabel,
   getAcademicContext,
   hasValue,
   isPublishedResult,
+  scoreDisplayValue,
   statusVariant,
 } from "./studentPageUtils";
 
@@ -46,6 +50,8 @@ function StudentDashboardPage() {
   const [metrics, setMetrics] = useState(null);
   const [academicResults, setAcademicResults] = useState([]);
   const [reportCards, setReportCards] = useState([]);
+  const [subjectCards, setSubjectCards] = useState([]);
+  const [subjectContext, setSubjectContext] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const user = authSession.getUser();
@@ -66,6 +72,7 @@ function StudentDashboardPage() {
           metricsResponse,
           resultResponse,
           reportCardResponse,
+          subjectCardsResponse,
         ] = await Promise.all([
           studentService.getMyStudent(),
           studentService.getMyParentLinks(),
@@ -73,6 +80,7 @@ function StudentDashboardPage() {
           dashboardService.getStudentAnalytics(),
           academicService.listMyResults(),
           reportCardService.listMyReportCards(),
+          academicService.listMySubjectCards(),
         ]);
 
         if (!mounted) return;
@@ -82,6 +90,8 @@ function StudentDashboardPage() {
         setMetrics(metricsResponse);
         setAcademicResults(resultResponse?.items || []);
         setReportCards(reportCardResponse?.items || []);
+        setSubjectCards(subjectCardsResponse?.items || []);
+        setSubjectContext(subjectCardsResponse?.context || null);
       } catch (error) {
         if (mounted) setLoadError(getErrorMessage(error, "Failed to load student dashboard."));
       } finally {
@@ -101,12 +111,16 @@ function StudentDashboardPage() {
     const publishedResults = academicResults.filter(isPublishedResult);
     const pendingResults = academicResults.filter((result) => !isPublishedResult(result));
     const subjectHighlights = bestAndWeakestSubject(publishedResults);
-    const context = getAcademicContext(academicResults, reportCards);
-    const uniqueSubjects = new Set(
-      academicResults
-        .map((result) => result.subject_id || result.subject_name || result.subject_code)
-        .filter(Boolean)
-    );
+    const context = subjectContext
+      ? {
+          classLabel:
+            subjectContext.class_name || subjectContext.class_arm
+              ? [subjectContext.class_name, subjectContext.class_arm].filter(Boolean).join(" ")
+              : null,
+          sessionLabel: subjectContext.academic_session_name || null,
+          termLabel: subjectContext.academic_term_name || null,
+        }
+      : getAcademicContext(academicResults, reportCards);
     const currentAverage = hasValue(stats.current_average)
       ? stats.current_average
       : publishedResults.length > 0
@@ -150,14 +164,15 @@ function StudentDashboardPage() {
       publishedResults,
       pendingResults,
       subjectHighlights,
-      subjectsCount: hasValue(stats.subjects_count) ? stats.subjects_count : uniqueSubjects.size,
+      subjectsCount: hasValue(stats.subjects_count) ? stats.subjects_count : subjectCards.length,
       context,
       latestReportCard: reportCards[0],
       pendingParentRequests: parentLinkRequests.filter((request) => request.status === "pending"),
       performanceTrend,
       chartWidgets,
+      subjectCards,
     };
-  }, [academicResults, metrics, parentLinkRequests, reportCards]);
+  }, [academicResults, metrics, parentLinkRequests, reportCards, subjectCards, subjectContext]);
 
   if (isLoading) {
     return (
@@ -349,6 +364,91 @@ function StudentDashboardPage() {
               compact
             />
           </section>
+
+          {dashboardData.subjectCards.length > 0 && (
+            <section className="dashboard-grid">
+              <Card className="p-5 sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="section-title">Class Subjects</h3>
+                    <p className="mt-1 text-sm text-text-muted">
+                      Every subject assigned to your class, with component scores and grades pulled from the backend.
+                    </p>
+                  </div>
+                  <Link
+                    to="/student/subjects"
+                    className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-text transition hover:border-border-strong hover:bg-surface-muted"
+                  >
+                    Open all subjects
+                  </Link>
+                </div>
+
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {dashboardData.subjectCards.map((card) => {
+                    const subjectLabel = cleanText(card.subject_name, "Subject");
+                    const statusLabel = displayStatusLabel(card.status, card.result_id ? "Pending" : "Awaiting marks");
+                    const totalScore = scoreDisplayValue(card.total_score);
+                    const grade = cleanText(card.grade, "--");
+                    const testScore = scoreDisplayValue(card.test_score);
+                    const assessmentScore = scoreDisplayValue(card.assessment_score);
+                    const examScore = scoreDisplayValue(card.exam_score);
+
+                    return (
+                      <Card
+                        key={card.id}
+                        as={card.result_id ? Link : "div"}
+                        to={card.result_id ? `/student/subjects/${card.result_id}` : undefined}
+                        className="group w-full overflow-hidden rounded-[1.35rem] border border-border/70 bg-surface p-4 text-left shadow-sm transition-all duration-200 hover:border-border-strong hover:shadow-premium"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="truncate text-base font-semibold text-text">{subjectLabel}</h4>
+                              <Badge variant={statusVariant(card.status)}>{statusLabel}</Badge>
+                            </div>
+                            <p className="mt-1 truncate text-xs font-medium text-text-muted">
+                              {cleanText(card.teacher_name, "Teacher not assigned")}
+                            </p>
+                          </div>
+                          {card.result_id ? (
+                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-text-faint transition group-hover:translate-x-0.5" />
+                          ) : (
+                            <span className="mt-1 text-[11px] font-medium text-text-faint">Awaiting marks</span>
+                          )}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-3 gap-2">
+                          <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Test</p>
+                            <p className="mt-1 text-sm font-semibold text-text">{testScore}</p>
+                          </div>
+                          <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Assess.</p>
+                            <p className="mt-1 text-sm font-semibold text-text">{assessmentScore}</p>
+                          </div>
+                          <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Exam</p>
+                            <p className="mt-1 text-sm font-semibold text-text">{examScore}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between gap-3 rounded-[1rem] border border-border/70 bg-surface-muted/15 px-3 py-2">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Total</p>
+                            <p className="text-sm font-semibold text-text">{totalScore}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Grade</p>
+                            <p className="text-sm font-semibold text-text">{grade}</p>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </Card>
+            </section>
+          )}
 
           {dashboardData.chartWidgets.length > 0 && (
             <section className="dashboard-grid xl:grid-cols-2">

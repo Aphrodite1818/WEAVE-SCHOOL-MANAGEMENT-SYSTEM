@@ -21,6 +21,16 @@ export const formatMetricNumber = (value) => {
   return Number.isInteger(numericValue) ? numericValue : numericValue.toFixed(1);
 };
 
+export const scoreDisplayValue = (value) => {
+  const formatted = formatMetricNumber(value);
+  return formatted ?? 0;
+};
+
+export const displayStatusLabel = (value, fallback = "Pending") => {
+  const text = hasValue(value) ? String(value) : fallback;
+  return text.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 export const getAcademicContext = (results = [], reportCards = []) => {
   const latestResult = results[0];
   const latestReportCard = reportCards[0];

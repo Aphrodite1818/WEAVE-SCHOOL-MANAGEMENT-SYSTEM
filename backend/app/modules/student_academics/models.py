@@ -337,11 +337,11 @@ class StudentSubjectResult(BaseModel):
         nullable=False,
         index=True,
     )
-    test_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    assessment_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    exam_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    test_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    assessment_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    exam_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     total_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    grade: Mapped[str] = mapped_column(String(10), nullable=False)
+    grade: Mapped[str | None] = mapped_column(String(10), nullable=True)
     remark: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[AcademicResultStatus] = mapped_column(
         SQLEnum(
