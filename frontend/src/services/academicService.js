@@ -11,6 +11,29 @@ const queryString = (params = {}) => {
   return value ? `?${value}` : "";
 };
 
+const mergeClassSubjectPickerOptions = (classSubjectResponse, subjectResponse) => {
+  const classSubjects = classSubjectResponse?.items || [];
+  const subjects = subjectResponse?.items || [];
+  const offeredBySubjectId = new Map(classSubjects.map((item) => [item.subject_id, item]));
+
+  return {
+    items: subjects.map((subject) => {
+      const offered = offeredBySubjectId.get(subject.id);
+      return offered || {
+        id: subject.id,
+        class_subject_id: "",
+        subject_id: subject.id,
+        subject_name: subject.name,
+        subject_code: subject.code,
+        is_core: true,
+        is_active: subject.is_active !== false,
+        is_offered_by_class: false,
+      };
+    }),
+    total: subjects.length,
+  };
+};
+
 export const academicService = {
   listSessions: (params) =>
     api.get(`/tenant-admin/academic/sessions${queryString(params)}`),
@@ -37,6 +60,13 @@ export const academicService = {
 
   listClassSubjects: (classId, params) =>
     api.get(`/classes/${classId}/subjects${queryString(params)}`),
+  listClassSubjectPickerOptions: async (classId, params) => {
+    const [classSubjectResponse, subjectResponse] = await Promise.all([
+      api.get(`/classes/${classId}/subjects${queryString(params)}`),
+      api.get(`/subjects${queryString({ is_active: true, limit: 100 })}`),
+    ]);
+    return mergeClassSubjectPickerOptions(classSubjectResponse, subjectResponse);
+  },
   addClassSubject: (classId, payload) =>
     api.post(`/classes/${classId}/subjects`, payload),
   deactivateClassSubject: (classSubjectId) =>
@@ -62,7 +92,7 @@ export const academicService = {
     api.get(`/tenant-admin/academic/results${queryString(params)}`),
   saveAdminResult: (payload) => api.post("/tenant-admin/academic/results", payload),
   updateResultStatus: (resultId, payload) =>
-    api.patch(`/tenant-admin/academic/results/${resultId}/status`, payload),
+    api.patch(`/tenant-admin/academic/results/${resultId}/status` , payload),
 
   listMyTeacherAssignments: () => api.get("/teachers/me/academic/assignments"),
   listTeacherResults: (params) =>
