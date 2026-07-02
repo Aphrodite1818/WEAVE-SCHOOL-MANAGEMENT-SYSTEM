@@ -274,7 +274,7 @@ function SuperadminDashboardPage() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 p-4 sm:gap-4 sm:p-5 md:grid-cols-3 md:p-6">
+            <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:p-5 md:grid-cols-3 md:p-6">
               <div className="rounded-2xl border border-border bg-surface p-3 sm:p-4 md:p-5">
                 <p className="text-[10px] font-bold tracking-wide text-text-muted sm:text-xs">Verification queue</p>
                 <p className="mt-2 text-xl font-semibold sm:mt-3 sm:text-2xl md:text-3xl">{pendingTenants}</p>
@@ -285,7 +285,7 @@ function SuperadminDashboardPage() {
                 <p className="mt-2 text-xl font-semibold sm:mt-3 sm:text-2xl md:text-3xl">{suspendedTenants}</p>
                 <p className="mt-1 hidden text-xs text-text-muted sm:mt-2 sm:block sm:text-sm">Schools requiring platform attention.</p>
               </div>
-              <div className="col-span-2 rounded-2xl border border-border bg-surface p-3 sm:col-span-1 sm:p-4 md:p-5">
+              <div className="rounded-2xl border border-border bg-surface p-3 sm:col-span-2 sm:p-4 md:col-span-1 md:p-5">
                 <p className="text-[10px] font-bold tracking-wide text-text-muted sm:text-xs">Rejected verification</p>
                 <p className="mt-2 text-xl font-semibold sm:mt-3 sm:text-2xl md:text-3xl">{trialTenantsFromChart}</p>
                 <p className="mt-1 hidden text-xs text-text-muted sm:mt-2 sm:block sm:text-sm">Schools currently evaluating the platform.</p>

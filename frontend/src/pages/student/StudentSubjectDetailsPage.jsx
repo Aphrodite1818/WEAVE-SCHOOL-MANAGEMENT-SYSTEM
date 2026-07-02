@@ -111,7 +111,7 @@ function StudentSubjectDetailsPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Total score</p>
                 <p className="mt-2 text-2xl font-semibold text-text">{metricValue(result.total_score)}</p>

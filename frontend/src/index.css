@@ -126,7 +126,7 @@
   }
 
   .stat-grid {
-    @apply grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4;
+    @apply grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4;
   }
 
   .stat-grid-four {
@@ -142,7 +142,7 @@
   }
 
   .dashboard-kpi-grid {
-    @apply grid grid-cols-2 gap-3 sm:gap-4;
+    @apply grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4;
   }
 
   .dashboard-kpi-grid-four {
@@ -182,19 +182,23 @@
   }
 
   .data-table {
-    @apply min-w-full text-left text-sm leading-relaxed md:text-[15px];
+    @apply w-full min-w-full text-left text-sm leading-relaxed md:text-[15px];
   }
 
   .data-table thead {
     @apply hidden md:table-header-group bg-surface-muted/70 text-xs uppercase tracking-wide text-text-muted;
   }
 
+  .data-table tbody {
+    @apply block space-y-3 p-3 md:table-row-group md:space-y-0 md:p-0;
+  }
+
   .data-table tr {
-    @apply block border-b border-border bg-surface md:table-row md:border-b-0;
+    @apply block overflow-hidden rounded-[1.35rem] border border-border bg-surface shadow-sm md:table-row md:rounded-none md:border-0 md:shadow-none;
   }
 
   .data-table tr:last-child {
-    @apply border-b-0;
+    @apply md:border-b-0;
   }
 
   .data-table th {
@@ -202,16 +206,20 @@
   }
 
   .data-table td {
-    @apply flex items-start justify-between gap-4 border-t border-border/60 px-4 py-3.5 align-top transition-colors md:table-cell md:px-6 md:py-5;
+    @apply flex flex-col items-start gap-1.5 border-t border-border/60 px-4 py-3.5 align-top transition-colors sm:flex-row sm:justify-between sm:gap-4 md:table-cell md:px-6 md:py-5;
+  }
+
+  .data-table td:first-child {
+    @apply border-t-0;
   }
 
   .data-table td::before {
     content: attr(data-label);
-    @apply mr-4 shrink-0 text-xs font-bold uppercase tracking-wide text-text-muted md:hidden;
+    @apply shrink-0 text-[11px] font-bold uppercase tracking-wide text-text-muted md:hidden;
   }
   
   .data-table td > * {
-    @apply max-w-[62%] truncate text-right md:max-w-none md:text-left md:whitespace-normal;
+    @apply w-full max-w-full break-words whitespace-normal text-left md:w-auto md:max-w-none md:text-left;
   }
 
   .data-table tbody tr:hover td {
