@@ -1,5 +1,5 @@
 const fieldClass =
-  "h-[34px] min-h-[34px] w-full rounded-lg border border-border bg-background/60 px-3 text-[13px] font-medium text-text outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10";
+  "h-10 min-h-10 w-full rounded-xl border border-border bg-background/70 px-3 text-[13px] font-medium text-text outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted sm:h-[38px] sm:min-h-[38px]";
 
 export function SelectField({
   label,
@@ -11,8 +11,8 @@ export function SelectField({
   className = "",
 }) {
   return (
-    <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[11.5px] font-medium text-text-muted">
+    <label className={`block min-w-0 ${className}`}>
+      <span className="mb-1.5 block text-[11.5px] font-semibold uppercase tracking-wide text-text-muted">
         {label}
       </span>
       <select
@@ -37,11 +37,12 @@ export function TextField({
   max,
   placeholder,
   required = false,
+  disabled = false,
   className = "",
 }) {
   return (
-    <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[11.5px] font-medium text-text-muted">
+    <label className={`block min-w-0 ${className}`}>
+      <span className="mb-1.5 block text-[11.5px] font-semibold uppercase tracking-wide text-text-muted">
         {label}
       </span>
       <input
@@ -51,6 +52,7 @@ export function TextField({
         value={value}
         placeholder={placeholder}
         required={required}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         className={fieldClass}
       />
@@ -58,15 +60,16 @@ export function TextField({
   );
 }
 
-export function CheckboxField({ label, checked, onChange, helperText, className = "" }) {
+export function CheckboxField({ label, checked, onChange, helperText, disabled = false, className = "" }) {
   return (
-    <label className={`block ${className}`}>
-      <span className="flex h-[34px] min-h-[34px] items-center gap-3 rounded-lg border border-border bg-background/60 px-3 text-[13px] font-medium text-text-soft">
+    <label className={`block min-w-0 ${className}`}>
+      <span className="flex h-10 min-h-10 items-center gap-3 rounded-xl border border-border bg-background/70 px-3 text-[13px] font-medium text-text-soft sm:h-[38px] sm:min-h-[38px]">
         <input
           type="checkbox"
           checked={checked}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.checked)}
-          className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+          className="h-4 w-4 rounded border-border text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
         />
         {label}
       </span>
