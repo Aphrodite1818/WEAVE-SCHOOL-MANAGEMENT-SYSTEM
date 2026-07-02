@@ -259,10 +259,10 @@ class StudentSubjectCardResponse(OutputBase):
     academic_session_name: str | None = None
     academic_term_id: uuid.UUID | None = None
     academic_term_name: str | None = None
-    test_score: Decimal = Decimal("0")
-    assessment_score: Decimal = Decimal("0")
-    exam_score: Decimal = Decimal("0")
-    total_score: Decimal = Decimal("0")
+    test_score: Decimal | None = None
+    assessment_score: Decimal | None = None
+    exam_score: Decimal | None = None
+    total_score: Decimal | None = None
     grade: str | None = None
     remark: str | None = None
     status: str = "pending"
