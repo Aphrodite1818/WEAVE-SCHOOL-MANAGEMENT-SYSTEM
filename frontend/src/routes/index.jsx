@@ -16,7 +16,7 @@ import SubjectsPage from "../pages/admin/SubjectsPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import ExamsPage from "../pages/admin/ExamsPage";
 import ResultsPage from "../pages/admin/ResultsPage";
-import AcademicPage from "../pages/admin/AcademicPage";
+import AcademicHubPage from "../pages/admin/AcademicHubPage";
 import FeesPage from "../pages/admin/FeesPage";
 import PaymentsPage from "../pages/admin/PaymentsPage";
 import TeacherDashboardPage from "../pages/teacher/TeacherDashboardPage";
@@ -70,7 +70,7 @@ function AppRoutes() {
             <Route path="/admin/attendance" element={<AttendancePage />} />
             <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />
             <Route path="/admin/results" element={<Navigate to="/admin/academic" replace />} />
-            <Route path="/admin/academic" element={<AcademicPage />} />
+            <Route path="/admin/academic" element={<AcademicHubPage />} />
             <Route path="/admin/fees" element={<FeesPage />} />
             <Route path="/admin/payments" element={<PaymentsPage />} />
             <Route path="/admin/timetable" element={<StaticModulePage role="admin" title="Timetable" description="Professional schedule grid and class timetable planning." type="timetable" />} />
