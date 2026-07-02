@@ -104,12 +104,28 @@ class SubjectRepository:
         tenant_id: UUID,
         subject_name: str,
     ) -> Subject | None:
-        """Return subject by name."""
+        """Return subject by display name."""
 
         result = await db.execute(
             select(Subject).where(
                 Subject.tenant_id == tenant_id,
                 Subject.name == subject_name,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_subject_by_normalized_name(
+        db: AsyncSession,
+        tenant_id: UUID,
+        normalized_name: str,
+    ) -> Subject | None:
+        """Return subject by normalized display name."""
+
+        result = await db.execute(
+            select(Subject).where(
+                Subject.tenant_id == tenant_id,
+                Subject.normalized_name == normalized_name,
             )
         )
         return result.scalar_one_or_none()
@@ -126,6 +142,22 @@ class SubjectRepository:
             select(Subject).where(
                 Subject.tenant_id == tenant_id,
                 Subject.code == subject_code,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_subject_by_normalized_code(
+        db: AsyncSession,
+        tenant_id: UUID,
+        normalized_code: str,
+    ) -> Subject | None:
+        """Return subject by normalized code."""
+
+        result = await db.execute(
+            select(Subject).where(
+                Subject.tenant_id == tenant_id,
+                Subject.normalized_code == normalized_code,
             )
         )
         return result.scalar_one_or_none()
