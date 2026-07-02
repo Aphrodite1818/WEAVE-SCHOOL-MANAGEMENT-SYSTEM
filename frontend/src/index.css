@@ -312,6 +312,44 @@
   .tab-description {
     @apply text-[12.5px] text-text-muted;
   }
+
+  @media (max-width: 640px) {
+    .sc-card {
+      @apply rounded-xl;
+    }
+
+    .sc-head,
+    .sc-body {
+      padding: 12px;
+    }
+
+    .form-grid {
+      @apply gap-2.5;
+    }
+
+    .form-grid-actions {
+      @apply w-full flex-col items-stretch gap-2;
+    }
+
+    .btn-create,
+    .btn-ghost,
+    .btn-deact {
+      @apply w-full;
+    }
+
+    .aw-table-wrap {
+      @apply -mx-1 rounded-xl;
+    }
+
+    .aw-table {
+      @apply min-w-[620px] text-[12px];
+    }
+
+    .aw-table thead th,
+    .aw-table tbody td {
+      padding: 9px 12px;
+    }
+  }
 }
 
 @layer utilities {
