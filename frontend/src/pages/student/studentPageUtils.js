@@ -1,4 +1,4 @@
-export const PUBLISHED_RESULT_STATUSES = new Set(["published", "locked"]);
+export const PUBLISHED_RESULT_STATUSES = new Set(["submitted", "published", "locked"]);
 
 export const hasValue = (value) => value !== undefined && value !== null && value !== "";
 
@@ -8,7 +8,7 @@ export const isPublishedResult = (result) => PUBLISHED_RESULT_STATUSES.has(asSta
 
 export const statusVariant = (status) => {
   const value = asStatus(status);
-  if (["published", "locked", "complete", "approved", "active"].includes(value)) return "success";
+  if (["submitted", "published", "locked", "complete", "approved", "active"].includes(value)) return "success";
   if (["rejected", "failed", "declined"].includes(value)) return "error";
   if (["draft", "pending", "incomplete", "in_progress"].includes(value)) return "warning";
   return "info";
@@ -23,7 +23,7 @@ export const formatMetricNumber = (value) => {
 
 export const scoreDisplayValue = (value) => {
   const formatted = formatMetricNumber(value);
-  return formatted ?? 0;
+  return formatted ?? "--";
 };
 
 export const displayStatusLabel = (value, fallback = "Pending") => {
