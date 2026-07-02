@@ -84,7 +84,7 @@
 
 @layer components {
   .card-base {
-    @apply rounded-[1.35rem] border border-border/60 bg-surface shadow-premium;
+    @apply rounded-[1.25rem] border border-border/70 bg-surface shadow-sm sm:rounded-[1.35rem] sm:shadow-premium;
   }
 
   .btn-base {
@@ -102,7 +102,7 @@
   }
 
   .surface-panel {
-    @apply rounded-2xl border border-border/60 bg-surface shadow-premium;
+    @apply rounded-2xl border border-border/60 bg-surface shadow-sm sm:shadow-premium;
   }
 
   .subtle-panel {
@@ -114,11 +114,11 @@
   }
 
   .dashboard-grid {
-    @apply grid gap-4 sm:gap-5 lg:gap-6;
+    @apply grid min-w-0 gap-4 sm:gap-5 lg:gap-6;
   }
 
   .dashboard-chart-card {
-    @apply flex h-[24rem] min-w-0 flex-col overflow-hidden rounded-[1.6rem] border border-border bg-surface p-4 sm:h-[26rem] sm:rounded-[1.75rem] sm:p-5 lg:h-[28rem];
+    @apply flex h-[22rem] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-surface p-4 sm:h-[26rem] sm:rounded-[1.75rem] sm:p-5 lg:h-[28rem];
   }
 
   .dashboard-chart-empty {
@@ -162,7 +162,7 @@
   }
 
   .section-gap {
-    @apply space-y-5 sm:space-y-6 lg:space-y-7;
+    @apply space-y-4 sm:space-y-6 lg:space-y-7;
   }
 
   .nav-item {
@@ -194,7 +194,7 @@
   }
 
   .data-table tr {
-    @apply block overflow-hidden rounded-[1.35rem] border border-border bg-surface shadow-sm md:table-row md:rounded-none md:border-0 md:shadow-none;
+    @apply block overflow-hidden rounded-[1.2rem] border border-border bg-surface shadow-sm md:table-row md:rounded-none md:border-0 md:shadow-none;
   }
 
   .data-table tr:last-child {
@@ -217,7 +217,7 @@
     content: attr(data-label);
     @apply shrink-0 text-[11px] font-bold uppercase tracking-wide text-text-muted md:hidden;
   }
-  
+
   .data-table td > * {
     @apply w-full max-w-full break-words whitespace-normal text-left md:w-auto md:max-w-none md:text-left;
   }
@@ -248,47 +248,59 @@
   }
 
   .form-grid {
-    @apply flex flex-col gap-3 xl:flex-row xl:items-end;
+    @apply grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end;
   }
 
   .form-grid-field {
-    @apply min-w-0 flex-1;
+    @apply min-w-0;
   }
 
   .form-grid-actions {
-    @apply flex items-end gap-2 xl:ml-auto xl:self-end;
+    @apply flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end xl:ml-auto xl:self-end;
   }
 
   .btn-create {
-    @apply inline-flex h-[34px] min-h-[34px] items-center justify-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-500 px-3.5 text-[12px] font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-10 min-h-10 items-center justify-center gap-2 rounded-xl border border-indigo-400/40 bg-indigo-500 px-4 text-[12px] font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-ghost {
-    @apply inline-flex h-[30px] min-h-[30px] items-center justify-center gap-1.5 rounded-lg border border-transparent bg-transparent px-2.5 text-[12px] font-medium text-text-soft transition hover:bg-surface-muted/70 hover:text-text disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-10 min-h-10 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[12px] font-semibold text-text-soft transition hover:bg-surface-muted/70 hover:text-text disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-deact {
-    @apply inline-flex h-[30px] min-h-[30px] items-center justify-center gap-1.5 rounded-lg border border-rose-300/50 bg-rose-50/20 px-2.5 text-[12px] font-medium text-rose-300 transition hover:border-rose-300/70 hover:bg-rose-100/20 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-10 min-h-10 items-center justify-center gap-1.5 rounded-xl border border-rose-300/50 bg-rose-50/30 px-3 text-[12px] font-semibold text-rose-700 transition hover:border-rose-300/70 hover:bg-rose-100/50 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium;
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize;
   }
 
   .badge.green {
-    @apply bg-emerald-500/15 text-emerald-300;
+    @apply bg-emerald-500/15 text-emerald-700;
   }
 
   .badge.blue {
-    @apply bg-indigo-500/15 text-indigo-200;
+    @apply bg-indigo-500/15 text-indigo-700;
   }
 
   .badge.gray {
-    @apply bg-slate-500/15 text-slate-300;
+    @apply bg-slate-500/15 text-slate-700;
+  }
+
+  :root[data-theme="dark"] .badge.green {
+    @apply text-emerald-300;
+  }
+
+  :root[data-theme="dark"] .badge.blue {
+    @apply text-indigo-200;
+  }
+
+  :root[data-theme="dark"] .badge.gray {
+    @apply text-slate-300;
   }
 
   .aw-table-wrap {
-    @apply overflow-x-auto;
+    @apply overflow-x-auto rounded-2xl border border-border;
   }
 
   .aw-table {
@@ -332,7 +344,7 @@
     }
 
     .form-grid {
-      @apply gap-2.5;
+      @apply grid-cols-1 gap-3;
     }
 
     .form-grid-actions {
@@ -367,6 +379,10 @@
 
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 
   @keyframes fadein {
