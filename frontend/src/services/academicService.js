@@ -1,5 +1,7 @@
 import { api } from "./api";
 
+const NEW_CLASS_SUBJECT_PREFIX = "catalog-subject";
+
 const queryString = (params = {}) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -11,7 +13,21 @@ const queryString = (params = {}) => {
   return value ? `?${value}` : "";
 };
 
-const mergeClassSubjectPickerOptions = (classSubjectResponse, subjectResponse) => {
+const newClassSubjectValue = (classId, subjectId) =>
+  `${NEW_CLASS_SUBJECT_PREFIX}:${classId}:${subjectId}`;
+
+const parseNewClassSubjectValue = (value) => {
+  if (typeof value !== "string" || !value.startsWith(`${NEW_CLASS_SUBJECT_PREFIX}:`)) {
+    return null;
+  }
+
+  const [, classId, subjectId] = value.split(":");
+  if (!classId || !subjectId) return null;
+
+  return { classId, subjectId };
+};
+
+const mergeClassSubjectPickerOptions = (classId, classSubjectResponse, subjectResponse) => {
   const classSubjects = classSubjectResponse?.items || [];
   const subjects = subjectResponse?.items || [];
   const offeredBySubjectId = new Map(classSubjects.map((item) => [item.subject_id, item]));
@@ -20,7 +36,7 @@ const mergeClassSubjectPickerOptions = (classSubjectResponse, subjectResponse) =
     items: subjects.map((subject) => {
       const offered = offeredBySubjectId.get(subject.id);
       return offered || {
-        id: subject.id,
+        id: newClassSubjectValue(classId, subject.id),
         class_subject_id: "",
         subject_id: subject.id,
         subject_name: subject.name,
@@ -32,6 +48,18 @@ const mergeClassSubjectPickerOptions = (classSubjectResponse, subjectResponse) =
     }),
     total: subjects.length,
   };
+};
+
+const resolveClassSubjectId = async (classSubjectId, isCore = true) => {
+  const pending = parseNewClassSubjectValue(classSubjectId);
+  if (!pending) return classSubjectId;
+
+  const created = await api.post(`/classes/${pending.classId}/subjects`, {
+    subject_id: pending.subjectId,
+    is_core: isCore,
+  });
+
+  return created.id;
 };
 
 export const academicService = {
@@ -63,7 +91,7 @@ export const academicService = {
       api.get(`/classes/${classId}/subjects${queryString(params)}`),
       api.get(`/subjects${queryString({ is_active: true, limit: 100 })}`),
     ]);
-    return mergeClassSubjectPickerOptions(classSubjectResponse, subjectResponse);
+    return mergeClassSubjectPickerOptions(classId, classSubjectResponse, subjectResponse);
   },
   listOfferedClassSubjects: (classId, params) =>
     api.get(`/classes/${classId}/subjects${queryString(params)}`),
@@ -74,8 +102,17 @@ export const academicService = {
 
   listTeacherAssignments: (params) =>
     api.get(`/tenant-admin/academic/teacher-assignments${queryString(params)}`),
-  createTeacherAssignment: (payload) =>
-    api.post("/tenant-admin/academic/teacher-assignments", payload),
+  createTeacherAssignment: async (payload) => {
+    const classSubjectId = await resolveClassSubjectId(
+      payload.class_subject_id,
+      payload.is_core ?? true,
+    );
+
+    return api.post("/tenant-admin/academic/teacher-assignments", {
+      ...payload,
+      class_subject_id: classSubjectId,
+    });
+  },
   deactivateTeacherAssignment: (assignmentId) =>
     api.patch(`/tenant-admin/academic/teacher-assignments/${assignmentId}/deactivate`),
   reassignTeacherAssignment: (assignmentId, payload) =>
