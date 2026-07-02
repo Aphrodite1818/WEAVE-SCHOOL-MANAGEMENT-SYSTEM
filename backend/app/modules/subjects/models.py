@@ -14,12 +14,14 @@ if TYPE_CHECKING:
 
 
 class Subject(BaseModel):
-    """Represent a school subject and its teacher assignments."""
+    """Represent a tenant-wide school subject catalogue entry."""
 
     __tablename__ = "subjects"
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(120), nullable=False)
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    normalized_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -40,4 +42,6 @@ class Subject(BaseModel):
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_subject_tenant_name"),
         UniqueConstraint("tenant_id", "code", name="uq_subject_tenant_code"),
+        UniqueConstraint("tenant_id", "normalized_name", name="uq_subject_tenant_normalized_name"),
+        UniqueConstraint("tenant_id", "normalized_code", name="uq_subject_tenant_normalized_code"),
     )
