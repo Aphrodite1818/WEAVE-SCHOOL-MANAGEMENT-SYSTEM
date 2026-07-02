@@ -56,9 +56,9 @@ function AnalyticsBarChart({
       ) : (
         <div className="mt-5 min-h-0 flex-1">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={items} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
+            <BarChart data={items} margin={{ left: 0, right: 12, top: 8, bottom: 24 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
-              <XAxis dataKey={labelKey} tickLine={false} axisLine={false} tickMargin={10} tickFormatter={formatChartLabel} />
+              <XAxis dataKey={labelKey} tickLine={false} axisLine={false} tickMargin={10} tickFormatter={formatChartLabel} angle={-45} textAnchor="end" height={100} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
               <Tooltip />
               <Bar dataKey={valueKey} fill="#0f766e" radius={[10, 10, 0, 0]} />

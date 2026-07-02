@@ -647,7 +647,7 @@ class StudentService:
 
         for _ in range(50):
             random_digits = f"{secrets.randbelow(100000):05d}"
-            admission_number = f"{prefix}-{current_year}-{random_digits}"
+            admission_number = f"{prefix}{str(current_year)[-2:]}{random_digits}"
             existing_student = await StudentRepository.get_by_admission_number(
                 db=db,
                 tenant_id=tenant_id,

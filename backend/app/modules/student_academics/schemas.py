@@ -177,13 +177,20 @@ class ClassSubjectTeacherDetailResponse(ClassSubjectTeacherResponse):
 
 class StudentSubjectResultUpsert(InputBase):
     student_id: uuid.UUID
-    class_subject_teacher_id: uuid.UUID
+    teacher_assignment_id: uuid.UUID | None = None
+    class_subject_teacher_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
     test_score: Decimal = Field(..., ge=0, le=100)
     assessment_score: Decimal = Field(..., ge=0, le=100)
     exam_score: Decimal = Field(..., ge=0, le=100)
     status: AcademicResultStatus = AcademicResultStatus.DRAFT
+
+    @model_validator(mode="after")
+    def validate_assignment_reference(self):
+        if self.teacher_assignment_id is None and self.class_subject_teacher_id is None:
+            raise ValueError("Either teacher_assignment_id or class_subject_teacher_id is required.")
+        return self
 
     @model_validator(mode="after")
     def validate_score_total(self):
@@ -212,6 +219,7 @@ class StudentSubjectResultResponse(OutputBase):
     teacher_id: uuid.UUID
     teacher_name: str | None = None
     class_subject_teacher_id: uuid.UUID
+    teacher_assignment_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_session_name: str | None = None
     academic_term_id: uuid.UUID
@@ -251,4 +259,61 @@ class GradingScaleListResponse(OutputBase):
 
 class ClassSubjectTeacherListResponse(OutputBase):
     items: list[ClassSubjectTeacherDetailResponse]
+    total: int
+
+
+class ClassSubjectCreate(InputBase):
+    subject_id: uuid.UUID
+    is_core: bool = False
+
+
+class ClassSubjectResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    class_id: uuid.UUID
+    subject_id: uuid.UUID
+    subject_name: str | None = None
+    subject_code: str | None = None
+    is_core: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ClassSubjectListResponse(OutputBase):
+    items: list[ClassSubjectResponse]
+    total: int
+
+
+class TeacherAssignmentCreate(InputBase):
+    teacher_id: uuid.UUID
+    class_subject_id: uuid.UUID
+
+
+class TeacherAssignmentReassign(InputBase):
+    teacher_id: uuid.UUID
+
+
+class TeacherAssignmentResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    class_subject_id: uuid.UUID
+    teacher_id: uuid.UUID
+    class_id: uuid.UUID | None = None
+    class_name: str | None = None
+    class_arm: str | None = None
+    subject_id: uuid.UUID | None = None
+    subject_name: str | None = None
+    subject_code: str | None = None
+    teacher_name: str | None = None
+    teacher_staff_id: str | None = None
+    is_active: bool
+    effective_from: date
+    effective_to: date | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TeacherAssignmentListResponse(OutputBase):
+    items: list[TeacherAssignmentResponse]
     total: int

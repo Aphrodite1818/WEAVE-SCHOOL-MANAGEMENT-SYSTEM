@@ -22,6 +22,7 @@ from app.modules.students.router import router as student_router
 from app.modules.parents.router import router as parent_router
 from app.modules.teachers.router import router as teacher_router
 from app.modules.classes.router import router as class_router
+from app.modules.classes.class_subjects_router import router as class_subjects_router
 from app.modules.announcements.router import (
     feed_router as announcement_feed_router,
     superadmin_router as superadmin_announcement_router,
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(parent_router, prefix="/api/v1")
     app.include_router(subject_router, prefix="/api/v1/subjects", tags=["Subjects"])
     app.include_router(class_router, prefix="/api/v1", tags=["Classes"])
+    app.include_router(class_subjects_router, prefix="/api/v1", tags=["Class Subjects"])
     app.include_router(superadmin_announcement_router, prefix="/api/v1")
     app.include_router(tenant_admin_announcement_router, prefix="/api/v1")
     app.include_router(teacher_announcement_router, prefix="/api/v1")

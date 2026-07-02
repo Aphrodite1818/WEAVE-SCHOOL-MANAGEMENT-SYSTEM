@@ -14,7 +14,7 @@ from app.modules.metrics.schemas import ChartPoint, DashboardMetricsResponse
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.students.models import Student, StudentAccountStatus, StudentParentLink, StudentProfileStatus
 from app.modules.subjects.models import Subject
-from app.modules.student_academics.models import AcademicSession, AcademicTerm, ClassSubjectTeacher, StudentSubjectResult
+from app.modules.student_academics.models import AcademicSession, AcademicTerm, ClassSubjectTeacher, StudentSubjectResult, TeacherAssignment
 from app.modules.report_cards.models import ReportCard, ReportCardStatus
 from app.modules.teachers.models import Teacher, TeacherAccountStatus
 from app.tenant_management.models import SubscriptionPlan, Tenant, TenantStatus, TenantVerificationStatus
@@ -265,11 +265,11 @@ class MetricsService:
         ).all()
         assignment_rows = (
             await db.execute(
-                select(ClassSubjectTeacher.id)
+                select(TeacherAssignment.id)
                 .where(
-                    ClassSubjectTeacher.tenant_id == tenant_id,
-                    ClassSubjectTeacher.teacher_id == teacher_id,
-                    ClassSubjectTeacher.is_active.is_(True),
+                    TeacherAssignment.tenant_id == tenant_id,
+                    TeacherAssignment.teacher_id == teacher_id,
+                    TeacherAssignment.is_active.is_(True),
                 )
             )
         ).scalars().all()
@@ -278,13 +278,7 @@ class MetricsService:
             StudentSubjectResult,
             StudentSubjectResult.tenant_id == tenant_id,
             StudentSubjectResult.teacher_id == teacher_id,
-        )
-        published_results = await MetricsService._count(
-            db,
-            StudentSubjectResult,
-            StudentSubjectResult.tenant_id == tenant_id,
-            StudentSubjectResult.teacher_id == teacher_id,
-            StudentSubjectResult.status.in_(["published", "locked"]),
+            StudentSubjectResult.status == "submitted",
         )
         teacher_grade_rows = (
             await db.execute(
@@ -338,7 +332,7 @@ class MetricsService:
                 "assigned_subjects": len(assignment_rows),
                 "total_announcements": len(own_announcement_ids),
                 "results_submitted": submitted_results,
-                "results_published": published_results,
+                "results_published": submitted_results,
             },
             charts={
                 "class_sizes": [
@@ -417,7 +411,7 @@ class MetricsService:
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.student_id == student_id,
-                    StudentSubjectResult.status.in_(["published", "locked"]),
+                    StudentSubjectResult.status == "submitted",
                 )
             )
         ).scalars().all()

@@ -14,6 +14,8 @@ from app.modules.classes.schemas import (
     ClassRoomUpdate,
 )
 from app.modules.classes.service import ClassRoomService
+from app.modules.student_academics.schemas import ClassSubjectCreate, ClassSubjectListResponse, ClassSubjectResponse
+from app.modules.student_academics.service import StudentAcademicService
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.teachers.models import Teacher
@@ -132,4 +134,46 @@ async def deactivate_classroom(
         db=db,
         actor=current_user,
         class_id=class_id,
+    )
+
+
+@router.get(
+    "/{class_id}/subjects",
+    response_model=ClassSubjectListResponse,
+)
+async def list_class_subjects(
+    class_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantMember,
+    active_only: bool = Query(default=False),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> ClassSubjectListResponse:
+    items, total = await StudentAcademicService.list_class_subjects(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        class_id=class_id,
+        active_only=active_only,
+        skip=skip,
+        limit=limit,
+    )
+    return ClassSubjectListResponse(items=items, total=total)
+
+
+@router.post(
+    "/{class_id}/subjects",
+    response_model=ClassSubjectResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_class_subject(
+    class_id: uuid.UUID,
+    payload: ClassSubjectCreate,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassSubjectResponse:
+    return await StudentAcademicService.create_class_subject(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        class_id=class_id,
+        payload=payload,
     )

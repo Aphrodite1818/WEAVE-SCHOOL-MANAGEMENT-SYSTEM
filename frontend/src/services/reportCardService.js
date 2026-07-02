@@ -45,8 +45,14 @@ const openPrintWindow = async (endpoint) => {
 export const reportCardService = {
   listAdminReportCards: (params) =>
     api.get(`/tenant-admin/academic/report-cards${queryString(params)}`),
+  getClassOverview: (params) =>
+    api.get(`/tenant-admin/academic/report-cards/overview${queryString(params)}`),
   generateReportCard: (payload) =>
     api.post("/tenant-admin/academic/report-cards/generate", payload),
+  regenerateReportCard: (reportCardId) =>
+    api.post(`/tenant-admin/academic/report-cards/${reportCardId}/regenerate`),
+  updateReportCardComments: (reportCardId, payload) =>
+    api.patch(`/tenant-admin/academic/report-cards/${reportCardId}/comments`, payload),
   publishReportCard: (reportCardId) =>
     api.post(`/tenant-admin/academic/report-cards/${reportCardId}/publish`),
 

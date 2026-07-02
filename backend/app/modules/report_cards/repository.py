@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,7 @@ class ReportCardRepository:
                 ReportCard.student_id == student_id,
                 ReportCard.academic_session_id == academic_session_id,
                 ReportCard.academic_term_id == academic_term_id,
+                ReportCard.superseded_at.is_(None),
             )
         )
         return result.scalar_one_or_none()
@@ -64,7 +66,7 @@ class ReportCardRepository:
         student_id: uuid.UUID | None = None,
         published_only: bool = False,
     ) -> tuple[list[ReportCard], int]:
-        filters = [ReportCard.tenant_id == tenant_id]
+        filters = [ReportCard.tenant_id == tenant_id, ReportCard.superseded_at.is_(None)]
         if student_id is not None:
             filters.append(ReportCard.student_id == student_id)
         if published_only:
@@ -99,6 +101,69 @@ class ReportCardRepository:
             )
         ).scalars().all()
         return list(rows)
+
+    @staticmethod
+    async def list_active_cards_for_class_period(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> list[ReportCard]:
+        rows = (
+            await db.execute(
+                select(ReportCard).where(
+                    ReportCard.tenant_id == tenant_id,
+                    ReportCard.class_id == class_id,
+                    ReportCard.academic_session_id == academic_session_id,
+                    ReportCard.academic_term_id == academic_term_id,
+                    ReportCard.superseded_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        return list(rows)
+
+    @staticmethod
+    async def mark_outdated_for_student_period(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        student_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> None:
+        rows = (
+            await db.execute(
+                select(ReportCard).where(
+                    ReportCard.tenant_id == tenant_id,
+                    ReportCard.student_id == student_id,
+                    ReportCard.academic_session_id == academic_session_id,
+                    ReportCard.academic_term_id == academic_term_id,
+                    ReportCard.superseded_at.is_(None),
+                    ReportCard.status == ReportCardStatus.PUBLISHED,
+                )
+            )
+        ).scalars().all()
+        for card in rows:
+            card.is_outdated = True
+            await db.flush()
+
+    @staticmethod
+    async def delete_lines_for_card(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        report_card_id: uuid.UUID,
+    ) -> None:
+        rows = (
+            await db.execute(
+                select(ReportCardSubjectLine).where(
+                    ReportCardSubjectLine.tenant_id == tenant_id,
+                    ReportCardSubjectLine.report_card_id == report_card_id,
+                )
+            )
+        ).scalars().all()
+        for line in rows:
+            await db.delete(line)
+        await db.flush()
 
     @staticmethod
     async def save(db: AsyncSession, report_card: ReportCard) -> ReportCard:

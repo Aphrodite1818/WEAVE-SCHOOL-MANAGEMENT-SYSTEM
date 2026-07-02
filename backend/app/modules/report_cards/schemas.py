@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.modules.report_cards.models import ReportCardStatus
 
@@ -16,9 +16,23 @@ class OutputBase(BaseModel):
 
 
 class ReportCardGenerateRequest(InputBase):
-    student_id: uuid.UUID
+    student_id: uuid.UUID | None = None
+    class_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
+
+    @model_validator(mode="after")
+    def validate_target(self):
+        if self.student_id is None and self.class_id is None:
+            raise ValueError("Either student_id or class_id is required.")
+        if self.student_id is not None and self.class_id is not None:
+            raise ValueError("Provide either student_id or class_id, not both.")
+        return self
+
+
+class ReportCardCommentsUpdate(InputBase):
+    class_teacher_comment: str | None = None
+    principal_comment: str | None = None
 
 
 class ReportCardSubjectLineResponse(OutputBase):
@@ -51,6 +65,14 @@ class ReportCardResponse(OutputBase):
     academic_term_name: str | None = None
     total_score: Decimal
     average_score: Decimal
+    position: int | None = None
+    position_out_of: int | None = None
+    class_teacher_comment: str | None = None
+    principal_comment: str | None = None
+    version: int = 1
+    published_at: datetime | None = None
+    published_by: uuid.UUID | None = None
+    is_outdated: bool = False
     status: ReportCardStatus
     lines: list[ReportCardSubjectLineResponse] = []
     created_at: datetime
@@ -60,3 +82,29 @@ class ReportCardResponse(OutputBase):
 class ReportCardListResponse(OutputBase):
     items: list[ReportCardResponse]
     total: int
+
+
+class ReportCardClassOverviewRow(OutputBase):
+    student_id: uuid.UUID
+    student_name: str | None = None
+    admission_number: str | None = None
+    submitted_count: int
+    expected_count: int
+    report_card_id: uuid.UUID | None = None
+    report_card_status: str | None = None
+    report_card_version: int | None = None
+    is_outdated: bool = False
+    missing_subject_names: list[str] = []
+
+
+class ReportCardClassOverviewResponse(OutputBase):
+    class_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    academic_term_id: uuid.UUID
+    expected_subject_count: int
+    items: list[ReportCardClassOverviewRow]
+
+
+class ReportCardBulkGenerateResponse(OutputBase):
+    generated: list[ReportCardResponse]
+    skipped: list[dict]

@@ -33,6 +33,9 @@ import StudentSubjectDetailsPage from "../pages/student/StudentSubjectDetailsPag
 import StudentParentLinkingPage from "../pages/student/StudentParentLinkingPage";
 import StudentReportCardsPage from "../pages/student/StudentReportCardsPage";
 import ParentDashboardPage from "../pages/parent/ParentDashboardPage";
+import ParentStudentLinkingPage from "../pages/parent/ParentStudentLinkingPage";
+import ParentResultsPage from "../pages/parent/ParentResultsPage";
+import ParentReportCardsPage from "../pages/parent/ParentReportCardsPage";
 import SuperadminDashboardPage from "../pages/superadmin/SuperadminDashboardPage";
 import LegalPage from "../pages/shared/LegalPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
@@ -106,8 +109,10 @@ function AppRoutes() {
 
           <Route element={<RoleGuard allowedRoles={["PARENT"]} />}>
             <Route path="/parent/dashboard" element={<ParentDashboardPage />} />
+            <Route path="/parent/student-linking" element={<ParentStudentLinkingPage />} />
+            <Route path="/parent/report-cards" element={<ParentReportCardsPage />} />
             <Route path="/parent/attendance" element={<StaticModulePage role="parent" title="Attendance" description="Review attendance summaries for your children." />} />
-            <Route path="/parent/results" element={<StaticModulePage role="parent" title="Results" description="Academic performance summaries for your children." />} />
+            <Route path="/parent/results" element={<ParentResultsPage />} />
             <Route path="/parent/notices" element={<AnnouncementsWorkspacePage mode="parent" />} />
             <Route path="/parent/fees" element={<StaticModulePage role="parent" title="Fees" description="Fee statements, payment status, and due dates." />} />
           </Route>

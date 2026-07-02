@@ -38,7 +38,7 @@ function TeacherResultsPage() {
       setError(null);
       try {
         const [assignmentResponse, sessionResponse, termResponse] = await Promise.all([
-          academicService.listTeacherAssignments(),
+          academicService.listMyTeacherAssignments(),
           academicService.listTeacherSessions(),
           academicService.listTeacherTerms(),
         ]);
@@ -110,7 +110,7 @@ function TeacherResultsPage() {
       academic_session_id: academicSessionId,
       academic_term_id: academicTermId,
     });
-    setResults((response?.items || []).filter((item) => item.class_subject_teacher_id === selectedAssignmentId));
+    setResults((response?.items || []).filter((item) => item.teacher_assignment_id === selectedAssignmentId));
   };
 
   useEffect(() => {
@@ -122,7 +122,7 @@ function TeacherResultsPage() {
           academic_session_id: academicSessionId,
           academic_term_id: academicTermId,
         });
-        if (mounted) setResults((response?.items || []).filter((item) => item.class_subject_teacher_id === selectedAssignmentId));
+        if (mounted) setResults((response?.items || []).filter((item) => item.teacher_assignment_id === selectedAssignmentId));
       } catch {
         if (mounted) setResults([]);
       }
@@ -163,7 +163,7 @@ function TeacherResultsPage() {
     try {
       const saved = await academicService.saveTeacherResult({
         student_id: studentId,
-        class_subject_teacher_id: selectedAssignmentId,
+        teacher_assignment_id: selectedAssignmentId,
         academic_session_id: academicSessionId,
         academic_term_id: academicTermId,
         test_score: Number(draft.test_score || 0),

@@ -90,23 +90,8 @@ class TeacherService:
             if staff_id_exists:
                 raise ConflictException(detail="A teacher with this staff ID already exists")
 
-        subject_ids = teacher_data.subject_ids or []
-
-        if subject_ids:
-            unique_subject_ids = list(set(subject_ids))
-
-            subjects = await SubjectRepository.get_subjects_by_id(
-                db=db,
-                tenant_id=actor.tenant_id,
-                subject_ids=unique_subject_ids,
-            )
-
-            if len(subjects) != len(unique_subject_ids):
-                raise BadRequestException(
-                    detail="One or more selected subjects do not exist in this school."
-                )
-        else:
-            unique_subject_ids = []
+        subject_ids = []
+        unique_subject_ids = []
 
         tenant = await TenantRepository.get_by_id(
             db=db,
@@ -149,14 +134,6 @@ class TeacherService:
                     is_active=True,
                 ),
             )
-
-            if unique_subject_ids:
-                await TeacherRepository.create_teacher_subject_links(
-                    db=db,
-                    tenant_id=actor.tenant_id,
-                    teacher_id=created_teacher.id,
-                    subject_ids=unique_subject_ids,
-                )
 
             invite_link = await UserInviteService.create_invite_record(
                 db=db,
@@ -391,13 +368,6 @@ class TeacherService:
         if not update_data:
             raise BadRequestException(detail="No update data provided")
 
-        subject_ids = update_data.pop("subject_ids", None)
-
-        if subject_ids and teacher.status != TeacherStatus.ACTIVE:
-            raise BadRequestException(
-                detail="Only active teachers can be assigned to subjects."
-            )
-
         if "email" in update_data and update_data["email"] is not None:
             normalized_email = TeacherService._normalize_email(update_data["email"])
 
@@ -462,53 +432,6 @@ class TeacherService:
                     db=db,
                     teacher=teacher,
                 )
-
-            if subject_ids is not None:
-                unique_subject_ids = list(set(subject_ids))
-
-                if unique_subject_ids:
-                    subjects = await SubjectRepository.get_subjects_by_id(
-                        db=db,
-                        tenant_id=actor.tenant_id,
-                        subject_ids=unique_subject_ids,
-                    )
-
-                    if len(subjects) != len(unique_subject_ids):
-                        raise BadRequestException(
-                            detail="One or more selected subjects do not exist in this school."
-                        )
-
-                existing_subject_ids = await TeacherRepository.get_teacher_subject_ids(
-                    db=db,
-                    tenant_id=actor.tenant_id,
-                    teacher_id=teacher.id,
-                )
-
-                existing_subject_id_set = set(existing_subject_ids)
-                incoming_subject_id_set = set(unique_subject_ids)
-
-                subject_ids_to_add = list(
-                    incoming_subject_id_set - existing_subject_id_set
-                )
-                subject_ids_to_remove = list(
-                    existing_subject_id_set - incoming_subject_id_set
-                )
-
-                if subject_ids_to_add:
-                    await TeacherRepository.create_teacher_subject_links(
-                        db=db,
-                        tenant_id=actor.tenant_id,
-                        teacher_id=teacher.id,
-                        subject_ids=subject_ids_to_add,
-                    )
-
-                if subject_ids_to_remove:
-                    await TeacherRepository.delete_teacher_subject_links(
-                        db=db,
-                        tenant_id=actor.tenant_id,
-                        teacher_id=teacher.id,
-                        subject_ids=subject_ids_to_remove,
-                    )
 
             await db.commit()
 

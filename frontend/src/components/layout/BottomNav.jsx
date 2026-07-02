@@ -20,8 +20,8 @@ const bottomNavConfig = {
   ],
   parent: [
     { label: "Home", to: "/parent/dashboard", icon: Home },
-    { label: "Attendance", to: "/parent/attendance", icon: CalendarDays },
-    { label: "Notices", to: "/parent/notices", icon: FileText },
+    { label: "Results", to: "/parent/results", icon: BookOpen },
+    { label: "Reports", to: "/parent/report-cards", icon: FileText },
   ],
   superadmin: [
     { label: "Home", to: "/superadmin/dashboard", icon: Home },

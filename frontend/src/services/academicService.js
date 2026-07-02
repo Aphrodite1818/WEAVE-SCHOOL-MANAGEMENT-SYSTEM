@@ -35,6 +35,22 @@ export const academicService = {
   updateGradingScale: (scaleId, payload) =>
     api.patch(`/tenant-admin/academic/grading-scales/${scaleId}`, payload),
 
+  listClassSubjects: (classId, params) =>
+    api.get(`/classes/${classId}/subjects${queryString(params)}`),
+  addClassSubject: (classId, payload) =>
+    api.post(`/classes/${classId}/subjects`, payload),
+  deactivateClassSubject: (classSubjectId) =>
+    api.delete(`/class-subjects/${classSubjectId}`),
+
+  listTeacherAssignments: (params) =>
+    api.get(`/tenant-admin/academic/teacher-assignments${queryString(params)}`),
+  createTeacherAssignment: (payload) =>
+    api.post("/tenant-admin/academic/teacher-assignments", payload),
+  deactivateTeacherAssignment: (assignmentId) =>
+    api.patch(`/tenant-admin/academic/teacher-assignments/${assignmentId}/deactivate`),
+  reassignTeacherAssignment: (assignmentId, payload) =>
+    api.post(`/tenant-admin/academic/teacher-assignments/${assignmentId}/reassign`, payload),
+
   listSubjectAssignments: (params) =>
     api.get(`/tenant-admin/academic/subject-assignments${queryString(params)}`),
   createSubjectAssignment: (payload) =>
@@ -48,7 +64,7 @@ export const academicService = {
   updateResultStatus: (resultId, payload) =>
     api.patch(`/tenant-admin/academic/results/${resultId}/status`, payload),
 
-  listTeacherAssignments: () => api.get("/teachers/me/academic/assignments"),
+  listMyTeacherAssignments: () => api.get("/teachers/me/academic/assignments"),
   listTeacherResults: (params) =>
     api.get(`/teachers/me/academic/results${queryString(params)}`),
   saveTeacherResult: (payload) => api.post("/teachers/me/academic/results", payload),

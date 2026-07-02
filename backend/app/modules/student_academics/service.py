@@ -18,9 +18,11 @@ from app.modules.student_academics.models import (
     AcademicResultStatus,
     AcademicSession,
     AcademicTerm,
+    ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
     StudentSubjectResult,
+    TeacherAssignment,
 )
 
 from app.modules.student_academics.repository import StudentAcademicRepository
@@ -30,6 +32,8 @@ from app.modules.student_academics.schemas import (
     AcademicSessionUpdate,
     AcademicTermCreate,
     AcademicTermUpdate,
+    ClassSubjectCreate,
+    ClassSubjectResponse,
     ClassSubjectTeacherCreate,
     ClassSubjectTeacherUpdate,
     GradingScaleCreate,
@@ -37,6 +41,9 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultResponse,
     StudentSubjectResultStatusUpdate,
     StudentSubjectResultUpsert,
+    TeacherAssignmentCreate,
+    TeacherAssignmentReassign,
+    TeacherAssignmentResponse,
 )
 
 from app.modules.classes.repository import ClassRoomRepository
@@ -48,6 +55,474 @@ from app.modules.tenant_admins.models import TenantAdmin
 
 
 class StudentAcademicService:
+    DEPRECATED_SUBJECT_ASSIGNMENTS_HEADER = "X-Deprecated-Endpoint: subject-assignments"
+
+    @staticmethod
+    async def _build_class_subject_response(
+        db: AsyncSession,
+        class_subject: ClassSubject,
+    ) -> ClassSubjectResponse:
+        subject = await SubjectRepository.get_subject_by_id(
+            db=db,
+            tenant_id=class_subject.tenant_id,
+            subject_id=class_subject.subject_id,
+        )
+        return ClassSubjectResponse(
+            id=class_subject.id,
+            tenant_id=class_subject.tenant_id,
+            class_id=class_subject.class_id,
+            subject_id=class_subject.subject_id,
+            subject_name=subject.name if subject else None,
+            subject_code=subject.code if subject else None,
+            is_core=class_subject.is_core,
+            is_active=class_subject.is_active,
+            created_at=class_subject.created_at,
+            updated_at=class_subject.updated_at,
+        )
+
+    @staticmethod
+    async def _build_teacher_assignment_response(
+        db: AsyncSession,
+        assignment: TeacherAssignment,
+    ) -> TeacherAssignmentResponse:
+        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+            db=db,
+            tenant_id=assignment.tenant_id,
+            class_subject_id=assignment.class_subject_id,
+        )
+        classroom = None
+        subject = None
+        if class_subject is not None:
+            classroom = await ClassRoomRepository.get_classroom_by_id(
+                db=db,
+                tenant_id=assignment.tenant_id,
+                class_id=class_subject.class_id,
+            )
+            subject = await SubjectRepository.get_subject_by_id(
+                db=db,
+                tenant_id=assignment.tenant_id,
+                subject_id=class_subject.subject_id,
+            )
+        teacher = await TeacherRepository.get_teacher_by_id(
+            db=db,
+            tenant_id=assignment.tenant_id,
+            teacher_id=assignment.teacher_id,
+        )
+        return TeacherAssignmentResponse(
+            id=assignment.id,
+            tenant_id=assignment.tenant_id,
+            class_subject_id=assignment.class_subject_id,
+            teacher_id=assignment.teacher_id,
+            class_id=class_subject.class_id if class_subject else None,
+            class_name=classroom.name if classroom else None,
+            class_arm=classroom.arm if classroom else None,
+            subject_id=class_subject.subject_id if class_subject else None,
+            subject_name=subject.name if subject else None,
+            subject_code=subject.code if subject else None,
+            teacher_name=(
+                " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip()
+                if teacher
+                else None
+            ),
+            teacher_staff_id=teacher.staff_id if teacher else None,
+            is_active=assignment.is_active,
+            effective_from=assignment.effective_from,
+            effective_to=assignment.effective_to,
+            created_at=assignment.created_at,
+            updated_at=assignment.updated_at,
+        )
+
+    @staticmethod
+    async def _sync_legacy_class_subject_teacher(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        subject_id: uuid.UUID,
+        teacher_id: uuid.UUID,
+        *,
+        is_core: bool = True,
+        is_active: bool = True,
+    ) -> ClassSubjectTeacher:
+        existing = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=class_id,
+            subject_id=subject_id,
+        )
+        if existing is None:
+            legacy = ClassSubjectTeacher(
+                tenant_id=tenant_id,
+                class_id=class_id,
+                subject_id=subject_id,
+                teacher_id=teacher_id,
+                is_core=is_core,
+                is_active=is_active,
+            )
+            return await StudentAcademicRepository.create_class_subject_teacher(db=db, assignment=legacy)
+
+        existing.teacher_id = teacher_id
+        existing.is_core = is_core
+        existing.is_active = is_active
+        return await StudentAcademicRepository.save_class_subject_teacher(db=db, assignment=existing)
+
+    @staticmethod
+    async def create_class_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        payload: ClassSubjectCreate,
+    ) -> ClassSubjectResponse:
+        classroom = await ClassRoomRepository.get_classroom_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=class_id,
+        )
+        if classroom is None:
+            raise NotFoundException("Class not found.")
+
+        subject = await SubjectRepository.get_subject_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            subject_id=payload.subject_id,
+        )
+        if subject is None:
+            raise NotFoundException("Subject not found.")
+
+        existing = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=class_id,
+            subject_id=payload.subject_id,
+        )
+        if existing is not None:
+            raise ConflictException("This subject is already offered by this class.")
+
+        class_subject = ClassSubject(
+            tenant_id=tenant_id,
+            class_id=class_id,
+            subject_id=payload.subject_id,
+            is_core=payload.is_core,
+            is_active=True,
+        )
+        created = await StudentAcademicRepository.create_class_subject(db=db, class_subject=class_subject)
+        await db.commit()
+        return await StudentAcademicService._build_class_subject_response(db=db, class_subject=created)
+
+    @staticmethod
+    async def list_class_subjects(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        class_id: uuid.UUID | None = None,
+        active_only: bool = False,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[ClassSubjectResponse], int]:
+        items, total = await StudentAcademicRepository.list_class_subjects(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=class_id,
+            active_only=active_only,
+            skip=skip,
+            limit=limit,
+        )
+        return [
+            await StudentAcademicService._build_class_subject_response(db=db, class_subject=item)
+            for item in items
+        ], total
+
+    @staticmethod
+    async def deactivate_class_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_subject_id: uuid.UUID,
+    ) -> ClassSubjectResponse:
+        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=class_subject_id,
+        )
+        if class_subject is None:
+            raise NotFoundException("Class subject not found.")
+
+        score_count = await StudentAcademicRepository.count_results_for_class_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=class_subject_id,
+        )
+        if score_count > 0:
+            raise BadRequestException("Cannot deactivate a class subject that has score records.")
+
+        class_subject.is_active = False
+        saved = await StudentAcademicRepository.save_class_subject(db=db, class_subject=class_subject)
+        await db.commit()
+        return await StudentAcademicService._build_class_subject_response(db=db, class_subject=saved)
+
+    @staticmethod
+    async def create_teacher_assignment(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        payload: TeacherAssignmentCreate,
+    ) -> TeacherAssignmentResponse:
+        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=payload.class_subject_id,
+        )
+        if class_subject is None or not class_subject.is_active:
+            raise NotFoundException("Class subject not found.")
+
+        teacher = await TeacherRepository.get_teacher_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            teacher_id=payload.teacher_id,
+        )
+        if teacher is None:
+            raise NotFoundException("Teacher not found.")
+
+        active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=payload.class_subject_id,
+        )
+        if active is not None:
+            raise ConflictException("An active teacher assignment already exists for this class subject.")
+
+        assignment = TeacherAssignment(
+            tenant_id=tenant_id,
+            class_subject_id=payload.class_subject_id,
+            teacher_id=payload.teacher_id,
+            is_active=True,
+            effective_from=date.today(),
+        )
+        created = await StudentAcademicRepository.create_teacher_assignment(db=db, assignment=assignment)
+
+        await StudentAcademicService._sync_legacy_class_subject_teacher(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=class_subject.class_id,
+            subject_id=class_subject.subject_id,
+            teacher_id=payload.teacher_id,
+            is_core=class_subject.is_core,
+            is_active=True,
+        )
+
+        await db.commit()
+        return await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=created)
+
+    @staticmethod
+    async def deactivate_teacher_assignment(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+    ) -> TeacherAssignmentResponse:
+        assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            assignment_id=assignment_id,
+        )
+        if assignment is None:
+            raise NotFoundException("Teacher assignment not found.")
+
+        assignment.is_active = False
+        assignment.effective_to = date.today()
+        saved = await StudentAcademicRepository.save_teacher_assignment(db=db, assignment=assignment)
+        await db.commit()
+        return await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=saved)
+
+    @staticmethod
+    async def reassign_teacher_assignment(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+        payload: TeacherAssignmentReassign,
+    ) -> TeacherAssignmentResponse:
+        assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            assignment_id=assignment_id,
+        )
+        if assignment is None:
+            raise NotFoundException("Teacher assignment not found.")
+
+        score_count = await StudentAcademicRepository.count_scores_for_teacher_assignment(
+            db=db,
+            tenant_id=tenant_id,
+            teacher_assignment_id=assignment_id,
+        )
+        if score_count > 0 and payload.teacher_id != assignment.teacher_id:
+            assignment.is_active = False
+            assignment.effective_to = date.today()
+            await StudentAcademicRepository.save_teacher_assignment(db=db, assignment=assignment)
+        elif payload.teacher_id == assignment.teacher_id:
+            return await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=assignment)
+        else:
+            assignment.teacher_id = payload.teacher_id
+            saved = await StudentAcademicRepository.save_teacher_assignment(db=db, assignment=assignment)
+            class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                class_subject_id=assignment.class_subject_id,
+            )
+            if class_subject is not None:
+                await StudentAcademicService._sync_legacy_class_subject_teacher(
+                    db=db,
+                    tenant_id=tenant_id,
+                    class_id=class_subject.class_id,
+                    subject_id=class_subject.subject_id,
+                    teacher_id=payload.teacher_id,
+                    is_core=class_subject.is_core,
+                    is_active=True,
+                )
+            await db.commit()
+            return await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=saved)
+
+        teacher = await TeacherRepository.get_teacher_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            teacher_id=payload.teacher_id,
+        )
+        if teacher is None:
+            raise NotFoundException("Teacher not found.")
+
+        active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=assignment.class_subject_id,
+        )
+        if active is not None:
+            raise ConflictException("An active teacher assignment already exists for this class subject.")
+
+        new_assignment = TeacherAssignment(
+            tenant_id=tenant_id,
+            class_subject_id=assignment.class_subject_id,
+            teacher_id=payload.teacher_id,
+            is_active=True,
+            effective_from=date.today(),
+        )
+        created = await StudentAcademicRepository.create_teacher_assignment(
+            db=db,
+            assignment=new_assignment,
+        )
+        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=assignment.class_subject_id,
+        )
+        if class_subject is not None:
+            await StudentAcademicService._sync_legacy_class_subject_teacher(
+                db=db,
+                tenant_id=tenant_id,
+                class_id=class_subject.class_id,
+                subject_id=class_subject.subject_id,
+                teacher_id=payload.teacher_id,
+                is_core=class_subject.is_core,
+                is_active=True,
+            )
+        await db.commit()
+        return await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=created)
+
+    @staticmethod
+    async def list_teacher_assignment_responses(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        teacher_id: uuid.UUID | None = None,
+        class_id: uuid.UUID | None = None,
+        active_only: bool = False,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[TeacherAssignmentResponse], int]:
+        items, total = await StudentAcademicRepository.list_teacher_assignment_rows(
+            db=db,
+            tenant_id=tenant_id,
+            teacher_id=teacher_id,
+            class_id=class_id,
+            active_only=active_only,
+            skip=skip,
+            limit=limit,
+        )
+        return [
+            await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=item)
+            for item in items
+        ], total
+
+    @staticmethod
+    async def _resolve_assignment_context(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        payload: StudentSubjectResultUpsert,
+    ) -> tuple[TeacherAssignment, ClassSubjectTeacher | None]:
+        if payload.teacher_assignment_id is not None:
+            teacher_assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                assignment_id=payload.teacher_assignment_id,
+            )
+            if teacher_assignment is None or not teacher_assignment.is_active:
+                raise NotFoundException("Teacher assignment not found.")
+            class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                class_subject_id=teacher_assignment.class_subject_id,
+            )
+            if class_subject is None or not class_subject.is_active:
+                raise NotFoundException("Class subject not found.")
+            legacy = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+                db=db,
+                tenant_id=tenant_id,
+                class_id=class_subject.class_id,
+                subject_id=class_subject.subject_id,
+            )
+            return teacher_assignment, legacy
+
+        legacy = await StudentAcademicRepository.get_class_subject_teacher_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            assignment_id=payload.class_subject_teacher_id,
+        )
+        if legacy is None or not legacy.is_active:
+            raise NotFoundException("Class-subject teacher assignment not found.")
+
+        class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=legacy.class_id,
+            subject_id=legacy.subject_id,
+        )
+        teacher_assignment = None
+        if class_subject is not None:
+            teacher_assignment = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+                db=db,
+                tenant_id=tenant_id,
+                class_subject_id=class_subject.id,
+            )
+        if teacher_assignment is None:
+            if class_subject is None:
+                class_subject = ClassSubject(
+                    tenant_id=tenant_id,
+                    class_id=legacy.class_id,
+                    subject_id=legacy.subject_id,
+                    is_core=legacy.is_core,
+                    is_active=legacy.is_active,
+                )
+                class_subject = await StudentAcademicRepository.create_class_subject(
+                    db=db,
+                    class_subject=class_subject,
+                )
+            teacher_assignment = TeacherAssignment(
+                tenant_id=tenant_id,
+                class_subject_id=class_subject.id,
+                teacher_id=legacy.teacher_id,
+                is_active=legacy.is_active,
+                effective_from=date.today(),
+            )
+            teacher_assignment = await StudentAcademicRepository.create_teacher_assignment(
+                db=db,
+                assignment=teacher_assignment,
+            )
+        return teacher_assignment, legacy
+
     @staticmethod
     def _ensure_session_not_future_when_current(session_name: str) -> None:
         start_year = int(session_name.split("/")[0])
@@ -554,6 +1029,43 @@ class StudentAcademicService:
             )
         )
 
+        class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=payload.class_id,
+            subject_id=payload.subject_id,
+        )
+        if class_subject is None:
+            class_subject = ClassSubject(
+                tenant_id=tenant_id,
+                class_id=payload.class_id,
+                subject_id=payload.subject_id,
+                is_core=payload.is_core,
+                is_active=payload.is_active,
+            )
+            class_subject = await StudentAcademicRepository.create_class_subject(
+                db=db,
+                class_subject=class_subject,
+            )
+
+        active_ta = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=class_subject.id,
+        )
+        if active_ta is None:
+            teacher_assignment = TeacherAssignment(
+                tenant_id=tenant_id,
+                class_subject_id=class_subject.id,
+                teacher_id=payload.teacher_id,
+                is_active=payload.is_active,
+                effective_from=date.today(),
+            )
+            await StudentAcademicRepository.create_teacher_assignment(
+                db=db,
+                assignment=teacher_assignment,
+            )
+
         await db.commit()
         return created_assignment
 
@@ -594,6 +1106,65 @@ class StudentAcademicService:
             db=db,
             assignment=assignment,
         )
+
+        class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=assignment.class_id,
+            subject_id=assignment.subject_id,
+        )
+        if class_subject is None:
+            class_subject = ClassSubject(
+                tenant_id=tenant_id,
+                class_id=assignment.class_id,
+                subject_id=assignment.subject_id,
+                is_core=assignment.is_core,
+                is_active=assignment.is_active,
+            )
+            class_subject = await StudentAcademicRepository.create_class_subject(
+                db=db,
+                class_subject=class_subject,
+            )
+        else:
+            class_subject.is_core = assignment.is_core
+            class_subject.is_active = assignment.is_active
+            await StudentAcademicRepository.save_class_subject(db=db, class_subject=class_subject)
+
+        active_ta = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=class_subject.id,
+        )
+
+        if new_teacher_id is not None and (active_ta is None or new_teacher_id != active_ta.teacher_id):
+            if active_ta is not None:
+                active_ta.is_active = False
+                active_ta.effective_to = date.today()
+                await StudentAcademicRepository.save_teacher_assignment(db=db, assignment=active_ta)
+            new_ta = TeacherAssignment(
+                tenant_id=tenant_id,
+                class_subject_id=class_subject.id,
+                teacher_id=new_teacher_id,
+                is_active=assignment.is_active,
+                effective_from=date.today(),
+            )
+            await StudentAcademicRepository.create_teacher_assignment(db=db, assignment=new_ta)
+        elif active_ta is not None:
+            active_ta.is_active = assignment.is_active
+            if not assignment.is_active:
+                active_ta.effective_to = date.today()
+            await StudentAcademicRepository.save_teacher_assignment(db=db, assignment=active_ta)
+        elif assignment.is_active:
+            await StudentAcademicRepository.create_teacher_assignment(
+                db=db,
+                assignment=TeacherAssignment(
+                    tenant_id=tenant_id,
+                    class_subject_id=class_subject.id,
+                    teacher_id=assignment.teacher_id,
+                    is_active=True,
+                    effective_from=date.today(),
+                ),
+            )
 
         await db.commit()
         return updated_assignment
@@ -765,6 +1336,7 @@ class StudentAcademicService:
                 else None
             ),
             class_subject_teacher_id=result.class_subject_teacher_id,
+            teacher_assignment_id=result.teacher_assignment_id,
             academic_session_id=result.academic_session_id,
             academic_session_name=session.name if session else None,
             academic_term_id=result.academic_term_id,
@@ -789,15 +1361,21 @@ class StudentAcademicService:
         payload: StudentSubjectResultUpsert,
     ) -> StudentSubjectResultResponse:
         tenant_id = actor.tenant_id
-        assignment = await StudentAcademicRepository.get_class_subject_teacher_by_id(
+        teacher_assignment, legacy = await StudentAcademicService._resolve_assignment_context(
             db=db,
             tenant_id=tenant_id,
-            assignment_id=payload.class_subject_teacher_id,
+            payload=payload,
         )
-        if assignment is None or not assignment.is_active:
-            raise NotFoundException("Class-subject teacher assignment not found.")
 
-        if isinstance(actor, Teacher) and assignment.teacher_id != actor.id:
+        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=teacher_assignment.class_subject_id,
+        )
+        if class_subject is None:
+            raise NotFoundException("Class subject not found.")
+
+        if isinstance(actor, Teacher) and teacher_assignment.teacher_id != actor.id:
             raise ForbiddenException("You can only edit class-subjects assigned to you.")
 
         student = await StudentRepository.get_student_by_id(
@@ -807,11 +1385,8 @@ class StudentAcademicService:
         )
         if student is None:
             raise NotFoundException("Student not found.")
-        if student.class_id != assignment.class_id:
+        if student.class_id != class_subject.class_id:
             raise BadRequestException("Student does not belong to the selected class.")
-
-        if payload.status == AcademicResultStatus.LOCKED and isinstance(actor, Teacher):
-            raise ForbiddenException("Teachers cannot lock results.")
 
         total_score = payload.test_score + payload.assessment_score + payload.exam_score
         grade, remark = await StudentAcademicService._compute_grade(
@@ -820,17 +1395,38 @@ class StudentAcademicService:
             total_score=total_score,
         )
 
-        existing = await StudentAcademicRepository.get_result_by_scope(
+        legacy_id = legacy.id if legacy is not None else payload.class_subject_teacher_id
+        if legacy_id is None:
+            synced_legacy = await StudentAcademicService._sync_legacy_class_subject_teacher(
+                db=db,
+                tenant_id=tenant_id,
+                class_id=class_subject.class_id,
+                subject_id=class_subject.subject_id,
+                teacher_id=teacher_assignment.teacher_id,
+                is_core=class_subject.is_core,
+                is_active=class_subject.is_active,
+            )
+            legacy_id = synced_legacy.id
+
+        existing = await StudentAcademicRepository.get_result_by_teacher_assignment_scope(
             db=db,
             tenant_id=tenant_id,
             student_id=payload.student_id,
-            class_subject_teacher_id=payload.class_subject_teacher_id,
+            teacher_assignment_id=teacher_assignment.id,
             academic_session_id=payload.academic_session_id,
             academic_term_id=payload.academic_term_id,
         )
+        if existing is None:
+            existing = await StudentAcademicRepository.get_result_by_scope(
+                db=db,
+                tenant_id=tenant_id,
+                student_id=payload.student_id,
+                class_subject_teacher_id=legacy_id,
+                academic_session_id=payload.academic_session_id,
+                academic_term_id=payload.academic_term_id,
+            )
+
         if existing is not None:
-            if existing.status == AcademicResultStatus.LOCKED:
-                raise ForbiddenException("Locked results are not editable in normal workflows.")
             result = existing
         else:
             actor_type = (
@@ -841,10 +1437,11 @@ class StudentAcademicService:
             result = StudentSubjectResult(
                 tenant_id=tenant_id,
                 student_id=payload.student_id,
-                class_id=assignment.class_id,
-                subject_id=assignment.subject_id,
-                teacher_id=assignment.teacher_id,
-                class_subject_teacher_id=assignment.id,
+                class_id=class_subject.class_id,
+                subject_id=class_subject.subject_id,
+                teacher_id=teacher_assignment.teacher_id,
+                class_subject_teacher_id=legacy_id,
+                teacher_assignment_id=teacher_assignment.id,
                 academic_session_id=payload.academic_session_id,
                 academic_term_id=payload.academic_term_id,
                 recorded_by_actor_type=actor_type,
@@ -865,8 +1462,21 @@ class StudentAcademicService:
         result.grade = grade
         result.remark = remark
         result.status = payload.status
+        result.teacher_assignment_id = teacher_assignment.id
+        result.teacher_id = teacher_assignment.teacher_id
 
         saved = await StudentAcademicRepository.upsert_result(db=db, result=result)
+
+        from app.modules.report_cards.service import ReportCardService
+
+        await ReportCardService.mark_outdated_for_score_change(
+            db=db,
+            tenant_id=tenant_id,
+            student_id=payload.student_id,
+            academic_session_id=payload.academic_session_id,
+            academic_term_id=payload.academic_term_id,
+        )
+
         await db.commit()
         return await StudentAcademicService._build_result_response(db=db, result=saved)
 
@@ -909,7 +1519,6 @@ class StudentAcademicService:
             teacher_id = actor.id
         elif isinstance(actor, Student):
             student_id = actor.id
-            published_only = True
         elif isinstance(actor, Parent):
             if student_id is None:
                 raise BadRequestException("student_id is required for parent academic results.")
@@ -921,7 +1530,6 @@ class StudentAcademicService:
             )
             if link is None:
                 raise ForbiddenException("You cannot view academic records for this student.")
-            published_only = True
 
         results, total = await StudentAcademicRepository.list_results(
             db=db,

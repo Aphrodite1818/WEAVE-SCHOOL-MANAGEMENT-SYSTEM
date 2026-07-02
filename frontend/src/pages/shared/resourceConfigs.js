@@ -269,28 +269,11 @@ export const subjectResourceConfig = {
     code: "",
     description: "",
     is_active: "true",
-    teacher_ids: [],
   },
   fields: (context) => [
     { name: "name", label: "Subject name", required: true },
     { name: "code", label: "Subject code" },
     { name: "description", label: "Description", type: "textarea" },
-    {
-      name: "teacher_ids",
-      label: "Assigned teachers",
-      type: "multiselect",
-      placeholder: "Search teachers by name, email, or staff ID",
-      searchPlaceholder: "Search by name, email, or staff ID",
-      options: optionsFrom(context.teachers, (teacher) => {
-        const primaryLabel = displayName(teacher) || teacher.staff_id || teacher.id;
-        const secondaryLabel = [teacher.staff_id, teacher?.email]
-          .filter(Boolean)
-          .join(" | ");
-        return secondaryLabel
-          ? `${primaryLabel} - ${secondaryLabel}`
-          : primaryLabel;
-      }),
-    },
     {
       name: "is_active",
       label: "Status",
@@ -302,14 +285,7 @@ export const subjectResourceConfig = {
     },
   ],
   filters: subjectReadOnlyResourceConfig.filters,
-  columns: [
-    ...subjectReadOnlyResourceConfig.columns,
-    {
-      key: "teachers",
-      label: "Teachers",
-      render: (item) => summarizeLabels(item.teachers, fullName),
-    },
-  ],
+  columns: [...subjectReadOnlyResourceConfig.columns],
   fetchItems: subjectReadOnlyResourceConfig.fetchItems,
   buildPayload: (formData) =>
     compactPayload({
@@ -317,21 +293,18 @@ export const subjectResourceConfig = {
       code: formData.code,
       description: formData.description,
       is_active: formData.is_active,
-      teacher_ids: formData.teacher_ids,
     }),
   createItem: (payload) =>
     subjectService.createSubject({
       name: payload.name,
       code: payload.code,
       description: payload.description,
-      teacher_ids: payload.teacher_ids || [],
     }),
   updateItem: async (id, payload) => {
     await subjectService.updateSubject(id, {
       name: payload.name,
       code: payload.code,
       description: payload.description,
-      teacher_ids: payload.teacher_ids || [],
     });
 
     if (payload.is_active === "true") {
@@ -346,7 +319,6 @@ export const subjectResourceConfig = {
     code: item.code || "",
     description: item.description || "",
     is_active: item.is_active ? "true" : "false",
-    teacher_ids: selectedIds(item.teachers),
   }),
   getItemLabel: (item) => subjectName(item),
 };
@@ -354,7 +326,7 @@ export const subjectResourceConfig = {
 export const teacherResourceConfig = {
   singularLabel: "Teacher profile",
   pluralLabel: "Teacher profiles",
-  formHelp: "Review teacher records, update staff details, and maintain subject assignments created through the tenant admin flow.",
+  formHelp: "Review teacher records and update staff details. Subject teaching assignments are managed in Academic Hub.",
   canCreate: false,
   canUpdate: true,
   canDelete: true,
@@ -363,19 +335,11 @@ export const teacherResourceConfig = {
     staff_id: "",
     qualification: "",
     specialization: "",
-    subject_ids: [],
   },
-  fields: (context) => [
+  fields: () => [
     { name: "staff_id", label: "Staff ID" },
     { name: "qualification", label: "Qualification" },
     { name: "specialization", label: "Specialization" },
-    {
-      name: "subject_ids",
-      label: "Assigned subjects",
-      type: "multiselect",
-      placeholder: "Search subjects",
-      options: optionsFrom(context.subjects, subjectName),
-    },
   ],
   columns: () => [
     {
@@ -387,11 +351,6 @@ export const teacherResourceConfig = {
     { key: "staff_id", label: "Staff ID", render: (item) => item.staff_id || "-" },
     { key: "qualification", label: "Qualification", render: (item) => item.qualification || "-" },
     { key: "specialization", label: "Specialization", render: (item) => item.specialization || "-" },
-    {
-      key: "subjects",
-      label: "Subjects",
-      render: (item) => summarizeLabels(item.subjects, subjectName),
-    },
   ],
   fetchItems: () => teacherService.getTeachers({ limit: 100 }),
   updateItem: (id, payload) => teacherService.updateTeacher(id, payload),
@@ -401,13 +360,11 @@ export const teacherResourceConfig = {
       staff_id: formData.staff_id,
       qualification: formData.qualification,
       specialization: formData.specialization,
-      subject_ids: formData.subject_ids,
     }),
   mapItemToForm: (item) => ({
     staff_id: item.staff_id || "",
     qualification: item.qualification || "",
     specialization: item.specialization || "",
-    subject_ids: selectedIds(item.subjects),
   }),
   getItemLabel: (item) => displayName(item),
 };

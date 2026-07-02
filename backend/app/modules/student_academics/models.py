@@ -29,8 +29,6 @@ class AcademicTermName(str, PyEnum):
 class AcademicResultStatus(str, PyEnum):
     DRAFT = "draft"
     SUBMITTED = "submitted"
-    PUBLISHED = "published"
-    LOCKED = "locked"
 
 
 class AcademicSession(BaseModel):
@@ -134,6 +132,80 @@ class GradingScale(BaseModel):
     )
 
 
+class ClassSubject(BaseModel):
+    __tablename__ = "class_subjects"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "class_id",
+            "subject_id",
+            name="uq_class_subject_tenant_class_subject",
+        ),
+    )
+
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("classes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    is_core: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        nullable=False,
+    )
+
+
+class TeacherAssignment(BaseModel):
+    __tablename__ = "teacher_assignments"
+
+    class_subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("class_subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    teacher_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("teachers.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        nullable=False,
+    )
+
+    effective_from: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        server_default="CURRENT_DATE",
+    )
+
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
 class ClassSubjectTeacher(BaseModel):
     __tablename__ = "class_subject_teachers"
 
@@ -235,6 +307,12 @@ class StudentSubjectResult(BaseModel):
         UUID,
         ForeignKey("class_subject_teachers.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
+    )
+    teacher_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("teacher_assignments.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
     )
     academic_session_id: Mapped[uuid.UUID] = mapped_column(

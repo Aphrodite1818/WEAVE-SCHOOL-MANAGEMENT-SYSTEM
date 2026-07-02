@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicTerm,
+    ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
     StudentSubjectResult,
+    TeacherAssignment,
 )
 
 
@@ -550,7 +552,7 @@ class StudentAcademicRepository:
             filters.append(StudentSubjectResult.academic_term_id == academic_term_id)
         if published_only:
             filters.append(
-                StudentSubjectResult.status.in_(["published", "locked"])
+                StudentSubjectResult.status == "submitted"
             )
 
         count_stmt = select(func.count()).select_from(StudentSubjectResult).where(*filters)
@@ -564,3 +566,226 @@ class StudentAcademicRepository:
         total = (await db.execute(count_stmt)).scalar_one()
         rows = (await db.execute(stmt)).scalars().all()
         return list(rows), int(total)
+
+    @staticmethod
+    async def create_class_subject(
+        db: AsyncSession,
+        class_subject: ClassSubject,
+    ) -> ClassSubject:
+        db.add(class_subject)
+        await db.flush()
+        await db.refresh(class_subject)
+        return class_subject
+
+    @staticmethod
+    async def get_class_subject_by_id(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_subject_id: uuid.UUID,
+    ) -> ClassSubject | None:
+        result = await db.execute(
+            select(ClassSubject).where(
+                ClassSubject.tenant_id == tenant_id,
+                ClassSubject.id == class_subject_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_class_subject_by_class_and_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        subject_id: uuid.UUID,
+    ) -> ClassSubject | None:
+        result = await db.execute(
+            select(ClassSubject).where(
+                ClassSubject.tenant_id == tenant_id,
+                ClassSubject.class_id == class_id,
+                ClassSubject.subject_id == subject_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_class_subjects(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        class_id: uuid.UUID | None = None,
+        active_only: bool = False,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[ClassSubject], int]:
+        filters = [ClassSubject.tenant_id == tenant_id]
+        if class_id is not None:
+            filters.append(ClassSubject.class_id == class_id)
+        if active_only:
+            filters.append(ClassSubject.is_active.is_(True))
+
+        total = (await db.execute(select(func.count()).select_from(ClassSubject).where(*filters))).scalar_one()
+        rows = (
+            await db.execute(
+                select(ClassSubject)
+                .where(*filters)
+                .order_by(ClassSubject.created_at.desc())
+                .offset(skip)
+                .limit(limit)
+            )
+        ).scalars().all()
+        return list(rows), int(total)
+
+    @staticmethod
+    async def save_class_subject(
+        db: AsyncSession,
+        class_subject: ClassSubject,
+    ) -> ClassSubject:
+        await db.flush()
+        await db.refresh(class_subject)
+        return class_subject
+
+    @staticmethod
+    async def count_results_for_class_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_subject_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count())
+            .select_from(StudentSubjectResult)
+            .join(
+                TeacherAssignment,
+                TeacherAssignment.id == StudentSubjectResult.teacher_assignment_id,
+            )
+            .where(
+                StudentSubjectResult.tenant_id == tenant_id,
+                TeacherAssignment.class_subject_id == class_subject_id,
+            )
+        )
+        return int(result.scalar_one())
+
+    @staticmethod
+    async def create_teacher_assignment(
+        db: AsyncSession,
+        assignment: TeacherAssignment,
+    ) -> TeacherAssignment:
+        db.add(assignment)
+        await db.flush()
+        await db.refresh(assignment)
+        return assignment
+
+    @staticmethod
+    async def get_teacher_assignment_by_id(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+    ) -> TeacherAssignment | None:
+        result = await db.execute(
+            select(TeacherAssignment).where(
+                TeacherAssignment.tenant_id == tenant_id,
+                TeacherAssignment.id == assignment_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_active_teacher_assignment_for_class_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_subject_id: uuid.UUID,
+        exclude_id: uuid.UUID | None = None,
+    ) -> TeacherAssignment | None:
+        filters = [
+            TeacherAssignment.tenant_id == tenant_id,
+            TeacherAssignment.class_subject_id == class_subject_id,
+            TeacherAssignment.is_active.is_(True),
+        ]
+        if exclude_id is not None:
+            filters.append(TeacherAssignment.id != exclude_id)
+        result = await db.execute(select(TeacherAssignment).where(*filters))
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_teacher_assignment_rows(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        teacher_id: uuid.UUID | None = None,
+        class_id: uuid.UUID | None = None,
+        class_subject_id: uuid.UUID | None = None,
+        active_only: bool = False,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[TeacherAssignment], int]:
+        filters = [TeacherAssignment.tenant_id == tenant_id]
+        if teacher_id is not None:
+            filters.append(TeacherAssignment.teacher_id == teacher_id)
+        if class_subject_id is not None:
+            filters.append(TeacherAssignment.class_subject_id == class_subject_id)
+        if class_id is not None:
+            filters.append(
+                TeacherAssignment.class_subject_id.in_(
+                    select(ClassSubject.id).where(
+                        ClassSubject.tenant_id == tenant_id,
+                        ClassSubject.class_id == class_id,
+                    )
+                )
+            )
+        if active_only:
+            filters.append(TeacherAssignment.is_active.is_(True))
+
+        total = (await db.execute(select(func.count()).select_from(TeacherAssignment).where(*filters))).scalar_one()
+        rows = (
+            await db.execute(
+                select(TeacherAssignment)
+                .where(*filters)
+                .order_by(TeacherAssignment.is_active.desc(), TeacherAssignment.created_at.desc())
+                .offset(skip)
+                .limit(limit)
+            )
+        ).scalars().all()
+        return list(rows), int(total)
+
+    @staticmethod
+    async def save_teacher_assignment(
+        db: AsyncSession,
+        assignment: TeacherAssignment,
+    ) -> TeacherAssignment:
+        await db.flush()
+        await db.refresh(assignment)
+        return assignment
+
+    @staticmethod
+    async def count_scores_for_teacher_assignment(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        teacher_assignment_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count())
+            .select_from(StudentSubjectResult)
+            .where(
+                StudentSubjectResult.tenant_id == tenant_id,
+                StudentSubjectResult.teacher_assignment_id == teacher_assignment_id,
+            )
+        )
+        return int(result.scalar_one())
+
+    @staticmethod
+    async def get_result_by_teacher_assignment_scope(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        student_id: uuid.UUID,
+        teacher_assignment_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> StudentSubjectResult | None:
+        stmt = select(StudentSubjectResult).where(
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.student_id == student_id,
+            StudentSubjectResult.teacher_assignment_id == teacher_assignment_id,
+            StudentSubjectResult.academic_session_id == academic_session_id,
+            StudentSubjectResult.academic_term_id == academic_term_id,
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()

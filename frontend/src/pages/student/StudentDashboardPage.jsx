@@ -332,7 +332,7 @@ function StudentDashboardPage() {
           )}
 
           <section className="dashboard-grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)]">
-            <Card className="p-5 sm:p-6">
+            <Card className="flex h-full flex-col p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="section-title">Latest Report Card</h3>
@@ -349,7 +349,7 @@ function StudentDashboardPage() {
 
               {dashboardData.latestReportCard ? (
                 <>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="mt-auto pt-4 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Average</p>
                       <p className="mt-2 text-xl font-semibold text-text">
@@ -428,7 +428,7 @@ function StudentDashboardPage() {
               )}
             </Card>
 
-            <Card className="p-5 sm:p-6">
+            <Card className="flex h-full flex-col p-5 sm:p-6">
               <div className="flex items-start gap-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                   <FileText className="h-5 w-5" />
@@ -441,7 +441,7 @@ function StudentDashboardPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="mt-auto pt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                     Published results

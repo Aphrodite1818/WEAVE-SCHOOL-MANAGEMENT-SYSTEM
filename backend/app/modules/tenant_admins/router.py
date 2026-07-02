@@ -39,6 +39,8 @@ from app.modules.teachers.schemas import (
     TeacherUpdate,
 )
 from app.modules.teachers.service import TeacherService
+from app.modules.student_academics.schemas import TeacherAssignmentListResponse
+from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
 from app.modules.tenant_admins.service import TenantAdminService
 from app.tenant_management.schemas import (
@@ -175,6 +177,30 @@ async def get_teacher(
         actor=current_admin,
         teacher_id=teacher_id,
     )
+
+
+@router.get(
+    "/teachers/{teacher_id}/assignments",
+    response_model=TeacherAssignmentListResponse,
+    summary="List teacher class-subject assignments",
+)
+async def list_teacher_class_assignments(
+    teacher_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+    active_only: bool = Query(default=True),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> TeacherAssignmentListResponse:
+    items, total = await StudentAcademicService.list_teacher_assignment_responses(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        teacher_id=teacher_id,
+        active_only=active_only,
+        skip=skip,
+        limit=limit,
+    )
+    return TeacherAssignmentListResponse(items=items, total=total)
 
 
 @router.patch(

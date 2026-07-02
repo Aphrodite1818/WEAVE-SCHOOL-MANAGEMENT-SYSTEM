@@ -42,7 +42,7 @@ function TeacherDashboardPage() {
         const [teacherProfile, subjectResponse, assignmentResponse, resultResponse, metricsResponse] = await Promise.all([
           teacherService.getMyTeacher(),
           teacherService.getMySubjects(),
-          academicService.listTeacherAssignments(),
+          academicService.listMyTeacherAssignments(),
           academicService.listTeacherResults(),
           dashboardService.getTeacherAnalytics(),
         ]);
@@ -222,13 +222,13 @@ function TeacherDashboardPage() {
       )}
 
       <section className="dashboard-grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <Card className="p-5 sm:p-6">
+        <Card className="flex h-full flex-col p-5 sm:p-6">
           <h2 className="section-title">Teaching Overview</h2>
           <p className="mt-1 text-sm text-text-muted">
             Profile and assignment context, kept separate from execution actions.
           </p>
 
-          <div className="mt-4 grid gap-3 text-sm text-text-soft sm:grid-cols-2">
+          <div className="mt-auto pt-4 grid gap-3 text-sm text-text-soft sm:grid-cols-2">
             <div className="rounded-2xl border border-border bg-surface px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Profile status</p>
               <p className="mt-1 font-semibold text-text">
@@ -300,13 +300,13 @@ function TeacherDashboardPage() {
           </div>
         </Card>
 
-        <Card className="p-5 sm:p-6">
+        <Card className="flex h-full flex-col p-5 sm:p-6">
           <h2 className="section-title">Action Centre</h2>
           <p className="mt-1 text-sm text-text-muted">
             Only the next teaching actions stay here. The broader module navigation already lives in the sidebar.
           </p>
 
-          <div className="mt-4 rounded-[1.2rem] border border-border/70 bg-surface-muted/15 p-4">
+          <div className="mt-auto pt-4 rounded-[1.2rem] border border-border/70 bg-surface-muted/15 p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-text">Priority classes</p>
               <BadgeCount count={priorityClasses.length} />

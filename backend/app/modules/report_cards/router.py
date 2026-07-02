@@ -12,6 +12,9 @@ from app.core.dependencies.route_guards import (
 )
 from app.modules.parents.models import Parent
 from app.modules.report_cards.schemas import (
+    ReportCardBulkGenerateResponse,
+    ReportCardClassOverviewResponse,
+    ReportCardCommentsUpdate,
     ReportCardGenerateRequest,
     ReportCardListResponse,
     ReportCardResponse,
@@ -41,15 +44,31 @@ CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_onboarded_stu
 
 @tenant_admin_router.post(
     "/generate",
-    response_model=ReportCardResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def generate_report_card(
     payload: ReportCardGenerateRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> ReportCardResponse:
+) -> ReportCardResponse | ReportCardBulkGenerateResponse:
     return await ReportCardService.generate(db, current_admin, payload)
+
+
+@tenant_admin_router.get("/overview", response_model=ReportCardClassOverviewResponse)
+async def report_card_class_overview(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+    class_id: UUID = Query(...),
+    academic_session_id: UUID = Query(...),
+    academic_term_id: UUID = Query(...),
+) -> ReportCardClassOverviewResponse:
+    return await ReportCardService.class_overview(
+        db,
+        current_admin,
+        class_id=class_id,
+        academic_session_id=academic_session_id,
+        academic_term_id=academic_term_id,
+    )
 
 
 @tenant_admin_router.get("", response_model=ReportCardListResponse)
@@ -77,6 +96,25 @@ async def get_report_card(
     current_admin: CurrentTenantAdmin,
 ) -> ReportCardResponse:
     return await ReportCardService.get(db, current_admin, report_card_id)
+
+
+@tenant_admin_router.post("/{report_card_id}/regenerate", response_model=ReportCardResponse)
+async def regenerate_report_card(
+    report_card_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> ReportCardResponse:
+    return await ReportCardService.regenerate(db, current_admin, report_card_id)
+
+
+@tenant_admin_router.patch("/{report_card_id}/comments", response_model=ReportCardResponse)
+async def update_report_card_comments(
+    report_card_id: UUID,
+    payload: ReportCardCommentsUpdate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> ReportCardResponse:
+    return await ReportCardService.update_comments(db, current_admin, report_card_id, payload)
 
 
 @tenant_admin_router.post("/{report_card_id}/publish", response_model=ReportCardResponse)

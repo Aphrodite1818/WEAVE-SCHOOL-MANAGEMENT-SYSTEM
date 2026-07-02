@@ -30,7 +30,7 @@ function StatCard({
       className={cn(
         "flex h-full flex-col bg-surface shadow-sm border-border/40",
         compact
-          ? "min-h-0 p-3 sm:p-4 md:p-5"
+          ? "min-h-0 p-3 sm:p-3.5 md:p-4"
           : "min-h-0 p-3 sm:min-h-[132px] sm:p-4 md:p-5 lg:min-h-[148px] lg:p-6",
         className
       )}
@@ -52,11 +52,12 @@ function StatCard({
           ) : (
             <p
               className={cn(
-                "mt-1 break-words font-semibold leading-tight tracking-tight text-text sm:mt-1.5",
+                "mt-1 line-clamp-2 font-semibold leading-tight tracking-tight text-text sm:mt-1.5",
                 compact
-                  ? "text-base min-[380px]:text-lg sm:text-2xl md:text-3xl"
+                  ? "text-base sm:text-xl md:text-2xl"
                   : "text-lg sm:text-2xl md:text-3xl lg:text-4xl"
               )}
+              title={typeof value === 'string' ? value : undefined}
             >
               {value}
             </p>

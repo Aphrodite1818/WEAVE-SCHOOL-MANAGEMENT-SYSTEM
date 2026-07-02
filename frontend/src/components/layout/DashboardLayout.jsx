@@ -22,7 +22,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
-  Search,
   Settings,
   Shield,
   Sun,
@@ -36,6 +35,7 @@ import Dropdown from "../ui/Dropdown";
 import Modal from "../ui/Modal";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import AiChatLauncher from "../ai/AiChatLauncher";
+import WorkspaceSearch from "./WorkspaceSearch";
 import logoImage from "../../assets/images/favicon.png";
 import { authService } from "../../services/auth.service";
 import { authSession } from "../../services/api";
@@ -52,6 +52,8 @@ const roleLabels = {
   parent: "Parent",
   superadmin: "Platform admin",
 };
+
+const workspaceSearchRoles = new Set(["admin", "teacher", "superadmin"]);
 
 const announcementPaths = {
   admin: "/admin/announcements",
@@ -169,8 +171,10 @@ const navGroups = {
       label: "Family",
       items: [
         { label: "Dashboard", to: "/parent/dashboard", icon: Home },
-        { label: "Attendance", to: "/parent/attendance", icon: CheckSquare },
+        { label: "Student Linking", to: "/parent/student-linking", icon: Link2 },
+        { label: "Report Cards", to: "/parent/report-cards", icon: FileText },
         { label: "Results", to: "/parent/results", icon: BarChart3 },
+        { label: "Attendance", to: "/parent/attendance", icon: CheckSquare },
         { label: "Notices", to: "/parent/notices", icon: FileText },
         { label: "Fees", to: "/parent/fees", icon: CreditCard },
       ],
@@ -213,12 +217,12 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
 
   return (
     <div className="flex h-full flex-col">
-      <div className={cn("relative flex h-20", collapsed ? "items-end justify-center px-2 pb-3" : "items-center px-4 pr-12")}>
+      <div className={cn("relative flex transition-all duration-300", collapsed ? "flex-col items-center justify-center h-28 gap-3 pt-2" : "h-20 items-center px-4 pr-12")}>
         <Link to="/" className={cn("flex min-w-0 items-center gap-3", collapsed && "justify-center")} onClick={onNavigate}>
           <img
             src={logoImage}
             alt="Learnly AI"
-            className={cn("rounded-2xl border border-border bg-surface p-1", collapsed ? "h-8 w-8" : "h-10 w-10")}
+            className={cn("rounded-2xl border border-border bg-surface p-1 shadow-sm", collapsed ? "h-9 w-9" : "h-10 w-10")}
           />
           {!collapsed && (
             <span className="min-w-0">
@@ -232,11 +236,11 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
             type="button"
             variant="ghost"
             size="icon"
-            className="absolute right-2 top-3 hidden h-8 w-8 rounded-lg md:inline-flex"
+            className={cn("hidden h-8 w-8 rounded-lg md:inline-flex transition-all bg-surface-muted hover:bg-border/60", collapsed ? "relative shadow-sm" : "absolute right-3 top-1/2 -translate-y-1/2")}
             onClick={onToggleCollapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            {collapsed ? <PanelLeftOpen className="h-4 w-4 text-text-soft" /> : <PanelLeftClose className="h-4 w-4 text-text-soft" />}
           </Button>
         )}
       </div>
@@ -425,38 +429,24 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
           <p className="truncate text-sm font-semibold text-text">{schoolName || "School workspace"}</p>
         </div>
 
-        <div className="hidden w-full max-w-lg items-center gap-3 rounded-2xl border border-border bg-surface px-3.5 py-2.5 shadow-sm md:flex">
-          <Search className="h-4 w-4 text-text-faint" />
-          <input
-            type="search"
-            aria-label="Search workspace"
-            placeholder="Search students, classes, teachers, notes..."
-            className="w-full bg-transparent text-sm text-text outline-none placeholder:text-text-faint"
-          />
-          <kbd className="rounded-md border border-border bg-surface-muted px-1.5 py-0.5 text-xs font-semibold text-text-faint">/</kbd>
-        </div>
+        {workspaceSearchRoles.has(role) ? (
+          <WorkspaceSearch role={role} />
+        ) : (
+          <div className="hidden md:flex items-center gap-3 rounded-2xl bg-surface-muted/30 px-4 py-2 border border-border/50">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-soft text-primary">
+              <CalendarDays className="h-4 w-4" />
+            </span>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-faint">Today's Date</span>
+              <span className="text-sm font-semibold text-text">
+                {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="ml-auto flex items-end gap-2">
-          <div className="hidden sm:flex sm:flex-col sm:items-start sm:self-end">
-            <span className="mb-1 text-[11px] font-semibold tracking-wide text-text-muted">
-              School year
-            </span>
-            <Dropdown
-              trigger={
-                <Button type="button" variant="outline" className="inline-flex min-h-12 rounded-2xl px-4">
-                  <CalendarDays className="h-4 w-4" />
-                  2024-25
-                  <ChevronDown className="h-4 w-4 text-text-faint" />
-                </Button>
-              }
-            >
-              {["2024-25", "2023-24", "2022-23"].map((year) => (
-                <button key={year} type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-text-soft hover:bg-surface-muted">
-                  {year}
-                </button>
-              ))}
-            </Dropdown>
-          </div>
+
 
           <Dropdown
             trigger={

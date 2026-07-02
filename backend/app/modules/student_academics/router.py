@@ -1,7 +1,7 @@
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
@@ -32,6 +32,10 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultResponse,
     StudentSubjectResultStatusUpdate,
     StudentSubjectResultUpsert,
+    TeacherAssignmentCreate,
+    TeacherAssignmentListResponse,
+    TeacherAssignmentReassign,
+    TeacherAssignmentResponse,
 )
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.students.models import Student
@@ -207,7 +211,10 @@ async def assign_subject(
     payload: ClassSubjectTeacherCreate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
+    response: Response,
 ) -> ClassSubjectTeacherResponse:
+    response.headers["X-Deprecated-Endpoint"] = "subject-assignments"
+    response.headers["Deprecation"] = "true"
     return await StudentAcademicService.assign_subject_to_class(db, current_admin.tenant_id, payload)
 
 
@@ -215,6 +222,7 @@ async def assign_subject(
 async def list_subject_assignments(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
+    response: Response,
     class_id: UUID | None = Query(default=None),
     subject_id: UUID | None = Query(default=None),
     teacher_id: UUID | None = Query(default=None),
@@ -222,6 +230,8 @@ async def list_subject_assignments(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> ClassSubjectTeacherListResponse:
+    response.headers["X-Deprecated-Endpoint"] = "subject-assignments"
+    response.headers["Deprecation"] = "true"
     items, total = await StudentAcademicService.list_class_subject_teachers(
         db,
         current_admin.tenant_id,
@@ -244,12 +254,81 @@ async def update_subject_assignment(
     payload: ClassSubjectTeacherUpdate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
+    response: Response,
 ) -> ClassSubjectTeacherResponse:
+    response.headers["X-Deprecated-Endpoint"] = "subject-assignments"
+    response.headers["Deprecation"] = "true"
     return await StudentAcademicService.update_class_subject_teacher(
         db,
         current_admin.tenant_id,
         assignment_id,
         payload,
+    )
+
+
+@tenant_admin_router.post(
+    "/teacher-assignments",
+    response_model=TeacherAssignmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_teacher_assignment(
+    payload: TeacherAssignmentCreate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherAssignmentResponse:
+    return await StudentAcademicService.create_teacher_assignment(
+        db, current_admin.tenant_id, payload
+    )
+
+
+@tenant_admin_router.get("/teacher-assignments", response_model=TeacherAssignmentListResponse)
+async def list_teacher_assignments_admin(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+    class_id: UUID | None = Query(default=None),
+    teacher_id: UUID | None = Query(default=None),
+    active_only: bool = Query(default=False),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> TeacherAssignmentListResponse:
+    items, total = await StudentAcademicService.list_teacher_assignment_responses(
+        db,
+        current_admin.tenant_id,
+        class_id=class_id,
+        teacher_id=teacher_id,
+        active_only=active_only,
+        skip=skip,
+        limit=limit,
+    )
+    return TeacherAssignmentListResponse(items=items, total=total)
+
+
+@tenant_admin_router.patch(
+    "/teacher-assignments/{assignment_id}/deactivate",
+    response_model=TeacherAssignmentResponse,
+)
+async def deactivate_teacher_assignment(
+    assignment_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherAssignmentResponse:
+    return await StudentAcademicService.deactivate_teacher_assignment(
+        db, current_admin.tenant_id, assignment_id
+    )
+
+
+@tenant_admin_router.post(
+    "/teacher-assignments/{assignment_id}/reassign",
+    response_model=TeacherAssignmentResponse,
+)
+async def reassign_teacher_assignment(
+    assignment_id: UUID,
+    payload: TeacherAssignmentReassign,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherAssignmentResponse:
+    return await StudentAcademicService.reassign_teacher_assignment(
+        db, current_admin.tenant_id, assignment_id, payload
     )
 
 
@@ -296,18 +375,18 @@ async def update_result_status(
     return await StudentAcademicService.update_result_status(db, current_admin, result_id, payload)
 
 
-@teacher_router.get("/assignments", response_model=ClassSubjectTeacherListResponse)
+@teacher_router.get("/assignments", response_model=TeacherAssignmentListResponse)
 async def list_my_assignments(
     db: DbSession,
     current_teacher: CurrentTeacher,
-) -> ClassSubjectTeacherListResponse:
-    items, total = await StudentAcademicService.list_class_subject_teachers(
+) -> TeacherAssignmentListResponse:
+    items, total = await StudentAcademicService.list_teacher_assignment_responses(
         db,
         current_teacher.tenant_id,
         teacher_id=current_teacher.id,
         active_only=True,
     )
-    return ClassSubjectTeacherListResponse(items=items, total=total)
+    return TeacherAssignmentListResponse(items=items, total=total)
 
 
 @teacher_router.get("/sessions", response_model=AcademicSessionListResponse)

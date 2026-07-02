@@ -9,18 +9,44 @@ import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
+import { studentService } from "../../services/studentService";
 import { cleanText } from "../../utils/academicDashboard";
 import { cn } from "../../utils/cn";
 import { formatMetricNumber, getAcademicContext, statusVariant } from "./studentPageUtils";
 
-function scoreSummary(result) {
-  if (result.total_score !== undefined && result.total_score !== null) {
-    return formatMetricNumber(result.total_score);
-  }
-  return "-";
+function scoreSummary(result, fallback = 0) {
+  const value = formatMetricNumber(result?.total_score ?? result?.totalScore);
+  return value ?? fallback;
+}
+
+function mergeSubjectCards(subjects = [], results = [], classLabel = "Class") {
+  const resultBySubjectId = new Map();
+
+  results.forEach((result) => {
+    const subjectId = String(result.subject_id || "");
+    if (!subjectId || resultBySubjectId.has(subjectId)) return;
+    resultBySubjectId.set(subjectId, result);
+  });
+
+  return subjects.map((subject) => {
+    const result = resultBySubjectId.get(String(subject.subject_id || "")) || null;
+    return {
+      id: result?.id || subject.id,
+      subjectId: subject.subject_id,
+      subjectName: cleanText(subject.subject_name, "Subject"),
+      classLabel,
+      status: result?.status || "pending",
+      totalScore: result?.total_score ?? 0,
+      grade: result?.grade ?? "--",
+      teacherName: cleanText(result?.teacher_name, "Teacher not assigned"),
+      resultId: result?.id || null,
+    };
+  });
 }
 
 function StudentSubjectsPage() {
+  const [student, setStudent] = useState(null);
+  const [subjects, setSubjects] = useState([]);
   const [results, setResults] = useState([]);
   const [viewMode, setViewMode] = useState("grid");
   const [isLoading, setIsLoading] = useState(true);
@@ -34,9 +60,26 @@ function StudentSubjectsPage() {
       setLoadError(null);
 
       try {
-        const response = await academicService.listMyResults();
+        const studentResponse = await studentService.getMyStudent();
         if (!mounted) return;
-        setResults(response?.items || []);
+
+        const studentProfile = studentResponse || null;
+        setStudent(studentProfile);
+
+        if (!studentProfile?.class_id) {
+          setSubjects([]);
+          setResults([]);
+          return;
+        }
+
+        const [subjectResponse, resultResponse] = await Promise.all([
+          academicService.listClassSubjects(studentProfile.class_id, { active_only: true }),
+          academicService.listMyResults(),
+        ]);
+
+        if (!mounted) return;
+        setSubjects(subjectResponse?.items || []);
+        setResults(resultResponse?.items || []);
       } catch (error) {
         if (mounted) setLoadError(getErrorMessage(error, "Failed to load subjects."));
       } finally {
@@ -53,6 +96,11 @@ function StudentSubjectsPage() {
 
   const context = useMemo(() => getAcademicContext(results, []), [results]);
   const isGridView = viewMode === "grid";
+  const classLabel = cleanText(student?.class_name, student?.class_id ? "Class" : "No class assigned");
+  const subjectCards = useMemo(
+    () => mergeSubjectCards(subjects, results, classLabel),
+    [subjects, results, classLabel]
+  );
 
   if (isLoading) {
     return (
@@ -66,7 +114,7 @@ function StudentSubjectsPage() {
     <DashboardLayout
       role="student"
       title="Subjects"
-      description={`${cleanText(context.sessionLabel, "No session")} / ${cleanText(context.termLabel, "No term")} / ${cleanText(context.classLabel, "No class")}`}
+      description={`${cleanText(context.sessionLabel, "No session")} / ${cleanText(context.termLabel, "No term")} / ${classLabel}`}
       actions={
         <div className="inline-flex rounded-2xl border border-border bg-surface p-1 shadow-sm">
           <Button
@@ -98,38 +146,42 @@ function StudentSubjectsPage() {
         </div>
       )}
 
-      {!loadError && results.length === 0 && (
+      {!loadError && subjectCards.length === 0 && (
         <Card className="p-5 sm:p-6">
           <EmptyState
             icon={BookOpen}
             title="No subjects available"
-            description="Subject results will appear here after your school publishes academic records."
+            description={
+              student?.class_id
+                ? "Your class has no active subjects yet, so there are no subject cards to show."
+                : "No class has been assigned to your student profile yet."
+            }
           />
         </Card>
       )}
 
-      {!loadError && results.length > 0 && (
+      {!loadError && subjectCards.length > 0 && (
         <section
           className={cn(
             "grid gap-4",
             isGridView ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "grid-cols-1"
           )}
         >
-          {results.map((result) => {
-            const subjectName = cleanText(result.subject_name, "Subject");
-            const classLabel = cleanText(result.class_name, cleanText(context.classLabel, "Class"));
-            const statusLabel = cleanText(result.status);
-            const totalScore = scoreSummary(result);
-            const grade = cleanText(result.grade, "-");
-            const teacherName = cleanText(result.teacher_name, "Teacher not assigned");
+          {subjectCards.map((card) => {
+            const statusLabel = cleanText(card.status, "Pending");
+            const totalScore = scoreSummary(card);
+            const grade = cleanText(card.grade, "--");
 
             return (
               <Card
-                key={result.id}
-                as={Link}
-                to={`/student/subjects/${result.id}`}
+                key={card.id}
+                as={card.resultId ? Link : "div"}
+                to={card.resultId ? `/student/subjects/${card.resultId}` : undefined}
                 className={cn(
-                  "group w-full overflow-hidden rounded-[1.5rem] border border-border/80 bg-surface p-0 text-left shadow-[0_1px_0_rgba(255,255,255,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-premium",
+                  "group w-full overflow-hidden rounded-[1.5rem] border border-border/80 bg-surface p-0 text-left shadow-[0_1px_0_rgba(255,255,255,0.04)] transition-all duration-200",
+                  card.resultId
+                    ? "hover:-translate-y-0.5 hover:border-border-strong hover:shadow-premium"
+                    : "cursor-default",
                   isGridView ? "min-h-[228px]" : ""
                 )}
               >
@@ -139,14 +191,18 @@ function StudentSubjectsPage() {
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-border/70 bg-surface-muted/25 text-primary">
                         <BookOpen className="h-5 w-5" />
                       </span>
-                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-text-faint" />
+                      {card.resultId ? (
+                        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-text-faint" />
+                      ) : (
+                        <span className="mt-1 text-[11px] font-medium text-text-faint">Awaiting marks</span>
+                      )}
                     </div>
 
                     <div className="mt-3 min-w-0">
-                      <h2 className="truncate text-base font-semibold text-text">{subjectName}</h2>
+                      <h2 className="truncate text-base font-semibold text-text">{card.subjectName}</h2>
                       <p className="mt-1 text-xs font-medium text-text-muted">{classLabel}</p>
                       <div className="mt-2">
-                        <Badge variant={statusVariant(result.status)}>{statusLabel}</Badge>
+                        <Badge variant={statusVariant(card.status)}>{statusLabel}</Badge>
                       </div>
                     </div>
 
@@ -169,7 +225,7 @@ function StudentSubjectsPage() {
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
                         Teacher
                       </p>
-                      <p className="mt-1 truncate text-sm font-semibold text-text">{teacherName}</p>
+                      <p className="mt-1 truncate text-sm font-semibold text-text">{card.teacherName}</p>
                     </div>
                   </div>
                 ) : (
@@ -181,14 +237,18 @@ function StudentSubjectsPage() {
                         </span>
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="truncate text-lg font-semibold text-text">{subjectName}</h2>
-                            <Badge variant={statusVariant(result.status)}>{statusLabel}</Badge>
+                            <h2 className="truncate text-lg font-semibold text-text">{card.subjectName}</h2>
+                            <Badge variant={statusVariant(card.status)}>{statusLabel}</Badge>
                           </div>
-                          <p className="mt-1 text-sm font-medium text-text-muted">{classLabel}</p>
-                          <p className="mt-2 text-sm text-text-muted">{teacherName}</p>
+                          <p className="mt-1 text-sm font-medium text-text-muted">{card.classLabel || classLabel}</p>
+                          <p className="mt-2 text-sm text-text-muted">{card.teacherName}</p>
                         </div>
                       </div>
-                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-text-faint" />
+                      {card.resultId ? (
+                        <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-text-faint" />
+                      ) : (
+                        <span className="mt-1 text-xs font-medium text-text-faint">Awaiting marks</span>
+                      )}
                     </div>
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -206,9 +266,11 @@ function StudentSubjectsPage() {
                       </div>
                       <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                          Tap to view
+                          Status
                         </p>
-                        <p className="mt-2 text-base font-semibold text-text">Full breakdown</p>
+                        <p className="mt-2 text-base font-semibold text-text">
+                          {card.resultId ? "Full breakdown" : "Awaiting marks"}
+                        </p>
                       </div>
                     </div>
                   </div>

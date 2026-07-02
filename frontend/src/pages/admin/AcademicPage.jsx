@@ -50,8 +50,8 @@ const sections = [
     icon: GraduationCap,
   },
   {
-    name: "Subject Assignments",
-    description: "Connect teachers to class-subject combinations before scores can be entered.",
+    name: "Teacher Assignments",
+    description: "Assign teachers to class-subject pairs offered by each class.",
     icon: Users,
   },
   {
@@ -61,7 +61,7 @@ const sections = [
   },
   {
     name: "Report Cards",
-    description: "Generate, publish, and print termly report cards for selected classes.",
+    description: "Generate immutable report card snapshots when all class scores are submitted.",
     icon: FileText,
   },
   {
@@ -74,7 +74,7 @@ const sections = [
 const blankSession = { name: "", start_date: "", end_date: "", is_current: false, is_active: true };
 const blankTerm = { academic_session_id: "", name: "first_term", start_date: "", end_date: "", is_current: false, is_active: true };
 const blankScale = { grade: "", min_score: "", max_score: "", remark: "", is_active: true };
-const blankAssignment = { class_id: "", subject_id: "", teacher_id: "", sort_order: "0", is_core: true, is_active: true };
+const blankAssignment = { class_id: "", class_subject_id: "", subject_id: "", teacher_id: "", is_core: true };
 const blankResult = { student_id: "", test_score: "", assessment_score: "", exam_score: "", status: "draft" };
 const blankReportCard = { student_id: "" };
 
@@ -95,6 +95,8 @@ function AcademicPage() {
   const [terms, setTerms] = useState([]);
   const [scales, setScales] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [classSubjects, setClassSubjects] = useState([]);
+  const [reportCardOverview, setReportCardOverview] = useState(null);
   const [results, setResults] = useState([]);
   const [reportCards, setReportCards] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -140,7 +142,7 @@ function AcademicPage() {
       academicService.listSessions(),
       academicService.listTerms(),
       academicService.listGradingScales(),
-      academicService.listSubjectAssignments(),
+      academicService.listTeacherAssignments(),
       academicService.listAdminResults(),
       reportCardService.listAdminReportCards(),
       classService.getClasses(),
@@ -239,8 +241,60 @@ function AcademicPage() {
   );
 
   const selectedAssignment = filteredAssignments.find(
-    (item) => item.class_id === filters.class_id && item.subject_id === filters.subject_id && item.is_active
+    (item) =>
+      item.class_id === filters.class_id &&
+      item.subject_id === filters.subject_id &&
+      item.is_active
   );
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadClassSubjects() {
+      if (!assignmentForm.class_id) {
+        if (mounted) setClassSubjects([]);
+        return;
+      }
+      try {
+        const response = await academicService.listClassSubjects(assignmentForm.class_id, { active_only: true });
+        if (mounted) setClassSubjects(response?.items || []);
+      } catch {
+        if (mounted) setClassSubjects([]);
+      }
+    }
+    loadClassSubjects();
+    return () => {
+      mounted = false;
+    };
+  }, [assignmentForm.class_id]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadOverview() {
+      if (
+        activeSection !== "Report Cards" ||
+        !filters.class_id ||
+        !filters.academic_session_id ||
+        !filters.academic_term_id
+      ) {
+        if (mounted) setReportCardOverview(null);
+        return;
+      }
+      try {
+        const response = await reportCardService.getClassOverview({
+          class_id: filters.class_id,
+          academic_session_id: filters.academic_session_id,
+          academic_term_id: filters.academic_term_id,
+        });
+        if (mounted) setReportCardOverview(response);
+      } catch {
+        if (mounted) setReportCardOverview(null);
+      }
+    }
+    loadOverview();
+    return () => {
+      mounted = false;
+    };
+  }, [activeSection, filters.class_id, filters.academic_session_id, filters.academic_term_id]);
 
   const visibleResults = useMemo(
     () =>
@@ -411,27 +465,27 @@ function AcademicPage() {
     setIsSaving("assignment");
     setError(null);
     try {
-      const payload = {
-        class_id: assignmentForm.class_id,
-        subject_id: assignmentForm.subject_id,
-        teacher_id: assignmentForm.teacher_id,
-        sort_order: Number(assignmentForm.sort_order || 0),
-        is_core: assignmentForm.is_core,
-        is_active: assignmentForm.is_active,
-      };
+      let classSubjectId = assignmentForm.class_subject_id;
+      if (!classSubjectId && assignmentForm.class_id && assignmentForm.subject_id) {
+        const createdSubject = await academicService.addClassSubject(assignmentForm.class_id, {
+          subject_id: assignmentForm.subject_id,
+          is_core: assignmentForm.is_core,
+        });
+        classSubjectId = createdSubject.id;
+      }
       const saved = editingAssignmentId
-        ? await academicService.updateSubjectAssignment(editingAssignmentId, {
-            teacher_id: payload.teacher_id,
-            sort_order: payload.sort_order,
-            is_core: payload.is_core,
-            is_active: payload.is_active,
+        ? await academicService.reassignTeacherAssignment(editingAssignmentId, {
+            teacher_id: assignmentForm.teacher_id,
           })
-        : await academicService.createSubjectAssignment(payload);
+        : await academicService.createTeacherAssignment({
+            class_subject_id: classSubjectId,
+            teacher_id: assignmentForm.teacher_id,
+          });
       setAssignments((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
       resetAssignmentForm();
-      showSuccess("Subject assignment saved.");
+      showSuccess("Teacher assignment saved.");
     } catch (err) {
-      const message = getErrorMessage(err, "Could not save subject assignment.");
+      const message = getErrorMessage(err, "Could not save teacher assignment.");
       setError(message);
       showError(message);
     } finally {
@@ -452,7 +506,7 @@ function AcademicPage() {
     try {
       const saved = await academicService.saveAdminResult({
         student_id: resultForm.student_id,
-        class_subject_teacher_id: selectedAssignment.id,
+        teacher_assignment_id: selectedAssignment.id,
         academic_session_id: filters.academic_session_id,
         academic_term_id: filters.academic_term_id,
         test_score: Number(resultForm.test_score || 0),
@@ -584,11 +638,10 @@ function AcademicPage() {
     setEditingAssignmentId(assignment.id);
     setAssignmentForm({
       class_id: assignment.class_id || "",
+      class_subject_id: assignment.class_subject_id || "",
       subject_id: assignment.subject_id || "",
       teacher_id: assignment.teacher_id || "",
-      sort_order: String(assignment.sort_order ?? 0),
-      is_core: assignment.is_core ?? true,
-      is_active: assignment.is_active ?? true,
+      is_core: true,
     });
     scrollToForm("academic-form-assignment");
   };
@@ -607,7 +660,7 @@ function AcademicPage() {
       test_score: result.test_score ?? "",
       assessment_score: result.assessment_score ?? "",
       exam_score: result.exam_score ?? "",
-      status: result.status === "locked" ? "published" : result.status || "draft",
+      status: result.status || "draft",
     });
     scrollToForm("academic-form-result");
   };
@@ -919,23 +972,30 @@ function AcademicPage() {
             </>
           ) : null}
 
-          {activeSection === "Subject Assignments" ? (
+          {activeSection === "Teacher Assignments" ? (
             <>
               <SectionCard
-                title="New subject assignment"
-                subtitle={editingAssignmentId ? "Update the selected assignment while preserving the shared form rhythm." : "Connect a class, subject, and teacher before result entry begins."}
+                title="New teacher assignment"
+                subtitle={editingAssignmentId ? "Reassign the teacher for this class-subject pair." : "Pick a class, subject offered by that class, and teacher."}
               >
                 <form id="academic-form-assignment" onSubmit={saveAssignment} className="form-grid">
                   <div className="form-grid-field">
-                    <SelectField label="Subject" value={assignmentForm.subject_id} onChange={(value) => setAssignmentForm((current) => ({ ...current, subject_id: value }))} required>
-                      <option value="">Select subject</option>
-                      {subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    <SelectField label="Class" value={assignmentForm.class_id} onChange={(value) => setAssignmentForm((current) => ({ ...current, class_id: value, class_subject_id: "", subject_id: "" }))} required>
+                      <option value="">Select class</option>
+                      {classes.map((item) => <option key={item.id} value={item.id}>{displayClass(item)}</option>)}
                     </SelectField>
                   </div>
                   <div className="form-grid-field">
-                    <SelectField label="Class" value={assignmentForm.class_id} onChange={(value) => setAssignmentForm((current) => ({ ...current, class_id: value }))} required>
-                      <option value="">Select class</option>
-                      {classes.map((item) => <option key={item.id} value={item.id}>{displayClass(item)}</option>)}
+                    <SelectField label="Subject" value={assignmentForm.class_subject_id || assignmentForm.subject_id} onChange={(value) => {
+                      const match = classSubjects.find((item) => item.id === value || item.subject_id === value);
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        class_subject_id: match?.id || "",
+                        subject_id: match?.subject_id || value,
+                      }));
+                    }} required>
+                      <option value="">Select subject</option>
+                      {classSubjects.map((item) => <option key={item.id} value={item.id}>{item.subject_name || item.subject_id}</option>)}
                     </SelectField>
                   </div>
                   <div className="form-grid-field">
@@ -945,43 +1005,31 @@ function AcademicPage() {
                     </SelectField>
                   </div>
                   <div className="form-grid-field">
-                    <TextField label="Sort order" type="number" min="0" value={assignmentForm.sort_order} onChange={(value) => setAssignmentForm((current) => ({ ...current, sort_order: value }))} />
-                  </div>
-                  <div className="form-grid-field">
                     <CheckboxField
                       label="Core subject"
                       checked={assignmentForm.is_core}
                       onChange={(value) => setAssignmentForm((current) => ({ ...current, is_core: value }))}
                     />
                   </div>
-                  <div className="form-grid-field">
-                    <CheckboxField
-                      label="Active"
-                      checked={assignmentForm.is_active}
-                      onChange={(value) => setAssignmentForm((current) => ({ ...current, is_active: value }))}
-                    />
-                  </div>
                   <div className="form-grid-actions">
                     {editingAssignmentId ? <button type="button" className="btn-ghost" onClick={resetAssignmentForm}>Cancel</button> : null}
                     <button type="submit" className="btn-create" disabled={isSaving === "assignment"}>
                       <Plus className="h-3.5 w-3.5" />
-                      Create
+                      {editingAssignmentId ? "Reassign" : "Assign"}
                     </button>
                   </div>
                 </form>
               </SectionCard>
 
-              <SectionCard title="All subject assignments" subtitle={`${assignments.length} subject assignment${assignments.length === 1 ? "" : "s"} linked across classes and teachers.`}>
+              <SectionCard title="All teacher assignments" subtitle={`${assignments.length} active class-subject teaching assignment${assignments.length === 1 ? "" : "s"}.`}>
                 <TableShell>
                   <table className="aw-table">
                     <thead>
                       <tr>
-                        <th>Name</th>
+                        <th>Subject</th>
                         <th>Class</th>
                         <th>Teacher</th>
                         <th>Status</th>
-                        <th>Core</th>
-                        <th>Sort order</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -992,8 +1040,6 @@ function AcademicPage() {
                           <td>{[item.class_name, item.class_arm].filter(Boolean).join(" ") || "-"}</td>
                           <td>{item.teacher_name || "-"}</td>
                           <td><StatusBadge tone={item.is_active ? "green" : "gray"} label={item.is_active ? "Active" : "Inactive"} /></td>
-                          <td><StatusBadge tone={item.is_core ? "blue" : "gray"} label={item.is_core ? "Primary" : "Pending"} /></td>
-                          <td>{cleanText(item.sort_order, "0")}</td>
                           <td>
                             <RowActions
                               onEdit={() => startAssignmentEdit(item)}
@@ -1002,11 +1048,13 @@ function AcademicPage() {
                                 setIsSaving(item.id);
                                 setError(null);
                                 try {
-                                  const saved = await academicService.updateSubjectAssignment(item.id, { is_active: !item.is_active });
+                                  const saved = item.is_active
+                                    ? await academicService.deactivateTeacherAssignment(item.id)
+                                    : item;
                                   setAssignments((current) => [saved, ...current.filter((entry) => entry.id !== saved.id)]);
-                                  showSuccess("Subject assignment updated.");
+                                  showSuccess("Teacher assignment updated.");
                                 } catch (err) {
-                                  setError(getErrorMessage(err, "Could not update subject assignment."));
+                                  setError(getErrorMessage(err, "Could not update teacher assignment."));
                                 } finally {
                                   setIsSaving("");
                                 }
@@ -1057,7 +1105,7 @@ function AcademicPage() {
                     <div className="form-grid-field">
                       <SelectField label="Status" value={resultForm.status} onChange={(value) => setResultForm((current) => ({ ...current, status: value }))}>
                         <option value="draft">Draft</option>
-                        <option value="published">Published</option>
+                        <option value="submitted">Submitted</option>
                       </SelectField>
                     </div>
                     <div className="form-grid-actions">
@@ -1129,43 +1177,144 @@ function AcademicPage() {
           {activeSection === "Report Cards" ? (
             <>
               <SectionCard
-                title="New report card"
-                subtitle="Choose the academic filters and a student, then generate a fresh report card record."
+                title="Class report card overview"
+                subtitle="One row per student: score completion, report card status, and admin actions."
               >
-                <form id="academic-form-report-card" onSubmit={generateReportCard} className="space-y-3">
-                  <FilterRow
-                    filters={filters}
-                    setFilters={setFilters}
-                    classes={classes}
-                    subjects={[]}
-                    sessions={sessions}
-                    terms={termsForSelectedSession}
-                  />
-                  <div className="form-grid">
-                    <div className="form-grid-field">
-                      <SelectField label="Student" value={reportCardForm.student_id} onChange={(value) => setReportCardForm({ student_id: value })} required>
-                        <option value="">Select student</option>
-                        {studentsForClass.map((item) => <option key={item.id} value={item.id}>{studentName(item)}{item.admission_number ? ` - ${item.admission_number}` : ""}</option>)}
-                      </SelectField>
-                    </div>
-                    <div className="form-grid-field">
-                      <ReadOnlyField label="Session" value={sessions.find((item) => item.id === filters.academic_session_id)?.name || "-"} />
-                    </div>
-                    <div className="form-grid-field">
-                      <ReadOnlyField label="Term" value={filters.academic_term_id ? displayTerm(terms.find((item) => item.id === filters.academic_term_id)?.name) : "-"} />
-                    </div>
-                    <div className="form-grid-actions">
-                      <button type="button" className="btn-ghost" onClick={resetReportCardForm}>Cancel</button>
-                      <button type="submit" className="btn-create" disabled={isSaving === "report-card"}>
-                        <Plus className="h-3.5 w-3.5" />
-                        Create
-                      </button>
-                    </div>
+                <FilterRow
+                  filters={filters}
+                  setFilters={setFilters}
+                  classes={classes}
+                  subjects={[]}
+                  sessions={sessions}
+                  terms={termsForSelectedSession}
+                />
+                {!reportCardOverview?.items?.length ? (
+                  <div className="sc-body pt-0">
+                    <EmptyState icon={FileText} title="Select class, session, and term" description="Choose filters above to review score completion and report card status for each student." />
                   </div>
-                </form>
+                ) : (
+                  <TableShell>
+                    <table className="aw-table">
+                      <thead>
+                        <tr>
+                          <th>Student</th>
+                          <th>Score completion</th>
+                          <th>Report card status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportCardOverview.items.map((row) => {
+                          const complete = row.submitted_count >= row.expected_count && row.expected_count > 0;
+                          const statusLabel = row.report_card_id
+                            ? `Published v${row.report_card_version}${row.is_outdated ? " · Outdated" : ""}`
+                            : "Not generated";
+                          return (
+                            <tr key={row.student_id}>
+                              <td className="primary-cell">{row.student_name || row.admission_number || "Student"}</td>
+                              <td>{`${row.submitted_count}/${row.expected_count} subjects submitted`}</td>
+                              <td>
+                                <StatusBadge
+                                  tone={row.is_outdated ? "gray" : row.report_card_id ? "green" : "gray"}
+                                  label={statusLabel}
+                                />
+                              </td>
+                              <td>
+                                <div className="aw-actions">
+                                  <RowActions
+                                    rightLabel={row.report_card_id ? "View" : "Generate"}
+                                    onRight={async () => {
+                                      setIsSaving(row.student_id);
+                                      try {
+                                        if (row.report_card_id) {
+                                          await reportCardService.printAdminReportCard(row.report_card_id);
+                                        } else {
+                                          const card = await reportCardService.generateReportCard({
+                                            student_id: row.student_id,
+                                            academic_session_id: filters.academic_session_id,
+                                            academic_term_id: filters.academic_term_id,
+                                          });
+                                          setReportCards((current) => [card, ...current.filter((item) => item.id !== card.id)]);
+                                          showSuccess("Report card generated.");
+                                        }
+                                      } catch (err) {
+                                        showError(getErrorMessage(err, "Report card action failed."));
+                                      } finally {
+                                        setIsSaving("");
+                                      }
+                                    }}
+                                    disabled={!complete && !row.report_card_id || isSaving === row.student_id}
+                                  />
+                                  {row.report_card_id && (row.is_outdated || complete) ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={isSaving === `${row.student_id}-regen`}
+                                      onClick={async () => {
+                                        setIsSaving(`${row.student_id}-regen`);
+                                        try {
+                                          const card = await reportCardService.regenerateReportCard(row.report_card_id);
+                                          setReportCards((current) => [card, ...current.filter((item) => item.id !== card.id)]);
+                                          showSuccess("Report card regenerated.");
+                                        } catch (err) {
+                                          showError(getErrorMessage(err, "Could not regenerate report card."));
+                                        } finally {
+                                          setIsSaving("");
+                                        }
+                                      }}
+                                    >
+                                      <RefreshCw className="h-3.5 w-3.5" />
+                                      Regenerate
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </TableShell>
+                )}
               </SectionCard>
 
-              <SectionCard title="All report cards" subtitle={`${visibleReportCards.length} report card${visibleReportCards.length === 1 ? "" : "s"} match the current academic filters.`}>
+              <SectionCard
+                title="Bulk generate for class"
+                subtitle="Generate report cards for every score-complete student in the selected class."
+              >
+                <div className="form-grid-actions">
+                  <button
+                    type="button"
+                    className="btn-create"
+                    disabled={!filters.class_id || isSaving === "bulk-report-card"}
+                    onClick={async () => {
+                      setIsSaving("bulk-report-card");
+                      try {
+                        const response = await reportCardService.generateReportCard({
+                          class_id: filters.class_id,
+                          academic_session_id: filters.academic_session_id,
+                          academic_term_id: filters.academic_term_id,
+                        });
+                        if (response?.generated?.length) {
+                          setReportCards((current) => [...response.generated, ...current]);
+                        }
+                        showSuccess(`Generated ${response?.generated?.length || 0} report cards. Skipped ${response?.skipped?.length || 0}.`);
+                      } catch (err) {
+                        showError(getErrorMessage(err, "Bulk generation failed."));
+                      } finally {
+                        setIsSaving("");
+                      }
+                    }}
+                  >
+                    Generate for class
+                  </button>
+                </div>
+              </SectionCard>
+              <SectionCard
+                title="All report cards"
+                subtitle="Review generated report cards and publish or print them."
+              >
                 {visibleReportCards.length === 0 ? (
                   <div className="sc-body pt-0">
                     <EmptyState icon={FileText} title="No report cards found" description="Generate a report card with the form above for the selected class and term." />
@@ -1257,7 +1406,7 @@ function AcademicPage() {
                             <td className="primary-cell">{item.label}</td>
                             <td>-</td>
                             <td>-</td>
-                            <td><StatusBadge tone="gray" label="Pending" /></td>
+                            <td><StatusBadge tone="blue" label="Found" /></td>
                             <td>{item.role}</td>
                             <td>{[item.admission_number, item.staff_id, item.class_name, item.subject_name, item.email, item.metadata].filter(Boolean).join(" | ") || "Record"}</td>
                             <td>

@@ -189,7 +189,7 @@ function AdminDashboardPage() {
             />
           </section>
 
-          <section className="dashboard-grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <section className="dashboard-grid md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
             <AnalyticsLineChart
               title="Performance Trend"
               description="Average tenant performance by academic term."
@@ -197,29 +197,31 @@ function AdminDashboardPage() {
               emptyMessage="No term performance trend is available yet."
             />
 
-            <Card className="p-5 sm:p-6">
+            <Card className="flex h-full flex-col p-5 sm:p-6">
               <h2 className="section-title">Operational Snapshot</h2>
               {analytics ? (
                 <>
                   <p className="mt-1 text-sm text-text-muted">
                     A compact health readout for onboarding, account status, and report-card release progress.
                   </p>
-                  <div className="mt-4 grid gap-3">
-                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Student profiles complete</p>
-                      <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_complete ?? 0}</p>
-                    </div>
-                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Student profiles incomplete</p>
-                      <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_incomplete ?? 0}</p>
-                    </div>
-                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending teacher accounts</p>
-                      <p className="mt-2 text-lg font-semibold text-text">{stats.pending_teacher_accounts ?? 0}</p>
-                    </div>
-                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending parent accounts</p>
-                      <p className="mt-2 text-lg font-semibold text-text">{stats.pending_parent_accounts ?? 0}</p>
+                  <div className="mt-auto pt-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Student profiles complete</p>
+                        <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_complete ?? 0}</p>
+                      </div>
+                      <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Student profiles incomplete</p>
+                        <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_incomplete ?? 0}</p>
+                      </div>
+                      <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending teacher accounts</p>
+                        <p className="mt-2 text-lg font-semibold text-text">{stats.pending_teacher_accounts ?? 0}</p>
+                      </div>
+                      <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending parent accounts</p>
+                        <p className="mt-2 text-lg font-semibold text-text">{stats.pending_parent_accounts ?? 0}</p>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -232,7 +234,7 @@ function AdminDashboardPage() {
             </Card>
           </section>
 
-          <section className="dashboard-grid xl:grid-cols-3">
+          <section className="dashboard-grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <AnalyticsBarChart
               title="User Population Breakdown"
               description="Students, teachers, and parents currently in this school."
@@ -249,9 +251,6 @@ function AdminDashboardPage() {
               data={charts.account_status_overview || []}
               emptyMessage="No account status data available yet."
             />
-          </section>
-
-          <section className="dashboard-grid xl:grid-cols-3">
             <AnalyticsDonutChart
               title="Announcements By Category"
               description="Announcement categories posted within this school."
@@ -270,9 +269,6 @@ function AdminDashboardPage() {
               data={reportCardStatusChart(reportCards)}
               emptyMessage="No report cards have been generated yet."
             />
-          </section>
-
-          <section className="dashboard-grid xl:grid-cols-3">
             <AnalyticsBarChart
               title="Subject Performance"
               description="Average score by subject."
@@ -291,9 +287,6 @@ function AdminDashboardPage() {
               data={teacherSubmissionProgress}
               emptyMessage="No teacher submission data available yet."
             />
-          </section>
-
-          <section className="dashboard-grid xl:grid-cols-3">
             <AnalyticsDonutChart
               title="Grade Distribution"
               description="All recorded academic grades in this tenant."

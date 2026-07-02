@@ -55,11 +55,6 @@ class TeacherCreate(InputBase):
     qualification: str | None = Field(default=None, max_length=100)
     specialization: str | None = Field(default=None, max_length=150)
 
-    subject_ids: list[uuid.UUID] | None = Field(
-        default=None,
-        description="Initial list of subject IDs assigned to this teacher.",
-    )
-
     @field_validator(
         "first_name",
         "last_name",
@@ -92,11 +87,6 @@ class TeacherUpdate(InputBase):
     status: TeacherStatus | None = None
     is_verified: bool | None = None
     is_active: bool | None = None
-
-    subject_ids: list[uuid.UUID] | None = Field(
-        default=None,
-        description="Full replacement list of subject IDs assigned to this teacher.",
-    )
 
     @field_validator(
         "first_name",

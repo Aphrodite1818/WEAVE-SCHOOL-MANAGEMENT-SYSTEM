@@ -1,8 +1,9 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum as PyEnum
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey, Index, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,15 +20,17 @@ class ReportCard(BaseModel):
     __tablename__ = "report_cards"
 
     __table_args__ = (
-        UniqueConstraint(
+        Index("ix_report_cards_tenant_student", "tenant_id", "student_id"),
+        Index("ix_report_cards_tenant_status", "tenant_id", "status"),
+        Index(
+            "ix_report_cards_active_student_period",
             "tenant_id",
             "student_id",
             "academic_session_id",
             "academic_term_id",
-            name="uq_report_cards_student_period",
+            unique=True,
+            postgresql_where="superseded_at IS NULL",
         ),
-        Index("ix_report_cards_tenant_student", "tenant_id", "student_id"),
-        Index("ix_report_cards_tenant_status", "tenant_id", "status"),
     )
 
     student_id: Mapped[uuid.UUID] = mapped_column(
@@ -52,6 +55,24 @@ class ReportCard(BaseModel):
     )
     total_score: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False)
     average_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    position_out_of: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    class_teacher_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    principal_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    is_outdated: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[ReportCardStatus] = mapped_column(
         SQLEnum(
             ReportCardStatus,

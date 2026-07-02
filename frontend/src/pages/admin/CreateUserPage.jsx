@@ -3,9 +3,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
-import MultiSelect from "../../components/ui/MultiSelect";
 import { classService } from "../../services/academicsService";
-import { subjectService } from "../../services/subject.service";
 import { studentService } from "../../services/studentService";
 import { teacherService } from "../../services/teacherService";
 import { parentService } from "../../services/parentService";
@@ -25,7 +23,6 @@ const INITIAL_TEACHER_FORM = {
   first_name: "",
   last_name: "",
   staff_id: "",
-  subject_ids: [],
 };
 
 const INITIAL_PARENT_FORM = {
@@ -53,7 +50,6 @@ function TabButton({ active, children, onClick }) {
 function CreateUserPage() {
   const [activeTab, setActiveTab] = useState("student");
   const [classOptions, setClassOptions] = useState([]);
-  const [subjectOptions, setSubjectOptions] = useState([]);
   const [studentForm, setStudentForm] = useState(INITIAL_STUDENT_FORM);
   const [teacherForm, setTeacherForm] = useState(INITIAL_TEACHER_FORM);
   const [parentForm, setParentForm] = useState(INITIAL_PARENT_FORM);
@@ -70,9 +66,8 @@ function CreateUserPage() {
     async function loadContext() {
       setIsLoadingContext(true);
       try {
-        const [classesResponse, subjectsResponse] = await Promise.all([
+        const [classesResponse] = await Promise.all([
           classService.getClasses({ limit: 100 }),
-          subjectService.getSubjects({ limit: 100, isActive: true }),
         ]);
 
         if (!mounted) return;
@@ -83,15 +78,9 @@ function CreateUserPage() {
             label: [item.name, item.arm].filter(Boolean).join(" ") || "Unnamed class",
           }))
         );
-        setSubjectOptions(
-          (subjectsResponse?.items || []).map((item) => ({
-            value: item.id,
-            label: [item.name, item.code ? `(${item.code})` : ""].filter(Boolean).join(" "),
-          }))
-        );
       } catch (err) {
         if (mounted) {
-          setError(getErrorMessage(err, "Failed to load class and subject options."));
+          setError(getErrorMessage(err, "Failed to load class options."));
         }
       } finally {
         if (mounted) setIsLoadingContext(false);
@@ -160,7 +149,6 @@ function CreateUserPage() {
           first_name: teacherForm.first_name || null,
           last_name: teacherForm.last_name || null,
           staff_id: teacherForm.staff_id || null,
-          subject_ids: teacherForm.subject_ids,
         });
         setTeacherForm(INITIAL_TEACHER_FORM);
         setSuccessPayload({ type: "teacher", result });
@@ -253,16 +241,6 @@ function CreateUserPage() {
         value={teacherForm.staff_id}
         onChange={handleTeacherChange}
         error={fieldErrors.staff_id}
-      />
-      <MultiSelect
-        label="Subjects"
-        name="subject_ids"
-        value={teacherForm.subject_ids}
-        options={subjectOptions}
-        placeholder="Search subjects"
-        searchPlaceholder="Search subjects"
-        error={fieldErrors.subject_ids}
-        onChange={handleTeacherChange}
       />
     </>
   );
