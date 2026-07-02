@@ -41,10 +41,15 @@ function StatCard({
             {label}
           </p>
           {valueBadge ? (
-            <div className="mt-2">
+            <div className="mt-2 max-w-full">
               <Badge
                 variant={valueBadge.variant || "success"}
-                className={cn("px-3 py-1.5 text-xs sm:text-sm", valueBadge.className)}
+                className={cn(
+                  compact
+                    ? "max-w-full whitespace-nowrap px-2 py-1 text-[9px] font-semibold leading-none sm:px-2.5 sm:text-[10px]"
+                    : "max-w-full whitespace-nowrap px-2.5 py-1 text-[10px] font-semibold leading-none sm:px-3 sm:py-1.5 sm:text-[11px]",
+                  valueBadge.className
+                )}
               >
                 {valueBadge.label}
               </Badge>
@@ -54,7 +59,7 @@ function StatCard({
               className={cn(
                 "mt-1 line-clamp-2 font-semibold leading-tight tracking-tight text-text sm:mt-1.5",
                 compact
-                  ? "text-base sm:text-xl md:text-2xl"
+                  ? "text-[1.7rem] leading-[0.95] sm:text-[2.15rem] md:text-[2.45rem]"
                   : "text-lg sm:text-2xl md:text-3xl lg:text-4xl"
               )}
               title={typeof value === 'string' ? value : undefined}

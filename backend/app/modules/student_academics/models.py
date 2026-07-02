@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     UUID,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -175,6 +176,15 @@ class ClassSubject(BaseModel):
 
 class TeacherAssignment(BaseModel):
     __tablename__ = "teacher_assignments"
+
+    __table_args__ = (
+        Index(
+            "uq_teacher_assignment_active_class_subject",
+            "class_subject_id",
+            unique=True,
+            postgresql_where=text("is_active = true"),
+        ),
+    )
 
     class_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID,

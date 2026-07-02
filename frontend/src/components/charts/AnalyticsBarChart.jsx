@@ -26,14 +26,14 @@ function AnalyticsBarChart({
   const hasVisibleValues = items.some((item) => Number(item?.[valueKey]) > 0);
 
   return (
-    <div className="flex h-[30rem] min-w-0 flex-col overflow-hidden rounded-3xl border border-border bg-surface p-4 sm:p-5">
+    <div className="dashboard-chart-card">
       <div>
         <h3 className="text-base font-semibold text-text">{title}</h3>
         {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
       </div>
 
       {items.length === 0 ? (
-        <div className="mt-5 flex min-h-0 flex-1 items-center rounded-2xl border border-dashed border-border bg-surface-muted/40 px-4 py-10 text-center text-sm text-text-muted">
+        <div className="dashboard-chart-empty">
           {emptyMessage}
         </div>
       ) : !hasVisibleValues ? (
@@ -58,7 +58,7 @@ function AnalyticsBarChart({
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={items} margin={{ left: 0, right: 12, top: 8, bottom: 24 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
-              <XAxis dataKey={labelKey} tickLine={false} axisLine={false} tickMargin={10} tickFormatter={formatChartLabel} angle={-45} textAnchor="end" height={100} />
+              <XAxis dataKey={labelKey} tickLine={false} axisLine={false} tickMargin={10} tickFormatter={formatChartLabel} angle={-30} textAnchor="end" height={84} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
               <Tooltip />
               <Bar dataKey={valueKey} fill="#0f766e" radius={[10, 10, 0, 0]} />

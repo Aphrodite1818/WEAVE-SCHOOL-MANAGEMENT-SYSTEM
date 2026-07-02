@@ -114,23 +114,61 @@ function ParentDashboardPage() {
 
       {!loadError && (
         <>
-          <Card className="p-5 sm:p-6">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold text-text sm:text-2xl">
-                Family overview for {selectedChildRecord ? displayName(selectedChildRecord.student) : firstName}
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-                Switch the selected child here, then use the sidebar for linking, results, report cards, and notices.
-              </p>
-            </div>
+          <section className="dashboard-grid xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
+            <Card className="p-5 sm:p-6">
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold text-text sm:text-2xl">
+                  Family overview for {selectedChildRecord ? displayName(selectedChildRecord.student) : firstName}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+                  Switch the selected child here, then use the sidebar for linking, results, report cards, and notices.
+                </p>
+              </div>
 
-            <ParentChildSelector
-              linkedChildren={children}
-              selectedChildId={selectedChildId}
-              onSelectChild={setSelectedChildId}
-              academicLabel={selectedChildAcademicLabel}
-            />
-          </Card>
+              <ParentChildSelector
+                linkedChildren={children}
+                selectedChildId={selectedChildId}
+                onSelectChild={setSelectedChildId}
+                academicLabel={selectedChildAcademicLabel}
+              />
+            </Card>
+
+            <Card className="flex h-full flex-col p-5 sm:p-6">
+              <div>
+                <h3 className="section-title">Selected child snapshot</h3>
+                <p className="mt-1 text-sm text-text-muted">
+                  A quick current-child summary so the page feels anchored before the charts below.
+                </p>
+              </div>
+
+              <div className="dashboard-kpi-grid mt-auto pt-4 xl:grid-cols-1 2xl:grid-cols-2">
+                <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Selected child</p>
+                  <p className="mt-2 text-base font-semibold text-text">
+                    {selectedChildRecord ? displayName(selectedChildRecord.student) : "No child selected"}
+                  </p>
+                </div>
+                <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Latest average</p>
+                  <p className="mt-2 text-base font-semibold text-text">
+                    {latestReportCard ? cleanText(latestReportCard.average_score) : cleanText(childAverage, "-")}
+                  </p>
+                </div>
+                <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Strongest subject</p>
+                  <p className="mt-2 text-base font-semibold text-text">
+                    {subjectHighlights.best?.label || "Awaiting results"}
+                  </p>
+                </div>
+                <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Needs support</p>
+                  <p className="mt-2 text-base font-semibold text-text">
+                    {subjectHighlights.weakest?.label || "No weak spot yet"}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </section>
 
           <section className="stat-grid stat-grid-five">
             <StatCard
@@ -175,7 +213,7 @@ function ParentDashboardPage() {
             />
           </section>
 
-          <section className="dashboard-grid xl:grid-cols-3">
+          <section className="dashboard-grid xl:grid-cols-2">
             <AnalyticsLineChart
               title="Performance Trend"
               description="Average score by academic term for the selected child."
@@ -196,7 +234,7 @@ function ParentDashboardPage() {
             />
           </section>
 
-          <section className="dashboard-grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <section className="dashboard-grid xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
             <Card className="flex h-full flex-col p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -215,7 +253,7 @@ function ParentDashboardPage() {
               {latestReportCard ? (
                 <>
                   <div className="mt-auto pt-4">
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="dashboard-kpi-grid sm:grid-cols-3">
                       <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Average</p>
                         <p className="mt-2 text-lg font-semibold text-text">

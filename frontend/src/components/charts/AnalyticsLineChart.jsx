@@ -26,14 +26,14 @@ function AnalyticsLineChart({
   const items = normalizeItems(data, valueKey);
 
   return (
-    <div className="flex h-[28rem] min-w-0 flex-col overflow-hidden rounded-3xl border border-border bg-surface p-4 sm:p-5">
+    <div className="dashboard-chart-card">
       <div>
         <h3 className="text-base font-semibold text-text">{title}</h3>
         {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
       </div>
 
       {items.length === 0 ? (
-        <div className="mt-5 flex min-h-0 flex-1 items-center rounded-2xl border border-dashed border-border bg-surface-muted/40 px-4 py-10 text-center text-sm text-text-muted">
+        <div className="dashboard-chart-empty">
           {emptyMessage}
         </div>
       ) : (
@@ -47,9 +47,9 @@ function AnalyticsLineChart({
                 axisLine={false}
                 tickMargin={10}
                 tickFormatter={formatChartLabel}
-                angle={-45}
+                angle={-30}
                 textAnchor="end"
-                height={100}
+                height={84}
               />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
               <Tooltip

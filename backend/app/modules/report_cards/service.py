@@ -180,7 +180,19 @@ class ReportCardService:
 
         for result in results:
             subject = await SubjectRepository.get_subject_by_id(db, actor.tenant_id, result.subject_id)
-            teacher = await TeacherRepository.get_teacher_by_id(db, actor.tenant_id, result.teacher_id)
+            teacher = None
+            if result.teacher_assignment_id is not None:
+                teacher_assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    assignment_id=result.teacher_assignment_id,
+                )
+                if teacher_assignment is not None:
+                    teacher = await TeacherRepository.get_teacher_by_id(
+                        db, actor.tenant_id, teacher_assignment.teacher_id
+                    )
+            if teacher is None:
+                teacher = await TeacherRepository.get_teacher_by_id(db, actor.tenant_id, result.teacher_id)
             teacher_name = (
                 " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip()
                 if teacher

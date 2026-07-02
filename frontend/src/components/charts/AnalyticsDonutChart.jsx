@@ -19,14 +19,14 @@ function AnalyticsDonutChart({
   const total = items.reduce((sum, item) => sum + Number(item?.[valueKey] || 0), 0);
 
   return (
-    <div className="flex h-[30rem] min-w-0 flex-col overflow-hidden rounded-3xl border border-border bg-surface p-4 sm:p-5">
+    <div className="dashboard-chart-card">
       <div>
         <h3 className="text-base font-semibold text-text">{title}</h3>
         {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
       </div>
 
       {items.length === 0 ? (
-        <div className="mt-5 flex min-h-0 flex-1 items-center rounded-2xl border border-dashed border-border bg-surface-muted/40 px-4 py-10 text-center text-sm text-text-muted">
+        <div className="dashboard-chart-empty">
           {emptyMessage}
         </div>
       ) : (

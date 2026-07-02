@@ -36,36 +36,45 @@ function BottomNav({ role, onOpenMenu }) {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 flex min-h-16 items-center justify-around border-t border-border bg-surface/95 px-2 pb-safe backdrop-blur-xl shadow-[0_-10px_30px_rgba(15,23,42,0.08)] md:hidden"
+      className="fixed inset-x-0 bottom-4 z-40 px-3 pb-safe md:hidden"
       aria-label="Primary mobile navigation"
     >
-      {items.map((item) => {
-        const Icon = item.icon;
-        const isActive = location.pathname === item.to || (item.to !== "/" && location.pathname.startsWith(`${item.to}/`));
-        return (
-          <Link
-            key={item.label}
-            to={item.to}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 transition-colors",
-              isActive ? "bg-primary-subtle text-primary" : "text-text-muted hover:bg-surface-muted hover:text-text"
-            )}
-          >
-            <Icon className={cn("h-5 w-5", isActive && "fill-primary/20")} />
-            <span className="max-w-full truncate text-[10px] font-bold">{item.label}</span>
-          </Link>
-        );
-      })}
-      <button
-        type="button"
-        onClick={onOpenMenu}
-        className="flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-text-muted transition-colors hover:bg-surface-muted hover:text-text"
-        aria-label="Open full navigation menu"
-      >
-        <Menu className="h-5 w-5" />
-        <span className="text-[10px] font-bold">Menu</span>
-      </button>
+      <div className="mx-auto flex w-full max-w-[27rem] items-center gap-1.5 rounded-full border border-border/70 bg-surface/95 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            location.pathname === item.to ||
+            (item.to !== "/" && location.pathname.startsWith(`${item.to}/`));
+
+          return (
+            <Link
+              key={item.label}
+              to={item.to}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-center transition-all duration-200",
+                isActive
+                  ? "bg-surface-raised text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_8px_24px_rgba(15,23,42,0.14)]"
+                  : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
+              )}
+            >
+              <Icon className={cn("h-5 w-5 shrink-0", isActive && "text-primary")} />
+              <span className={cn("max-w-full truncate text-[10px] font-bold", isActive && "text-text")}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onOpenMenu}
+          className="flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-text-muted transition-all duration-200 hover:bg-surface-muted/80 hover:text-text"
+          aria-label="Open full navigation menu"
+        >
+          <Menu className="h-5 w-5 shrink-0" />
+          <span className="text-[10px] font-bold">Menu</span>
+        </button>
+      </div>
     </nav>
   );
 }

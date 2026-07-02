@@ -698,9 +698,9 @@ function DashboardLayout({
           schoolName={schoolName}
         />
 
-        <main id="dashboard-content" className="px-4 py-4 pb-24 sm:px-6 sm:py-5 md:px-6 md:py-5 lg:px-8 lg:py-6 md:pb-6">
-          <div className="mx-auto w-full max-w-[1400px] section-gap">
-            <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-start md:justify-between lg:items-center">
+        <main id="dashboard-content" className="px-3 py-4 pb-24 sm:px-5 sm:py-5 md:px-6 md:py-6 md:pb-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-[1320px] flex-col section-gap">
+            <div className="flex flex-col gap-3 rounded-[1.6rem] border border-border/60 bg-surface/65 p-4 shadow-sm backdrop-blur-sm sm:gap-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between lg:p-6">
               <div className="min-w-0">
                 <h1 className="dashboard-title">
                   {pageTitle}
@@ -712,7 +712,7 @@ function DashboardLayout({
                 )}
               </div>
               {actions && (
-                <div className="flex flex-wrap gap-2 [&_.btn-base]:min-h-10 md:[&_.btn-base]:min-h-10">
+                <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end [&_.btn-base]:min-h-10 [&_a]:flex-1 sm:[&_a]:flex-none">
                   {actions}
                 </div>
               )}

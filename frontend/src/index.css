@@ -114,11 +114,19 @@
   }
 
   .dashboard-grid {
-    @apply grid gap-4 sm:gap-5 xl:gap-5;
+    @apply grid gap-4 sm:gap-5 lg:gap-6;
+  }
+
+  .dashboard-chart-card {
+    @apply flex h-[24rem] min-w-0 flex-col overflow-hidden rounded-[1.6rem] border border-border bg-surface p-4 sm:h-[26rem] sm:rounded-[1.75rem] sm:p-5 lg:h-[28rem];
+  }
+
+  .dashboard-chart-empty {
+    @apply mt-5 flex min-h-0 flex-1 items-center rounded-2xl border border-dashed border-border bg-surface-muted/40 px-4 py-10 text-center text-sm text-text-muted;
   }
 
   .stat-grid {
-    @apply grid grid-cols-2 gap-2 min-[380px]:gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4;
+    @apply grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4;
   }
 
   .stat-grid-four {
@@ -130,7 +138,15 @@
   }
 
   .stat-grid-six {
-    @apply min-[420px]:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6;
+    @apply md:grid-cols-3 xl:grid-cols-6;
+  }
+
+  .dashboard-kpi-grid {
+    @apply grid grid-cols-2 gap-3 sm:gap-4;
+  }
+
+  .dashboard-kpi-grid-four {
+    @apply xl:grid-cols-4;
   }
 
   .dashboard-title {
@@ -138,7 +154,7 @@
   }
 
   .dashboard-subtitle {
-    @apply mt-1.5 max-w-3xl text-sm leading-6 text-text-muted sm:mt-2 hidden md:block;
+    @apply mt-1.5 max-w-3xl text-sm leading-6 text-text-muted sm:mt-2;
   }
 
   .section-title {
@@ -146,7 +162,7 @@
   }
 
   .section-gap {
-    @apply space-y-4 sm:space-y-5 lg:space-y-6;
+    @apply space-y-5 sm:space-y-6 lg:space-y-7;
   }
 
   .nav-item {

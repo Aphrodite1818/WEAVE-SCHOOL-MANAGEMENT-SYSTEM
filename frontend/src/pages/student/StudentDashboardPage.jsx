@@ -189,57 +189,105 @@ function StudentDashboardPage() {
 
       {!loadError && student && (
         <>
-          <Card className="overflow-hidden p-5 sm:p-6">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)]">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={statusVariant(student.profile_status)}>
-                    {cleanText(student.profile_status, "profile pending")}
-                  </Badge>
-                  <Badge variant="info">
-                    {cleanText(dashboardData.context.sessionLabel, "No session")} /{" "}
-                    {cleanText(dashboardData.context.termLabel, "No term")}
-                  </Badge>
+          <section className="dashboard-grid xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
+            <Card className="overflow-hidden p-5 sm:p-6">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={statusVariant(student.profile_status)}>
+                      {cleanText(student.profile_status, "profile pending")}
+                    </Badge>
+                    <Badge variant="info">
+                      {cleanText(dashboardData.context.sessionLabel, "No session")} /{" "}
+                      {cleanText(dashboardData.context.termLabel, "No term")}
+                    </Badge>
+                  </div>
+                  <h2 className="mt-3 text-xl font-semibold leading-tight text-text sm:text-2xl">
+                    Welcome back, {displayName(student) || firstName}
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+                    {cleanText(
+                      dashboardData.context.classLabel,
+                      student.class_id ? "Class assigned" : "No class assigned"
+                    )}
+                  </p>
                 </div>
-                <h2 className="mt-3 text-xl font-semibold leading-tight text-text sm:text-2xl">
-                  Welcome back, {displayName(student) || firstName}
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-                  {cleanText(
-                    dashboardData.context.classLabel,
-                    student.class_id ? "Class assigned" : "No class assigned"
-                  )}
+
+                <div className="dashboard-kpi-grid xl:grid-cols-1">
+                  <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Current class
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-text">
+                      {cleanText(dashboardData.context.classLabel, "Not assigned")}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Latest term
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-text">
+                      {cleanText(dashboardData.context.termLabel, "No term")}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Parent approvals
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-text">
+                      {dashboardData.pendingParentRequests.length} pending
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="flex h-full flex-col p-5 sm:p-6">
+              <div>
+                <h3 className="section-title">Academic snapshot</h3>
+                <p className="mt-1 text-sm text-text-muted">
+                  A focused summary card so the dashboard opens with context before deeper charts.
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+              <div className="dashboard-kpi-grid mt-auto pt-4 xl:grid-cols-1 2xl:grid-cols-2">
                 <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                    Current class
+                    Current average
                   </p>
-                  <p className="mt-2 text-sm font-semibold text-text">
-                    {cleanText(dashboardData.context.classLabel, "Not assigned")}
+                  <p className="mt-2 text-lg font-semibold text-text">
+                    {hasValue(dashboardData.currentAverage)
+                      ? formatMetricNumber(dashboardData.currentAverage)
+                      : "-"}
                   </p>
                 </div>
                 <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                    Latest term
+                    Subjects tracked
                   </p>
-                  <p className="mt-2 text-sm font-semibold text-text">
-                    {cleanText(dashboardData.context.termLabel, "No term")}
+                  <p className="mt-2 text-lg font-semibold text-text">{dashboardData.subjectsCount}</p>
+                </div>
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Published results
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-text">
+                    {dashboardData.publishedResults.length}
                   </p>
                 </div>
                 <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                    Parent approvals
+                    Latest report
                   </p>
-                  <p className="mt-2 text-sm font-semibold text-text">
-                    {dashboardData.pendingParentRequests.length} pending
+                  <p className="mt-2 text-lg font-semibold text-text">
+                    {dashboardData.latestReportCard
+                      ? cleanText(dashboardData.latestReportCard.academic_term_name, "Published")
+                      : "Awaiting release"}
                   </p>
                 </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </section>
 
           <section className="stat-grid stat-grid-six">
             <StatCard
@@ -331,7 +379,7 @@ function StudentDashboardPage() {
             </section>
           )}
 
-          <section className="dashboard-grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)]">
+          <section className="dashboard-grid xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
             <Card className="flex h-full flex-col p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -349,7 +397,7 @@ function StudentDashboardPage() {
 
               {dashboardData.latestReportCard ? (
                 <>
-                  <div className="mt-auto pt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="dashboard-kpi-grid mt-auto pt-4 sm:grid-cols-3">
                     <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Average</p>
                       <p className="mt-2 text-xl font-semibold text-text">
@@ -441,7 +489,7 @@ function StudentDashboardPage() {
                 </div>
               </div>
 
-              <div className="mt-auto pt-4 grid gap-3 sm:grid-cols-2">
+              <div className="dashboard-kpi-grid mt-auto pt-4">
                 <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                     Published results

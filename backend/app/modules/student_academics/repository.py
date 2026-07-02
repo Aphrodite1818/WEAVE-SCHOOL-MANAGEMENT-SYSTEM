@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.student_academics.models import (
@@ -650,16 +650,30 @@ class StudentAcademicRepository:
         tenant_id: uuid.UUID,
         class_subject_id: uuid.UUID,
     ) -> int:
+        class_subject = await db.execute(
+            select(ClassSubject).where(
+                ClassSubject.tenant_id == tenant_id,
+                ClassSubject.id == class_subject_id,
+            )
+        )
+        class_subject_row = class_subject.scalar_one_or_none()
+        if class_subject_row is None:
+            return 0
+
         result = await db.execute(
             select(func.count())
             .select_from(StudentSubjectResult)
-            .join(
-                TeacherAssignment,
-                TeacherAssignment.id == StudentSubjectResult.teacher_assignment_id,
-            )
+            .join(TeacherAssignment, TeacherAssignment.id == StudentSubjectResult.teacher_assignment_id, isouter=True)
+            .join(ClassSubjectTeacher, ClassSubjectTeacher.id == StudentSubjectResult.class_subject_teacher_id, isouter=True)
             .where(
                 StudentSubjectResult.tenant_id == tenant_id,
-                TeacherAssignment.class_subject_id == class_subject_id,
+                or_(
+                    TeacherAssignment.class_subject_id == class_subject_id,
+                    and_(
+                        ClassSubjectTeacher.class_id == class_subject_row.class_id,
+                        ClassSubjectTeacher.subject_id == class_subject_row.subject_id,
+                    ),
+                ),
             )
         )
         return int(result.scalar_one())
@@ -702,7 +716,11 @@ class StudentAcademicRepository:
         ]
         if exclude_id is not None:
             filters.append(TeacherAssignment.id != exclude_id)
-        result = await db.execute(select(TeacherAssignment).where(*filters))
+        result = await db.execute(
+            select(TeacherAssignment)
+            .where(*filters)
+            .order_by(TeacherAssignment.created_at.desc(), TeacherAssignment.updated_at.desc())
+        )
         return result.scalar_one_or_none()
 
     @staticmethod
