@@ -118,13 +118,6 @@ export const academicService = {
   reassignTeacherAssignment: (assignmentId, payload) =>
     api.post(`/tenant-admin/academic/teacher-assignments/${assignmentId}/reassign`, payload),
 
-  listSubjectAssignments: (params) =>
-    api.get(`/tenant-admin/academic/subject-assignments${queryString(params)}`),
-  createSubjectAssignment: (payload) =>
-    api.post("/tenant-admin/academic/subject-assignments", payload),
-  updateSubjectAssignment: (assignmentId, payload) =>
-    api.patch(`/tenant-admin/academic/subject-assignments/${assignmentId}`, payload),
-
   listAdminResults: (params) =>
     api.get(`/tenant-admin/academic/results${queryString(params)}`),
   saveAdminResult: (payload) => api.post("/tenant-admin/academic/results", payload),
