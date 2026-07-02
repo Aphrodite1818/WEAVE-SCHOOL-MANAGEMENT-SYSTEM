@@ -1,3 +1,4 @@
+import re
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -30,6 +31,21 @@ class SubjectService:
             raise ForbiddenException(detail="Actor is not attached to a tenant.")
 
     @staticmethod
+    def normalize_subject_name(value: str) -> str:
+        """Normalize a display subject name for duplicate prevention."""
+
+        return re.sub(r"\s+", " ", value.strip()).casefold()
+
+    @staticmethod
+    def normalize_subject_code(value: str | None) -> str | None:
+        """Normalize subject codes for duplicate prevention."""
+
+        if value is None:
+            return None
+        cleaned = re.sub(r"\s+", "", value.strip()).upper()
+        return cleaned or None
+
+    @staticmethod
     async def create_subject(
         db: AsyncSession,
         actor: TenantAdmin,
@@ -39,19 +55,21 @@ class SubjectService:
 
         SubjectService._ensure_tenant_admin(actor)
 
-        existing_name = await SubjectRepository.get_subject_by_name(
+        normalized_name = SubjectService.normalize_subject_name(subject_data.name)
+        existing_name = await SubjectRepository.get_subject_by_normalized_name(
             db=db,
             tenant_id=actor.tenant_id,
-            subject_name=subject_data.name,
+            normalized_name=normalized_name,
         )
         if existing_name:
             raise BadRequestException(detail="A subject with this name already exists.")
 
-        if subject_data.code:
-            existing_code = await SubjectRepository.get_subject_by_code(
+        normalized_code = SubjectService.normalize_subject_code(subject_data.code)
+        if normalized_code:
+            existing_code = await SubjectRepository.get_subject_by_normalized_code(
                 db=db,
                 tenant_id=actor.tenant_id,
-                subject_code=subject_data.code,
+                normalized_code=normalized_code,
             )
             if existing_code:
                 raise BadRequestException(detail="A subject with this code already exists.")
@@ -59,7 +77,9 @@ class SubjectService:
         subject = Subject(
             tenant_id=actor.tenant_id,
             name=subject_data.name,
-            code=subject_data.code,
+            normalized_name=normalized_name,
+            code=subject_data.code.upper() if subject_data.code else None,
+            normalized_code=normalized_code,
             description=subject_data.description,
         )
 
@@ -160,27 +180,30 @@ class SubjectService:
         if not update_data:
             raise BadRequestException(detail="No update data provided.")
 
-        if "name" in update_data and update_data["name"] != subject.name:
-            existing_name = await SubjectRepository.get_subject_by_name(
-                db=db,
-                tenant_id=actor.tenant_id,
-                subject_name=update_data["name"],
-            )
-            if existing_name:
-                raise BadRequestException(detail="A subject with this name already exists.")
+        if "name" in update_data:
+            normalized_name = SubjectService.normalize_subject_name(update_data["name"])
+            if normalized_name != subject.normalized_name:
+                existing_name = await SubjectRepository.get_subject_by_normalized_name(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    normalized_name=normalized_name,
+                )
+                if existing_name:
+                    raise BadRequestException(detail="A subject with this name already exists.")
+            update_data["normalized_name"] = normalized_name
 
-        if (
-            "code" in update_data
-            and update_data["code"] is not None
-            and update_data["code"] != subject.code
-        ):
-            existing_code = await SubjectRepository.get_subject_by_code(
-                db=db,
-                tenant_id=actor.tenant_id,
-                subject_code=update_data["code"],
-            )
-            if existing_code:
-                raise BadRequestException(detail="A subject with this code already exists.")
+        if "code" in update_data:
+            normalized_code = SubjectService.normalize_subject_code(update_data["code"])
+            if normalized_code and normalized_code != subject.normalized_code:
+                existing_code = await SubjectRepository.get_subject_by_normalized_code(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    normalized_code=normalized_code,
+                )
+                if existing_code:
+                    raise BadRequestException(detail="A subject with this code already exists.")
+            update_data["normalized_code"] = normalized_code
+            update_data["code"] = update_data["code"].upper() if update_data["code"] else None
 
         try:
             for field, value in update_data.items():
