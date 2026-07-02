@@ -67,6 +67,30 @@ CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_onboarded_stu
 CurrentParent: TypeAlias = Annotated[Parent, Depends(get_current_parent)]
 
 
+def _is_submitted_status(value) -> bool:
+    return (value.value if hasattr(value, "value") else str(value)) == "submitted"
+
+
+def _submitted_result_list(items: list[StudentSubjectResultResponse]) -> StudentSubjectResultListResponse:
+    submitted_items = [item for item in items if _is_submitted_status(item.status)]
+    return StudentSubjectResultListResponse(items=submitted_items, total=len(submitted_items))
+
+
+def _mask_unsubmitted_subject_cards(response: StudentSubjectCardListResponse) -> StudentSubjectCardListResponse:
+    for item in response.items:
+        if item.status != "submitted":
+            item.result_id = None
+            item.test_score = None
+            item.assessment_score = None
+            item.exam_score = None
+            item.total_score = None
+            item.grade = None
+            item.remark = None
+            item.status = "pending"
+            item.is_complete = False
+    return response
+
+
 @tenant_admin_router.post(
     "/sessions",
     response_model=AcademicSessionResponse,
@@ -456,8 +480,8 @@ async def list_my_results(
     db: DbSession,
     current_student: CurrentStudent,
 ) -> StudentSubjectResultListResponse:
-    items, total = await StudentAcademicService.list_results(db, current_student)
-    return StudentSubjectResultListResponse(items=items, total=total)
+    items, _ = await StudentAcademicService.list_results(db, current_student)
+    return _submitted_result_list(items)
 
 
 @student_router.get("/subjects", response_model=StudentSubjectCardListResponse)
@@ -465,7 +489,8 @@ async def list_my_subject_cards(
     db: DbSession,
     current_student: CurrentStudent,
 ) -> StudentSubjectCardListResponse:
-    return await StudentAcademicService.list_student_subject_cards(db=db, actor=current_student)
+    response = await StudentAcademicService.list_student_subject_cards(db=db, actor=current_student)
+    return _mask_unsubmitted_subject_cards(response)
 
 
 @parent_router.get("/results", response_model=StudentSubjectResultListResponse)
@@ -474,9 +499,9 @@ async def list_child_results(
     db: DbSession,
     current_parent: CurrentParent,
 ) -> StudentSubjectResultListResponse:
-    items, total = await StudentAcademicService.list_results(
+    items, _ = await StudentAcademicService.list_results(
         db,
         current_parent,
         student_id=student_id,
     )
-    return StudentSubjectResultListResponse(items=items, total=total)
+    return _submitted_result_list(items)
