@@ -16,6 +16,9 @@ import { useToast } from "../../hooks/useToast";
 const emptyScores = { test_score: "", assessment_score: "", exam_score: "" };
 const scoreFields = ["test_score", "assessment_score", "exam_score"];
 const toNullableScore = (value) => (value === "" || value === null || value === undefined ? null : Number(value));
+const scoreLabel = (field) => field.replace("_score", "").replace("_", " ");
+const isSubmitted = (result) => result?.status === "submitted";
+const scoreValue = (value) => (value === null || value === undefined || value === "" ? "--" : value);
 
 function TeacherResultsPage() {
   const [assignments, setAssignments] = useState([]);
@@ -77,7 +80,6 @@ function TeacherResultsPage() {
 
   useEffect(() => {
     if (termsForSession.length > 0 && !termsForSession.some((item) => item.id === academicTermId)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAcademicTermId(termsForSession.find((item) => item.is_current)?.id || termsForSession[0].id);
     }
   }, [termsForSession, academicTermId]);
@@ -141,6 +143,7 @@ function TeacherResultsPage() {
   );
 
   const updateDraft = (studentId, field, value) => {
+    if (isSubmitted(resultByStudent[studentId])) return;
     setDrafts((current) => ({
       ...current,
       [studentId]: {
@@ -153,13 +156,18 @@ function TeacherResultsPage() {
   };
 
   const saveResult = async (studentId, status) => {
+    const existing = resultByStudent[studentId];
+    if (isSubmitted(existing)) {
+      showError("Submitted scores are locked. Ask an admin to reopen or correct the result.");
+      return;
+    }
     if (!selectedAssignmentId || !academicSessionId || !academicTermId) {
       const message = "Select a subject, academic session, and term before saving scores.";
       setError(message);
       showError(message);
       return;
     }
-    const draft = { ...emptyScores, ...(resultByStudent[studentId] || {}), ...(drafts[studentId] || {}) };
+    const draft = { ...emptyScores, ...(existing || {}), ...(drafts[studentId] || {}) };
     setIsSaving(`${studentId}-${status}`);
     setError(null);
     try {
@@ -202,13 +210,13 @@ function TeacherResultsPage() {
     <DashboardLayout
       role="teacher"
       title="Results"
-      description="Select an assigned class-subject, enter component scores, save drafts, and submit results."
+      description="Select an assigned class-subject, enter component scores, save drafts, and submit complete results. Submitted scores lock for teachers."
     >
       {error && <div className="rounded-xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-semibold text-error">{error}</div>}
 
       <Card className="p-4 sm:p-5">
-        <div className="grid gap-3 md:grid-cols-3">
-          <SelectField label="My subject" value={selectedAssignmentId} onChange={setSelectedAssignmentId}>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <SelectField label="Assigned class-subject" value={selectedAssignmentId} onChange={setSelectedAssignmentId}>
             {assignments.length === 0 ? <option value="">No assigned subjects</option> : assignments.map((assignment) => (
               <option key={assignment.id} value={assignment.id}>
                 {assignment.subject_name || "Subject"} - {assignment.class_name || "Class"} {assignment.class_arm || ""}
@@ -230,44 +238,47 @@ function TeacherResultsPage() {
         ) : (
           students.map((student) => {
             const existing = resultByStudent[student.id];
+            const submitted = isSubmitted(existing);
             const draft = { ...emptyScores, ...(existing || {}), ...(drafts[student.id] || {}) };
+            const canSubmit = scoreFields.every((field) => toNullableScore(draft[field]) !== null);
             return (
               <Card key={student.id} className="p-4 sm:p-5">
-                <div className="grid gap-3 xl:grid-cols-[minmax(180px,1.2fr)_repeat(3,minmax(90px,0.6fr))_minmax(170px,0.8fr)_auto] xl:items-end">
-                  <div>
-                    <p className="font-semibold text-text">
+                <div className="grid gap-4 xl:grid-cols-[minmax(180px,1.1fr)_repeat(3,minmax(96px,0.55fr))_minmax(180px,0.85fr)_minmax(150px,auto)] xl:items-end">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-text">
                       {[student.first_name, student.last_name].filter(Boolean).join(" ") || student.admission_number || "Student"}
                     </p>
                     <p className="mt-1 text-sm text-text-muted">{student.admission_number || "No admission number"}</p>
-                    {existing ? <Badge variant={existing.status === "submitted" ? "info" : "warning"}>{existing.status}</Badge> : <Badge variant="warning">No result</Badge>}
+                    {existing ? <Badge variant={submitted ? "success" : "warning"}>{submitted ? "Submitted" : "Draft"}</Badge> : <Badge variant="warning">Pending</Badge>}
                   </div>
                   {scoreFields.map((field) => (
                     <TextField
                       key={field}
-                      label={field.replace("_score", "").replace("_", " ")}
+                      label={scoreLabel(field)}
                       type="number"
                       min="0"
                       max="100"
                       value={draft[field] ?? ""}
                       onChange={(value) => updateDraft(student.id, field, value)}
+                      disabled={submitted}
                     />
                   ))}
                   <div className="rounded-xl border border-border bg-surface px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Backend computed</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Computed after complete scores</p>
                     <p className="mt-1 font-semibold text-text">
                       <Calculator className="mr-1 inline h-4 w-4" />
-                      {existing ? `${existing.total_score} / ${existing.grade || "Pending"}` : "After save"}
+                      {existing && submitted ? `${scoreValue(existing.total_score)} / ${existing.grade || "--"}` : "-- / --"}
                     </p>
-                    <p className="text-xs text-text-muted">{existing?.remark || "Remark appears after save"}</p>
+                    <p className="text-xs text-text-muted">{submitted ? existing?.remark || "No remark" : "Visible after submission"}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="xs" onClick={() => saveResult(student.id, "draft")} disabled={isSaving === `${student.id}-draft`}>
+                  <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
+                    <Button size="xs" onClick={() => saveResult(student.id, "draft")} disabled={submitted || isSaving === `${student.id}-draft`}>
                       <Save className="h-3.5 w-3.5" />
                       Save Draft
                     </Button>
-                    <Button size="xs" variant="success" onClick={() => saveResult(student.id, "submitted")} disabled={isSaving === `${student.id}-submitted`}>
+                    <Button size="xs" variant="success" onClick={() => saveResult(student.id, "submitted")} disabled={submitted || !canSubmit || isSaving === `${student.id}-submitted`}>
                       <Send className="h-3.5 w-3.5" />
-                      Submit
+                      {submitted ? "Submitted" : "Submit"}
                     </Button>
                   </div>
                 </div>
