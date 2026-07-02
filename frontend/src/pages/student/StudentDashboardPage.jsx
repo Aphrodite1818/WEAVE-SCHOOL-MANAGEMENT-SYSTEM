@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { BarChart3, BookOpen, CalendarDays, ClipboardList, FileText, Link2, UserRound } from "lucide-react";
+import {
+  BarChart3,
+  BookOpen,
+  ClipboardList,
+  FileText,
+  GraduationCap,
+  Link2,
+  UserRound,
+} from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
-import Button from "../../components/ui/Button";
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
+import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import StatCard from "../../components/shared/StatCard";
@@ -17,20 +24,20 @@ import { academicService } from "../../services/academicService";
 import { reportCardService } from "../../services/reportCardService";
 import { displayName } from "../../utils/user";
 import {
+  averageByAcademicPeriod,
   averageScore,
   bestAndWeakestSubject,
   chartFromCounts,
   cleanText,
-  reportCardStatusChart,
   subjectPerformanceChart,
 } from "../../utils/academicDashboard";
-
-const links = [
-  { label: "Timetable", to: "/student/timetable", icon: CalendarDays },
-  { label: "Assignments", to: "/student/assignments", icon: ClipboardList },
-  { label: "Results", to: "/student/results", icon: BarChart3 },
-  { label: "Notices", to: "/student/notices", icon: FileText },
-];
+import {
+  formatMetricNumber,
+  getAcademicContext,
+  hasValue,
+  isPublishedResult,
+  statusVariant,
+} from "./studentPageUtils";
 
 function StudentDashboardPage() {
   const [student, setStudent] = useState(null);
@@ -41,34 +48,8 @@ function StudentDashboardPage() {
   const [reportCards, setReportCards] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [requestActionId, setRequestActionId] = useState(null);
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Student";
-
-  const loadDashboardData = async () => {
-    const [
-      studentProfile,
-      linksResponse,
-      requestsResponse,
-      metricsResponse,
-      resultResponse,
-      reportCardResponse,
-    ] = await Promise.all([
-      studentService.getMyStudent(),
-      studentService.getMyParentLinks(),
-      studentService.getMyParentLinkRequests(),
-      dashboardService.getStudentAnalytics(),
-      academicService.listMyResults(),
-      reportCardService.listMyReportCards(),
-    ]);
-
-    setStudent(studentProfile);
-    setParentLinks(linksResponse?.items || []);
-    setParentLinkRequests(requestsResponse?.items || []);
-    setMetrics(metricsResponse);
-    setAcademicResults(resultResponse?.items || []);
-    setReportCards(reportCardResponse?.items || []);
-  };
 
   useEffect(() => {
     let mounted = true;
@@ -78,7 +59,29 @@ function StudentDashboardPage() {
       setLoadError(null);
 
       try {
-        await loadDashboardData();
+        const [
+          studentProfile,
+          linksResponse,
+          requestsResponse,
+          metricsResponse,
+          resultResponse,
+          reportCardResponse,
+        ] = await Promise.all([
+          studentService.getMyStudent(),
+          studentService.getMyParentLinks(),
+          studentService.getMyParentLinkRequests(),
+          dashboardService.getStudentAnalytics(),
+          academicService.listMyResults(),
+          reportCardService.listMyReportCards(),
+        ]);
+
+        if (!mounted) return;
+        setStudent(studentProfile);
+        setParentLinks(linksResponse?.items || []);
+        setParentLinkRequests(requestsResponse?.items || []);
+        setMetrics(metricsResponse);
+        setAcademicResults(resultResponse?.items || []);
+        setReportCards(reportCardResponse?.items || []);
       } catch (error) {
         if (mounted) setLoadError(getErrorMessage(error, "Failed to load student dashboard."));
       } finally {
@@ -93,37 +96,68 @@ function StudentDashboardPage() {
     };
   }, []);
 
-  const handleRequestResponse = async (requestId, action) => {
-    setRequestActionId(requestId);
-    setLoadError(null);
+  const dashboardData = useMemo(() => {
+    const stats = metrics?.stats || {};
+    const publishedResults = academicResults.filter(isPublishedResult);
+    const pendingResults = academicResults.filter((result) => !isPublishedResult(result));
+    const subjectHighlights = bestAndWeakestSubject(publishedResults);
+    const context = getAcademicContext(academicResults, reportCards);
+    const uniqueSubjects = new Set(
+      academicResults
+        .map((result) => result.subject_id || result.subject_name || result.subject_code)
+        .filter(Boolean)
+    );
+    const currentAverage = hasValue(stats.current_average)
+      ? stats.current_average
+      : publishedResults.length > 0
+        ? averageScore(publishedResults)
+        : null;
+    const chartSource = metrics?.charts || {};
+    const performanceTrend =
+      chartSource.performance_trend ||
+      averageByAcademicPeriod(
+        reportCards.length > 0 ? reportCards : publishedResults,
+        reportCards.length > 0 ? "average_score" : "total_score"
+      );
+    const chartWidgets = [
+      {
+        kind: "line",
+        title: "Performance Trend",
+        description: "Average performance across published academic terms.",
+        data: performanceTrend,
+      },
+      {
+        kind: "bar",
+        title: "Subject Performance",
+        description: "Published scores by subject.",
+        data:
+          chartSource.subject_performance ||
+          chartSource.subject_comparison ||
+          subjectPerformanceChart(publishedResults),
+      },
+      {
+        kind: "donut",
+        title: "Grade Distribution",
+        description: "Published grade spread across subjects.",
+        data:
+          chartSource.grade_distribution ||
+          chartFromCounts(publishedResults, "grade", "ungraded"),
+      },
+    ].filter((chart) => Array.isArray(chart.data) && chart.data.length > 0);
 
-    try {
-      await studentService.respondToParentLinkRequest(requestId, { action });
-      await loadDashboardData();
-    } catch (error) {
-      setLoadError(getErrorMessage(error, "Could not update parent link request."));
-    } finally {
-      setRequestActionId(null);
-    }
-  };
-
-  const printReportCard = async (card) => {
-    setLoadError(null);
-    try {
-      await reportCardService.printStudentReportCard(card.id);
-    } catch (error) {
-      setLoadError(getErrorMessage(error, "Could not open report card."));
-    }
-  };
-
-  const charts = metrics?.charts || {};
-  const currentAcademicLabel = useMemo(() => {
-    const latestResult = academicResults[0];
-    const latestCard = reportCards[0];
-    const session = latestResult?.academic_session_name || latestCard?.academic_session_name;
-    const term = latestResult?.academic_term_name || latestCard?.academic_term_name;
-    return [session, cleanText(term, "")].filter(Boolean).join(" - ") || "-";
-  }, [academicResults, reportCards]);
+    return {
+      currentAverage,
+      publishedResults,
+      pendingResults,
+      subjectHighlights,
+      subjectsCount: hasValue(stats.subjects_count) ? stats.subjects_count : uniqueSubjects.size,
+      context,
+      latestReportCard: reportCards[0],
+      pendingParentRequests: parentLinkRequests.filter((request) => request.status === "pending"),
+      performanceTrend,
+      chartWidgets,
+    };
+  }, [academicResults, metrics, parentLinkRequests, reportCards]);
 
   if (isLoading) {
     return (
@@ -133,263 +167,348 @@ function StudentDashboardPage() {
     );
   }
 
-  const subjectHighlights = bestAndWeakestSubject(academicResults);
-  const currentAverage = metrics?.stats?.current_average ?? averageScore(academicResults);
-
   return (
     <DashboardLayout
       role="student"
       title={`${firstName}'s Portal`}
-      description="Your academic overview, timetable, and assignments."
+      description="A clean academic snapshot. Detailed workflows stay in their own pages so this overview remains easy to scan."
     >
       {loadError && (
-        <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
+        <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {loadError}
         </div>
       )}
 
-      {!loadError && student && (
-        <section className="stat-grid stat-grid-six">
-          <StatCard
-            label="Profile"
-            value={student.profile_status === "complete" ? "Complete" : "Incomplete"}
-            description="academic record"
-            icon={UserRound}
-            tone={student.profile_status === "complete" ? "success" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Parent Links"
-            value={parentLinks.length}
-            description="approved contacts"
-            icon={Link2}
-            tone={parentLinks.length > 0 ? "primary" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Current Average"
-            value={currentAverage}
-            description="published subjects"
-            icon={BarChart3}
-            tone={academicResults.length > 0 ? "success" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Session / Term"
-            value={currentAcademicLabel}
-            description="latest academic context"
-            icon={CalendarDays}
-            tone={currentAcademicLabel !== "-" ? "primary" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Best Subject"
-            value={subjectHighlights.best?.label || "-"}
-            description={subjectHighlights.best ? `${subjectHighlights.best.value} average score` : "awaiting results"}
-            icon={BookOpen}
-            tone={subjectHighlights.best ? "success" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Needs Attention"
-            value={subjectHighlights.weakest?.label || "-"}
-            description={subjectHighlights.weakest ? `${subjectHighlights.weakest.value} average score` : "awaiting results"}
-            icon={ClipboardList}
-            tone={subjectHighlights.weakest ? "warning" : "primary"}
-            compact
-          />
-        </section>
+      {!loadError && !student && (
+        <EmptyState
+          icon={UserRound}
+          title="No student profile found"
+          description="Your account exists, but the school has not created your student academic profile yet."
+        />
       )}
 
       {!loadError && student && (
-        <section className="dashboard-grid xl:grid-cols-2">
-          <AnalyticsBarChart
-            title="Subject Comparison"
-            description="Published scores by subject."
-            data={charts.subject_comparison || subjectPerformanceChart(academicResults)}
-            emptyMessage="No published result data available yet."
-          />
-          <AnalyticsDonutChart
-            title="Grade Distribution"
-            description="Published grade spread across subjects."
-            data={charts.grade_distribution || chartFromCounts(academicResults, "grade", "ungraded")}
-            emptyMessage="No grade distribution available yet."
-          />
-          <AnalyticsDonutChart
-            title="Result Status"
-            description="Availability state for your subject results."
-            data={chartFromCounts(academicResults, "status", "not available")}
-            emptyMessage="No result status data available yet."
-          />
-          <AnalyticsDonutChart
-            title="Report Card Status"
-            description="Generated and published report cards."
-            data={reportCardStatusChart(reportCards)}
-            emptyMessage="No report cards have been generated yet."
-          />
-        </section>
-      )}
-
-      {!loadError && (
-        <section className="dashboard-grid xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
-          <Card className="p-4 sm:p-5 md:p-6">
-            <h2 className="section-title">Subject Results</h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {academicResults.length === 0 ? (
-                <p className="text-sm font-medium text-text-muted">No result available yet.</p>
-              ) : (
-                academicResults.map((result) => (
-                  <div key={result.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-text">{result.subject_name || "Subject"}</p>
-                        <p className="text-xs text-text-muted">{cleanText(result.subject_code)}</p>
-                      </div>
-                      <Badge variant={result.status === "published" || result.status === "locked" ? "success" : "warning"}>
-                        {cleanText(result.status)}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-text-soft">
-                      <p>Teacher: {cleanText(result.teacher_name)}</p>
-                      <p>Test: {cleanText(result.test_score)}</p>
-                      <p>Assessment: {cleanText(result.assessment_score)}</p>
-                      <p>Exam: {cleanText(result.exam_score)}</p>
-                      <p>Total: {cleanText(result.total_score)}</p>
-                      <p>Grade: {cleanText(result.grade)}</p>
-                    </div>
-                    <p className="mt-2 text-sm font-medium text-text">{cleanText(result.remark, "No result available yet.")}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-
-          <Card className="p-4 sm:p-5 md:p-6">
-            <h2 className="section-title">Report Cards</h2>
-            <div className="mt-4 space-y-3">
-              {reportCards.length === 0 ? (
-                <p className="text-sm font-medium text-text-muted">No report card available yet.</p>
-              ) : (
-                reportCards.map((card) => (
-                  <div key={card.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-                    <p className="font-semibold text-text">
-                      {cleanText(card.academic_session_name, "Session")} - {cleanText(card.academic_term_name, "Term")}
-                    </p>
-                    <p className="mt-1 text-sm text-text-muted">Average score: {cleanText(card.average_score)}</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => printReportCard(card)}
-                    >
-                      Print or download
-                    </Button>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-        </section>
-      )}
-
-      <section className="dashboard-grid lg:grid-cols-[minmax(0,1fr)_min(100%,360px)]">
-        <Card className="p-4 sm:p-5 md:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="section-title">Profile Overview</h2>
-            {student?.status && <Badge variant="info">{student.status}</Badge>}
-          </div>
-
-          {student ? (
-            <div className="mt-4 grid gap-3 text-sm text-text-soft sm:grid-cols-2">
-              <div className="rounded-2xl border border-border bg-surface px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Admission number</p>
-                <p className="mt-1 font-semibold text-text">{student.admission_number || "Not assigned"}</p>
-              </div>
-              <div className="rounded-2xl border border-border bg-surface px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Class</p>
-                <p className="mt-1 font-semibold text-text">{student.class_id ? "Assigned" : "Not assigned"}</p>
-              </div>
-              <div className="rounded-2xl border border-border bg-surface px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Parent contacts</p>
-                <p className="mt-1 font-semibold text-text">
-                  {parentLinks.length > 0 ? `${parentLinks.length} linked` : "No linked parent yet"}
+        <>
+          <Card className="overflow-hidden p-5 sm:p-6">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.95fr)]">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={statusVariant(student.profile_status)}>
+                    {cleanText(student.profile_status, "profile pending")}
+                  </Badge>
+                  <Badge variant="info">
+                    {cleanText(dashboardData.context.sessionLabel, "No session")} /{" "}
+                    {cleanText(dashboardData.context.termLabel, "No term")}
+                  </Badge>
+                </div>
+                <h2 className="mt-3 text-xl font-semibold leading-tight text-text sm:text-2xl">
+                  Welcome back, {displayName(student) || firstName}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+                  {cleanText(
+                    dashboardData.context.classLabel,
+                    student.class_id ? "Class assigned" : "No class assigned"
+                  )}
                 </p>
-                {parentLinks.length > 0 && (
-                  <p className="mt-2 text-xs text-text-muted">
-                    {parentLinks.map((link) => displayName(link.parent)).join(", ")}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Current class
                   </p>
+                  <p className="mt-2 text-sm font-semibold text-text">
+                    {cleanText(dashboardData.context.classLabel, "Not assigned")}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Latest term
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-text">
+                    {cleanText(dashboardData.context.termLabel, "No term")}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Parent approvals
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-text">
+                    {dashboardData.pendingParentRequests.length} pending
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <section className="stat-grid stat-grid-six">
+            <StatCard
+              label="Profile"
+              value={student.profile_status === "complete" ? "Complete" : "Incomplete"}
+              description="academic record"
+              icon={UserRound}
+              tone={student.profile_status === "complete" ? "success" : "warning"}
+              compact
+            />
+            {hasValue(dashboardData.currentAverage) && (
+              <StatCard
+                label="Current Average"
+                value={formatMetricNumber(dashboardData.currentAverage)}
+                description="published subjects"
+                icon={BarChart3}
+                tone="success"
+                compact
+              />
+            )}
+            <StatCard
+              label="Subjects"
+              value={dashboardData.subjectsCount}
+              description="records available"
+              icon={BookOpen}
+              tone="primary"
+              compact
+            />
+            <StatCard
+              label="Parent Links"
+              value={parentLinks.length}
+              description={`${dashboardData.pendingParentRequests.length} pending request${dashboardData.pendingParentRequests.length === 1 ? "" : "s"}`}
+              icon={Link2}
+              tone={parentLinks.length > 0 ? "success" : "warning"}
+              compact
+            />
+            <StatCard
+              label="Best Subject"
+              value={dashboardData.subjectHighlights.best?.label || "-"}
+              description={
+                dashboardData.subjectHighlights.best
+                  ? `${dashboardData.subjectHighlights.best.value} average score`
+                  : "awaiting results"
+              }
+              icon={GraduationCap}
+              tone={dashboardData.subjectHighlights.best ? "success" : "warning"}
+              compact
+            />
+            <StatCard
+              label="Needs Attention"
+              value={dashboardData.subjectHighlights.weakest?.label || "-"}
+              description={
+                dashboardData.subjectHighlights.weakest
+                  ? `${dashboardData.subjectHighlights.weakest.value} average score`
+                  : "awaiting results"
+              }
+              icon={ClipboardList}
+              tone={dashboardData.subjectHighlights.weakest ? "warning" : "primary"}
+              compact
+            />
+          </section>
+
+          {dashboardData.chartWidgets.length > 0 && (
+            <section className="dashboard-grid xl:grid-cols-2">
+              {dashboardData.chartWidgets.map((chart) =>
+                chart.kind === "donut" ? (
+                  <AnalyticsDonutChart
+                    key={chart.title}
+                    title={chart.title}
+                    description={chart.description}
+                    data={chart.data}
+                  />
+                ) : chart.kind === "line" ? (
+                  <AnalyticsLineChart
+                    key={chart.title}
+                    title={chart.title}
+                    description={chart.description}
+                    data={chart.data}
+                  />
+                ) : (
+                  <AnalyticsBarChart
+                    key={chart.title}
+                    title={chart.title}
+                    description={chart.description}
+                    data={chart.data}
+                  />
+                )
+              )}
+            </section>
+          )}
+
+          <section className="dashboard-grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)]">
+            <Card className="p-5 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="section-title">Latest Report Card</h3>
+                  <p className="mt-1 text-sm text-text-muted">
+                    The newest published term, arranged as a summary instead of a second navigation menu.
+                  </p>
+                </div>
+                {dashboardData.latestReportCard && (
+                  <Badge variant={statusVariant(dashboardData.latestReportCard.status)}>
+                    {cleanText(dashboardData.latestReportCard.status)}
+                  </Badge>
                 )}
               </div>
-              <div className="rounded-2xl border border-border bg-surface px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Profile status</p>
-                <p className="mt-1 font-semibold text-text">{student.profile_status}</p>
-              </div>
-            </div>
-          ) : (
-            <EmptyState
-              title="No student profile found"
-              description="Your account exists, but the school has not created your student academic profile yet."
-            />
-          )}
-        </Card>
 
-        <Card className="p-4 sm:p-5 md:p-6">
-          <h2 className="section-title">Parent Link Requests</h2>
-          <div className="mt-4 space-y-3">
-            {parentLinkRequests.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                No pending parent-link requests.
-              </p>
-            ) : (
-              parentLinkRequests.map((request) => (
-                <div key={request.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-                  <p className="text-sm font-semibold text-text">{displayName(request.parent)}</p>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {request.parent?.email || "No email provided"}
+              {dashboardData.latestReportCard ? (
+                <>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Average</p>
+                      <p className="mt-2 text-xl font-semibold text-text">
+                        {cleanText(dashboardData.latestReportCard.average_score)}
+                      </p>
+                    </div>
+                    <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Subjects</p>
+                      <p className="mt-2 text-xl font-semibold text-text">
+                        {dashboardData.latestReportCard.lines?.length || 0}
+                      </p>
+                    </div>
+                    <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Position</p>
+                      <p className="mt-2 text-xl font-semibold text-text">
+                        {cleanText(dashboardData.latestReportCard.position, "-")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-[1.3rem] border border-border/70 bg-surface-muted/15 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-text">
+                        {cleanText(dashboardData.latestReportCard.academic_session_name, "Session")} /{" "}
+                        {cleanText(dashboardData.latestReportCard.academic_term_name, "Term")}
+                      </p>
+                      <p className="text-xs font-medium text-text-muted">
+                        Previewing recent subject lines
+                      </p>
+                    </div>
+
+                    <div className="mt-4 grid gap-3">
+                      {(dashboardData.latestReportCard.lines || []).slice(0, 3).map((line) => (
+                        <div
+                          key={line.id}
+                          className="rounded-[1.2rem] border border-border/70 bg-surface p-4 shadow-sm"
+                        >
+                          <div className="flex flex-col gap-4">
+                            <div className="min-w-0 rounded-[1rem] border border-border/60 bg-surface-muted/15 px-4 py-3">
+                              <p className="truncate text-base font-semibold text-text">
+                                {cleanText(line.subject_name, "Subject")}
+                              </p>
+                              <p className="mt-1 text-xs text-text-muted">
+                                Teacher: {cleanText(line.teacher_name)}
+                              </p>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl border border-border/60 bg-surface-muted/25 px-3 py-2 text-center">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Test</p>
+                                <p className="mt-1 text-sm font-semibold text-text">{cleanText(line.test_score)}</p>
+                              </div>
+                              <div className="rounded-xl border border-border/60 bg-surface-muted/25 px-3 py-2 text-center">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Assess.</p>
+                                <p className="mt-1 text-sm font-semibold text-text">{cleanText(line.assessment_score)}</p>
+                              </div>
+                              <div className="rounded-xl border border-border/60 bg-surface-muted/25 px-3 py-2 text-center">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Exam</p>
+                                <p className="mt-1 text-sm font-semibold text-text">{cleanText(line.exam_score)}</p>
+                              </div>
+                              <div className="rounded-xl border border-border/60 bg-surface-muted/25 px-3 py-2 text-center">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Total</p>
+                                <p className="mt-1 text-sm font-semibold text-text">{cleanText(line.total_score)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="mt-4 text-sm text-text-muted">
+                  No report card has been published yet. When the next term closes, the latest summary will show here.
+                </p>
+              )}
+            </Card>
+
+            <Card className="p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+                  <FileText className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="section-title">Academic Pulse</h3>
+                  <p className="mt-1 text-sm text-text-muted">
+                    This keeps the dashboard focused on changes and signals, while the sidebar handles navigation.
                   </p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <Button
-                      type="button"
-                      onClick={() => handleRequestResponse(request.id, "approve")}
-                      disabled={requestActionId === request.id}
-                    >
-                      {requestActionId === request.id ? "Saving..." : "Approve"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleRequestResponse(request.id, "reject")}
-                      disabled={requestActionId === request.id}
-                    >
-                      Reject
-                    </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Published results
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-text">
+                    {dashboardData.publishedResults.length}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Awaiting publication
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-text">
+                    {dashboardData.pendingResults.length}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Linked parents
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-text">{parentLinks.length}</p>
+                </div>
+                <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Trend points
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-text">
+                    {dashboardData.performanceTrend.length}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[1.3rem] border border-border/70 bg-surface-muted/15 p-4">
+                <p className="text-sm font-semibold text-text">Subject highlights</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1.05rem] border border-border/60 bg-surface px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Best subject
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-text">
+                      {dashboardData.subjectHighlights.best?.label || "Awaiting published scores"}
+                    </p>
+                    {dashboardData.subjectHighlights.best && (
+                      <p className="mt-1 text-xs text-text-muted">
+                        {dashboardData.subjectHighlights.best.value} average score
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-[1.05rem] border border-border/60 bg-surface px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Needs attention
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-text">
+                      {dashboardData.subjectHighlights.weakest?.label || "No weak spot yet"}
+                    </p>
+                    {dashboardData.subjectHighlights.weakest && (
+                      <p className="mt-1 text-xs text-text-muted">
+                        {dashboardData.subjectHighlights.weakest.value} average score
+                      </p>
+                    )}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-
-          <div className="my-5 border-t border-border" />
-
-          <h2 className="section-title">Student Modules</h2>
-          <div className="mt-4 grid gap-2 sm:mt-5 sm:gap-3">
-            {links.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className="flex min-h-11 items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-text-soft transition hover:border-primary/30 hover:bg-primary-subtle hover:text-primary sm:text-base"
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </Card>
-      </section>
+              </div>
+            </Card>
+          </section>
+        </>
+      )}
     </DashboardLayout>
   );
 }

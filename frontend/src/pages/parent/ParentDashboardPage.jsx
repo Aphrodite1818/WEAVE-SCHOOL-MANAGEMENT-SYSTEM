@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { BarChart3, Bell, CreditCard, GraduationCap, Link2, MessageSquare, Users } from "lucide-react";
+import { BarChart3, FileText, GraduationCap, Link2, Users } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
-import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
+import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import StatCard from "../../components/shared/StatCard";
@@ -16,6 +15,7 @@ import { academicService } from "../../services/academicService";
 import { reportCardService } from "../../services/reportCardService";
 import { displayName } from "../../utils/user";
 import {
+  averageByAcademicPeriod,
   averageScore,
   bestAndWeakestSubject,
   chartFromCounts,
@@ -23,13 +23,7 @@ import {
   reportCardStatusChart,
   subjectPerformanceChart,
 } from "../../utils/academicDashboard";
-
-const links = [
-  { label: "Attendance", to: "/parent/attendance", icon: Bell },
-  { label: "Results", to: "/parent/results", icon: BarChart3 },
-  { label: "Notices", to: "/parent/notices", icon: MessageSquare },
-  { label: "Fees", to: "/parent/fees", icon: CreditCard },
-];
+import { cn } from "../../utils/cn";
 
 function ParentDashboardPage() {
   const [children, setChildren] = useState([]);
@@ -98,7 +92,9 @@ function ParentDashboardPage() {
       });
       await loadDashboardData();
       setAdmissionNumber("");
-      setLinkSuccess("Link request submitted. The student must approve it before you can view their dashboard.");
+      setLinkSuccess(
+        "Link request submitted. The student must approve it before you can view their dashboard."
+      );
     } catch (error) {
       setLinkError(getErrorMessage(error, "Could not submit link request."));
     } finally {
@@ -115,25 +111,41 @@ function ParentDashboardPage() {
     }
   };
 
-  const selectedChild = children.find((item) => item.student?.id === selectedChildId);
+  const selectedChildRecord = children.find((item) => item.student?.id === selectedChildId) || null;
   const childAverage = averageScore(childResults);
   const subjectHighlights = bestAndWeakestSubject(childResults);
+  const latestReportCard = childReportCards[0] || null;
   const selectedChildAcademicLabel = useMemo(() => {
     const latestResult = childResults[0];
     const latestCard = childReportCards[0];
     const session = latestResult?.academic_session_name || latestCard?.academic_session_name;
     const term = latestResult?.academic_term_name || latestCard?.academic_term_name;
-    return [session, cleanText(term, "")].filter(Boolean).join(" - ") || "-";
+    return [session, cleanText(term, "")].filter(Boolean).join(" / ") || "-";
   }, [childResults, childReportCards]);
+  const performanceTrend = useMemo(
+    () =>
+      averageByAcademicPeriod(
+        childReportCards.length > 0 ? childReportCards : childResults,
+        childReportCards.length > 0 ? "average_score" : "total_score"
+      ),
+    [childReportCards, childResults]
+  );
+  const recentResults = useMemo(() => childResults.slice(0, 4), [childResults]);
+  const gradeBreakdown = useMemo(
+    () => chartFromCounts(childResults, "grade", "ungraded"),
+    [childResults]
+  );
 
   useEffect(() => {
     let mounted = true;
+
     async function loadChildAcademics() {
       if (!selectedChildId) {
         setChildResults([]);
         setChildReportCards([]);
         return;
       }
+
       try {
         const [resultResponse, reportCardResponse] = await Promise.all([
           academicService.listChildResults(selectedChildId),
@@ -148,7 +160,9 @@ function ParentDashboardPage() {
         setChildReportCards([]);
       }
     }
+
     loadChildAcademics();
+
     return () => {
       mounted = false;
     };
@@ -166,13 +180,7 @@ function ParentDashboardPage() {
     <DashboardLayout
       role="parent"
       title={`${firstName}'s Portal`}
-      description="Track your children's attendance, results, and school notices."
-      actions={
-        <Button variant="outline" className="w-full sm:w-auto">
-          <MessageSquare className="h-4 w-4" />
-          Message school
-        </Button>
-      }
+      description="A parent overview built around the selected child, instead of stacking every family workflow onto one page."
     >
       {loadError && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
@@ -181,276 +189,420 @@ function ParentDashboardPage() {
       )}
 
       {!loadError && (
-        <section className="stat-grid stat-grid-five">
-          <StatCard
-            label="Linked Students"
-            value={children.length}
-            description="visible profiles"
-            icon={Users}
-            tone={children.length > 0 ? "primary" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Primary Contacts"
-            value={children.filter((item) => item.link?.is_primary_contact).length}
-            description="marked primary"
-            icon={Link2}
-            tone="success"
-            compact
-          />
-          <StatCard
-            label="Average Score"
-            value={childAverage}
-            description="selected child"
-            icon={BarChart3}
-            tone={childResults.length > 0 ? "success" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Academic Context"
-            value={selectedChildAcademicLabel}
-            description="selected child latest term"
-            icon={GraduationCap}
-            tone={selectedChildAcademicLabel !== "-" ? "primary" : "warning"}
-            compact
-          />
-          <StatCard
-            label="Best Subject"
-            value={subjectHighlights.best?.label || "-"}
-            description={subjectHighlights.best ? `${subjectHighlights.best.value} score` : "awaiting results"}
-            icon={BarChart3}
-            tone={subjectHighlights.best ? "success" : "warning"}
-            compact
-          />
-        </section>
-      )}
-
-      {!loadError && (
-        <section className="dashboard-grid xl:grid-cols-2">
-          <AnalyticsBarChart
-            title="Subject Performance"
-            description="Published scores for the selected child."
-            data={subjectPerformanceChart(childResults)}
-            emptyMessage="No published subject results for the selected child yet."
-          />
-          <AnalyticsDonutChart
-            title="Grade Distribution"
-            description="Grade spread for the selected child."
-            data={chartFromCounts(childResults, "grade", "ungraded")}
-            emptyMessage="No grade distribution available yet."
-          />
-          <AnalyticsDonutChart
-            title="Result Status"
-            description="Availability state for the selected child's results."
-            data={chartFromCounts(childResults, "status", "not available")}
-            emptyMessage="No result status data available yet."
-          />
-          <AnalyticsDonutChart
-            title="Report Card Status"
-            description="Report-card generation and publishing state."
-            data={reportCardStatusChart(childReportCards)}
-            emptyMessage="No report card status data available yet."
-          />
-        </section>
-      )}
-
-      <section className="dashboard-grid lg:grid-cols-[minmax(0,1fr)_min(100%,360px)]">
-        <Card className="p-4 sm:p-5 md:p-6">
-          <h2 className="section-title">Family Overview</h2>
-          {children.length > 0 && (
-            <label className="mt-4 block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">
-                Selected child
-              </span>
-              <select
-                value={selectedChildId}
-                onChange={(event) => setSelectedChildId(event.target.value)}
-                className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none"
-              >
-                {children.map(({ student }) => (
-                  <option key={student.id} value={student.id}>
-                    {displayName(student)} - {student.admission_number}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {children.length > 0 ? (
-            <div className="mt-4 grid gap-3">
-              {children.map(({ student, link }) => (
-                <div key={link.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-text">
-                        {displayName(student)}
-                      </p>
-                      <p className="mt-1 text-xs font-medium text-text-muted">
-                          {cleanText(student.admission_number)} - {cleanText(student.profile_status)}
-                      </p>
-                    </div>
-                    <Badge variant={link.is_primary_contact ? "success" : "default"}>
-                      {link.relationship_type}
-                    </Badge>
-                  </div>
+        <>
+          <Card className="p-5 sm:p-6">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={children.length > 0 ? "success" : "warning"}>
+                    {children.length > 0 ? "Linked children available" : "No linked children"}
+                  </Badge>
+                  <Badge variant="info">{selectedChildAcademicLabel}</Badge>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={GraduationCap}
-              title="No linked students yet"
-              description="Submit a student admission number to request access. The student must approve it before the link becomes active."
-            />
-          )}
 
-          {selectedChild && (
-            <div className="mt-5 border-t border-border pt-5">
-              <h3 className="text-sm font-semibold text-text">Academic summary for {displayName(selectedChild.student)}</h3>
-              <div className="mt-3 grid gap-3">
-                {childResults.length === 0 ? (
-                  <p className="text-sm text-text-muted">No result available yet.</p>
+                <h2 className="mt-3 text-xl font-semibold text-text sm:text-2xl">
+                  Family overview for {selectedChildRecord ? displayName(selectedChildRecord.student) : firstName}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+                  Switch the selected child here, then use the dashboard to track performance, report cards, and link activity.
+                </p>
+
+                {children.length > 0 ? (
+                  <label className="mt-4 block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">
+                      Selected child
+                    </span>
+                    <select
+                      value={selectedChildId}
+                      onChange={(event) => setSelectedChildId(event.target.value)}
+                      className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    >
+                      {children.map(({ student }) => (
+                        <option key={student.id} value={student.id}>
+                          {displayName(student)} / {student.admission_number}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 ) : (
-                  childResults.map((result) => (
-                    <div key={result.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-text">{result.subject_name || "Subject"}</p>
-                          <p className="text-xs text-text-muted">
-                            {cleanText(result.subject_code)} | Total {cleanText(result.total_score)}
+                  <div className="mt-4 rounded-[1.25rem] border border-dashed border-border bg-surface-muted/15 px-4 py-4">
+                    <p className="text-sm text-text-muted">
+                      Add a student admission number to start tracking attendance, results, and report cards here.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-3">
+                {children.length > 0 ? (
+                  children.map(({ student, link }) => (
+                    <div
+                      key={link.id}
+                      className={cn(
+                        "rounded-[1.2rem] border px-4 py-3 transition",
+                        student.id === selectedChildId
+                          ? "border-primary/35 bg-primary-subtle"
+                          : "border-border/70 bg-surface-muted/15"
+                      )}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-text">
+                            {displayName(student)}
+                          </p>
+                          <p className="mt-1 text-xs text-text-muted">
+                            {cleanText(student.admission_number)} / {cleanText(student.profile_status)}
                           </p>
                         </div>
-                        <Badge variant="success">{cleanText(result.grade)}</Badge>
+                        <Badge variant={link.is_primary_contact ? "success" : "default"}>
+                          {cleanText(link.relationship_type)}
+                        </Badge>
                       </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-text-soft">
-                        <p>Teacher: {cleanText(result.teacher_name)}</p>
-                        <p>Test: {cleanText(result.test_score)}</p>
-                        <p>Assessment: {cleanText(result.assessment_score)}</p>
-                        <p>Exam: {cleanText(result.exam_score)}</p>
-                      </div>
-                      <p className="mt-2 text-sm font-medium text-text">{cleanText(result.remark, "No result available yet.")}</p>
                     </div>
                   ))
-                )}
-              </div>
-              <h3 className="mt-5 text-sm font-semibold text-text">Report cards</h3>
-              <div className="mt-3 space-y-3">
-                {childReportCards.length === 0 ? (
-                  <p className="text-sm text-text-muted">No report card available yet.</p>
                 ) : (
-                  childReportCards.map((card) => (
-                    <div key={card.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-                      <p className="font-semibold text-text">
-                        {cleanText(card.academic_session_name, "Session")} - {cleanText(card.academic_term_name, "Term")}
-                      </p>
-                      <p className="mt-1 text-sm text-text-muted">Average score: {cleanText(card.average_score)}</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-3"
-                        onClick={() => printReportCard(card)}
-                      >
-                        Print or download
-                      </Button>
-                    </div>
-                  ))
+                  <EmptyState
+                    icon={GraduationCap}
+                    title="No linked students yet"
+                    description="Submit a student admission number to request access. The student must approve it before the link becomes active."
+                  />
                 )}
               </div>
             </div>
-          )}
-        </Card>
+          </Card>
 
-        <Card className="p-4 sm:p-5 md:p-6">
-          <h2 className="section-title">Link Student</h2>
-          <form onSubmit={handleLinkSubmit} className="mt-4 space-y-3">
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">
-                Admission number
-              </span>
-              <input
-                value={admissionNumber}
-                onChange={(event) => {
-                  setAdmissionNumber(event.target.value);
-                  setLinkError(null);
-                  setLinkSuccess(null);
-                }}
-                placeholder="NHS-2026-12345"
-                className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none transition placeholder:text-text-faint focus:border-primary focus:ring-4 focus:ring-primary/10"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">
-                Relationship
-              </span>
-              <select
-                value={relationshipType}
-                onChange={(event) => setRelationshipType(event.target.value)}
-                className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
-              >
-                <option value="father">Father</option>
-                <option value="mother">Mother</option>
-                <option value="guardian">Guardian</option>
-                <option value="sponsor">Sponsor</option>
-                <option value="other">Other</option>
-              </select>
-            </label>
-            {linkError && <p className="text-sm font-medium text-error">{linkError}</p>}
-            {linkSuccess && <p className="text-sm font-medium text-success">{linkSuccess}</p>}
-            <Button type="submit" className="w-full" disabled={isLinking || !admissionNumber.trim()}>
-              <Link2 className="h-4 w-4" />
-              {isLinking ? "Submitting..." : "Request student link"}
-            </Button>
-          </form>
+          <section className="stat-grid stat-grid-five">
+            <StatCard
+              label="Linked Students"
+              value={children.length}
+              description="visible profiles"
+              icon={Users}
+              tone={children.length > 0 ? "primary" : "warning"}
+              compact
+            />
+            <StatCard
+              label="Primary Contacts"
+              value={children.filter((item) => item.link?.is_primary_contact).length}
+              description="marked primary"
+              icon={Link2}
+              tone="success"
+              compact
+            />
+            <StatCard
+              label="Average Score"
+              value={childAverage}
+              description="selected child"
+              icon={BarChart3}
+              tone={childResults.length > 0 ? "success" : "warning"}
+              compact
+            />
+            <StatCard
+              label="Academic Context"
+              value={selectedChildAcademicLabel}
+              description="selected child latest term"
+              icon={GraduationCap}
+              tone={selectedChildAcademicLabel !== "-" ? "primary" : "warning"}
+              compact
+            />
+            <StatCard
+              label="Best Subject"
+              value={subjectHighlights.best?.label || "-"}
+              description={subjectHighlights.best ? `${subjectHighlights.best.value} score` : "awaiting results"}
+              icon={FileText}
+              tone={subjectHighlights.best ? "success" : "warning"}
+              compact
+            />
+          </section>
 
-          <div className="my-5 border-t border-border" />
+          <section className="dashboard-grid xl:grid-cols-3">
+            <AnalyticsLineChart
+              title="Performance Trend"
+              description="Average score by academic term for the selected child."
+              data={performanceTrend}
+              emptyMessage="No term trend is available for the selected child yet."
+            />
+            <AnalyticsBarChart
+              title="Subject Performance"
+              description="Published subject scores for the selected child."
+              data={subjectPerformanceChart(childResults)}
+              emptyMessage="No published subject results for the selected child yet."
+            />
+            <AnalyticsBarChart
+              title="Report Card Status"
+              description="Report-card generation and publishing state."
+              data={reportCardStatusChart(childReportCards)}
+              emptyMessage="No report card status data available yet."
+            />
+          </section>
 
-          <h2 className="section-title">Request Status</h2>
-          <div className="mt-4 space-y-3">
-            {requests.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                No parent-student link requests yet.
-              </p>
-            ) : (
-              requests.map((request) => (
-                <div key={request.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-text">
-                        {displayName(request.student)}
+          <section className="dashboard-grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+            <Card className="p-5 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="section-title">Academic Snapshot</h3>
+                  <p className="mt-1 text-sm text-text-muted">
+                    A focused reading view for the selected child's latest results and report card.
+                  </p>
+                </div>
+                {latestReportCard && (
+                  <Badge variant="success">
+                    {cleanText(latestReportCard.academic_term_name, "Latest term")}
+                  </Badge>
+                )}
+              </div>
+
+              {selectedChildRecord ? (
+                <>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                        Admission number
                       </p>
-                      <p className="mt-1 text-xs text-text-muted">
-                        {request.admission_number_snapshot || request.student?.admission_number || "No admission number"}
+                      <p className="mt-2 text-sm font-semibold text-text">
+                        {cleanText(selectedChildRecord.student.admission_number)}
                       </p>
                     </div>
-                    <Badge variant={request.status === "approved" ? "success" : request.status === "rejected" ? "error" : "warning"}>
-                      {request.status}
-                    </Badge>
+                    <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                        Profile status
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-text">
+                        {cleanText(selectedChildRecord.student.profile_status)}
+                      </p>
+                    </div>
+                    <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                        Relationship
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-text">
+                        {cleanText(selectedChildRecord.link?.relationship_type)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-[1.25rem] border border-border/70 bg-surface-muted/15 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-text">Latest report card</p>
+                      {latestReportCard ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => printReportCard(latestReportCard)}
+                        >
+                          Print or download
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    {latestReportCard ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-[1rem] border border-border/60 bg-surface px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Average</p>
+                          <p className="mt-2 text-lg font-semibold text-text">
+                            {cleanText(latestReportCard.average_score)}
+                          </p>
+                        </div>
+                        <div className="rounded-[1rem] border border-border/60 bg-surface px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Subjects</p>
+                          <p className="mt-2 text-lg font-semibold text-text">
+                            {latestReportCard.lines?.length || 0}
+                          </p>
+                        </div>
+                        <div className="rounded-[1rem] border border-border/60 bg-surface px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Position</p>
+                          <p className="mt-2 text-lg font-semibold text-text">
+                            {cleanText(latestReportCard.position, "-")}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm text-text-muted">
+                        No report card available yet for this child.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h4 className="text-sm font-semibold text-text">Recent subject results</h4>
+                      <Badge variant="info">{recentResults.length} visible</Badge>
+                    </div>
+
+                    <div className="mt-3 grid gap-3">
+                      {recentResults.length === 0 ? (
+                        <p className="text-sm text-text-muted">No result available yet.</p>
+                      ) : (
+                        recentResults.map((result) => (
+                          <div
+                            key={result.id}
+                            className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-text">
+                                  {cleanText(result.subject_name, "Subject")}
+                                </p>
+                                <p className="mt-1 text-xs text-text-muted">
+                                  Teacher: {cleanText(result.teacher_name)} / Total{" "}
+                                  {cleanText(result.total_score)}
+                                </p>
+                              </div>
+                              <Badge variant="success">{cleanText(result.grade)}</Badge>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <EmptyState
+                  icon={GraduationCap}
+                  title="Choose a child to begin"
+                  description="Linked student records and report summaries will appear here after a child is selected."
+                />
+              )}
+            </Card>
+
+            <div className="grid gap-4">
+              <Card className="p-5 sm:p-6">
+                <h3 className="section-title">Link Student</h3>
+                <p className="mt-1 text-sm text-text-muted">
+                  Add another child without crowding the main academic view.
+                </p>
+
+                <form onSubmit={handleLinkSubmit} className="mt-4 space-y-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">
+                      Admission number
+                    </span>
+                    <input
+                      value={admissionNumber}
+                      onChange={(event) => {
+                        setAdmissionNumber(event.target.value);
+                        setLinkError(null);
+                        setLinkSuccess(null);
+                      }}
+                      placeholder="NHS-2026-12345"
+                      className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none transition placeholder:text-text-faint focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-text-muted">
+                      Relationship
+                    </span>
+                    <select
+                      value={relationshipType}
+                      onChange={(event) => setRelationshipType(event.target.value)}
+                      className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    >
+                      <option value="father">Father</option>
+                      <option value="mother">Mother</option>
+                      <option value="guardian">Guardian</option>
+                      <option value="sponsor">Sponsor</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+
+                  {linkError && <p className="text-sm font-medium text-error">{linkError}</p>}
+                  {linkSuccess && <p className="text-sm font-medium text-success">{linkSuccess}</p>}
+
+                  <Button type="submit" className="w-full" disabled={isLinking || !admissionNumber.trim()}>
+                    <Link2 className="h-4 w-4" />
+                    {isLinking ? "Submitting..." : "Request student link"}
+                  </Button>
+                </form>
+              </Card>
+
+              <Card className="p-5 sm:p-6">
+                <h3 className="section-title">Request Status</h3>
+                <p className="mt-1 text-sm text-text-muted">
+                  Track approvals without mixing them into the child performance area.
+                </p>
+
+                <div className="mt-4 space-y-3">
+                  {requests.length === 0 ? (
+                    <p className="text-sm text-text-muted">No parent-student link requests yet.</p>
+                  ) : (
+                    requests.map((request) => (
+                      <div
+                        key={request.id}
+                        className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-text">
+                              {displayName(request.student)}
+                            </p>
+                            <p className="mt-1 text-xs text-text-muted">
+                              {request.admission_number_snapshot ||
+                                request.student?.admission_number ||
+                                "No admission number"}
+                            </p>
+                          </div>
+                          <Badge
+                            variant={
+                              request.status === "approved"
+                                ? "success"
+                                : request.status === "rejected"
+                                  ? "error"
+                                  : "warning"
+                            }
+                          >
+                            {request.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-5 sm:p-6">
+                <h3 className="section-title">Result Health</h3>
+                <p className="mt-1 text-sm text-text-muted">
+                  Quick grading signals for the selected child.
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1rem] border border-border/60 bg-surface-muted/20 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Best subject</p>
+                    <p className="mt-2 text-sm font-semibold text-text">
+                      {subjectHighlights.best?.label || "Awaiting results"}
+                    </p>
+                  </div>
+                  <div className="rounded-[1rem] border border-border/60 bg-surface-muted/20 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Needs attention</p>
+                    <p className="mt-2 text-sm font-semibold text-text">
+                      {subjectHighlights.weakest?.label || "No weak area yet"}
+                    </p>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
 
-          <div className="my-5 border-t border-border" />
-
-          <h2 className="section-title">Parent Modules</h2>
-          <div className="mt-4 grid gap-2 sm:mt-5 sm:gap-3">
-            {links.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className="flex min-h-11 items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-text-soft transition hover:border-primary/30 hover:bg-primary-subtle hover:text-primary sm:text-base"
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </Card>
-      </section>
+                <div className="mt-4 space-y-2">
+                  {gradeBreakdown.length > 0 ? (
+                    gradeBreakdown.map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center justify-between gap-3 rounded-[1rem] border border-border/60 bg-surface px-4 py-3"
+                      >
+                        <p className="text-sm font-medium text-text">{cleanText(item.label)}</p>
+                        <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-semibold text-text-soft">
+                          {item.value}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-text-muted">No grade distribution available yet.</p>
+                  )}
+                </div>
+              </Card>
+            </div>
+          </section>
+        </>
+      )}
     </DashboardLayout>
   );
 }

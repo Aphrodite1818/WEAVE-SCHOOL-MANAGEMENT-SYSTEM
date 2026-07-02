@@ -322,10 +322,17 @@ async def delete_teacher_announcement(
 async def get_announcement_feed(
     db: DbSession,
     current_actor: CurrentTenantMember,
+    delivery_kind: str | None = Query(default=None, pattern="^(message|notice)$"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AnnouncementFeedResponse:
-    return await AnnouncementService.feed(db, actor=current_actor, offset=skip, limit=limit)
+    return await AnnouncementService.feed(
+        db,
+        actor=current_actor,
+        delivery_kind=delivery_kind,
+        offset=skip,
+        limit=limit,
+    )
 
 
 @feed_router.post("/{announcement_id}/read", response_model=AnnouncementReadResponse)

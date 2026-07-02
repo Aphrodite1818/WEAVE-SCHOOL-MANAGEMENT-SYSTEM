@@ -14,6 +14,7 @@ import {
   HelpCircle,
   Home,
   Library,
+  Link2,
   LogOut,
   Menu,
   MessageSquare,
@@ -54,7 +55,7 @@ const roleLabels = {
 
 const announcementPaths = {
   admin: "/admin/announcements",
-  teacher: "/teacher/announcements",
+  teacher: "/teacher/notices",
   student: "/student/notices",
   parent: "/parent/notices",
   superadmin: "/superadmin/announcements",
@@ -118,7 +119,7 @@ const navGroups = {
       label: "Communication",
       items: [
         { label: "Notices", to: "/admin/announcements", icon: FileText },
-        { label: "Messages", to: "/admin/messages", icon: MessageSquare, badge: "3" },
+        { label: "Messages", to: "/admin/messages", icon: MessageSquare },
       ],
     },
     {
@@ -142,7 +143,8 @@ const navGroups = {
         { label: "Timetable", to: "/teacher/timetable", icon: CalendarDays },
         { label: "Attendance", to: "/teacher/attendance", icon: CheckSquare },
         { label: "Assignments", to: "/teacher/assignments", icon: ClipboardList },
-        { label: "Notices", to: "/teacher/announcements", icon: FileText },
+        { label: "Notices", to: "/teacher/notices", icon: Bell },
+        { label: "Class Notices", to: "/teacher/announcements", icon: FileText },
         { label: "Results", to: "/teacher/results", icon: BarChart3 },
       ],
     },
@@ -152,6 +154,9 @@ const navGroups = {
       label: "Learning",
       items: [
         { label: "Dashboard", to: "/student/dashboard", icon: Home },
+        { label: "Subjects", to: "/student/subjects", icon: BookOpen },
+        { label: "Parent Linking", to: "/student/parent-linking", icon: Link2 },
+        { label: "Report Cards", to: "/student/report-cards", icon: FileText },
         { label: "Timetable", to: "/student/timetable", icon: CalendarDays },
         { label: "Assignments", to: "/student/assignments", icon: ClipboardList },
         { label: "Results", to: "/student/results", icon: BarChart3 },
@@ -341,7 +346,9 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
       if (!authSession.getToken()) return;
 
       try {
-        const response = await announcementService.getFeed({ limit: 5 });
+        const response = await announcementService.getFeed(
+          role === "teacher" ? { limit: 5, delivery_kind: "notice" } : { limit: 5 }
+        );
         if (!mounted) return;
         const items = response?.items || [];
         setNotifications(items);
@@ -539,6 +546,10 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
             <Link to="/profile" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-text-soft hover:bg-surface-muted">
               <Settings className="h-4 w-4" />
               Profile page
+            </Link>
+            <Link to="/legal" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-text-soft hover:bg-surface-muted">
+              <Shield className="h-4 w-4" />
+              Legal
             </Link>
             <button
               type="button"

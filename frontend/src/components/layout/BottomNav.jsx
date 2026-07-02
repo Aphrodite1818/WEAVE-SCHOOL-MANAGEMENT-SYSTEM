@@ -15,8 +15,8 @@ const bottomNavConfig = {
   ],
   student: [
     { label: "Home", to: "/student/dashboard", icon: Home },
-    { label: "Timetable", to: "/student/timetable", icon: CalendarDays },
-    { label: "Notices", to: "/student/notices", icon: FileText },
+    { label: "Subjects", to: "/student/subjects", icon: BookOpen },
+    { label: "Reports", to: "/student/report-cards", icon: FileText },
   ],
   parent: [
     { label: "Home", to: "/parent/dashboard", icon: Home },

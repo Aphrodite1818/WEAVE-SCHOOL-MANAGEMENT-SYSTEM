@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, BookOpen, CheckSquare, ClipboardList, Send, Users } from "lucide-react";
+import { BarChart3, CheckSquare, ClipboardList, Send, Users } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
+import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import LoadingState from "../../components/shared/LoadingState";
 import StatCard from "../../components/shared/StatCard";
 import { authSession, getErrorMessage } from "../../services/api";
@@ -13,20 +14,11 @@ import { dashboardService } from "../../services/dashboard.service";
 import { teacherService } from "../../services/teacherService";
 import { academicService } from "../../services/academicService";
 import {
-  averageBy,
+  averageByAcademicPeriod,
   chartFromCounts,
   cleanText,
   completionPercent,
 } from "../../utils/academicDashboard";
-
-const shortcuts = [
-  { label: "My classes", to: "/teacher/classes", icon: Users },
-  { label: "Students", to: "/teacher/students", icon: Users },
-  { label: "Subjects", to: "/teacher/subjects", icon: BookOpen },
-  { label: "Attendance", to: "/teacher/attendance", icon: CheckSquare },
-  { label: "Notices", to: "/teacher/announcements", icon: ClipboardList },
-  { label: "Results", to: "/teacher/results", icon: ClipboardList },
-];
 
 function TeacherDashboardPage() {
   const [teacher, setTeacher] = useState(null);
@@ -80,12 +72,20 @@ function TeacherDashboardPage() {
 
   const charts = metrics?.charts || {};
   const classSizeByLabel = useMemo(
-    () => Object.fromEntries((charts.class_sizes || []).map((item) => [cleanText(item.label), Number(item.value || 0)])),
+    () =>
+      Object.fromEntries(
+        (charts.class_sizes || []).map((item) => [cleanText(item.label), Number(item.value || 0)])
+      ),
     [charts.class_sizes]
   );
   const assignedClassLabels = useMemo(
     () =>
       [...new Set(assignments.map((item) => cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "")))].filter(Boolean),
+    [assignments]
+  );
+  const assignedSubjectLabels = useMemo(
+    () =>
+      [...new Set(assignments.map((item) => cleanText(item.subject_name || item.subject_code, "")))].filter(Boolean),
     [assignments]
   );
 
@@ -102,22 +102,33 @@ function TeacherDashboardPage() {
     const label = cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "");
     return sum + Number(classSizeByLabel[label] || 0);
   }, 0);
-  const submittedResults = results.filter((item) => ["submitted", "published", "locked"].includes(item.status)).length;
+  const submittedResults = results.filter((item) =>
+    ["submitted", "published", "locked"].includes(item.status)
+  ).length;
   const pendingSubmissions = Math.max(expectedSubmissions - submittedResults, 0);
   const resultCompletion = completionPercent(submittedResults, expectedSubmissions);
   const pendingByClass = assignedClassLabels.map((label) => {
     const expected = assignments
       .filter((item) => cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "") === label)
       .reduce((sum) => sum + Number(classSizeByLabel[label] || 0), 0);
-    const submitted = results.filter((item) => cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "") === label && ["submitted", "published", "locked"].includes(item.status)).length;
+    const submitted = results.filter(
+      (item) =>
+        cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "") === label &&
+        ["submitted", "published", "locked"].includes(item.status)
+    ).length;
     return { label, value: Math.max(expected - submitted, 0) };
   });
+  const priorityClasses = pendingByClass
+    .filter((item) => item.value > 0)
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 4);
+  const performanceTrend = charts.performance_trend || averageByAcademicPeriod(results);
 
   return (
     <DashboardLayout
       role="teacher"
       title={`${firstName}'s Workspace`}
-      description="Access your classes, attendance, and teaching tools."
+      description="A cleaner teaching overview with trend data, class pressure points, and only the actions that matter now."
     >
       {loadError && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
@@ -169,7 +180,10 @@ function TeacherDashboardPage() {
           />
           <StatCard
             label="Published Results"
-            value={metrics?.stats?.results_published ?? results.filter((item) => ["published", "locked"].includes(item.status)).length}
+            value={
+              metrics?.stats?.results_published ??
+              results.filter((item) => ["published", "locked"].includes(item.status)).length
+            }
             description="visible to students"
             icon={ClipboardList}
             tone="primary"
@@ -180,6 +194,12 @@ function TeacherDashboardPage() {
 
       {!loadError && (
         <section className="dashboard-grid xl:grid-cols-2">
+          <AnalyticsLineChart
+            title="Performance Trend"
+            description="Average recorded score by academic term."
+            data={performanceTrend}
+            emptyMessage="No term performance trend is available yet."
+          />
           <AnalyticsBarChart
             title="Class Sizes"
             description="Number of students in each class assigned to you."
@@ -192,18 +212,6 @@ function TeacherDashboardPage() {
             data={chartFromCounts(results, "status", "draft")}
             emptyMessage="No result status data available yet."
           />
-          <AnalyticsDonutChart
-            title="Grade Distribution"
-            description="Grade spread for students in your assigned subjects."
-            data={charts.grade_distribution || chartFromCounts(results, "grade", "ungraded")}
-            emptyMessage="No grade distribution available yet."
-          />
-          <AnalyticsBarChart
-            title="Class Average By Subject"
-            description="Average score for each assigned class-subject."
-            data={averageBy(results, (item) => `${item.subject_code || item.subject_name || "Subject"} - ${[item.class_name, item.class_arm].filter(Boolean).join(" ") || "Class"}`)}
-            emptyMessage="No class-subject performance data available yet."
-          />
           <AnalyticsBarChart
             title="Pending Submissions By Class"
             description="Estimated pending rows from assigned classes and submitted results."
@@ -213,9 +221,13 @@ function TeacherDashboardPage() {
         </section>
       )}
 
-      <section className="dashboard-grid lg:grid-cols-[minmax(0,1fr)_min(100%,380px)]">
-        <Card className="p-4 sm:p-5 md:p-6">
+      <section className="dashboard-grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <Card className="p-5 sm:p-6">
           <h2 className="section-title">Teaching Overview</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Profile and assignment context, kept separate from execution actions.
+          </p>
+
           <div className="mt-4 grid gap-3 text-sm text-text-soft sm:grid-cols-2">
             <div className="rounded-2xl border border-border bg-surface px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Profile status</p>
@@ -242,40 +254,113 @@ function TeacherDashboardPage() {
               </p>
             </div>
           </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/15 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-text">Assigned classes</p>
+                <BadgeCount count={assignedClassLabels.length} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {assignedClassLabels.length > 0 ? (
+                  assignedClassLabels.map((label) => (
+                    <span
+                      key={label}
+                      className="rounded-full border border-border/70 bg-surface px-3 py-1.5 text-xs font-medium text-text-soft"
+                    >
+                      {label}
+                    </span>
+                  ))
+                ) : (
+                  <p className="text-sm text-text-muted">No classes assigned yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] border border-border/70 bg-surface-muted/15 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-text">Subject mix</p>
+                <BadgeCount count={assignedSubjectLabels.length} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {assignedSubjectLabels.length > 0 ? (
+                  assignedSubjectLabels.slice(0, 8).map((label) => (
+                    <span
+                      key={label}
+                      className="rounded-full border border-border/70 bg-surface px-3 py-1.5 text-xs font-medium text-text-soft"
+                    >
+                      {label}
+                    </span>
+                  ))
+                ) : (
+                  <p className="text-sm text-text-muted">No subjects assigned yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
         </Card>
 
-        <Card className="p-4 sm:p-5 md:p-6">
-          <h2 className="section-title">Quick Actions</h2>
-          <div className="mt-4 grid gap-2 sm:mt-5 sm:gap-3">
-            {shortcuts.map((shortcut) => {
-              const Icon = shortcut.icon;
-              return (
-                <Link
-                  key={shortcut.to}
-                  to={shortcut.to}
-                  className="flex min-h-11 items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-semibold text-text-soft transition hover:border-primary/30 hover:bg-primary-subtle hover:text-primary sm:text-base"
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {shortcut.label}
-                </Link>
-              );
-            })}
+        <Card className="p-5 sm:p-6">
+          <h2 className="section-title">Action Centre</h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Only the next teaching actions stay here. The broader module navigation already lives in the sidebar.
+          </p>
+
+          <div className="mt-4 rounded-[1.2rem] border border-border/70 bg-surface-muted/15 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-text">Priority classes</p>
+              <BadgeCount count={priorityClasses.length} />
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {priorityClasses.length > 0 ? (
+                priorityClasses.map((item) => (
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between gap-3 rounded-[1rem] border border-border/70 bg-surface px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-text">{item.label}</p>
+                      <p className="mt-1 text-xs text-text-muted">Pending result rows</p>
+                    </div>
+                    <span className="rounded-full bg-warning-soft px-3 py-1 text-xs font-semibold text-amber-700">
+                      {item.value}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-text-muted">
+                  No classes are currently behind on result submissions.
+                </p>
+              )}
+            </div>
           </div>
-          <Link to="/teacher/attendance" className="mt-4 block sm:mt-5">
-            <Button className="w-full">
-              <CheckSquare className="h-4 w-4" />
-              Open attendance
-            </Button>
-          </Link>
-          <Link to="/teacher/results" className="mt-3 block">
-            <Button variant="success" className="w-full">
-              <Send className="h-4 w-4" />
-              Enter scores
-            </Button>
-          </Link>
+
+          <div className="mt-4 space-y-3">
+            <Link to="/teacher/attendance" className="block">
+              <Button className="w-full">
+                <CheckSquare className="h-4 w-4" />
+                Open attendance
+              </Button>
+            </Link>
+            <Link to="/teacher/results" className="block">
+              <Button variant="success" className="w-full">
+                <Send className="h-4 w-4" />
+                Enter scores
+              </Button>
+            </Link>
+          </div>
         </Card>
       </section>
     </DashboardLayout>
+  );
+}
+
+function BadgeCount({ count }) {
+  return (
+    <span className="rounded-full border border-border/70 bg-surface px-2.5 py-1 text-xs font-semibold text-text-soft">
+      {count}
+    </span>
   );
 }
 

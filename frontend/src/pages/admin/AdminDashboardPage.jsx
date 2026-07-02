@@ -18,12 +18,14 @@ import LoadingState from "../../components/shared/LoadingState";
 import EmptyState from "../../components/shared/EmptyState";
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
+import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import { dashboardService } from "../../services/dashboard.service";
 import { authSession, getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { reportCardService } from "../../services/reportCardService";
 import {
   averageBy,
+  averageByAcademicPeriod,
   chartFromCounts,
   cleanText,
   completionPercent,
@@ -96,14 +98,22 @@ function AdminDashboardPage() {
 
   const stats = analytics?.stats || {};
   const charts = analytics?.charts || {};
-  const submittedResults = academicResults.filter((item) => ["submitted", "published", "locked"].includes(item.status)).length;
+  const submittedResults = academicResults.filter((item) =>
+    ["submitted", "published", "locked"].includes(item.status)
+  ).length;
   const resultCompletion = completionPercent(submittedResults, academicResults.length);
+  const performanceTrend =
+    charts.performance_trend ||
+    averageByAcademicPeriod(
+      reportCards.length > 0 ? reportCards : academicResults,
+      reportCards.length > 0 ? "average_score" : "total_score"
+    );
 
   return (
     <DashboardLayout
       role="admin"
       title={`${firstName}'s Dashboard`}
-      description="Live tenant analytics for students, staff, classes, onboarding, and parent-link workflows."
+      description="Tenant analytics organized for faster scanning: compact KPIs first, then trends, then operational and academic drilldowns."
       actions={
         <Link to="/admin/create-user">
           <Button>
@@ -121,7 +131,7 @@ function AdminDashboardPage() {
 
       {!error && (
         <>
-          <section className="stat-grid stat-grid-six">
+          <section className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-3 sm:gap-3 xl:grid-cols-6">
             {statItems.map((item) => (
               <StatCard
                 key={item.key}
@@ -144,7 +154,7 @@ function AdminDashboardPage() {
             ))}
           </section>
 
-          <section className="stat-grid stat-grid-four">
+          <section className="grid grid-cols-2 gap-2 min-[420px]:grid-cols-2 sm:gap-3 lg:grid-cols-4">
             <StatCard
               label="Active Session"
               value={cleanText(stats.active_academic_session, "-")}
@@ -179,7 +189,50 @@ function AdminDashboardPage() {
             />
           </section>
 
-          <section className="dashboard-grid xl:grid-cols-2">
+          <section className="dashboard-grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <AnalyticsLineChart
+              title="Performance Trend"
+              description="Average tenant performance by academic term."
+              data={performanceTrend}
+              emptyMessage="No term performance trend is available yet."
+            />
+
+            <Card className="p-5 sm:p-6">
+              <h2 className="section-title">Operational Snapshot</h2>
+              {analytics ? (
+                <>
+                  <p className="mt-1 text-sm text-text-muted">
+                    A compact health readout for onboarding, account status, and report-card release progress.
+                  </p>
+                  <div className="mt-4 grid gap-3">
+                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Student profiles complete</p>
+                      <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_complete ?? 0}</p>
+                    </div>
+                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Student profiles incomplete</p>
+                      <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_incomplete ?? 0}</p>
+                    </div>
+                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending teacher accounts</p>
+                      <p className="mt-2 text-lg font-semibold text-text">{stats.pending_teacher_accounts ?? 0}</p>
+                    </div>
+                    <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending parent accounts</p>
+                      <p className="mt-2 text-lg font-semibold text-text">{stats.pending_parent_accounts ?? 0}</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <EmptyState
+                  title="No analytics available"
+                  description="Tenant analytics will appear here once the backend responds."
+                />
+              )}
+            </Card>
+          </section>
+
+          <section className="dashboard-grid xl:grid-cols-3">
             <AnalyticsBarChart
               title="User Population Breakdown"
               description="Students, teachers, and parents currently in this school."
@@ -190,15 +243,15 @@ function AdminDashboardPage() {
               description="Shows how many student profiles are complete versus still missing required fields."
               data={charts.student_profile_completion_rate || []}
             />
-          </section>
-
-          <section className="dashboard-grid xl:grid-cols-3">
             <AnalyticsBarChart
               title="Account Status Overview"
               description="Active and pending accounts across teachers and parents."
               data={charts.account_status_overview || []}
               emptyMessage="No account status data available yet."
             />
+          </section>
+
+          <section className="dashboard-grid xl:grid-cols-3">
             <AnalyticsDonutChart
               title="Announcements By Category"
               description="Announcement categories posted within this school."
@@ -210,21 +263,6 @@ function AdminDashboardPage() {
               description="Number of enrolled students in each class."
               data={charts.class_population || []}
               emptyMessage="No class population data available yet."
-            />
-          </section>
-
-          <section className="dashboard-grid xl:grid-cols-3">
-            <AnalyticsDonutChart
-              title="Grade Distribution"
-              description="All recorded academic grades in this tenant."
-              data={charts.grade_distribution || chartFromCounts(academicResults, "grade", "ungraded")}
-              emptyMessage="No grade data has been recorded yet."
-            />
-            <AnalyticsDonutChart
-              title="Result Status"
-              description="Draft, submitted, published, and locked result rows."
-              data={charts.result_status_distribution || chartFromCounts(academicResults, "status", "draft")}
-              emptyMessage="No result status data has been recorded yet."
             />
             <AnalyticsDonutChart
               title="Report Card Status"
@@ -255,23 +293,32 @@ function AdminDashboardPage() {
             />
           </section>
 
-          <section className="dashboard-grid xl:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
-            <Card className="p-4 sm:p-5 md:p-6">
-              <h2 className="section-title">Operational Snapshot</h2>
-              {analytics ? (
-                <div className="mt-4 space-y-3 text-sm text-text-soft">
-                  <p>Student profiles complete: {stats.student_profiles_complete ?? 0}</p>
-                  <p>Student profiles incomplete: {stats.student_profiles_incomplete ?? 0}</p>
-                  <p>Pending teacher accounts: {stats.pending_teacher_accounts ?? 0}</p>
-                  <p>Pending parent accounts: {stats.pending_parent_accounts ?? 0}</p>
-                </div>
-              ) : (
-                <EmptyState
-                  title="No analytics available"
-                  description="Tenant analytics will appear here once the backend responds."
-                />
+          <section className="dashboard-grid xl:grid-cols-3">
+            <AnalyticsDonutChart
+              title="Grade Distribution"
+              description="All recorded academic grades in this tenant."
+              data={charts.grade_distribution || chartFromCounts(academicResults, "grade", "ungraded")}
+              emptyMessage="No grade data has been recorded yet."
+            />
+            <AnalyticsDonutChart
+              title="Result Status"
+              description="Draft, submitted, published, and locked result rows."
+              data={charts.result_status_distribution || chartFromCounts(academicResults, "status", "draft")}
+              emptyMessage="No result status data has been recorded yet."
+            />
+            <AnalyticsBarChart
+              title="Result Completion By Subject"
+              description="Average completion signal grouped by subject."
+              data={averageBy(
+                academicResults.map((item) => ({
+                  ...item,
+                  completion_score: ["submitted", "published", "locked"].includes(item.status) ? 100 : 0,
+                })),
+                (item) => item.subject_name || item.subject_code || "Subject",
+                "completion_score"
               )}
-            </Card>
+              emptyMessage="No subject completion data available yet."
+            />
           </section>
         </>
       )}

@@ -38,7 +38,6 @@ const adminTargets = [
   { value: "role", label: "Role" },
   { value: "class", label: "Class" },
   { value: "specific_student", label: "Specific student" },
-  { value: "specific_teacher", label: "Specific teacher" },
   { value: "specific_parent", label: "Specific parent" },
   { value: "parents_of_student", label: "Parents of student" },
   { value: "parents_of_class", label: "Parents of class" },
@@ -92,10 +91,22 @@ function buildTarget(form) {
   return target;
 }
 
-function validateForm(form, mode) {
+function isTeacherDirectMessage(item) {
+  return Array.isArray(item?.targets) && item.targets.some((target) => target.target_type === "specific_teacher");
+}
+
+function resolveTeacherTarget(item, teachers) {
+  const teacherId = item?.targets?.find((target) => target.target_type === "specific_teacher")?.teacher_id;
+  if (!teacherId) return "Teacher not found";
+  const teacher = teachers.find((entry) => entry.id === teacherId);
+  return displayName(teacher, "Teacher");
+}
+
+function validateForm(form, mode, variant = "notices") {
   if (!form.title.trim()) return "Title is required.";
   if (!form.body.trim()) return "Message is required.";
   if (mode === "superadmin") return null;
+  if (variant === "messages" && !form.teacherId) return "Choose a teacher.";
   if (form.targetType === "role" && !form.role) return "Choose a role.";
   if (["class", "parents_of_class"].includes(form.targetType) && !form.classId) return "Choose a class.";
   if (["specific_student", "parents_of_student"].includes(form.targetType) && !form.studentId) return "Choose a student.";
@@ -120,10 +131,11 @@ function SelectField({ label, value, onChange, children, disabled = false }) {
   );
 }
 
-function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
+function AnnouncementForm({ mode, variant = "notices", options, onSubmit, isSubmitting }) {
+  const isMessageComposer = variant === "messages";
   const [form, setForm] = useState({
     ...emptyForm,
-    targetType: mode === "teacher" ? "class" : "all",
+    targetType: isMessageComposer ? "specific_teacher" : mode === "teacher" ? "class" : "all",
   });
   const [error, setError] = useState("");
   const targetOptions = mode === "teacher" ? teacherTargets : adminTargets;
@@ -136,7 +148,7 @@ function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
 
   const submit = async (event) => {
     event.preventDefault();
-    const message = validateForm(form, mode);
+    const message = validateForm(form, mode, variant);
     if (message) {
       setError(message);
       return;
@@ -148,11 +160,18 @@ function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
       category: form.category,
       priority: form.priority,
       is_pinned: form.isPinned,
-      targets: isSuperadmin ? [{ target_type: "all" }] : [buildTarget(form)],
+      targets: isSuperadmin
+        ? [{ target_type: "all" }]
+        : isMessageComposer
+          ? [{ target_type: "specific_teacher", teacher_id: form.teacherId }]
+          : [buildTarget(form)],
     };
 
     await onSubmit(payload);
-    setForm({ ...emptyForm, targetType: mode === "teacher" ? "class" : "all" });
+    setForm({
+      ...emptyForm,
+      targetType: isMessageComposer ? "specific_teacher" : mode === "teacher" ? "class" : "all",
+    });
   };
 
   return (
@@ -183,20 +202,31 @@ function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
       </label>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <SelectField
-          label="Audience"
-          value={isSuperadmin ? "tenant_admins" : form.targetType}
-          disabled={isSuperadmin}
-          onChange={(value) => update("targetType", value)}
-        >
-          {isSuperadmin ? (
-            <option value="tenant_admins">Tenant admins only</option>
-          ) : (
-            targetOptions.map((target) => (
-              <option key={target.value} value={target.value}>{target.label}</option>
-            ))
-          )}
-        </SelectField>
+        {!isMessageComposer && (
+          <SelectField
+            label="Audience"
+            value={isSuperadmin ? "tenant_admins" : form.targetType}
+            disabled={isSuperadmin}
+            onChange={(value) => update("targetType", value)}
+          >
+            {isSuperadmin ? (
+              <option value="tenant_admins">Tenant admins only</option>
+            ) : (
+              targetOptions.map((target) => (
+                <option key={target.value} value={target.value}>{target.label}</option>
+              ))
+            )}
+          </SelectField>
+        )}
+
+        {isMessageComposer && (
+          <SelectField label="Teacher" value={form.teacherId} onChange={(value) => update("teacherId", value)}>
+            <option value="">Select teacher</option>
+            {options.teachers.map((item) => (
+              <option key={item.id} value={item.id}>{displayName(item, item.email)}</option>
+            ))}
+          </SelectField>
+        )}
 
         {!isSuperadmin && form.targetType === "role" && (
           <SelectField label="Role" value={form.role} onChange={(value) => update("role", value)}>
@@ -233,7 +263,7 @@ function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
           </SelectField>
         )}
 
-        {!isSuperadmin && form.targetType === "specific_teacher" && (
+        {!isMessageComposer && !isSuperadmin && form.targetType === "specific_teacher" && (
           <SelectField label="Teacher" value={form.teacherId} onChange={(value) => update("teacherId", value)}>
             <option value="">Select teacher</option>
             {options.teachers.map((item) => (
@@ -244,20 +274,22 @@ function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <label className="inline-flex items-center gap-2 text-sm font-medium text-text-soft">
-          <input
-            type="checkbox"
-            checked={form.isPinned}
-            onChange={(event) => update("isPinned", event.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          Pin announcement
-        </label>
+        {!isMessageComposer && (
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-text-soft">
+            <input
+              type="checkbox"
+              checked={form.isPinned}
+              onChange={(event) => update("isPinned", event.target.checked)}
+              className="h-4 w-4 rounded border-border"
+            />
+            Pin announcement
+          </label>
+        )}
         <div className="flex items-center gap-3">
           {error && <p className="text-sm font-medium text-error">{error}</p>}
           <Button type="submit" disabled={isSubmitting}>
-            <Plus className="h-4 w-4" />
-            Create
+            {isMessageComposer ? <Send className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {isMessageComposer ? "Send message" : "Create"}
           </Button>
         </div>
       </div>
@@ -265,13 +297,17 @@ function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
   );
 }
 
-function AnnouncementList({ items, mode, onPublish, onArchive, onDelete }) {
+function AnnouncementList({ items, mode, variant = "notices", options, onPublish, onArchive, onDelete }) {
   if (!items.length) {
     return (
       <EmptyState
         icon={Megaphone}
-        title="No announcements yet"
-        description="Create an announcement and publish it when it is ready."
+        title={variant === "messages" ? "No messages yet" : "No announcements yet"}
+        description={
+          variant === "messages"
+            ? "Send a direct message to a teacher and publish it when it is ready."
+            : "Create an announcement and publish it when it is ready."
+        }
       />
     );
   }
@@ -292,6 +328,11 @@ function AnnouncementList({ items, mode, onPublish, onArchive, onDelete }) {
                   {String(item.category || "general").replaceAll("_", " ")}
                 </span>
               </div>
+              {variant === "messages" && (
+                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  Teacher: {resolveTeacherTarget(item, options.teachers)}
+                </p>
+              )}
               <p className="mt-2 whitespace-pre-line text-sm leading-6 text-text-soft">{item.body}</p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
@@ -319,13 +360,17 @@ function AnnouncementList({ items, mode, onPublish, onArchive, onDelete }) {
   );
 }
 
-function AnnouncementFeed({ items, onRead, onAcknowledge }) {
+function AnnouncementFeed({ items, onRead, onAcknowledge, variant = "notices" }) {
   if (!items.length) {
     return (
       <EmptyState
         icon={Bell}
-        title="No notices yet"
-        description="Published notices for you will appear here."
+        title={variant === "messages" ? "No messages yet" : "No notices yet"}
+        description={
+          variant === "messages"
+            ? "Direct messages from your administrators will appear here."
+            : "Published notices for you will appear here."
+        }
       />
     );
   }
@@ -367,9 +412,14 @@ function AnnouncementFeed({ items, onRead, onAcknowledge }) {
   );
 }
 
-function AnnouncementsWorkspacePage({ mode }) {
+function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
   const role = mode === "tenant-admin" ? "admin" : mode;
-  const isFeed = mode === "parent" || mode === "student";
+  const isMessages = variant === "messages";
+  const isReceivedNotices = variant === "received-notices";
+  const isFeed =
+    mode === "parent" ||
+    mode === "student" ||
+    (mode === "teacher" && isReceivedNotices);
   const [items, setItems] = useState([]);
   const [options, setOptions] = useState({ classes: [], students: [], parents: [], teachers: [] });
   const [isLoading, setIsLoading] = useState(true);
@@ -383,9 +433,21 @@ function AnnouncementsWorkspacePage({ mode }) {
         description: "Create platform notices for tenant administrators.",
       };
     }
+    if (mode === "tenant-admin" && isMessages) {
+      return {
+        title: "Messages",
+        description: "Send direct messages to individual teachers without mixing them into school-wide notices.",
+      };
+    }
+    if (mode === "teacher" && isReceivedNotices) {
+      return {
+        title: "Notices",
+        description: "Read general school notices that were sent to teachers.",
+      };
+    }
     if (mode === "teacher") {
       return {
-        title: "Class Announcements",
+        title: "Class Notices",
         description: "Create notices for your assigned classes, students, and their parents.",
       };
     }
@@ -399,14 +461,15 @@ function AnnouncementsWorkspacePage({ mode }) {
       title: "Notices & Announcements",
       description: "Create and publish school announcements for staff, parents, and students.",
     };
-  }, [isFeed, mode]);
+  }, [isFeed, isMessages, isReceivedNotices, mode]);
 
   const listAnnouncements = useCallback(async () => {
     if (mode === "superadmin") return announcementService.listSuperadminAnnouncements();
+    if (mode === "teacher" && isReceivedNotices) return announcementService.getFeed({ delivery_kind: "notice" });
     if (mode === "teacher") return announcementService.listTeacherAnnouncements();
     if (mode === "tenant-admin") return announcementService.listTenantAdminAnnouncements();
     return announcementService.getFeed();
-  }, [mode]);
+  }, [isMessages, isReceivedNotices, mode]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -424,7 +487,14 @@ function AnnouncementsWorkspacePage({ mode }) {
         mode === "tenant-admin" ? teacherService.getTeachers({ limit: 100 }) : Promise.resolve({ items: [] }),
       ]);
 
-      setItems(normalizeItems(announcementResponse));
+      let announcementItems = normalizeItems(announcementResponse);
+      if (mode === "tenant-admin" && isMessages) {
+        announcementItems = announcementItems.filter(isTeacherDirectMessage);
+      } else if (mode === "tenant-admin") {
+        announcementItems = announcementItems.filter((item) => !isTeacherDirectMessage(item));
+      }
+
+      setItems(announcementItems);
       setOptions({
         classes: normalizeItems(classes),
         students: normalizeItems(students),
@@ -436,7 +506,7 @@ function AnnouncementsWorkspacePage({ mode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [isFeed, listAnnouncements, mode]);
+  }, [isFeed, isMessages, listAnnouncements, mode]);
 
   useEffect(() => {
     load();
@@ -500,6 +570,7 @@ function AnnouncementsWorkspacePage({ mode }) {
         {!isFeed && (
           <AnnouncementForm
             mode={mode === "tenant-admin" ? "admin" : mode}
+            variant={variant}
             options={options}
             onSubmit={createAnnouncement}
             isSubmitting={isSubmitting}
@@ -509,9 +580,17 @@ function AnnouncementsWorkspacePage({ mode }) {
         {isLoading ? (
           <LoadingState label="Loading announcements" />
         ) : isFeed ? (
-          <AnnouncementFeed items={items} onRead={markRead} onAcknowledge={acknowledge} />
+          <AnnouncementFeed items={items} onRead={markRead} onAcknowledge={acknowledge} variant={variant} />
         ) : (
-          <AnnouncementList items={items} mode={mode} onPublish={publish} onArchive={archive} onDelete={remove} />
+          <AnnouncementList
+            items={items}
+            mode={mode}
+            variant={variant}
+            options={options}
+            onPublish={publish}
+            onArchive={archive}
+            onDelete={remove}
+          />
         )}
       </div>
     </DashboardLayout>

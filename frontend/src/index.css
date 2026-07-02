@@ -84,7 +84,7 @@
 
 @layer components {
   .card-base {
-    @apply rounded-2xl border border-border/60 bg-surface shadow-premium;
+    @apply rounded-[1.35rem] border border-border/60 bg-surface shadow-premium;
   }
 
   .btn-base {
@@ -114,11 +114,11 @@
   }
 
   .dashboard-grid {
-    @apply grid gap-4 sm:gap-5 xl:gap-6;
+    @apply grid gap-4 sm:gap-5 xl:gap-5;
   }
 
   .stat-grid {
-    @apply grid grid-cols-2 gap-2.5 min-[380px]:gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4;
+    @apply grid grid-cols-2 gap-2 min-[380px]:gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4;
   }
 
   .stat-grid-four {
@@ -130,7 +130,7 @@
   }
 
   .stat-grid-six {
-    @apply xl:grid-cols-3;
+    @apply min-[420px]:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6;
   }
 
   .dashboard-title {

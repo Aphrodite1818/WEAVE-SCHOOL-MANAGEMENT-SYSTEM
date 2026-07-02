@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -512,10 +512,15 @@ class AnnouncementService:
         db: AsyncSession,
         *,
         actor: TenantAdmin | Teacher | Parent | Student,
+        delivery_kind: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> AnnouncementFeedResponse:
-        base, tenant_id, recipient_type = await AnnouncementService._feed_base_query(db, actor)
+        base, tenant_id, recipient_type = await AnnouncementService._feed_base_query(
+            db,
+            actor,
+            delivery_kind=delivery_kind,
+        )
         total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
         announcements = (
             await db.execute(
@@ -577,6 +582,7 @@ class AnnouncementService:
     async def _feed_base_query(
         db: AsyncSession,
         actor: TenantAdmin | Teacher | Parent | Student,
+        delivery_kind: str | None = None,
     ):
         tenant_id = actor.tenant_id
         filters = AnnouncementService._base_feed_filters(tenant_id)
@@ -585,41 +591,38 @@ class AnnouncementService:
         if isinstance(actor, TenantAdmin):
             filters.append(Announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN)
         else:
-            target_filters = [
+            notice_filters = [
                 AnnouncementTarget.target_type == AnnouncementTargetType.ALL,
                 and_(
                     AnnouncementTarget.target_type == AnnouncementTargetType.ROLE,
                     AnnouncementTarget.role == recipient_type,
                 ),
             ]
+            direct_filters = []
+
             if isinstance(actor, Teacher):
-                target_filters.append(
+                direct_filters = []
+            elif isinstance(actor, Student):
+                notice_filters.append(
                     and_(
-                        AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_TEACHER,
-                        AnnouncementTarget.teacher_id == actor.id,
+                        AnnouncementTarget.target_type == AnnouncementTargetType.CLASS,
+                        AnnouncementTarget.class_id == actor.class_id,
                     )
                 )
-            elif isinstance(actor, Student):
-                target_filters.extend(
-                    [
-                        and_(
-                            AnnouncementTarget.target_type == AnnouncementTargetType.CLASS,
-                            AnnouncementTarget.class_id == actor.class_id,
-                        ),
-                        and_(
-                            AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_STUDENT,
-                            AnnouncementTarget.student_id == actor.id,
-                        ),
-                    ]
+                direct_filters.append(
+                    and_(
+                        AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_STUDENT,
+                        AnnouncementTarget.student_id == actor.id,
+                    )
                 )
             elif isinstance(actor, Parent):
-                student_ids = await AnnouncementService._parent_student_ids(db, actor)
-                target_filters.append(
+                direct_filters.append(
                     and_(
                         AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_PARENT,
                         AnnouncementTarget.parent_id == actor.id,
                     )
                 )
+                student_ids = await AnnouncementService._parent_student_ids(db, actor)
                 if student_ids:
                     class_ids = (
                         await db.execute(
@@ -630,7 +633,7 @@ class AnnouncementService:
                             )
                         )
                     ).scalars().all()
-                    target_filters.extend(
+                    notice_filters.extend(
                         [
                             and_(
                                 AnnouncementTarget.target_type == AnnouncementTargetType.PARENTS_OF_STUDENT,
@@ -642,13 +645,27 @@ class AnnouncementService:
                             ),
                         ]
                     )
+
+            if delivery_kind == "message":
+                target_filters = direct_filters
+            elif delivery_kind == "notice":
+                target_filters = notice_filters
+            else:
+                target_filters = notice_filters + direct_filters
+
+            if delivery_kind == "message" and not target_filters:
+                filters.append(false())
+            elif not target_filters:
+                target_filters = notice_filters
+
             filters.append(Announcement.created_by_actor_type != AnnouncementActorType.SUPERADMIN)
-            filters.append(or_(*target_filters))
+            if target_filters:
+                filters.append(or_(*target_filters))
 
         base = (
             select(Announcement)
             .join(AnnouncementTarget, AnnouncementTarget.announcement_id == Announcement.id)
-            .options(selectinload(Announcement.reads))
+            .options(selectinload(Announcement.reads), selectinload(Announcement.targets))
             .where(*filters)
             .distinct()
         )
