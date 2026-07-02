@@ -3,6 +3,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
+import LoadingState from "../../components/shared/LoadingState";
 import { classService } from "../../services/academicsService";
 import { studentService } from "../../services/studentService";
 import { teacherService } from "../../services/teacherService";
@@ -305,8 +306,8 @@ function CreateUserPage() {
           </p>
 
           {isLoadingContext ? (
-            <div className="mt-6 rounded-2xl border border-dashed border-border bg-surface-muted/40 px-4 py-10 text-center text-sm text-text-muted">
-              Loading form options...
+            <div className="mt-6">
+              <LoadingState label="Loading form options..." />
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="mt-6 space-y-4">

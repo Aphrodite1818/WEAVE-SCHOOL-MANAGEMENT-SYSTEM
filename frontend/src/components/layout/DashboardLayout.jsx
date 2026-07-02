@@ -678,14 +678,16 @@ function DashboardLayout({
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-[86vw] max-w-80 border-r border-border bg-surface shadow-premium">
-            <div className="absolute right-3 top-3">
-              <Button type="button" variant="ghost" size="icon" onClick={() => setMobileOpen(false)} aria-label="Close navigation">
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity duration-300" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 flex w-[86vw] max-w-80 flex-col border-r border-border bg-surface shadow-premium">
+            <div className="flex min-h-16 items-center justify-end border-b border-border px-3">
+              <Button type="button" variant="ghost" size="icon" className="relative z-10" onClick={() => setMobileOpen(false)} aria-label="Close navigation">
                 <X className="h-5 w-5" />
               </Button>
             </div>
-            <SidebarContent role={role} collapsed={false} mobile onNavigate={() => setMobileOpen(false)} schoolName={schoolName} />
+            <div className="min-h-0 flex-1">
+              <SidebarContent role={role} collapsed={false} mobile onNavigate={() => setMobileOpen(false)} schoolName={schoolName} />
+            </div>
           </aside>
         </div>
       )}

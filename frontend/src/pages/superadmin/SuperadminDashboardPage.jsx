@@ -5,6 +5,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Badge from "../../components/ui/Badge";
+import LoadingState from "../../components/shared/LoadingState";
 import StatCard from "../../components/shared/StatCard";
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
@@ -301,6 +302,11 @@ function SuperadminDashboardPage() {
               </div>
               <Badge variant="primary">{tenants.length} schools</Badge>
             </div>
+            {isLoading ? (
+              <div className="mt-4 sm:mt-6">
+                <LoadingState label="Loading tenants..." />
+              </div>
+            ) : (
             <div className="mt-4 table-wrap sm:mt-6">
               <table className="data-table">
                 <thead>
@@ -314,9 +320,7 @@ function SuperadminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {isLoading ? (
-                    <tr><td colSpan="6" className="text-text-muted"><span>Loading tenants...</span></td></tr>
-                  ) : tenants.length === 0 ? (
+                  {tenants.length === 0 ? (
                     <tr><td colSpan="6" className="text-text-muted"><span>No tenants found.</span></td></tr>
                   ) : (
                     tenants.map((tenant) => {
@@ -370,6 +374,7 @@ function SuperadminDashboardPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </Card>
         </div>
 
@@ -430,6 +435,11 @@ function SuperadminDashboardPage() {
           </div>
           <Badge variant="primary">{superadmins.length} admins</Badge>
         </div>
+        {isLoading ? (
+          <div className="mt-4 sm:mt-6">
+            <LoadingState label="Loading superadmins..." />
+          </div>
+        ) : (
         <div className="mt-4 table-wrap sm:mt-6">
           <table className="data-table">
             <thead>
@@ -441,9 +451,7 @@ function SuperadminDashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading ? (
-                <tr><td colSpan="4" className="text-text-muted"><span>Loading superadmins...</span></td></tr>
-              ) : superadmins.length === 0 ? (
+              {superadmins.length === 0 ? (
                 <tr><td colSpan="4" className="text-text-muted"><span>No superadmin accounts found.</span></td></tr>
               ) : (
                 superadmins.map((superadmin) => (
@@ -458,6 +466,7 @@ function SuperadminDashboardPage() {
             </tbody>
           </table>
         </div>
+        )}
       </Card>
     </DashboardLayout>
   );

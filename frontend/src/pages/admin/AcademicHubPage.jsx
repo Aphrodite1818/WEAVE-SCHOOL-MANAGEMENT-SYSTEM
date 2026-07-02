@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { BookOpen, CalendarDays, ClipboardList, FileText, GraduationCap, Pencil, Plus, Search, Send, Users } from "lucide-react";
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useState } from "react";
+import { BookOpen, ClipboardList, FileText, Pencil, Plus, Search, Users } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import EmptyState from "../../components/shared/EmptyState";
@@ -32,6 +32,7 @@ const blankResult = { student_id: "", test_score: "", assessment_score: "", exam
 
 const toNullableScore = (value) => (value === "" || value === null || value === undefined ? null : Number(value));
 const displayScore = (value) => (value === null || value === undefined || value === "" ? "--" : value);
+const compactDate = (value) => (value ? new Date(value).toLocaleDateString() : "--");
 const classLabel = (item) => [item?.class_name || item?.name, item?.class_arm || item?.arm].filter(Boolean).join(" ") || "Class";
 const studentName = (student) => displayPerson(student) || student?.admission_number || "Student";
 const isSubmitted = (result) => result?.status === "submitted";
@@ -213,7 +214,112 @@ function AcademicHubPage() {
 }
 
 function SetupSection({ sessionForm, setSessionForm, saveSession, termForm, setTermForm, saveTerm, scaleForm, setScaleForm, saveScale, subjectForm, setSubjectForm, saveSubject, sessions, terms, scales, subjects, isSaving }) {
-  return <div className="grid gap-4 xl:grid-cols-2"><Panel title="Create academic session" subtitle="Example: 2026/2027. Mark one session current for dashboard defaults."><form onSubmit={saveSession} className="form-grid"><TextField label="Session" value={sessionForm.name} onChange={(value) => setSessionForm((c) => ({ ...c, name: value }))} placeholder="2026/2027" required /><TextField label="Start date" type="date" value={sessionForm.start_date} onChange={(value) => setSessionForm((c) => ({ ...c, start_date: value }))} /><TextField label="End date" type="date" value={sessionForm.end_date} onChange={(value) => setSessionForm((c) => ({ ...c, end_date: value }))} /><CheckboxField label="Current" checked={sessionForm.is_current} onChange={(value) => setSessionForm((c) => ({ ...c, is_current: value }))} /><ActionButton disabled={isSaving === "session"}>Create session</ActionButton></form><MiniList items={sessions.slice(0, 4)} render={(item) => `${item.name}${item.is_current ? " · Current" : ""}`} empty="No sessions yet." /></Panel><Panel title="Create academic term" subtitle="Terms belong to sessions. Keep only one term current at a time."><form onSubmit={saveTerm} className="form-grid"><SelectField label="Session" value={termForm.academic_session_id} onChange={(value) => setTermForm((c) => ({ ...c, academic_session_id: value }))} required><option value="">Select session</option>{sessions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</SelectField><SelectField label="Term" value={termForm.name} onChange={(value) => setTermForm((c) => ({ ...c, name: value }))}><option value="first_term">First Term</option><option value="second_term">Second Term</option><option value="third_term">Third Term</option></SelectField><TextField label="Start date" type="date" value={termForm.start_date} onChange={(value) => setTermForm((c) => ({ ...c, start_date: value }))} /><TextField label="End date" type="date" value={termForm.end_date} onChange={(value) => setTermForm((c) => ({ ...c, end_date: value }))} /><CheckboxField label="Current" checked={termForm.is_current} onChange={(value) => setTermForm((c) => ({ ...c, is_current: value }))} /><ActionButton disabled={isSaving === "term"}>Create term</ActionButton></form><MiniList items={terms.slice(0, 4)} render={(item) => `${displayTerm(item.name)}${item.is_current ? " · Current" : ""}`} empty="No terms yet." /></Panel><Panel title="Create grading scale" subtitle="Grades are computed only when all score components are filled."><form onSubmit={saveScale} className="form-grid"><TextField label="Grade" value={scaleForm.grade} onChange={(value) => setScaleForm((c) => ({ ...c, grade: value }))} placeholder="A" required /><TextField label="Min" type="number" min="0" max="100" value={scaleForm.min_score} onChange={(value) => setScaleForm((c) => ({ ...c, min_score: value }))} required /><TextField label="Max" type="number" min="0" max="100" value={scaleForm.max_score} onChange={(value) => setScaleForm((c) => ({ ...c, max_score: value }))} required /><TextField label="Remark" value={scaleForm.remark} onChange={(value) => setScaleForm((c) => ({ ...c, remark: value }))} placeholder="Excellent" /><ActionButton disabled={isSaving === "scale"}>Save scale</ActionButton></form><MiniList items={scales.slice(0, 5)} render={(item) => `${item.grade}: ${item.min_score}-${item.max_score}`} empty="No grading scale yet." /></Panel><Panel title="Subject catalogue" subtitle="Subjects are universal inside a tenant. Case/spacing duplicates are blocked."><form onSubmit={saveSubject} className="form-grid"><TextField label="Subject name" value={subjectForm.name} onChange={(value) => setSubjectForm((c) => ({ ...c, name: value }))} placeholder="Biology" required /><TextField label="Code" value={subjectForm.code} onChange={(value) => setSubjectForm((c) => ({ ...c, code: value }))} placeholder="BIO" /><TextField label="Description" value={subjectForm.description} onChange={(value) => setSubjectForm((c) => ({ ...c, description: value }))} placeholder="Optional" /><ActionButton disabled={isSaving === "subject"}>Create subject</ActionButton></form><MiniList items={subjects.slice(0, 6)} render={(item) => `${item.name}${item.code ? ` · ${item.code}` : ""}`} empty="No subjects yet." /></Panel></div>;
+  return (
+    <div className="space-y-4">
+      <Panel title="New session" subtitle="Create an academic session and choose whether it is current.">
+        <form onSubmit={saveSession} className="form-grid">
+          <TextField label="Session" value={sessionForm.name} onChange={(value) => setSessionForm((c) => ({ ...c, name: value }))} placeholder="2026/2027" required />
+          <TextField label="Start date" type="date" value={sessionForm.start_date} onChange={(value) => setSessionForm((c) => ({ ...c, start_date: value }))} />
+          <TextField label="End date" type="date" value={sessionForm.end_date} onChange={(value) => setSessionForm((c) => ({ ...c, end_date: value }))} />
+          <CheckboxField label="Current" checked={sessionForm.is_current} onChange={(value) => setSessionForm((c) => ({ ...c, is_current: value }))} />
+          <ActionButton disabled={isSaving === "session"}>Create session</ActionButton>
+        </form>
+      </Panel>
+
+      <Panel title="All sessions" subtitle={`${sessions.length} session${sessions.length === 1 ? "" : "s"} configured for this tenant.`}>
+        <ResponsiveTable empty={sessions.length === 0} emptyText="No academic sessions have been created yet." headers={["Name", "Start date", "End date", "Current", "Status"]}>
+          {sessions.map((item) => (
+            <tr key={item.id}>
+              <Td strong>{item.name}</Td>
+              <Td>{compactDate(item.start_date)}</Td>
+              <Td>{compactDate(item.end_date)}</Td>
+              <Td><StatusPill value={item.is_current ? "current" : "not current"} /></Td>
+              <Td><StatusPill value={item.is_active ? "active" : "inactive"} /></Td>
+            </tr>
+          ))}
+        </ResponsiveTable>
+      </Panel>
+
+      <Panel title="New term" subtitle="Create a term for a session and optionally mark it as current.">
+        <form onSubmit={saveTerm} className="form-grid">
+          <SelectField label="Session" value={termForm.academic_session_id} onChange={(value) => setTermForm((c) => ({ ...c, academic_session_id: value }))} required>
+            <option value="">Select session</option>
+            {sessions.map((session) => <option key={session.id} value={session.id}>{session.name}</option>)}
+          </SelectField>
+          <SelectField label="Term" value={termForm.name} onChange={(value) => setTermForm((c) => ({ ...c, name: value }))}>
+            <option value="first_term">First Term</option>
+            <option value="second_term">Second Term</option>
+            <option value="third_term">Third Term</option>
+          </SelectField>
+          <TextField label="Start date" type="date" value={termForm.start_date} onChange={(value) => setTermForm((c) => ({ ...c, start_date: value }))} />
+          <TextField label="End date" type="date" value={termForm.end_date} onChange={(value) => setTermForm((c) => ({ ...c, end_date: value }))} />
+          <CheckboxField label="Current" checked={termForm.is_current} onChange={(value) => setTermForm((c) => ({ ...c, is_current: value }))} />
+          <ActionButton disabled={isSaving === "term"}>Create term</ActionButton>
+        </form>
+      </Panel>
+
+      <Panel title="All terms" subtitle="Terms are shown with their owning session so date windows are easier to audit.">
+        <ResponsiveTable empty={terms.length === 0} emptyText="No academic terms have been created yet." headers={["Term", "Session", "Start date", "End date", "Current", "Status"]}>
+          {terms.map((item) => (
+            <tr key={item.id}>
+              <Td strong>{displayTerm(item.name)}</Td>
+              <Td>{sessions.find((session) => session.id === item.academic_session_id)?.name || item.academic_session_name || "--"}</Td>
+              <Td>{compactDate(item.start_date)}</Td>
+              <Td>{compactDate(item.end_date)}</Td>
+              <Td><StatusPill value={item.is_current ? "current" : "not current"} /></Td>
+              <Td><StatusPill value={item.is_active ? "active" : "inactive"} /></Td>
+            </tr>
+          ))}
+        </ResponsiveTable>
+      </Panel>
+
+      <Panel title="New grading scale" subtitle="Create a grading band that the backend can use for computed grades.">
+        <form onSubmit={saveScale} className="form-grid">
+          <TextField label="Grade" value={scaleForm.grade} onChange={(value) => setScaleForm((c) => ({ ...c, grade: value }))} placeholder="A" required />
+          <TextField label="Min" type="number" min="0" max="100" value={scaleForm.min_score} onChange={(value) => setScaleForm((c) => ({ ...c, min_score: value }))} required />
+          <TextField label="Max" type="number" min="0" max="100" value={scaleForm.max_score} onChange={(value) => setScaleForm((c) => ({ ...c, max_score: value }))} required />
+          <TextField label="Remark" value={scaleForm.remark} onChange={(value) => setScaleForm((c) => ({ ...c, remark: value }))} placeholder="Excellent" />
+          <ActionButton disabled={isSaving === "scale"}>Save scale</ActionButton>
+        </form>
+      </Panel>
+
+      <Panel title="All grading scales" subtitle="Ranges should not overlap; complete scores use these bands for grade and remark.">
+        <ResponsiveTable empty={scales.length === 0} emptyText="No grading scale has been created yet." headers={["Grade", "Min", "Max", "Remark", "Status"]}>
+          {scales.map((item) => (
+            <tr key={item.id}>
+              <Td strong>{item.grade}</Td>
+              <Td>{item.min_score}</Td>
+              <Td>{item.max_score}</Td>
+              <Td>{item.remark || "--"}</Td>
+              <Td><StatusPill value={item.is_active ? "active" : "inactive"} /></Td>
+            </tr>
+          ))}
+        </ResponsiveTable>
+      </Panel>
+
+      <Panel title="New subject" subtitle="Subjects are tenant-wide. Case and spacing duplicates are blocked by normalized identity.">
+        <form onSubmit={saveSubject} className="form-grid">
+          <TextField label="Subject name" value={subjectForm.name} onChange={(value) => setSubjectForm((c) => ({ ...c, name: value }))} placeholder="Biology" required />
+          <TextField label="Code" value={subjectForm.code} onChange={(value) => setSubjectForm((c) => ({ ...c, code: value }))} placeholder="BIO" />
+          <TextField label="Description" value={subjectForm.description} onChange={(value) => setSubjectForm((c) => ({ ...c, description: value }))} placeholder="Optional" />
+          <ActionButton disabled={isSaving === "subject"}>Create subject</ActionButton>
+        </form>
+      </Panel>
+
+      <Panel title="All subjects" subtitle={`${subjects.length} subject${subjects.length === 1 ? "" : "s"} available for class offerings.`}>
+        <ResponsiveTable empty={subjects.length === 0} emptyText="No subjects have been created yet." headers={["Subject", "Code", "Description", "Status"]}>
+          {subjects.map((item) => (
+            <tr key={item.id}>
+              <Td strong>{item.name}</Td>
+              <Td>{item.code || "--"}</Td>
+              <Td>{item.description || "--"}</Td>
+              <Td><StatusPill value={item.is_active === false ? "inactive" : "active"} /></Td>
+            </tr>
+          ))}
+        </ResponsiveTable>
+      </Panel>
+    </div>
+  );
 }
 
 function AssignmentsSection({ assignmentForm, setAssignmentForm, editingAssignmentId, setEditingAssignmentId, classSubjects, classes, subjects, teachers, filters, setFilters, visibleAssignments, saveAssignment, startAssignmentChange, deactivateAssignment, isSaving }) {
@@ -233,14 +339,35 @@ function FilterRow({ filters, setFilters, classes = [], subjects = [], teachers 
 function NavButton({ section, active, onClick }) { const Icon = section.icon; return <button type="button" onClick={onClick} className={`mb-1 flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition last:mb-0 ${active ? "bg-primary text-text-inverse shadow-sm" : "text-text-soft hover:bg-surface-muted hover:text-text"}`}><Icon className="mt-0.5 h-4 w-4 shrink-0" /><span><span className="block text-sm font-semibold">{section.name}</span><span className={`mt-1 block text-xs leading-5 ${active ? "text-white/80" : "text-text-muted"}`}>{section.description}</span></span></button>; }
 function HeaderCard({ section, currentSession, currentTerm }) { const Icon = section.icon; return <div className="rounded-[1.35rem] border border-border bg-surface p-4 shadow-sm sm:p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2 text-sm font-semibold text-primary"><Icon className="h-4 w-4" />{section.name}</div><p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{section.description}</p></div><div className="grid grid-cols-2 gap-2 text-xs sm:min-w-[260px]"><ContextChip label="Session" value={currentSession?.name || "Not set"} /><ContextChip label="Term" value={currentTerm?.name ? displayTerm(currentTerm.name) : "Not set"} /></div></div></div>; }
 function Panel({ title, subtitle, children }) { return <section className="rounded-[1.35rem] border border-border bg-surface shadow-sm"><div className="border-b border-border/70 p-4 sm:p-5"><h2 className="text-base font-semibold text-text sm:text-lg">{title}</h2>{subtitle ? <p className="mt-1 text-sm leading-6 text-text-muted">{subtitle}</p> : null}</div><div className="p-4 sm:p-5">{children}</div></section>; }
-function ResponsiveTable({ headers, children, empty, emptyText }) { if (empty) return <EmptyState icon={ClipboardList} title="Nothing to show" description={emptyText} />; return <div className="mt-4 overflow-x-auto rounded-2xl border border-border"><table className="min-w-[760px] w-full text-left text-sm"><thead className="bg-surface-muted/70 text-xs uppercase tracking-wide text-text-muted"><tr>{headers.map((header) => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody className="divide-y divide-border bg-surface">{children}</tbody></table></div>; }
-function Td({ children }) { return <td className="px-4 py-3 align-top text-text-soft">{children}</td>; }
+function ResponsiveTable({ headers, children, empty, emptyText }) {
+  if (empty) return <EmptyState icon={ClipboardList} title="Nothing to show" description={emptyText} />;
+
+  const rows = Children.map(children, (row) => {
+    if (!isValidElement(row)) return row;
+    const cells = Children.map(row.props.children, (cell, index) => {
+      if (!isValidElement(cell)) return cell;
+      return cloneElement(cell, { "data-label": headers[index] || "" });
+    });
+    return cloneElement(row, undefined, cells);
+  });
+
+  return (
+    <div className="table-wrap mt-4">
+      <table className="data-table">
+        <thead>
+          <tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>
+  );
+}
+function Td({ children, strong = false }) { return <td className={`px-4 py-3 align-top ${strong ? "font-semibold text-text" : "text-text-soft"}`}>{children}</td>; }
 function RowActions({ children }) { return <div className="flex flex-wrap gap-2">{children}</div>; }
 function ActionButton({ children, disabled }) { return <button type="submit" className="btn-create" disabled={disabled}><Plus className="h-3.5 w-3.5" />{children}</button>; }
 function StatusPill({ value }) { const normalized = String(value || "pending").toLowerCase(); const tone = ["active", "submitted", "published", "generated"].includes(normalized) ? "green" : normalized === "draft" || normalized === "pending" || normalized === "outdated" ? "gray" : "blue"; return <span className={`badge ${tone}`}>{normalized.replaceAll("_", " ")}</span>; }
 function MiniStat({ label, value }) { return <div className="rounded-2xl border border-border bg-surface px-4 py-3 shadow-sm"><p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p><p className="mt-1 text-xl font-semibold text-text">{value}</p></div>; }
 function ContextChip({ label, value }) { return <div className="rounded-xl border border-border bg-surface-muted/40 px-3 py-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">{label}</p><p className="mt-1 truncate text-xs font-semibold text-text">{value}</p></div>; }
-function MiniList({ items, render, empty }) { return <div className="mt-4 space-y-2">{items.length === 0 ? <p className="text-sm text-text-muted">{empty}</p> : items.map((item) => <div key={item.id} className="rounded-xl border border-border bg-surface-muted/30 px-3 py-2 text-sm text-text-soft">{render(item)}</div>)}</div>; }
 function Alert({ children, tone = "info" }) { const styles = tone === "error" ? "border-error/30 bg-error-soft text-error" : tone === "warning" ? "border-warning/30 bg-warning-soft text-amber-700" : "border-primary/20 bg-primary-soft/20 text-primary-deep"; return <div className={`rounded-2xl border px-4 py-3 text-sm font-medium ${styles}`}>{children}</div>; }
 
 export default AcademicHubPage;

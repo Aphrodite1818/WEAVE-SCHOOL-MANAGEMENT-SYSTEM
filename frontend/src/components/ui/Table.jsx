@@ -1,6 +1,9 @@
 import EmptyState from "../shared/EmptyState";
+import LoadingState from "../shared/LoadingState";
 
 function Table({ columns = [], rows = [], emptyText = "No records found.", isLoading = false }) {
+  if (isLoading) return <LoadingState label="Loading records..." />;
+
   return (
     <div className="table-wrap">
       <table className="data-table">
@@ -12,13 +15,7 @@ function Table({ columns = [], rows = [], emptyText = "No records found.", isLoa
           </tr>
         </thead>
         <tbody>
-          {isLoading ? (
-            <tr>
-              <td colSpan={columns.length} className="text-text-muted">
-                Loading...
-              </td>
-            </tr>
-          ) : rows.length === 0 ? (
+          {rows.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="p-0 border-none">
                 <div className="p-6 md:p-12 border-none">

@@ -1,6 +1,6 @@
 """add normalized subject identity
 
-Revision ID: 20260702_subject_normalized_identity
+Revision ID: 20260702_subject_identity
 Revises: 20260702_teacher_assign_active
 Create Date: 2026-07-02 00:00:00.000002
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "20260702_subject_normalized_identity"
+revision: str = "20260702_subject_identity"
 down_revision: Union[str, Sequence[str], None] = "20260702_teacher_assign_active"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

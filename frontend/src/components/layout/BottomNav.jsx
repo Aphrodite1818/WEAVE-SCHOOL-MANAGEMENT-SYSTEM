@@ -52,14 +52,14 @@ function BottomNav({ role, onOpenMenu }) {
               to={item.to}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-center transition-all duration-200",
+                "flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-center transition-all duration-500 ease-out",
                 isActive
                   ? "bg-surface-raised text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_8px_24px_rgba(15,23,42,0.14)]"
                   : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
               )}
             >
-              <Icon className={cn("h-5 w-5 shrink-0", isActive && "text-primary")} />
-              <span className={cn("max-w-full truncate text-[10px] font-bold", isActive && "text-text")}>
+              <Icon className={cn("h-5 w-5 shrink-0 transition-colors duration-500 ease-out", isActive && "text-primary")} />
+              <span className={cn("max-w-full truncate text-[10px] font-bold transition-colors duration-500 ease-out", isActive && "text-text")}>
                 {item.label}
               </span>
             </Link>
@@ -68,7 +68,7 @@ function BottomNav({ role, onOpenMenu }) {
         <button
           type="button"
           onClick={onOpenMenu}
-          className="flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-text-muted transition-all duration-200 hover:bg-surface-muted/80 hover:text-text"
+          className="flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-text-muted transition-all duration-500 ease-out hover:bg-surface-muted/80 hover:text-text"
           aria-label="Open full navigation menu"
         >
           <Menu className="h-5 w-5 shrink-0" />

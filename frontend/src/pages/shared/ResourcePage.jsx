@@ -4,6 +4,7 @@ import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import MultiSelect from "../../components/ui/MultiSelect";
 import EmptyState from "../../components/shared/EmptyState";
+import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage, parseApiError } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
 
@@ -479,6 +480,11 @@ function ResourcePage({ config }) {
           )}
 
           {!isUnavailable && (
+          isLoading ? (
+            <div className="mt-5">
+              <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} />
+            </div>
+          ) : (
           <div className="mt-5 table-wrap">
             <table className="data-table">
               <thead>
@@ -494,16 +500,7 @@ function ResourcePage({ config }) {
                 </tr>
               </thead>
               <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={columns.length + 1}
-                      className="text-text-muted"
-                    >
-                      <span>Loading {config.pluralLabel.toLowerCase()}...</span>
-                    </td>
-                  </tr>
-                ) : items.length === 0 ? (
+                {items.length === 0 ? (
                   <tr>
                     <td
                       colSpan={columns.length + 1}
@@ -556,7 +553,7 @@ function ResourcePage({ config }) {
               </tbody>
             </table>
           </div>
-          )}
+          ))}
         </Card>
       </div>
     </div>
