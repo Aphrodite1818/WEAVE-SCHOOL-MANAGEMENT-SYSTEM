@@ -12,7 +12,7 @@ Alembic history continuity only.
 
 from typing import Sequence, Union
 
-revision: str = "20260626_academic_results_report_cards"
+revision: str = "20260626_academic_results"
 down_revision: Union[str, Sequence[str], None] = "20260630_add_auth_identities"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

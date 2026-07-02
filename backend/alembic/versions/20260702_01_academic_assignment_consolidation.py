@@ -1,7 +1,7 @@
 """academic assignment consolidation phase 1
 
 Revision ID: 20260702_academic_consolidation
-Revises: 20260630_add_auth_identities
+Revises: 20260626_academic_results
 Create Date: 2026-07-02 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "20260702_academic_consolidation"
-down_revision: Union[str, Sequence[str], None] = "20260626_academic_results_report_cards"
+down_revision: Union[str, Sequence[str], None] = "20260626_academic_results"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
