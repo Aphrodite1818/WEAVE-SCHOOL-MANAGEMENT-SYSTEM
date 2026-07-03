@@ -1,3 +1,31 @@
+/* Responsive dashboard ergonomics shared by all main dashboards. */
+#dashboard-content,
+#dashboard-content * {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+#dashboard-content .stat-grid,
+#dashboard-content .dashboard-kpi-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#dashboard-content .card-base,
+#dashboard-content .dashboard-chart-card,
+#dashboard-content .surface-panel,
+#dashboard-content .subtle-panel {
+  min-width: 0;
+}
+
+#dashboard-content .section-title,
+#dashboard-content .dashboard-title,
+#dashboard-content .dashboard-subtitle,
+#dashboard-content .dashboard-chart-card h3,
+#dashboard-content .dashboard-chart-card p {
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 640px) {
     #dashboard-content {
       padding-left: 0.75rem;
@@ -15,19 +43,17 @@
     }
 
     #dashboard-content .dashboard-title {
-      font-size: 1.15rem;
-      line-height: 1.25;
+      font-size: clamp(1.1rem, 4.8vw, 1.35rem);
+      line-height: 1.22;
     }
 
     #dashboard-content .dashboard-subtitle {
-      display: -webkit-box;
       margin-top: 0.35rem;
       max-width: 100%;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      font-size: 0.78rem;
-      line-height: 1.35;
+      overflow: visible;
+      display: block;
+      font-size: clamp(0.78rem, 3.35vw, 0.9rem);
+      line-height: 1.4;
     }
 
     #dashboard-content .dashboard-grid {
@@ -43,7 +69,7 @@
     #dashboard-content .stat-grid > *,
     #dashboard-content .dashboard-kpi-grid > * {
       min-width: 0;
-      overflow: hidden;
+      overflow: visible;
       border-radius: 1.1rem;
     }
 
@@ -58,14 +84,26 @@
     }
 
     #dashboard-content .section-title {
-      font-size: 0.98rem;
-      line-height: 1.25;
+      font-size: clamp(0.98rem, 3.7vw, 1.1rem);
+      line-height: 1.3;
     }
 
     #dashboard-content .dashboard-chart-card {
-      height: 19rem;
+      min-height: 20rem;
+      height: auto;
       border-radius: 1.15rem;
       padding: 0.9rem;
+      overflow: visible;
+    }
+
+    #dashboard-content .dashboard-chart-card h3 {
+      font-size: clamp(0.98rem, 4vw, 1.1rem);
+      line-height: 1.28;
+    }
+
+    #dashboard-content .dashboard-chart-card p {
+      font-size: clamp(0.78rem, 3.35vw, 0.9rem);
+      line-height: 1.42;
     }
 
     #dashboard-content .dashboard-chart-empty {
@@ -80,6 +118,13 @@
     }
 }
 
+@media (min-width: 641px) and (max-width: 1023px) {
+  #dashboard-content .stat-grid,
+  #dashboard-content .dashboard-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 390px) {
     #dashboard-content .stat-grid,
     #dashboard-content .dashboard-kpi-grid {
@@ -87,23 +132,62 @@
     }
 
     #dashboard-content .dashboard-chart-card {
-      height: 18rem;
+      min-height: 18rem;
+      height: auto;
       padding: 0.8rem;
     }
 }
 
 /* Keep main dashboard KPI rows readable instead of stretching six cards across one long row. */
 @media (min-width: 1024px) {
-  .stat-grid-five,
-  .stat-grid-six {
+  #dashboard-content .stat-grid-five,
+  #dashboard-content .stat-grid-six {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #dashboard-content .dashboard-kpi-grid-four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  #dashboard-content .stat-grid-five,
+  #dashboard-content .stat-grid-six {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1536px) {
-  .stat-grid-five,
-  .stat-grid-six {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+/* Keep fixed AI affordances away from readable dashboard content and safe areas. */
+.ai-chat-launcher {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 767px) {
+  .ai-chat-launcher {
+    right: max(0.75rem, env(safe-area-inset-right));
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  body:has(.ai-chat-launcher) main {
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (display-mode: standalone) and (max-width: 767px) {
+  .ai-chat-launcher {
+    bottom: calc(5.75rem + env(safe-area-inset-bottom));
+  }
+
+  body:has(.ai-chat-launcher) main {
+    padding-bottom: calc(12rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 768px) {
+  .ai-chat-launcher {
+    right: max(1.5rem, env(safe-area-inset-right));
+    bottom: calc(1.5rem + env(safe-area-inset-bottom));
   }
 }
 
