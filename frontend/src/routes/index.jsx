@@ -86,8 +86,9 @@ function AppRoutes() {
             <Route path="/teacher/students" element={<TeacherStudentsPage />} />
             <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />
             <Route path="/teacher/attendance" element={<TeacherAttendancePage />} />
-            <Route path="/teacher/exams" element={<Navigate to="/teacher/results" replace />} />
-            <Route path="/teacher/results" element={<TeacherResultsPage />} />
+            <Route path="/teacher/exams" element={<Navigate to="/teacher/score-entry" replace />} />
+            <Route path="/teacher/results" element={<Navigate to="/teacher/score-entry" replace />} />
+            <Route path="/teacher/score-entry" element={<TeacherResultsPage />} />
             <Route path="/teacher/assignments" element={<StaticModulePage role="teacher" title="Assignments" description="Create, review, and track classroom assignments." />} />
             <Route path="/teacher/timetable" element={<StaticModulePage role="teacher" title="Timetable" description="Daily teaching schedule and class periods." type="timetable" />} />
             <Route path="/teacher/notices" element={<AnnouncementsWorkspacePage mode="teacher" variant="received-notices" />} />
