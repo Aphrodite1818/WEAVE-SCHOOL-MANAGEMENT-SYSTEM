@@ -50,12 +50,21 @@ const mergeClassSubjectPickerOptions = (classId, classSubjectResponse, subjectRe
   };
 };
 
+const activateClassSubject = (classId, classSubjectId) =>
+  api.patch(`/classes/${classId}/subjects/${classSubjectId}/activate`, {});
+
 const resolveExistingClassSubjectId = async (classId, subjectId) => {
-  const response = await api.get(`/classes/${classId}/subjects${queryString({ active_only: true, limit: 100 })}`);
+  const response = await api.get(`/classes/${classId}/subjects${queryString({ active_only: false, limit: 100 })}`);
   const existing = (response?.items || []).find((item) => item.subject_id === subjectId);
   if (!existing?.id) {
     throw new Error("Subject is already attached to this class, but the existing class-subject could not be loaded.");
   }
+
+  if (existing.is_active === false) {
+    const activated = await activateClassSubject(classId, existing.id);
+    return activated?.id || existing.id;
+  }
+
   return existing.id;
 };
 
@@ -89,6 +98,19 @@ const buildTeacherAssignmentPayload = (payload = {}, classSubjectId) => ({
   teacher_id: payload.teacher_id,
   class_subject_id: classSubjectId,
 });
+
+const activateTeacherAssignment = (assignmentId) =>
+  api.patch(`/tenant-admin/academic/teacher-assignments/${assignmentId}/activate`, {});
+
+const reassignTeacherAssignment = async (assignmentId, payload) => {
+  const response = await api.post(`/tenant-admin/academic/teacher-assignments/${assignmentId}/reassign`, payload);
+
+  if (response?.is_active === false && response?.teacher_id === payload?.teacher_id) {
+    return activateTeacherAssignment(assignmentId);
+  }
+
+  return response;
+};
 
 export const academicService = {
   listSessions: (params) =>
@@ -125,6 +147,7 @@ export const academicService = {
     api.get(`/classes/${classId}/subjects${queryString(params)}`),
   addClassSubject: (classId, payload) =>
     api.post(`/classes/${classId}/subjects`, payload),
+  activateClassSubject,
   deactivateClassSubject: (classSubjectId) =>
     api.delete(`/class-subjects/${classSubjectId}`),
 
@@ -143,8 +166,8 @@ export const academicService = {
   },
   deactivateTeacherAssignment: (assignmentId) =>
     api.patch(`/tenant-admin/academic/teacher-assignments/${assignmentId}/deactivate`),
-  reassignTeacherAssignment: (assignmentId, payload) =>
-    api.post(`/tenant-admin/academic/teacher-assignments/${assignmentId}/reassign`, payload),
+  activateTeacherAssignment,
+  reassignTeacherAssignment,
 
   listAdminResults: (params) =>
     api.get(`/tenant-admin/academic/results${queryString(params)}`),
