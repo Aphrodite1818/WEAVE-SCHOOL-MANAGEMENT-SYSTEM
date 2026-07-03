@@ -1,5 +1,4 @@
-@layer components {
-  @media (max-width: 640px) {
+@media (max-width: 640px) {
     #dashboard-content {
       padding-left: 0.75rem;
       padding-right: 0.75rem;
@@ -79,9 +78,9 @@
     #dashboard-content .dashboard-kpi-grid + .dashboard-grid {
       margin-top: 0.1rem;
     }
-  }
+}
 
-  @media (max-width: 390px) {
+@media (max-width: 390px) {
     #dashboard-content .stat-grid,
     #dashboard-content .dashboard-kpi-grid {
       gap: 0.65rem;
@@ -91,5 +90,4 @@
       height: 18rem;
       padding: 0.8rem;
     }
-  }
 }
