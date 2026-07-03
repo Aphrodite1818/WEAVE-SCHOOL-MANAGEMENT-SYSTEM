@@ -18,6 +18,11 @@ const withQuery = (endpoint, params = {}) => {
 const getCurrentRole = () =>
   String(authSession.getUser()?.role || authSession.getRole() || "").toLowerCase();
 
+const isDirectTeacherMessagePayload = (payload = {}) =>
+  Array.isArray(payload.targets) &&
+  payload.targets.length > 0 &&
+  payload.targets.every((target) => target?.target_type === "specific_teacher" && target?.teacher_id);
+
 const createdAtMs = (item) => {
   const date = new Date(item?.created_at || item?.publish_at || 0);
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
@@ -40,6 +45,16 @@ const mergeFeedResponses = (primary = {}, secondary = {}, limit = 50) => {
     total: Math.max(Number(primary.total || 0), 0) + Math.max(Number(secondary.total || 0), 0),
     unread_count: items.filter((item) => !item.is_read).length,
   };
+};
+
+const createTenantAdminAnnouncement = async (payload) => {
+  const created = await api.post("/tenant-admin/announcements", payload);
+
+  if (isDirectTeacherMessagePayload(payload) && created?.id) {
+    return api.post(`/tenant-admin/announcements/${created.id}/publish`, {});
+  }
+
+  return created;
 };
 
 const getTeacherFeed = async (params = {}) => {
@@ -86,8 +101,7 @@ export const announcementService = {
     api.get(withQuery("/tenant-admin/announcements", params)),
   getTenantAdminAnnouncement: (id) =>
     api.get(`/tenant-admin/announcements/${id}`),
-  createTenantAdminAnnouncement: (payload) =>
-    api.post("/tenant-admin/announcements", payload),
+  createTenantAdminAnnouncement,
   updateTenantAdminAnnouncement: (id, payload) =>
     api.patch(`/tenant-admin/announcements/${id}`, payload),
   publishTenantAdminAnnouncement: (id, payload = {}) =>
