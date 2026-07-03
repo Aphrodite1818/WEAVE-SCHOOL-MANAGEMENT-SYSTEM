@@ -81,6 +81,28 @@ const getTeacherFeed = async (params = {}) => {
   return mergeFeedResponses(feed, messages, limit);
 };
 
+const markRead = async (id) => {
+  try {
+    return await api.post(`/announcements/${id}/read`, {});
+  } catch (error) {
+    if (getCurrentRole() === "teacher" && error?.response?.status === 404) {
+      return api.post(`/teachers/me/messages/${id}/read`, {});
+    }
+    throw error;
+  }
+};
+
+const acknowledge = async (id) => {
+  try {
+    return await api.post(`/announcements/${id}/acknowledge`, {});
+  } catch (error) {
+    if (getCurrentRole() === "teacher" && error?.response?.status === 404) {
+      return api.post(`/teachers/me/messages/${id}/acknowledge`, {});
+    }
+    throw error;
+  }
+};
+
 export const announcementService = {
   listSuperadminAnnouncements: (params) =>
     api.get(withQuery("/superadmin/announcements", params)),
@@ -133,6 +155,6 @@ export const announcementService = {
     getCurrentRole() === "teacher"
       ? getTeacherFeed(params)
       : api.get(withQuery("/announcements/feed", params)),
-  markRead: (id) => api.post(`/announcements/${id}/read`, {}),
-  acknowledge: (id) => api.post(`/announcements/${id}/acknowledge`, {}),
+  markRead,
+  acknowledge,
 };
