@@ -78,6 +78,7 @@ dependencies = [
     "python-jose[cryptography]==3.5.0",
     "python-multipart==0.0.29",
     "pyzmq==27.1.0",
+    "redis>=8.0.1",
     "requests==2.34.2",
     "resend==2.30.1",
     "rsa==4.9.1",

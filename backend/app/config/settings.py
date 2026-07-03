@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from datetime import timedelta
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -102,6 +103,72 @@ class Settings(BaseSettings):
     DEFAULT_STUDENT_PASSWORD: str = "default"
 
     APP_SCRIPT_URL: str = Field(...)
+
+
+    REDIS_URL: str | None = Field(default=None, description="Redis connection URL")
+    CACHE_ENABLED: bool = Field(default=False, description="Enable application caching")
+
+    CACHE_DEFAULT_TTL_SECONDS: int = Field(
+        default=300,
+        gt=0,
+        description="Default cache TTL in seconds",
+    )
+
+    CACHE_SHORT_TTL_SECONDS: int = Field(
+        default=60,
+        gt=0,
+        description="Short cache TTL in seconds",
+    )
+
+    CACHE_LONG_TTL_SECONDS: int = Field(
+        default=1800,
+        gt=0,
+        description="Long cache TTL in seconds",
+    )
+
+    @field_validator(
+        "CACHE_DEFAULT_TTL_SECONDS",
+        "CACHE_SHORT_TTL_SECONDS",
+        "CACHE_LONG_TTL_SECONDS",
+        mode="before",
+    )
+    @classmethod
+    def parse_cache_ttl(cls, value: object) -> int:
+        """Allow cache TTL values to be supplied as plain seconds in env files."""
+        if value is None or value == "":
+            raise ValueError("Cache TTL values cannot be empty.")
+
+        if isinstance(value, timedelta):
+            return int(value.total_seconds())
+
+        if isinstance(value, (int, float)):
+            return int(value)
+
+        if isinstance(value, str):
+            raw_value = value.strip()
+            if not raw_value:
+                raise ValueError("Cache TTL values cannot be blank.")
+            return int(float(raw_value))
+
+        raise ValueError("Cache TTL values must be seconds.")
+
+    @model_validator(mode="after")
+    def validate_cache_settings(self) -> "Settings":
+        """Ensure cache settings are internally consistent."""
+        if self.CACHE_ENABLED and not self.REDIS_URL:
+            raise ValueError("REDIS_URL must be set when CACHE_ENABLED is true.")
+
+        if not (
+            self.CACHE_SHORT_TTL_SECONDS
+            <= self.CACHE_DEFAULT_TTL_SECONDS
+            <= self.CACHE_LONG_TTL_SECONDS
+        ):
+            raise ValueError(
+                "CACHE_TTL values must satisfy CACHE_SHORT_TTL_SECONDS <= "
+                "CACHE_DEFAULT_TTL_SECONDS <= CACHE_LONG_TTL_SECONDS."
+            )
+
+        return self
 
     @model_validator(mode="after")
     def apply_database_url_for_environment(self) -> "Settings":
