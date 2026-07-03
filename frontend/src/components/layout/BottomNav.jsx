@@ -27,7 +27,7 @@ const bottomNavConfig = {
     { label: "Home", to: "/superadmin/dashboard", icon: Home },
     { label: "Tenants", to: "/superadmin/dashboard", icon: BookOpen },
     { label: "Settings", to: "/superadmin/settings", icon: FileText },
-  ]
+  ],
 };
 
 function BottomNav({ role, onOpenMenu }) {
@@ -36,10 +36,10 @@ function BottomNav({ role, onOpenMenu }) {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-4 z-40 px-3 pb-safe md:hidden"
+      className="fixed inset-x-2 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 md:hidden"
       aria-label="Primary mobile navigation"
     >
-      <div className="mx-auto flex w-full max-w-[27rem] items-center gap-1.5 rounded-full border border-border/70 bg-surface/95 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-[27rem] items-center gap-1 rounded-[2rem] border border-border/70 bg-surface/95 p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-xl">
         {items.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -52,14 +52,14 @@ function BottomNav({ role, onOpenMenu }) {
               to={item.to}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-center transition-all duration-500 ease-out",
+                "flex min-h-[3.6rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.55rem] px-2 py-1.5 text-center transition-all duration-300 ease-out",
                 isActive
-                  ? "bg-surface-raised text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_8px_24px_rgba(15,23,42,0.14)]"
+                  ? "bg-surface-raised text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_6px_18px_rgba(15,23,42,0.12)]"
                   : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
               )}
             >
-              <Icon className={cn("h-5 w-5 shrink-0 transition-colors duration-500 ease-out", isActive && "text-primary")} />
-              <span className={cn("max-w-full truncate text-[10px] font-bold transition-colors duration-500 ease-out", isActive && "text-text")}>
+              <Icon className={cn("h-5 w-5 shrink-0 transition-colors duration-300 ease-out", isActive && "text-primary")} />
+              <span className={cn("max-w-full truncate text-[10px] font-bold leading-tight transition-colors duration-300 ease-out", isActive && "text-text")}>
                 {item.label}
               </span>
             </Link>
@@ -68,11 +68,11 @@ function BottomNav({ role, onOpenMenu }) {
         <button
           type="button"
           onClick={onOpenMenu}
-          className="flex min-h-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-full px-2.5 py-2 text-text-muted transition-all duration-500 ease-out hover:bg-surface-muted/80 hover:text-text"
+          className="flex min-h-[3.6rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-[1.55rem] px-2 py-1.5 text-text-muted transition-all duration-300 ease-out hover:bg-surface-muted/80 hover:text-text"
           aria-label="Open full navigation menu"
         >
           <Menu className="h-5 w-5 shrink-0" />
-          <span className="text-[10px] font-bold">Menu</span>
+          <span className="text-[10px] font-bold leading-tight">Menu</span>
         </button>
       </div>
     </nav>
