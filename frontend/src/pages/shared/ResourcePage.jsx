@@ -239,7 +239,6 @@ function ResourcePage({ config }) {
   const updateFormValue = (name, nextValue) => {
     setFormData((current) => ({ ...current, [name]: nextValue }));
     setFieldErrors((current) => ({ ...current, [name]: undefined }));
-    setError(null);
   };
 
   const handleFormChange = (event) => {
@@ -259,7 +258,6 @@ function ResourcePage({ config }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setIsSubmitting(true);
-    setError(null);
     setFieldErrors({});
     let submitSucceeded = false;
 
@@ -305,7 +303,6 @@ function ResourcePage({ config }) {
           : `Failed to create ${config.singularLabel.toLowerCase()}.`
       );
       setFieldErrors(parsed.fieldErrors);
-      setError(parsed.message);
       showError(parsed.message);
     } finally {
       setIsSubmitting(false);
@@ -317,9 +314,8 @@ function ResourcePage({ config }) {
       } catch (err) {
         const parsed = parseApiError(
           err,
-          `Created ${config.singularLabel.toLowerCase()} but failed to refresh the list.`
+          `Saved ${config.singularLabel.toLowerCase()} but failed to refresh the list.`
         );
-        setError(parsed.message);
         showError(parsed.message);
       }
     }
@@ -328,7 +324,6 @@ function ResourcePage({ config }) {
   const handleEdit = (item) => {
     setEditingItem(item);
     setFormData(config.mapItemToForm(item, context));
-    setError(null);
     setFieldErrors({});
   };
 
@@ -340,7 +335,6 @@ function ResourcePage({ config }) {
     }
 
     setBusyId(item.id);
-    setError(null);
 
     try {
       await config.deleteItem(item.id);
@@ -349,7 +343,6 @@ function ResourcePage({ config }) {
       await loadItems();
     } catch (err) {
       const message = getErrorMessage(err, `Failed to delete ${config.singularLabel.toLowerCase()}.`);
-      setError(message);
       showError(message);
     } finally {
       setBusyId(null);
@@ -357,11 +350,10 @@ function ResourcePage({ config }) {
   };
 
   const handleRefresh = async () => {
-    setError(null);
-
     try {
       const nextContext = await loadContext();
       await loadItems(filters, nextContext);
+      showSuccess(`${config.pluralLabel} refreshed successfully.`);
     } catch (err) {
       const parsed = parseApiError(err, "Failed to refresh page data.");
 
@@ -369,8 +361,9 @@ function ResourcePage({ config }) {
         setItems([]);
         setTotal(0);
         setIsUnavailable(true);
+        showError(parsed.message);
       } else {
-        setError(parsed.message);
+        showError(parsed.message);
       }
     }
   };
@@ -460,13 +453,13 @@ function ResourcePage({ config }) {
               className="mt-5 grid gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid-cols-3 xl:grid-cols-4"
             >
               {filterFields.map((field) => (
-                  <FormControl
-                    key={field.name}
-                    field={field}
-                    value={filters[field.name]}
-                    onChange={handleFilterChange}
-                    onValueChange={() => {}}
-                  />
+                <FormControl
+                  key={field.name}
+                  field={field}
+                  value={filters[field.name]}
+                  onChange={handleFilterChange}
+                  onValueChange={() => {}}
+                />
               ))}
               <div className="grid gap-2 sm:flex sm:items-end">
                 <Button type="submit" size="small" className="w-full sm:w-auto">
@@ -480,80 +473,80 @@ function ResourcePage({ config }) {
           )}
 
           {!isUnavailable && (
-          isLoading ? (
-            <div className="mt-5">
-              <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} />
-            </div>
-          ) : (
-          <div className="mt-5 table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  {columns.map((column) => (
-                    <th key={column.key}>
-                      {column.label}
-                    </th>
-                  ))}
-                  {(config.canUpdate || config.canDelete) && (
-                    <th>Actions</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {items.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={columns.length + 1}
-                      className="text-text-muted"
-                    >
-                      <span>No records found.</span>
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((item) => (
-                    <tr key={item.id}>
+            isLoading ? (
+              <div className="mt-5">
+                <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} />
+              </div>
+            ) : (
+              <div className="mt-5 table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
                       {columns.map((column) => (
-                        <td key={column.key} data-label={column.label}>
-                          <span>{column.render ? column.render(item, context) : item[column.key] || "-"}</span>
-                        </td>
+                        <th key={column.key}>
+                          {column.label}
+                        </th>
                       ))}
                       {(config.canUpdate || config.canDelete) && (
-                        <td data-label="Actions">
-                          <div className="grid w-full gap-2 sm:flex sm:flex-wrap md:w-auto">
-                            {config.canUpdate && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="small"
-                                onClick={() => handleEdit(item)}
-                                disabled={busyId === item.id}
-                                className="w-full sm:w-auto"
-                              >
-                                Edit
-                              </Button>
-                            )}
-                            {config.canDelete && (
-                              <Button
-                                type="button"
-                                variant="danger"
-                                size="small"
-                                onClick={() => handleDelete(item)}
-                                disabled={busyId === item.id}
-                                className="w-full sm:w-auto"
-                              >
-                                {busyId === item.id ? "Deleting..." : "Delete"}
-                              </Button>
-                            )}
-                          </div>
-                        </td>
+                        <th>Actions</th>
                       )}
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          ))}
+                  </thead>
+                  <tbody>
+                    {items.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={columns.length + 1}
+                          className="text-text-muted"
+                        >
+                          <span>No records found.</span>
+                        </td>
+                      </tr>
+                    ) : (
+                      items.map((item) => (
+                        <tr key={item.id}>
+                          {columns.map((column) => (
+                            <td key={column.key} data-label={column.label}>
+                              <span>{column.render ? column.render(item, context) : item[column.key] || "-"}</span>
+                            </td>
+                          ))}
+                          {(config.canUpdate || config.canDelete) && (
+                            <td data-label="Actions">
+                              <div className="grid w-full gap-2 sm:flex sm:flex-wrap md:w-auto">
+                                {config.canUpdate && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="small"
+                                    onClick={() => handleEdit(item)}
+                                    disabled={busyId === item.id}
+                                    className="w-full sm:w-auto"
+                                  >
+                                    Edit
+                                  </Button>
+                                )}
+                                {config.canDelete && (
+                                  <Button
+                                    type="button"
+                                    variant="danger"
+                                    size="small"
+                                    onClick={() => handleDelete(item)}
+                                    disabled={busyId === item.id}
+                                    className="w-full sm:w-auto"
+                                  >
+                                    {busyId === item.id ? "Deleting..." : "Delete"}
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ))}
         </Card>
       </div>
     </div>
