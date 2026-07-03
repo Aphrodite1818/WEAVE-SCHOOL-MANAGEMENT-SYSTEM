@@ -86,7 +86,7 @@ function ScoreBar({ label, value, max }) {
   const percent = percentage(value, max);
 
   return (
-    <div className="grid grid-cols-[4.25rem_minmax(0,1fr)_3.25rem] items-center gap-2 text-sm sm:grid-cols-[4.75rem_minmax(0,1fr)_3.5rem]">
+    <div className="grid grid-cols-[3.75rem_minmax(0,1fr)_2.75rem] items-center gap-2 text-xs sm:grid-cols-[4.75rem_minmax(0,1fr)_3.5rem] sm:text-sm">
       <span className="truncate text-text-muted">{label}</span>
       <span className="h-2 overflow-hidden rounded-full bg-surface-muted/50">
         <span
@@ -136,7 +136,7 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
       className={cn(
         "group h-full overflow-hidden rounded-[1.5rem] border border-border/80 bg-surface text-left shadow-sm transition-all duration-200",
         link ? "hover:-translate-y-0.5 hover:border-border-strong hover:shadow-premium" : "cursor-default",
-        compact ? "p-4" : "p-5 sm:p-6"
+        compact ? "p-4" : "p-4 sm:p-6"
       )}
     >
       <div className="flex h-full flex-col gap-4">
@@ -164,17 +164,17 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
 
         <div className="border-t border-dashed border-border/70" />
 
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4">
           <ScoreRing value={card?.total_score} />
           <div className="min-w-0 space-y-2.5">
             <ScoreBar label="Test" value={card?.test_score} max={SCORE_MAXIMUMS.test_score} />
             <ScoreBar label="Assess." value={card?.assessment_score} max={SCORE_MAXIMUMS.assessment_score} />
             <ScoreBar label="Exam" value={card?.exam_score} max={SCORE_MAXIMUMS.exam_score} />
           </div>
-          <div className={cn("col-span-2 grid h-20 w-full place-items-center rounded-full border text-center sm:col-span-1 sm:h-20 sm:w-20", gradeTone(grade))}>
+          <div className={cn("grid h-16 w-16 shrink-0 place-items-center rounded-full border text-center sm:h-20 sm:w-20", gradeTone(grade))}>
             <div>
-              <p className="text-2xl font-semibold leading-none">{grade}</p>
-              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] opacity-75">Grade</p>
+              <p className="text-xl font-semibold leading-none sm:text-2xl">{grade}</p>
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] opacity-75 sm:text-[10px]">Grade</p>
             </div>
           </div>
         </div>
