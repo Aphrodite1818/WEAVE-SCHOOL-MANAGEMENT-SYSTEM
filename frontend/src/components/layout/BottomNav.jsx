@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText } from "lucide-react";
 import { cn } from "../../utils/cn";
@@ -30,9 +31,34 @@ const bottomNavConfig = {
   ],
 };
 
+const isStandaloneDisplay = () => {
+  if (typeof window === "undefined") return false;
+
+  const standaloneMedia = window.matchMedia?.("(display-mode: standalone)")?.matches;
+  const fullscreenMedia = window.matchMedia?.("(display-mode: fullscreen)")?.matches;
+  const iosStandalone = window.navigator?.standalone === true;
+
+  return Boolean(standaloneMedia || fullscreenMedia || iosStandalone);
+};
+
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
+  const [isInstalledApp, setIsInstalledApp] = useState(isStandaloneDisplay);
   const items = bottomNavConfig[role] || bottomNavConfig.admin;
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia?.("(display-mode: standalone)");
+    const updateDisplayMode = () => setIsInstalledApp(isStandaloneDisplay());
+
+    updateDisplayMode();
+    mediaQuery?.addEventListener?.("change", updateDisplayMode);
+
+    return () => {
+      mediaQuery?.removeEventListener?.("change", updateDisplayMode);
+    };
+  }, []);
+
+  if (!isInstalledApp) return null;
 
   return (
     <nav
