@@ -84,6 +84,11 @@ const stripTermCreateOnlyFields = (payload = {}) => {
   return updatablePayload;
 };
 
+const buildTeacherAssignmentPayload = (payload = {}, classSubjectId) => ({
+  teacher_id: payload.teacher_id,
+  class_subject_id: classSubjectId,
+});
+
 export const academicService = {
   listSessions: (params) =>
     api.get(`/tenant-admin/academic/sessions${queryString(params)}`),
@@ -130,10 +135,10 @@ export const academicService = {
       payload.is_core ?? true,
     );
 
-    return api.post("/tenant-admin/academic/teacher-assignments", {
-      ...payload,
-      class_subject_id: classSubjectId,
-    });
+    return api.post(
+      "/tenant-admin/academic/teacher-assignments",
+      buildTeacherAssignmentPayload(payload, classSubjectId),
+    );
   },
   deactivateTeacherAssignment: (assignmentId) =>
     api.patch(`/tenant-admin/academic/teacher-assignments/${assignmentId}/deactivate`),
