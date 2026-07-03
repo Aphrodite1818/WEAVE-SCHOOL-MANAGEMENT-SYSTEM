@@ -12,6 +12,7 @@ import { parentService } from "../../services/parentService";
 import { studentService } from "../../services/studentService";
 import { teacherService } from "../../services/teacherService";
 import { getErrorMessage } from "../../services/api";
+import { useToast } from "../../hooks/useToast";
 
 const categories = [
   "general",
@@ -137,20 +138,19 @@ function AnnouncementForm({ mode, variant = "notices", options, onSubmit, isSubm
     ...emptyForm,
     targetType: isMessageComposer ? "specific_teacher" : mode === "teacher" ? "class" : "all",
   });
-  const [error, setError] = useState("");
+  const { showWarning } = useToast();
   const targetOptions = mode === "teacher" ? teacherTargets : adminTargets;
   const isSuperadmin = mode === "superadmin";
 
   const update = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
-    setError("");
   };
 
   const submit = async (event) => {
     event.preventDefault();
     const message = validateForm(form, mode, variant);
     if (message) {
-      setError(message);
+      showWarning(message);
       return;
     }
 
@@ -285,13 +285,10 @@ function AnnouncementForm({ mode, variant = "notices", options, onSubmit, isSubm
             Pin announcement
           </label>
         )}
-        <div className="flex items-center gap-3">
-          {error && <p className="text-sm font-medium text-error">{error}</p>}
-          <Button type="submit" disabled={isSubmitting}>
-            {isMessageComposer ? <Send className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {isMessageComposer ? "Send message" : "Create"}
-          </Button>
-        </div>
+        <Button type="submit" disabled={isSubmitting}>
+          {isMessageComposer ? <Send className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {isMessageComposer ? "Send message" : "Create"}
+        </Button>
       </div>
     </form>
   );
@@ -425,6 +422,7 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const { showSuccess, showError } = useToast();
 
   const copy = useMemo(() => {
     if (mode === "superadmin") {
@@ -469,7 +467,7 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
     if (mode === "teacher") return announcementService.listTeacherAnnouncements();
     if (mode === "tenant-admin") return announcementService.listTenantAdminAnnouncements();
     return announcementService.getFeed();
-  }, [isMessages, isReceivedNotices, mode]);
+  }, [isReceivedNotices, mode]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -514,48 +512,73 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
 
   const createAnnouncement = async (payload) => {
     setIsSubmitting(true);
-    setError("");
     try {
       if (mode === "superadmin") await announcementService.createSuperadminAnnouncement(payload);
       if (mode === "teacher") await announcementService.createTeacherAnnouncement(payload);
       if (mode === "tenant-admin") await announcementService.createTenantAdminAnnouncement(payload);
       await load();
+      showSuccess(isMessages ? "Message created successfully." : "Announcement created successfully.");
     } catch (submitError) {
-      setError(getErrorMessage(submitError, "Unable to create announcement."));
+      showError(getErrorMessage(submitError, "Unable to create announcement."));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const publish = async (id) => {
-    if (mode === "superadmin") await announcementService.publishSuperadminAnnouncement(id);
-    if (mode === "teacher") await announcementService.publishTeacherAnnouncement(id);
-    if (mode === "tenant-admin") await announcementService.publishTenantAdminAnnouncement(id);
-    await load();
+    try {
+      if (mode === "superadmin") await announcementService.publishSuperadminAnnouncement(id);
+      if (mode === "teacher") await announcementService.publishTeacherAnnouncement(id);
+      if (mode === "tenant-admin") await announcementService.publishTenantAdminAnnouncement(id);
+      await load();
+      showSuccess(isMessages ? "Message published successfully." : "Announcement published successfully.");
+    } catch (publishError) {
+      showError(getErrorMessage(publishError, "Unable to publish announcement."));
+    }
   };
 
   const archive = async (id) => {
-    if (mode === "superadmin") await announcementService.archiveSuperadminAnnouncement(id);
-    if (mode === "teacher") await announcementService.archiveTeacherAnnouncement(id);
-    if (mode === "tenant-admin") await announcementService.archiveTenantAdminAnnouncement(id);
-    await load();
+    try {
+      if (mode === "superadmin") await announcementService.archiveSuperadminAnnouncement(id);
+      if (mode === "teacher") await announcementService.archiveTeacherAnnouncement(id);
+      if (mode === "tenant-admin") await announcementService.archiveTenantAdminAnnouncement(id);
+      await load();
+      showSuccess("Announcement archived successfully.");
+    } catch (archiveError) {
+      showError(getErrorMessage(archiveError, "Unable to archive announcement."));
+    }
   };
 
   const remove = async (id) => {
-    if (mode === "superadmin") await announcementService.deleteSuperadminAnnouncement(id);
-    if (mode === "teacher") await announcementService.deleteTeacherAnnouncement(id);
-    if (mode === "tenant-admin") await announcementService.deleteTenantAdminAnnouncement(id);
-    await load();
+    try {
+      if (mode === "superadmin") await announcementService.deleteSuperadminAnnouncement(id);
+      if (mode === "teacher") await announcementService.deleteTeacherAnnouncement(id);
+      if (mode === "tenant-admin") await announcementService.deleteTenantAdminAnnouncement(id);
+      await load();
+      showSuccess(isMessages ? "Message deleted successfully." : "Announcement deleted successfully.");
+    } catch (deleteError) {
+      showError(getErrorMessage(deleteError, "Unable to delete announcement."));
+    }
   };
 
   const markRead = async (id) => {
-    await announcementService.markRead(id);
-    await load();
+    try {
+      await announcementService.markRead(id);
+      await load();
+      showSuccess("Notice marked as read.");
+    } catch (readError) {
+      showError(getErrorMessage(readError, "Unable to mark notice as read."));
+    }
   };
 
   const acknowledge = async (id) => {
-    await announcementService.acknowledge(id);
-    await load();
+    try {
+      await announcementService.acknowledge(id);
+      await load();
+      showSuccess("Notice acknowledged.");
+    } catch (acknowledgeError) {
+      showError(getErrorMessage(acknowledgeError, "Unable to acknowledge notice."));
+    }
   };
 
   return (
