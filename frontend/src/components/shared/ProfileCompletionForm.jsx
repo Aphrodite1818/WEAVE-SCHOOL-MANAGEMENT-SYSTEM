@@ -5,6 +5,7 @@ import Input from "../ui/Input";
 import { parseApiError } from "../../services/api";
 import { onboardingService } from "../../services/onboardingService";
 import { getAvatarSrcFromRecord } from "../../utils/user";
+import { useToast } from "../../hooks/useToast";
 
 const ROLE_FORM_CONFIG = {
   admin: [
@@ -226,10 +227,10 @@ function ProfileCompletionForm({
   const [statusData, setStatusData] = useState(initialStatusData);
   const [formData, setFormData] = useState(() => buildFormData(initialStatusData, normalizedRole));
   const [fieldErrors, setFieldErrors] = useState({});
-  const [submitError, setSubmitError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(!initialStatusData);
+  const { showSuccess, showError } = useToast();
 
   const sections = useMemo(() => getRoleSections(normalizedRole), [normalizedRole]);
 
@@ -265,6 +266,7 @@ function ProfileCompletionForm({
       }
 
       setIsLoading(true);
+      setLoadError(null);
 
       try {
         const nextStatus = await onboardingService.getOnboardingStatus(normalizedRole);
@@ -281,7 +283,7 @@ function ProfileCompletionForm({
       } catch (error) {
         if (!mounted) return;
         const parsed = parseApiError(error, "Failed to load your onboarding details.");
-        setSubmitError(parsed.message);
+        setLoadError(parsed.message);
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -303,8 +305,6 @@ function ProfileCompletionForm({
       ...current,
       [fieldName]: undefined,
     }));
-    setSubmitError(null);
-    setSuccessMessage(null);
   };
 
   const handleSubmit = async (event) => {
@@ -313,8 +313,6 @@ function ProfileCompletionForm({
 
     setIsSubmitting(true);
     setFieldErrors({});
-    setSubmitError(null);
-    setSuccessMessage(null);
 
     try {
       const payload = sections.reduce((nextPayload, section) => {
@@ -333,7 +331,7 @@ function ProfileCompletionForm({
 
       setStatusData(nextStatus);
       setFormData(buildFormData(nextStatus, normalizedRole));
-      setSuccessMessage("Profile updated successfully.");
+      showSuccess("Profile updated successfully.");
 
       callbacksRef.current.onProfileStateResolved?.({
         completed: !nextStatus.onboarding_required,
@@ -344,7 +342,7 @@ function ProfileCompletionForm({
     } catch (error) {
       const parsed = parseApiError(error, "Failed to update your profile.");
       setFieldErrors(parsed.fieldErrors || {});
-      setSubmitError(parsed.message);
+      showError(parsed.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -360,14 +358,9 @@ function ProfileCompletionForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {submitError && (
+      {loadError && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
-          {submitError}
-        </div>
-      )}
-      {successMessage && (
-        <div className="rounded-2xl border border-success/30 bg-success-soft px-4 py-3 text-sm font-medium text-emerald-700">
-          {successMessage}
+          {loadError}
         </div>
       )}
 
