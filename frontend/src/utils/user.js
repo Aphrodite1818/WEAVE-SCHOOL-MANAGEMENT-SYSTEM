@@ -20,9 +20,12 @@ export function displayName(user) {
 
 export function schoolName(tenant) {
   return (
-    tenant?.school_name ||
-    tenant?.schoolName ||
-    tenant?.name ||
+    tenant?.school_name?.trim?.() ||
+    tenant?.schoolName?.trim?.() ||
+    tenant?.tenant?.school_name?.trim?.() ||
+    tenant?.tenant?.schoolName?.trim?.() ||
+    tenant?.tenant?.name?.trim?.() ||
+    tenant?.name?.trim?.() ||
     "School workspace"
   );
 }

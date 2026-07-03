@@ -241,15 +241,19 @@ function ProfileCompletionForm({
   useEffect(() => {
     if (!initialStatusData) return;
 
-    setStatusData(initialStatusData);
-    setFormData(buildFormData(initialStatusData, normalizedRole));
-    const nextUser = onboardingService.updateSessionUserFromStatus(normalizedRole, initialStatusData);
-    callbacksRef.current.onProfileStateResolved?.({
-      completed: !initialStatusData.onboarding_required,
-      status: initialStatusData,
-      user: nextUser,
-    });
-    setIsLoading(false);
+    const timeoutId = window.setTimeout(() => {
+      setStatusData(initialStatusData);
+      setFormData(buildFormData(initialStatusData, normalizedRole));
+      const nextUser = onboardingService.updateSessionUserFromStatus(normalizedRole, initialStatusData);
+      callbacksRef.current.onProfileStateResolved?.({
+        completed: !initialStatusData.onboarding_required,
+        status: initialStatusData,
+        user: nextUser,
+      });
+      setIsLoading(false);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [initialStatusData, normalizedRole]);
 
   useEffect(() => {

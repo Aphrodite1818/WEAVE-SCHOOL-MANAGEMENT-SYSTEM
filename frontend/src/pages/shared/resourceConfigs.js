@@ -37,23 +37,11 @@ const className = (item) =>
 const subjectName = (item) =>
   [item?.name, item?.code ? `(${item.code})` : ""].filter(Boolean).join(" ");
 
-const summarizeLabels = (items = [], formatter = fullName) => {
-  if (!items.length) return "Unassigned";
-
-  const labels = items.map((item) => formatter(item)).filter(Boolean);
-  if (labels.length <= 1) return labels[0] || "Unassigned";
-
-  return `${labels[0]} +${labels.length - 1} more`;
-};
-
 const byId = (items) =>
   (items || []).reduce((map, item) => {
     map[item.id] = item;
     return map;
   }, {});
-
-const selectedIds = (items = []) =>
-  items.map((item) => item.id).filter(Boolean);
 
 const labelFromMap = (map, id, fallback = "-") =>
   id && map[id] ? fullName(map[id]) || className(map[id]) || subjectName(map[id]) : fallback;
@@ -270,7 +258,7 @@ export const subjectResourceConfig = {
     description: "",
     is_active: "true",
   },
-  fields: (context) => [
+  fields: () => [
     { name: "name", label: "Subject name", required: true },
     { name: "code", label: "Subject code" },
     { name: "description", label: "Description", type: "textarea" },

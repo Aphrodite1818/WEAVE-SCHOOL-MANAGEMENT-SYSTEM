@@ -17,6 +17,7 @@ class LoginSessionUser(BaseModel):
 
     id: str | None = None
     tenant_id: str | None = None
+    school_name: str | None = None
     email: str | None = None
     admission_number: str | None = None
     first_name: str | None = None

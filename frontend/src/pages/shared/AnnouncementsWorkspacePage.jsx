@@ -507,7 +507,8 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
   }, [isFeed, isMessages, listAnnouncements, mode]);
 
   useEffect(() => {
-    load();
+    const timeoutId = window.setTimeout(load, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [load]);
 
   const createAnnouncement = async (payload) => {

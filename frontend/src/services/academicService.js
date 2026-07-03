@@ -80,7 +80,8 @@ const resolveClassSubjectId = async (classSubjectId, isCore = true) => {
 };
 
 const stripTermCreateOnlyFields = (payload = {}) => {
-  const { academic_session_id, ...updatablePayload } = payload;
+  const updatablePayload = { ...payload };
+  delete updatablePayload.academic_session_id;
   return updatablePayload;
 };
 

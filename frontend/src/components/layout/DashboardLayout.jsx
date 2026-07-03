@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -41,6 +41,7 @@ import { authService } from "../../services/auth.service";
 import { authSession } from "../../services/api";
 import { announcementService } from "../../services/announcementService";
 import { onboardingService } from "../../services/onboardingService";
+import { tenantService } from "../../services/tenant.service";
 import { cn } from "../../utils/cn";
 import { getUserAvatarSrc, schoolName as resolveSchoolName, displayName as resolveDisplayName } from "../../utils/user";
 import BottomNav from "./BottomNav";
@@ -54,6 +55,7 @@ const roleLabels = {
 };
 
 const workspaceSearchRoles = new Set(["admin", "teacher", "superadmin"]);
+const tenantNameFallbackRoles = new Set(["admin", "teacher"]);
 
 const announcementPaths = {
   admin: "/admin/announcements",
@@ -224,11 +226,53 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
   const [onboardingState, setOnboardingState] = useState({ loading: true, required: false, values: null });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("sidebarCollapsed") === "true");
   const mainRef = useRef(null);
-  const schoolName = resolveSchoolName(user);
+  const storedSchoolName = resolveSchoolName(user);
+  const tenantId = user?.tenant_id;
+  const [tenantSchoolName, setTenantSchoolName] = useState("");
+  const schoolName = tenantSchoolName || storedSchoolName;
 
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (
+      storedSchoolName !== "School workspace" ||
+      !tenantId ||
+      !tenantNameFallbackRoles.has(role)
+    ) {
+      return () => {
+        mounted = false;
+      };
+    }
+
+    async function loadTenantName() {
+      try {
+        const tenant = await tenantService.getTenant(tenantId);
+        if (!mounted) return;
+
+        const nextSchoolName = resolveSchoolName(tenant);
+        if (nextSchoolName === "School workspace") return;
+
+        const currentUser = authSession.getUser() || {};
+        setTenantSchoolName(nextSchoolName);
+        authSession.setUser(
+          { ...currentUser, school_name: nextSchoolName, tenant },
+          { remember: Boolean(window.localStorage.getItem("auth_user")) }
+        );
+      } catch {
+        if (mounted) setTenantSchoolName("");
+      }
+    }
+
+    loadTenantName();
+
+    return () => {
+      mounted = false;
+    };
+  }, [role, storedSchoolName, tenantId]);
 
   useEffect(() => {
     let mounted = true;
@@ -249,11 +293,6 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
     return () => { mounted = false; };
   }, [role]);
 
-  const openProfileModal = useCallback((mode = "edit") => {
-    setProfileMode(mode);
-    setProfileModalOpen(true);
-  }, []);
-
   const profileCopy = onboardingModalCopy[role] || onboardingModalCopy.teacher;
 
   return (
@@ -263,7 +302,7 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
       <div className={cn("min-h-screen transition-[padding] duration-300", sidebarCollapsed ? "md:pl-[5.5rem]" : "md:pl-72")}>
         <Topbar role={role} onOpenMobileNav={() => setMobileNavOpen(true)} schoolName={schoolName} />
         <main ref={mainRef} className="mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pb-28 pt-4 sm:gap-6 sm:px-5 sm:pb-12 sm:pt-6 lg:px-8">
-          {(title || description) && <section className="page-header"><div><h1 className="page-title">{title}</h1>{description && <p className="page-description">{description}</p>}</div><button type="button" className="hidden rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-text-soft shadow-sm transition hover:bg-surface-muted sm:inline-flex" onClick={() => openProfileModal("edit")}>Edit profile</button></section>}
+          {(title || description) && <section className="page-header"><div><h1 className="page-title">{title}</h1>{description && <p className="page-description">{description}</p>}</div></section>}
           {children}
         </main>
       </div>

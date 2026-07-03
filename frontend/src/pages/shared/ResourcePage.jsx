@@ -237,7 +237,7 @@ function ResourcePage({ config }) {
     return () => {
       isMounted = false;
     };
-  }, [filters, loadContext, loadItems]);
+  }, [config.allowUnavailable, filters, loadContext, loadItems]);
 
   const updateFormValue = (name, nextValue) => {
     setFormData((current) => ({ ...current, [name]: nextValue }));

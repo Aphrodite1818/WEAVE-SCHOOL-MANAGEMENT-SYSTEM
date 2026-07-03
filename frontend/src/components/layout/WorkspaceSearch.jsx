@@ -22,18 +22,15 @@ function WorkspaceSearch({ role }) {
     const trimmed = query.trim();
 
     if (trimmed.length < 2) {
-      setItems([]);
-      setIsLoading(false);
-      setError("");
       return undefined;
     }
 
     let active = true;
-    setIsLoading(true);
-    setError("");
-    setItems([]);
-
     const timeoutId = window.setTimeout(async () => {
+      setIsLoading(true);
+      setError("");
+      setItems([]);
+
       try {
         const response = await searchService.searchWorkspace(role, trimmed, 8);
         if (!active) return;
@@ -80,6 +77,17 @@ function WorkspaceSearch({ role }) {
     navigate(href);
   };
 
+  const handleQueryChange = (event) => {
+    const nextQuery = event.target.value;
+    setQuery(nextQuery);
+
+    if (nextQuery.trim().length < 2) {
+      setItems([]);
+      setIsLoading(false);
+      setError("");
+    }
+  };
+
   const handleKeyDown = (event) => {
     if (event.key === "Escape") {
       setQuery("");
@@ -107,7 +115,7 @@ function WorkspaceSearch({ role }) {
           aria-label="Search workspace"
           placeholder={placeholderByRole[role] || placeholderByRole.admin}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={handleQueryChange}
           onKeyDown={handleKeyDown}
           className="w-full bg-transparent text-sm text-text outline-none placeholder:text-text-faint"
         />

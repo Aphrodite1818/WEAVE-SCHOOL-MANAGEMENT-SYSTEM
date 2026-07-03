@@ -75,8 +75,12 @@ function StudentsPage() {
 
   useEffect(() => {
     if (!filteredAssignments.some((assignment) => assignment.id === selectedAssignmentId)) {
+      const timeoutId = window.setTimeout(() => {
       setSelectedAssignmentId(filteredAssignments[0]?.id || "");
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
+    return undefined;
   }, [filteredAssignments, selectedAssignmentId]);
 
   useEffect(() => {

@@ -81,13 +81,18 @@ function TeacherResultsPage() {
   );
 
   useEffect(() => {
-    if (termsForSession.length > 0 && !termsForSession.some((item) => item.id === academicTermId)) {
+    if (termsForSession.length === 0 || termsForSession.some((item) => item.id === academicTermId)) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
       setAcademicTermId(termsForSession.find((item) => item.is_current)?.id || termsForSession[0].id);
-    }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [termsForSession, academicTermId]);
 
   useEffect(() => {
-    setDrafts({});
+    const timeoutId = window.setTimeout(() => setDrafts({}), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [selectedAssignmentId, academicSessionId, academicTermId]);
 
   useEffect(() => {
@@ -109,7 +114,7 @@ function TeacherResultsPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedAssignmentId]);
+  }, [selectedAssignmentId, showError]);
 
   const loadResults = async () => {
     if (!selectedAssignment?.class_id || !academicSessionId || !academicTermId) {

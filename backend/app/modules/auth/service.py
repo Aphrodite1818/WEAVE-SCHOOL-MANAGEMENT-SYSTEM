@@ -269,6 +269,7 @@ async def _authenticate_tenant_actor(
             user=LoginSessionUser(
                 id=str(tenant_admin.id),
                 tenant_id=str(tenant_admin.tenant_id),
+                school_name=tenant.school_name,
                 email=tenant_admin.email,
                 actor_type=ActorType.TENANT_ADMIN.value,
                 account_type=ActorType.TENANT_ADMIN.value,
@@ -320,6 +321,7 @@ async def _authenticate_tenant_actor(
             user=LoginSessionUser(
                 id=str(teacher.id),
                 tenant_id=str(teacher.tenant_id),
+                school_name=tenant.school_name,
                 email=teacher.email,
                 first_name=teacher.first_name,
                 last_name=teacher.last_name,
@@ -354,6 +356,7 @@ async def _authenticate_tenant_actor(
             user=LoginSessionUser(
                 id=str(parent.id),
                 tenant_id=str(parent.tenant_id),
+                school_name=tenant.school_name,
                 email=parent.email,
                 first_name=parent.first_name,
                 last_name=parent.last_name,
@@ -389,6 +392,7 @@ async def _authenticate_tenant_actor(
             user=LoginSessionUser(
                 id=str(student.id),
                 tenant_id=str(student.tenant_id),
+                school_name=tenant.school_name,
                 email=student.admission_number,
                 admission_number=student.admission_number,
                 first_name=student.first_name,
