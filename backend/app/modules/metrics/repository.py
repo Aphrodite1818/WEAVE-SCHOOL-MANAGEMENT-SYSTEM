@@ -77,6 +77,10 @@ class MetricsRepository:
         return int(result.scalar_one())
 
     @staticmethod
+    def _count_subquery(model: Any, *filters: ColumnElement[bool]):
+        return select(func.count()).select_from(model).where(*filters).scalar_subquery()
+
+    @staticmethod
     async def superadmin_counts(db: AsyncSession) -> dict[str, int]:
         row = (
             await db.execute(
@@ -141,62 +145,73 @@ class MetricsRepository:
 
     @staticmethod
     async def tenant_admin_counts(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
-        return {
-            "total_students": await MetricsRepository.count(
-                db, Student, Student.tenant_id == tenant_id
-            ),
-            "total_teachers": await MetricsRepository.count(
-                db, Teacher, Teacher.tenant_id == tenant_id
-            ),
-            "total_parents": await MetricsRepository.count(
-                db, Parent, Parent.tenant_id == tenant_id
-            ),
-            "total_classes": await MetricsRepository.count(
-                db, ClassRoom, ClassRoom.tenant_id == tenant_id
-            ),
-            "total_subjects": await MetricsRepository.count(
-                db, Subject, Subject.tenant_id == tenant_id
-            ),
-            "report_cards_generated": await MetricsRepository.count(
-                db, ReportCard, ReportCard.tenant_id == tenant_id
-            ),
-            "report_cards_published": await MetricsRepository.count(
-                db,
-                ReportCard,
-                ReportCard.tenant_id == tenant_id,
-                ReportCard.status == ReportCardStatus.PUBLISHED,
-            ),
-            "complete_profiles": await MetricsRepository.count(
-                db,
-                Student,
-                Student.tenant_id == tenant_id,
-                Student.profile_status == StudentProfileStatus.COMPLETE,
-            ),
-            "pending_teachers": await MetricsRepository.count(
-                db,
-                Teacher,
-                Teacher.tenant_id == tenant_id,
-                Teacher.account_status == TeacherAccountStatus.PENDING,
-            ),
-            "active_teachers": await MetricsRepository.count(
-                db,
-                Teacher,
-                Teacher.tenant_id == tenant_id,
-                Teacher.account_status == TeacherAccountStatus.ACTIVE,
-            ),
-            "pending_parents": await MetricsRepository.count(
-                db,
-                Parent,
-                Parent.tenant_id == tenant_id,
-                Parent.account_status == ParentAccountStatus.PENDING,
-            ),
-            "active_parents": await MetricsRepository.count(
-                db,
-                Parent,
-                Parent.tenant_id == tenant_id,
-                Parent.account_status == ParentAccountStatus.ACTIVE,
-            ),
-        }
+        """Return tenant dashboard counts with one database round trip.
+
+        The previous implementation ran each count as a separate query. That is
+        acceptable against local Postgres, but it becomes slow against remote
+        Supabase because network round-trip time is paid for every count.
+        """
+        row = (
+            await db.execute(
+                select(
+                    MetricsRepository._count_subquery(
+                        Student,
+                        Student.tenant_id == tenant_id,
+                    ).label("total_students"),
+                    MetricsRepository._count_subquery(
+                        Teacher,
+                        Teacher.tenant_id == tenant_id,
+                    ).label("total_teachers"),
+                    MetricsRepository._count_subquery(
+                        Parent,
+                        Parent.tenant_id == tenant_id,
+                    ).label("total_parents"),
+                    MetricsRepository._count_subquery(
+                        ClassRoom,
+                        ClassRoom.tenant_id == tenant_id,
+                    ).label("total_classes"),
+                    MetricsRepository._count_subquery(
+                        Subject,
+                        Subject.tenant_id == tenant_id,
+                    ).label("total_subjects"),
+                    MetricsRepository._count_subquery(
+                        ReportCard,
+                        ReportCard.tenant_id == tenant_id,
+                    ).label("report_cards_generated"),
+                    MetricsRepository._count_subquery(
+                        ReportCard,
+                        ReportCard.tenant_id == tenant_id,
+                        ReportCard.status == ReportCardStatus.PUBLISHED,
+                    ).label("report_cards_published"),
+                    MetricsRepository._count_subquery(
+                        Student,
+                        Student.tenant_id == tenant_id,
+                        Student.profile_status == StudentProfileStatus.COMPLETE,
+                    ).label("complete_profiles"),
+                    MetricsRepository._count_subquery(
+                        Teacher,
+                        Teacher.tenant_id == tenant_id,
+                        Teacher.account_status == TeacherAccountStatus.PENDING,
+                    ).label("pending_teachers"),
+                    MetricsRepository._count_subquery(
+                        Teacher,
+                        Teacher.tenant_id == tenant_id,
+                        Teacher.account_status == TeacherAccountStatus.ACTIVE,
+                    ).label("active_teachers"),
+                    MetricsRepository._count_subquery(
+                        Parent,
+                        Parent.tenant_id == tenant_id,
+                        Parent.account_status == ParentAccountStatus.PENDING,
+                    ).label("pending_parents"),
+                    MetricsRepository._count_subquery(
+                        Parent,
+                        Parent.tenant_id == tenant_id,
+                        Parent.account_status == ParentAccountStatus.ACTIVE,
+                    ).label("active_parents"),
+                )
+            )
+        ).one()
+        return {key: int(value or 0) for key, value in row._mapping.items()}
 
     @staticmethod
     async def current_academic_session(
