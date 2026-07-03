@@ -1,7 +1,11 @@
-function LoadingState({ label = "Loading..." }) {
+function LoadingState({ label = "Loading...", fullPage = false }) {
   return (
-    <div className="flex min-h-44 items-center justify-center rounded-2xl border border-border bg-surface" role="status" aria-label={label}>
-      <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary shadow-sm" />
+    <div
+      className={`flex w-full items-center justify-center ${fullPage ? "min-h-[55vh]" : "min-h-[260px]"}`}
+      role="status"
+      aria-label={label}
+    >
+      <span className="h-12 w-12 animate-spin rounded-full border-[4px] border-primary/20 border-t-primary shadow-sm" />
       <span className="sr-only">{label}</span>
     </div>
   );
