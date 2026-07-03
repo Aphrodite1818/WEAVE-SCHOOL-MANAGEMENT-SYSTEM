@@ -157,10 +157,15 @@
   }
 }
 
-/* Keep fixed AI affordances away from readable dashboard content and safe areas. */
+/* Keep fixed AI affordances away from readable dashboard content and the installed-app nav. */
 .ai-chat-launcher {
   right: max(1rem, env(safe-area-inset-right));
   bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+.ai-chat-launcher--installed {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(6.75rem + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 767px) {
@@ -169,18 +174,17 @@
     bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 
+  .ai-chat-launcher--installed {
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(6.75rem + env(safe-area-inset-bottom));
+  }
+
   body:has(.ai-chat-launcher) main {
     padding-bottom: calc(8rem + env(safe-area-inset-bottom));
   }
-}
 
-@media (display-mode: standalone) and (max-width: 767px) {
-  .ai-chat-launcher {
-    bottom: calc(5.75rem + env(safe-area-inset-bottom));
-  }
-
-  body:has(.ai-chat-launcher) main {
-    padding-bottom: calc(12rem + env(safe-area-inset-bottom));
+  body:has(.ai-chat-launcher--installed) main {
+    padding-bottom: calc(13rem + env(safe-area-inset-bottom));
   }
 }
 
