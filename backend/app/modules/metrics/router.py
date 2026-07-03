@@ -10,7 +10,6 @@ from app.core.dependencies.route_guards import (
     get_current_teacher,
     get_current_tenant_admin,
 )
-from app.modules.announcements.service import AnnouncementService
 from app.modules.metrics.schemas import DashboardMetricsResponse
 from app.modules.metrics.service import MetricsService
 from app.modules.parents.models import Parent
@@ -42,7 +41,10 @@ async def get_tenant_admin_dashboard_metrics(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> DashboardMetricsResponse:
-    return await MetricsService.tenant_admin_dashboard(db, current_admin.tenant_id)
+    return await MetricsService.tenant_admin_dashboard(
+        db,
+        current_admin.tenant_id,
+    )
 
 
 @router.get("/teacher/dashboard", response_model=DashboardMetricsResponse)
@@ -62,14 +64,9 @@ async def get_parent_dashboard_metrics(
     db: DbSession,
     current_parent: CurrentParent,
 ) -> DashboardMetricsResponse:
-    feed_total, read_count, category_counts = await AnnouncementService.feed_summary(db, actor=current_parent)
     return await MetricsService.parent_dashboard(
         db,
-        parent_id=current_parent.id,
-        tenant_id=current_parent.tenant_id,
-        feed_total=feed_total,
-        read_count=read_count,
-        category_counts=category_counts,
+        current_parent,
     )
 
 
@@ -78,12 +75,7 @@ async def get_student_dashboard_metrics(
     db: DbSession,
     current_student: CurrentStudent,
 ) -> DashboardMetricsResponse:
-    feed_total, read_count, category_counts = await AnnouncementService.feed_summary(db, actor=current_student)
     return await MetricsService.student_dashboard(
         db,
-        student_id=current_student.id,
-        tenant_id=current_student.tenant_id,
-        feed_total=feed_total,
-        read_count=read_count,
-        category_counts=category_counts,
+        current_student,
     )

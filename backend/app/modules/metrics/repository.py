@@ -1,0 +1,401 @@
+import uuid
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.announcements.models import (
+    Announcement,
+    AnnouncementActorType,
+    AnnouncementRead,
+    AnnouncementReadStatus,
+)
+from app.modules.classes.models import ClassRoom
+from app.modules.parents.models import Parent, ParentAccountStatus
+from app.modules.students.models import Student, StudentProfileStatus
+from app.modules.subjects.models import Subject
+from app.modules.student_academics.models import (
+    AcademicResultStatus,
+    AcademicSession,
+    AcademicTerm,
+    StudentSubjectResult,
+    TeacherAssignment,
+)
+from app.modules.report_cards.models import ReportCard, ReportCardStatus
+from app.modules.teachers.models import Teacher, TeacherAccountStatus
+from app.tenant_management.models import (
+    SubscriptionPlan,
+    Tenant,
+    TenantStatus,
+    TenantVerificationStatus,
+)
+
+
+class MetricsRepository:
+    """Database aggregations for dashboard metrics."""
+
+    @staticmethod
+    async def count(db: AsyncSession, model: Any, *filters: Any) -> int:
+        result = await db.execute(
+            select(func.count()).select_from(model).where(*filters)
+        )
+        return int(result.scalar_one())
+
+    @staticmethod
+    async def superadmin_counts(db: AsyncSession) -> dict[str, int]:
+        row = (
+            await db.execute(
+                select(
+                    func.count(Tenant.id).label("total_tenants"),
+                    func.count(Tenant.id)
+                    .filter(
+                        Tenant.status == TenantStatus.ACTIVE,
+                        Tenant.is_deleted.is_(False),
+                    )
+                    .label("active_tenants"),
+                    func.count(Tenant.id)
+                    .filter(
+                        Tenant.verification_status
+                        == TenantVerificationStatus.PENDING_VERIFICATION,
+                        Tenant.is_deleted.is_(False),
+                    )
+                    .label("pending_tenants"),
+                    func.count(Tenant.id)
+                    .filter(
+                        Tenant.status == TenantStatus.SUSPENDED,
+                        Tenant.is_deleted.is_(False),
+                    )
+                    .label("suspended_tenants"),
+                    func.count(Tenant.id)
+                    .filter(
+                        Tenant.verification_status == TenantVerificationStatus.ACTIVE,
+                        Tenant.is_deleted.is_(False),
+                    )
+                    .label("verified_tenants"),
+                )
+            )
+        ).one()
+        return {key: int(value or 0) for key, value in row._mapping.items()}
+
+    @staticmethod
+    async def tenant_growth(db: AsyncSession) -> list[Any]:
+        growth_period = func.date_trunc("month", Tenant.created_at)
+        return (
+            await db.execute(
+                select(growth_period.label("period"), func.count(Tenant.id).label("value"))
+                .where(Tenant.is_deleted.is_(False))
+                .group_by(growth_period)
+                .order_by(growth_period)
+            )
+        ).all()
+
+    @staticmethod
+    async def subscription_plan_distribution(db: AsyncSession) -> dict[SubscriptionPlan, int]:
+        rows = (
+            await db.execute(
+                select(Tenant.plan, func.count(Tenant.id))
+                .where(Tenant.is_deleted.is_(False))
+                .group_by(Tenant.plan)
+            )
+        ).all()
+        return {row[0]: int(row[1]) for row in rows}
+
+    @staticmethod
+    async def tenant_admin_counts(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
+        return {
+            "total_students": await MetricsRepository.count(
+                db, Student, Student.tenant_id == tenant_id
+            ),
+            "total_teachers": await MetricsRepository.count(
+                db, Teacher, Teacher.tenant_id == tenant_id
+            ),
+            "total_parents": await MetricsRepository.count(
+                db, Parent, Parent.tenant_id == tenant_id
+            ),
+            "total_classes": await MetricsRepository.count(
+                db, ClassRoom, ClassRoom.tenant_id == tenant_id
+            ),
+            "total_subjects": await MetricsRepository.count(
+                db, Subject, Subject.tenant_id == tenant_id
+            ),
+            "report_cards_generated": await MetricsRepository.count(
+                db, ReportCard, ReportCard.tenant_id == tenant_id
+            ),
+            "report_cards_published": await MetricsRepository.count(
+                db,
+                ReportCard,
+                ReportCard.tenant_id == tenant_id,
+                ReportCard.status == ReportCardStatus.PUBLISHED,
+            ),
+            "complete_profiles": await MetricsRepository.count(
+                db,
+                Student,
+                Student.tenant_id == tenant_id,
+                Student.profile_status == StudentProfileStatus.COMPLETE,
+            ),
+            "pending_teachers": await MetricsRepository.count(
+                db,
+                Teacher,
+                Teacher.tenant_id == tenant_id,
+                Teacher.account_status == TeacherAccountStatus.PENDING,
+            ),
+            "active_teachers": await MetricsRepository.count(
+                db,
+                Teacher,
+                Teacher.tenant_id == tenant_id,
+                Teacher.account_status == TeacherAccountStatus.ACTIVE,
+            ),
+            "pending_parents": await MetricsRepository.count(
+                db,
+                Parent,
+                Parent.tenant_id == tenant_id,
+                Parent.account_status == ParentAccountStatus.PENDING,
+            ),
+            "active_parents": await MetricsRepository.count(
+                db,
+                Parent,
+                Parent.tenant_id == tenant_id,
+                Parent.account_status == ParentAccountStatus.ACTIVE,
+            ),
+        }
+
+    @staticmethod
+    async def current_academic_session(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> AcademicSession | None:
+        return (
+            await db.execute(
+                select(AcademicSession).where(
+                    AcademicSession.tenant_id == tenant_id,
+                    AcademicSession.is_current.is_(True),
+                    AcademicSession.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def current_academic_term(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> AcademicTerm | None:
+        return (
+            await db.execute(
+                select(AcademicTerm).where(
+                    AcademicTerm.tenant_id == tenant_id,
+                    AcademicTerm.is_current.is_(True),
+                    AcademicTerm.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def announcement_category_counts(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
+        return (
+            await db.execute(
+                select(Announcement.category, func.count(Announcement.id))
+                .where(Announcement.tenant_id == tenant_id)
+                .group_by(Announcement.category)
+            )
+        ).all()
+
+    @staticmethod
+    async def class_population(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
+        return (
+            await db.execute(
+                select(ClassRoom.name, ClassRoom.arm, func.count(Student.id))
+                .select_from(ClassRoom)
+                .outerjoin(
+                    Student,
+                    and_(
+                        Student.class_id == ClassRoom.id,
+                        Student.tenant_id == ClassRoom.tenant_id,
+                    ),
+                )
+                .where(ClassRoom.tenant_id == tenant_id)
+                .group_by(ClassRoom.id, ClassRoom.name, ClassRoom.arm)
+                .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+            )
+        ).all()
+
+    @staticmethod
+    async def result_grade_counts(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
+        return (
+            await db.execute(
+                select(StudentSubjectResult.grade, func.count(StudentSubjectResult.id))
+                .where(StudentSubjectResult.tenant_id == tenant_id)
+                .group_by(StudentSubjectResult.grade)
+            )
+        ).all()
+
+    @staticmethod
+    async def result_status_counts(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
+        return (
+            await db.execute(
+                select(StudentSubjectResult.status, func.count(StudentSubjectResult.id))
+                .where(StudentSubjectResult.tenant_id == tenant_id)
+                .group_by(StudentSubjectResult.status)
+            )
+        ).all()
+
+    @staticmethod
+    async def subject_performance(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
+        return (
+            await db.execute(
+                select(Subject.name, func.avg(StudentSubjectResult.total_score))
+                .join(Subject, Subject.id == StudentSubjectResult.subject_id)
+                .where(StudentSubjectResult.tenant_id == tenant_id)
+                .group_by(Subject.name)
+                .order_by(Subject.name.asc())
+            )
+        ).all()
+
+    @staticmethod
+    async def teacher_class_sizes(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        teacher_id: uuid.UUID,
+    ) -> list[Any]:
+        return (
+            await db.execute(
+                select(ClassRoom.id, ClassRoom.name, ClassRoom.arm, func.count(Student.id))
+                .select_from(ClassRoom)
+                .outerjoin(
+                    Student,
+                    and_(
+                        Student.class_id == ClassRoom.id,
+                        Student.tenant_id == ClassRoom.tenant_id,
+                    ),
+                )
+                .where(ClassRoom.tenant_id == tenant_id, ClassRoom.teacher_id == teacher_id)
+                .group_by(ClassRoom.id, ClassRoom.name, ClassRoom.arm)
+                .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+            )
+        ).all()
+
+    @staticmethod
+    async def active_teacher_assignment_count(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        teacher_id: uuid.UUID,
+    ) -> int:
+        return await MetricsRepository.count(
+            db,
+            TeacherAssignment,
+            TeacherAssignment.tenant_id == tenant_id,
+            TeacherAssignment.teacher_id == teacher_id,
+            TeacherAssignment.is_active.is_(True),
+        )
+
+    @staticmethod
+    async def submitted_result_count_for_teacher(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        teacher_id: uuid.UUID,
+    ) -> int:
+        return await MetricsRepository.count(
+            db,
+            StudentSubjectResult,
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.teacher_id == teacher_id,
+            StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
+        )
+
+    @staticmethod
+    async def teacher_grade_counts(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        teacher_id: uuid.UUID,
+    ) -> list[Any]:
+        return (
+            await db.execute(
+                select(StudentSubjectResult.grade, func.count(StudentSubjectResult.id))
+                .where(
+                    StudentSubjectResult.tenant_id == tenant_id,
+                    StudentSubjectResult.teacher_id == teacher_id,
+                )
+                .group_by(StudentSubjectResult.grade)
+            )
+        ).all()
+
+    @staticmethod
+    async def teacher_announcement_ids(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        teacher_id: uuid.UUID,
+    ) -> list[uuid.UUID]:
+        return list(
+            (
+                await db.execute(
+                    select(Announcement.id).where(
+                        Announcement.tenant_id == tenant_id,
+                        Announcement.created_by_actor_type == AnnouncementActorType.TEACHER,
+                        Announcement.created_by_actor_id == teacher_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    @staticmethod
+    async def teacher_announcement_category_counts(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        teacher_id: uuid.UUID,
+    ) -> list[Any]:
+        return (
+            await db.execute(
+                select(Announcement.category, func.count(Announcement.id))
+                .where(
+                    Announcement.tenant_id == tenant_id,
+                    Announcement.created_by_actor_type == AnnouncementActorType.TEACHER,
+                    Announcement.created_by_actor_id == teacher_id,
+                )
+                .group_by(Announcement.category)
+            )
+        ).all()
+
+    @staticmethod
+    async def announcement_read_count(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        announcement_ids: list[uuid.UUID],
+        statuses: list[AnnouncementReadStatus],
+    ) -> int:
+        if not announcement_ids:
+            return 0
+
+        return await MetricsRepository.count(
+            db,
+            AnnouncementRead,
+            AnnouncementRead.tenant_id == tenant_id,
+            AnnouncementRead.announcement_id.in_(announcement_ids),
+            AnnouncementRead.status.in_(statuses),
+        )
+
+    @staticmethod
+    async def submitted_results_for_student(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        student_id: uuid.UUID,
+    ) -> list[tuple[str | None, Decimal]]:
+        return (
+            await db.execute(
+                select(StudentSubjectResult.grade, StudentSubjectResult.total_score)
+                .where(
+                    StudentSubjectResult.tenant_id == tenant_id,
+                    StudentSubjectResult.student_id == student_id,
+                    StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
+                )
+            )
+        ).all()
