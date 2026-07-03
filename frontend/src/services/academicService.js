@@ -62,6 +62,11 @@ const resolveClassSubjectId = async (classSubjectId, isCore = true) => {
   return created.id;
 };
 
+const stripTermCreateOnlyFields = (payload = {}) => {
+  const { academic_session_id, ...updatablePayload } = payload;
+  return updatablePayload;
+};
+
 export const academicService = {
   listSessions: (params) =>
     api.get(`/tenant-admin/academic/sessions${queryString(params)}`),
@@ -75,7 +80,7 @@ export const academicService = {
     api.get(`/tenant-admin/academic/terms${queryString(params)}`),
   createTerm: (payload) => api.post("/tenant-admin/academic/terms", payload),
   updateTerm: (termId, payload) =>
-    api.patch(`/tenant-admin/academic/terms/${termId}`, payload),
+    api.patch(`/tenant-admin/academic/terms/${termId}`, stripTermCreateOnlyFields(payload)),
   listTeacherTerms: (params) =>
     api.get(`/teachers/me/academic/terms${queryString(params)}`),
 
