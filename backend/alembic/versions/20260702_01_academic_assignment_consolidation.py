@@ -18,15 +18,44 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _baseline_already_created_academic_assignment_tables() -> bool:
+    """Return True when the staging baseline already emitted this schema.
+
+    The staging baseline creates tables from current model metadata. On a fresh
+    staging database, that means these consolidation tables and columns can
+    already exist before Alembic reaches this historical migration.
+    """
+
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    tables = set(inspector.get_table_names())
+
+    if not {"class_subjects", "teacher_assignments", "student_subject_results", "report_cards"}.issubset(tables):
+        return False
+
+    student_result_columns = {column["name"] for column in inspector.get_columns("student_subject_results")}
+    report_card_columns = {column["name"] for column in inspector.get_columns("report_cards")}
+
+    return (
+        "teacher_assignment_id" in student_result_columns
+        and "version" in report_card_columns
+        and "published_at" in report_card_columns
+        and "superseded_at" in report_card_columns
+    )
+
+
 def upgrade() -> None:
+    if _baseline_already_created_academic_assignment_tables():
+        return
+
     op.create_table(
         "class_subjects",
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("class_id", sa.UUID(), nullable=False),
         sa.Column("subject_id", sa.UUID(), nullable=False),
-        sa.Column("is_core", sa.Boolean(), server_default="false", nullable=False),
-        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("is_core", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(["class_id"], ["classes.id"], ondelete="CASCADE"),
@@ -44,7 +73,7 @@ def upgrade() -> None:
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("class_subject_id", sa.UUID(), nullable=False),
         sa.Column("teacher_id", sa.UUID(), nullable=False),
-        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column("effective_from", sa.Date(), server_default=sa.text("CURRENT_DATE"), nullable=False),
         sa.Column("effective_to", sa.Date(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
@@ -105,12 +134,12 @@ def upgrade() -> None:
     op.add_column("report_cards", sa.Column("position_out_of", sa.Integer(), nullable=True))
     op.add_column("report_cards", sa.Column("class_teacher_comment", sa.Text(), nullable=True))
     op.add_column("report_cards", sa.Column("principal_comment", sa.Text(), nullable=True))
-    op.add_column("report_cards", sa.Column("version", sa.Integer(), server_default="1", nullable=False))
+    op.add_column("report_cards", sa.Column("version", sa.Integer(), server_default=sa.text("1"), nullable=False))
     op.add_column("report_cards", sa.Column("published_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("report_cards", sa.Column("published_by", sa.UUID(), nullable=True))
     op.add_column(
         "report_cards",
-        sa.Column("is_outdated", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_outdated", sa.Boolean(), server_default=sa.text("false"), nullable=False),
     )
     op.add_column("report_cards", sa.Column("superseded_at", sa.DateTime(timezone=True), nullable=True))
     op.create_foreign_key(
