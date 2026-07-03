@@ -16,7 +16,7 @@ from app.shared.base_model import Base
 
 
 revision: str = "20260630_staging_branch_baseline"
-down_revision: Union[str, Sequence[str], None] = None
+down_revision: Union[str, Sequence[str], None] = "1db81d711bbc"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -41,7 +41,10 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in online mode."""
-    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    # Alembic stores URLs in configparser, so literal percent signs in an
+    # encoded password (for example `%23`) must be escaped first.
+    database_url = settings.DATABASE_URL.replace("%", "%%")
+    config.set_main_option("sqlalchemy.url", database_url)
 
     def do_run_migrations(sync_connection) -> None:
         context.configure(

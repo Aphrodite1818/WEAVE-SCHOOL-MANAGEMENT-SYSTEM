@@ -18,7 +18,29 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _baseline_already_created_subject_identity() -> bool:
+    """Return True when the staging baseline already emitted the subject identity schema.
+
+    The staging baseline builds the current metadata with ``create_all``. On a
+    fresh staging database, the normalized subject columns and their unique
+    constraints already exist, so re-applying this historical migration would
+    raise duplicate-column / duplicate-constraint errors.
+    """
+
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+
+    if "subjects" not in inspector.get_table_names():
+        return False
+
+    subject_columns = {column["name"] for column in inspector.get_columns("subjects")}
+    return {"normalized_name", "normalized_code"}.issubset(subject_columns)
+
+
 def upgrade() -> None:
+    if _baseline_already_created_subject_identity():
+        return
+
     op.add_column("subjects", sa.Column("normalized_name", sa.String(length=120), nullable=True))
     op.add_column("subjects", sa.Column("normalized_code", sa.String(length=40), nullable=True))
 
