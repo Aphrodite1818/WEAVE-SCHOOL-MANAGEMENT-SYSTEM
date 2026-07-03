@@ -28,20 +28,20 @@ function StatCard({
   return (
     <Card
       className={cn(
-        "flex h-full flex-col bg-surface shadow-sm border-border/40",
+        "flex h-full min-h-0 flex-col border-border/40 bg-surface shadow-sm",
         compact
-          ? "min-h-0 p-3 sm:p-3.5 md:p-4"
-          : "min-h-0 p-3 sm:min-h-[132px] sm:p-4 md:p-5 lg:min-h-[148px] lg:p-6",
+          ? "p-2.5 sm:p-3.5 md:p-4"
+          : "p-3 sm:min-h-[132px] sm:p-4 md:p-5 lg:min-h-[148px] lg:p-6",
         className
       )}
     >
       <div className="flex items-start justify-between gap-2 sm:gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase leading-snug tracking-wide text-text-muted sm:text-[11px] md:text-xs">
+          <p className="line-clamp-2 text-[9px] font-semibold uppercase leading-snug tracking-wide text-text-muted sm:text-[11px] md:text-xs">
             {label}
           </p>
           {valueBadge ? (
-            <div className="mt-2 max-w-full">
+            <div className="mt-1.5 max-w-full sm:mt-2">
               <Badge
                 variant={valueBadge.variant || "success"}
                 className={cn(
@@ -57,12 +57,12 @@ function StatCard({
           ) : (
             <p
               className={cn(
-                "mt-1 line-clamp-2 font-semibold leading-tight tracking-tight text-text sm:mt-1.5",
+                "mt-1 line-clamp-2 font-semibold leading-[1.02] tracking-tight text-text sm:mt-1.5",
                 compact
-                  ? "text-[1.7rem] leading-[0.95] sm:text-[2.15rem] md:text-[2.45rem]"
+                  ? "text-[1.25rem] sm:text-[2.15rem] md:text-[2.45rem]"
                   : "text-lg sm:text-2xl md:text-3xl lg:text-4xl"
               )}
-              title={typeof value === 'string' ? value : undefined}
+              title={typeof value === "string" ? value : undefined}
             >
               {value}
             </p>
@@ -72,16 +72,16 @@ function StatCard({
           <span
             className={cn(
               "flex shrink-0 items-center justify-center rounded-xl sm:rounded-[14px]",
-              compact ? "h-8 w-8" : "h-8 w-8 sm:h-10 sm:w-10 md:h-11 md:w-11 lg:h-12 lg:w-12",
+              compact ? "h-7 w-7 sm:h-8 sm:w-8" : "h-8 w-8 sm:h-10 sm:w-10 md:h-11 md:w-11 lg:h-12 lg:w-12",
               toneClasses[tone] || toneClasses.primary
             )}
           >
-            <Icon className={cn(compact ? "h-4 w-4" : "h-4 w-4 sm:h-5 sm:w-5 md:h-5 md:w-5 lg:h-6 lg:w-6")} />
+            <Icon className={cn(compact ? "h-3.5 w-3.5 sm:h-4 sm:w-4" : "h-4 w-4 sm:h-5 sm:w-5 md:h-5 md:w-5 lg:h-6 lg:w-6")} />
           </span>
         )}
       </div>
       {(change || description) && (
-        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2 sm:gap-2 sm:pt-3 md:pt-4">
+        <div className="mt-auto flex flex-wrap items-center gap-1 pt-1.5 sm:gap-2 sm:pt-3 md:pt-4">
           {change && (
             <Badge variant={trend === "down" ? "error" : "success"}>
               <TrendIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
@@ -89,7 +89,7 @@ function StatCard({
             </Badge>
           )}
           {description && (
-            <span className="min-w-0 text-[10px] font-medium leading-snug text-text-muted sm:text-xs">
+            <span className="min-w-0 line-clamp-2 text-[9px] font-medium leading-snug text-text-muted sm:text-xs">
               {description}
             </span>
           )}
