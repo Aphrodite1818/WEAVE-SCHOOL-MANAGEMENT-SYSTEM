@@ -162,14 +162,11 @@ function TeacherResultsPage() {
       return;
     }
     if (!selectedAssignmentId || !academicSessionId || !academicTermId) {
-      const message = "Select a subject, academic session, and term before saving scores.";
-      setError(message);
-      showError(message);
+      showError("Select a subject, academic session, and term before saving scores.");
       return;
     }
     const draft = { ...emptyScores, ...(existing || {}), ...(drafts[studentId] || {}) };
     setIsSaving(`${studentId}-${status}`);
-    setError(null);
     try {
       const saved = await academicService.saveTeacherResult({
         student_id: studentId,
@@ -190,9 +187,7 @@ function TeacherResultsPage() {
       });
       showSuccess(status === "submitted" ? "Result submitted successfully." : "Draft saved successfully.");
     } catch (err) {
-      const message = getErrorMessage(err, "Could not save scores.");
-      setError(message);
-      showError(message);
+      showError(getErrorMessage(err, "Could not save scores."));
     } finally {
       setIsSaving("");
     }
