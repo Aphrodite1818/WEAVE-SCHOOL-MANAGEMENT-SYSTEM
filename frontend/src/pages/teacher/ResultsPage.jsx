@@ -59,7 +59,7 @@ function TeacherResultsPage() {
         setAcademicSessionId(sessionItems.find((item) => item.is_current)?.id || sessionItems[0]?.id || "");
         setAcademicTermId(termItems.find((item) => item.is_current)?.id || termItems[0]?.id || "");
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err, "Could not load result workspace."));
+        if (mounted) setError(getErrorMessage(err, "Could not load score entry workspace."));
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -165,7 +165,7 @@ function TeacherResultsPage() {
   const saveResult = async (studentId, status) => {
     const existing = resultByStudent[studentId];
     if (isSubmitted(existing)) {
-      showError("Submitted scores are locked. Ask an admin to reopen or correct the result.");
+      showError("Submitted scores are locked. Ask an admin to reopen or correct the score row.");
       return;
     }
     if (!selectedAssignmentId || !academicSessionId || !academicTermId) {
@@ -201,7 +201,7 @@ function TeacherResultsPage() {
         delete next[studentId];
         return next;
       });
-      showSuccess(status === "submitted" ? "Result submitted successfully." : "Draft saved successfully.");
+      showSuccess(status === "submitted" ? "Score row submitted successfully." : "Score draft saved successfully.");
     } catch (err) {
       showError(getErrorMessage(err, "Could not save scores."));
     } finally {
@@ -211,8 +211,8 @@ function TeacherResultsPage() {
 
   if (isLoading) {
     return (
-      <DashboardLayout role="teacher" title="Results">
-        <LoadingState label="Loading result workspace..." />
+      <DashboardLayout role="teacher" title="Score Entry">
+        <LoadingState label="Loading score entry workspace..." />
       </DashboardLayout>
     );
   }
@@ -223,7 +223,7 @@ function TeacherResultsPage() {
   return (
     <DashboardLayout
       role="teacher"
-      title="Results"
+      title="Score Entry"
       description="Record scores only for class-subjects assigned to you. Class teacher duties are separate from subject teaching."
     >
       {error && <div className="rounded-xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-semibold text-error">{error}</div>}
@@ -248,7 +248,7 @@ function TeacherResultsPage() {
         {selectedAssignment ? (
           <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,0.45fr))]">
             <div className="rounded-2xl border border-border bg-surface-muted/30 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Recording context</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Score context</p>
               <p className="mt-1 font-semibold text-text">{assignmentLabel(selectedAssignment)}</p>
               <p className="mt-1 text-xs text-text-muted">Class-subject teacher access only. This is not the class-teacher role.</p>
             </div>
@@ -262,7 +262,7 @@ function TeacherResultsPage() {
       <Card className="p-4 sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="section-title">Class roster and score entry</h2>
+            <h2 className="section-title">Class-subject roster and score entry</h2>
             <p className="mt-1 text-sm text-text-muted">Compact list of students in the selected class-subject's class.</p>
           </div>
           <Users className="hidden h-5 w-5 text-primary sm:block" />
