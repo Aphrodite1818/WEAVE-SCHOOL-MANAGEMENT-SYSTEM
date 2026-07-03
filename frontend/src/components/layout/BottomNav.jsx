@@ -88,7 +88,7 @@ function BottomNav({ role, onOpenMenu }) {
                   : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
               )}
             >
-              <Icon className={cn("h-5.5 w-5.5 shrink-0 transition-colors duration-300 ease-out", isActive && "text-primary")} />
+              <Icon className={cn("h-6 w-6 shrink-0 transition-colors duration-300 ease-out", isActive && "text-primary")} />
               <span className={cn("max-w-full truncate text-[11px] font-bold leading-tight transition-colors duration-300 ease-out", isActive && "text-text")}>
                 {item.label}
               </span>
@@ -101,7 +101,7 @@ function BottomNav({ role, onOpenMenu }) {
           className="flex min-h-[3.85rem] flex-1 flex-col items-center justify-center gap-1 rounded-[1.5rem] px-2.5 py-2 text-text-muted transition-all duration-300 ease-out hover:bg-surface-muted/80 hover:text-text"
           aria-label="Open full navigation menu"
         >
-          <Menu className="h-5.5 w-5.5 shrink-0" />
+          <Menu className="h-6 w-6 shrink-0" />
           <span className="text-[11px] font-bold leading-tight">Menu</span>
         </button>
       </div>
