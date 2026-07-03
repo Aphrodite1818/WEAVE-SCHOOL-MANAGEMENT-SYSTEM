@@ -120,6 +120,7 @@ function ResourcePage({ config }) {
   const [editingItem, setEditingItem] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
@@ -198,6 +199,7 @@ function ResourcePage({ config }) {
           setError(parsed.message);
         }
       } finally {
+        setHasLoadedOnce(true);
         setIsLoading(false);
       }
     },
@@ -224,6 +226,7 @@ function ResourcePage({ config }) {
           } else {
             setError(parsed.message);
           }
+          setHasLoadedOnce(true);
           setIsLoading(false);
         }
       }
@@ -377,14 +380,10 @@ function ResourcePage({ config }) {
   const unavailableMessage =
     config.unavailableMessage ||
     `${config.pluralLabel} are not available yet.`;
-  const isInitialLoading = isLoading && items.length === 0 && !error && !isUnavailable;
+  const isInitialLoading = isLoading && !hasLoadedOnce && !error && !isUnavailable;
 
   if (isInitialLoading) {
-    return (
-      <div className="flex min-h-[260px] w-full items-center justify-center">
-        <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} />
-      </div>
-    );
+    return <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} fullPage />;
   }
 
   return (
