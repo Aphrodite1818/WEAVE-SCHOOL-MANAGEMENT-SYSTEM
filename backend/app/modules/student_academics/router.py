@@ -10,7 +10,7 @@ from app.core.dependencies.route_guards import (
     get_current_teacher,
     get_current_tenant_admin,
 )
-from app.core.exceptions import ForbiddenException
+from app.core.exceptions import ForbiddenException, NotFoundException
 from app.modules.parents.models import Parent
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
@@ -42,6 +42,8 @@ from app.modules.student_academics.schemas import (
 )
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.students.models import Student
+from app.modules.students.repository import StudentRepository
+from app.modules.students.schemas import StudentListResponse, StudentResponse
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -207,6 +209,37 @@ async def update_result_status(result_id: UUID, payload: StudentSubjectResultSta
 async def list_my_assignments(db: DbSession, current_teacher: CurrentTeacher) -> TeacherAssignmentListResponse:
     items, total = await StudentAcademicService.list_teacher_assignment_responses(db, current_teacher.tenant_id, teacher_id=current_teacher.id, active_only=True)
     return TeacherAssignmentListResponse(items=items, total=total)
+
+
+@teacher_router.get("/assignments/{assignment_id}/students", response_model=StudentListResponse)
+async def list_my_assignment_students(assignment_id: UUID, db: DbSession, current_teacher: CurrentTeacher, skip: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=100)) -> StudentListResponse:
+    assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+        db=db,
+        tenant_id=current_teacher.tenant_id,
+        assignment_id=assignment_id,
+    )
+    if assignment is None or assignment.teacher_id != current_teacher.id or not assignment.is_active:
+        raise ForbiddenException("You can only view students for active class-subjects assigned to you.")
+
+    class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+        db=db,
+        tenant_id=current_teacher.tenant_id,
+        class_subject_id=assignment.class_subject_id,
+    )
+    if class_subject is None:
+        raise NotFoundException("Class subject not found.")
+
+    students, total = await StudentRepository.list_students(
+        db=db,
+        tenant_id=current_teacher.tenant_id,
+        class_id=class_subject.class_id,
+        skip=skip,
+        limit=limit,
+    )
+    return StudentListResponse(
+        items=[StudentResponse.model_validate(student) for student in students],
+        total=total,
+    )
 
 
 @teacher_router.get("/sessions", response_model=AcademicSessionListResponse)
