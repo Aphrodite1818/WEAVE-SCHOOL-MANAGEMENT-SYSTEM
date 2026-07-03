@@ -8,12 +8,14 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
     get_current_tenant_member,
 )
+from app.core.exceptions import NotFoundException
 from app.modules.classes.schemas import (
     ClassRoomCreate,
     ClassRoomResponse,
     ClassRoomUpdate,
 )
 from app.modules.classes.service import ClassRoomService
+from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import ClassSubjectCreate, ClassSubjectListResponse, ClassSubjectResponse
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.parents.models import Parent
@@ -176,4 +178,34 @@ async def add_class_subject(
         tenant_id=current_user.tenant_id,
         class_id=class_id,
         payload=payload,
+    )
+
+
+@router.patch(
+    "/{class_id}/subjects/{class_subject_id}/activate",
+    response_model=ClassSubjectResponse,
+)
+async def activate_class_subject(
+    class_id: uuid.UUID,
+    class_subject_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassSubjectResponse:
+    """Reactivate a soft-deactivated subject link for a class."""
+
+    class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        class_subject_id=class_subject_id,
+    )
+    if class_subject is None or class_subject.class_id != class_id:
+        raise NotFoundException("Class subject not found.")
+
+    class_subject.is_active = True
+    saved = await StudentAcademicRepository.save_class_subject(db=db, class_subject=class_subject)
+    await db.commit()
+
+    return await StudentAcademicService._build_class_subject_response(
+        db=db,
+        class_subject=saved,
     )
