@@ -1,23 +1,26 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { toastBus } from "../../hooks/useToast";
 
 const toneClasses = {
   info: "border-primary/25 bg-surface text-text",
   success: "border-success/25 bg-surface text-text",
+  warning: "border-warning/30 bg-surface text-text",
   error: "border-error/25 bg-surface text-text",
 };
 
 const iconClasses = {
   info: "text-primary",
   success: "text-success",
+  warning: "text-amber-500",
   error: "text-error",
 };
 
 const icons = {
   info: Info,
   success: CheckCircle2,
+  warning: AlertTriangle,
   error: AlertCircle,
 };
 
@@ -32,14 +35,14 @@ function ToastCard({ toast, onClose }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex min-w-[280px] max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 shadow-premium animate-fadein",
+        "pointer-events-auto flex w-full items-start gap-3 rounded-2xl border px-4 py-3 shadow-premium animate-fadein sm:max-w-sm",
         toneClasses[toast.type] || toneClasses.info
       )}
-      role="status"
-      aria-live="polite"
+      role={toast.type === "error" ? "alert" : "status"}
+      aria-live={toast.type === "error" ? "assertive" : "polite"}
     >
       <Icon className={cn("mt-0.5 h-5 w-5 shrink-0", iconClasses[toast.type] || iconClasses.info)} />
-      <p className="min-w-0 flex-1 text-sm font-medium text-text-soft">{toast.message}</p>
+      <p className="min-w-0 flex-1 text-sm font-medium leading-6 text-text-soft">{toast.message}</p>
       <button
         type="button"
         onClick={() => onClose(toast.id)}
@@ -57,7 +60,7 @@ export default function ToastHost() {
 
   useEffect(() => {
     return toastBus.subscribe((nextToast) => {
-      setToasts((current) => [...current, nextToast]);
+      setToasts((current) => [...current, nextToast].slice(-4));
     });
   }, []);
 
@@ -68,7 +71,7 @@ export default function ToastHost() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[80] flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-3 sm:bottom-6 sm:right-6">
+    <div className="pointer-events-none fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[90] flex flex-col-reverse gap-3 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-[24rem] md:bottom-6">
       {toasts.map((toast) => (
         <ToastCard key={toast.id} toast={toast} onClose={closeToast} />
       ))}
