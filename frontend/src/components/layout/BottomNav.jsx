@@ -47,14 +47,17 @@ function BottomNav({ role, onOpenMenu }) {
   const items = bottomNavConfig[role] || bottomNavConfig.admin;
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia?.("(display-mode: standalone)");
+    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
+    const fullscreenQuery = window.matchMedia?.("(display-mode: fullscreen)");
     const updateDisplayMode = () => setIsInstalledApp(isStandaloneDisplay());
 
     updateDisplayMode();
-    mediaQuery?.addEventListener?.("change", updateDisplayMode);
+    standaloneQuery?.addEventListener?.("change", updateDisplayMode);
+    fullscreenQuery?.addEventListener?.("change", updateDisplayMode);
 
     return () => {
-      mediaQuery?.removeEventListener?.("change", updateDisplayMode);
+      standaloneQuery?.removeEventListener?.("change", updateDisplayMode);
+      fullscreenQuery?.removeEventListener?.("change", updateDisplayMode);
     };
   }, []);
 
@@ -62,6 +65,7 @@ function BottomNav({ role, onOpenMenu }) {
 
   return (
     <nav
+      data-mobile-bottom-nav="true"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-surface/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl md:hidden"
       aria-label="Primary mobile navigation"
     >
