@@ -29,6 +29,9 @@ export const toastBus = {
   success(message, options) {
     return toastBus.show(message, "success", options);
   },
+  warning(message, options) {
+    return toastBus.show(message, "warning", options);
+  },
   error(message, options) {
     return toastBus.show(message, "error", options);
   },
@@ -47,9 +50,13 @@ export function useToast() {
     return toastBus.error(message, options);
   }, []);
 
+  const showWarning = useCallback((message, options = {}) => {
+    return toastBus.warning(message, options);
+  }, []);
+
   const showInfo = useCallback((message, options = {}) => {
     return toastBus.info(message, options);
   }, []);
 
-  return { showToast, showSuccess, showError, showInfo };
+  return { showToast, showSuccess, showError, showWarning, showInfo };
 }
