@@ -11,6 +11,7 @@ import { getErrorMessage } from "../../services/api";
 import { parentService } from "../../services/parentService";
 import { displayName } from "../../utils/user";
 import { cleanText } from "../../utils/academicDashboard";
+import { useToast } from "../../hooks/useToast";
 
 function asStatus(value) {
   return String(value || "").trim().toLowerCase();
@@ -24,8 +25,7 @@ function ParentStudentLinkingPage() {
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [relationshipType, setRelationshipType] = useState("guardian");
   const [loadError, setLoadError] = useState(null);
-  const [linkError, setLinkError] = useState(null);
-  const [linkSuccess, setLinkSuccess] = useState(null);
+  const { showSuccess, showError, showWarning } = useToast();
 
   const loadPageData = async () => {
     const [studentsResponse, requestsResponse] = await Promise.all([
@@ -62,11 +62,12 @@ function ParentStudentLinkingPage() {
   const handleLinkSubmit = async (event) => {
     event.preventDefault();
     const normalizedAdmissionNumber = admissionNumber.trim().toUpperCase();
-    if (!normalizedAdmissionNumber) return;
+    if (!normalizedAdmissionNumber) {
+      showWarning("Enter the student's admission number before requesting a link.");
+      return;
+    }
 
     setIsLinking(true);
-    setLinkError(null);
-    setLinkSuccess(null);
 
     try {
       await parentService.createStudentLinkRequest({
@@ -75,11 +76,9 @@ function ParentStudentLinkingPage() {
       });
       await loadPageData();
       setAdmissionNumber("");
-      setLinkSuccess(
-        "Link request submitted. The student must approve it before you can view their academic record."
-      );
+      showSuccess("Link request submitted. The student must approve it before you can view their academic record.");
     } catch (error) {
-      setLinkError(getErrorMessage(error, "Could not submit link request."));
+      showError(getErrorMessage(error, "Could not submit link request."));
     } finally {
       setIsLinking(false);
     }
@@ -152,11 +151,7 @@ function ParentStudentLinkingPage() {
             </span>
             <input
               value={admissionNumber}
-              onChange={(event) => {
-                setAdmissionNumber(event.target.value);
-                setLinkError(null);
-                setLinkSuccess(null);
-              }}
+              onChange={(event) => setAdmissionNumber(event.target.value)}
               placeholder="NHS-2026-12345"
               className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none transition placeholder:text-text-faint focus:border-primary focus:ring-4 focus:ring-primary/10"
             />
@@ -184,9 +179,6 @@ function ParentStudentLinkingPage() {
             {isLinking ? "Submitting..." : "Request link"}
           </Button>
         </form>
-
-        {linkError && <p className="mt-3 text-sm font-medium text-error">{linkError}</p>}
-        {linkSuccess && <p className="mt-3 text-sm font-medium text-success">{linkSuccess}</p>}
       </Card>
 
       <Card className="p-5 sm:p-6">
