@@ -102,7 +102,8 @@ const navGroups = {
     { label: "Operations", items: [{ label: "Reports", to: "/admin/reports", icon: BarChart3 }, { label: "Fees", to: "/admin/fees", icon: Receipt }, { label: "Payments", to: "/admin/payments", icon: CreditCard }, { label: "Settings", to: "/admin/settings", icon: Settings }] },
   ],
   teacher: [
-    { label: "Teaching", items: [{ label: "Dashboard", to: "/teacher/dashboard", icon: Home }, { label: "My Classes", to: "/teacher/classes", icon: Library }, { label: "Students", to: "/teacher/students", icon: GraduationCap }, { label: "Subjects", to: "/teacher/subjects", icon: BookOpen }, { label: "Timetable", to: "/teacher/timetable", icon: CalendarDays }, { label: "Attendance", to: "/teacher/attendance", icon: CheckSquare }, { label: "Assignments", to: "/teacher/assignments", icon: ClipboardList }, { label: "Notices", to: "/teacher/notices", icon: Bell }, { label: "Class Notices", to: "/teacher/announcements", icon: FileText }, { label: "Results", to: "/teacher/results", icon: BarChart3 }] },
+    { label: "Subject teaching", items: [{ label: "Dashboard", to: "/teacher/dashboard", icon: Home }, { label: "Teaching Rosters", to: "/teacher/students", icon: GraduationCap }, { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen }, { label: "Score Entry", to: "/teacher/score-entry", icon: BarChart3 }, { label: "Timetable", to: "/teacher/timetable", icon: CalendarDays }, { label: "Assignments", to: "/teacher/assignments", icon: ClipboardList }, { label: "Notices", to: "/teacher/notices", icon: Bell }] },
+    { label: "Class teacher duties", items: [{ label: "My Class", to: "/teacher/classes", icon: Library }, { label: "Class Attendance", to: "/teacher/attendance", icon: CheckSquare }, { label: "Class Notices", to: "/teacher/announcements", icon: FileText }] },
   ],
   student: [
     { label: "Learning", items: [{ label: "Dashboard", to: "/student/dashboard", icon: Home }, { label: "Subjects", to: "/student/subjects", icon: BookOpen }, { label: "Parent Linking", to: "/student/parent-linking", icon: Link2 }, { label: "Report Cards", to: "/student/report-cards", icon: FileText }, { label: "Timetable", to: "/student/timetable", icon: CalendarDays }, { label: "Assignments", to: "/student/assignments", icon: ClipboardList }, { label: "Results", to: "/student/results", icon: BarChart3 }, { label: "Notices", to: "/student/notices", icon: FileText }] },
@@ -201,15 +202,12 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
         <div className="min-w-0 flex-1"><p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted sm:text-xs">Learnly AI</p><p className="truncate text-sm font-semibold text-text sm:text-lg">{schoolName || roleLabels[role] || "Workspace"}</p></div>
         {canSearchWorkspace && <div className="hidden w-full max-w-md md:block"><WorkspaceSearch /></div>}
         <div className="ml-auto flex items-center gap-2">
-          <Dropdown align="right" contentClassName="w-80 max-w-[calc(100vw-1.5rem)]" open={notificationsOpen} onOpenChange={setNotificationsOpen} trigger={<button type="button" className="relative inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface text-text-soft shadow-sm transition hover:bg-surface-muted sm:h-11 sm:w-11" aria-label="Notifications"><Bell className="h-5 w-5" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-error px-1.5 text-[10px] font-bold text-white">{unreadCount > 9 ? "9+" : unreadCount}</span>}</button>}>
-            <div className="flex items-center justify-between px-3 py-2"><p className="text-sm font-semibold text-text">Notifications</p><Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>View all</Link></div><div className="my-2 border-t border-border" /><div className="max-h-80 overflow-y-auto">{notifications.length === 0 ? <p className="px-3 py-4 text-sm text-text-muted">No recent notifications.</p> : notifications.map((item) => <Link key={item.id} to={notificationPath} onClick={() => setNotificationsOpen(false)} className="block rounded-xl px-3 py-2 hover:bg-surface-muted"><div className="flex items-start justify-between gap-3"><p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p><span className="shrink-0 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</span></div><p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{item.body}</p></Link>)}</div>
+          <Dropdown align="right" contentClassName="w-80 max-w-[calc(100vw-1.5rem)]" open={notificationsOpen} onOpenChange={setNotificationsOpen} trigger={<button type="button" className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text" aria-label="Open notifications"><Bell className="h-4 w-4" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-error px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadCount}</span>}</button>}>
+            <div className="space-y-3 p-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold text-text">Notifications</p><Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>View all</Link></div>{notifications.length > 0 ? notifications.map((item) => <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2"><p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p><p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.message}</p><p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</p></div>) : <p className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-text-muted">No notifications yet.</p>}</div>
           </Dropdown>
-          <Dropdown align="right" contentClassName="w-72 max-w-[calc(100vw-1.5rem)]" trigger={<button className="flex items-center gap-2 rounded-2xl border border-border bg-surface p-1.5 shadow-sm transition hover:bg-surface-muted"><Avatar name={userName} src={avatarSrc} user={user} /><span className="hidden min-w-0 text-left xl:block"><span className="block max-w-32 truncate text-sm font-semibold">{userName}</span><span className="block text-xs text-text-muted">{roleLabels[role] || "User"}</span></span><ChevronDown className="hidden h-4 w-4 text-text-faint sm:block" /></button>}>
-            <div className="flex items-center gap-3 px-3 py-2"><Avatar name={userName} src={avatarSrc} user={user} size="lg" /><div className="min-w-0"><p className="truncate text-sm font-semibold">{userName}</p><p className="truncate text-xs text-text-muted">{roleLabels[role] || "User"}</p></div></div><div className="my-2 border-t border-border" />
-            <Link to="/profile" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-text-soft hover:bg-surface-muted"><Settings className="h-4 w-4" />Profile page</Link>
-            <Link to="/legal" className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-text-soft hover:bg-surface-muted"><Shield className="h-4 w-4" />Legal</Link>
-            <button type="button" onClick={toggleTheme} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-text-soft hover:bg-surface-muted">{themeHint === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}{themeHint === "light" ? "Switch to dark mode" : "Switch to light mode"}</button>
-            <button type="button" onClick={handleLogout} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-error hover:bg-error-soft"><LogOut className="h-4 w-4" />Log out</button>
+          <button type="button" onClick={toggleTheme} className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text" aria-label="Toggle theme">{themeHint === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
+          <Dropdown align="right" contentClassName="w-64" trigger={<button type="button" className="flex items-center gap-2 rounded-full border border-border bg-surface px-2 py-1.5 shadow-sm transition hover:bg-surface-muted"><Avatar src={avatarSrc} name={userName} size="sm" /><span className="hidden max-w-[9rem] truncate text-sm font-semibold text-text sm:block">{userName}</span><ChevronDown className="h-4 w-4 text-text-muted" /></button>}>
+            <div className="p-2"><Link to="/profile" className="block rounded-xl px-3 py-2 text-sm font-medium text-text-soft hover:bg-surface-muted">Profile settings</Link><Link to="/legal" className="block rounded-xl px-3 py-2 text-sm font-medium text-text-soft hover:bg-surface-muted">Legal</Link><button type="button" onClick={handleLogout} className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-error hover:bg-error-soft"><LogOut className="h-4 w-4" />Logout</button></div>
           </Dropdown>
         </div>
       </div>
@@ -217,58 +215,63 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   );
 }
 
-function DashboardLayout({ role: roleProp, title = "Dashboard", description, actions, children, onboardingModalEnabled = true }) {
-  const user = authSession.getUser();
+function DashboardLayout({ role: roleProp = "admin", title, description, children }) {
+  const user = authSession.getUser() || {};
   const role = getRole(user, roleProp);
-  const [collapsed, setCollapsed] = useState(() => typeof window !== "undefined" && window.localStorage.getItem("dashboard-sidebar-collapsed") === "true");
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [profileUser, setProfileUser] = useState(user);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [onboardingStatusData, setOnboardingStatusData] = useState(null);
-  const [isLoadingOnboardingState, setIsLoadingOnboardingState] = useState(Boolean(authSession.getToken()));
-  const onboardingAutoOpenKeyRef = useRef("");
-  const pageTitle = useMemo(() => title || `${roleLabels[role] || "Workspace"} Dashboard`, [role, title]);
-  const needsOnboarding = onboardingModalEnabled && Boolean(onboardingStatusData?.onboarding_required);
-  const onboardingAutoOpenKey = `${role}:${profileUser?.id || "anonymous"}`;
-  const schoolName = resolveSchoolName({ school_name: onboardingStatusData?.current_values?.school_name || profileUser?.tenant?.school_name });
-  const modalCopy = onboardingModalCopy[role] || onboardingModalCopy.teacher;
-  const closeProfileModal = useCallback(() => setProfileModalOpen(false), []);
-  const handleProfileSaved = useCallback((nextStatus, nextUser) => { setOnboardingStatusData(nextStatus || null); setProfileUser(nextUser || authSession.getUser()); setProfileModalOpen(false); }, []);
-  const handleProfileStateResolved = useCallback((state) => { setIsLoadingOnboardingState(false); if (state?.status) setOnboardingStatusData(state.status); if (state?.user) setProfileUser(state.user); }, []);
+  const [profileMode, setProfileMode] = useState("onboarding");
+  const [onboardingState, setOnboardingState] = useState({ loading: true, required: false, values: null });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("sidebarCollapsed") === "true");
+  const mainRef = useRef(null);
+  const schoolName = resolveSchoolName(user);
+
+  useEffect(() => {
+    window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     let mounted = true;
-    async function hydrateOnboardingState() {
-      if (!onboardingModalEnabled || !authSession.getToken() || !onboardingService.supportsRole(role)) { setIsLoadingOnboardingState(false); return; }
-      try { const nextStatus = await onboardingService.getOnboardingStatus(role); if (!mounted) return; setOnboardingStatusData(nextStatus); setProfileUser(authSession.getUser()); } catch { if (!mounted) return; } finally { if (mounted) setIsLoadingOnboardingState(false); }
+    async function checkOnboarding() {
+      try {
+        const status = await onboardingService.getStatus(role);
+        if (!mounted) return;
+        setOnboardingState({ loading: false, required: Boolean(status?.onboarding_required), values: status?.current_values || null });
+        if (status?.onboarding_required) {
+          setProfileMode("onboarding");
+          setProfileModalOpen(true);
+        }
+      } catch {
+        if (mounted) setOnboardingState((current) => ({ ...current, loading: false }));
+      }
     }
-    hydrateOnboardingState();
+    checkOnboarding();
     return () => { mounted = false; };
-  }, [onboardingModalEnabled, role]);
+  }, [role]);
 
-  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem("dashboard-sidebar-collapsed", String(collapsed)); }, [collapsed]);
-  useEffect(() => { if (isLoadingOnboardingState || !needsOnboarding) return; if (onboardingAutoOpenKeyRef.current === onboardingAutoOpenKey) return; onboardingAutoOpenKeyRef.current = onboardingAutoOpenKey; const timeoutId = window.setTimeout(() => setProfileModalOpen(true), 0); return () => window.clearTimeout(timeoutId); }, [isLoadingOnboardingState, needsOnboarding, onboardingAutoOpenKey]);
+  const openProfileModal = useCallback((mode = "edit") => {
+    setProfileMode(mode);
+    setProfileModalOpen(true);
+  }, []);
+
+  const profileCopy = onboardingModalCopy[role] || onboardingModalCopy.teacher;
 
   return (
     <div className="min-h-screen bg-background text-text">
-      <a href="#dashboard-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-xl focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Skip to content</a>
-      <aside className={cn("fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-[width] duration-[180ms] ease-in-out md:block", collapsed ? "w-14" : "w-[220px]") }><SidebarContent role={role} collapsed={collapsed} onToggleCollapsed={() => setCollapsed((current) => !current)} schoolName={schoolName} /></aside>
-      {mobileOpen && <div className="fixed inset-0 z-50 md:hidden"><div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity duration-300" onClick={() => setMobileOpen(false)} /><aside className="absolute inset-y-0 left-0 flex w-[86vw] max-w-80 flex-col border-r border-border bg-surface shadow-premium"><div className="flex min-h-16 items-center justify-end border-b border-border px-3"><Button type="button" variant="ghost" size="icon" className="relative z-10" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X className="h-5 w-5" /></Button></div><div className="min-h-0 flex-1"><SidebarContent role={role} collapsed={false} mobile onNavigate={() => setMobileOpen(false)} schoolName={schoolName} /></div></aside></div>}
-      <div className={cn("min-h-screen transition-[padding] duration-[180ms] ease-in-out", collapsed ? "md:pl-14" : "md:pl-[220px]")}> 
-        <Topbar role={role} onOpenMobileNav={() => setMobileOpen(true)} schoolName={schoolName} />
-        <main id="dashboard-content" className="px-3 py-3 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:px-6 md:py-6 md:pb-6 lg:px-8">
-          <div className="mx-auto flex w-full max-w-[1320px] flex-col section-gap">
-            <div className="flex flex-col gap-2 rounded-[1.35rem] border border-border/60 bg-surface/65 p-3 shadow-sm backdrop-blur-sm sm:gap-4 sm:rounded-[1.6rem] sm:p-5 lg:flex-row lg:items-start lg:justify-between lg:p-6">
-              <div className="min-w-0"><h1 className="dashboard-title">{pageTitle}</h1>{description && <p className="dashboard-subtitle">{description}</p>}</div>
-              {actions && <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end [&_.btn-base]:min-h-10 [&_a]:flex-1 sm:[&_a]:flex-none">{actions}</div>}
-            </div>
-            {children}
-          </div>
+      <aside className={cn("fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block", sidebarCollapsed ? "w-[5.5rem]" : "w-72")}><SidebarContent role={role} collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((value) => !value)} schoolName={schoolName} /></aside>
+      {mobileNavOpen && <div className="fixed inset-0 z-50 md:hidden"><div className="absolute inset-0 bg-black/35" onClick={() => setMobileNavOpen(false)} /><aside className="absolute inset-y-0 left-0 w-80 max-w-[85vw] border-r border-border bg-surface shadow-2xl"><div className="flex h-14 items-center justify-end px-4"><Button type="button" variant="ghost" size="icon" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="h-5 w-5" /></Button></div><SidebarContent role={role} mobile collapsed={false} onNavigate={() => setMobileNavOpen(false)} schoolName={schoolName} /></aside></div>}
+      <div className={cn("min-h-screen transition-[padding] duration-300", sidebarCollapsed ? "md:pl-[5.5rem]" : "md:pl-72")}>
+        <Topbar role={role} onOpenMobileNav={() => setMobileNavOpen(true)} schoolName={schoolName} />
+        <main ref={mainRef} className="mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pb-28 pt-4 sm:gap-6 sm:px-5 sm:pb-12 sm:pt-6 lg:px-8">
+          {(title || description) && <section className="page-header"><div><h1 className="page-title">{title}</h1>{description && <p className="page-description">{description}</p>}</div><button type="button" className="hidden rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-text-soft shadow-sm transition hover:bg-surface-muted sm:inline-flex" onClick={() => openProfileModal("edit")}>Edit profile</button></section>}
+          {children}
         </main>
       </div>
-      <BottomNav role={role} onOpenMenu={() => setMobileOpen(true)} />
-      <AiChatLauncher />
-      {onboardingModalEnabled && <Modal open={profileModalOpen} title={needsOnboarding ? modalCopy.onboardingTitle : modalCopy.editTitle} description={needsOnboarding ? modalCopy.onboardingDescription : modalCopy.editDescription} onClose={needsOnboarding ? null : closeProfileModal}><ProfileCompletionForm role={role} submitLabel="Save profile" initialStatusData={onboardingStatusData} onSaved={handleProfileSaved} onProfileStateResolved={handleProfileStateResolved} /></Modal>}
+      <BottomNav role={role} onOpenMenu={() => setMobileNavOpen(true)} />
+      <Modal open={profileModalOpen} onClose={() => !onboardingState.required && setProfileModalOpen(false)} title={profileMode === "onboarding" ? profileCopy.onboardingTitle : profileCopy.editTitle} description={profileMode === "onboarding" ? profileCopy.onboardingDescription : profileCopy.editDescription} closeOnOverlay={!onboardingState.required} showClose={!onboardingState.required}>
+        <ProfileCompletionForm role={role} mode={profileMode} initialValues={onboardingState.values} onCompleted={(updated) => { setOnboardingState({ loading: false, required: false, values: updated }); setProfileModalOpen(false); }} />
+      </Modal>
+      <AiChatLauncher role={role} />
     </div>
   );
 }
