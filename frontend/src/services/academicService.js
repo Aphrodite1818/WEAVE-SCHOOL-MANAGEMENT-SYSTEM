@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, parseApiError } from "./api";
 
 const NEW_CLASS_SUBJECT_PREFIX = "catalog-subject";
 
@@ -50,16 +50,33 @@ const mergeClassSubjectPickerOptions = (classId, classSubjectResponse, subjectRe
   };
 };
 
+const resolveExistingClassSubjectId = async (classId, subjectId) => {
+  const response = await api.get(`/classes/${classId}/subjects${queryString({ active_only: true, limit: 100 })}`);
+  const existing = (response?.items || []).find((item) => item.subject_id === subjectId);
+  if (!existing?.id) {
+    throw new Error("Subject is already attached to this class, but the existing class-subject could not be loaded.");
+  }
+  return existing.id;
+};
+
 const resolveClassSubjectId = async (classSubjectId, isCore = true) => {
   const pending = parseNewClassSubjectValue(classSubjectId);
   if (!pending) return classSubjectId;
 
-  const created = await api.post(`/classes/${pending.classId}/subjects`, {
-    subject_id: pending.subjectId,
-    is_core: isCore,
-  });
+  try {
+    const created = await api.post(`/classes/${pending.classId}/subjects`, {
+      subject_id: pending.subjectId,
+      is_core: isCore,
+    });
 
-  return created.id;
+    return created.id;
+  } catch (error) {
+    const parsed = parseApiError(error, "Could not attach subject to class.");
+    if (parsed.status === 409) {
+      return resolveExistingClassSubjectId(pending.classId, pending.subjectId);
+    }
+    throw error;
+  }
 };
 
 const stripTermCreateOnlyFields = (payload = {}) => {
