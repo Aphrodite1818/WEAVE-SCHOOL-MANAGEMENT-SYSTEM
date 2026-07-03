@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, ClipboardList, Save, Send } from "lucide-react";
+import { Calculator, ClipboardList, Save, Send, Users } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
@@ -10,7 +10,6 @@ import { SelectField, TextField } from "../../components/academic/AcademicSelect
 import { displayTerm } from "../../components/academic/academicDisplay";
 import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
-import { studentService } from "../../services/studentService";
 import { useToast } from "../../hooks/useToast";
 
 const emptyScores = { test_score: "", assessment_score: "", exam_score: "" };
@@ -19,6 +18,9 @@ const toNullableScore = (value) => (value === "" || value === null || value === 
 const scoreLabel = (field) => field.replace("_score", "").replace("_", " ");
 const isSubmitted = (result) => result?.status === "submitted";
 const scoreValue = (value) => (value === null || value === undefined || value === "" ? "--" : value);
+const displayStudent = (student) => [student.first_name, student.last_name].filter(Boolean).join(" ") || student.admission_number || "Student";
+const assignmentLabel = (assignment) => `${assignment.subject_name || "Subject"} - ${assignment.class_name || "Class"} ${assignment.class_arm || ""}`.trim();
+const scoreTotal = (draft) => scoreFields.reduce((sum, field) => sum + (Number(draft[field]) || 0), 0);
 
 function TeacherResultsPage() {
   const [assignments, setAssignments] = useState([]);
@@ -33,7 +35,7 @@ function TeacherResultsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState("");
   const [error, setError] = useState(null);
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showWarning } = useToast();
 
   useEffect(() => {
     let mounted = true;
@@ -85,24 +87,29 @@ function TeacherResultsPage() {
   }, [termsForSession, academicTermId]);
 
   useEffect(() => {
+    setDrafts({});
+  }, [selectedAssignmentId, academicSessionId, academicTermId]);
+
+  useEffect(() => {
     let mounted = true;
-    async function loadClassStudents() {
-      if (!selectedAssignment?.class_id) {
+    async function loadClassSubjectStudents() {
+      if (!selectedAssignmentId) {
         setStudents([]);
         return;
       }
       try {
-        const response = await studentService.getStudents({ classId: selectedAssignment.class_id });
+        const response = await academicService.listMyAssignmentStudents(selectedAssignmentId, { limit: 100 });
         if (mounted) setStudents(response?.items || []);
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err, "Could not load class students."));
+        if (mounted) setStudents([]);
+        showError(getErrorMessage(err, "Could not load students for this class-subject."));
       }
     }
-    loadClassStudents();
+    loadClassSubjectStudents();
     return () => {
       mounted = false;
     };
-  }, [selectedAssignment]);
+  }, [selectedAssignmentId]);
 
   const loadResults = async () => {
     if (!selectedAssignment?.class_id || !academicSessionId || !academicTermId) {
@@ -162,10 +169,19 @@ function TeacherResultsPage() {
       return;
     }
     if (!selectedAssignmentId || !academicSessionId || !academicTermId) {
-      showError("Select a subject, academic session, and term before saving scores.");
+      showWarning("Select a class-subject, academic session, and term before saving scores.");
       return;
     }
     const draft = { ...emptyScores, ...(existing || {}), ...(drafts[studentId] || {}) };
+    const canSubmit = scoreFields.every((field) => toNullableScore(draft[field]) !== null);
+    if (status === "submitted" && !canSubmit) {
+      showWarning("All three scores are required before submitting.");
+      return;
+    }
+    if (scoreTotal(draft) > 100) {
+      showWarning("The combined score cannot exceed 100.");
+      return;
+    }
     setIsSaving(`${studentId}-${status}`);
     try {
       const saved = await academicService.saveTeacherResult({
@@ -201,11 +217,14 @@ function TeacherResultsPage() {
     );
   }
 
+  const submittedCount = results.filter(isSubmitted).length;
+  const draftCount = results.filter((result) => result.status === "draft").length;
+
   return (
     <DashboardLayout
       role="teacher"
       title="Results"
-      description="Select an assigned class-subject, enter component scores, save drafts, and submit complete results. Submitted scores lock for teachers."
+      description="Record scores only for class-subjects assigned to you. Class teacher duties are separate from subject teaching."
     >
       {error && <div className="rounded-xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-semibold text-error">{error}</div>}
 
@@ -214,7 +233,7 @@ function TeacherResultsPage() {
           <SelectField label="Assigned class-subject" value={selectedAssignmentId} onChange={setSelectedAssignmentId}>
             {assignments.length === 0 ? <option value="">No assigned subjects</option> : assignments.map((assignment) => (
               <option key={assignment.id} value={assignment.id}>
-                {assignment.subject_name || "Subject"} - {assignment.class_name || "Class"} {assignment.class_arm || ""}
+                {assignmentLabel(assignment)}
               </option>
             ))}
           </SelectField>
@@ -224,6 +243,29 @@ function TeacherResultsPage() {
           <SelectField label="Academic term" value={academicTermId} onChange={setAcademicTermId}>
             {termsForSession.map((term) => <option key={term.id} value={term.id}>{displayTerm(term.name)}{term.is_current ? " (Current)" : ""}</option>)}
           </SelectField>
+        </div>
+
+        {selectedAssignment ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,0.45fr))]">
+            <div className="rounded-2xl border border-border bg-surface-muted/30 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Recording context</p>
+              <p className="mt-1 font-semibold text-text">{assignmentLabel(selectedAssignment)}</p>
+              <p className="mt-1 text-xs text-text-muted">Class-subject teacher access only. This is not the class-teacher role.</p>
+            </div>
+            <MiniStat label="Students" value={students.length} />
+            <MiniStat label="Drafts" value={draftCount} />
+            <MiniStat label="Submitted" value={submittedCount} />
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="section-title">Class roster and score entry</h2>
+            <p className="mt-1 text-sm text-text-muted">Compact list of students in the selected class-subject's class.</p>
+          </div>
+          <Users className="hidden h-5 w-5 text-primary sm:block" />
         </div>
       </Card>
 
@@ -235,15 +277,13 @@ function TeacherResultsPage() {
             const existing = resultByStudent[student.id];
             const submitted = isSubmitted(existing);
             const draft = { ...emptyScores, ...(existing || {}), ...(drafts[student.id] || {}) };
-            const canSubmit = scoreFields.every((field) => toNullableScore(draft[field]) !== null);
+            const canSubmit = scoreFields.every((field) => toNullableScore(draft[field]) !== null) && scoreTotal(draft) <= 100;
             return (
-              <Card key={student.id} className="p-4 sm:p-5">
-                <div className="grid gap-4 xl:grid-cols-[minmax(180px,1.1fr)_repeat(3,minmax(96px,0.55fr))_minmax(180px,0.85fr)_minmax(150px,auto)] xl:items-end">
+              <Card key={student.id} className="p-3 sm:p-4">
+                <div className="grid gap-3 xl:grid-cols-[minmax(160px,1fr)_repeat(3,minmax(88px,0.48fr))_minmax(145px,0.7fr)_minmax(130px,auto)] xl:items-end">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-text">
-                      {[student.first_name, student.last_name].filter(Boolean).join(" ") || student.admission_number || "Student"}
-                    </p>
-                    <p className="mt-1 text-sm text-text-muted">{student.admission_number || "No admission number"}</p>
+                    <p className="truncate font-semibold text-text">{displayStudent(student)}</p>
+                    <p className="mt-1 text-xs text-text-muted">{student.admission_number || "No admission number"}</p>
                     {existing ? <Badge variant={submitted ? "success" : "warning"}>{submitted ? "Submitted" : "Draft"}</Badge> : <Badge variant="warning">Pending</Badge>}
                   </div>
                   {scoreFields.map((field) => (
@@ -259,12 +299,12 @@ function TeacherResultsPage() {
                     />
                   ))}
                   <div className="rounded-xl border border-border bg-surface px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Computed after complete scores</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Total / grade</p>
                     <p className="mt-1 font-semibold text-text">
                       <Calculator className="mr-1 inline h-4 w-4" />
-                      {existing && submitted ? `${scoreValue(existing.total_score)} / ${existing.grade || "--"}` : "-- / --"}
+                      {submitted ? `${scoreValue(existing?.total_score)} / ${existing?.grade || "--"}` : `${scoreTotal(draft) || "--"} / --`}
                     </p>
-                    <p className="text-xs text-text-muted">{submitted ? existing?.remark || "No remark" : "Visible after submission"}</p>
+                    <p className="text-xs text-text-muted">{submitted ? existing?.remark || "No remark" : "Draft visible only to staff"}</p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
                     <Button size="xs" onClick={() => saveResult(student.id, "draft")} disabled={submitted || isSaving === `${student.id}-draft`}>
@@ -283,6 +323,15 @@ function TeacherResultsPage() {
         )}
       </section>
     </DashboardLayout>
+  );
+}
+
+function MiniStat({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface-muted/30 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-text">{value}</p>
+    </div>
   );
 }
 
