@@ -163,9 +163,10 @@
   bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 
-.ai-chat-launcher--installed {
+.ai-chat-launcher--installed,
+.ai-chat-launcher--with-bottom-nav {
   right: max(1rem, env(safe-area-inset-right));
-  bottom: calc(6.75rem + env(safe-area-inset-bottom));
+  bottom: calc(7.25rem + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 767px) {
@@ -174,17 +175,19 @@
     bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 
-  .ai-chat-launcher--installed {
+  .ai-chat-launcher--installed,
+  .ai-chat-launcher--with-bottom-nav {
     right: max(1rem, env(safe-area-inset-right));
-    bottom: calc(6.75rem + env(safe-area-inset-bottom));
+    bottom: calc(7.25rem + env(safe-area-inset-bottom));
   }
 
   body:has(.ai-chat-launcher) main {
     padding-bottom: calc(8rem + env(safe-area-inset-bottom));
   }
 
-  body:has(.ai-chat-launcher--installed) main {
-    padding-bottom: calc(13rem + env(safe-area-inset-bottom));
+  body:has(.ai-chat-launcher--installed) main,
+  body:has(.ai-chat-launcher--with-bottom-nav) main {
+    padding-bottom: calc(13.5rem + env(safe-area-inset-bottom));
   }
 }
 
