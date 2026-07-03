@@ -152,6 +152,8 @@ export const academicService = {
     api.patch(`/tenant-admin/academic/results/${resultId}/status`, payload),
 
   listMyTeacherAssignments: () => api.get("/teachers/me/academic/assignments"),
+  listMyAssignmentStudents: (assignmentId, params) =>
+    api.get(`/teachers/me/academic/assignments/${assignmentId}/students${queryString(params)}`),
   listTeacherResults: (params) =>
     api.get(`/teachers/me/academic/results${queryString(params)}`),
   saveTeacherResult: (payload) => api.post("/teachers/me/academic/results", payload),
