@@ -58,7 +58,7 @@
   }
 
   * {
-    @apply border-border;
+    @apply min-w-0 border-border;
   }
 
   ::selection {
@@ -84,7 +84,7 @@
 
 @layer components {
   .card-base {
-    @apply rounded-[1.25rem] border border-border/70 bg-surface shadow-sm sm:rounded-[1.35rem] sm:shadow-premium;
+    @apply w-full min-w-0 rounded-[1.25rem] border border-border/70 bg-surface shadow-sm sm:rounded-[1.35rem] sm:shadow-premium;
   }
 
   .btn-base {
@@ -95,30 +95,30 @@
   }
 
   .input-base {
-    @apply block w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-base text-text sm:text-sm
+    @apply block w-full min-w-0 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-base text-text sm:text-sm
     outline-none transition-all duration-200 placeholder:text-text-faint
     focus:border-primary focus:ring-4 focus:ring-primary/10
     disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted;
   }
 
   .surface-panel {
-    @apply rounded-2xl border border-border/60 bg-surface shadow-sm sm:shadow-premium;
+    @apply w-full min-w-0 rounded-2xl border border-border/60 bg-surface shadow-sm sm:shadow-premium;
   }
 
   .subtle-panel {
-    @apply rounded-2xl border border-border bg-surface/90;
+    @apply w-full min-w-0 rounded-2xl border border-border bg-surface/90;
   }
 
   .section-container {
-    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-7xl px-3 sm:px-6 lg:px-8;
   }
 
   .dashboard-grid {
-    @apply grid min-w-0 gap-4 sm:gap-5 lg:gap-6;
+    @apply grid w-full min-w-0 gap-4 sm:gap-5 lg:gap-6;
   }
 
   .dashboard-chart-card {
-    @apply flex h-[22rem] min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-surface p-4 sm:h-[26rem] sm:rounded-[1.75rem] sm:p-5 lg:h-[28rem];
+    @apply flex h-[22rem] w-full min-w-0 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-surface p-4 sm:h-[26rem] sm:rounded-[1.75rem] sm:p-5 lg:h-[28rem];
   }
 
   .dashboard-chart-empty {
@@ -126,7 +126,7 @@
   }
 
   .stat-grid {
-    @apply grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4;
+    @apply grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4;
   }
 
   .stat-grid-four {
@@ -142,7 +142,7 @@
   }
 
   .dashboard-kpi-grid {
-    @apply grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4;
+    @apply grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4;
   }
 
   .dashboard-kpi-grid-four {
@@ -178,11 +178,11 @@
   }
 
   .table-wrap {
-    @apply w-full overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm;
+    @apply w-full min-w-0 overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm;
   }
 
   .data-table {
-    @apply w-full min-w-full text-left text-sm leading-relaxed md:text-[15px];
+    @apply w-full min-w-full table-fixed text-left text-sm leading-relaxed md:table-auto md:text-[15px];
   }
 
   .data-table thead {
@@ -190,11 +190,11 @@
   }
 
   .data-table tbody {
-    @apply block space-y-3 p-3 md:table-row-group md:space-y-0 md:p-0;
+    @apply block w-full min-w-0 space-y-3 p-2 md:table-row-group md:space-y-0 md:p-0;
   }
 
   .data-table tr {
-    @apply block overflow-hidden rounded-[1.2rem] border border-border bg-surface shadow-sm md:table-row md:rounded-none md:border-0 md:shadow-none;
+    @apply block w-full min-w-0 overflow-hidden rounded-[1rem] border border-border bg-surface shadow-sm md:table-row md:w-auto md:rounded-none md:border-0 md:shadow-none;
   }
 
   .data-table tr:last-child {
@@ -206,7 +206,7 @@
   }
 
   .data-table td {
-    @apply flex flex-col items-start gap-1.5 border-t border-border/60 px-4 py-3.5 align-top transition-colors sm:flex-row sm:justify-between sm:gap-4 md:table-cell md:px-6 md:py-5;
+    @apply flex w-full min-w-0 flex-col items-start gap-1.5 border-t border-border/60 px-3 py-3 align-top transition-colors sm:flex-row sm:justify-between sm:gap-4 md:table-cell md:w-auto md:px-6 md:py-5;
   }
 
   .data-table td:first-child {
@@ -227,7 +227,7 @@
   }
 
   .sc-card {
-    @apply overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-sm;
+    @apply w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-surface shadow-sm;
   }
 
   .sc-head {
@@ -248,7 +248,7 @@
   }
 
   .form-grid {
-    @apply grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end;
+    @apply grid w-full min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end;
   }
 
   .form-grid-field {
@@ -300,7 +300,7 @@
   }
 
   .aw-table-wrap {
-    @apply overflow-x-auto rounded-2xl border border-border;
+    @apply w-full min-w-0 overflow-x-auto rounded-2xl border border-border;
   }
 
   .aw-table {
@@ -334,8 +334,31 @@
   }
 
   @media (max-width: 640px) {
+    .card-base,
+    .surface-panel,
+    .subtle-panel,
+    .table-wrap,
     .sc-card {
-      @apply rounded-xl;
+      @apply w-full max-w-none rounded-xl;
+    }
+
+    .table-wrap {
+      @apply overflow-visible p-0;
+    }
+
+    .data-table,
+    .data-table tbody,
+    .data-table tr,
+    .data-table td {
+      @apply w-full min-w-0 max-w-none;
+    }
+
+    .data-table tbody {
+      @apply p-2;
+    }
+
+    .data-table td {
+      @apply px-3 py-3;
     }
 
     .sc-head,
