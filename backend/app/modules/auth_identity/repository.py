@@ -6,7 +6,7 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth_identity.models import (
@@ -55,7 +55,7 @@ class AuthIdentityRepository:
 
         result = await db.execute(
             select(AuthIdentity).where(
-                func.lower(AuthIdentity.identifier) == identifier.strip().lower(),
+                AuthIdentity.identifier == identifier,
                 AuthIdentity.identifier_type == identifier_type,
             )
         )
@@ -71,7 +71,7 @@ class AuthIdentityRepository:
 
         result = await db.execute(
             select(AuthIdentity).where(
-                func.lower(AuthIdentity.identifier) == identifier.strip().lower(),
+                AuthIdentity.identifier == identifier,
                 AuthIdentity.identifier_type == identifier_type,
                 AuthIdentity.is_active.is_(True),
             )
@@ -104,7 +104,7 @@ class AuthIdentityRepository:
         """Return True if a login identifier already exists."""
 
         query = select(AuthIdentity.id).where(
-            func.lower(AuthIdentity.identifier) == identifier.strip().lower(),
+            AuthIdentity.identifier == identifier,
             AuthIdentity.identifier_type == identifier_type,
         )
 

@@ -5,7 +5,16 @@ from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config.settings import settings
+from app.core.cache.manager import CacheManager
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.modules.announcements.cache import (
+    announcement_detail_cache_key,
+    announcement_feed_cache_key,
+    announcement_manageable_cache_key,
+    invalidate_announcement_actor_cache,
+    invalidate_announcement_tenant_cache,
+)
 from app.modules.announcements.models import (
     Announcement,
     AnnouncementActorType,
@@ -26,8 +35,16 @@ from app.modules.announcements.schemas import (
     AnnouncementCreate,
     AnnouncementFeedItemResponse,
     AnnouncementFeedResponse,
+    AnnouncementListResponse,
+    AnnouncementResponse,
     AnnouncementTargetCreate,
     AnnouncementUpdate,
+)
+from app.modules.metrics.cache import (
+    invalidate_parent_dashboard_cache,
+    invalidate_student_dashboard_cache,
+    invalidate_teacher_dashboard_cache,
+    invalidate_tenant_admin_dashboard_cache,
 )
 from app.modules.classes.models import ClassRoom
 from app.modules.parents.models import Parent
@@ -101,6 +118,55 @@ class AnnouncementService:
         if isinstance(actor, Student):
             return AnnouncementRecipientRole.STUDENT
         return None
+
+    @staticmethod
+    def _actor_cache_type(actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student) -> str:
+        if isinstance(actor, SuperAdmin):
+            return AnnouncementActorType.SUPERADMIN.value
+        if isinstance(actor, TenantAdmin):
+            return AnnouncementActorType.TENANT_ADMIN.value
+        if isinstance(actor, Teacher):
+            return AnnouncementActorType.TEACHER.value
+        if isinstance(actor, Parent):
+            return AnnouncementRecipientRole.PARENT.value
+        if isinstance(actor, Student):
+            return AnnouncementRecipientRole.STUDENT.value
+        raise ForbiddenException("Unsupported announcement actor")
+
+    @staticmethod
+    def _manageable_cache_scope(actor: SuperAdmin | TenantAdmin | Teacher) -> uuid.UUID | str:
+        return "global" if isinstance(actor, SuperAdmin) else actor.tenant_id
+
+    @staticmethod
+    async def _invalidate_dashboard_for_creator(announcement: Announcement) -> None:
+        await invalidate_tenant_admin_dashboard_cache(announcement.tenant_id)
+        if announcement.created_by_actor_type == AnnouncementActorType.TEACHER:
+            await invalidate_teacher_dashboard_cache(
+                announcement.tenant_id,
+                announcement.created_by_actor_id,
+            )
+
+    @staticmethod
+    async def _invalidate_after_announcement_write(announcement: Announcement) -> None:
+        await invalidate_announcement_tenant_cache(announcement.tenant_id)
+        if announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN:
+            await invalidate_announcement_tenant_cache("global")
+        await AnnouncementService._invalidate_dashboard_for_creator(announcement)
+
+    @staticmethod
+    async def _invalidate_after_read(
+        actor: TenantAdmin | Teacher | Parent | Student,
+    ) -> None:
+        actor_type = AnnouncementService._actor_cache_type(actor)
+        await invalidate_announcement_actor_cache(
+            actor.tenant_id,
+            actor_type,
+            actor.id,
+        )
+        if isinstance(actor, Parent):
+            await invalidate_parent_dashboard_cache(actor.tenant_id, actor.id)
+        elif isinstance(actor, Student):
+            await invalidate_student_dashboard_cache(actor.tenant_id, actor.id)
 
     @staticmethod
     def _validate_target_shape(target: AnnouncementTargetCreate) -> None:
@@ -281,6 +347,8 @@ class AnnouncementService:
         db.add_all(targets)
         await db.flush()
         await db.refresh(announcement, ["targets"])
+        await db.commit()
+        await AnnouncementService._invalidate_after_announcement_write(announcement)
         return announcement
 
     @staticmethod
@@ -325,6 +393,9 @@ class AnnouncementService:
             await db.flush()
             await db.refresh(announcement, ["targets"])
             announcements.append(announcement)
+        await db.commit()
+        for announcement in announcements:
+            await AnnouncementService._invalidate_after_announcement_write(announcement)
         return announcements
 
     @staticmethod
@@ -401,7 +472,10 @@ class AnnouncementService:
                 announcement.id,
                 AnnouncementService._build_targets(announcement.tenant_id, announcement.id, targets),
             )
-        return await AnnouncementRepository.save(db, announcement)
+        saved = await AnnouncementRepository.save(db, announcement)
+        await db.commit()
+        await AnnouncementService._invalidate_after_announcement_write(saved)
+        return saved
 
     @staticmethod
     async def publish(
@@ -414,7 +488,10 @@ class AnnouncementService:
         announcement = await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
         announcement.status = AnnouncementStatus.PUBLISHED
         announcement.publish_at = publish_at or announcement.publish_at or AnnouncementService._now()
-        return await AnnouncementRepository.save(db, announcement)
+        saved = await AnnouncementRepository.save(db, announcement)
+        await db.commit()
+        await AnnouncementService._invalidate_after_announcement_write(saved)
+        return saved
 
     @staticmethod
     async def archive(
@@ -425,7 +502,10 @@ class AnnouncementService:
     ) -> Announcement:
         announcement = await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
         announcement.status = AnnouncementStatus.ARCHIVED
-        return await AnnouncementRepository.save(db, announcement)
+        saved = await AnnouncementRepository.save(db, announcement)
+        await db.commit()
+        await AnnouncementService._invalidate_after_announcement_write(saved)
+        return saved
 
     @staticmethod
     async def delete(
@@ -435,7 +515,13 @@ class AnnouncementService:
         announcement_id: uuid.UUID,
     ) -> None:
         announcement = await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
+        tenant_id = announcement.tenant_id
         await AnnouncementRepository.delete_announcement(db, announcement)
+        await db.commit()
+        await invalidate_announcement_tenant_cache(tenant_id)
+        if announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN:
+            await invalidate_announcement_tenant_cache("global")
+        await invalidate_tenant_admin_dashboard_cache(tenant_id)
 
     @staticmethod
     async def list_manageable(
@@ -477,6 +563,47 @@ class AnnouncementService:
         return list(items), int(total)
 
     @staticmethod
+    async def list_manageable_response(
+        db: AsyncSession,
+        *,
+        actor: SuperAdmin | TenantAdmin | Teacher,
+        status: AnnouncementStatus | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> AnnouncementListResponse:
+        params = {
+            "status": status.value if hasattr(status, "value") else status,
+            "limit": limit,
+            "offset": offset,
+        }
+        key = announcement_manageable_cache_key(
+            AnnouncementService._manageable_cache_scope(actor),
+            AnnouncementService._actor_cache_type(actor),
+            actor.id,
+            params,
+        )
+
+        async def fetch_list() -> AnnouncementListResponse:
+            items, total = await AnnouncementService.list_manageable(
+                db,
+                actor=actor,
+                status=status,
+                limit=limit,
+                offset=offset,
+            )
+            return AnnouncementListResponse(
+                items=[AnnouncementResponse.model_validate(item) for item in items],
+                total=total,
+            )
+
+        cached = await CacheManager.get_or_set(
+            key=key,
+            fetcher=fetch_list,
+            ttl=settings.CACHE_SHORT_TTL_SECONDS,
+        )
+        return AnnouncementListResponse.model_validate(cached)
+
+    @staticmethod
     async def get_details(
         db: AsyncSession,
         *,
@@ -484,6 +611,36 @@ class AnnouncementService:
         announcement_id: uuid.UUID,
     ) -> Announcement:
         return await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
+
+    @staticmethod
+    async def get_details_response(
+        db: AsyncSession,
+        *,
+        actor: SuperAdmin | TenantAdmin | Teacher,
+        announcement_id: uuid.UUID,
+    ) -> AnnouncementResponse:
+        cached_scope = AnnouncementService._manageable_cache_scope(actor)
+        key = announcement_detail_cache_key(
+            cached_scope,
+            AnnouncementService._actor_cache_type(actor),
+            actor.id,
+            announcement_id,
+        )
+
+        async def fetch_detail() -> AnnouncementResponse:
+            announcement = await AnnouncementService.get_details(
+                db,
+                actor=actor,
+                announcement_id=announcement_id,
+            )
+            return AnnouncementResponse.model_validate(announcement)
+
+        cached = await CacheManager.get_or_set(
+            key=key,
+            fetcher=fetch_detail,
+            ttl=settings.CACHE_SHORT_TTL_SECONDS,
+        )
+        return AnnouncementResponse.model_validate(cached)
 
     @staticmethod
     async def _parent_student_ids(db: AsyncSession, parent: Parent) -> list[uuid.UUID]:
@@ -516,67 +673,87 @@ class AnnouncementService:
         limit: int = 50,
         offset: int = 0,
     ) -> AnnouncementFeedResponse:
-        base, tenant_id, recipient_type = await AnnouncementService._feed_base_query(
-            db,
-            actor,
-            delivery_kind=delivery_kind,
+        params = {
+            "delivery_kind": delivery_kind,
+            "limit": limit,
+            "offset": offset,
+        }
+        key = announcement_feed_cache_key(
+            actor.tenant_id,
+            AnnouncementService._actor_cache_type(actor),
+            actor.id,
+            params,
         )
-        total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
-        announcements = (
-            await db.execute(
-                base.order_by(Announcement.is_pinned.desc(), Announcement.created_at.desc())
-                .offset(offset)
-                .limit(limit)
-            )
-        ).scalars().unique().all()
 
-        read_by_id = {}
-        if announcements:
-            reads = (
+        async def fetch_feed() -> AnnouncementFeedResponse:
+            base, tenant_id, recipient_type = await AnnouncementService._feed_base_query(
+                db,
+                actor,
+                delivery_kind=delivery_kind,
+            )
+            total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+            announcements = (
                 await db.execute(
-                    select(AnnouncementRead).where(
-                        AnnouncementRead.tenant_id == tenant_id,
-                        AnnouncementRead.actor_type == recipient_type,
-                        AnnouncementRead.actor_id == actor.id,
-                        AnnouncementRead.announcement_id.in_([item.id for item in announcements]),
+                    base.order_by(Announcement.is_pinned.desc(), Announcement.created_at.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).scalars().unique().all()
+
+            read_by_id = {}
+            if announcements:
+                reads = (
+                    await db.execute(
+                        select(AnnouncementRead).where(
+                            AnnouncementRead.tenant_id == tenant_id,
+                            AnnouncementRead.actor_type == recipient_type,
+                            AnnouncementRead.actor_id == actor.id,
+                            AnnouncementRead.announcement_id.in_([item.id for item in announcements]),
+                        )
+                    )
+                ).scalars().all()
+                read_by_id = {read.announcement_id: read for read in reads}
+
+            items = []
+            unread_count = 0
+            for announcement in announcements:
+                read = read_by_id.get(announcement.id)
+                is_read = read is not None and read.status in {
+                    AnnouncementReadStatus.READ,
+                    AnnouncementReadStatus.ACKNOWLEDGED,
+                }
+                is_acknowledged = read is not None and read.status == AnnouncementReadStatus.ACKNOWLEDGED
+                if not is_read:
+                    unread_count += 1
+                items.append(
+                    AnnouncementFeedItemResponse(
+                        **{
+                            "id": announcement.id,
+                            "title": announcement.title,
+                            "body": announcement.body,
+                            "category": announcement.category,
+                            "priority": announcement.priority,
+                            "status": announcement.status,
+                            "publish_at": announcement.publish_at,
+                            "expires_at": announcement.expires_at,
+                            "is_pinned": announcement.is_pinned,
+                            "is_read": is_read,
+                            "is_acknowledged": is_acknowledged,
+                            "read_at": read.read_at if read else None,
+                            "acknowledged_at": read.acknowledged_at if read else None,
+                            "created_at": announcement.created_at,
+                            "updated_at": announcement.updated_at,
+                        }
                     )
                 )
-            ).scalars().all()
-            read_by_id = {read.announcement_id: read for read in reads}
+            return AnnouncementFeedResponse(items=items, total=int(total), unread_count=unread_count)
 
-        items = []
-        unread_count = 0
-        for announcement in announcements:
-            read = read_by_id.get(announcement.id)
-            is_read = read is not None and read.status in {
-                AnnouncementReadStatus.READ,
-                AnnouncementReadStatus.ACKNOWLEDGED,
-            }
-            is_acknowledged = read is not None and read.status == AnnouncementReadStatus.ACKNOWLEDGED
-            if not is_read:
-                unread_count += 1
-            items.append(
-                AnnouncementFeedItemResponse(
-                    **{
-                        "id": announcement.id,
-                        "title": announcement.title,
-                        "body": announcement.body,
-                        "category": announcement.category,
-                        "priority": announcement.priority,
-                        "status": announcement.status,
-                        "publish_at": announcement.publish_at,
-                        "expires_at": announcement.expires_at,
-                        "is_pinned": announcement.is_pinned,
-                        "is_read": is_read,
-                        "is_acknowledged": is_acknowledged,
-                        "read_at": read.read_at if read else None,
-                        "acknowledged_at": read.acknowledged_at if read else None,
-                        "created_at": announcement.created_at,
-                        "updated_at": announcement.updated_at,
-                    }
-                )
-            )
-        return AnnouncementFeedResponse(items=items, total=int(total), unread_count=unread_count)
+        cached = await CacheManager.get_or_set(
+            key=key,
+            fetcher=fetch_feed,
+            ttl=settings.CACHE_SHORT_TTL_SECONDS,
+        )
+        return AnnouncementFeedResponse.model_validate(cached)
 
     @staticmethod
     async def _feed_base_query(
@@ -713,7 +890,7 @@ class AnnouncementService:
         if announcement_id not in {item.id for item in feed.items}:
             raise NotFoundException("Announcement not found")
         actor_type = AnnouncementService._recipient_type(actor)
-        return await AnnouncementReadRepository.upsert_read_state(
+        read = await AnnouncementReadRepository.upsert_read_state(
             db,
             tenant_id=actor.tenant_id,
             announcement_id=announcement_id,
@@ -721,3 +898,6 @@ class AnnouncementService:
             actor_id=actor.id,
             status=status,
         )
+        await db.commit()
+        await AnnouncementService._invalidate_after_read(actor)
+        return read

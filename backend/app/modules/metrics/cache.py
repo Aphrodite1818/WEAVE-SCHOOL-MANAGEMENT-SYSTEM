@@ -9,6 +9,7 @@
 from __future__ import annotations
 from uuid import UUID 
 from app.core.cache.base import build_cache_key , global_prefix , tenant_prefix
+from app.core.cache.manager import CacheManager
 
 
 
@@ -91,3 +92,23 @@ def student_dashboard_cache_key(tenant_id: UUID, student_id: UUID) -> str:
         str(student_id),
         "metrics",
     )
+
+
+async def invalidate_parent_dashboard_cache(tenant_id: UUID, parent_id: UUID) -> None:
+    await CacheManager.delete(parent_dashboard_cache_key(tenant_id, parent_id))
+
+
+async def invalidate_student_dashboard_cache(tenant_id: UUID, student_id: UUID) -> None:
+    await CacheManager.delete(student_dashboard_cache_key(tenant_id, student_id))
+
+
+async def invalidate_teacher_dashboard_cache(tenant_id: UUID, teacher_id: UUID) -> None:
+    await CacheManager.delete(teacher_dashboard_cache_key(tenant_id, teacher_id))
+
+
+async def invalidate_tenant_admin_dashboard_cache(tenant_id: UUID) -> None:
+    await CacheManager.delete(tenant_admin_dashboard_cache_key(tenant_id))
+
+
+async def invalidate_superadmin_dashboard_cache() -> None:
+    await CacheManager.delete(superadmin_dashboard_cache_key())

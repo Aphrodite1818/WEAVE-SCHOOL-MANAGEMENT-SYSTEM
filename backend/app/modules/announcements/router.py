@@ -68,14 +68,13 @@ async def list_superadmin_announcements(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AnnouncementListResponse:
-    items, total = await AnnouncementService.list_manageable(
+    return await AnnouncementService.list_manageable_response(
         db,
         actor=current_superadmin,
         status=status_filter,
         offset=skip,
         limit=limit,
     )
-    return _list_response(items, total)
 
 
 @superadmin_router.get("/{announcement_id}", response_model=AnnouncementResponse)
@@ -84,12 +83,11 @@ async def get_superadmin_announcement(
     db: DbSession,
     current_superadmin: CurrentSuperadmin,
 ) -> AnnouncementResponse:
-    announcement = await AnnouncementService.get_details(
+    return await AnnouncementService.get_details_response(
         db,
         actor=current_superadmin,
         announcement_id=announcement_id,
     )
-    return AnnouncementResponse.model_validate(announcement)
 
 
 @superadmin_router.patch("/{announcement_id}", response_model=AnnouncementResponse)
@@ -166,14 +164,13 @@ async def list_tenant_admin_announcements(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AnnouncementListResponse:
-    items, total = await AnnouncementService.list_manageable(
+    return await AnnouncementService.list_manageable_response(
         db,
         actor=current_admin,
         status=status_filter,
         offset=skip,
         limit=limit,
     )
-    return _list_response(items, total)
 
 
 @tenant_admin_router.get("/{announcement_id}", response_model=AnnouncementResponse)
@@ -182,8 +179,7 @@ async def get_tenant_admin_announcement(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> AnnouncementResponse:
-    announcement = await AnnouncementService.get_details(db, actor=current_admin, announcement_id=announcement_id)
-    return AnnouncementResponse.model_validate(announcement)
+    return await AnnouncementService.get_details_response(db, actor=current_admin, announcement_id=announcement_id)
 
 
 @tenant_admin_router.patch("/{announcement_id}", response_model=AnnouncementResponse)
@@ -251,14 +247,13 @@ async def list_teacher_announcements(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AnnouncementListResponse:
-    items, total = await AnnouncementService.list_manageable(
+    return await AnnouncementService.list_manageable_response(
         db,
         actor=current_teacher,
         status=status_filter,
         offset=skip,
         limit=limit,
     )
-    return _list_response(items, total)
 
 
 @teacher_router.get("/{announcement_id}", response_model=AnnouncementResponse)
@@ -267,8 +262,7 @@ async def get_teacher_announcement(
     db: DbSession,
     current_teacher: CurrentTeacher,
 ) -> AnnouncementResponse:
-    announcement = await AnnouncementService.get_details(db, actor=current_teacher, announcement_id=announcement_id)
-    return AnnouncementResponse.model_validate(announcement)
+    return await AnnouncementService.get_details_response(db, actor=current_teacher, announcement_id=announcement_id)
 
 
 @teacher_router.patch("/{announcement_id}", response_model=AnnouncementResponse)

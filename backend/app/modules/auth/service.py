@@ -47,6 +47,7 @@ from app.modules.auth.schemas import (
     VerifyOTP,
 )
 from app.modules.auth_identity.models import ActorType, IdentifierType
+from app.modules.auth_identity.schemas import IdentityResolution
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.parents.repository import ParentRepository
@@ -63,6 +64,7 @@ from app.tenant_management.repository import TenantRepository
 from app.core.utils.otp_rate_limiter import OTPRateLimiter
 
 EmailActor = TenantAdmin | Teacher | Parent
+LAST_LOGIN_UPDATE_INTERVAL = timedelta(minutes=10)
 
 
 def _normalize_email(email: str) -> str:
@@ -80,6 +82,35 @@ def _enum_value(value: str | object | None) -> str | None:
         return value
 
     return getattr(value, "value", str(value))
+
+
+def _last_login_is_due(last_login_at: datetime | None, now: datetime) -> bool:
+    """Return whether a login timestamp should be written."""
+
+    if last_login_at is None:
+        return True
+
+    if last_login_at.tzinfo is None:
+        last_login_at = last_login_at.replace(tzinfo=timezone.utc)
+
+    return now - last_login_at >= LAST_LOGIN_UPDATE_INTERVAL
+
+
+async def _update_last_login_if_due(
+    db: AsyncSession,
+    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+    now: datetime | None = None,
+) -> bool:
+    """Update last_login_at only when it meaningfully changes."""
+
+    now = now or datetime.now(timezone.utc)
+    if not _last_login_is_due(actor.last_login_at, now):
+        return False
+
+    actor.last_login_at = now
+    db.add(actor)
+    await db.flush()
+    return True
 
 
 async def _get_platform_email_conflicts(
@@ -113,9 +144,8 @@ async def _authenticate_superadmin(
     if not superadmin.is_active:
         raise UnauthorizedException("Superadmin account is not active")
 
-    superadmin.last_login_at = datetime.now(timezone.utc)
-    await SuperAdminRepository.save(db, superadmin)
-    await db.commit()
+    if await _update_last_login_if_due(db, superadmin):
+        await db.commit()
     return superadmin
 
 
@@ -124,20 +154,23 @@ async def _authenticate_tenant_admin(
     *,
     email: str,
     password: str,
+    resolution: IdentityResolution | None = None,
+    tenant: Tenant | None = None,
     background_tasks: BackgroundTasks | None = None,
 ) -> TenantAdmin | None:
     """Authenticate a tenant admin through AuthIdentity."""
 
     normalized_email = _normalize_email(email)
 
-    try:
-        resolution = await AuthIdentityService.resolve_identifier(
-            db=db,
-            identifier=normalized_email,
-            identifier_type=IdentifierType.EMAIL,
-        )
-    except NotFoundException:
-        return None
+    if resolution is None:
+        try:
+            resolution = await AuthIdentityService.resolve_identifier(
+                db=db,
+                identifier=normalized_email,
+                identifier_type=IdentifierType.EMAIL,
+            )
+        except NotFoundException:
+            return None
 
     if resolution.actor_type != ActorType.TENANT_ADMIN:
         return None
@@ -152,7 +185,8 @@ async def _authenticate_tenant_admin(
     if not verify_password(password, admin.password_hash):
         raise UnauthorizedException("Invalid email or password")
 
-    tenant = await TenantRepository.get_by_id(db, admin.tenant_id)
+    if tenant is None:
+        tenant = await TenantRepository.get_by_id(db, admin.tenant_id)
     if tenant is None:
         raise UnauthorizedException("Account not found")
 
@@ -179,9 +213,8 @@ async def _authenticate_tenant_admin(
             background_tasks=background_tasks,
         )
 
-    admin.last_login_at = datetime.now(timezone.utc)
-    await TenantAdminRepository.save(db, admin)
-    await db.commit()
+    if await _update_last_login_if_due(db, admin):
+        await db.commit()
 
     return admin
 
@@ -255,6 +288,8 @@ async def _authenticate_tenant_actor(
             db,
             email=identifier,
             password=password,
+            resolution=resolution,
+            tenant=tenant,
             background_tasks=background_tasks,
         )
         if tenant_admin is None:
@@ -308,9 +343,8 @@ async def _authenticate_tenant_actor(
             or teacher.status != TeacherStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-        teacher.last_login_at = datetime.now(timezone.utc)
-        await TeacherRepository.save(db, teacher)
-        await db.commit()
+        if await _update_last_login_if_due(db, teacher):
+            await db.commit()
         return AuthenticatedActor(
             actor_type=ActorType.TEACHER.value,
             account_type=ActorType.TEACHER.value,
@@ -343,9 +377,8 @@ async def _authenticate_tenant_actor(
             or parent.account_status != ParentAccountStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-        parent.last_login_at = datetime.now(timezone.utc)
-        await ParentRepository.save(db, parent)
-        await db.commit()
+        if await _update_last_login_if_due(db, parent):
+            await db.commit()
         return AuthenticatedActor(
             actor_type=ActorType.PARENT.value,
             account_type=ActorType.PARENT.value,
@@ -378,9 +411,8 @@ async def _authenticate_tenant_actor(
             or student.account_status != StudentAccountStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-        student.last_login_at = datetime.now(timezone.utc)
-        await StudentRepository.save(db, student)
-        await db.commit()
+        if await _update_last_login_if_due(db, student):
+            await db.commit()
         return AuthenticatedActor(
             actor_type=ActorType.STUDENT.value,
             account_type=ActorType.STUDENT.value,
@@ -594,30 +626,36 @@ class AuthService:
         background_tasks: BackgroundTasks | None = None,
     ) -> AuthenticatedActor:
         """Perform authenticate actor."""
-        normalized_identifier = payload.identifier.strip()
-
-        superadmin = await _authenticate_superadmin(
-            db,
-            email=normalized_identifier,
-            password=payload.password,
+        raw_identifier = payload.identifier.strip()
+        identifier_type = _resolve_identifier_type(raw_identifier)
+        normalized_identifier = (
+            _normalize_email(raw_identifier)
+            if identifier_type == IdentifierType.EMAIL
+            else raw_identifier
         )
-        if superadmin is not None:
-            return AuthenticatedActor(
-                actor_type="superadmin",
-                account_type="superadmin",
-                actor_id=superadmin.id,
-                email=superadmin.email,
-                role="superadmin",
-                user=LoginSessionUser(
-                    id=str(superadmin.id),
-                    email=superadmin.email,
+
+        if identifier_type == IdentifierType.EMAIL:
+            superadmin = await _authenticate_superadmin(
+                db,
+                email=normalized_identifier,
+                password=payload.password,
+            )
+            if superadmin is not None:
+                return AuthenticatedActor(
                     actor_type="superadmin",
                     account_type="superadmin",
+                    actor_id=superadmin.id,
+                    email=superadmin.email,
                     role="superadmin",
-                ),
-            )
+                    user=LoginSessionUser(
+                        id=str(superadmin.id),
+                        email=superadmin.email,
+                        actor_type="superadmin",
+                        account_type="superadmin",
+                        role="superadmin",
+                    ),
+                )
 
-        identifier_type = _resolve_identifier_type(normalized_identifier)
         tenant_actor = await _authenticate_tenant_actor(
             db,
             identifier=normalized_identifier,

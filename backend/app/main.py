@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.logging import get_logger
 from app.config.database import engine
 from app.config.settings import settings
+from app.core.cache.redis import close_redis, connect_redis
 from app.core.exception_handlers import register_exception_handlers
 from app.modules import import_model_modules
 from app.modules.superadmin.router import router as superadmin_router
@@ -53,9 +54,13 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [None, Any, None]
     """Perform lifespan."""
     logger.info("Starting up — school-ai-assistant API")
-    yield
-    logger.info("Shutting down — closing DB connections")
-    await engine.dispose()
+    await connect_redis()
+    try:
+        yield
+    finally:
+        logger.info("Shutting down — closing Redis and DB connections")
+        await close_redis()
+        await engine.dispose()
 
 
 # ── App factory ───────────────────────────────────────────────────────────────
