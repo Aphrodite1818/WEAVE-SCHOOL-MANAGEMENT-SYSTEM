@@ -95,7 +95,7 @@ function StudentSubjectsPage() {
         </div>
       }
     >
-      <section className="student-subject-page-shell space-y-6">
+      <section className="student-subject-page-shell space-y-5 sm:space-y-6">
         <Card className="overflow-hidden p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
@@ -145,7 +145,7 @@ function StudentSubjectsPage() {
         {!loadError && subjectCards.length > 0 && (
           <section
             className={cn(
-              "grid gap-5",
+              "grid gap-4 sm:gap-5",
               isGridView ? "grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3" : "grid-cols-1"
             )}
           >
