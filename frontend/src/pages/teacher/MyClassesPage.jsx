@@ -5,8 +5,8 @@ function MyClassesPage() {
   return (
     <ResourceModulePage
       role="teacher"
-      title="My Classes"
-      description="View class groups and students assigned to your teaching schedule."
+      title="My Class Teacher Classes"
+      description="View only the classes where you are assigned as the main class teacher. Subject-teaching classes are listed under Teaching Rosters."
       config={getClassResourceConfig({ role: "teacher", writable: false })}
     />
   );
