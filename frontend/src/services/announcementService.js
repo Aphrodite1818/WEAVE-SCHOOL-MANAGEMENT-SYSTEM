@@ -1,11 +1,11 @@
-import { api } from "./api";
+import { api, authSession } from "./api";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
 
 const withQuery = (endpoint, params = {}) => {
   const query = new URLSearchParams();
 
-  Object.entries(params).forEach(([key, value]) => {
+  Object.entries(params || {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
       query.set(key, key === "limit" ? clampLimit(value) : value);
     }
@@ -13,6 +13,57 @@ const withQuery = (endpoint, params = {}) => {
 
   const queryString = query.toString();
   return queryString ? `${endpoint}?${queryString}` : endpoint;
+};
+
+const getCurrentRole = () =>
+  String(authSession.getUser()?.role || authSession.getRole() || "").toLowerCase();
+
+const createdAtMs = (item) => {
+  const date = new Date(item?.created_at || item?.publish_at || 0);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+};
+
+const mergeFeedResponses = (primary = {}, secondary = {}, limit = 50) => {
+  const byId = new Map();
+
+  [...(primary.items || []), ...(secondary.items || [])].forEach((item) => {
+    if (item?.id) byId.set(item.id, item);
+  });
+
+  const items = Array.from(byId.values())
+    .sort((left, right) => createdAtMs(right) - createdAtMs(left))
+    .slice(0, clampLimit(limit));
+
+  return {
+    ...primary,
+    items,
+    total: Math.max(Number(primary.total || 0), 0) + Math.max(Number(secondary.total || 0), 0),
+    unread_count: items.filter((item) => !item.is_read).length,
+  };
+};
+
+const getTeacherFeed = async (params = {}) => {
+  const limit = params?.limit ?? 50;
+  const noticeParams = { ...params, delivery_kind: params?.delivery_kind || undefined };
+
+  if (params?.delivery_kind === "message") {
+    return api.get(withQuery("/teachers/me/messages", { skip: params.skip, limit }));
+  }
+
+  if (params?.delivery_kind === "notice") {
+    const [notices, messages] = await Promise.all([
+      api.get(withQuery("/announcements/feed", noticeParams)),
+      api.get(withQuery("/teachers/me/messages", { skip: params.skip, limit })),
+    ]);
+    return mergeFeedResponses(notices, messages, limit);
+  }
+
+  const [feed, messages] = await Promise.all([
+    api.get(withQuery("/announcements/feed", params)),
+    api.get(withQuery("/teachers/me/messages", { skip: params.skip, limit })),
+  ]);
+
+  return mergeFeedResponses(feed, messages, limit);
 };
 
 export const announcementService = {
@@ -61,7 +112,13 @@ export const announcementService = {
   deleteTeacherAnnouncement: (id) =>
     api.delete(`/teachers/me/announcements/${id}`),
 
-  getFeed: (params) => api.get(withQuery("/announcements/feed", params)),
+  listTeacherMessages: (params) =>
+    api.get(withQuery("/teachers/me/messages", params)),
+
+  getFeed: (params) =>
+    getCurrentRole() === "teacher"
+      ? getTeacherFeed(params)
+      : api.get(withQuery("/announcements/feed", params)),
   markRead: (id) => api.post(`/announcements/${id}/read`, {}),
   acknowledge: (id) => api.post(`/announcements/${id}/acknowledge`, {}),
 };
