@@ -10,8 +10,8 @@ const bottomNavConfig = {
   ],
   teacher: [
     { label: "Home", to: "/teacher/dashboard", icon: Home },
-    { label: "Classes", to: "/teacher/classes", icon: BookOpen },
-    { label: "Attendance", to: "/teacher/attendance", icon: CalendarDays },
+    { label: "Rosters", to: "/teacher/students", icon: BookOpen },
+    { label: "Scores", to: "/teacher/score-entry", icon: FileText },
   ],
   student: [
     { label: "Home", to: "/student/dashboard", icon: Home },
