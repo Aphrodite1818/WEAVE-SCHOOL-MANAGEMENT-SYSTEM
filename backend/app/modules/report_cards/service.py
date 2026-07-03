@@ -20,10 +20,10 @@ from app.modules.report_cards.schemas import (
     ReportCardResponse,
     ReportCardSubjectLineResponse,
 )
-from app.modules.student_academics.models import AcademicResultStatus, ClassSubject, TeacherAssignment
+from app.modules.student_academics.models import ClassSubject
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.students.repository import StudentParentLinkRepository, StudentRepository
 from app.modules.students.models import Student
+from app.modules.students.repository import StudentParentLinkRepository, StudentRepository
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.teachers.repository import TeacherRepository
 from app.modules.tenant_admins.models import TenantAdmin
@@ -106,7 +106,6 @@ class ReportCardService:
 
     @staticmethod
     def _dense_rank(values: list[tuple[uuid.UUID, Decimal]]) -> dict[uuid.UUID, int]:
-        """Dense rank by average score descending (1 = best)."""
         sorted_values = sorted(values, key=lambda item: item[1], reverse=True)
         ranks: dict[uuid.UUID, int] = {}
         current_rank = 0
@@ -117,6 +116,31 @@ class ReportCardService:
                 previous_score = score
             ranks[student_id] = current_rank
         return ranks
+
+    @staticmethod
+    async def _teacher_name_for_result(db: AsyncSession, tenant_id: uuid.UUID, result) -> str | None:
+        teacher = None
+        if result.teacher_assignment_id is not None:
+            teacher_assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                assignment_id=result.teacher_assignment_id,
+            )
+            if teacher_assignment is not None:
+                teacher = await TeacherRepository.get_teacher_by_id(
+                    db=db,
+                    tenant_id=tenant_id,
+                    teacher_id=teacher_assignment.teacher_id,
+                )
+        if teacher is None:
+            teacher = await TeacherRepository.get_teacher_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                teacher_id=result.teacher_id,
+            )
+        if teacher is None:
+            return None
+        return " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip() or None
 
     @staticmethod
     async def _create_card_from_results(
@@ -144,9 +168,7 @@ class ReportCardService:
             academic_term_id,
         )
         if missing:
-            raise BadRequestException(
-                f"Missing submitted scores for: {', '.join(missing)}"
-            )
+            raise BadRequestException(f"Missing submitted scores for: {', '.join(missing)}")
 
         total_score = sum((result.total_score for result in results), Decimal("0"))
         average_score = total_score / Decimal(str(len(results)))
@@ -169,10 +191,10 @@ class ReportCardService:
             class_teacher_comment=class_teacher_comment,
             principal_comment=principal_comment,
             version=version,
-            published_at=datetime.now(timezone.utc),
-            published_by=actor.id,
+            published_at=None,
+            published_by=None,
             is_outdated=False,
-            status=ReportCardStatus.PUBLISHED,
+            status=ReportCardStatus.DRAFT,
             generated_by_actor_type=ActorType.TENANT_ADMIN.value,
             generated_by_actor_id=actor.id,
         )
@@ -180,24 +202,7 @@ class ReportCardService:
 
         for result in results:
             subject = await SubjectRepository.get_subject_by_id(db, actor.tenant_id, result.subject_id)
-            teacher = None
-            if result.teacher_assignment_id is not None:
-                teacher_assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
-                    db=db,
-                    tenant_id=actor.tenant_id,
-                    assignment_id=result.teacher_assignment_id,
-                )
-                if teacher_assignment is not None:
-                    teacher = await TeacherRepository.get_teacher_by_id(
-                        db, actor.tenant_id, teacher_assignment.teacher_id
-                    )
-            if teacher is None:
-                teacher = await TeacherRepository.get_teacher_by_id(db, actor.tenant_id, result.teacher_id)
-                teacher_name = (
-                    " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip()
-                    if teacher
-                    else None
-                )
+            teacher_name = await ReportCardService._teacher_name_for_result(db, actor.tenant_id, result)
             grade = result.grade
             remark = result.remark
             if grade is None:
@@ -208,8 +213,8 @@ class ReportCardService:
                 )
                 if grading_scale is not None:
                     grade = grading_scale.grade
-                    if remark is None:
-                        remark = grading_scale.remark
+                    remark = remark or grading_scale.remark
+
             await ReportCardRepository.create_line(
                 db,
                 ReportCardSubjectLine(
@@ -487,13 +492,13 @@ class ReportCardService:
         card = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if card is None:
             raise NotFoundException("Report card not found.")
+        if card.status == ReportCardStatus.PUBLISHED:
+            return await ReportCardService.get(db, actor, card.id)
         card.status = ReportCardStatus.PUBLISHED
-        card.published_at = card.published_at or datetime.now(timezone.utc)
-        card.published_by = card.published_by or actor.id
+        card.published_at = datetime.now(timezone.utc)
+        card.published_by = actor.id
         saved = await ReportCardRepository.save(db, card)
         await db.commit()
-        return await ReportCardService.get(db, actor, saved.id)
-
         return await ReportCardService.get(db, actor, saved.id)
 
     @staticmethod
@@ -622,58 +627,23 @@ class ReportCardService:
                 return "—"
             return " ".join(word.capitalize() for word in normalized.split(" "))
 
-        def _status_colors(value: str) -> tuple[str, str]:
-            if value == "published":
-                return "#dcfce7", "#15803d"
-            if value == "draft":
-                return "#e5e7eb", "#4b5563"
-            return "#e0e7ff", "#3730a3"
-
         student_name = html.escape(card.student_name or card.admission_number or "")
         admission_number = html.escape(card.admission_number or "Not assigned")
         class_label = html.escape(" ".join(part for part in [card.class_name, card.class_arm] if part) or "Not assigned")
         session_label = html.escape(card.academic_session_name or "—")
         term_label = html.escape(_format_term(card.academic_term_name))
         school_name = html.escape((tenant.school_name if tenant else None) or "Learnly AI")
-        school_logo_url = ((tenant.logo_url if tenant else None) or "").strip()
         status_value = getattr(card.status, "value", card.status)
         status_label = html.escape(str(status_value).replace("_", " ").title())
-        status_bg, status_fg = _status_colors(str(status_value))
-        is_published = str(status_value) == "published"
-        footer_label = "Verified and published" if is_published else "Awaiting publication"
-        footer_icon_fill = "#22c55e" if is_published else "#94a3b8"
-        footer_text_color = "var(--success-text)" if is_published else "var(--muted)"
-        photo_url = (card.student_passport_photo_url or "").strip()
-        school_mark = (
-            f'<img src="{html.escape(school_logo_url, quote=True)}" alt="{school_name} logo" class="school-logo" />'
-            if school_logo_url
-            else """
-            <div class="school-logo school-logo-fallback" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" class="school-crest" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L19 5V11C19 15.5 15.9 19.58 12 21C8.1 19.58 5 15.5 5 11V5L12 2Z" fill="currentColor"/>
-                <path d="M9 11.5L11 13.5L15 9.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            """
-        )
-        photo_block = (
-            f'<img src="{html.escape(photo_url, quote=True)}" alt="Student passport photograph" />'
-            if photo_url
-            else """
-            <div class="photo-placeholder" aria-label="Student avatar placeholder">
-              <svg class="ti-user avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" fill="currentColor"/>
-                <path d="M4 21C4 17.6863 7.58172 15 12 15C16.4183 15 20 17.6863 20 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              </svg>
-            </div>
-            """
-        )
         rows = "".join(
             "<tr>"
             f"<td>{html.escape(_format_subject(line.subject_name))}</td>"
             f"<td>{html.escape(line.subject_code or '—')}</td>"
-            f"<td>{_format_score(line.test_score)}</td><td>{_format_score(line.assessment_score)}</td><td>{_format_score(line.exam_score)}</td>"
-            f"<td>{_format_score(line.total_score)}</td><td>{html.escape(line.grade)}</td>"
+            f"<td>{_format_score(line.test_score)}</td>"
+            f"<td>{_format_score(line.assessment_score)}</td>"
+            f"<td>{_format_score(line.exam_score)}</td>"
+            f"<td>{_format_score(line.total_score)}</td>"
+            f"<td>{html.escape(line.grade)}</td>"
             f"<td>{html.escape(line.remark or '')}</td>"
             "</tr>"
             for line in card.lines
@@ -684,309 +654,49 @@ class ReportCardService:
 <head>
   <title>Report Card</title>
   <style>
-    :root {{
-      --ink: #0f172a;
-      --muted: #64748b;
-      --line: #cbd5e1;
-      --soft: #f8fafc;
-      --brand: #1a237e;
-      --brand-soft: #e8eaf6;
-      --success-soft: #dcfce7;
-      --success-text: #15803d;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      background: #e2e8f0;
-      color: var(--ink);
-      font-family: Inter, Arial, sans-serif;
-      line-height: 1.45;
-    }}
-    .page {{
-      width: min(100%, 960px);
-      margin: 24px auto;
-      background: #ffffff;
-      border: 1px solid var(--line);
-      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
-    }}
-    .toolbar {{
-      display: flex;
-      justify-content: flex-end;
-      padding: 16px 18px 0;
-    }}
-    button {{
-      border: 0;
-      border-radius: 10px;
-      background: var(--brand);
-      color: white;
-      cursor: pointer;
-      font-weight: 700;
-      padding: 10px 16px;
-    }}
+    body {{ margin: 0; background: #e2e8f0; color: #0f172a; font-family: Arial, sans-serif; line-height: 1.45; }}
+    .page {{ width: min(100%, 960px); margin: 24px auto; background: white; border: 1px solid #cbd5e1; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14); }}
+    .toolbar {{ display: flex; justify-content: flex-end; padding: 16px 18px 0; }}
+    button {{ border: 0; border-radius: 10px; background: #1a237e; color: white; cursor: pointer; font-weight: 700; padding: 10px 16px; }}
     .sheet {{ padding: 28px; }}
-    .branding-strip {{
-      align-items: center;
-      background: var(--brand);
-      color: white;
-      display: flex;
-      justify-content: space-between;
-      gap: 18px;
-      padding: 16px 20px;
-      border-radius: 18px;
-      margin-bottom: 24px;
-    }}
-    .branding-left {{
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      min-width: 0;
-    }}
-    .school-logo {{
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      background: white;
-      object-fit: cover;
-      display: block;
-      padding: 4px;
-      flex-shrink: 0;
-    }}
-    .school-logo-fallback {{
-      display: grid;
-      place-items: center;
-      color: var(--brand);
-    }}
-    .school-crest {{
-      width: 26px;
-      height: 26px;
-    }}
-    .school-name {{
-      margin: 0;
-      font-size: 22px;
-      font-weight: 800;
-      line-height: 1.2;
-    }}
-    .doc-label {{
-      text-align: right;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      opacity: 0.96;
-    }}
-    .header {{
-      display: grid;
-      grid-template-columns: 1fr 132px;
-      gap: 22px;
-      align-items: start;
-      border-bottom: 3px solid var(--brand);
-      padding-bottom: 22px;
-    }}
-    h1 {{
-      font-size: 32px;
-      line-height: 1.1;
-      margin: 0;
-    }}
-    .student-name {{
-      color: var(--ink);
-      font-size: 17px;
-      font-weight: 800;
-      margin: 8px 0 0;
-    }}
-    .status-pill {{
-      display: inline-flex;
-      align-items: center;
-      margin-top: 10px;
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-size: 12px;
-      font-weight: 700;
-      background: {status_bg};
-      color: {status_fg};
-    }}
-    .photo-frame {{
-      align-self: stretch;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--soft);
-      min-height: 150px;
-      overflow: hidden;
-      padding: 8px;
-    }}
-    .photo-frame img {{
-      width: 100%;
-      height: 100%;
-      min-height: 132px;
-      border-radius: 10px;
-      display: block;
-      object-fit: cover;
-    }}
-    .photo-placeholder {{
-      min-height: 132px;
-      border: 1px dashed #cbd5e1;
-      border-radius: 10px;
-      display: grid;
-      place-items: center;
-      color: #94a3b8;
-      background: #f1f5f9;
-    }}
-    .avatar-icon {{
-      width: 54px;
-      height: 54px;
-    }}
-    .meta-grid {{
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      margin: 22px 0;
-    }}
-    .meta-card {{
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: var(--soft);
-      padding: 12px;
-    }}
-    .meta-card span {{
-      color: var(--muted);
-      display: block;
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-    }}
-    .meta-card strong {{
-      display: block;
-      font-size: 15px;
-      margin-top: 3px;
-    }}
-    .summary {{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 22px;
-    }}
-    .summary-card {{
-      border-radius: 14px;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      padding: 14px;
-    }}
-    .summary-card strong {{
-      display: block;
-      font-size: 24px;
-      line-height: 1.1;
-    }}
-    .summary-card span {{
-      color: #1e40af;
-      font-size: 12px;
-      font-weight: 800;
-      text-transform: uppercase;
-    }}
-    table {{
-      border-collapse: collapse;
-      width: 100%;
-      overflow: hidden;
-      border-radius: 12px;
-      font-size: 13px;
-    }}
-    th, td {{
-      border: 1px solid var(--line);
-      padding: 10px;
-      text-align: left;
-      vertical-align: top;
-    }}
-    th {{
-      background: var(--brand-soft);
-      color: var(--brand);
-      font-size: 11px;
-      text-transform: uppercase;
-    }}
-    tbody tr:nth-child(even) {{ background: #f8fafc; }}
-    .footer-bar {{
-      margin-top: 26px;
-      border-top: 1px solid var(--line);
-      display: flex;
-      justify-content: space-between;
-      gap: 14px;
-      align-items: center;
-      padding-top: 14px;
-      color: var(--muted);
-      font-size: 12px;
-    }}
-    .verified-stamp {{
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: {footer_text_color};
-      font-weight: 700;
-    }}
-    .verified-stamp svg {{
-      width: 16px;
-      height: 16px;
-    }}
-    @media (max-width: 720px) {{
-      .page {{ margin: 0; border: 0; }}
-      .sheet {{ padding: 18px; }}
-      .branding-strip {{ align-items: flex-start; flex-direction: column; }}
-      .doc-label {{ text-align: left; }}
-      .header, .meta-grid, .summary {{ grid-template-columns: 1fr; }}
-      .footer-bar {{ align-items: flex-start; flex-direction: column; }}
-      .photo-frame {{ max-width: 150px; }}
-    }}
-    @media print {{
-      body {{ background: #ffffff; }}
-      button, .toolbar {{ display: none; }}
-      .page {{ margin: 0; width: 100%; border: 0; box-shadow: none; }}
-      .sheet {{ padding: 18mm; }}
-    }}
+    .brand {{ background: #1a237e; color: white; border-radius: 18px; margin-bottom: 24px; padding: 18px 20px; }}
+    h1 {{ margin: 0; font-size: 30px; }}
+    .status {{ display: inline-block; margin-top: 8px; border-radius: 999px; background: #e5e7eb; color: #374151; padding: 6px 10px; font-size: 12px; font-weight: 700; }}
+    .meta, .summary {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }}
+    .summary {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    .card {{ border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; padding: 12px; }}
+    .card span {{ color: #64748b; display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; }}
+    .card strong {{ display: block; font-size: 15px; margin-top: 3px; }}
+    table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
+    th, td {{ border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }}
+    th {{ background: #e8eaf6; color: #1a237e; font-size: 11px; text-transform: uppercase; }}
+    .footer {{ margin-top: 24px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 12px; padding-top: 14px; }}
+    @media print {{ body {{ background: white; }} button, .toolbar {{ display: none; }} .page {{ margin: 0; width: 100%; border: 0; box-shadow: none; }} }}
   </style>
 </head>
 <body>
   <main class="page">
     <div class="toolbar"><button onclick="window.print()">Print report card</button></div>
     <section class="sheet">
-      <section class="branding-strip" aria-label="School branding">
-        <div class="branding-left">
-          {school_mark}
-          <p class="school-name">{school_name}</p>
-        </div>
-        <div class="doc-label">Termly academic report</div>
+      <section class="brand"><h1>{school_name}</h1><p>Termly academic report</p></section>
+      <h1>Report Card</h1>
+      <p><strong>{student_name}</strong></p>
+      <div class="status">{status_label}</div>
+      <section class="meta">
+        <div class="card"><span>Admission No.</span><strong>{admission_number}</strong></div>
+        <div class="card"><span>Class</span><strong>{class_label}</strong></div>
+        <div class="card"><span>Session</span><strong>{session_label}</strong></div>
+        <div class="card"><span>Term</span><strong>{term_label}</strong></div>
       </section>
-
-      <header class="header">
-        <div>
-          <h1>Report Card</h1>
-          <p class="student-name">{student_name}</p>
-          <div class="status-pill">{status_label}</div>
-        </div>
-        <div class="photo-frame">{photo_block}</div>
-      </header>
-
-      <section class="meta-grid" aria-label="Student and academic details">
-        <div class="meta-card"><span>Admission No.</span><strong>{admission_number}</strong></div>
-        <div class="meta-card"><span>Class</span><strong>{class_label}</strong></div>
-        <div class="meta-card"><span>Session</span><strong>{session_label}</strong></div>
-        <div class="meta-card"><span>Term</span><strong>{term_label}</strong></div>
+      <section class="summary">
+        <div class="card"><span>Total score</span><strong>{_format_score(card.total_score)}</strong></div>
+        <div class="card"><span>Average</span><strong>{_format_score(card.average_score)}</strong></div>
       </section>
-
-      <section class="summary" aria-label="Performance summary">
-        <div class="summary-card"><span>Total score</span><strong>{_format_score(card.total_score)}</strong></div>
-        <div class="summary-card"><span>Average</span><strong>{_format_score(card.average_score)}</strong></div>
-      </section>
-
       <table>
         <thead><tr><th>Subject</th><th>Code</th><th>Test</th><th>Assessment</th><th>Exam</th><th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
         <tbody>{rows}</tbody>
       </table>
-
-      <footer class="footer-bar">
-        <div>Generated by Learnly AI · {session_label} academic session</div>
-        <div class="verified-stamp">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M12 2L19 5V11C19 15.5 15.9 19.58 12 21C8.1 19.58 5 15.5 5 11V5L12 2Z" fill="{footer_icon_fill}"/>
-            <path d="M9 11.5L11 13.5L15 9.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          {footer_label}
-        </div>
-      </footer>
+      <footer class="footer">Generated by Learnly AI · {session_label} academic session</footer>
     </section>
   </main>
 </body>
