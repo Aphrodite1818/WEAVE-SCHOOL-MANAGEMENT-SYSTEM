@@ -13,6 +13,7 @@ import { authSession, getErrorMessage } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import { teacherService } from "../../services/teacherService";
 import { academicService } from "../../services/academicService";
+import { classService } from "../../services/academicsService";
 import {
   averageByAcademicPeriod,
   chartFromCounts,
@@ -21,12 +22,14 @@ import {
 } from "../../utils/academicDashboard";
 
 const isSubmitted = (result) => result?.status === "submitted";
-const classLabel = (item) => cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "");
+const assignmentClassLabel = (item) => cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "");
+const classLabel = (item) => cleanText([item.name, item.arm].filter(Boolean).join(" "), "");
 
 function TeacherDashboardPage() {
   const [teacher, setTeacher] = useState(null);
   const [subjects, setSubjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [classTeacherClasses, setClassTeacherClasses] = useState([]);
   const [results, setResults] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,10 +45,11 @@ function TeacherDashboardPage() {
       setLoadError(null);
 
       try {
-        const [teacherProfile, subjectResponse, assignmentResponse, resultResponse, metricsResponse] = await Promise.all([
+        const [teacherProfile, subjectResponse, assignmentResponse, classResponse, resultResponse, metricsResponse] = await Promise.all([
           teacherService.getMyTeacher(),
           teacherService.getMySubjects(),
           academicService.listMyTeacherAssignments(),
+          classService.getClasses({ limit: 100, active_only: true }),
           academicService.listTeacherResults(),
           dashboardService.getTeacherAnalytics(),
         ]);
@@ -55,6 +59,7 @@ function TeacherDashboardPage() {
         setTeacher(teacherProfile);
         setSubjects(subjectResponse?.items || []);
         setAssignments(assignmentResponse?.items || []);
+        setClassTeacherClasses(classResponse?.items || []);
         setResults(resultResponse?.items || []);
         setMetrics(metricsResponse);
       } catch (error) {
@@ -81,15 +86,21 @@ function TeacherDashboardPage() {
       ),
     [charts.class_sizes]
   );
-  const assignedClassLabels = useMemo(
-    () => [...new Set(assignments.map(classLabel))].filter(Boolean),
+  const subjectTeacherClassLabels = useMemo(
+    () => [...new Set(assignments.map(assignmentClassLabel))].filter(Boolean),
     [assignments]
+  );
+  const classTeacherLabels = useMemo(
+    () => classTeacherClasses.map(classLabel).filter(Boolean),
+    [classTeacherClasses]
   );
   const assignedSubjectLabels = useMemo(
     () =>
       [...new Set(assignments.map((item) => cleanText(item.subject_name || item.subject_code, "")))].filter(Boolean),
     [assignments]
   );
+  const hasClassTeacherDuties = classTeacherClasses.length > 0;
+  const hasSubjectTeacherDuties = assignments.length > 0;
 
   if (isLoading) {
     return (
@@ -101,19 +112,19 @@ function TeacherDashboardPage() {
 
   const activeSubjects = subjects.filter((subject) => subject?.is_active !== false).length;
   const expectedSubmissions = assignments.reduce((sum, item) => {
-    const label = classLabel(item);
+    const label = assignmentClassLabel(item);
     return sum + Number(classSizeByLabel[label] || 0);
   }, 0);
   const draftResults = results.filter((item) => item.status === "draft").length;
   const submittedResults = results.filter(isSubmitted).length;
   const pendingSubmissions = Math.max(expectedSubmissions - submittedResults, 0);
   const resultCompletion = completionPercent(submittedResults, expectedSubmissions);
-  const pendingByClass = assignedClassLabels.map((label) => {
+  const pendingByClass = subjectTeacherClassLabels.map((label) => {
     const expected = assignments
-      .filter((item) => classLabel(item) === label)
+      .filter((item) => assignmentClassLabel(item) === label)
       .reduce((sum) => sum + Number(classSizeByLabel[label] || 0), 0);
     const submitted = results.filter(
-      (item) => classLabel(item) === label && isSubmitted(item)
+      (item) => assignmentClassLabel(item) === label && isSubmitted(item)
     ).length;
     return { label, value: Math.max(expected - submitted, 0) };
   });
@@ -127,7 +138,7 @@ function TeacherDashboardPage() {
     <DashboardLayout
       role="teacher"
       title={`${firstName}'s Workspace`}
-      description="Manage only your assigned class-subjects. Draft scores stay editable; submitted scores are locked for admin review."
+      description="Class teacher duties and subject-teacher duties are separate. Your dashboard only enables the sections that match your assignments."
     >
       {loadError && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
@@ -137,11 +148,38 @@ function TeacherDashboardPage() {
 
       {!loadError && (
         <>
+          <section className="dashboard-grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <DutyCard
+              title="Subject teacher duties"
+              description="Record scores only for class-subjects assigned to you. This does not make you the class teacher."
+              enabled={hasSubjectTeacherDuties}
+              enabledLabel={`${assignments.length} active class-subject${assignments.length === 1 ? "" : "s"}`}
+              disabledLabel="No class-subject assigned yet"
+              primaryTo="/teacher/score-entry"
+              primaryLabel="Open Score Entry"
+              secondaryTo="/teacher/students"
+              secondaryLabel="View Teaching Rosters"
+              icon={Send}
+            />
+            <DutyCard
+              title="Class teacher duties"
+              description="Class teachers oversee a class, view the full class roster, and mark attendance when attendance endpoints are live."
+              enabled={hasClassTeacherDuties}
+              enabledLabel={`${classTeacherClasses.length} class${classTeacherClasses.length === 1 ? "" : "es"} under your care`}
+              disabledLabel="You are not assigned as a class teacher"
+              primaryTo="/teacher/classes"
+              primaryLabel="View My Class"
+              secondaryTo="/teacher/attendance"
+              secondaryLabel="Open Attendance"
+              icon={CheckSquare}
+            />
+          </section>
+
           <section className="dashboard-grid xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
             <Card className="flex h-full flex-col p-5 sm:p-6">
               <h2 className="section-title">Teaching overview</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Class teacher duties are separate from subject teaching assignments. This dashboard only reflects subjects assigned to you.
+                Subject-teacher classes are where you teach a subject. Class-teacher classes are where you oversee the class itself.
               </p>
 
               <div className="dashboard-kpi-grid mt-auto pt-4 text-sm text-text-soft">
@@ -151,21 +189,22 @@ function TeacherDashboardPage() {
                 <InfoTile label="Staff ID" value={teacher?.staff_id || "Not assigned"} />
               </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                <PillPanel title="Assigned classes" count={assignedClassLabels.length} items={assignedClassLabels} empty="No classes assigned yet." />
+              <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                <PillPanel title="Subject classes" count={subjectTeacherClassLabels.length} items={subjectTeacherClassLabels} empty="No subject classes assigned yet." />
                 <PillPanel title="Assigned subjects" count={assignedSubjectLabels.length} items={assignedSubjectLabels.slice(0, 8)} empty="No subjects assigned yet." />
+                <PillPanel title="Class teacher classes" count={classTeacherLabels.length} items={classTeacherLabels} empty="No class teacher assignment." />
               </div>
             </Card>
 
             <Card className="flex h-full flex-col p-5 sm:p-6">
-              <h2 className="section-title">Score submission centre</h2>
+              <h2 className="section-title">Score entry centre</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Submit only complete result rows. After submission, corrections must go through the admin.
+                Score entry is for class-subject assignments. Submitted scores lock for teachers and require admin correction.
               </p>
 
               <div className="mt-auto rounded-[1.2rem] border border-border/70 bg-surface-muted/15 p-4 pt-4">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-text">Priority classes</p>
+                  <p className="text-sm font-semibold text-text">Priority subject classes</p>
                   <BadgeCount count={priorityClasses.length} />
                 </div>
 
@@ -178,7 +217,7 @@ function TeacherDashboardPage() {
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-text">{item.label}</p>
-                          <p className="mt-1 text-xs text-text-muted">Pending submissions</p>
+                          <p className="mt-1 text-xs text-text-muted">Pending score submissions</p>
                         </div>
                         <span className="rounded-full bg-warning-soft px-3 py-1 text-xs font-semibold text-amber-700">
                           {item.value}
@@ -194,16 +233,16 @@ function TeacherDashboardPage() {
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <Link to="/teacher/attendance" className="block">
-                  <Button className="w-full">
-                    <CheckSquare className="h-4 w-4" />
-                    Open attendance
+                <Link to="/teacher/students" className="block">
+                  <Button className="w-full" disabled={!hasSubjectTeacherDuties && !hasClassTeacherDuties}>
+                    <Users className="h-4 w-4" />
+                    Open Rosters
                   </Button>
                 </Link>
-                <Link to="/teacher/results" className="block">
-                  <Button variant="success" className="w-full">
+                <Link to="/teacher/score-entry" className="block">
+                  <Button variant="success" className="w-full" disabled={!hasSubjectTeacherDuties}>
                     <Send className="h-4 w-4" />
-                    Enter / submit scores
+                    Enter Scores
                   </Button>
                 </Link>
               </div>
@@ -211,23 +250,52 @@ function TeacherDashboardPage() {
           </section>
 
           <section className="stat-grid stat-grid-six">
-            <StatCard label="Assigned Classes" value={assignedClassLabels.length || metrics?.stats?.total_classes || 0} description="classes you teach" icon={Users} tone={(metrics?.stats?.total_classes ?? 0) > 0 ? "primary" : "warning"} compact />
-            <StatCard label="Class-Subjects" value={assignments.length || activeSubjects} description="active assignments" icon={ClipboardList} tone="success" compact />
-            <StatCard label="Students Taught" value={(charts.class_sizes || []).reduce((sum, item) => sum + Number(item.value || 0), 0)} description="across assigned classes" icon={Users} tone="primary" compact />
-            <StatCard label="Pending Submissions" value={pendingSubmissions} description={`${resultCompletion}% submitted`} icon={BarChart3} tone={pendingSubmissions > 0 ? "warning" : "success"} compact />
-            <StatCard label="Draft Results" value={draftResults} description="still editable" icon={ClipboardList} tone={draftResults > 0 ? "warning" : "primary"} compact />
-            <StatCard label="Submitted Results" value={submittedResults} description="locked for admin review" icon={Send} tone="success" compact />
+            <StatCard label="Subject Classes" value={subjectTeacherClassLabels.length} description="classes you teach subjects in" icon={Users} tone={hasSubjectTeacherDuties ? "primary" : "warning"} compact />
+            <StatCard label="Class Teacher Classes" value={classTeacherClasses.length} description="classes you oversee" icon={CheckSquare} tone={hasClassTeacherDuties ? "success" : "warning"} compact />
+            <StatCard label="Class-Subjects" value={assignments.length || activeSubjects} description="active subject assignments" icon={ClipboardList} tone="success" compact />
+            <StatCard label="Pending Scores" value={pendingSubmissions} description={`${resultCompletion}% submitted`} icon={BarChart3} tone={pendingSubmissions > 0 ? "warning" : "success"} compact />
+            <StatCard label="Draft Scores" value={draftResults} description="still editable" icon={ClipboardList} tone={draftResults > 0 ? "warning" : "primary"} compact />
+            <StatCard label="Submitted Scores" value={submittedResults} description="locked for admin review" icon={Send} tone="success" compact />
           </section>
 
           <section className="dashboard-grid xl:grid-cols-2">
-            <AnalyticsLineChart title="Submitted Performance Trend" description="Average submitted score by academic term." data={performanceTrend} emptyMessage="No submitted performance trend is available yet." />
-            <AnalyticsBarChart title="Class Sizes" description="Number of students in each class assigned to you." data={charts.class_sizes || []} emptyMessage="No class size data available yet." />
-            <AnalyticsDonutChart title="Result Status Breakdown" description="Draft vs submitted scores you have entered." data={chartFromCounts(results, "status", "draft")} emptyMessage="No result status data available yet." />
-            <AnalyticsBarChart title="Pending Submissions By Class" description="Estimated pending rows from assigned classes and submitted results." data={pendingByClass} emptyMessage="No pending submission data available yet." />
+            <AnalyticsLineChart title="Submitted Score Trend" description="Average submitted score by academic term." data={performanceTrend} emptyMessage="No submitted performance trend is available yet." />
+            <AnalyticsBarChart title="Subject Class Sizes" description="Number of students in classes where you teach a subject." data={charts.class_sizes || []} emptyMessage="No class size data available yet." />
+            <AnalyticsDonutChart title="Score Status Breakdown" description="Draft vs submitted scores you have entered." data={chartFromCounts(results, "status", "draft")} emptyMessage="No score status data available yet." />
+            <AnalyticsBarChart title="Pending Scores By Class" description="Estimated pending rows from subject classes and submitted scores." data={pendingByClass} emptyMessage="No pending score data available yet." />
           </section>
         </>
       )}
     </DashboardLayout>
+  );
+}
+
+function DutyCard({ title, description, enabled, enabledLabel, disabledLabel, primaryTo, primaryLabel, secondaryTo, secondaryLabel, icon: Icon }) {
+  return (
+    <Card className="p-5 sm:p-6">
+      <div className="flex items-start gap-4">
+        <div className={`rounded-2xl p-3 ${enabled ? "bg-primary-soft text-primary" : "bg-surface-muted text-text-muted"}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <h2 className="section-title">{title}</h2>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${enabled ? "bg-success-soft text-success" : "bg-warning-soft text-amber-700"}`}>
+              {enabled ? enabledLabel : disabledLabel}
+            </span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-text-muted">{description}</p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <Link to={primaryTo} className={enabled ? "block" : "pointer-events-none block opacity-50"} aria-disabled={!enabled}>
+              <Button className="w-full" disabled={!enabled}>{primaryLabel}</Button>
+            </Link>
+            <Link to={secondaryTo} className={enabled ? "block" : "pointer-events-none block opacity-50"} aria-disabled={!enabled}>
+              <Button variant="secondary" className="w-full" disabled={!enabled}>{secondaryLabel}</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 
