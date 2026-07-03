@@ -1,9 +1,12 @@
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.modules.announcements.models import (
     Announcement,
@@ -32,11 +35,42 @@ from app.tenant_management.models import (
 )
 
 
+@dataclass(frozen=True)
+class PeriodCount:
+    period: datetime | None
+    value: int
+
+
+@dataclass(frozen=True)
+class LabelCount:
+    label: object
+    value: int
+
+
+@dataclass(frozen=True)
+class ClassPopulation:
+    name: str
+    arm: str | None
+    value: int
+
+
+@dataclass(frozen=True)
+class SubjectPerformance:
+    name: str | None
+    average: float
+
+
+@dataclass(frozen=True)
+class StudentResultMetric:
+    grade: str | None
+    total_score: Decimal
+
+
 class MetricsRepository:
     """Database aggregations for dashboard metrics."""
 
     @staticmethod
-    async def count(db: AsyncSession, model: Any, *filters: Any) -> int:
+    async def count(db: AsyncSession, model: Any, *filters: ColumnElement[bool]) -> int:
         result = await db.execute(
             select(func.count()).select_from(model).where(*filters)
         )
@@ -79,9 +113,9 @@ class MetricsRepository:
         return {key: int(value or 0) for key, value in row._mapping.items()}
 
     @staticmethod
-    async def tenant_growth(db: AsyncSession) -> list[Any]:
+    async def tenant_growth(db: AsyncSession) -> list[PeriodCount]:
         growth_period = func.date_trunc("month", Tenant.created_at)
-        return (
+        rows = (
             await db.execute(
                 select(growth_period.label("period"), func.count(Tenant.id).label("value"))
                 .where(Tenant.is_deleted.is_(False))
@@ -89,6 +123,10 @@ class MetricsRepository:
                 .order_by(growth_period)
             )
         ).all()
+        return [
+            PeriodCount(period=row.period, value=int(row.value))
+            for row in rows
+        ]
 
     @staticmethod
     async def subscription_plan_distribution(db: AsyncSession) -> dict[SubscriptionPlan, int]:
@@ -191,18 +229,25 @@ class MetricsRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def announcement_category_counts(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
-        return (
+    async def announcement_category_counts(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> list[LabelCount]:
+        rows = (
             await db.execute(
                 select(Announcement.category, func.count(Announcement.id))
                 .where(Announcement.tenant_id == tenant_id)
                 .group_by(Announcement.category)
             )
         ).all()
+        return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
 
     @staticmethod
-    async def class_population(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
-        return (
+    async def class_population(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> list[ClassPopulation]:
+        rows = (
             await db.execute(
                 select(ClassRoom.name, ClassRoom.arm, func.count(Student.id))
                 .select_from(ClassRoom)
@@ -218,30 +263,45 @@ class MetricsRepository:
                 .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
+        return [
+            ClassPopulation(name=row.name, arm=row.arm, value=int(row[2]))
+            for row in rows
+        ]
 
     @staticmethod
-    async def result_grade_counts(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
-        return (
+    async def result_grade_counts(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> list[LabelCount]:
+        rows = (
             await db.execute(
                 select(StudentSubjectResult.grade, func.count(StudentSubjectResult.id))
                 .where(StudentSubjectResult.tenant_id == tenant_id)
                 .group_by(StudentSubjectResult.grade)
             )
         ).all()
+        return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
 
     @staticmethod
-    async def result_status_counts(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
-        return (
+    async def result_status_counts(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> list[LabelCount]:
+        rows = (
             await db.execute(
                 select(StudentSubjectResult.status, func.count(StudentSubjectResult.id))
                 .where(StudentSubjectResult.tenant_id == tenant_id)
                 .group_by(StudentSubjectResult.status)
             )
         ).all()
+        return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
 
     @staticmethod
-    async def subject_performance(db: AsyncSession, tenant_id: uuid.UUID) -> list[Any]:
-        return (
+    async def subject_performance(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> list[SubjectPerformance]:
+        rows = (
             await db.execute(
                 select(Subject.name, func.avg(StudentSubjectResult.total_score))
                 .join(Subject, Subject.id == StudentSubjectResult.subject_id)
@@ -250,6 +310,10 @@ class MetricsRepository:
                 .order_by(Subject.name.asc())
             )
         ).all()
+        return [
+            SubjectPerformance(name=row[0], average=round(float(row[1] or 0), 2))
+            for row in rows
+        ]
 
     @staticmethod
     async def teacher_class_sizes(
@@ -257,8 +321,8 @@ class MetricsRepository:
         *,
         tenant_id: uuid.UUID,
         teacher_id: uuid.UUID,
-    ) -> list[Any]:
-        return (
+    ) -> list[ClassPopulation]:
+        rows = (
             await db.execute(
                 select(ClassRoom.id, ClassRoom.name, ClassRoom.arm, func.count(Student.id))
                 .select_from(ClassRoom)
@@ -274,6 +338,10 @@ class MetricsRepository:
                 .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
+        return [
+            ClassPopulation(name=row.name, arm=row.arm, value=int(row[3]))
+            for row in rows
+        ]
 
     @staticmethod
     async def active_teacher_assignment_count(
@@ -311,8 +379,8 @@ class MetricsRepository:
         *,
         tenant_id: uuid.UUID,
         teacher_id: uuid.UUID,
-    ) -> list[Any]:
-        return (
+    ) -> list[LabelCount]:
+        rows = (
             await db.execute(
                 select(StudentSubjectResult.grade, func.count(StudentSubjectResult.id))
                 .where(
@@ -322,6 +390,7 @@ class MetricsRepository:
                 .group_by(StudentSubjectResult.grade)
             )
         ).all()
+        return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
 
     @staticmethod
     async def teacher_announcement_ids(
@@ -350,8 +419,8 @@ class MetricsRepository:
         *,
         tenant_id: uuid.UUID,
         teacher_id: uuid.UUID,
-    ) -> list[Any]:
-        return (
+    ) -> list[LabelCount]:
+        rows = (
             await db.execute(
                 select(Announcement.category, func.count(Announcement.id))
                 .where(
@@ -362,6 +431,7 @@ class MetricsRepository:
                 .group_by(Announcement.category)
             )
         ).all()
+        return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
 
     @staticmethod
     async def announcement_read_count(
@@ -388,8 +458,8 @@ class MetricsRepository:
         *,
         tenant_id: uuid.UUID,
         student_id: uuid.UUID,
-    ) -> list[tuple[str | None, Decimal]]:
-        return (
+    ) -> list[StudentResultMetric]:
+        rows = (
             await db.execute(
                 select(StudentSubjectResult.grade, StudentSubjectResult.total_score)
                 .where(
@@ -399,3 +469,7 @@ class MetricsRepository:
                 )
             )
         ).all()
+        return [
+            StudentResultMetric(grade=row.grade, total_score=row.total_score)
+            for row in rows
+        ]

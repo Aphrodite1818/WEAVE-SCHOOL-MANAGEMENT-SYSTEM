@@ -139,26 +139,26 @@ class MetricsService:
                         ChartPoint(label="pending_parents", value=counts["pending_parents"]),
                     ],
                     "announcements_by_category": [
-                        ChartPoint(label=MetricsService._enum_label(row[0]), value=int(row[1]))
+                        ChartPoint(label=MetricsService._enum_label(row.label), value=row.value)
                         for row in category_rows
                     ],
                     "class_population": [
-                        ChartPoint(label=f"{row.name} {row.arm}".strip(), value=int(row[2]))
+                        ChartPoint(label=f"{row.name} {row.arm or ''}".strip(), value=row.value)
                         for row in class_rows
                     ],
                     "grade_distribution": [
                         ChartPoint(
-                            label=MetricsService._label(row[0], "Ungraded"),
-                            value=int(row[1]),
+                            label=MetricsService._label(row.label, "Ungraded"),
+                            value=row.value,
                         )
                         for row in grade_rows
                     ],
                     "result_status_distribution": [
-                        ChartPoint(label=MetricsService._enum_label(row[0]), value=int(row[1]))
+                        ChartPoint(label=MetricsService._enum_label(row.label), value=row.value)
                         for row in result_status_rows
                     ],
                     "subject_performance": [
-                        ChartPoint(label=row[0] or "Subject", value=round(float(row[1] or 0), 2))
+                        ChartPoint(label=row.name or "Subject", value=row.average)
                         for row in subject_performance_rows
                     ],
                 },
@@ -225,7 +225,7 @@ class MetricsService:
                 },
                 charts={
                     "class_sizes": [
-                        ChartPoint(label=f"{row.name} {row.arm}".strip(), value=int(row[3]))
+                        ChartPoint(label=f"{row.name} {row.arm or ''}".strip(), value=row.value)
                         for row in class_rows
                     ],
                     "announcement_read_vs_acknowledged": [
@@ -233,13 +233,13 @@ class MetricsService:
                         ChartPoint(label="acknowledged", value=ack_count),
                     ],
                     "announcement_category_breakdown": [
-                        ChartPoint(label=MetricsService._enum_label(row[0]), value=int(row[1]))
+                        ChartPoint(label=MetricsService._enum_label(row.label), value=row.value)
                         for row in category_rows
                     ],
                     "grade_distribution": [
                         ChartPoint(
-                            label=MetricsService._label(row[0], "Ungraded"),
-                            value=int(row[1]),
+                            label=MetricsService._label(row.label, "Ungraded"),
+                            value=row.value,
                         )
                         for row in teacher_grade_rows
                     ],
