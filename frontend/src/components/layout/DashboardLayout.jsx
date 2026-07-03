@@ -327,195 +327,125 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
 
 function Topbar({ role, onOpenMobileNav, schoolName }) {
   const navigate = useNavigate();
-  const user = authSession.getUser();
-  const userName = getUserLabel(user);
-  const avatarSrc = getUserAvatarSrc(user);
-  const notificationPath = announcementPaths[role] || announcementPaths.admin;
+  const user = authSession.getUser() || {};
+  const location = useLocation();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [notificationError, setNotificationError] = useState("");
-  const [themeHint, setThemeHint] = useState(() => {
-    if (typeof window === "undefined") return "light";
-    return (
-      localStorage.getItem("theme") ||
-      (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-    );
-  });
-  const hasUnreadNotifications = unreadCount > 0;
+  const [themeHint, setThemeHint] = useState(() => document.documentElement.dataset.theme || "light");
+  const userName = getUserLabel(user);
+  const avatarSrc = getUserAvatarSrc(user);
+  const canSearchWorkspace = workspaceSearchRoles.has(role);
+  const notificationPath = announcementPaths[role] || "/profile";
 
   useEffect(() => {
     let mounted = true;
-
-    async function loadNotifications() {
-      if (!authSession.getToken()) return;
-
+    async function loadNotificationPreview() {
       try {
-        const response = await announcementService.getFeed(
-          role === "teacher" ? { limit: 5, delivery_kind: "notice" } : { limit: 5 }
-        );
+        const response = await announcementService.getFeed({ limit: 5 });
         if (!mounted) return;
         const items = response?.items || [];
-        setNotifications(items);
-        setUnreadCount(response?.unread_count ?? items.filter((item) => !item.is_read).length);
-        setNotificationError("");
+        setNotifications(items.slice(0, 5));
+        setUnreadCount(items.filter((item) => !item.is_read).length);
       } catch {
         if (!mounted) return;
         setNotifications([]);
         setUnreadCount(0);
-        setNotificationError("Unable to load notifications right now.");
       }
     }
-
-    loadNotifications();
-    const intervalId = window.setInterval(loadNotifications, 60000);
-
+    loadNotificationPreview();
     return () => {
       mounted = false;
-      window.clearInterval(intervalId);
     };
-  }, [role]);
-
-  const toggleTheme = () => {
-    setThemeHint((current) => {
-      const nextTheme = current === "light" ? "dark" : "light";
-      document.documentElement.dataset.theme = nextTheme;
-      localStorage.setItem("theme", nextTheme);
-      return nextTheme;
-    });
-  };
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = themeHint;
-  }, [themeHint]);
+  }, [location.pathname]);
 
   const handleLogout = () => {
     authService.logout();
     navigate("/login", { replace: true });
   };
 
-  const openNotification = async (item) => {
-    if (!item?.is_read) {
-      setNotifications((current) =>
-        current.map((notification) =>
-          notification.id === item.id ? { ...notification, is_read: true } : notification
-        )
-      );
-      setUnreadCount((current) => Math.max(current - 1, 0));
-      try {
-        await announcementService.markRead(item.id);
-      } catch {
-        // The next polling cycle will reconcile read state with the backend.
-      }
-    }
-    navigate(notificationPath);
+  const toggleTheme = () => {
+    const nextTheme = themeHint === "light" ? "dark" : "light";
+    document.documentElement.dataset.theme = nextTheme;
+    window.localStorage.setItem("theme", nextTheme);
+    setThemeHint(nextTheme);
   };
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur-xl">
-      <div className="flex min-h-16 items-center gap-3 px-4 sm:min-h-20 sm:px-6 lg:px-8">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="md:hidden"
-          onClick={onOpenMobileNav}
-          aria-label="Open navigation"
-        >
+      <div className="mx-auto flex h-[74px] w-full max-w-[1320px] items-center gap-2 px-3 sm:h-[76px] sm:px-5 lg:px-8">
+        <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={onOpenMobileNav} aria-label="Open navigation">
           <Menu className="h-5 w-5" />
         </Button>
 
-        <div className="min-w-0 md:hidden">
-          <p className="truncate text-xs font-semibold uppercase tracking-wide text-text-muted">Learnly AI</p>
-          <p className="truncate text-sm font-semibold text-text">{schoolName || "School workspace"}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[11px] font-bold uppercase tracking-[0.12em] text-text-muted sm:text-xs">Learnly AI</p>
+          <p className="truncate text-base font-semibold text-text sm:text-lg">
+            {schoolName || roleLabels[role] || "Workspace"}
+          </p>
         </div>
 
-        {workspaceSearchRoles.has(role) ? (
-          <WorkspaceSearch role={role} />
-        ) : (
-          <div className="hidden md:flex items-center gap-3 rounded-2xl bg-surface-muted/30 px-4 py-2 border border-border/50">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-soft text-primary">
-              <CalendarDays className="h-4 w-4" />
-            </span>
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-faint">Today's Date</span>
-              <span className="text-sm font-semibold text-text">
-                {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })}
-              </span>
-            </div>
+        {canSearchWorkspace && (
+          <div className="hidden w-full max-w-md md:block">
+            <WorkspaceSearch />
           </div>
         )}
 
-        <div className="ml-auto flex items-end gap-2">
-
-
+        <div className="ml-auto flex items-center gap-2">
           <Dropdown
+            align="right"
+            contentClassName="w-80 max-w-[calc(100vw-1.5rem)]"
+            open={notificationsOpen}
+            onOpenChange={setNotificationsOpen}
             trigger={
-              <Button
+              <button
                 type="button"
-                variant={hasUnreadNotifications ? "primary" : "outline"}
-                size="icon"
-                className={cn("relative h-12 w-12 rounded-2xl", hasUnreadNotifications && "shadow-[0_0_0_4px_rgba(37,99,235,0.16)]")}
-                aria-label={hasUnreadNotifications ? `${unreadCount} unread notifications` : "No unread notifications"}
+                className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-surface text-text-soft shadow-sm transition hover:bg-surface-muted"
+                aria-label="Notifications"
               >
-                <Bell className="h-4 w-4" />
-                {hasUnreadNotifications && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-error px-1 text-[10px] font-bold leading-none text-white">
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-error px-1.5 text-[10px] font-bold text-white">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
-              </Button>
+              </button>
             }
           >
-            <div className="w-80 max-w-[calc(100vw-2rem)] px-2 py-1">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold">Notifications</p>
-                  <p className="text-xs text-text-muted">
-                    {hasUnreadNotifications ? `${unreadCount} unread announcement${unreadCount === 1 ? "" : "s"}` : "You are all caught up."}
-                  </p>
-                </div>
-                <Link to={notificationPath} className="text-xs font-semibold text-primary hover:underline">
-                  View all
-                </Link>
-              </div>
+            <div className="flex items-center justify-between px-3 py-2">
+              <p className="text-sm font-semibold text-text">Notifications</p>
+              <Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>
+                View all
+              </Link>
             </div>
-            <div className="mt-2 space-y-2">
-              {notificationError && (
-                <p className="rounded-xl bg-error-soft px-3 py-3 text-sm text-error">
-                  {notificationError}
-                </p>
+            <div className="my-2 border-t border-border" />
+            <div className="max-h-80 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-text-muted">No recent notifications.</p>
+              ) : (
+                notifications.map((item) => (
+                  <Link
+                    key={item.id}
+                    to={notificationPath}
+                    onClick={() => setNotificationsOpen(false)}
+                    className="block rounded-xl px-3 py-2 hover:bg-surface-muted"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
+                      <span className="shrink-0 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{item.body}</p>
+                  </Link>
+                ))
               )}
-              {!notificationError && notifications.length === 0 && (
-                <p className="rounded-xl bg-surface-muted px-3 py-3 text-sm text-text-muted">
-                  No announcements have been sent to you yet.
-                </p>
-              )}
-              {!notificationError && notifications.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => openNotification(item)}
-                  className={cn(
-                    "block w-full rounded-xl border px-3 py-3 text-left transition hover:border-primary/40 hover:bg-primary-subtle",
-                    item.is_read ? "border-border bg-surface text-text-soft" : "border-primary/40 bg-primary-subtle text-text"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="line-clamp-1 text-sm font-semibold">{item.title}</p>
-                    {!item.is_read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />}
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.body}</p>
-                  <p className="mt-2 text-[11px] font-semibold uppercase text-text-faint">
-                    {[item.priority, item.category, notificationTimestamp(item.publish_at || item.created_at)].filter(Boolean).join(" | ")}
-                  </p>
-                </button>
-              ))}
             </div>
           </Dropdown>
 
           <Dropdown
+            align="right"
+            contentClassName="w-72 max-w-[calc(100vw-1.5rem)]"
             trigger={
-              <button type="button" className="flex h-12 min-h-12 items-center gap-2 rounded-2xl border border-border bg-surface p-1.5 pr-2 shadow-sm transition hover:bg-surface-muted sm:gap-3 sm:pr-3" aria-label="Open account menu">
+              <button className="flex items-center gap-2 rounded-2xl border border-border bg-surface p-1.5 shadow-sm transition hover:bg-surface-muted">
                 <Avatar name={userName} src={avatarSrc} user={user} />
                 <span className="hidden min-w-0 text-left xl:block">
                   <span className="block max-w-32 truncate text-sm font-semibold">{userName}</span>
@@ -692,14 +622,14 @@ function DashboardLayout({
         </div>
       )}
 
-      <div className={cn("min-h-screen transition-[padding] duration-[180ms] ease-in-out", collapsed ? "md:pl-14" : "md:pl-[220px]")}>
+      <div className={cn("min-h-screen transition-[padding] duration-[180ms] ease-in-out", collapsed ? "md:pl-14" : "md:pl-[220px]")}> 
         <Topbar
           role={role}
           onOpenMobileNav={() => setMobileOpen(true)}
           schoolName={schoolName}
         />
 
-        <main id="dashboard-content" className="px-2 py-4 pb-24 sm:px-5 sm:py-5 md:px-6 md:py-6 md:pb-6 lg:px-8">
+        <main id="dashboard-content" className="px-2 py-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:px-6 md:py-6 md:pb-6 lg:px-8">
           <div className="mx-auto flex w-full max-w-[1320px] flex-col section-gap">
             <div className="flex flex-col gap-3 rounded-[1.6rem] border border-border/60 bg-surface/65 p-4 shadow-sm backdrop-blur-sm sm:gap-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between lg:p-6">
               <div className="min-w-0">
