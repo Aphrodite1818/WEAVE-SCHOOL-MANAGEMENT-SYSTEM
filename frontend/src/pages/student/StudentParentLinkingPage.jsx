@@ -12,6 +12,7 @@ import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
 import { cleanText } from "../../utils/academicDashboard";
 import { asStatus, statusVariant } from "./studentPageUtils";
+import { useToast } from "../../hooks/useToast";
 
 function StudentParentLinkingPage() {
   const [parentLinks, setParentLinks] = useState([]);
@@ -19,6 +20,7 @@ function StudentParentLinkingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [actionId, setActionId] = useState(null);
+  const { showSuccess, showError } = useToast();
 
   const loadParentLinks = async () => {
     const [linksResponse, requestsResponse] = await Promise.all([
@@ -60,13 +62,13 @@ function StudentParentLinkingPage() {
 
   const handleRequestResponse = async (requestId, action) => {
     setActionId(requestId);
-    setLoadError(null);
 
     try {
       await studentService.respondToParentLinkRequest(requestId, { action });
       await loadParentLinks();
+      showSuccess(action === "approve" ? "Parent link approved." : "Parent link declined.");
     } catch (error) {
-      setLoadError(getErrorMessage(error, "Could not update parent link request."));
+      showError(getErrorMessage(error, "Could not update parent link request."));
     } finally {
       setActionId(null);
     }
