@@ -377,15 +377,24 @@ function ResourcePage({ config }) {
   const unavailableMessage =
     config.unavailableMessage ||
     `${config.pluralLabel} are not available yet.`;
+  const isInitialLoading = isLoading && items.length === 0 && !error && !isUnavailable;
+
+  if (isInitialLoading) {
+    return (
+      <div className="flex min-h-[260px] w-full items-center justify-center">
+        <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} />
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
+    <div className="w-full max-w-none space-y-5 sm:mx-auto sm:max-w-7xl">
       {error && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {error}
         </div>
       )}
-      <div className={`grid gap-5 ${showForm ? "xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]" : ""}`}>
+      <div className={`grid w-full min-w-0 gap-5 ${showForm ? "xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]" : ""}`}>
         {showForm && (
           <Card className="p-4 sm:p-5 xl:sticky xl:top-28 xl:self-start">
             <h2 className="text-lg font-semibold">
@@ -473,80 +482,75 @@ function ResourcePage({ config }) {
           )}
 
           {!isUnavailable && (
-            isLoading ? (
-              <div className="mt-5">
-                <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} />
-              </div>
-            ) : (
-              <div className="mt-5 table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      {columns.map((column) => (
-                        <th key={column.key}>
-                          {column.label}
-                        </th>
-                      ))}
-                      {(config.canUpdate || config.canDelete) && (
-                        <th>Actions</th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={columns.length + 1}
-                          className="text-text-muted"
-                        >
-                          <span>No records found.</span>
-                        </td>
-                      </tr>
-                    ) : (
-                      items.map((item) => (
-                        <tr key={item.id}>
-                          {columns.map((column) => (
-                            <td key={column.key} data-label={column.label}>
-                              <span>{column.render ? column.render(item, context) : item[column.key] || "-"}</span>
-                            </td>
-                          ))}
-                          {(config.canUpdate || config.canDelete) && (
-                            <td data-label="Actions">
-                              <div className="grid w-full gap-2 sm:flex sm:flex-wrap md:w-auto">
-                                {config.canUpdate && (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="small"
-                                    onClick={() => handleEdit(item)}
-                                    disabled={busyId === item.id}
-                                    className="w-full sm:w-auto"
-                                  >
-                                    Edit
-                                  </Button>
-                                )}
-                                {config.canDelete && (
-                                  <Button
-                                    type="button"
-                                    variant="danger"
-                                    size="small"
-                                    onClick={() => handleDelete(item)}
-                                    disabled={busyId === item.id}
-                                    className="w-full sm:w-auto"
-                                  >
-                                    {busyId === item.id ? "Deleting..." : "Delete"}
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
-                          )}
-                        </tr>
-                      ))
+            <div className="mt-5 table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {columns.map((column) => (
+                      <th key={column.key}>
+                        {column.label}
+                      </th>
+                    ))}
+                    {(config.canUpdate || config.canDelete) && (
+                      <th>Actions</th>
                     )}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={columns.length + 1}
+                        className="text-text-muted"
+                      >
+                        <span>No records found.</span>
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((item) => (
+                      <tr key={item.id}>
+                        {columns.map((column) => (
+                          <td key={column.key} data-label={column.label}>
+                            <span>{column.render ? column.render(item, context) : item[column.key] || "-"}</span>
+                          </td>
+                        ))}
+                        {(config.canUpdate || config.canDelete) && (
+                          <td data-label="Actions">
+                            <div className="grid w-full gap-2 sm:flex sm:flex-wrap md:w-auto">
+                              {config.canUpdate && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="small"
+                                  onClick={() => handleEdit(item)}
+                                  disabled={busyId === item.id}
+                                  className="w-full sm:w-auto"
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                              {config.canDelete && (
+                                <Button
+                                  type="button"
+                                  variant="danger"
+                                  size="small"
+                                  onClick={() => handleDelete(item)}
+                                  disabled={busyId === item.id}
+                                  className="w-full sm:w-auto"
+                                >
+                                  {busyId === item.id ? "Deleting..." : "Delete"}
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       </div>
     </div>
