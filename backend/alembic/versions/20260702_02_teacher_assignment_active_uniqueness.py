@@ -45,6 +45,7 @@ def upgrade() -> None:
     )
 
     op.execute("DROP INDEX IF EXISTS uq_teacher_assignment_active_class_subject_teacher")
+    op.execute("DROP INDEX IF EXISTS uq_teacher_assignment_active_class_subject")
     op.create_index(
         "uq_teacher_assignment_active_class_subject",
         "teacher_assignments",
@@ -56,6 +57,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS uq_teacher_assignment_active_class_subject")
+    op.execute("DROP INDEX IF EXISTS uq_teacher_assignment_active_class_subject_teacher")
     op.create_index(
         "uq_teacher_assignment_active_class_subject_teacher",
         "teacher_assignments",
