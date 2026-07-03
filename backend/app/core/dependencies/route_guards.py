@@ -9,6 +9,8 @@ from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
+from app.core.cache.base import build_cache_key, tenant_prefix
+from app.core.cache.manager import CacheManager
 from app.core.dependencies.db import get_db
 from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.modules.auth_identity.models import ActorType
@@ -43,13 +45,26 @@ async def _ensure_active_tenant(
     if tenant_id is None:
         raise ForbiddenException("Actor is not attached to a tenant")
 
-    tenant = await TenantRepository.get_by_id(db, tenant_id)
-    if tenant is None or tenant.is_deleted:
-        raise ForbiddenException("Inactive tenant")
-    if tenant.verification_status != TenantVerificationStatus.ACTIVE:
-        raise ForbiddenException("Tenant is not verified")
-    if tenant.status not in (TenantStatus.ACTIVE, TenantStatus.TRIAL):
-        raise ForbiddenException("Inactive tenant")
+    cache_key = build_cache_key(tenant_prefix(str(tenant_id)), "auth", "active-tenant")
+
+    async def fetch_tenant_state() -> dict[str, str | bool]:
+        tenant = await TenantRepository.get_by_id(db, tenant_id)
+        if tenant is None or tenant.is_deleted:
+            return {"allowed": False, "reason": "Inactive tenant"}
+        if tenant.verification_status != TenantVerificationStatus.ACTIVE:
+            return {"allowed": False, "reason": "Tenant is not verified"}
+        if tenant.status not in (TenantStatus.ACTIVE, TenantStatus.TRIAL):
+            return {"allowed": False, "reason": "Inactive tenant"}
+        return {"allowed": True, "reason": ""}
+
+    tenant_state = await CacheManager.get_or_set(
+        key=cache_key,
+        fetcher=fetch_tenant_state,
+        ttl=settings.CACHE_SHORT_TTL_SECONDS,
+    )
+
+    if not tenant_state.get("allowed"):
+        raise ForbiddenException(str(tenant_state.get("reason") or "Inactive tenant"))
 
 
 async def get_current_actor(
