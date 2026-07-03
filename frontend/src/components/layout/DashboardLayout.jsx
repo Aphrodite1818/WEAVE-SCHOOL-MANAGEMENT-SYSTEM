@@ -223,7 +223,7 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileMode, setProfileMode] = useState("onboarding");
-  const [onboardingState, setOnboardingState] = useState({ loading: true, required: false, values: null });
+  const [onboardingState, setOnboardingState] = useState({ loading: true, required: false, status: null });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("sidebarCollapsed") === "true");
   const mainRef = useRef(null);
   const storedSchoolName = resolveSchoolName(user);
@@ -277,11 +277,19 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
   useEffect(() => {
     let mounted = true;
     async function checkOnboarding() {
+      if (!onboardingService.supportsRole(role)) {
+        setOnboardingState({ loading: false, required: false, status: null });
+        return;
+      }
+
       try {
-        const status = await onboardingService.getStatus(role);
+        const status = await onboardingService.getOnboardingStatus(role);
         if (!mounted) return;
-        setOnboardingState({ loading: false, required: Boolean(status?.onboarding_required), values: status?.current_values || null });
-        if (status?.onboarding_required) {
+
+        const required = Boolean(status?.onboarding_required);
+        setOnboardingState({ loading: false, required, status: status || null });
+
+        if (required) {
           setProfileMode("onboarding");
           setProfileModalOpen(true);
         }
@@ -294,6 +302,18 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
   }, [role]);
 
   const profileCopy = onboardingModalCopy[role] || onboardingModalCopy.teacher;
+
+  const handleProfileStateResolved = ({ completed, status }) => {
+    const required = !completed;
+    setOnboardingState({ loading: false, required, status: status || null });
+    if (!required) setProfileModalOpen(false);
+  };
+
+  const handleProfileSaved = (status) => {
+    const required = Boolean(status?.onboarding_required);
+    setOnboardingState({ loading: false, required, status: status || null });
+    if (!required) setProfileModalOpen(false);
+  };
 
   return (
     <div className="min-h-screen bg-background text-text">
@@ -308,7 +328,7 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
       </div>
       <BottomNav role={role} onOpenMenu={() => setMobileNavOpen(true)} />
       <Modal open={profileModalOpen} onClose={() => !onboardingState.required && setProfileModalOpen(false)} title={profileMode === "onboarding" ? profileCopy.onboardingTitle : profileCopy.editTitle} description={profileMode === "onboarding" ? profileCopy.onboardingDescription : profileCopy.editDescription} closeOnOverlay={!onboardingState.required} showClose={!onboardingState.required}>
-        <ProfileCompletionForm role={role} mode={profileMode} initialValues={onboardingState.values} onCompleted={(updated) => { setOnboardingState({ loading: false, required: false, values: updated }); setProfileModalOpen(false); }} />
+        <ProfileCompletionForm role={role} mode={profileMode} initialStatusData={onboardingState.status} onProfileStateResolved={handleProfileStateResolved} onSaved={handleProfileSaved} />
       </Modal>
       <AiChatLauncher role={role} />
     </div>
