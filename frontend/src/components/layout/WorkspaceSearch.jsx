@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Search, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { authSession } from "../../services/api";
 import { searchService } from "../../services/searchService";
 import { cn } from "../../utils/cn";
 
@@ -13,31 +14,37 @@ const placeholderByRole = {
 function WorkspaceSearch({ role }) {
   const navigate = useNavigate();
   const inputRef = useRef(null);
+  const searchRole = String(role || authSession.getUser()?.role || authSession.getRole() || "").toLowerCase();
   const [query, setQuery] = useState("");
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const trimmed = query.trim();
 
     if (trimmed.length < 2) {
+      setHasSearched(false);
       return undefined;
     }
 
     let active = true;
     const timeoutId = window.setTimeout(async () => {
       setIsLoading(true);
+      setHasSearched(false);
       setError("");
       setItems([]);
 
       try {
-        const response = await searchService.searchWorkspace(role, trimmed, 8);
+        const response = await searchService.searchWorkspace(searchRole, trimmed, 8);
         if (!active) return;
         setItems(response?.items || []);
+        setHasSearched(true);
       } catch (err) {
         if (!active) return;
         setItems([]);
+        setHasSearched(true);
         setError(err?.message || "Search is temporarily unavailable.");
       } finally {
         if (active) setIsLoading(false);
@@ -48,7 +55,7 @@ function WorkspaceSearch({ role }) {
       active = false;
       window.clearTimeout(timeoutId);
     };
-  }, [query, role]);
+  }, [query, searchRole]);
 
   useEffect(() => {
     const handleShortcut = (event) => {
@@ -70,10 +77,15 @@ function WorkspaceSearch({ role }) {
     return () => window.removeEventListener("keydown", handleShortcut);
   }, []);
 
-  const handleSelect = (href) => {
+  const clearSearch = () => {
     setQuery("");
     setItems([]);
+    setHasSearched(false);
     setError("");
+  };
+
+  const handleSelect = (href) => {
+    clearSearch();
     navigate(href);
   };
 
@@ -84,15 +96,14 @@ function WorkspaceSearch({ role }) {
     if (nextQuery.trim().length < 2) {
       setItems([]);
       setIsLoading(false);
+      setHasSearched(false);
       setError("");
     }
   };
 
   const handleKeyDown = (event) => {
     if (event.key === "Escape") {
-      setQuery("");
-      setItems([]);
-      setError("");
+      clearSearch();
       return;
     }
 
@@ -103,7 +114,7 @@ function WorkspaceSearch({ role }) {
   };
 
   const trimmed = query.trim();
-  const showResults = trimmed.length >= 2 && (isLoading || error || items.length > 0);
+  const showResults = trimmed.length >= 2 && (isLoading || hasSearched || error || items.length > 0);
 
   return (
     <div className="relative hidden w-full max-w-lg md:block">
@@ -113,7 +124,7 @@ function WorkspaceSearch({ role }) {
           ref={inputRef}
           type="search"
           aria-label="Search workspace"
-          placeholder={placeholderByRole[role] || placeholderByRole.admin}
+          placeholder={placeholderByRole[searchRole] || placeholderByRole.admin}
           value={query}
           onChange={handleQueryChange}
           onKeyDown={handleKeyDown}
