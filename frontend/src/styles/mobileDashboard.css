@@ -91,3 +91,35 @@
       padding: 0.8rem;
     }
 }
+
+/* Keep main dashboard KPI rows readable instead of stretching six cards across one long row. */
+@media (min-width: 1024px) {
+  .stat-grid-five,
+  .stat-grid-six {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1536px) {
+  .stat-grid-five,
+  .stat-grid-six {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Light Academic Hub spacing: reduce clutter without redesigning the page. */
+.form-grid {
+  gap: 1rem;
+}
+
+.form-grid-actions {
+  gap: 0.75rem;
+}
+
+.table-wrap {
+  margin-top: 1.25rem;
+}
+
+.aw-table-wrap {
+  margin-top: 1.25rem;
+}
