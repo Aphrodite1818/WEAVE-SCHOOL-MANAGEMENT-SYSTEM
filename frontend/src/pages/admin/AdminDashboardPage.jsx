@@ -50,23 +50,31 @@ function AdminDashboardPage() {
   useEffect(() => {
     let mounted = true;
 
-    async function loadDashboard() {
+    async function loadMetrics() {
       try {
-        const [data, resultResponse, reportCardResponse] = await Promise.all([
-          dashboardService.getTenantAdminAnalytics(),
-          academicService.listAdminResults(),
-          reportCardService.listAdminReportCards(),
-        ]);
-        if (!mounted) return;
-        setAnalytics(data);
-        setAcademicResults(resultResponse?.items || []);
-        setReportCards(reportCardResponse?.items || []);
+        const data = await dashboardService.getTenantAdminAnalytics();
+        if (mounted) setAnalytics(data);
       } catch (err) {
         if (mounted) setError(getErrorMessage(err, "Failed to load dashboard analytics."));
       }
     }
 
-    loadDashboard();
+    async function loadSecondaryAnalytics() {
+      try {
+        const [resultResponse, reportCardResponse] = await Promise.all([
+          academicService.listAdminResults(),
+          reportCardService.listAdminReportCards(),
+        ]);
+        if (!mounted) return;
+        setAcademicResults(resultResponse?.items || []);
+        setReportCards(reportCardResponse?.items || []);
+      } catch (err) {
+        console.warn("Failed to load secondary dashboard analytics", err);
+      }
+    }
+
+    loadMetrics();
+    loadSecondaryAnalytics();
 
     return () => {
       mounted = false;
