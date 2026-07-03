@@ -46,7 +46,7 @@ const displayStatusLabel = (value, fallback = "Pending") => {
 
 const gradeTone = (grade) => {
   const value = String(grade || "").trim().toUpperCase();
-  if (["A", "B", "B+", "A+"].includes(value)) return "text-emerald-600 border-emerald-400/70 bg-emerald-500/10";
+  if (["A", "A+", "B", "B+"].includes(value)) return "text-emerald-600 border-emerald-400/70 bg-emerald-500/10";
   if (["C", "D"].includes(value)) return "text-amber-600 border-amber-400/70 bg-amber-500/10";
   if (["E", "F"].includes(value)) return "text-rose-600 border-rose-400/70 bg-rose-500/10";
   return "text-text-muted border-border bg-surface-muted/20";
@@ -66,7 +66,7 @@ function ScoreRing({ value }) {
   const toneClass = scoreTone(score);
 
   return (
-    <div className={cn("relative grid h-20 w-20 shrink-0 place-items-center rounded-full sm:h-24 sm:w-24", toneClass)}>
+    <div className={cn("relative grid h-[4.85rem] w-[4.85rem] shrink-0 place-items-center rounded-full sm:h-24 sm:w-24", toneClass)}>
       <div
         className="absolute inset-0 rounded-full opacity-90"
         style={{
@@ -75,8 +75,8 @@ function ScoreRing({ value }) {
       />
       <div className="absolute inset-2 rounded-full bg-surface" />
       <div className="relative text-center leading-none">
-        <p className="text-xl font-semibold text-text sm:text-2xl">{formatScore(value)}</p>
-        <p className="mt-1 text-[10px] font-medium text-text-muted">of {SCORE_MAXIMUMS.total_score}</p>
+        <p className="text-lg font-semibold text-text sm:text-2xl">{formatScore(value)}</p>
+        <p className="mt-1 text-[9px] font-medium text-text-muted sm:text-[10px]">of {SCORE_MAXIMUMS.total_score}</p>
       </div>
     </div>
   );
@@ -86,9 +86,9 @@ function ScoreBar({ label, value, max }) {
   const percent = percentage(value, max);
 
   return (
-    <div className="grid grid-cols-[3.75rem_minmax(0,1fr)_2.75rem] items-center gap-2 text-xs sm:grid-cols-[4.75rem_minmax(0,1fr)_3.5rem] sm:text-sm">
+    <div className="grid grid-cols-[3.4rem_minmax(0,1fr)_2.6rem] items-center gap-2 text-xs sm:grid-cols-[4.75rem_minmax(0,1fr)_3.5rem] sm:text-sm">
       <span className="truncate text-text-muted">{label}</span>
-      <span className="h-2 overflow-hidden rounded-full bg-surface-muted/50">
+      <span className="h-1.5 overflow-hidden rounded-full bg-surface-muted/50 sm:h-2">
         <span
           className="block h-full rounded-full bg-current text-primary transition-all duration-300"
           style={{ width: `${percent}%` }}
@@ -112,7 +112,7 @@ function TeacherLine({ name }) {
 
   return (
     <div className="flex min-w-0 items-center gap-3 border-t border-dashed border-border/70 pt-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 bg-surface-muted/30 text-xs font-bold text-primary">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/70 bg-surface-muted/30 text-[11px] font-bold text-primary sm:h-9 sm:w-9 sm:text-xs">
         {initials}
       </span>
       <div className="min-w-0">
@@ -134,15 +134,15 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
       as={link ? Link : "div"}
       to={link}
       className={cn(
-        "group h-full overflow-hidden rounded-[1.5rem] border border-border/80 bg-surface text-left shadow-sm transition-all duration-200",
+        "group h-full overflow-hidden rounded-[1.45rem] border border-border/80 bg-surface text-left shadow-sm transition-all duration-200",
         link ? "hover:-translate-y-0.5 hover:border-border-strong hover:shadow-premium" : "cursor-default",
-        compact ? "p-4" : "p-4 sm:p-6"
+        compact ? "p-4" : "p-4 sm:p-5"
       )}
     >
-      <div className="flex h-full flex-col gap-4">
+      <div className="flex h-full flex-col gap-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.1rem] border border-border/70 bg-surface-muted/25 text-primary">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] border border-border/70 bg-surface-muted/25 text-primary sm:h-12 sm:w-12">
               <BookOpen className="h-5 w-5" />
             </span>
             <div className="min-w-0">
@@ -166,7 +166,7 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
 
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4">
           <ScoreRing value={card?.total_score} />
-          <div className="min-w-0 space-y-2.5">
+          <div className="min-w-0 space-y-2">
             <ScoreBar label="Test" value={card?.test_score} max={SCORE_MAXIMUMS.test_score} />
             <ScoreBar label="Assess." value={card?.assessment_score} max={SCORE_MAXIMUMS.assessment_score} />
             <ScoreBar label="Exam" value={card?.exam_score} max={SCORE_MAXIMUMS.exam_score} />
