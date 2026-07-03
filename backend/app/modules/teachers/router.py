@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_teacher
+from app.core.exceptions import NotFoundException
 from app.modules.announcements.models import (
     Announcement,
     AnnouncementActorType,
@@ -18,9 +19,11 @@ from app.modules.announcements.models import (
     AnnouncementTarget,
     AnnouncementTargetType,
 )
+from app.modules.announcements.repository import AnnouncementReadRepository
 from app.modules.announcements.schemas import (
     AnnouncementFeedItemResponse,
     AnnouncementFeedResponse,
+    AnnouncementReadResponse,
 )
 from app.modules.subjects.schemas import SubjectListResponse, SubjectResponse
 from app.modules.teachers.models import Teacher
@@ -37,6 +40,38 @@ router = APIRouter(tags=["Teachers"])
 CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
 
 
+def _teacher_direct_message_query(current_user: Teacher):
+    now = datetime.now(timezone.utc)
+    return (
+        select(Announcement)
+        .join(AnnouncementTarget, AnnouncementTarget.announcement_id == Announcement.id)
+        .options(selectinload(Announcement.targets), selectinload(Announcement.reads))
+        .where(
+            Announcement.tenant_id == current_user.tenant_id,
+            Announcement.status == AnnouncementStatus.PUBLISHED,
+            Announcement.created_by_actor_type != AnnouncementActorType.SUPERADMIN,
+            or_(Announcement.publish_at.is_(None), Announcement.publish_at <= now),
+            or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
+            AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_TEACHER,
+            AnnouncementTarget.teacher_id == current_user.id,
+        )
+        .distinct()
+    )
+
+
+async def _ensure_teacher_direct_message(
+    db: DbSession,
+    current_user: Teacher,
+    announcement_id: UUID,
+) -> None:
+    exists = (
+        await db.execute(
+            _teacher_direct_message_query(current_user).where(Announcement.id == announcement_id)
+        )
+    ).scalar_one_or_none()
+
+    if exists is None:
+        raise NotFoundException(detail="Message not found")
 
 
 @router.get(
@@ -105,22 +140,7 @@ async def get_my_teacher_messages(
 ) -> AnnouncementFeedResponse:
     """Return published direct messages targeted to the current teacher."""
 
-    now = datetime.now(timezone.utc)
-    base_query = (
-        select(Announcement)
-        .join(AnnouncementTarget, AnnouncementTarget.announcement_id == Announcement.id)
-        .options(selectinload(Announcement.targets), selectinload(Announcement.reads))
-        .where(
-            Announcement.tenant_id == current_user.tenant_id,
-            Announcement.status == AnnouncementStatus.PUBLISHED,
-            Announcement.created_by_actor_type != AnnouncementActorType.SUPERADMIN,
-            or_(Announcement.publish_at.is_(None), Announcement.publish_at <= now),
-            or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
-            AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_TEACHER,
-            AnnouncementTarget.teacher_id == current_user.id,
-        )
-        .distinct()
-    )
+    base_query = _teacher_direct_message_query(current_user)
 
     total = (
         await db.execute(select(func.count()).select_from(base_query.subquery()))
@@ -182,6 +202,52 @@ async def get_my_teacher_messages(
         )
 
     return AnnouncementFeedResponse(items=items, total=int(total), unread_count=unread_count)
+
+
+@router.post(
+    "/me/messages/{announcement_id}/read",
+    response_model=AnnouncementReadResponse,
+    summary="Mark my direct message as read",
+)
+async def mark_my_teacher_message_read(
+    announcement_id: UUID,
+    db: DbSession,
+    current_user: CurrentTeacher,
+) -> AnnouncementReadResponse:
+    await _ensure_teacher_direct_message(db, current_user, announcement_id)
+    read = await AnnouncementReadRepository.upsert_read_state(
+        db,
+        tenant_id=current_user.tenant_id,
+        announcement_id=announcement_id,
+        actor_type=AnnouncementRecipientRole.TEACHER,
+        actor_id=current_user.id,
+        status=AnnouncementReadStatus.READ,
+    )
+    await db.commit()
+    return AnnouncementReadResponse.model_validate(read)
+
+
+@router.post(
+    "/me/messages/{announcement_id}/acknowledge",
+    response_model=AnnouncementReadResponse,
+    summary="Acknowledge my direct message",
+)
+async def acknowledge_my_teacher_message(
+    announcement_id: UUID,
+    db: DbSession,
+    current_user: CurrentTeacher,
+) -> AnnouncementReadResponse:
+    await _ensure_teacher_direct_message(db, current_user, announcement_id)
+    read = await AnnouncementReadRepository.upsert_read_state(
+        db,
+        tenant_id=current_user.tenant_id,
+        announcement_id=announcement_id,
+        actor_type=AnnouncementRecipientRole.TEACHER,
+        actor_id=current_user.id,
+        status=AnnouncementReadStatus.ACKNOWLEDGED,
+    )
+    await db.commit()
+    return AnnouncementReadResponse.model_validate(read)
 
 
 @router.get(
