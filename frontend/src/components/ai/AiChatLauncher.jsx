@@ -8,7 +8,7 @@ function AiChatLauncher() {
 
   return (
     <>
-      <div className="fixed bottom-24 right-4 z-40 md:bottom-6 md:right-6">
+      <div className="fixed bottom-[calc(5.85rem+env(safe-area-inset-bottom))] right-4 z-40 md:bottom-6 md:right-6">
         <Button
           type="button"
           onClick={() => setOpen(true)}
