@@ -137,8 +137,7 @@ export function SubscriptionProvider({ children }) {
         return {
           allowed: false,
           pending: false,
-          reason:
-            "This feature is not available on your current plan. Upgrade your plan to unlock it.",
+          reason: null,
         };
       }
 
