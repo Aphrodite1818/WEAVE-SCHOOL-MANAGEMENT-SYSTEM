@@ -387,15 +387,15 @@ function ResourcePage({ config }) {
   }
 
   return (
-    <div className="w-full max-w-none space-y-5 sm:mx-auto sm:max-w-7xl">
+    <div className="resource-page-shell w-full max-w-none space-y-5 sm:mx-auto sm:max-w-7xl">
       {error && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {error}
         </div>
       )}
-      <div className={`grid w-full min-w-0 gap-5 ${showForm ? "xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]" : ""}`}>
+      <div className={`resource-page-grid grid w-full min-w-0 gap-5 ${showForm ? "xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]" : ""}`}>
         {showForm && (
-          <Card className="p-4 sm:p-5 xl:sticky xl:top-28 xl:self-start">
+          <Card className="resource-page-form-card p-4 sm:p-5 xl:sticky xl:top-28 xl:self-start">
             <h2 className="text-lg font-semibold">
               {editingItem ? `Edit ${config.singularLabel.toLowerCase()}` : `Create ${config.singularLabel.toLowerCase()}`}
             </h2>
@@ -432,7 +432,7 @@ function ResourcePage({ config }) {
           </Card>
         )}
 
-        <Card className="p-4 sm:p-5">
+        <Card className="resource-page-list-card p-4 sm:p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-lg font-semibold">{config.pluralLabel}</h2>
@@ -458,7 +458,7 @@ function ResourcePage({ config }) {
                 event.preventDefault();
                 loadItems(filters);
               }}
-              className="mt-5 grid gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid-cols-3 xl:grid-cols-4"
+              className="resource-page-filters mt-5 grid gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid-cols-3 xl:grid-cols-4"
             >
               {filterFields.map((field) => (
                 <FormControl

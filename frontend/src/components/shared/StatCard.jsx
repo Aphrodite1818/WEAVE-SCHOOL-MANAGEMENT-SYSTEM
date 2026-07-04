@@ -18,7 +18,6 @@ function StatCard({
   trend = "up",
   icon: Icon,
   tone = "primary",
-  description,
   valueBadge = null,
   className = "",
   compact = false,
@@ -80,19 +79,12 @@ function StatCard({
           </span>
         )}
       </div>
-      {(change || description) && (
+      {change && (
         <div className="mt-auto flex flex-wrap items-center gap-1 pt-2 sm:gap-2 sm:pt-3">
-          {change && (
-            <Badge variant={trend === "down" ? "error" : "success"}>
-              <TrendIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              {change}
-            </Badge>
-          )}
-          {description && (
-            <span className="min-w-0 line-clamp-1 text-[10px] font-medium leading-snug text-text-muted sm:text-xs">
-              {description}
-            </span>
-          )}
+          <Badge variant={trend === "down" ? "error" : "success"}>
+            <TrendIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+            {change}
+          </Badge>
         </div>
       )}
     </Card>

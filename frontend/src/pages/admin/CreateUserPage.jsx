@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
@@ -112,16 +112,6 @@ function CreateUserPage() {
       mounted = false;
     };
   }, []);
-
-  const pageDescription = useMemo(() => {
-    if (activeTab === "student") {
-      return "Create student accounts with auto-generated admission numbers and the default-password first-login flow.";
-    }
-    if (activeTab === "teacher") {
-      return "Create teacher accounts, optionally assign subjects, and let invite acceptance finish activation.";
-    }
-    return "Create parent accounts and let invite acceptance finish activation before student-link requests begin.";
-  }, [activeTab]);
 
   const resetErrors = () => {
     setError(null);
@@ -296,11 +286,7 @@ function CreateUserPage() {
   );
 
   return (
-    <DashboardLayout
-      role="admin"
-      title="Create User"
-      description={pageDescription}
-    >
+    <DashboardLayout role="admin" title="Create User">
       <div className="space-y-5">
         <Card className="p-4 sm:p-5">
           <div className="mb-4 grid gap-3 md:grid-cols-3">
@@ -342,9 +328,6 @@ function CreateUserPage() {
           <h2 className="text-lg font-semibold text-text">
             {activeTab === "student" ? "Student details" : activeTab === "teacher" ? "Teacher details" : "Parent details"}
           </h2>
-          <p className="mt-1 text-sm text-text-muted">
-            Only collect the fields the admin is responsible for. The rest should be completed through onboarding or later profile updates.
-          </p>
 
           {!activeGuard.allowed && activeGuard.reason ? (
             <div className="mt-4 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
@@ -386,10 +369,7 @@ function CreateUserPage() {
                   Admission number: <span className="font-semibold text-text">{successPayload.result.admission_number}</span>
                 </p>
                 <p className="mt-2 text-sm text-text-soft">
-                  Student logs in with this admission number and the default password.
-                </p>
-                <p className="mt-1 text-sm text-text-soft">
-                  Default password: <span className="font-semibold text-text">{successPayload.result.default_password || "default"}</span>
+                  Password: <span className="font-semibold text-text">{successPayload.result.default_password || "default"}</span>
                 </p>
               </>
             ) : (
@@ -398,10 +378,10 @@ function CreateUserPage() {
                   {successPayload.type === "teacher" ? "Teacher" : "Parent"} created successfully
                 </h2>
                 <p className="mt-2 text-sm text-text-soft">
-                  Invite sent or pending for <span className="font-semibold text-text">{successPayload.result.email}</span>.
+                  Email: <span className="font-semibold text-text">{successPayload.result.email}</span>
                 </p>
                 <p className="mt-1 text-sm text-text-soft">
-                  Current status: <span className="font-semibold text-text">{successPayload.result.account_status || "pending"}</span>
+                  Status: <span className="font-semibold text-text">{successPayload.result.account_status || "pending"}</span>
                 </p>
               </>
             )}

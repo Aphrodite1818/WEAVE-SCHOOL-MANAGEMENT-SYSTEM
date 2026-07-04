@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
 import { BookOpen, LayoutGrid, List } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import Card from "../../components/ui/Card";
-import Button from "../../components/ui/Button";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import StudentSubjectPerformanceCard from "../../components/student/StudentSubjectPerformanceCard";
-import { getErrorMessage } from "../../services/api";
+import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
 import { academicService } from "../../services/academicService";
+import { getErrorMessage } from "../../services/api";
 import { cleanText } from "../../utils/academicDashboard";
 import { cn } from "../../utils/cn";
 
@@ -31,7 +31,8 @@ function StudentSubjectsPage() {
         setSubjectCards(response?.items || []);
         setContext(response?.context || null);
       } catch (error) {
-        if (mounted) setLoadError(getErrorMessage(error, "Failed to load subjects."));
+        if (mounted)
+          setLoadError(getErrorMessage(error, "Failed to load subjects."));
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -49,7 +50,7 @@ function StudentSubjectsPage() {
     context?.class_name
       ? [context.class_name, context.class_arm].filter(Boolean).join(" ")
       : null,
-    context?.class_id ? "Class" : "No class assigned"
+    context?.class_id ? "Class" : "No class assigned",
   );
   const academicContextLabel = useMemo(() => {
     const session = cleanText(context?.academic_session_name, "No session");
@@ -71,7 +72,7 @@ function StudentSubjectsPage() {
       title="Subjects"
       description={academicContextLabel}
       actions={
-        <div className="inline-flex rounded-2xl border border-border bg-surface p-1 shadow-sm">
+        <div className="hidden md:inline-flex rounded-2xl border border-border bg-surface p-1 shadow-sm">
           <Button
             type="button"
             variant={isGridView ? "primary" : "ghost"}
@@ -99,24 +100,41 @@ function StudentSubjectsPage() {
         <Card className="overflow-hidden p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-muted">Current academic view</p>
-              <h2 className="mt-2 text-xl font-semibold leading-tight text-text sm:text-2xl">Subject performance</h2>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-muted">
+                Current academic view
+              </p>
+              <h2 className="mt-2 text-xl font-semibold leading-tight text-text sm:text-2xl">
+                Subject performance
+              </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-                Review each class subject with score components, grade, status, and assigned teacher in one card.
+                Review each class subject with score components, grade, status,
+                and assigned teacher in one card.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:min-w-[18rem]">
               <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">Subjects</p>
-                <p className="mt-1 text-lg font-semibold text-text">{subjectCards.length}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
+                  Subjects
+                </p>
+                <p className="mt-1 text-lg font-semibold text-text">
+                  {subjectCards.length}
+                </p>
               </div>
               <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">Session</p>
-                <p className="mt-1 truncate text-sm font-semibold text-text">{cleanText(context?.academic_session_name, "-")}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
+                  Session
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-text">
+                  {cleanText(context?.academic_session_name, "-")}
+                </p>
               </div>
               <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">Term</p>
-                <p className="mt-1 truncate text-sm font-semibold text-text">{cleanText(context?.academic_term_name, "-")}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
+                  Term
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-text">
+                  {cleanText(context?.academic_term_name, "-")}
+                </p>
               </div>
             </div>
           </div>
@@ -146,11 +164,18 @@ function StudentSubjectsPage() {
           <section
             className={cn(
               "grid gap-4 sm:gap-5",
-              isGridView ? "grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3" : "grid-cols-1"
+              isGridView
+                ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+                : "grid-cols-1",
             )}
           >
             {subjectCards.map((card) => (
-              <StudentSubjectPerformanceCard key={card.id} card={card} classLabel={classLabel} />
+              <StudentSubjectPerformanceCard
+                key={card.id}
+                card={card}
+                classLabel={classLabel}
+                compact={!isGridView}
+              />
             ))}
           </section>
         )}

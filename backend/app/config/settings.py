@@ -116,20 +116,6 @@ class Settings(BaseSettings):
     PAYSTACK_PROFESSIONAL_MONTHLY_AMOUNT_KOBO: int | None = Field(default=3500000, ge=0)
     PAYSTACK_ENTERPRISE_MONTHLY_AMOUNT_KOBO: int | None = Field(default=8000000, ge=0)
 
-    PAYSTACK_STARTER_MONTHLY_PLAN_CODE: str | None = None
-    PAYSTACK_STARTER_YEARLY_PLAN_CODE: str | None = None
-    PAYSTACK_STANDARD_MONTHLY_PLAN_CODE: str | None = None
-    PAYSTACK_STANDARD_YEARLY_PLAN_CODE: str | None = None
-    PAYSTACK_PREMIUM_MONTHLY_PLAN_CODE: str | None = None
-    PAYSTACK_PREMIUM_YEARLY_PLAN_CODE: str | None = None
-
-    PAYSTACK_STARTER_MONTHLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
-    PAYSTACK_STARTER_YEARLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
-    PAYSTACK_STANDARD_MONTHLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
-    PAYSTACK_STANDARD_YEARLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
-    PAYSTACK_PREMIUM_MONTHLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
-    PAYSTACK_PREMIUM_YEARLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
-
 
     REDIS_URL: str | None = Field(default=None, description="Redis connection URL")
     CACHE_ENABLED: bool = Field(default=False, description="Enable application caching")

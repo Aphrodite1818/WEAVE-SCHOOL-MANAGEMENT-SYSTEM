@@ -41,7 +41,6 @@ class BillingInterval(StrEnum):
     """Supported billing cadences."""
 
     MONTHLY = "monthly"
-    YEARLY = "yearly"
 
 
 class PaymentProvider(StrEnum):

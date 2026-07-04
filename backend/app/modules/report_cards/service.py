@@ -652,53 +652,68 @@ class ReportCardService:
 <!doctype html>
 <html>
 <head>
-  <title>Report Card</title>
-  <style>
-    body {{ margin: 0; background: #e2e8f0; color: #0f172a; font-family: Arial, sans-serif; line-height: 1.45; }}
-    .page {{ width: min(100%, 960px); margin: 24px auto; background: white; border: 1px solid #cbd5e1; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14); }}
-    .toolbar {{ display: flex; justify-content: flex-end; padding: 16px 18px 0; }}
-    button {{ border: 0; border-radius: 10px; background: #1a237e; color: white; cursor: pointer; font-weight: 700; padding: 10px 16px; }}
-    .sheet {{ padding: 28px; }}
-    .brand {{ background: #1a237e; color: white; border-radius: 18px; margin-bottom: 24px; padding: 18px 20px; }}
-    h1 {{ margin: 0; font-size: 30px; }}
-    .status {{ display: inline-block; margin-top: 8px; border-radius: 999px; background: #e5e7eb; color: #374151; padding: 6px 10px; font-size: 12px; font-weight: 700; }}
-    .meta, .summary {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }}
-    .summary {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-    .card {{ border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; padding: 12px; }}
-    .card span {{ color: #64748b; display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; }}
-    .card strong {{ display: block; font-size: 15px; margin-top: 3px; }}
-    table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
-    th, td {{ border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }}
-    th {{ background: #e8eaf6; color: #1a237e; font-size: 11px; text-transform: uppercase; }}
-    .footer {{ margin-top: 24px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 12px; padding-top: 14px; }}
-    @media print {{ body {{ background: white; }} button, .toolbar {{ display: none; }} .page {{ margin: 0; width: 100%; border: 0; box-shadow: none; }} }}
-  </style>
+    <title>Report Card</title>
+    <style>
+        body {{ margin: 0; background: #e2e8f0; color: #0f172a; font-family: Arial, sans-serif; line-height: 1.45; }}
+        .page {{ width: min(100%, 960px); margin: 24px auto; background: white; border: 1px solid #cbd5e1; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14); }}
+        .toolbar {{ display: flex; justify-content: flex-end; padding: 16px 18px 0; }}
+        button {{ border: 0; border-radius: 10px; background: #1a237e; color: white; cursor: pointer; font-weight: 700; padding: 10px 16px; }}
+        .sheet {{ padding: 28px; }}
+        .brand {{ background: #1a237e; color: white; border-radius: 18px; margin-bottom: 24px; padding: 18px 20px; }}
+        h1 {{ margin: 0; font-size: 30px; }}
+        .status {{ display: inline-block; margin-top: 8px; border-radius: 999px; background: #e5e7eb; color: #374151; padding: 6px 10px; font-size: 12px; font-weight: 700; }}
+        .meta, .summary {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }}
+        .summary {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+        .card {{ border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; padding: 12px; }}
+        .card span {{ color: #64748b; display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; }}
+        .card strong {{ display: block; font-size: 15px; margin-top: 3px; }}
+        .table-wrapper {{ overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 12px; }}
+        table {{ border-collapse: collapse; width: 100%; font-size: 13px; min-width: 700px; }}
+        th, td {{ border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }}
+        th {{ background: #e8eaf6; color: #1a237e; font-size: 11px; text-transform: uppercase; }}
+        .footer {{ margin-top: 24px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 12px; padding-top: 14px; }}
+        @media (max-width: 640px) {{
+            .page {{ margin: 12px; }}
+            .sheet {{ padding: 16px; }}
+            h1 {{ font-size: 20px; }}
+            .brand h1 {{ font-size: 18px; }}
+            .meta {{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
+            .summary {{ grid-template-columns: 1fr; gap: 10px; }}
+            .card span {{ font-size: 10px; }}
+            .card strong {{ font-size: 14px; }}
+            table {{ font-size: 12px; min-width: 600px; }}
+            th, td {{ padding: 8px; }}
+        }}
+        @media print {{ body {{ background: white; }} button, .toolbar {{ display: none; }} .page {{ margin: 0; width: 100%; border: 0; box-shadow: none; }} }}
+    </style>
 </head>
 <body>
-  <main class="page">
-    <div class="toolbar"><button onclick="window.print()">Print report card</button></div>
-    <section class="sheet">
-      <section class="brand"><h1>{school_name}</h1><p>Termly academic report</p></section>
-      <h1>Report Card</h1>
-      <p><strong>{student_name}</strong></p>
-      <div class="status">{status_label}</div>
-      <section class="meta">
-        <div class="card"><span>Admission No.</span><strong>{admission_number}</strong></div>
-        <div class="card"><span>Class</span><strong>{class_label}</strong></div>
-        <div class="card"><span>Session</span><strong>{session_label}</strong></div>
-        <div class="card"><span>Term</span><strong>{term_label}</strong></div>
-      </section>
-      <section class="summary">
-        <div class="card"><span>Total score</span><strong>{_format_score(card.total_score)}</strong></div>
-        <div class="card"><span>Average</span><strong>{_format_score(card.average_score)}</strong></div>
-      </section>
-      <table>
-        <thead><tr><th>Subject</th><th>Code</th><th>Test</th><th>Assessment</th><th>Exam</th><th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
-        <tbody>{rows}</tbody>
-      </table>
-      <footer class="footer">Generated by Learnly AI · {session_label} academic session</footer>
-    </section>
-  </main>
+    <main class="page">
+        <div class="toolbar"><button onclick="window.print()">Print report card</button></div>
+        <section class="sheet">
+            <section class="brand"><h1>{school_name}</h1><p>Termly academic report</p></section>
+            <h1>Report Card</h1>
+            <p><strong>{student_name}</strong></p>
+            <div class="status">{status_label}</div>
+            <section class="meta">
+                <div class="card"><span>Admission No.</span><strong>{admission_number}</strong></div>
+                <div class="card"><span>Class</span><strong>{class_label}</strong></div>
+                <div class="card"><span>Session</span><strong>{session_label}</strong></div>
+                <div class="card"><span>Term</span><strong>{term_label}</strong></div>
+            </section>
+            <section class="summary">
+                <div class="card"><span>Total score</span><strong>{_format_score(card.total_score)}</strong></div>
+                <div class="card"><span>Average</span><strong>{_format_score(card.average_score)}</strong></div>
+            </section>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Subject</th><th>Code</th><th>Test</th><th>Assessment</th><th>Exam</th><th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
+            <footer class="footer">Generated by Learnly AI · {session_label} academic session</footer>
+        </section>
+    </main>
 </body>
 </html>
 """

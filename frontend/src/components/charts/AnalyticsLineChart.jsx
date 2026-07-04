@@ -17,7 +17,6 @@ const normalizeItems = (data, valueKey) =>
 function AnalyticsLineChart({
   data = [],
   title,
-  description,
   emptyMessage = "No trend data available yet.",
   labelKey = "label",
   tooltipLabelKey = "fullLabel",
@@ -29,7 +28,6 @@ function AnalyticsLineChart({
     <div className="dashboard-chart-card">
       <div>
         <h3 className="text-base font-semibold text-text">{title}</h3>
-        {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
       </div>
 
       {items.length === 0 ? (

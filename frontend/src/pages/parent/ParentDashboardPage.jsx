@@ -104,7 +104,6 @@ function ParentDashboardPage() {
     <DashboardLayout
       role="parent"
       title={`${firstName}'s Portal`}
-      description="A family overview for the selected child. Detailed workflows live in their own sidebar pages."
     >
       {loadError && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">

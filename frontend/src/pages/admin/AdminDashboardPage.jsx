@@ -142,7 +142,6 @@ function AdminDashboardPage() {
     <DashboardLayout
       role="admin"
       title={`${firstName}'s Dashboard`}
-      description="Tenant analytics organized for faster scanning: compact KPIs first, then trends, then operational and academic drilldowns."
       actions={
         <Link to="/admin/create-user">
           <Button>

@@ -210,7 +210,7 @@ class TeacherAssignment(BaseModel):
     effective_from: Mapped[date] = mapped_column(
         Date,
         nullable=False,
-        server_default="CURRENT_DATE",
+        server_default=text("CURRENT_DATE"),
     )
 
     effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)

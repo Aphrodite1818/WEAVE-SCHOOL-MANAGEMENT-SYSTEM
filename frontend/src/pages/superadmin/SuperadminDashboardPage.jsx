@@ -162,7 +162,6 @@ function SuperadminDashboardPage() {
     <DashboardLayout
       role="superadmin"
       title="Platform Dashboard"
-      description="Manage school tenants, verification, subscriptions, and platform administrator access."
       actions={<Button variant="outline" onClick={loadDashboardData} disabled={isLoading}><RefreshCw className="h-4 w-4" />Refresh</Button>}
     >
       {error && <div className="rounded-2xl border border-error/20 bg-error-soft px-4 py-3 text-sm font-medium text-error">{error}</div>}

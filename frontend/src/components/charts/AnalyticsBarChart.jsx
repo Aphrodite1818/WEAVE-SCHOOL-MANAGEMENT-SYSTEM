@@ -17,7 +17,6 @@ const normalizeItems = (data, valueKey) =>
 function AnalyticsBarChart({
   data = [],
   title,
-  description,
   emptyMessage = "No chart data available yet.",
   labelKey = "label",
   valueKey = "value",
@@ -29,7 +28,6 @@ function AnalyticsBarChart({
     <div className="dashboard-chart-card">
       <div>
         <h3 className="text-base font-semibold text-text">{title}</h3>
-        {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
       </div>
 
       {items.length === 0 ? (
@@ -49,9 +47,6 @@ function AnalyticsBarChart({
               </div>
             </div>
           ))}
-          <p className="text-xs text-text-muted">
-            Values are currently at zero, so there is no activity height to plot yet.
-          </p>
         </div>
       ) : (
         <div className="mt-5 min-h-0 flex-1">

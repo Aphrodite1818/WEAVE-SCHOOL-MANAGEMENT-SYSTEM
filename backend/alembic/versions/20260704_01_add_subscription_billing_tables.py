@@ -56,7 +56,6 @@ subscription_status_enum = postgresql.ENUM(
 )
 billing_interval_enum = postgresql.ENUM(
     "monthly",
-    "yearly",
     name="billing_interval",
     schema=PUBLIC_SCHEMA,
     create_type=False,

@@ -186,7 +186,6 @@ function StudentDashboardPage() {
     <DashboardLayout
       role="student"
       title={`${firstName}'s Portal`}
-      description="A clean academic snapshot. Detailed workflows stay in their own pages so this overview remains easy to scan."
     >
       {loadError && (
         <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">

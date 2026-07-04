@@ -374,6 +374,58 @@ class StudentAcademicService:
         return await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=saved)
 
     @staticmethod
+    async def activate_teacher_assignment(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+    ) -> TeacherAssignmentResponse:
+        assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            assignment_id=assignment_id,
+        )
+        if assignment is None:
+            raise NotFoundException("Teacher assignment not found.")
+
+        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=assignment.class_subject_id,
+        )
+        if class_subject is None:
+            raise NotFoundException("Class subject not found.")
+        if not class_subject.is_active:
+            raise BadRequestException("Activate this class-subject before reactivating its teacher assignment.")
+
+        active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+            db=db,
+            tenant_id=tenant_id,
+            class_subject_id=assignment.class_subject_id,
+            exclude_id=assignment.id,
+        )
+        if active is not None:
+            raise ConflictException("An active teacher assignment already exists for this class subject.")
+
+        assignment.is_active = True
+        assignment.effective_to = None
+        # A reactivated assignment starts a new active interval.
+        assignment.effective_from = date.today()
+        saved = await StudentAcademicRepository.save_teacher_assignment(db=db, assignment=assignment)
+
+        await StudentAcademicService._sync_legacy_class_subject_teacher(
+            db=db,
+            tenant_id=tenant_id,
+            class_id=class_subject.class_id,
+            subject_id=class_subject.subject_id,
+            teacher_id=assignment.teacher_id,
+            is_core=class_subject.is_core,
+            is_active=True,
+        )
+
+        await db.commit()
+        return await StudentAcademicService._build_teacher_assignment_response(db=db, assignment=saved)
+
+    @staticmethod
     async def reassign_teacher_assignment(
         db: AsyncSession,
         tenant_id: uuid.UUID,

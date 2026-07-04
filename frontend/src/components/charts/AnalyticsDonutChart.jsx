@@ -10,7 +10,6 @@ const normalizeItems = (data, valueKey) =>
 function AnalyticsDonutChart({
   data = [],
   title,
-  description,
   emptyMessage = "No chart data available yet.",
   labelKey = "label",
   valueKey = "value",
@@ -22,7 +21,6 @@ function AnalyticsDonutChart({
     <div className="dashboard-chart-card">
       <div>
         <h3 className="text-base font-semibold text-text">{title}</h3>
-        {description && <p className="mt-1 text-sm text-text-muted">{description}</p>}
       </div>
 
       {items.length === 0 ? (

@@ -1,17 +1,11 @@
-import { Link } from "react-router-dom";
 import { BookOpen, ChevronRight } from "lucide-react";
-import Card from "../ui/Card";
-import Badge from "../ui/Badge";
+import { Link } from "react-router-dom";
 import { cn } from "../../utils/cn";
+import Badge from "../ui/Badge";
+import Card from "../ui/Card";
 
-const SCORE_MAXIMUMS = {
-  test_score: 20,
-  assessment_score: 10,
-  exam_score: 10,
-  total_score: 40,
-};
-
-const hasValue = (value) => value !== undefined && value !== null && value !== "";
+const hasValue = (value) =>
+  value !== undefined && value !== null && value !== "";
 
 const cleanText = (value, fallback = "-") => {
   if (!hasValue(value)) return fallback;
@@ -22,33 +16,40 @@ const formatScore = (value) => {
   if (!hasValue(value)) return "--";
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return value;
-  return Number.isInteger(numericValue) ? String(numericValue) : numericValue.toFixed(1);
-};
-
-const percentage = (value, max) => {
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue) || max <= 0) return 0;
-  return Math.min(Math.max((numericValue / max) * 100, 0), 100);
+  return Number.isInteger(numericValue)
+    ? String(numericValue)
+    : numericValue.toFixed(1);
 };
 
 const statusVariant = (status) => {
   const value = String(status || "").toLowerCase();
-  if (["submitted", "published", "locked", "complete", "active"].includes(value)) return "success";
+  if (
+    ["submitted", "published", "locked", "complete", "active"].includes(value)
+  )
+    return "success";
   if (["failed", "rejected", "declined"].includes(value)) return "error";
-  if (["draft", "pending", "in_progress", "incomplete"].includes(value)) return "warning";
+  if (["draft", "pending", "in_progress", "incomplete"].includes(value))
+    return "warning";
   return "info";
 };
 
 const displayStatusLabel = (value, fallback = "Pending") => {
   const text = hasValue(value) ? String(value) : fallback;
-  return text.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return text
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
 const gradeTone = (grade) => {
-  const value = String(grade || "").trim().toUpperCase();
-  if (["A", "A+", "B", "B+"].includes(value)) return "text-emerald-600 border-emerald-400/70 bg-emerald-500/10";
-  if (["C", "D"].includes(value)) return "text-amber-600 border-amber-400/70 bg-amber-500/10";
-  if (["E", "F"].includes(value)) return "text-rose-600 border-rose-400/70 bg-rose-500/10";
+  const value = String(grade || "")
+    .trim()
+    .toUpperCase();
+  if (["A", "A+", "B", "B+"].includes(value))
+    return "text-emerald-600 border-emerald-400/70 bg-emerald-500/10";
+  if (["C", "D"].includes(value))
+    return "text-amber-600 border-amber-400/70 bg-amber-500/10";
+  if (["E", "F"].includes(value))
+    return "text-rose-600 border-rose-400/70 bg-rose-500/10";
   return "text-text-muted border-border bg-surface-muted/20";
 };
 
@@ -62,40 +63,41 @@ const scoreTone = (score) => {
 
 function ScoreRing({ value }) {
   const score = Number(value);
-  const percent = percentage(value, SCORE_MAXIMUMS.total_score);
   const toneClass = scoreTone(score);
 
   return (
-    <div className={cn("relative grid h-[4.85rem] w-[4.85rem] shrink-0 place-items-center rounded-full sm:h-24 sm:w-24", toneClass)}>
-      <div
-        className="absolute inset-0 rounded-full opacity-90"
-        style={{
-          background: `conic-gradient(currentColor ${percent * 3.6}deg, rgba(148, 163, 184, 0.16) 0deg)`,
-        }}
-      />
+    <div
+      className={cn(
+        "relative grid h-[4.85rem] w-[4.85rem] shrink-0 place-items-center rounded-full sm:h-24 sm:w-24",
+        toneClass,
+      )}
+    >
       <div className="absolute inset-2 rounded-full bg-surface" />
       <div className="relative text-center leading-none">
-        <p className="text-lg font-semibold text-text sm:text-2xl">{formatScore(value)}</p>
-        <p className="mt-1 text-[9px] font-medium text-text-muted sm:text-[10px]">of {SCORE_MAXIMUMS.total_score}</p>
+        <p className="text-lg font-semibold text-text sm:text-2xl">
+          {formatScore(value)}
+        </p>
+        <p className="mt-1 text-[9px] font-medium text-text-muted sm:text-[10px]">
+          Score
+        </p>
       </div>
     </div>
   );
 }
 
-function ScoreBar({ label, value, max }) {
-  const percent = percentage(value, max);
+function ScoreBar({ label, value }) {
+  const hasScoreValue = hasValue(value);
 
   return (
     <div className="grid grid-cols-[3.4rem_minmax(0,1fr)_2.6rem] items-center gap-2 text-xs sm:grid-cols-[4.75rem_minmax(0,1fr)_3.5rem] sm:text-sm">
       <span className="truncate text-text-muted">{label}</span>
       <span className="h-1.5 overflow-hidden rounded-full bg-surface-muted/50 sm:h-2">
-        <span
-          className="block h-full rounded-full bg-current text-primary transition-all duration-300"
-          style={{ width: `${percent}%` }}
-        />
+        {hasScoreValue && (
+          <span className="block h-full rounded-full bg-current text-primary" />
+        )}
       </span>
       <span className="text-right font-semibold text-text">
-        {formatScore(value)}/{max}
+        {formatScore(value)}
       </span>
     </div>
   );
@@ -103,12 +105,13 @@ function ScoreBar({ label, value, max }) {
 
 function TeacherLine({ name }) {
   const teacherName = cleanText(name, "Teacher not assigned");
-  const initials = teacherName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "T";
+  const initials =
+    teacherName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "T";
 
   return (
     <div className="flex min-w-0 items-center gap-3 border-t border-dashed border-border/70 pt-3">
@@ -116,8 +119,12 @@ function TeacherLine({ name }) {
         {initials}
       </span>
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">Teacher</p>
-        <p className="truncate text-sm font-semibold text-text">{teacherName}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">
+          Teacher
+        </p>
+        <p className="truncate text-sm font-semibold text-text">
+          {teacherName}
+        </p>
       </div>
     </div>
   );
@@ -125,9 +132,14 @@ function TeacherLine({ name }) {
 
 function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
   const subjectName = cleanText(card?.subject_name, "Subject");
-  const statusLabel = displayStatusLabel(card?.status, card?.result_id ? "Pending" : "Awaiting marks");
+  const statusLabel = displayStatusLabel(
+    card?.status,
+    card?.result_id ? "Pending" : "Awaiting marks",
+  );
   const grade = cleanText(card?.grade, "--").toUpperCase();
-  const link = card?.result_id ? `/student/subjects/${card.result_id}` : undefined;
+  const link = card?.result_id
+    ? `/student/subjects/${card.result_id}`
+    : undefined;
 
   return (
     <Card
@@ -135,8 +147,10 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
       to={link}
       className={cn(
         "group h-full overflow-hidden rounded-[1.45rem] border border-border/80 bg-surface text-left shadow-sm transition-all duration-200",
-        link ? "hover:-translate-y-0.5 hover:border-border-strong hover:shadow-premium" : "cursor-default",
-        compact ? "p-4" : "p-4 sm:p-5"
+        link
+          ? "hover:-translate-y-0.5 hover:border-border-strong hover:shadow-premium"
+          : "cursor-default",
+        compact ? "p-4" : "p-4 sm:p-5",
       )}
     >
       <div className="flex h-full flex-col gap-3.5">
@@ -146,10 +160,17 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
               <BookOpen className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <h3 className="text-lg font-semibold leading-tight text-text sm:text-xl">{subjectName}</h3>
+              <h3 className="text-lg font-semibold leading-tight text-text sm:text-xl">
+                {subjectName}
+              </h3>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
-                <span>{cleanText(card?.class_name || classLabel, "Class")}</span>
-                <Badge variant={statusVariant(card?.status)} className="px-2 py-0.5 text-[11px]">
+                <span>
+                  {cleanText(card?.class_name || classLabel, "Class")}
+                </span>
+                <Badge
+                  variant={statusVariant(card?.status)}
+                  className="px-2 py-0.5 text-[11px]"
+                >
                   {statusLabel}
                 </Badge>
               </div>
@@ -158,7 +179,9 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
           {link ? (
             <ChevronRight className="mt-2 h-5 w-5 shrink-0 text-text-faint transition group-hover:translate-x-0.5" />
           ) : (
-            <span className="mt-2 shrink-0 text-[11px] font-semibold text-text-faint">Pending</span>
+            <span className="mt-2 shrink-0 text-[11px] font-semibold text-text-faint">
+              Pending
+            </span>
           )}
         </div>
 
@@ -167,14 +190,23 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4">
           <ScoreRing value={card?.total_score} />
           <div className="min-w-0 space-y-2">
-            <ScoreBar label="Test" value={card?.test_score} max={SCORE_MAXIMUMS.test_score} />
-            <ScoreBar label="Assess." value={card?.assessment_score} max={SCORE_MAXIMUMS.assessment_score} />
-            <ScoreBar label="Exam" value={card?.exam_score} max={SCORE_MAXIMUMS.exam_score} />
+            <ScoreBar label="Test" value={card?.test_score} />
+            <ScoreBar label="Assess." value={card?.assessment_score} />
+            <ScoreBar label="Exam" value={card?.exam_score} />
           </div>
-          <div className={cn("grid h-16 w-16 shrink-0 place-items-center rounded-full border text-center sm:h-20 sm:w-20", gradeTone(grade))}>
+          <div
+            className={cn(
+              "grid h-16 w-16 shrink-0 place-items-center rounded-full border text-center sm:h-20 sm:w-20",
+              gradeTone(grade),
+            )}
+          >
             <div>
-              <p className="text-xl font-semibold leading-none sm:text-2xl">{grade}</p>
-              <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] opacity-75 sm:text-[10px]">Grade</p>
+              <p className="text-xl font-semibold leading-none sm:text-2xl">
+                {grade}
+              </p>
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.14em] opacity-75 sm:text-[10px]">
+                Grade
+              </p>
             </div>
           </div>
         </div>
