@@ -30,6 +30,15 @@ class PaystackClient:
             "Content-Type": "application/json",
         }
 
+    @staticmethod
+    def _normalize_plan_code(plan_code: str) -> str:
+        normalized = str(plan_code or "").strip().strip('"').strip("'")
+        if not normalized.startswith("PLN_"):
+            raise PaystackProviderError(
+                "Invalid Paystack plan code configured. Expected a plan code beginning with PLN_."
+            )
+        return normalized
+
     async def initialize_transaction(
         self,
         *,
@@ -44,7 +53,7 @@ class PaystackClient:
             "email": email,
             "amount": amount_kobo,
             "reference": reference,
-            "plan": plan_code,
+            "plan": self._normalize_plan_code(plan_code),
             "callback_url": callback_url,
             "metadata": metadata,
         }
