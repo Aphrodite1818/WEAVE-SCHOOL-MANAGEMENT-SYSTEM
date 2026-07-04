@@ -41,6 +41,16 @@ def _features(
     }
 
 
+def _paid_features() -> dict[FeatureCode, bool]:
+    """All paying customers get full product features; quotas scale by plan."""
+
+    return _features(
+        advanced_analytics=True,
+        ai_assistant=True,
+        bulk_import=True,
+    )
+
+
 def _limits(
     *,
     students: int | None,
@@ -65,44 +75,32 @@ PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
             students=50,
             teachers=10,
             parents=50,
-            classes=5,
-            subjects=15,
+            classes=10,
+            subjects=20,
         ),
     ),
     SubscriptionPlan.PLUS.value: PlanEntitlements(
-        features=_features(
-            advanced_analytics=True,
-            ai_assistant=True,
-            bulk_import=True,
-        ),
+        features=_paid_features(),
         limits=_limits(
             students=300,
-            teachers=25,
+            teachers=30,
             parents=300,
-            classes=20,
-            subjects=40,
+            classes=30,
+            subjects=60,
         ),
     ),
     SubscriptionPlan.PROFESSIONAL.value: PlanEntitlements(
-        features=_features(
-            advanced_analytics=True,
-            ai_assistant=True,
-            bulk_import=True,
-        ),
+        features=_paid_features(),
         limits=_limits(
             students=1000,
-            teachers=80,
+            teachers=100,
             parents=1000,
-            classes=60,
-            subjects=120,
+            classes=100,
+            subjects=150,
         ),
     ),
     SubscriptionPlan.ENTERPRISE.value: PlanEntitlements(
-        features=_features(
-            advanced_analytics=True,
-            ai_assistant=True,
-            bulk_import=True,
-        ),
+        features=_paid_features(),
         limits=_limits(
             students=None,
             teachers=None,
