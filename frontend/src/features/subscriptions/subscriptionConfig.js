@@ -85,7 +85,6 @@ export const LANDING_PRICING_PLANS = [
       "30-day trial",
       "Core academic setup",
       "Basic report cards",
-      "No advanced analytics",
     ],
     limits: {
       students: 50,
