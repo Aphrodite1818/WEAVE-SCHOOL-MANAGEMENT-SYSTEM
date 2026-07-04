@@ -9,7 +9,6 @@ export const PLAN_ORDER = ["free_trial", "plus", "professional", "enterprise"];
 
 export const BILLING_INTERVAL_LABELS = {
   monthly: "Monthly",
-  yearly: "Yearly",
 };
 
 export const FEATURE_CODES = {
@@ -35,12 +34,12 @@ export const RESOURCE_CODES = {
 export const SUBSCRIPTION_STATUS_META = {
   trialing: {
     label: "Trial Active",
-    message: "You are currently on a free trial.",
+    message: "Your 30-day free trial is active.",
     badgeVariant: "info",
   },
   active: {
     label: "Active",
-    message: "Your subscription is active.",
+    message: "Your monthly subscription is active.",
     badgeVariant: "success",
   },
   non_renewing: {
@@ -55,12 +54,12 @@ export const SUBSCRIPTION_STATUS_META = {
   },
   grace_period: {
     label: "Grace Period",
-    message: "Your subscription needs attention. Some features may be restricted after the grace period.",
+    message: "Your subscription is in grace period. Update billing before read-only restrictions begin.",
     badgeVariant: "warning",
   },
   expired: {
-    label: "Expired",
-    message: "Your subscription has expired. Upgrade to continue using paid features.",
+    label: "Read-only",
+    message: "Your subscription has expired. Billing remains available, but write actions are restricted.",
     badgeVariant: "error",
   },
   cancelled: {
@@ -72,7 +71,6 @@ export const SUBSCRIPTION_STATUS_META = {
 
 export const BILLING_INTERVAL_OPTIONS = [
   { value: "monthly", label: "Monthly" },
-  { value: "yearly", label: "Yearly" },
 ];
 
 export const LANDING_PRICING_PLANS = [
@@ -80,17 +78,21 @@ export const LANDING_PRICING_PLANS = [
     planCode: "free_trial",
     name: "Free Trial",
     bestFor: "Best for testing LearnlyAI",
-    description: "Start with the core school workflow before moving into paid billing.",
+    description: "Try the core school workflow for 30 days before moving into monthly billing.",
+    priceMonthly: 0,
+    priceLabel: "₦0",
     features: [
-      "Limited students",
-      "Basic academic setup",
+      "30-day trial",
+      "Core academic setup",
       "Basic report cards",
       "No advanced analytics",
     ],
     limits: {
       students: 50,
       teachers: 10,
-      classes: 5,
+      parents: 50,
+      classes: 10,
+      subjects: 20,
     },
     ctaLabel: "Start Free Trial",
   },
@@ -98,17 +100,21 @@ export const LANDING_PRICING_PLANS = [
     planCode: "plus",
     name: "Plus",
     bestFor: "Best for small schools",
-    description: "A practical paid plan for schools that need the full day-to-day workflow.",
+    description: "A practical paid plan for small schools that need the full daily workflow.",
+    priceMonthly: 15000,
+    priceLabel: "₦15,000/mo",
     features: [
-      "Student management",
-      "Teacher management",
-      "Parent portal",
-      "Report cards",
+      "Advanced analytics",
+      "AI assistant enabled",
+      "Bulk import enabled",
+      "Parent and student portals",
     ],
     limits: {
       students: 300,
-      teachers: 25,
-      classes: 20,
+      teachers: 30,
+      parents: 300,
+      classes: 30,
+      subjects: 60,
     },
     ctaLabel: "Choose Plus",
   },
@@ -116,17 +122,21 @@ export const LANDING_PRICING_PLANS = [
     planCode: "professional",
     name: "Professional",
     bestFor: "Best for growing schools",
-    description: "Stronger capacity and tooling for schools managing more staff, classes, and records.",
+    description: "Higher capacity for schools managing more staff, classes, and records.",
+    priceMonthly: 35000,
+    priceLabel: "₦35,000/mo",
     features: [
-      "Higher limits",
       "Advanced analytics",
-      "Bulk imports",
-      "Full academic workflow",
+      "AI assistant enabled",
+      "Bulk import enabled",
+      "Higher school limits",
     ],
     limits: {
       students: 1000,
-      teachers: 80,
-      classes: 60,
+      teachers: 100,
+      parents: 1000,
+      classes: 100,
+      subjects: 150,
     },
     ctaLabel: "Choose Professional",
     highlighted: true,
@@ -135,17 +145,21 @@ export const LANDING_PRICING_PLANS = [
     planCode: "enterprise",
     name: "Enterprise",
     bestFor: "Best for larger schools",
-    description: "Built for larger operations that need scale, AI access, and fewer hard limits.",
+    description: "Built for larger operations that need custom limits and priority-ready support.",
+    priceMonthly: 80000,
+    priceLabel: "From ₦80,000/mo",
     features: [
-      "Highest or unlimited limits",
-      "AI assistant access",
-      "Priority-ready structure",
-      "Advanced controls",
+      "Advanced analytics",
+      "AI assistant enabled",
+      "Bulk import enabled",
+      "Custom limits",
     ],
     limits: {
       students: null,
       teachers: null,
+      parents: null,
       classes: null,
+      subjects: null,
     },
     ctaLabel: "Choose Enterprise",
   },
@@ -165,16 +179,13 @@ const canonicalPlanCode = (value) => {
   return PLAN_DISPLAY_NAMES[normalized] ? normalized : "free_trial";
 };
 
-const canonicalBillingInterval = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "yearly" ? "yearly" : "monthly";
-};
+const canonicalBillingInterval = () => "monthly";
 
 export const formatPlanName = (planCode) =>
   PLAN_DISPLAY_NAMES[canonicalPlanCode(planCode)] || "Free Trial";
 
-export const formatBillingInterval = (billingInterval) =>
-  BILLING_INTERVAL_LABELS[canonicalBillingInterval(billingInterval)] || "Monthly";
+export const formatBillingInterval = () =>
+  BILLING_INTERVAL_LABELS.monthly || "Monthly";
 
 export const getSubscriptionStatusMeta = (status) =>
   SUBSCRIPTION_STATUS_META[String(status || "").toLowerCase()] || {
@@ -209,12 +220,12 @@ export const formatUsageValue = (usage) => {
   return `${usage.used} / ${usage.limit ?? 0}`;
 };
 
-export const buildRegistrationHref = (planCode, billingInterval = "monthly") => {
+export const buildRegistrationHref = (planCode) => {
   const nextPlanCode = canonicalPlanCode(planCode);
   const params = new URLSearchParams({ plan: nextPlanCode });
 
   if (nextPlanCode !== "free_trial") {
-    params.set("billing", canonicalBillingInterval(billingInterval));
+    params.set("billing", "monthly");
   }
 
   return `/register?${params.toString()}`;
@@ -251,7 +262,7 @@ export const getSelectedSubscriptionPlan = () => {
 
     return {
       planCode: canonicalPlanCode(parsed?.planCode),
-      billingInterval: canonicalBillingInterval(parsed?.billingInterval),
+      billingInterval: "monthly",
     };
   } catch {
     return null;
