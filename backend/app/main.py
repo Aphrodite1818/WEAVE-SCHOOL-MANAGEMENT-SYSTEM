@@ -43,6 +43,7 @@ from app.modules.report_cards.router import (
     tenant_admin_router as tenant_admin_report_card_router,
 )
 from app.modules.search.router import router as tenant_search_router
+from app.modules.subscriptions.router import router as subscriptions_router
 
 
 logger = get_logger(__name__)
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(student_report_card_router, prefix="/api/v1")
     app.include_router(parent_report_card_router, prefix="/api/v1")
     app.include_router(tenant_search_router, prefix="/api/v1")
+    app.include_router(subscriptions_router, prefix="/api/v1")
 
     # ── Health check ──────────────────────────────────────────────────────────
     @app.get("/health", tags=["Health"])

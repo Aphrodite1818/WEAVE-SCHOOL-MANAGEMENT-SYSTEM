@@ -20,6 +20,8 @@ from app.modules.student_academics.schemas import ClassSubjectCreate, ClassSubje
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLimitCode
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -47,11 +49,18 @@ async def create_classroom(
 ) -> ClassRoomResponse:
     """Create a new classroom."""
 
-    return await ClassRoomService.create_classroom(
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.CLASSES,
+    )
+    classroom = await ClassRoomService.create_classroom(
         db=db,
         actor=current_user,
         payload=payload,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return classroom
 
 
 @router.get(
@@ -132,11 +141,13 @@ async def deactivate_classroom(
 ) -> ClassRoomResponse:
     """Soft delete classroom."""
 
-    return await ClassRoomService.deactivate_classroom(
+    classroom = await ClassRoomService.deactivate_classroom(
         db=db,
         actor=current_user,
         class_id=class_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return classroom
 
 
 @router.get(
@@ -173,6 +184,11 @@ async def add_class_subject(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ClassSubjectResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        feature=FeatureCode.ACADEMIC_SETUP,
+    )
     return await StudentAcademicService.create_class_subject(
         db=db,
         tenant_id=current_user.tenant_id,

@@ -14,6 +14,7 @@ def import_model_modules() -> None:
     import app.modules.subjects.models  # noqa: F401
     import app.modules.student_academics.models  # noqa: F401
     import app.modules.report_cards.models  # noqa: F401
+    import app.modules.subscriptions.models  # noqa: F401
     import app.modules.superadmin.models  # noqa: F401
     import app.modules.teachers.models  # noqa: F401
     import app.modules.tenant_admins.models  # noqa: F401

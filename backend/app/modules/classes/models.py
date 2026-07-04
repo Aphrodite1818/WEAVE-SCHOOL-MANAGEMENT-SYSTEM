@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class ClassRoom(BaseModel):
-    """Tenant-scoped academic class or class arm."""
+    """Tenant-scoped academic class model"""
 
     __tablename__ = "classes"
 

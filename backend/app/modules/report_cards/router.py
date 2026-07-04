@@ -21,6 +21,8 @@ from app.modules.report_cards.schemas import (
 )
 from app.modules.report_cards.service import ReportCardService
 from app.modules.students.models import Student
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.models import TenantAdmin
 
 
@@ -51,6 +53,11 @@ async def generate_report_card(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ReportCardResponse | ReportCardBulkGenerateResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        feature=FeatureCode.REPORT_CARDS,
+    )
     return await ReportCardService.generate(db, current_admin, payload)
 
 
@@ -104,6 +111,11 @@ async def regenerate_report_card(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ReportCardResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        feature=FeatureCode.REPORT_CARDS,
+    )
     return await ReportCardService.regenerate(db, current_admin, report_card_id)
 
 

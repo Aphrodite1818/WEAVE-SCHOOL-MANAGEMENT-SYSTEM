@@ -41,6 +41,8 @@ from app.modules.teachers.schemas import (
 from app.modules.teachers.service import TeacherService
 from app.modules.student_academics.schemas import TeacherAssignmentListResponse
 from app.modules.student_academics.service import StudentAcademicService
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.tenant_admins.models import TenantAdmin
 from app.modules.tenant_admins.service import TenantAdminService
 from app.tenant_management.schemas import (
@@ -125,12 +127,19 @@ async def create_teacher(
 ) -> TeacherResponse:
     """Create a teacher through the tenant-admin boundary."""
 
-    return await TeacherService.create_teacher(
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        resource=ResourceLimitCode.TEACHERS,
+    )
+    teacher = await TeacherService.create_teacher(
         db=db,
         actor=current_admin,
         teacher_data=payload,
         background_tasks=background_tasks,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
+    return teacher
 
 
 @router.get(
@@ -241,6 +250,7 @@ async def delete_teacher(
         actor=current_admin,
         teacher_id=teacher_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
 
 
 @router.post(
@@ -257,12 +267,19 @@ async def create_parent(
 ) -> ParentResponse:
     """Create a parent through the tenant-admin boundary."""
 
-    return await ParentService.create_parent(
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        resource=ResourceLimitCode.PARENTS,
+    )
+    parent = await ParentService.create_parent(
         db=db,
         actor=current_admin,
         payload=payload,
         background_tasks=background_tasks,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
+    return parent
 
 
 @router.get(
@@ -346,6 +363,7 @@ async def delete_parent(
         actor=current_admin,
         parent_id=parent_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
 
 
 @router.post(
@@ -361,11 +379,18 @@ async def create_student(
 ) -> StudentResponse:
     """Create a student through the tenant-admin boundary."""
 
-    return await StudentService.create_student_profile(
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        resource=ResourceLimitCode.STUDENTS,
+    )
+    student = await StudentService.create_student_profile(
         db=db,
         actor=current_admin,
         payload=payload,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
+    return student
 
 
 @router.get(
@@ -453,6 +478,7 @@ async def delete_student(
         actor=current_admin,
         student_id=student_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
 
 
 @router.patch(

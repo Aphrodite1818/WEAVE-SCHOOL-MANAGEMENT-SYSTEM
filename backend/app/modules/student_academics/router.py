@@ -13,6 +13,8 @@ from app.core.dependencies.route_guards import (
 )
 from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
 from app.modules.parents.models import Parent
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
     AcademicSessionCreate,
@@ -101,6 +103,7 @@ async def _ensure_teacher_can_write_result(db: DbSession, teacher: Teacher, payl
 
 @tenant_admin_router.post("/sessions", response_model=AcademicSessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_session(payload: AcademicSessionCreate, db: DbSession, current_admin: CurrentTenantAdmin) -> AcademicSessionResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(db=db, tenant_id=current_admin.tenant_id, feature=FeatureCode.ACADEMIC_SETUP)
     return await StudentAcademicService.create_academic_session(db, current_admin.tenant_id, payload)
 
 
@@ -117,6 +120,7 @@ async def update_session(session_id: UUID, payload: AcademicSessionUpdate, db: D
 
 @tenant_admin_router.post("/terms", response_model=AcademicTermResponse, status_code=status.HTTP_201_CREATED)
 async def create_term(payload: AcademicTermCreate, db: DbSession, current_admin: CurrentTenantAdmin) -> AcademicTermResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(db=db, tenant_id=current_admin.tenant_id, feature=FeatureCode.ACADEMIC_SETUP)
     return await StudentAcademicService.create_academic_term(db, current_admin.tenant_id, payload)
 
 
@@ -133,6 +137,7 @@ async def update_term(term_id: UUID, payload: AcademicTermUpdate, db: DbSession,
 
 @tenant_admin_router.post("/grading-scales", response_model=GradingScaleResponse, status_code=status.HTTP_201_CREATED)
 async def create_grading_scale(payload: GradingScaleCreate, db: DbSession, current_admin: CurrentTenantAdmin) -> GradingScaleResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(db=db, tenant_id=current_admin.tenant_id, feature=FeatureCode.ACADEMIC_SETUP)
     return await StudentAcademicService.create_grading_scale(db, current_admin.tenant_id, payload)
 
 
@@ -149,6 +154,7 @@ async def update_grading_scale(scale_id: UUID, payload: GradingScaleUpdate, db: 
 
 @tenant_admin_router.post("/subject-assignments", response_model=ClassSubjectTeacherResponse, status_code=status.HTTP_201_CREATED)
 async def assign_subject(payload: ClassSubjectTeacherCreate, db: DbSession, current_admin: CurrentTenantAdmin, response: Response) -> ClassSubjectTeacherResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(db=db, tenant_id=current_admin.tenant_id, feature=FeatureCode.ACADEMIC_SETUP)
     response.headers["X-Deprecated-Endpoint"] = "subject-assignments"
     response.headers["Deprecation"] = "true"
     return await StudentAcademicService.assign_subject_to_class(db, current_admin.tenant_id, payload)
@@ -171,6 +177,7 @@ async def update_subject_assignment(assignment_id: UUID, payload: ClassSubjectTe
 
 @tenant_admin_router.post("/teacher-assignments", response_model=TeacherAssignmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_teacher_assignment(payload: TeacherAssignmentCreate, db: DbSession, current_admin: CurrentTenantAdmin) -> TeacherAssignmentResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(db=db, tenant_id=current_admin.tenant_id, feature=FeatureCode.ACADEMIC_SETUP)
     return await StudentAcademicService.create_teacher_assignment(db, current_admin.tenant_id, payload)
 
 
@@ -235,6 +242,7 @@ async def activate_teacher_assignment(assignment_id: UUID, db: DbSession, curren
 
 @tenant_admin_router.post("/teacher-assignments/{assignment_id}/reassign", response_model=TeacherAssignmentResponse)
 async def reassign_teacher_assignment(assignment_id: UUID, payload: TeacherAssignmentReassign, db: DbSession, current_admin: CurrentTenantAdmin) -> TeacherAssignmentResponse:
+    await SubscriptionFeatureService.ensure_feature_enabled(db=db, tenant_id=current_admin.tenant_id, feature=FeatureCode.ACADEMIC_SETUP)
     return await StudentAcademicService.reassign_teacher_assignment(db, current_admin.tenant_id, assignment_id, payload)
 
 

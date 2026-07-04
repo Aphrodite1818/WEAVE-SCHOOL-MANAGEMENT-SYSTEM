@@ -9,6 +9,8 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
     get_current_tenant_member,
 )
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.subjects.models import Subject
 from app.modules.subjects.schemas import (
     SubjectCreate,
@@ -41,11 +43,18 @@ async def create_subject(
 ) -> Subject:
     """Create subject."""
 
-    return await SubjectService.create_subject(
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.SUBJECTS,
+    )
+    subject = await SubjectService.create_subject(
         db=db,
         actor=current_user,
         subject_data=payload,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return subject
 
 
 @router.get(
@@ -173,3 +182,4 @@ async def delete_subject(
         actor=current_user,
         subject_id=subject_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)

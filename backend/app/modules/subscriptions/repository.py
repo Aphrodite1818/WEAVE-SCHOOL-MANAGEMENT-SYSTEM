@@ -1,0 +1,428 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.classes.models import ClassRoom
+from app.modules.parents.models import Parent
+from app.modules.students.models import Student
+from app.modules.subjects.models import Subject
+from app.modules.subscriptions.models import PaymentTransaction, PaymentWebhookEvent, TenantSubscription
+from app.modules.subscriptions.subscription_enums import PaymentProvider, PaymentStatus, ResourceLimitCode, SubscriptionStatus
+from app.modules.teachers.models import Teacher
+from app.tenant_management.models import SubscriptionPlan, Tenant, TenantVerificationStatus , TenantStatus
+
+
+class SubscriptionRepository:
+    """Database access for subscription entitlements and billing lifecycle."""
+
+    @staticmethod
+    async def get_tenant(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> Tenant | None:
+        result = await db.execute(
+            select(Tenant).where(Tenant.id == tenant_id)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def save_tenant(
+        db: AsyncSession,
+        tenant: Tenant,
+    ) -> Tenant:
+        db.add(tenant)
+        await db.flush()
+        await db.refresh(tenant)
+        return tenant
+
+    @staticmethod
+    async def update_tenant_plan_snapshot(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        plan_code: SubscriptionPlan,
+        subscription_status: SubscriptionStatus,
+        current_period_end: datetime | None,
+        trial_ends_at: datetime | None,
+    ) -> Tenant | None:
+        tenant = await SubscriptionRepository.get_tenant(db=db, tenant_id=tenant_id)
+        if tenant is None:
+            return None
+
+        tenant.plan = plan_code
+        tenant.trial_ends_at = trial_ends_at
+        tenant.subscription_ends_at = current_period_end
+
+        if tenant.verification_status == TenantVerificationStatus.ACTIVE:
+            if subscription_status == SubscriptionStatus.TRIALING:
+                tenant.status = TenantStatus.TRIAL
+            else:
+                tenant.status = TenantStatus.ACTIVE
+
+        return await SubscriptionRepository.save_tenant(db=db, tenant=tenant)
+
+    @staticmethod
+    async def get_tenant_plan(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> SubscriptionPlan | None:
+        tenant = await SubscriptionRepository.get_tenant(db=db, tenant_id=tenant_id)
+        if tenant is None:
+            return None
+        return getattr(tenant, "plan", None)
+
+    @staticmethod
+    async def get_current_subscription(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        for_update: bool = False,
+    ) -> TenantSubscription | None:
+        statement = (
+            select(TenantSubscription)
+            .where(
+                TenantSubscription.tenant_id == tenant_id,
+                TenantSubscription.is_current.is_(True),
+            )
+            .order_by(TenantSubscription.updated_at.desc())
+            .limit(1)
+        )
+        if for_update:
+            statement = statement.with_for_update()
+
+        result = await db.execute(statement)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_subscription_by_id(
+        db: AsyncSession,
+        subscription_id: uuid.UUID,
+    ) -> TenantSubscription | None:
+        result = await db.execute(
+            select(TenantSubscription).where(TenantSubscription.id == subscription_id)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def create_subscription(
+        db: AsyncSession,
+        subscription: TenantSubscription,
+    ) -> TenantSubscription:
+        db.add(subscription)
+        await db.flush()
+        await db.refresh(subscription)
+        return subscription
+
+    @staticmethod
+    async def save_subscription(
+        db: AsyncSession,
+        subscription: TenantSubscription,
+    ) -> TenantSubscription:
+        db.add(subscription)
+        await db.flush()
+        await db.refresh(subscription)
+        return subscription
+
+    @staticmethod
+    async def find_subscription_by_provider_subscription_code(
+        db: AsyncSession,
+        *,
+        provider: PaymentProvider,
+        provider_subscription_code: str,
+    ) -> TenantSubscription | None:
+        result = await db.execute(
+            select(TenantSubscription).where(
+                TenantSubscription.provider == provider,
+                TenantSubscription.provider_subscription_code == provider_subscription_code,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def find_current_subscription_by_provider_customer_code(
+        db: AsyncSession,
+        *,
+        provider: PaymentProvider,
+        provider_customer_code: str,
+    ) -> TenantSubscription | None:
+        result = await db.execute(
+            select(TenantSubscription).where(
+                TenantSubscription.provider == provider,
+                TenantSubscription.provider_customer_code == provider_customer_code,
+                TenantSubscription.is_current.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def find_subscriptions_by_tenant_id(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> list[TenantSubscription]:
+        result = await db.execute(
+            select(TenantSubscription)
+            .where(TenantSubscription.tenant_id == tenant_id)
+            .order_by(TenantSubscription.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def create_pending_payment_transaction(
+        db: AsyncSession,
+        transaction: PaymentTransaction,
+    ) -> PaymentTransaction:
+        db.add(transaction)
+        await db.flush()
+        await db.refresh(transaction)
+        return transaction
+
+    @staticmethod
+    async def save_payment_transaction(
+        db: AsyncSession,
+        transaction: PaymentTransaction,
+    ) -> PaymentTransaction:
+        db.add(transaction)
+        await db.flush()
+        await db.refresh(transaction)
+        return transaction
+
+    @staticmethod
+    async def get_transaction_by_reference(
+        db: AsyncSession,
+        reference: str,
+    ) -> PaymentTransaction | None:
+        result = await db.execute(
+            select(PaymentTransaction).where(PaymentTransaction.reference == reference)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def mark_transaction_success(
+        db: AsyncSession,
+        *,
+        transaction: PaymentTransaction,
+        provider_transaction_id: str | None,
+        subscription_id: uuid.UUID | None,
+        paid_at: datetime | None,
+        raw_payload: dict | None,
+    ) -> PaymentTransaction:
+        transaction.status = PaymentStatus.SUCCESS
+        transaction.provider_transaction_id = provider_transaction_id
+        transaction.subscription_id = subscription_id
+        transaction.paid_at = paid_at
+        transaction.failure_reason = None
+        transaction.raw_payload = raw_payload
+        return await SubscriptionRepository.save_payment_transaction(db=db, transaction=transaction)
+
+    @staticmethod
+    async def mark_transaction_failed(
+        db: AsyncSession,
+        *,
+        transaction: PaymentTransaction,
+        status: PaymentStatus,
+        failure_reason: str | None,
+        raw_payload: dict | None,
+        provider_transaction_id: str | None = None,
+    ) -> PaymentTransaction:
+        transaction.status = status
+        transaction.failure_reason = failure_reason
+        transaction.raw_payload = raw_payload
+        transaction.provider_transaction_id = provider_transaction_id
+        return await SubscriptionRepository.save_payment_transaction(db=db, transaction=transaction)
+
+    @staticmethod
+    async def create_webhook_event(
+        db: AsyncSession,
+        webhook_event: PaymentWebhookEvent,
+    ) -> PaymentWebhookEvent:
+        db.add(webhook_event)
+        await db.flush()
+        await db.refresh(webhook_event)
+        return webhook_event
+
+    @staticmethod
+    async def get_webhook_event_by_provider(
+        db: AsyncSession,
+        *,
+        provider: PaymentProvider,
+        event_type: str,
+        event_key: str,
+    ) -> PaymentWebhookEvent | None:
+        result = await db.execute(
+            select(PaymentWebhookEvent).where(
+                PaymentWebhookEvent.provider == provider,
+                PaymentWebhookEvent.event_type == event_type,
+                PaymentWebhookEvent.event_key == event_key,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def mark_webhook_processed(
+        db: AsyncSession,
+        *,
+        webhook_event: PaymentWebhookEvent,
+        processed_at: datetime,
+    ) -> PaymentWebhookEvent:
+        webhook_event.processed_at = processed_at
+        webhook_event.error_message = None
+        webhook_event.payload = webhook_event.payload or {}
+        db.add(webhook_event)
+        await db.flush()
+        await db.refresh(webhook_event)
+        return webhook_event
+
+    @staticmethod
+    async def mark_webhook_failed(
+        db: AsyncSession,
+        *,
+        webhook_event: PaymentWebhookEvent,
+        error_message: str,
+    ) -> PaymentWebhookEvent:
+        webhook_event.error_message = error_message
+        db.add(webhook_event)
+        await db.flush()
+        await db.refresh(webhook_event)
+        return webhook_event
+
+    @staticmethod
+    async def get_expirable_subscriptions(
+        db: AsyncSession,
+        *,
+        as_of: datetime,
+        limit: int = 100,
+    ) -> list[TenantSubscription]:
+        result = await db.execute(
+            select(TenantSubscription)
+            .where(
+                TenantSubscription.is_current.is_(True),
+                or_(
+                    and_(
+                        TenantSubscription.status == SubscriptionStatus.TRIALING,
+                        TenantSubscription.trial_ends_at.is_not(None),
+                        TenantSubscription.trial_ends_at <= as_of,
+                    ),
+                    and_(
+                        TenantSubscription.status.in_(
+                            [
+                                SubscriptionStatus.ACTIVE,
+                                SubscriptionStatus.NON_RENEWING,
+                            ]
+                        ),
+                        TenantSubscription.current_period_end.is_not(None),
+                        TenantSubscription.current_period_end <= as_of,
+                    ),
+                    TenantSubscription.status == SubscriptionStatus.PAST_DUE,
+                ),
+            )
+            .order_by(TenantSubscription.updated_at.asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_grace_period_subscriptions_due_for_expiry(
+        db: AsyncSession,
+        *,
+        as_of: datetime,
+        limit: int = 100,
+    ) -> list[TenantSubscription]:
+        result = await db.execute(
+            select(TenantSubscription)
+            .where(
+                TenantSubscription.is_current.is_(True),
+                TenantSubscription.status == SubscriptionStatus.GRACE_PERIOD,
+                TenantSubscription.grace_ends_at.is_not(None),
+                TenantSubscription.grace_ends_at <= as_of,
+            )
+            .order_by(TenantSubscription.grace_ends_at.asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def count_students(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count(Student.id))
+            .where(Student.tenant_id == tenant_id)
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def count_teachers(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count(Teacher.id))
+            .where(Teacher.tenant_id == tenant_id)
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def count_parents(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count(Parent.id))
+            .where(Parent.tenant_id == tenant_id)
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def count_classes(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count(ClassRoom.id))
+            .where(ClassRoom.tenant_id == tenant_id)
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def count_subjects(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count(Subject.id))
+            .where(Subject.tenant_id == tenant_id)
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def get_resource_usage(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        resource: ResourceLimitCode,
+    ) -> int:
+        counter_map = {
+            ResourceLimitCode.STUDENTS: SubscriptionRepository.count_students,
+            ResourceLimitCode.TEACHERS: SubscriptionRepository.count_teachers,
+            ResourceLimitCode.PARENTS: SubscriptionRepository.count_parents,
+            ResourceLimitCode.CLASSES: SubscriptionRepository.count_classes,
+            ResourceLimitCode.SUBJECTS: SubscriptionRepository.count_subjects,
+        }
+        return await counter_map[resource](db, tenant_id)
+
+    @staticmethod
+    async def get_all_resource_usage(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> dict[ResourceLimitCode, int]:
+        return {
+            ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(db, tenant_id),
+            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(db, tenant_id),
+            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(db, tenant_id),
+            ResourceLimitCode.CLASSES: await SubscriptionRepository.count_classes(db, tenant_id),
+            ResourceLimitCode.SUBJECTS: await SubscriptionRepository.count_subjects(db, tenant_id),
+        }

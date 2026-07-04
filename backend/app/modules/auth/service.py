@@ -858,6 +858,14 @@ class TenantActivationService:
         if tenant.status == TenantStatus.INACTIVE:
             tenant.status = TenantStatus.TRIAL
 
+        from app.modules.subscriptions.service import SubscriptionLifecycleService
+
+        await SubscriptionLifecycleService.start_trial(
+            db=db,
+            tenant_id=tenant.id,
+            notes="Trial started after activation link completion.",
+        )
+
         await db.delete(activation_record)
         await db.commit()
 
@@ -1437,6 +1445,14 @@ class OTPService:
             tenant.verification_status = TenantVerificationStatus.ACTIVE
             if tenant.status == TenantStatus.INACTIVE:
                 tenant.status = TenantStatus.TRIAL
+
+            from app.modules.subscriptions.service import SubscriptionLifecycleService
+
+            await SubscriptionLifecycleService.start_trial(
+                db=db,
+                tenant_id=tenant.id,
+                notes="Trial started after OTP verification.",
+            )
             otp_record.is_used = True
 
         elif payload.purpose == AuthPurpose.PASSWORD_RESET:

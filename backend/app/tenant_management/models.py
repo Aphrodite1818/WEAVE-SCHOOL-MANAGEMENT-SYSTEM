@@ -34,9 +34,9 @@ class TenantStatus(str, PyEnum):
 
 class SubscriptionPlan(str, PyEnum):
     """Represents the subscription plan options for a tenant (school)."""
-    FREE       = "free"
-    STARTER    = "starter"
-    PRO        = "pro"
+    FREE_TRIAL  = "free_trial"
+    PLUS    = "plus"
+    PROFESSIONAL = "professional"
     ENTERPRISE = "enterprise"
 
 
@@ -109,7 +109,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
             schema=PUBLIC_SCHEMA,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
-        default=SubscriptionPlan.FREE,
+        default=SubscriptionPlan.FREE_TRIAL,
         nullable=False,
     )
     trial_ends_at: Mapped[datetime | None] = mapped_column(

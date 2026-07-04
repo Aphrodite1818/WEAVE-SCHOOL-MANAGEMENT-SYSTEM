@@ -104,6 +104,24 @@ class Settings(BaseSettings):
 
     APP_SCRIPT_URL: str = Field(...)
 
+    PAYSTACK_SECRET_KEY: str | None = Field(default=None, description="Paystack secret key")
+    PAYSTACK_BASE_URL: str = Field(default="https://api.paystack.co", description="Paystack API base URL")
+    PAYSTACK_CALLBACK_URL: str | None = Field(default=None, description="Frontend callback URL after Paystack checkout")
+
+    PAYSTACK_STARTER_MONTHLY_PLAN_CODE: str | None = None
+    PAYSTACK_STARTER_YEARLY_PLAN_CODE: str | None = None
+    PAYSTACK_STANDARD_MONTHLY_PLAN_CODE: str | None = None
+    PAYSTACK_STANDARD_YEARLY_PLAN_CODE: str | None = None
+    PAYSTACK_PREMIUM_MONTHLY_PLAN_CODE: str | None = None
+    PAYSTACK_PREMIUM_YEARLY_PLAN_CODE: str | None = None
+
+    PAYSTACK_STARTER_MONTHLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
+    PAYSTACK_STARTER_YEARLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
+    PAYSTACK_STANDARD_MONTHLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
+    PAYSTACK_STANDARD_YEARLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
+    PAYSTACK_PREMIUM_MONTHLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
+    PAYSTACK_PREMIUM_YEARLY_AMOUNT_KOBO: int | None = Field(default=None, ge=0)
+
 
     REDIS_URL: str | None = Field(default=None, description="Redis connection URL")
     CACHE_ENABLED: bool = Field(default=False, description="Enable application caching")
