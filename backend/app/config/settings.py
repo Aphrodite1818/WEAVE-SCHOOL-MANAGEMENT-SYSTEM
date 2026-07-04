@@ -108,6 +108,14 @@ class Settings(BaseSettings):
     PAYSTACK_BASE_URL: str = Field(default="https://api.paystack.co", description="Paystack API base URL")
     PAYSTACK_CALLBACK_URL: str | None = Field(default=None, description="Frontend callback URL after Paystack checkout")
 
+    PAYSTACK_PLUS_MONTHLY_PLAN_CODE: str | None = None
+    PAYSTACK_PROFESSIONAL_MONTHLY_PLAN_CODE: str | None = None
+    PAYSTACK_ENTERPRISE_MONTHLY_PLAN_CODE: str | None = None
+
+    PAYSTACK_PLUS_MONTHLY_AMOUNT_KOBO: int | None = Field(default=1500000, ge=0)
+    PAYSTACK_PROFESSIONAL_MONTHLY_AMOUNT_KOBO: int | None = Field(default=3500000, ge=0)
+    PAYSTACK_ENTERPRISE_MONTHLY_AMOUNT_KOBO: int | None = Field(default=8000000, ge=0)
+
     PAYSTACK_STARTER_MONTHLY_PLAN_CODE: str | None = None
     PAYSTACK_STARTER_YEARLY_PLAN_CODE: str | None = None
     PAYSTACK_STANDARD_MONTHLY_PLAN_CODE: str | None = None
