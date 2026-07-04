@@ -42,6 +42,7 @@ import { authSession } from "../../services/api";
 import { announcementService } from "../../services/announcementService";
 import { onboardingService } from "../../services/onboardingService";
 import { tenantService } from "../../services/tenant.service";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { cn } from "../../utils/cn";
 import { getUserAvatarSrc, schoolName as resolveSchoolName, displayName as resolveDisplayName } from "../../utils/user";
 import BottomNav from "./BottomNav";
@@ -101,7 +102,7 @@ const navGroups = {
     { label: "Overview", items: [{ label: "Dashboard", to: "/admin/dashboard", icon: Home }, { label: "Create User", to: "/admin/create-user", icon: UserPlus }, { label: "Calendar", to: "/admin/timetable", icon: CalendarDays }] },
     { label: "Academics", items: [{ label: "Students", to: "/admin/students", icon: GraduationCap }, { label: "Teachers", to: "/admin/teachers", icon: Users }, { label: "Parents", to: "/admin/parents", icon: Users }, { label: "Classes", to: "/admin/classes", icon: Library }, { label: "Subjects", to: "/admin/subjects", icon: BookOpen }, { label: "Timetable", to: "/admin/timetable", icon: CalendarDays }, { label: "Attendance", to: "/admin/attendance", icon: CheckSquare }, { label: "Academic Hub", to: "/admin/academic", icon: ClipboardList }] },
     { label: "Communication", items: [{ label: "Notices", to: "/admin/announcements", icon: FileText }, { label: "Messages", to: "/admin/messages", icon: MessageSquare }] },
-    { label: "Operations", items: [{ label: "Reports", to: "/admin/reports", icon: BarChart3 }, { label: "Fees", to: "/admin/fees", icon: Receipt }, { label: "Payments", to: "/admin/payments", icon: CreditCard }, { label: "Settings", to: "/admin/settings", icon: Settings }] },
+    { label: "Operations", items: [{ label: "Reports", to: "/admin/reports", icon: BarChart3 }, { label: "Fees", to: "/admin/fees", icon: Receipt }, { label: "Payments", to: "/admin/payments", icon: CreditCard }, { label: "Billing", to: "/admin/billing", icon: CreditCard }, { label: "Settings", to: "/admin/settings", icon: Settings }] },
   ],
   teacher: [
     { label: "Subject teaching", items: [{ label: "Dashboard", to: "/teacher/dashboard", icon: Home }, { label: "Teaching Rosters", to: "/teacher/students", icon: GraduationCap }, { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen }, { label: "Score Entry", to: "/teacher/score-entry", icon: BarChart3 }, { label: "Timetable", to: "/teacher/timetable", icon: CalendarDays }, { label: "Assignments", to: "/teacher/assignments", icon: ClipboardList }, { label: "Notices", to: "/teacher/notices", icon: Bell }] },
@@ -217,9 +218,16 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   );
 }
 
-function DashboardLayout({ role: roleProp = "admin", title, description, children }) {
+function DashboardLayout({
+  role: roleProp = "admin",
+  title,
+  description,
+  actions,
+  children,
+}) {
   const user = authSession.getUser() || {};
   const role = getRole(user, roleProp);
+  const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileMode, setProfileMode] = useState("onboarding");
@@ -230,6 +238,14 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
   const tenantId = user?.tenant_id;
   const [tenantSchoolName, setTenantSchoolName] = useState("");
   const schoolName = tenantSchoolName || storedSchoolName;
+  const aiAssistantGuard =
+    role === "admin" && isTenantAdmin
+      ? getFeatureGuard("ai_assistant")
+      : { allowed: true, pending: false };
+  const showAiLauncher =
+    role !== "admin" || !isTenantAdmin
+      ? true
+      : Boolean(entitlements) && aiAssistantGuard.allowed;
 
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
@@ -322,7 +338,15 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
       <div className={cn("min-h-screen transition-[padding] duration-300", sidebarCollapsed ? "md:pl-[5.5rem]" : "md:pl-72")}>
         <Topbar role={role} onOpenMobileNav={() => setMobileNavOpen(true)} schoolName={schoolName} />
         <main id="dashboard-content" ref={mainRef} className="mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pb-28 pt-4 sm:gap-6 sm:px-5 sm:pb-12 sm:pt-6 lg:px-8">
-          {(title || description) && <section className="page-header"><div><h1 className="page-title">{title}</h1>{description && <p className="page-description">{description}</p>}</div></section>}
+          {(title || description || actions) && (
+            <section className="page-header flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h1 className="page-title">{title}</h1>
+                {description && <p className="page-description">{description}</p>}
+              </div>
+              {actions ? <div className="shrink-0">{actions}</div> : null}
+            </section>
+          )}
           {children}
         </main>
       </div>
@@ -330,7 +354,7 @@ function DashboardLayout({ role: roleProp = "admin", title, description, childre
       <Modal open={profileModalOpen} onClose={() => !onboardingState.required && setProfileModalOpen(false)} title={profileMode === "onboarding" ? profileCopy.onboardingTitle : profileCopy.editTitle} description={profileMode === "onboarding" ? profileCopy.onboardingDescription : profileCopy.editDescription} closeOnOverlay={!onboardingState.required} showClose={!onboardingState.required}>
         <ProfileCompletionForm role={role} mode={profileMode} initialStatusData={onboardingState.status} onProfileStateResolved={handleProfileStateResolved} onSaved={handleProfileSaved} />
       </Modal>
-      <AiChatLauncher role={role} />
+      {showAiLauncher ? <AiChatLauncher role={role} /> : null}
     </div>
   );
 }

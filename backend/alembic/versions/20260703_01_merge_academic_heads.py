@@ -10,13 +10,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 
-revision: str = "20260703_merge_acad_heads"
-down_revision: str | Sequence[str] | None = (
+revision = "20260703_merge_acad_heads"
+down_revision = (
     "20260702_partial_results",
     "20260702_subject_identity",
 )
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:

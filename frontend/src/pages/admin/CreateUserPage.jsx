@@ -10,6 +10,8 @@ import { teacherService } from "../../services/teacherService";
 import { parentService } from "../../services/parentService";
 import { getErrorMessage, parseApiError } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { formatUsageValue } from "../../features/subscriptions/subscriptionConfig";
 
 const USER_TYPES = ["student", "teacher", "parent"];
 
@@ -60,6 +62,22 @@ function CreateUserPage() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [successPayload, setSuccessPayload] = useState(null);
   const { showSuccess, showError } = useToast();
+  const { getResourceGuard, refreshSubscriptionState } = useSubscription();
+  const studentGuard = getResourceGuard("students", {
+    featureCode: "student_management",
+  });
+  const teacherGuard = getResourceGuard("teachers", {
+    featureCode: "teacher_management",
+  });
+  const parentGuard = getResourceGuard("parents", {
+    featureCode: "parent_portal",
+  });
+  const activeGuard =
+    activeTab === "student"
+      ? studentGuard
+      : activeTab === "teacher"
+        ? teacherGuard
+        : parentGuard;
 
   useEffect(() => {
     let mounted = true;
@@ -144,6 +162,7 @@ function CreateUserPage() {
         setStudentForm(INITIAL_STUDENT_FORM);
         setSuccessPayload({ type: "student", result });
         showSuccess("Student created successfully.");
+        await refreshSubscriptionState({ silent: true });
       } else if (activeTab === "teacher") {
         const result = await teacherService.createTeacher({
           email: teacherForm.email,
@@ -154,6 +173,7 @@ function CreateUserPage() {
         setTeacherForm(INITIAL_TEACHER_FORM);
         setSuccessPayload({ type: "teacher", result });
         showSuccess("Teacher created successfully.");
+        await refreshSubscriptionState({ silent: true });
       } else {
         const result = await parentService.createParent({
           email: parentForm.email,
@@ -163,6 +183,7 @@ function CreateUserPage() {
         setParentForm(INITIAL_PARENT_FORM);
         setSuccessPayload({ type: "parent", result });
         showSuccess("Parent created successfully.");
+        await refreshSubscriptionState({ silent: true });
       }
     } catch (err) {
       const apiError = parseApiError(err, `Failed to create ${activeTab}.`);
@@ -282,6 +303,26 @@ function CreateUserPage() {
     >
       <div className="space-y-5">
         <Card className="p-4 sm:p-5">
+          <div className="mb-4 grid gap-3 md:grid-cols-3">
+            {[
+              ["Students", studentGuard.usage],
+              ["Teachers", teacherGuard.usage],
+              ["Parents", parentGuard.usage],
+            ].map(([label, usage]) => (
+              <div
+                key={label}
+                className="rounded-[1.1rem] border border-border/70 bg-surface-muted/30 px-4 py-3"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  {label}
+                </p>
+                <p className="mt-2 text-base font-semibold text-text">
+                  {formatUsageValue(usage)}
+                </p>
+              </div>
+            ))}
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {USER_TYPES.map((type) => (
               <TabButton key={type} active={activeTab === type} onClick={() => setActiveTab(type)}>
@@ -305,6 +346,12 @@ function CreateUserPage() {
             Only collect the fields the admin is responsible for. The rest should be completed through onboarding or later profile updates.
           </p>
 
+          {!activeGuard.allowed && activeGuard.reason ? (
+            <div className="mt-4 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
+              {activeGuard.reason}
+            </div>
+          ) : null}
+
           {isLoadingContext ? (
             <div className="mt-6">
               <LoadingState label="Loading form options..." />
@@ -315,8 +362,16 @@ function CreateUserPage() {
               {activeTab === "teacher" && renderTeacherForm()}
               {activeTab === "parent" && renderParentForm()}
 
-              <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-                {isSubmitting ? "Creating..." : `Create ${activeTab}`}
+              <Button
+                type="submit"
+                disabled={isSubmitting || !activeGuard.allowed}
+                className="w-full sm:w-auto"
+              >
+                {isSubmitting
+                  ? "Creating..."
+                  : !activeGuard.allowed
+                    ? "Upgrade required"
+                    : `Create ${activeTab}`}
               </Button>
             </form>
           )}

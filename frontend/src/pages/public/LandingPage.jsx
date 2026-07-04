@@ -11,6 +11,12 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import {
+  LANDING_PRICING_PLANS,
+  buildRegistrationHref,
+  formatLimitValue,
+  saveSelectedSubscriptionPlan,
+} from "../../features/subscriptions/subscriptionConfig";
 import Navbar from "../../components/layout/Navbar";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -49,97 +55,107 @@ const testimonials = [
   },
 ];
 
-const pricingPlans = [
-  {
-    name: "Starter",
-    price: "Coming soon",
-    description: "For small schools moving daily records, staff tasks, and parent communication into one clean workspace.",
-    features: [
-      "Student, teacher, subject, and class records",
-      "Attendance and academic activity tracking",
-      "Parent and staff communication basics",
-      "Role-based admin, teacher, student, and parent access",
-    ],
-    action: "Get started",
-  },
-  {
-    name: "Growth",
-    price: "Coming soon",
-    description: "For growing schools that need stronger reporting, staff coordination, and visibility across departments.",
-    features: [
-      "Everything in Starter",
-      "Finance, results, exams, and announcements workflows",
-      "Operational dashboards for school leadership",
-      "Workspace tools for faster admin work",
-    ],
-    action: "Start growth plan",
-    highlighted: true,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    description: "For multi-campus schools and groups that need onboarding support, governance, and future integrations.",
-    features: [
-      "Everything in Growth",
-      "Multi-campus rollout planning",
-      "Custom setup and migration support",
-      "Priority support for leadership and operations teams",
-    ],
-    action: "Contact sales",
-  },
-];
-
 function LandingPage() {
+  const handlePlanSelection = (planCode, billingInterval = "monthly") => {
+    saveSelectedSubscriptionPlan({ planCode, billingInterval });
+  };
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-text">
       <Navbar />
 
       <main>
-        <section className="relative min-h-[680px] overflow-hidden border-b border-border bg-slate-950 text-white sm:min-h-[760px] lg:min-h-[820px]">
+        <section className="relative overflow-hidden border-b border-border bg-slate-950 text-white">
           <img
             src={previewImage}
             alt="Learnly AI dashboard preview"
             className="absolute inset-0 h-full w-full object-cover opacity-35"
           />
           <div className="absolute inset-0 bg-slate-950/70" />
-          <div className="section-container relative flex min-h-[620px] flex-col justify-center py-16 sm:min-h-[700px] lg:min-h-[760px]">
-            <div className="max-w-3xl">
-              <Badge variant="primary" className="bg-white/10 text-white ring-white/15">
-                <Sparkles className="h-3.5 w-3.5" />
-                Premium school management SaaS
-              </Badge>
-              <h1 className="mt-6 text-5xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
-                Learnly AI
-              </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200 sm:text-xl">
-                A modern workspace for school operations, attendance, classes, teachers, grades, notices, and parent communication.
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link to="/register">
-                  <Button size="large" className="w-full sm:w-auto">
-                    Start your school workspace
-                  </Button>
-                </Link>
-                <Link to="/login">
-                  <Button variant="outline" size="large" className="w-full border-white/20 bg-white/10 text-white hover:bg-white/15 sm:w-auto">
-                    Log in
-                  </Button>
-                </Link>
+          <div className="section-container relative py-14 sm:py-18 lg:py-24">
+            <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
+              <div className="max-w-3xl">
+                <Badge variant="primary" className="bg-white/10 text-white ring-white/15">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Premium school management SaaS
+                </Badge>
+                <h1 className="mt-6 text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
+                  School operations, academics, and communication in one calm workspace.
+                </h1>
+                <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8">
+                  Learnly AI gives tenant admins, teachers, students, and parents a cleaner way to run daily school work without breaking the backend model already driving the platform.
+                </p>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Link to={buildRegistrationHref("free_trial")}>
+                    <Button size="large" className="w-full sm:w-auto">
+                      Start Free Trial
+                    </Button>
+                  </Link>
+                  <a href="#pricing" className="w-full sm:w-auto">
+                    <Button
+                      variant="outline"
+                      size="large"
+                      className="w-full border-white/20 bg-white/10 text-white hover:bg-white/15"
+                    >
+                      View Plans
+                    </Button>
+                  </a>
+                </div>
+                <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                  {[
+                    ["Multi-role", "Admin, teacher, student, and parent workspaces"],
+                    ["Tenant-aware", "Built around school-level boundaries and onboarding"],
+                    ["Billing-ready", "Live subscription checkout and verification flow"],
+                  ].map(([title, copy]) => (
+                    <div
+                      key={title}
+                      className="rounded-2xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-xl"
+                    >
+                      <p className="text-sm font-semibold text-white">{title}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-300">{copy}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="absolute bottom-6 left-4 right-4 hidden rounded-2xl border border-white/10 bg-white/10 p-3 backdrop-blur-xl sm:left-6 sm:right-6 md:block lg:left-auto lg:w-[560px]">
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                {[
-                  ["Roles", "Admin, teacher, student, parent"],
-                  ["Modules", "Academics, finance, notices"],
-                  ["Access", "Tenant-aware workspace"],
-                ].map(([value, label]) => (
-                  <div key={label} className="rounded-xl bg-white/10 px-4 py-3">
-                    <p className="text-2xl font-semibold text-white">{value}</p>
-                    <p className="mt-1 text-xs text-slate-300">{label}</p>
-                  </div>
-                ))}
+              <div className="rounded-[1.75rem] border border-white/10 bg-white/10 p-4 backdrop-blur-xl sm:p-5">
+                <div className="rounded-[1.45rem] border border-white/10 bg-slate-950/35 p-4">
+                  <p className="text-sm font-semibold text-white">Why tenant admins start here</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    Free Trial gets the school online quickly. Paid plans unlock larger limits, advanced analytics, bulk imports, and AI support as the school grows.
+                  </p>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {LANDING_PRICING_PLANS.slice(0, 4).map((plan) => (
+                    <button
+                      key={plan.planCode}
+                      type="button"
+                      onClick={() =>
+                        handlePlanSelection(
+                          plan.planCode,
+                          plan.planCode === "free_trial" ? "monthly" : "monthly"
+                        )
+                      }
+                      className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
+                        plan.highlighted
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-white/10 bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white">{plan.name}</p>
+                        {plan.highlighted ? (
+                          <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white">
+                            Popular
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-300">
+                        {plan.bestFor}
+                      </p>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -217,25 +233,25 @@ function LandingPage() {
             <div className="mx-auto max-w-3xl text-center">
               <p className="text-sm font-bold uppercase tracking-wide text-primary">Pricing</p>
               <h2 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
-                Future-ready plans for growing schools.
+                Plans that match how schools actually grow.
               </h2>
               <p className="mt-4 text-base leading-7 text-text-muted">
-                Pricing is prepared for staged rollout while the platform modules continue to mature.
+                Pick a plan, continue to registration, and keep your selection ready for billing after tenant-admin setup.
               </p>
             </div>
-            <div className="mt-10 grid items-stretch gap-5 lg:grid-cols-3">
-              {pricingPlans.map((plan) => (
+            <div className="mt-10 grid items-stretch gap-5 md:grid-cols-2 2xl:grid-cols-4">
+              {LANDING_PRICING_PLANS.map((plan) => (
                 <article
-                  key={plan.name}
+                  key={plan.planCode}
                   className={`flex min-h-[460px] flex-col rounded-2xl border bg-background p-6 shadow-soft-card ${
                     plan.highlighted ? "border-primary ring-4 ring-primary/10" : "border-border"
                   }`}
                 >
                   <div className="min-h-7">
-                    {plan.highlighted && <Badge variant="primary">Most selected</Badge>}
+                    {plan.highlighted ? <Badge variant="primary">Most selected</Badge> : null}
                   </div>
                   <h3 className="mt-4 text-2xl font-semibold">{plan.name}</h3>
-                  <p className="mt-3 text-3xl font-semibold">{plan.price}</p>
+                  <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
                   <p className="mt-4 text-sm leading-6 text-text-muted">{plan.description}</p>
                   <ul className="mt-6 flex-1 space-y-3">
                     {plan.features.map((feature) => (
@@ -245,10 +261,39 @@ function LandingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Button variant={plan.highlighted ? "primary" : "outline"} className="mt-8 w-full">
-                    {plan.action}
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  <div className="mt-6 rounded-2xl border border-border/70 bg-surface-muted/35 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-text-muted">Students</span>
+                      <span className="font-semibold text-text">
+                        {formatLimitValue(plan.limits.students)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                      <span className="text-text-muted">Teachers</span>
+                      <span className="font-semibold text-text">
+                        {formatLimitValue(plan.limits.teachers)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                      <span className="text-text-muted">Classes</span>
+                      <span className="font-semibold text-text">
+                        {formatLimitValue(plan.limits.classes)}
+                      </span>
+                    </div>
+                  </div>
+                  <Link
+                    to={buildRegistrationHref(plan.planCode)}
+                    className="mt-8"
+                    onClick={() => handlePlanSelection(plan.planCode)}
+                  >
+                    <Button
+                      variant={plan.highlighted ? "primary" : "outline"}
+                      className="w-full"
+                    >
+                      {plan.ctaLabel}
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
                 </article>
               ))}
             </div>
@@ -264,7 +309,7 @@ function LandingPage() {
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-300">
               Give every role a cleaner workspace while preserving your backend model, tenant boundaries, and authentication flows.
             </p>
-            <Link to="/register" className="mt-8 inline-flex">
+            <Link to={buildRegistrationHref("free_trial")} className="mt-8 inline-flex">
               <Button size="large">Create workspace</Button>
             </Link>
           </div>

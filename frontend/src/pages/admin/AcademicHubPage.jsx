@@ -14,6 +14,8 @@ import { studentService } from "../../services/studentService";
 import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
 import { useToast } from "../../hooks/useToast";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 
 const tabs = [
   { id: "setup", label: "Setup", icon: BookOpen, description: "Sessions, terms, grading scales, and subjects" },
@@ -78,6 +80,8 @@ function AcademicHubPage() {
   const [isSaving, setIsSaving] = useState("");
   const [error, setError] = useState(null);
   const { showSuccess, showError, showWarning } = useToast();
+  const { getFeatureGuard } = useSubscription();
+  const reportCardGuard = getFeatureGuard(FEATURE_CODES.REPORT_CARDS);
 
   const currentSession = sessions.find((item) => item.is_current) || sessions[0];
   const currentTerm = terms.find((item) => item.is_current) || terms[0];
@@ -157,7 +161,7 @@ function AcademicHubPage() {
       {activeTab === "setup" ? <SetupTab sessions={sessions} terms={terms} scales={scales} subjects={subjects} sessionForm={sessionForm} setSessionForm={setSessionForm} termForm={termForm} setTermForm={setTermForm} scaleForm={scaleForm} setScaleForm={setScaleForm} subjectForm={subjectForm} setSubjectForm={setSubjectForm} saveSession={saveSession} saveTerm={saveTerm} saveScale={saveScale} saveSubject={saveSubject} editSession={editSession} editTerm={editTerm} editScale={editScale} editSubject={editSubject} resetSessionForm={resetSessionForm} resetTermForm={resetTermForm} resetScaleForm={resetScaleForm} resetSubjectForm={resetSubjectForm} editingSessionId={editingSessionId} editingTermId={editingTermId} editingScaleId={editingScaleId} editingSubjectId={editingSubjectId} isSaving={isSaving} /> : null}
       {activeTab === "assignments" ? <AssignmentsTab classes={classes} subjects={subjects} teachers={teachers} classSubjects={classSubjects} assignments={assignments} assignmentFilters={assignmentFilters} setAssignmentFilters={setAssignmentFilters} assignmentForm={assignmentForm} setAssignmentForm={setAssignmentForm} visibleAssignments={visibleAssignments} saveAssignment={saveAssignment} editAssignment={editAssignment} resetAssignmentForm={resetAssignmentForm} editingAssignmentId={editingAssignmentId} deactivateAssignment={deactivateAssignment} isSaving={isSaving} /> : null}
       {activeTab === "results" ? <ResultsTab classes={classes} subjects={subjects} sessions={sessions} terms={termsForResultSession} students={students} resultFilters={resultFilters} updateResultFilter={updateResultFilter} selectedAssignment={selectedAssignment} resultForm={resultForm} setResultForm={setResultForm} saveResult={saveResult} editResult={editResult} resetResultForm={resetResultForm} editingResultId={editingResultId} visibleResults={visibleResults} updateResultStatus={updateResultStatus} isSaving={isSaving} /> : null}
-      {activeTab === "reportCards" ? <ReportCardsTab classes={classes} sessions={sessions} terms={termsForReportSession} reportFilters={reportFilters} updateReportFilter={updateReportFilter} reportCardOverview={reportCardOverview} reportCards={visibleReportCards} generateReportCard={generateReportCard} regenerateReportCard={regenerateReportCard} publishReportCard={publishReportCard} isSaving={isSaving} /> : null}
+      {activeTab === "reportCards" ? <ReportCardsTab classes={classes} sessions={sessions} terms={termsForReportSession} reportFilters={reportFilters} updateReportFilter={updateReportFilter} reportCardOverview={reportCardOverview} reportCards={visibleReportCards} generateReportCard={generateReportCard} regenerateReportCard={regenerateReportCard} publishReportCard={publishReportCard} isSaving={isSaving} reportCardGuard={reportCardGuard} /> : null}
       {activeTab === "search" ? <SearchTab searchQuery={searchQuery} setSearchQuery={setSearchQuery} searchResults={searchResults} /> : null}
     </DashboardLayout>
   );
@@ -182,7 +186,221 @@ function ClassSubjectTeacherList({ classSubject, assignments, onChange, onDeacti
 }
 
 function ResultsTab({ classes, subjects, sessions, terms, students, resultFilters, updateResultFilter, selectedAssignment, resultForm, setResultForm, saveResult, editResult, resetResultForm, editingResultId, visibleResults, updateResultStatus, isSaving }) { const submitBlocked = resultForm.status === "submitted" && (!hasAllScores(resultForm) || scoreTotal(resultForm) > 100); return <div className="space-y-5"><Panel title="Result filters" subtitle="Choose a class-subject first. The student dropdown loads from the selected class."><ResultFilterGrid filters={resultFilters} updateFilter={updateResultFilter} classes={classes} subjects={subjects} sessions={sessions} terms={terms} />{selectedAssignment ? <AssignmentSummary assignment={selectedAssignment} /> : resultFilters.class_id && resultFilters.subject_id ? <Alert tone="warning">No active teacher assignment found for this class-subject. Assign a teacher before saving scores.</Alert> : null}</Panel><Panel title={editingResultId ? "Correct result" : "Create result"} subtitle="Use blank fields for missing scores. Grades appear only after all three score components are filled."><form onSubmit={saveResult} className="form-grid"><SelectField label="Student" value={resultForm.student_id} onChange={(value) => setResultForm((c) => ({ ...c, student_id: value }))} disabled={!resultFilters.class_id} required><option value="">{resultFilters.class_id ? "Select student" : "Select class first"}</option>{students.map((student) => <option key={student.id} value={student.id}>{studentLabel(student)}{student.admission_number ? ` · ${student.admission_number}` : ""}</option>)}</SelectField><TextField label="Test" type="number" min="0" max="100" value={resultForm.test_score} onChange={(value) => setResultForm((c) => ({ ...c, test_score: value }))} /><TextField label="Assessment" type="number" min="0" max="100" value={resultForm.assessment_score} onChange={(value) => setResultForm((c) => ({ ...c, assessment_score: value }))} /><TextField label="Exam" type="number" min="0" max="100" value={resultForm.exam_score} onChange={(value) => setResultForm((c) => ({ ...c, exam_score: value }))} /><SelectField label="Status" value={resultForm.status} onChange={(value) => setResultForm((c) => ({ ...c, status: value }))}><option value="draft">Draft</option><option value="submitted">Submitted</option></SelectField><FormActions editing={Boolean(editingResultId)} onCancel={resetResultForm} isSaving={isSaving === "result"} disabled={!selectedAssignment || submitBlocked} label={editingResultId ? "Save correction" : "Save result"} /></form>{submitBlocked ? <p className="mt-3 text-xs font-semibold text-amber-600">Submitted results require all three scores and a combined total not above 100.</p> : null}</Panel><Panel title="Results" subtitle="Submitted scores feed report cards. Draft scores remain internal."><DataTable headers={["Student", "Subject", "Scores", "Total", "Grade", "Status", "Actions"]} emptyText="No results match these filters." rows={visibleResults} renderRow={(result) => <tr key={result.id}><Cell label="Student"><strong>{result.student_name || result.admission_number || "Student"}</strong></Cell><Cell label="Subject">{subjectLabel(result)}</Cell><Cell label="Scores">{displayScore(result.test_score)} / {displayScore(result.assessment_score)} / {displayScore(result.exam_score)}</Cell><Cell label="Total">{displayScore(result.total_score)}</Cell><Cell label="Grade">{result.grade || "--"}</Cell><Cell label="Status"><StatusPill value={result.status} /></Cell><Cell label="Actions"><ActionRow><button type="button" className="btn-ghost" onClick={() => editResult(result)}><Edit3 className="h-3.5 w-3.5" /> {isSubmitted(result) ? "Correct" : "Edit"}</button><button type="button" className="btn-ghost" disabled={isSaving === result.id} onClick={() => updateResultStatus(result, isSubmitted(result) ? "draft" : "submitted")}>{isSubmitted(result) ? "Reopen draft" : "Submit"}</button></ActionRow></Cell></tr>} /></Panel></div>; }
-function ReportCardsTab({ classes, sessions, terms, reportFilters, updateReportFilter, reportCardOverview, reportCards, generateReportCard, regenerateReportCard, publishReportCard, isSaving }) { return <div className="space-y-5"><Panel title="Report card filters" subtitle="Report cards are official snapshots generated after submitted scores are complete."><ResultFilterGrid filters={reportFilters} updateFilter={updateReportFilter} classes={classes} sessions={sessions} terms={terms} hideSubject /><div className="mt-4 flex flex-col gap-2 sm:flex-row"><button type="button" className="btn-create" disabled={!reportFilters.class_id || !reportFilters.academic_session_id || !reportFilters.academic_term_id || isSaving === "bulk-report"} onClick={() => generateReportCard({ class_id: reportFilters.class_id, academic_session_id: reportFilters.academic_session_id, academic_term_id: reportFilters.academic_term_id }, "bulk-report")}><Plus className="h-3.5 w-3.5" /> Bulk generate for class</button></div></Panel><Panel title="Completion overview" subtitle="Generate one student when submitted score count matches expected class subjects."><DataTable headers={["Student", "Completion", "Report Card", "Actions"]} emptyText="Select class, session, and term to view completion." rows={reportCardOverview?.items || []} renderRow={(row) => { const complete = row.expected_count > 0 && row.submitted_count >= row.expected_count; return <tr key={row.student_id}><Cell label="Student"><strong>{row.student_name || row.admission_number || "Student"}</strong></Cell><Cell label="Completion">{row.submitted_count}/{row.expected_count} submitted</Cell><Cell label="Report Card"><StatusPill value={row.report_card_id ? row.is_outdated ? "outdated" : "generated" : "pending"} /></Cell><Cell label="Actions"><ActionRow>{!row.report_card_id ? <button type="button" className="btn-create" disabled={!complete || isSaving === row.student_id} onClick={() => generateReportCard({ student_id: row.student_id, academic_session_id: reportFilters.academic_session_id, academic_term_id: reportFilters.academic_term_id }, row.student_id)}>Generate</button> : null}{row.report_card_id ? <button type="button" className="btn-ghost" onClick={() => reportCardService.printAdminReportCard(row.report_card_id)}>Print</button> : null}{row.report_card_id ? <button type="button" className="btn-ghost" disabled={isSaving === row.report_card_id} onClick={() => regenerateReportCard(row.report_card_id)}>Regenerate</button> : null}</ActionRow></Cell></tr>; }} /></Panel><Panel title="Generated report cards" subtitle="Publish only after review. Students and parents should see published report cards only."><DataTable headers={["Student", "Session", "Term", "Status", "Average", "Actions"]} emptyText="No report cards match these filters." rows={reportCards} renderRow={(card) => <tr key={card.id}><Cell label="Student"><strong>{card.student_name || card.admission_number || "Student"}</strong></Cell><Cell label="Session">{card.academic_session_name || "--"}</Cell><Cell label="Term">{card.academic_term_name ? displayTerm(card.academic_term_name) : "--"}</Cell><Cell label="Status"><StatusPill value={card.status} /></Cell><Cell label="Average">{displayScore(card.average_score)}</Cell><Cell label="Actions"><ActionRow><button type="button" className="btn-ghost" onClick={() => reportCardService.printAdminReportCard(card.id)}>Print</button><button type="button" className="btn-ghost" disabled={isSaving === card.id} onClick={() => regenerateReportCard(card.id)}>Regenerate</button>{card.status !== "published" ? <button type="button" className="btn-create" disabled={isSaving === card.id} onClick={() => publishReportCard(card.id)}>Publish</button> : null}</ActionRow></Cell></tr>} /></Panel></div>; }
+function ReportCardsTab({
+  classes,
+  sessions,
+  terms,
+  reportFilters,
+  updateReportFilter,
+  reportCardOverview,
+  reportCards,
+  generateReportCard,
+  regenerateReportCard,
+  publishReportCard,
+  isSaving,
+  reportCardGuard,
+}) {
+  const reportCardsLocked = !reportCardGuard.allowed;
+
+  return (
+    <div className="space-y-5">
+      <Panel
+        title="Report card filters"
+        subtitle="Report cards are official snapshots generated after submitted scores are complete."
+      >
+        <ResultFilterGrid
+          filters={reportFilters}
+          updateFilter={updateReportFilter}
+          classes={classes}
+          sessions={sessions}
+          terms={terms}
+          hideSubject
+        />
+
+        {reportCardsLocked ? (
+          <Alert tone="warning">{reportCardGuard.reason}</Alert>
+        ) : null}
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            className="btn-create"
+            disabled={
+              reportCardsLocked ||
+              !reportFilters.class_id ||
+              !reportFilters.academic_session_id ||
+              !reportFilters.academic_term_id ||
+              isSaving === "bulk-report"
+            }
+            onClick={() =>
+              generateReportCard(
+                {
+                  class_id: reportFilters.class_id,
+                  academic_session_id: reportFilters.academic_session_id,
+                  academic_term_id: reportFilters.academic_term_id,
+                },
+                "bulk-report"
+              )
+            }
+          >
+            <Plus className="h-3.5 w-3.5" /> Bulk generate for class
+          </button>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Completion overview"
+        subtitle="Generate one student when submitted score count matches expected class subjects."
+      >
+        <DataTable
+          headers={["Student", "Completion", "Report Card", "Actions"]}
+          emptyText="Select class, session, and term to view completion."
+          rows={reportCardOverview?.items || []}
+          renderRow={(row) => {
+            const complete =
+              row.expected_count > 0 &&
+              row.submitted_count >= row.expected_count;
+
+            return (
+              <tr key={row.student_id}>
+                <Cell label="Student">
+                  <strong>{row.student_name || row.admission_number || "Student"}</strong>
+                </Cell>
+                <Cell label="Completion">
+                  {row.submitted_count}/{row.expected_count} submitted
+                </Cell>
+                <Cell label="Report Card">
+                  <StatusPill
+                    value={
+                      row.report_card_id
+                        ? row.is_outdated
+                          ? "outdated"
+                          : "generated"
+                        : "pending"
+                    }
+                  />
+                </Cell>
+                <Cell label="Actions">
+                  <ActionRow>
+                    {!row.report_card_id ? (
+                      <button
+                        type="button"
+                        className="btn-create"
+                        disabled={
+                          reportCardsLocked ||
+                          !complete ||
+                          isSaving === row.student_id
+                        }
+                        onClick={() =>
+                          generateReportCard(
+                            {
+                              student_id: row.student_id,
+                              academic_session_id:
+                                reportFilters.academic_session_id,
+                              academic_term_id:
+                                reportFilters.academic_term_id,
+                            },
+                            row.student_id
+                          )
+                        }
+                      >
+                        Generate
+                      </button>
+                    ) : null}
+                    {row.report_card_id ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() =>
+                          reportCardService.printAdminReportCard(
+                            row.report_card_id
+                          )
+                        }
+                      >
+                        Print
+                      </button>
+                    ) : null}
+                    {row.report_card_id ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={
+                          reportCardsLocked || isSaving === row.report_card_id
+                        }
+                        onClick={() =>
+                          regenerateReportCard(row.report_card_id)
+                        }
+                      >
+                        Regenerate
+                      </button>
+                    ) : null}
+                  </ActionRow>
+                </Cell>
+              </tr>
+            );
+          }}
+        />
+      </Panel>
+
+      <Panel
+        title="Generated report cards"
+        subtitle="Publish only after review. Students and parents should see published report cards only."
+      >
+        <DataTable
+          headers={["Student", "Session", "Term", "Status", "Average", "Actions"]}
+          emptyText="No report cards match these filters."
+          rows={reportCards}
+          renderRow={(card) => (
+            <tr key={card.id}>
+              <Cell label="Student">
+                <strong>{card.student_name || card.admission_number || "Student"}</strong>
+              </Cell>
+              <Cell label="Session">{card.academic_session_name || "--"}</Cell>
+              <Cell label="Term">
+                {card.academic_term_name
+                  ? displayTerm(card.academic_term_name)
+                  : "--"}
+              </Cell>
+              <Cell label="Status">
+                <StatusPill value={card.status} />
+              </Cell>
+              <Cell label="Average">{displayScore(card.average_score)}</Cell>
+              <Cell label="Actions">
+                <ActionRow>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => reportCardService.printAdminReportCard(card.id)}
+                  >
+                    Print
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={reportCardsLocked || isSaving === card.id}
+                    onClick={() => regenerateReportCard(card.id)}
+                  >
+                    Regenerate
+                  </button>
+                  {card.status !== "published" ? (
+                    <button
+                      type="button"
+                      className="btn-create"
+                      disabled={reportCardsLocked || isSaving === card.id}
+                      onClick={() => publishReportCard(card.id)}
+                    >
+                      Publish
+                    </button>
+                  ) : null}
+                </ActionRow>
+              </Cell>
+            </tr>
+          )}
+        />
+      </Panel>
+    </div>
+  );
+}
 function SearchTab({ searchQuery, setSearchQuery, searchResults }) { return <Panel title="Academic search" subtitle="Search students, teachers, classes, subjects, and parent-linked records."><TextField label="Search" value={searchQuery} onChange={setSearchQuery} placeholder="Type at least 2 characters" /><div className="mt-4 grid gap-3">{searchResults.length === 0 ? <EmptyState icon={Search} title="No results yet" description="Search by name, class, subject, staff ID, or admission number." /> : searchResults.map((item, index) => <div key={`${item.type}-${item.id || index}`} className="rounded-2xl border border-border bg-surface-muted/30 p-4"><p className="font-semibold text-text">{item.title || item.name || item.label || "Result"}</p><p className="mt-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{item.type || "academic record"}</p></div>)}</div></Panel>; }
 function AssignmentFilterGrid({ filters, setFilters, classes = [], subjects = [], teachers = [] }) { return <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><SelectField label="Class" value={filters.class_id} onChange={(value) => setFilters((c) => ({ ...c, class_id: value }))}><option value="">All classes</option>{classes.map((item) => <option key={item.id} value={item.id}>{displayClass(item)}</option>)}</SelectField><SelectField label="Subject" value={filters.subject_id} onChange={(value) => setFilters((c) => ({ ...c, subject_id: value }))}><option value="">All subjects</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name || item.code || "Subject"}</option>)}</SelectField><SelectField label="Teacher" value={filters.teacher_id} onChange={(value) => setFilters((c) => ({ ...c, teacher_id: value }))}><option value="">All teachers</option>{teachers.map((item) => <option key={item.id} value={item.id}>{teacherLabel(item)}</option>)}</SelectField></div>; }
 function ResultFilterGrid({ filters, updateFilter, classes = [], subjects = [], sessions = [], terms = [], hideSubject = false }) { return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><SelectField label="Class" value={filters.class_id} onChange={(value) => updateFilter("class_id", value)}><option value="">Select class</option>{classes.map((item) => <option key={item.id} value={item.id}>{displayClass(item)}</option>)}</SelectField>{!hideSubject ? <SelectField label="Subject" value={filters.subject_id} onChange={(value) => updateFilter("subject_id", value)}><option value="">Select subject</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name || item.code || "Subject"}</option>)}</SelectField> : null}<SelectField label="Session" value={filters.academic_session_id} onChange={(value) => updateFilter("academic_session_id", value)}><option value="">Select session</option>{sessions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.is_current ? " · Current" : ""}</option>)}</SelectField><SelectField label="Term" value={filters.academic_term_id} onChange={(value) => updateFilter("academic_term_id", value)}><option value="">Select term</option>{terms.map((item) => <option key={item.id} value={item.id}>{displayTerm(item.name)}{item.is_current ? " · Current" : ""}</option>)}</SelectField></div>; }

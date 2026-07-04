@@ -1,0 +1,129 @@
+import { useEffect, useState } from "react";
+import { CheckCircle2, TriangleAlert } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import Card from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
+import LoadingState from "../../components/shared/LoadingState";
+import { parseApiError } from "../../services/api";
+import { subscriptionService } from "../../services/subscriptionService";
+import { clearSelectedSubscriptionPlan } from "../../features/subscriptions/subscriptionConfig";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
+
+function SubscriptionVerifyPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { refreshSubscriptionState } = useSubscription();
+  const [status, setStatus] = useState("loading");
+  const [message, setMessage] = useState("Verifying your payment...");
+  const reference = searchParams.get("reference");
+
+  useEffect(() => {
+    let mounted = true;
+    let redirectTimer = null;
+
+    async function verifyPayment() {
+      if (!reference) {
+        setStatus("error");
+        setMessage(
+          "We could not verify this payment. Please try again or contact support."
+        );
+        return;
+      }
+
+      try {
+        await subscriptionService.verifySubscriptionPayment(reference);
+        try {
+          await refreshSubscriptionState({ silent: true });
+        } catch {
+          // Verification already succeeded. A refresh failure should not hide that success state.
+        }
+
+        if (!mounted) return;
+
+        clearSelectedSubscriptionPlan();
+        setStatus("success");
+        setMessage("Payment verified. Your subscription is now active.");
+        redirectTimer = window.setTimeout(() => {
+          navigate("/admin/billing", { replace: true });
+        }, 1800);
+      } catch (error) {
+        if (!mounted) return;
+
+        const apiError = parseApiError(
+          error,
+          "We could not verify this payment. Please try again or contact support."
+        );
+        setStatus("error");
+        setMessage(apiError.message);
+      }
+    }
+
+    verifyPayment();
+
+    return () => {
+      mounted = false;
+      if (redirectTimer) window.clearTimeout(redirectTimer);
+    };
+  }, [navigate, reference, refreshSubscriptionState]);
+
+  return (
+    <DashboardLayout
+      role="admin"
+      title="Subscription Verification"
+      description="We are confirming your Paystack payment and refreshing your tenant billing state."
+    >
+      <Card className="mx-auto max-w-2xl p-6 sm:p-8">
+        {status === "loading" ? (
+          <div className="space-y-4">
+            <LoadingState label="Verifying your payment..." />
+            <p className="text-center text-sm font-medium text-text-muted">
+              Verifying your payment...
+            </p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <span
+              className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ${
+                status === "success"
+                  ? "bg-success-soft text-success"
+                  : "bg-error-soft text-error"
+              }`}
+            >
+              {status === "success" ? (
+                <CheckCircle2 className="h-6 w-6" />
+              ) : (
+                <TriangleAlert className="h-6 w-6" />
+              )}
+            </span>
+
+            <h2 className="mt-4 text-xl font-semibold text-text">
+              {status === "success"
+                ? "Payment verified"
+                : "Verification failed"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-text-muted">{message}</p>
+
+            <div className="mt-6">
+              <Button
+                variant={status === "success" ? "primary" : "outline"}
+                onClick={() =>
+                  navigate(
+                    status === "success" ? "/admin/billing" : "/admin/dashboard",
+                    { replace: true }
+                  )
+                }
+              >
+                {status === "success"
+                  ? "Return to billing"
+                  : "Back to dashboard"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+    </DashboardLayout>
+  );
+}
+
+export default SubscriptionVerifyPage;

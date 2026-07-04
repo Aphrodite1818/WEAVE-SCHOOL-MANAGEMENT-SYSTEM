@@ -7,9 +7,11 @@ function ResourceModulePage({
   description,
   config,
   actions,
+  notice,
 }) {
   return (
     <DashboardLayout role={role} title={title} description={description} actions={actions}>
+      {notice}
       <ResourcePage config={config} />
     </DashboardLayout>
   );

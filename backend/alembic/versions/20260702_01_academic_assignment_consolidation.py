@@ -74,8 +74,23 @@ def _foreign_key_exists(inspector: sa.Inspector, table_name: str, constraint_nam
     return constraint_name in {constraint["name"] for constraint in inspector.get_foreign_keys(table_name)}
 
 
+def _enum_has_value(connection, enum_name: str, value: str) -> bool:
+    """Return True if `value` is currently a valid label on the given Postgres enum type."""
+    result = connection.execute(
+        sa.text(
+            "SELECT 1 FROM pg_enum e "
+            "JOIN pg_type t ON t.oid = e.enumtypid "
+            "WHERE t.typname = :enum_name AND e.enumlabel = :value"
+        ),
+        {"enum_name": enum_name, "value": value},
+    )
+    return result.first() is not None
+
+
 def upgrade() -> None:
-    inspector = sa.inspect(op.get_bind())
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    baseline_already_applied = _baseline_already_created_academic_assignment_tables()
 
     if not _table_exists(inspector, "class_subjects"):
         op.create_table(
@@ -155,23 +170,33 @@ def upgrade() -> None:
         )
 
     # Collapse published/locked score statuses into submitted before narrowing enum.
-    op.execute(
-        "UPDATE student_subject_results SET status = 'submitted' "
-        "WHERE status IN ('published', 'locked')"
-    )
-    op.execute("ALTER TABLE student_subject_results ALTER COLUMN status DROP DEFAULT")
-    op.execute("ALTER TYPE academic_result_status RENAME TO academic_result_status_old")
-    op.execute("CREATE TYPE academic_result_status AS ENUM ('draft', 'submitted')")
-    op.execute(
-        "ALTER TABLE student_subject_results "
-        "ALTER COLUMN status TYPE academic_result_status "
-        "USING status::text::academic_result_status"
-    )
-    op.execute(
-        "ALTER TABLE student_subject_results "
-        "ALTER COLUMN status SET DEFAULT 'draft'::academic_result_status"
-    )
-    op.execute("DROP TYPE academic_result_status_old")
+    #
+    # NOTE: guarded by `baseline_already_applied`. On a fresh staging database,
+    # `20260630_staging_branch_baseline` builds tables from *current* model
+    # metadata, which already reflects the narrowed
+    # academic_result_status enum ('draft', 'submitted' only). In that case
+    # 'published'/'locked' were never valid enum labels on this database and
+    # this whole block must be skipped entirely -- even the UPDATE statement
+    # fails at parse time otherwise, since the literals aren't valid enum
+    # input regardless of whether any row matches.
+    if not baseline_already_applied and _enum_has_value(connection, "academic_result_status", "published"):
+        op.execute(
+            "UPDATE student_subject_results SET status = 'submitted' "
+            "WHERE status IN ('published', 'locked')"
+        )
+        op.execute("ALTER TABLE student_subject_results ALTER COLUMN status DROP DEFAULT")
+        op.execute("ALTER TYPE academic_result_status RENAME TO academic_result_status_old")
+        op.execute("CREATE TYPE academic_result_status AS ENUM ('draft', 'submitted')")
+        op.execute(
+            "ALTER TABLE student_subject_results "
+            "ALTER COLUMN status TYPE academic_result_status "
+            "USING status::text::academic_result_status"
+        )
+        op.execute(
+            "ALTER TABLE student_subject_results "
+            "ALTER COLUMN status SET DEFAULT 'draft'::academic_result_status"
+        )
+        op.execute("DROP TYPE academic_result_status_old")
 
     if not _column_exists(inspector, "report_cards", "position"):
         op.add_column("report_cards", sa.Column("position", sa.Integer(), nullable=True))
@@ -205,10 +230,11 @@ def upgrade() -> None:
         )
 
     # Backfill published_at for already-published report cards.
-    op.execute(
-        "UPDATE report_cards SET published_at = updated_at, version = 1 "
-        "WHERE status = 'published' AND published_at IS NULL"
-    )
+    if not baseline_already_applied:
+        op.execute(
+            "UPDATE report_cards SET published_at = updated_at, version = 1 "
+            "WHERE status = 'published' AND published_at IS NULL"
+        )
 
     if _unique_constraint_exists(inspector, "report_cards", "uq_report_cards_student_period"):
         op.drop_constraint("uq_report_cards_student_period", "report_cards", type_="unique")

@@ -14,10 +14,10 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 
-revision: str = "20260704_subscription_billing"
-down_revision: str | Sequence[str] | None = "20260703_merge_acad_heads"
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = "20260704_subscription_billing"
+down_revision = "20260703_merge_acad_heads"
+branch_labels = None
+depends_on = None
 
 PUBLIC_SCHEMA = "public"
 
@@ -28,8 +28,20 @@ subscription_plan_enum = postgresql.ENUM(
     "enterprise",
     name="subscriptionplan",
     schema=PUBLIC_SCHEMA,
+    # create_type=False prevents SQLAlchemy from auto-issuing CREATE TYPE /
+    # DROP TYPE as a side effect of op.create_table()/op.drop_table() below
+    # (which would otherwise run with checkfirst=False right after our
+    # explicit .create() call in upgrade(), causing a duplicate-type error).
+    # We manage this type's lifecycle explicitly via .create()/.drop().
     create_type=False,
 )
+# All enums below are created explicitly via .create(bind, checkfirst=True)
+# in upgrade() and dropped explicitly via .drop(bind, checkfirst=True) in
+# downgrade(). create_type=False on every one of them is required so that
+# op.create_table()/op.drop_table() do NOT also try to auto-create/drop
+# these types as a side effect of using them as column types -- that
+# automatic path runs with checkfirst=False and would collide with our
+# explicit .create() call, raising "type already exists".
 subscription_status_enum = postgresql.ENUM(
     "trialing",
     "active",
@@ -40,18 +52,21 @@ subscription_status_enum = postgresql.ENUM(
     "cancelled",
     name="subscription_status",
     schema=PUBLIC_SCHEMA,
+    create_type=False,
 )
 billing_interval_enum = postgresql.ENUM(
     "monthly",
     "yearly",
     name="billing_interval",
     schema=PUBLIC_SCHEMA,
+    create_type=False,
 )
 payment_provider_enum = postgresql.ENUM(
     "paystack",
     "manual",
     name="payment_provider",
     schema=PUBLIC_SCHEMA,
+    create_type=False,
 )
 payment_status_enum = postgresql.ENUM(
     "pending",
@@ -60,12 +75,25 @@ payment_status_enum = postgresql.ENUM(
     "abandoned",
     name="payment_status",
     schema=PUBLIC_SCHEMA,
+    create_type=False,
 )
 
 
 def upgrade() -> None:
     bind = op.get_bind()
+    # If the main table already exists in the target DB, assume this
+    # migration (or an equivalent manual change) has already been applied
+    # and skip creating objects to avoid DuplicateTableError.
+    inspector = sa.inspect(bind)
+    if "tenant_subscriptions" in inspector.get_table_names(schema=PUBLIC_SCHEMA):
+        return
 
+    # subscription_plan_enum uses create_type=False (see its declaration
+    # above) so it is NOT auto-created by op.create_table() below. Nothing
+    # earlier in the migration history creates "subscriptionplan" either, so
+    # we must create it explicitly here. checkfirst=True keeps this safe if
+    # it already exists in some environment.
+    subscription_plan_enum.create(bind, checkfirst=True)
     subscription_status_enum.create(bind, checkfirst=True)
     billing_interval_enum.create(bind, checkfirst=True)
     payment_provider_enum.create(bind, checkfirst=True)
@@ -317,3 +345,7 @@ def downgrade() -> None:
     payment_provider_enum.drop(bind, checkfirst=True)
     billing_interval_enum.drop(bind, checkfirst=True)
     subscription_status_enum.drop(bind, checkfirst=True)
+    # subscription_plan_enum is now created by this migration, so it must
+    # also be dropped here on downgrade (previously omitted, since the
+    # migration assumed the type was owned/managed elsewhere).
+    subscription_plan_enum.drop(bind, checkfirst=True)

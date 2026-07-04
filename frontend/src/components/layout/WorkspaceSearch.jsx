@@ -25,7 +25,6 @@ function WorkspaceSearch({ role }) {
     const trimmed = query.trim();
 
     if (trimmed.length < 2) {
-      setHasSearched(false);
       return undefined;
     }
 
@@ -92,6 +91,7 @@ function WorkspaceSearch({ role }) {
   const handleQueryChange = (event) => {
     const nextQuery = event.target.value;
     setQuery(nextQuery);
+    setHasSearched(false);
 
     if (nextQuery.trim().length < 2) {
       setItems([]);

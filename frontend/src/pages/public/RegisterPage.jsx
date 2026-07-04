@@ -1,12 +1,19 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, TriangleAlert } from "lucide-react";
 import AuthLayout from "../../components/layout/AuthLayout";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
+import Badge from "../../components/ui/Badge";
 import { tenantService } from "../../services/tenant.service";
 import { authService } from "../../services/auth.service";
 import { parseApiError, remapFieldErrors } from "../../services/api";
+import {
+  formatBillingInterval,
+  formatPlanName,
+  getSelectedSubscriptionPlan,
+  saveSelectedSubscriptionPlan,
+} from "../../features/subscriptions/subscriptionConfig";
 
 const REGISTER_FIELD_MAP = {
   school_name: "schoolName",
@@ -14,6 +21,7 @@ const REGISTER_FIELD_MAP = {
 
 function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({
     schoolName: "",
     email: "",
@@ -24,6 +32,24 @@ function RegisterPage() {
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [passwordStrength, setPasswordStrength] = useState(0);
+  const selectedPlan = useMemo(() => {
+    const queryPlan = searchParams.get("plan");
+    const queryBilling = searchParams.get("billing");
+    return (
+      (queryPlan && {
+        planCode: queryPlan,
+        billingInterval: queryBilling || "monthly",
+      }) ||
+      getSelectedSubscriptionPlan() || {
+        planCode: "free_trial",
+        billingInterval: "monthly",
+      }
+    );
+  }, [searchParams]);
+
+  useEffect(() => {
+    saveSelectedSubscriptionPlan(selectedPlan);
+  }, [selectedPlan]);
 
   const getPasswordStrength = (password) => {
     let score = 0;
@@ -123,6 +149,20 @@ function RegisterPage() {
         </p>
       }
     >
+      <div className="mb-5 rounded-2xl border border-border bg-surface-muted/35 px-4 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="primary">Selected plan: {formatPlanName(selectedPlan.planCode)}</Badge>
+          {selectedPlan.planCode !== "free_trial" ? (
+            <Badge variant="default">
+              {formatBillingInterval(selectedPlan.billingInterval)}
+            </Badge>
+          ) : null}
+        </div>
+        <p className="mt-3 text-sm leading-6 text-text-muted">
+          Your plan selection is preserved through signup so the tenant admin can continue from billing after setup. Paid plans are activated later from the live subscription checkout flow.
+        </p>
+      </div>
+
       {error && (
         <div className="mb-4 flex gap-3 rounded-2xl border border-error/20 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />

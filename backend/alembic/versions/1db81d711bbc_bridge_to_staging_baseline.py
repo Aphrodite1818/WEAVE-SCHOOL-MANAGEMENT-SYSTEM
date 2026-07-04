@@ -10,10 +10,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 
-revision: str = "1db81d711bbc"
-down_revision: str | Sequence[str] | None = None
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = "1db81d711bbc"
+down_revision = None
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:

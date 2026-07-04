@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText } from "lucide-react";
 import { cn } from "../../utils/cn";
 
@@ -44,7 +50,39 @@ const isStandaloneDisplay = () => {
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
   const [isInstalledApp, setIsInstalledApp] = useState(isStandaloneDisplay);
+  const [indicatorStyle, setIndicatorStyle] = useState({
+    width: 0,
+    transform: "translateX(0px)",
+    opacity: 0,
+  });
+  const navRef = useRef(null);
+  const itemRefs = useRef({});
   const items = bottomNavConfig[role] || bottomNavConfig.admin;
+
+  const updateIndicator = useCallback(() => {
+    const navElement = navRef.current;
+    const activeItem = items.find((item) => {
+      return (
+        location.pathname === item.to ||
+        (item.to !== "/" && location.pathname.startsWith(`${item.to}/`))
+      );
+    });
+
+    const activeElement = activeItem ? itemRefs.current[activeItem.to] : null;
+
+    if (!navElement || !activeElement) {
+      setIndicatorStyle((current) => ({ ...current, opacity: 0 }));
+      return;
+    }
+
+    const itemRect = activeElement.getBoundingClientRect();
+
+    setIndicatorStyle({
+      width: itemRect.width,
+      transform: `translateX(${activeElement.offsetLeft}px)`,
+      opacity: 1,
+    });
+  }, [items, location.pathname]);
 
   useEffect(() => {
     const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
@@ -61,6 +99,25 @@ function BottomNav({ role, onOpenMenu }) {
     };
   }, []);
 
+  useLayoutEffect(() => {
+    if (!isInstalledApp) return;
+    updateIndicator();
+  }, [isInstalledApp, updateIndicator]);
+
+  useEffect(() => {
+    if (!isInstalledApp) return undefined;
+
+    const handleResize = () => updateIndicator();
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, [isInstalledApp, updateIndicator]);
+
   if (!isInstalledApp) return null;
 
   return (
@@ -69,7 +126,15 @@ function BottomNav({ role, onOpenMenu }) {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-surface/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl md:hidden"
       aria-label="Primary mobile navigation"
     >
-      <div className="mx-auto flex w-full max-w-[28.5rem] items-center gap-1.5 rounded-[1.85rem] border border-border/60 bg-surface p-1.5 shadow-sm">
+      <div
+        ref={navRef}
+        className="relative mx-auto flex w-full max-w-[28.5rem] items-center gap-1.5 rounded-[1.85rem] border border-border/60 bg-surface p-1.5 shadow-sm"
+      >
+        <span
+          aria-hidden="true"
+          className="bottom-nav-indicator pointer-events-none absolute bottom-1.5 left-0 top-1.5 z-0 rounded-[1.5rem] bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_8px_18px_rgba(15,23,42,0.12)]"
+          style={indicatorStyle}
+        />
         {items.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -77,32 +142,35 @@ function BottomNav({ role, onOpenMenu }) {
             (item.to !== "/" && location.pathname.startsWith(`${item.to}/`));
 
           return (
-            <Link
+            <NavLink
               key={item.label}
               to={item.to}
+              ref={(node) => {
+                itemRefs.current[item.to] = node;
+              }}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex min-h-[3.85rem] flex-1 flex-col items-center justify-center gap-1 rounded-[1.5rem] px-2.5 py-2 text-center transition-all duration-300 ease-out",
+                "relative z-10 flex min-h-[3.85rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.5rem] px-2.5 py-2 text-center transition-colors duration-200 ease-out",
                 isActive
-                  ? "bg-surface-raised text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_6px_18px_rgba(15,23,42,0.12)]"
+                  ? "text-text"
                   : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
               )}
             >
-              <Icon className={cn("h-6 w-6 shrink-0 transition-colors duration-300 ease-out", isActive && "text-primary")} />
-              <span className={cn("max-w-full truncate text-[11px] font-bold leading-tight transition-colors duration-300 ease-out", isActive && "text-text")}>
+              <Icon className={cn("pointer-events-none h-6 w-6 shrink-0 transition-colors duration-200 ease-out", isActive && "text-primary")} />
+              <span className={cn("pointer-events-none max-w-full truncate text-[11px] font-bold leading-tight transition-colors duration-200 ease-out", isActive && "text-text")}>
                 {item.label}
               </span>
-            </Link>
+            </NavLink>
           );
         })}
         <button
           type="button"
           onClick={onOpenMenu}
-          className="flex min-h-[3.85rem] flex-1 flex-col items-center justify-center gap-1 rounded-[1.5rem] px-2.5 py-2 text-text-muted transition-all duration-300 ease-out hover:bg-surface-muted/80 hover:text-text"
+          className="relative z-10 flex min-h-[3.85rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.5rem] px-2.5 py-2 text-text-muted transition-colors duration-200 ease-out hover:bg-surface-muted/80 hover:text-text"
           aria-label="Open full navigation menu"
         >
-          <Menu className="h-6 w-6 shrink-0" />
-          <span className="text-[11px] font-bold leading-tight">Menu</span>
+          <Menu className="pointer-events-none h-6 w-6 shrink-0" />
+          <span className="pointer-events-none text-[11px] font-bold leading-tight">Menu</span>
         </button>
       </div>
     </nav>

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  AlertTriangle,
   BookOpen,
+  CreditCard,
   GraduationCap,
   PlusCircle,
   Shapes,
@@ -21,6 +23,13 @@ import { dashboardService } from "../../services/dashboard.service";
 import { authSession, getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { reportCardService } from "../../services/reportCardService";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
+import {
+  FEATURE_CODES,
+  formatDateTime,
+  formatPlanName,
+  formatUsageValue,
+} from "../../features/subscriptions/subscriptionConfig";
 import {
   averageBy,
   averageByAcademicPeriod,
@@ -44,8 +53,19 @@ function AdminDashboardPage() {
   const [academicResults, setAcademicResults] = useState([]);
   const [reportCards, setReportCards] = useState([]);
   const [error, setError] = useState(null);
+  const {
+    currentSubscription,
+    entitlements,
+    planCode,
+    statusMeta,
+    isAttentionRequired,
+    getFeatureGuard,
+  } = useSubscription();
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
+  const advancedAnalyticsGuard = getFeatureGuard(
+    FEATURE_CODES.ADVANCED_ANALYTICS
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -140,6 +160,85 @@ function AdminDashboardPage() {
 
       {!error && (
         <>
+          <Card
+            className={`p-5 sm:p-6 ${
+              isAttentionRequired
+                ? "border-warning/40 bg-warning-soft/35"
+                : "border-border"
+            }`}
+          >
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">
+                    Current Plan: {formatPlanName(planCode)}
+                  </span>
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                      isAttentionRequired
+                        ? "bg-warning-soft text-amber-700"
+                        : "bg-success-soft text-emerald-700"
+                    }`}
+                  >
+                    Status: {statusMeta.label}
+                  </span>
+                </div>
+                <div>
+                  <h2 className="section-title">Subscription summary</h2>
+                  <p className="mt-1 text-sm leading-6 text-text-muted">
+                    {statusMeta.message}
+                  </p>
+                </div>
+                <div className="dashboard-kpi-grid lg:grid-cols-4">
+                  <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Renews or expires
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-text">
+                      {formatDateTime(
+                        currentSubscription?.current_period_end ||
+                          entitlements?.current_period_end
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Students
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-text">
+                      {formatUsageValue(entitlements?.usage?.students)}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Teachers
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-text">
+                      {formatUsageValue(entitlements?.usage?.teachers)}
+                    </p>
+                  </div>
+                  <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Classes
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-text">
+                      {formatUsageValue(entitlements?.usage?.classes)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="shrink-0">
+                <Link to="/admin/billing">
+                  <Button>
+                    <CreditCard className="h-4 w-4" />
+                    Manage Plan
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </Card>
+
           <section className="dashboard-grid lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
             <Card className="p-5 sm:p-6">
               <div className="flex flex-col gap-4">
@@ -254,79 +353,106 @@ function AdminDashboardPage() {
             />
           </section>
 
-          <section className="dashboard-grid md:grid-cols-2 2xl:grid-cols-3">
-            <AnalyticsBarChart
-              title="User Population Breakdown"
-              description="Students, teachers, and parents currently in this school."
-              data={charts.user_population_breakdown || []}
-            />
-            <AnalyticsDonutChart
-              title="Student Profile Completion Rate"
-              description="Shows how many student profiles are complete versus still missing required fields."
-              data={charts.student_profile_completion_rate || []}
-            />
-            <AnalyticsBarChart
-              title="Account Status Overview"
-              description="Active and pending accounts across teachers and parents."
-              data={charts.account_status_overview || []}
-              emptyMessage="No account status data available yet."
-            />
-            <AnalyticsDonutChart
-              title="Announcements By Category"
-              description="Announcement categories posted within this school."
-              data={charts.announcements_by_category || []}
-              emptyMessage="No announcements have been posted yet."
-            />
-            <AnalyticsBarChart
-              title="Class Population"
-              description="Number of enrolled students in each class."
-              data={charts.class_population || []}
-              emptyMessage="No class population data available yet."
-            />
-            <AnalyticsDonutChart
-              title="Report Card Status"
-              description="Generated report-card publishing progress."
-              data={reportCardStatusChart(reportCards)}
-              emptyMessage="No report cards have been generated yet."
-            />
-            <AnalyticsBarChart
-              title="Subject Performance"
-              description="Average score by subject."
-              data={charts.subject_performance || averageBy(academicResults, (item) => item.subject_name || item.subject_code || "Subject")}
-              emptyMessage="No subject performance data available yet."
-            />
-            <AnalyticsBarChart
-              title="Class Performance"
-              description="Average score by class from recorded results."
-              data={averageBy(academicResults, (item) => [item.class_name, item.class_arm].filter(Boolean).join(" ") || "Class")}
-              emptyMessage="No class performance data available yet."
-            />
-            <AnalyticsDonutChart
-              title="Grade Distribution"
-              description="All recorded academic grades in this tenant."
-              data={charts.grade_distribution || chartFromCounts(academicResults, "grade", "ungraded")}
-              emptyMessage="No grade data has been recorded yet."
-            />
-            <AnalyticsDonutChart
-              title="Result Status"
-              description="Draft, submitted, published, and locked result rows."
-              data={charts.result_status_distribution || chartFromCounts(academicResults, "status", "draft")}
-              emptyMessage="No result status data has been recorded yet."
-            />
-            <AnalyticsBarChart
-              title="Result Completion By Subject"
-              description="Average completion signal grouped by subject."
-              data={averageBy(
-                academicResults.map((item) => ({
-                  ...item,
-                  completion_score: ["submitted", "published", "locked"].includes(item.status) ? 100 : 0,
-                })),
-                (item) => item.subject_name || item.subject_code || "Subject",
-                "completion_score"
-              )}
-              emptyMessage="No subject completion data available yet."
-            />
-          </section>
+          {advancedAnalyticsGuard.allowed ? (
+            <section className="dashboard-grid md:grid-cols-2 2xl:grid-cols-3">
+              <AnalyticsBarChart
+                title="User Population Breakdown"
+                description="Students, teachers, and parents currently in this school."
+                data={charts.user_population_breakdown || []}
+              />
+              <AnalyticsDonutChart
+                title="Student Profile Completion Rate"
+                description="Shows how many student profiles are complete versus still missing required fields."
+                data={charts.student_profile_completion_rate || []}
+              />
+              <AnalyticsBarChart
+                title="Account Status Overview"
+                description="Active and pending accounts across teachers and parents."
+                data={charts.account_status_overview || []}
+                emptyMessage="No account status data available yet."
+              />
+              <AnalyticsDonutChart
+                title="Announcements By Category"
+                description="Announcement categories posted within this school."
+                data={charts.announcements_by_category || []}
+                emptyMessage="No announcements have been posted yet."
+              />
+              <AnalyticsBarChart
+                title="Class Population"
+                description="Number of enrolled students in each class."
+                data={charts.class_population || []}
+                emptyMessage="No class population data available yet."
+              />
+              <AnalyticsDonutChart
+                title="Report Card Status"
+                description="Generated report-card publishing progress."
+                data={reportCardStatusChart(reportCards)}
+                emptyMessage="No report cards have been generated yet."
+              />
+              <AnalyticsBarChart
+                title="Subject Performance"
+                description="Average score by subject."
+                data={charts.subject_performance || averageBy(academicResults, (item) => item.subject_name || item.subject_code || "Subject")}
+                emptyMessage="No subject performance data available yet."
+              />
+              <AnalyticsBarChart
+                title="Class Performance"
+                description="Average score by class from recorded results."
+                data={averageBy(academicResults, (item) => [item.class_name, item.class_arm].filter(Boolean).join(" ") || "Class")}
+                emptyMessage="No class performance data available yet."
+              />
+              <AnalyticsDonutChart
+                title="Grade Distribution"
+                description="All recorded academic grades in this tenant."
+                data={charts.grade_distribution || chartFromCounts(academicResults, "grade", "ungraded")}
+                emptyMessage="No grade data has been recorded yet."
+              />
+              <AnalyticsDonutChart
+                title="Result Status"
+                description="Draft, submitted, published, and locked result rows."
+                data={charts.result_status_distribution || chartFromCounts(academicResults, "status", "draft")}
+                emptyMessage="No result status data has been recorded yet."
+              />
+              <AnalyticsBarChart
+                title="Result Completion By Subject"
+                description="Average completion signal grouped by subject."
+                data={averageBy(
+                  academicResults.map((item) => ({
+                    ...item,
+                    completion_score: ["submitted", "published", "locked"].includes(item.status) ? 100 : 0,
+                  })),
+                  (item) => item.subject_name || item.subject_code || "Subject",
+                  "completion_score"
+                )}
+                emptyMessage="No subject completion data available yet."
+              />
+            </section>
+          ) : (
+            <Card className="p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="text-sm font-semibold">
+                      Advanced analytics is locked
+                    </span>
+                  </div>
+                  <h2 className="mt-3 text-lg font-semibold text-text">
+                    Upgrade to unlock deeper reporting
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-text-muted">
+                    This feature is not available on your current plan. Upgrade your plan to unlock it.
+                  </p>
+                </div>
+                <Link to="/admin/billing">
+                  <Button variant="outline">
+                    <CreditCard className="h-4 w-4" />
+                    Manage Plan
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          )}
         </>
       )}
     </DashboardLayout>
