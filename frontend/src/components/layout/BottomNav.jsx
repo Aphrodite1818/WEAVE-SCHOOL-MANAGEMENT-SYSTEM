@@ -84,6 +84,16 @@ function BottomNav({ role, onOpenMenu }) {
     });
   }, [items, location.pathname]);
 
+  const scheduleIndicatorUpdate = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        updateIndicator();
+      });
+    });
+  }, [updateIndicator]);
+
   useEffect(() => {
     const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
     const fullscreenQuery = window.matchMedia?.("(display-mode: fullscreen)");
@@ -101,22 +111,29 @@ function BottomNav({ role, onOpenMenu }) {
 
   useLayoutEffect(() => {
     if (!isInstalledApp) return;
-    updateIndicator();
-  }, [isInstalledApp, updateIndicator]);
+    scheduleIndicatorUpdate();
+  }, [isInstalledApp, scheduleIndicatorUpdate]);
 
   useEffect(() => {
     if (!isInstalledApp) return undefined;
 
-    const handleResize = () => updateIndicator();
+    const handleResize = () => scheduleIndicatorUpdate();
+    const handleVisibilityChange = () => {
+      if (!document.hidden) scheduleIndicatorUpdate();
+    };
 
     window.addEventListener("resize", handleResize);
     window.addEventListener("orientationchange", handleResize);
+    window.addEventListener("pageshow", handleResize);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleResize);
+      window.removeEventListener("pageshow", handleResize);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isInstalledApp, updateIndicator]);
+  }, [isInstalledApp, scheduleIndicatorUpdate]);
 
   if (!isInstalledApp) return null;
 

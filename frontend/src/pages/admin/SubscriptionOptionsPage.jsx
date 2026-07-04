@@ -1,28 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CreditCard, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
-import DashboardLayout from "../../components/layout/DashboardLayout";
-import Card from "../../components/ui/Card";
+import { CheckCircle2, RefreshCw, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import PublicLayout from "../../components/layout/PublicLayout";
+import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
-import LoadingState from "../../components/shared/LoadingState";
-import { authSession, parseApiError } from "../../services/api";
-import {
-  getSubscriptionCheckoutErrorMessage,
-  subscriptionService,
-} from "../../services/subscriptionService";
 import {
   BILLING_INTERVAL_OPTIONS,
   LANDING_PRICING_PLANS,
   clearSelectedSubscriptionPlan,
   formatBillingInterval,
-  formatDateTime,
   formatLimitValue,
   formatPlanName,
   getSelectedSubscriptionPlan,
   saveSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { authSession, parseApiError } from "../../services/api";
+import {
+  getSubscriptionCheckoutErrorMessage,
+  subscriptionService,
+} from "../../services/subscriptionService";
 
 function getDefaultSelection(currentPlanCode) {
   if (!currentPlanCode || currentPlanCode === "free_trial") return "plus";
@@ -44,26 +43,51 @@ function SubscriptionOptionsPage() {
     refreshSubscriptionState,
   } = useSubscription();
   const [selectedPlanCode, setSelectedPlanCode] = useState(
-    storedSelection?.planCode || getDefaultSelection(planCode)
+    storedSelection?.planCode || getDefaultSelection(planCode),
   );
   const [billingInterval, setBillingInterval] = useState(
-    storedSelection?.billingInterval || "monthly"
+    storedSelection?.billingInterval || "monthly",
   );
   const [billingEmail, setBillingEmail] = useState(user?.email || "");
   const [checkoutError, setCheckoutError] = useState(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
+  const checkoutRef = useRef(null);
   const paidPlans = LANDING_PRICING_PLANS.filter(
-    (plan) => plan.planCode !== "free_trial"
+    (plan) => plan.planCode !== "free_trial",
   );
-  const effectiveSelectedPlanCode = selectedPlanCode || getDefaultSelection(planCode);
+  const effectiveSelectedPlanCode =
+    selectedPlanCode || getDefaultSelection(planCode);
   const selectedPlan = LANDING_PRICING_PLANS.find(
-    (plan) => plan.planCode === effectiveSelectedPlanCode
+    (plan) => plan.planCode === effectiveSelectedPlanCode,
   );
-  const selectedPlanRequiresCheckout = effectiveSelectedPlanCode !== "free_trial";
+  const selectedPaidPlanIndex = Math.max(
+    paidPlans.findIndex((plan) => plan.planCode === effectiveSelectedPlanCode),
+    0,
+  );
+  const scrollToBillingDetails = () => {
+    checkoutRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
+  const handlePlanAction = (planCodeToSelect, isSelectedPlan, planIsLocked) => {
+    if (planIsLocked) return;
+    setSelectedPlanCode(planCodeToSelect);
+
+    if (isSelectedPlan && !checkoutDisabledReason && billingEmail) {
+      handleCheckout();
+    } else {
+      scrollToBillingDetails();
+    }
+  };
+
+  const selectedPlanRequiresCheckout =
+    effectiveSelectedPlanCode !== "free_trial";
   const currentPlanIsSelected = effectiveSelectedPlanCode === planCode;
   const canRetryCurrentPlan = ["past_due", "grace_period", "expired"].includes(
-    String(statusCode || "").toLowerCase()
+    String(statusCode || "").toLowerCase(),
   );
   const checkoutDisabledReason = !selectedPlanRequiresCheckout
     ? "Free Trial is assigned during signup and does not require checkout."
@@ -89,17 +113,25 @@ function SubscriptionOptionsPage() {
   }, [planCode, statusCode, storedSelection?.planCode]);
 
   const handleCheckout = async () => {
-    if (!selectedPlanRequiresCheckout || checkoutDisabledReason) return;
+    if (
+      isCheckingOut ||
+      !selectedPlanRequiresCheckout ||
+      checkoutDisabledReason
+    ) {
+      return;
+    }
 
     setIsCheckingOut(true);
     setCheckoutError(null);
 
     try {
-      const response = await subscriptionService.initializeSubscriptionCheckout({
-        plan_code: effectiveSelectedPlanCode,
-        billing_interval: billingInterval,
-        billing_email: billingEmail,
-      });
+      const response = await subscriptionService.initializeSubscriptionCheckout(
+        {
+          plan_code: effectiveSelectedPlanCode,
+          billing_interval: billingInterval,
+          billing_email: billingEmail,
+        },
+      );
 
       saveSelectedSubscriptionPlan({
         planCode: effectiveSelectedPlanCode,
@@ -109,10 +141,11 @@ function SubscriptionOptionsPage() {
     } catch (error) {
       const apiError = parseApiError(
         error,
-        "We could not initialize billing right now."
+        "We could not initialize billing right now.",
       );
       setCheckoutError(
-        getSubscriptionCheckoutErrorMessage(apiError.message) || apiError.message
+        getSubscriptionCheckoutErrorMessage(apiError.message) ||
+          apiError.message,
       );
       setIsCheckingOut(false);
     }
@@ -131,368 +164,407 @@ function SubscriptionOptionsPage() {
 
   if (isLoading && !currentSubscription && !entitlements) {
     return (
-      <DashboardLayout
-        role="admin"
-        title="Upgrade Plan"
-        description="Compare subscription options and continue to secure checkout."
-        actions={refreshAction}
-      >
-        <LoadingState label="Loading plans..." />
-      </DashboardLayout>
+      <PublicLayout>
+        <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="rounded-[1.5rem] border border-border/70 bg-surface p-6 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-text">
+                  Upgrade Plan
+                </h1>
+                <p className="mt-2 text-sm text-text-muted">
+                  Compare subscription options and continue to secure checkout.
+                </p>
+              </div>
+              {refreshAction}
+            </div>
+          </div>
+          <div className="mt-6">
+            <LoadingState label="Loading plans..." />
+          </div>
+        </div>
+      </PublicLayout>
     );
   }
 
   return (
-    <DashboardLayout
-      role="admin"
-      title="Upgrade Plan"
-      description="Compare subscription options and continue to secure checkout."
-      actions={refreshAction}
-    >
-      <div className="space-y-5 pb-24 md:pb-0">
-        {errors.currentSubscription ? (
-          <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
-            {errors.currentSubscription}
-          </div>
-        ) : null}
-        {errors.entitlements ? (
-          <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
-            {errors.entitlements}
-          </div>
-        ) : null}
-        {checkoutError ? (
-          <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
-            {checkoutError}
-          </div>
-        ) : null}
-
-        <section className="md:hidden">
-          <Card className="overflow-hidden rounded-[2rem] p-5">
-            <div className="flex flex-col items-center text-center">
-              <span className="flex h-14 w-14 rotate-45 items-center justify-center rounded-2xl bg-primary text-text-inverse shadow-sm shadow-primary/30">
-                <Sparkles className="h-6 w-6 -rotate-45" />
-              </span>
-              <h2 className="mt-6 text-3xl font-semibold tracking-tight text-text">
-                Upgrade your plan
-              </h2>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-text-muted">
-                Get higher school limits and more workspace capacity for your team.
+    <PublicLayout>
+      <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mb-6 rounded-[1.5rem] border border-border/70 bg-surface p-6 shadow-sm md:hidden">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-text">Upgrade Plan</h1>
+              <p className="mt-2 text-sm text-text-muted">
+                Compare subscription options and continue to secure checkout.
               </p>
             </div>
+            {refreshAction}
+          </div>
+        </div>
+        <section className="mb-6 hidden md:grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-faint">
+              Plan Switcher
+            </p>
+            <p className="mt-1 text-sm text-text-muted">
+              Compare plans without the oversized hero card.
+            </p>
+          </div>
 
-            <div className="mt-7 grid grid-cols-2 gap-3">
+          <div className="justify-self-center">
+            <div className="relative inline-grid grid-cols-3 items-center rounded-full border border-border/70 bg-surface-muted/65 p-1 shadow-soft-card">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-1 left-1 rounded-full bg-surface shadow-[0_10px_30px_rgba(15,23,42,0.12)] transition-transform duration-300"
+                style={{
+                  width: `calc((100% - 0.5rem) / ${paidPlans.length || 1})`,
+                  transform: `translateX(calc(${selectedPaidPlanIndex * 100}% + ${selectedPaidPlanIndex * 0.125}rem))`,
+                }}
+              />
               {paidPlans.map((plan) => {
-                const isSelectedPlan = plan.planCode === effectiveSelectedPlanCode;
-                const isCurrentPlan = plan.planCode === planCode;
+                const isSelectedPlan =
+                  plan.planCode === effectiveSelectedPlanCode;
 
                 return (
                   <button
-                    key={plan.planCode}
+                    key={`desktop-switch-${plan.planCode}`}
                     type="button"
                     onClick={() => setSelectedPlanCode(plan.planCode)}
-                    className={`min-h-[6rem] rounded-2xl border px-4 py-4 text-left transition ${
+                    className={`relative z-10 min-w-[8.5rem] rounded-full px-4 py-2.5 text-center transition ${
                       isSelectedPlan
-                        ? "border-primary bg-primary-soft/60 ring-4 ring-primary/10"
-                        : "border-border bg-surface-muted/30"
+                        ? "text-text"
+                        : "text-text-muted hover:text-text"
                     }`}
                   >
-                    <p className="text-lg font-bold leading-tight text-text">
-                      {plan.priceLabel}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-text-muted">
+                    <span className="block text-sm font-semibold">
                       {plan.name}
-                    </p>
-                    {isCurrentPlan ? (
-                      <p className="mt-2 text-[11px] font-bold text-success">
-                        Current plan
-                      </p>
-                    ) : null}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] font-medium">
+                      {plan.priceLabel}
+                    </span>
                   </button>
                 );
               })}
             </div>
+          </div>
 
-            <div className="mt-7 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
+          <div className="justify-self-end">{refreshAction}</div>
+        </section>
+        <div className="space-y-5 pb-24 md:pb-0">
+          {errors.currentSubscription ? (
+            <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
+              {errors.currentSubscription}
+            </div>
+          ) : null}
+          {errors.entitlements ? (
+            <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
+              {errors.entitlements}
+            </div>
+          ) : null}
+          {checkoutError ? (
+            <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
+              {checkoutError}
+            </div>
+          ) : null}
+
+          <section className="md:hidden">
+            <Card className="overflow-hidden rounded-[2rem] p-5">
+              <div className="flex flex-col items-center text-center">
+                <span className="flex h-14 w-14 rotate-45 items-center justify-center rounded-2xl bg-primary text-text-inverse shadow-sm shadow-primary/30">
+                  <Sparkles className="h-6 w-6 -rotate-45" />
+                </span>
+                <h2 className="mt-6 text-3xl font-semibold tracking-tight text-text">
+                  Upgrade your plan
+                </h2>
+                <p className="mt-2 max-w-sm text-sm leading-6 text-text-muted">
+                  Get higher school limits and more workspace capacity for your
+                  team.
+                </p>
+              </div>
+
+              <div className="mt-7 grid grid-cols-1 gap-3">
+                {paidPlans.map((plan) => {
+                  const isSelectedPlan =
+                    plan.planCode === effectiveSelectedPlanCode;
+                  const isCurrentPlan = plan.planCode === planCode;
+                  const planIsLocked = isCurrentPlan && !canRetryCurrentPlan;
+
+                  return (
+                    <div
+                      key={plan.planCode}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedPlanCode(plan.planCode)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          setSelectedPlanCode(plan.planCode);
+                        }
+                      }}
+                      className={`min-h-[6rem] rounded-2xl border px-4 py-4 text-left transition ${
+                        isSelectedPlan
+                          ? "border-warning/40 bg-surface-amber/75 shadow-[0_16px_34px_rgba(245,158,11,0.14)] ring-2 ring-warning/10"
+                          : "border-border bg-surface-muted/30"
+                      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/35`}
+                    >
+                      <p className="text-lg font-bold leading-tight text-text">
+                        {plan.priceLabel}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-text-muted">
+                        {plan.name}
+                      </p>
+                      {isCurrentPlan ? (
+                        <p className="mt-2 text-[11px] font-bold text-success">
+                          Current plan
+                        </p>
+                      ) : null}
+                      <div className="mt-4">
+                        <Button
+                          type="button"
+                          className="w-full"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handlePlanAction(
+                              plan.planCode,
+                              isSelectedPlan,
+                              planIsLocked,
+                            );
+                          }}
+                          disabled={planIsLocked || isCheckingOut}
+                        >
+                          {isCheckingOut
+                            ? "Redirecting..."
+                            : planIsLocked
+                            ? "Current plan"
+                            : isSelectedPlan &&
+                                billingEmail &&
+                                !checkoutDisabledReason
+                              ? "Checkout"
+                              : isSelectedPlan
+                                ? "Continue"
+                                : "Select plan"}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-7 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      Selected plan
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-text">
+                      {selectedPlan?.name ||
+                        formatPlanName(effectiveSelectedPlanCode)}
+                    </p>
+                  </div>
+                  <Badge variant={statusMeta.badgeVariant}>
+                    {statusMeta.label}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="mt-6 text-left">
+                <p className="text-sm font-semibold text-text">
+                  Everything included:
+                </p>
+                <ul className="mt-4 space-y-4 text-base text-text-soft">
+                  {(selectedPlan?.features || []).map((feature) => (
+                    <li key={feature} className="flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="mt-6 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-text-muted">Students</span>
+                  <span className="font-semibold text-text">
+                    {formatLimitValue(selectedPlan?.limits?.students)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-text-muted">Teachers</span>
+                  <span className="font-semibold text-text">
+                    {formatLimitValue(selectedPlan?.limits?.teachers)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-text-muted">Classes</span>
+                  <span className="font-semibold text-text">
+                    {formatLimitValue(selectedPlan?.limits?.classes)}
+                  </span>
+                </div>
+              </div>
+
+              <div ref={checkoutRef} className="mt-6 space-y-4">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                    Selected plan
-                  </p>
-                  <p className="mt-1 text-base font-semibold text-text">
-                    {selectedPlan?.name || formatPlanName(effectiveSelectedPlanCode)}
-                  </p>
-                </div>
-                <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
-              </div>
-            </div>
-
-            <div className="mt-6 text-left">
-              <p className="text-sm font-semibold text-text">
-                Everything included:
-              </p>
-              <ul className="mt-4 space-y-4 text-base text-text-soft">
-                {(selectedPlan?.features || []).map((feature) => (
-                  <li key={feature} className="flex items-start gap-3">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mt-6 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-text-muted">Students</span>
-                <span className="font-semibold text-text">
-                  {formatLimitValue(selectedPlan?.limits?.students)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-text-muted">Teachers</span>
-                <span className="font-semibold text-text">
-                  {formatLimitValue(selectedPlan?.limits?.teachers)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-text-muted">Classes</span>
-                <span className="font-semibold text-text">
-                  {formatLimitValue(selectedPlan?.limits?.classes)}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-text-soft">
-                  Billing interval
-                </label>
-                <select
-                  className="input-base"
-                  value={billingInterval}
-                  onChange={(event) => setBillingInterval(event.target.value)}
-                >
-                  {BILLING_INTERVAL_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <Input
-                label="Billing email"
-                type="email"
-                value={billingEmail}
-                onChange={(event) => setBillingEmail(event.target.value)}
-                placeholder="tenant-admin-email@example.com"
-              />
-
-              {checkoutDisabledReason ? (
-                <div className="rounded-2xl border border-border bg-surface-muted/35 px-4 py-3 text-sm text-text-muted">
-                  {checkoutDisabledReason}
-                </div>
-              ) : null}
-            </div>
-          </Card>
-
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl md:hidden">
-            <Button
-              className="min-h-14 w-full rounded-full text-base"
-              disabled={
-                isCheckingOut ||
-                !billingEmail ||
-                Boolean(checkoutDisabledReason)
-              }
-              onClick={handleCheckout}
-            >
-              {isCheckingOut ? "Redirecting..." : "Upgrade"}
-            </Button>
-            <p className="mt-2 text-center text-xs text-text-muted">
-              Auto-renews monthly. Cancel anytime.
-            </p>
-          </div>
-        </section>
-
-        <section className="hidden dashboard-grid xl:grid-cols-[minmax(0,1fr)_360px] md:grid">
-          <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-            {LANDING_PRICING_PLANS.map((plan) => {
-              const isCurrentPlan = plan.planCode === planCode;
-              const isSelectedPlan = plan.planCode === effectiveSelectedPlanCode;
-
-              return (
-                <button
-                  key={plan.planCode}
-                  type="button"
-                  onClick={() => setSelectedPlanCode(plan.planCode)}
-                  className={`flex min-h-[430px] flex-col rounded-[1.5rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-premium-hover ${
-                    isSelectedPlan
-                      ? "border-primary ring-4 ring-primary/10"
-                      : "border-border/70"
-                  }`}
-                >
-                  <div className="flex min-h-8 flex-wrap items-center gap-2">
-                    {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
-                    {isCurrentPlan ? <Badge variant="success">Current plan</Badge> : null}
-                  </div>
-
-                  <h2 className="mt-4 text-2xl font-semibold text-text">
-                    {plan.name}
-                  </h2>
-                  <p className="mt-2 text-sm font-semibold text-primary">
-                    {plan.bestFor}
-                  </p>
-                  <p className="mt-3 text-sm leading-6 text-text-muted">
-                    {plan.description}
-                  </p>
-
-                  <div className="mt-5">
-                    <p className="text-2xl font-bold text-text">
-                      {plan.priceLabel}
-                    </p>
-                    <p className="mt-1 text-xs font-medium text-text-muted">
-                      {formatBillingInterval(billingInterval)} billing
-                    </p>
-                  </div>
-
-                  <ul className="mt-5 space-y-3 text-sm text-text-soft">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex gap-3">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                        <span>{feature}</span>
-                      </li>
+                  <label className="mb-1.5 block text-sm font-medium text-text-soft">
+                    Billing interval
+                  </label>
+                  <select
+                    className="input-base"
+                    value={billingInterval}
+                    onChange={(event) => setBillingInterval(event.target.value)}
+                  >
+                    {BILLING_INTERVAL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
-                  </ul>
+                  </select>
+                </div>
 
-                  <div className="mt-5 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-text-muted">Students</span>
-                      <span className="font-semibold text-text">
-                        {formatLimitValue(plan.limits.students)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-text-muted">Teachers</span>
-                      <span className="font-semibold text-text">
-                        {formatLimitValue(plan.limits.teachers)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-text-muted">Classes</span>
-                      <span className="font-semibold text-text">
-                        {formatLimitValue(plan.limits.classes)}
-                      </span>
-                    </div>
+                <Input
+                  label="Billing email"
+                  type="email"
+                  value={billingEmail}
+                  onChange={(event) => setBillingEmail(event.target.value)}
+                  placeholder="tenant-admin-email@example.com"
+                />
+
+                {checkoutDisabledReason ? (
+                  <div className="rounded-2xl border border-border bg-surface-muted/35 px-4 py-3 text-sm text-text-muted">
+                    {checkoutDisabledReason}
                   </div>
+                ) : null}
+              </div>
+            </Card>
+          </section>
 
-                  <div className="mt-auto pt-6">
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+          <section className="hidden md:block">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {paidPlans.map((plan) => {
+                const isCurrentPlan = plan.planCode === planCode;
+                const isSelectedPlan =
+                  plan.planCode === effectiveSelectedPlanCode;
+                const planIsLocked = isCurrentPlan && !canRetryCurrentPlan;
+
+                return (
+                  <div
+                    key={plan.planCode}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedPlanCode(plan.planCode)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        setSelectedPlanCode(plan.planCode);
+                      }
+                    }}
+                    className={`flex min-h-[430px] flex-col rounded-[1.5rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-premium-hover ${
                       isSelectedPlan
-                        ? "bg-primary-soft text-primary"
-                        : "bg-surface-muted text-text-muted"
-                    }`}>
-                      {isSelectedPlan ? "Selected" : plan.ctaLabel}
-                    </span>
+                        ? "border-accent ring-4 ring-accent/10"
+                        : "border-border/70"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50`}
+                  >
+                    <div className="flex min-h-8 flex-wrap items-center gap-2">
+                      {plan.highlighted ? (
+                        <Badge variant="primary">Recommended</Badge>
+                      ) : null}
+                      {isCurrentPlan ? (
+                        <Badge variant="success">Current plan</Badge>
+                      ) : null}
+                    </div>
+
+                    <h2 className="mt-4 text-2xl font-semibold text-text">
+                      {plan.name}
+                    </h2>
+                    <p className="mt-2 text-sm font-semibold text-primary">
+                      {plan.bestFor}
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-text-muted">
+                      {plan.description}
+                    </p>
+
+                    <div className="mt-5">
+                      <p className="text-2xl font-bold text-text">
+                        {plan.priceLabel}
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-text-muted">
+                        {formatBillingInterval(billingInterval)} billing
+                      </p>
+                    </div>
+
+                    <ul className="mt-5 space-y-3 text-sm text-text-soft">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex gap-3">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-5 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-muted">Students</span>
+                        <span className="font-semibold text-text">
+                          {formatLimitValue(plan.limits.students)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-muted">Teachers</span>
+                        <span className="font-semibold text-text">
+                          {formatLimitValue(plan.limits.teachers)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-muted">Classes</span>
+                        <span className="font-semibold text-text">
+                          {formatLimitValue(plan.limits.classes)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-auto pt-6">
+                      <Button
+                        type="button"
+                        className="w-full"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handlePlanAction(
+                            plan.planCode,
+                            isSelectedPlan,
+                            planIsLocked,
+                          );
+                        }}
+                        disabled={planIsLocked || isCheckingOut}
+                      >
+                        {isCheckingOut
+                          ? "Redirecting..."
+                          : planIsLocked
+                          ? "Current plan"
+                          : isSelectedPlan &&
+                              billingEmail &&
+                              !checkoutDisabledReason
+                            ? "Checkout"
+                            : isSelectedPlan
+                              ? "Continue"
+                              : "Select plan"}
+                      </Button>
+                      <div className="mt-3">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                            isSelectedPlan
+                              ? "bg-accent-soft text-accent"
+                              : "bg-surface-muted text-text-muted"
+                          }`}
+                        >
+                          {isSelectedPlan ? "Selected" : plan.ctaLabel}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <Card className="h-fit p-5 sm:p-6">
-            <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-                <CreditCard className="h-5 w-5" />
-              </span>
-              <div>
-                <h2 className="text-lg font-semibold text-text">Checkout</h2>
-                <p className="mt-1 text-sm leading-6 text-text-muted">
-                  Confirm the selected plan and continue to Paystack.
-                </p>
-              </div>
+                );
+              })}
             </div>
-
-            <div className="mt-5 space-y-4">
-              <div className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                  Current plan
-                </p>
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-text">
-                    {formatPlanName(planCode)}
-                  </p>
-                  <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
-                </div>
-                <p className="mt-2 text-xs text-text-muted">
-                  Renews or expires: {formatDateTime(currentSubscription?.current_period_end || entitlements?.current_period_end)}
-                </p>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-text-soft">
-                  Billing interval
-                </label>
-                <select
-                  className="input-base"
-                  value={billingInterval}
-                  onChange={(event) => setBillingInterval(event.target.value)}
-                >
-                  {BILLING_INTERVAL_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <Input
-                label="Billing email"
-                type="email"
-                value={billingEmail}
-                onChange={(event) => setBillingEmail(event.target.value)}
-                placeholder="tenant-admin-email@example.com"
-              />
-
-              <div className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                  Selected plan
-                </p>
-                <p className="mt-2 text-base font-semibold text-text">
-                  {selectedPlan?.name || formatPlanName(effectiveSelectedPlanCode)}
-                </p>
-                <p className="mt-1 text-sm text-text-muted">
-                  {selectedPlan?.bestFor || "Choose the plan that matches your school size."}
-                </p>
-              </div>
-
-              {checkoutDisabledReason ? (
-                <div className="rounded-2xl border border-border bg-surface-muted/35 px-4 py-3 text-sm text-text-muted">
-                  {checkoutDisabledReason}
-                </div>
-              ) : null}
-
-              <Button
-                className="w-full"
-                disabled={
-                  isCheckingOut ||
-                  !billingEmail ||
-                  Boolean(checkoutDisabledReason)
-                }
-                onClick={handleCheckout}
-              >
-                {isCheckingOut ? "Redirecting to Paystack..." : "Upgrade Plan"}
-              </Button>
-
-              <div className="flex items-start gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-xs leading-5 text-text-muted">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                <span>
-                  Checkout is initialized by the backend subscription endpoint, then verified after Paystack redirects back to the app.
-                </span>
-              </div>
-            </div>
-          </Card>
-        </section>
+          </section>
+        </div>
       </div>
-    </DashboardLayout>
+    </PublicLayout>
   );
 }
 

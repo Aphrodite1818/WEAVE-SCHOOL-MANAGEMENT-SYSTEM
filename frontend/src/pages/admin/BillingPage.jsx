@@ -172,12 +172,6 @@ function BillingPage() {
                   Billing is kept separate from dashboard analytics. Use this page for subscription state, payment provider details, and transaction history.
                 </p>
               </div>
-              <Link to="/admin/billing/plans">
-                <Button>
-                  <CreditCard className="h-4 w-4" />
-                  Upgrade Plan
-                </Button>
-              </Link>
             </div>
 
             <div className="dashboard-kpi-grid mt-5 lg:grid-cols-3">

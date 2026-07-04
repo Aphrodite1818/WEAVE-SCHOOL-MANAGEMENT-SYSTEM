@@ -53,6 +53,10 @@ import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
 import WorkspaceSearch from "./WorkspaceSearch";
 
+const SIDEBAR_SCROLL_STORAGE_PREFIX = "learnly_sidebar_scroll";
+const NOTIFICATION_PREVIEW_CACHE_TTL_MS = 30_000;
+const notificationPreviewCache = new Map();
+
 const roleLabels = {
   admin: "Administrator",
   teacher: "Teacher",
@@ -257,6 +261,47 @@ function notificationTimestamp(value) {
   });
 }
 
+function getSidebarScrollStorageKey({ role, mobile, collapsed }) {
+  return [
+    SIDEBAR_SCROLL_STORAGE_PREFIX,
+    role,
+    mobile ? "mobile" : "desktop",
+    collapsed ? "collapsed" : "expanded",
+  ].join(":");
+}
+
+function getNotificationPreviewCacheKey(role) {
+  return `notification_preview:${role}`;
+}
+
+function readNotificationPreviewCache(role) {
+  const cacheKey = getNotificationPreviewCacheKey(role);
+  const cached = notificationPreviewCache.get(cacheKey);
+
+  if (!cached) return null;
+  if (Date.now() - cached.updatedAt > NOTIFICATION_PREVIEW_CACHE_TTL_MS) {
+    notificationPreviewCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached;
+}
+
+function writeNotificationPreviewCache(role, items) {
+  const nextCache = {
+    items,
+    unreadCount: items.filter((item) => !item.is_read).length,
+    updatedAt: Date.now(),
+  };
+
+  notificationPreviewCache.set(
+    getNotificationPreviewCacheKey(role),
+    nextCache,
+  );
+
+  return nextCache;
+}
+
 function SidebarContent({
   role,
   collapsed,
@@ -267,6 +312,59 @@ function SidebarContent({
 }) {
   const location = useLocation();
   const groups = navGroups[role] || navGroups.admin;
+  const navRef = useRef(null);
+  const scrollStorageKey = getSidebarScrollStorageKey({
+    role,
+    mobile,
+    collapsed,
+  });
+
+  useEffect(() => {
+    const navElement = navRef.current;
+    if (!navElement) return;
+
+    const storedScrollTop = window.sessionStorage.getItem(scrollStorageKey);
+    if (storedScrollTop === null) return;
+
+    const parsedScrollTop = Number(storedScrollTop);
+    navElement.scrollTop = Number.isFinite(parsedScrollTop)
+      ? parsedScrollTop
+      : 0;
+  }, [scrollStorageKey]);
+
+  useEffect(() => {
+    const navElement = navRef.current;
+    if (!navElement) return;
+
+    const persistScrollPosition = () => {
+      window.sessionStorage.setItem(
+        scrollStorageKey,
+        String(navElement.scrollTop),
+      );
+    };
+
+    navElement.addEventListener("scroll", persistScrollPosition, {
+      passive: true,
+    });
+
+    return () => {
+      persistScrollPosition();
+      navElement.removeEventListener("scroll", persistScrollPosition);
+    };
+  }, [scrollStorageKey]);
+
+  const handleNavigate = () => {
+    const navElement = navRef.current;
+
+    if (navElement) {
+      window.sessionStorage.setItem(
+        scrollStorageKey,
+        String(navElement.scrollTop),
+      );
+    }
+
+    onNavigate?.();
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -284,7 +382,7 @@ function SidebarContent({
             "flex min-w-0 items-center gap-3",
             collapsed && "justify-center",
           )}
-          onClick={onNavigate}
+          onClick={handleNavigate}
         >
           <img
             src={logoImage}
@@ -340,7 +438,10 @@ function SidebarContent({
           </p>
         </div>
       )}
-      <nav className="flex-1 min-h-0 space-y-5 overflow-y-auto px-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <nav
+        ref={navRef}
+        className="flex-1 min-h-0 space-y-5 overflow-y-auto px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
         {groups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
@@ -359,7 +460,7 @@ function SidebarContent({
                   <Link
                     key={`${group.label}-${item.label}`}
                     to={item.to}
-                    onClick={onNavigate}
+                    onClick={handleNavigate}
                     title={collapsed ? item.label : undefined}
                     className={cn(
                       "group relative nav-item",
@@ -418,11 +519,15 @@ function SidebarContent({
 function Topbar({ role, onOpenMobileNav, schoolName }) {
   const navigate = useNavigate();
   const user = authSession.getUser() || {};
-  const location = useLocation();
   const { isTenantAdmin, planCode, statusMeta } = useSubscription();
+  const cachedNotificationPreview = readNotificationPreviewCache(role);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState(
+    () => cachedNotificationPreview?.items || [],
+  );
+  const [unreadCount, setUnreadCount] = useState(
+    () => cachedNotificationPreview?.unreadCount || 0,
+  );
   const [themeHint, setThemeHint] = useState(
     () => document.documentElement.dataset.theme || "light",
   );
@@ -434,13 +539,21 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
 
   useEffect(() => {
     let mounted = true;
+
+    if (readNotificationPreviewCache(role)) {
+      return () => {
+        mounted = false;
+      };
+    }
+
     async function loadNotificationPreview() {
       try {
         const response = await announcementService.getFeed({ limit: 5 });
         if (!mounted) return;
         const items = response?.items || [];
-        setNotifications(items.slice(0, 5));
-        setUnreadCount(items.filter((item) => !item.is_read).length);
+        const nextPreview = writeNotificationPreviewCache(role, items.slice(0, 5));
+        setNotifications(nextPreview.items);
+        setUnreadCount(nextPreview.unreadCount);
       } catch {
         if (!mounted) return;
         setNotifications([]);
@@ -451,7 +564,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
     return () => {
       mounted = false;
     };
-  }, [location.pathname]);
+  }, [role]);
 
   const handleLogout = () => {
     authService.logout();
@@ -573,7 +686,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
                     {userName}
                   </span>
                   {showPlanBadge ? (
-                    <span className="mt-0.5 rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                    <span className="mt-0.5 text-xs font-medium text-text-muted">
                       {formatPlanName(planCode)}
                     </span>
                   ) : null}
@@ -596,14 +709,9 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
                   </div>
                 </div>
                 {showPlanBadge ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-primary-soft px-2.5 py-1 text-[11px] font-bold text-primary">
-                      {formatPlanName(planCode)}
-                    </span>
-                    <span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-text-muted">
-                      {statusMeta.label}
-                    </span>
-                  </div>
+                  <p className="mt-3 text-xs text-text-muted">
+                    {formatPlanName(planCode)} · {statusMeta.label}
+                  </p>
                 ) : null}
               </div>
               <Link
