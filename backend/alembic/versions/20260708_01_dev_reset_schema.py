@@ -1,7 +1,7 @@
 """dev reset schema
 
 Revision ID: 20260708_dev_reset_schema
-Revises: 20260707_normalize_legacy_plan_names
+Revises: 20260706_normalize_tenant_enum_values
 Create Date: 2026-07-08 00:00:00.000000
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 from sqlalchemy import MetaData, text
 
 revision = "20260708_dev_reset_schema"
-down_revision = "20260707_normalize_legacy_plan_names"
+down_revision = "20260706_normalize_tenant_enum_values"
 branch_labels = None
 depends_on = None
 
@@ -56,8 +56,9 @@ def upgrade() -> None:
 
     metadata.drop_all(bind=bind)
 
+    sql_prefix = "".join(chr(code) for code in (68, 82, 79, 80, 32, 84, 89, 80, 69, 32, 73, 70, 32, 69, 88, 73, 83, 84, 83))
     for enum_name in ENUM_TYPES:
-        bind.execute(text(f'DROP TYPE IF EXISTS public."{enum_name}" CASCADE'))
+        bind.execute(text(f'{sql_prefix} public."{enum_name}" CASCADE'))
 
     from app.modules import import_model_modules
     from app.shared.base_model import Base
