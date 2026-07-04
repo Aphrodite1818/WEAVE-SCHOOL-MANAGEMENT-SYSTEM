@@ -268,7 +268,7 @@ export const parseApiError = (error, fallback) => {
   };
 };
 
-export const remapFieldErrors = (fieldErrors, fieldMap = {}) =>
+export const remapFieldErrors = (fieldErrors = {}, fieldMap = {}) =>
   Object.entries(fieldErrors || {}).reduce((mappedErrors, [field, message]) => {
     const mappedField = fieldMap[field] || field;
     mappedErrors[mappedField] = message;
@@ -281,7 +281,12 @@ export const getErrorMessage = (error, fallback = "An error occurred") => {
 };
 
 async function request(endpoint, options = {}) {
-  const { auth = true, headers: optionHeaders = {}, ...restOptions } = options;
+  const {
+    auth = true,
+    clearAuthOnUnauthorized = true,
+    headers: optionHeaders = {},
+    ...restOptions
+  } = options;
   const token = auth ? authSession.getToken() : null;
   const hasBody = restOptions.body !== undefined && restOptions.body !== null;
 
@@ -302,7 +307,7 @@ async function request(endpoint, options = {}) {
     const responseHeaders = Object.fromEntries(response.headers.entries());
 
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 && clearAuthOnUnauthorized) {
         authSession.clear();
       }
 
