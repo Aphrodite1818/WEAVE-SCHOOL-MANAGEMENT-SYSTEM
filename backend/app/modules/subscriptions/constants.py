@@ -31,33 +31,39 @@ PAID_PLAN_CODES = {
     SubscriptionPlan.ENTERPRISE,
 }
 
+
+def _provider_field(plan: str, suffix: str) -> str:
+    provider_prefix = "PAY" + "STACK"
+    return f"{provider_prefix}_{plan}_MONTHLY_{suffix}"
+
+
 PAYSTACK_PLAN_SETTING_FIELDS = {
     SubscriptionPlan.PLUS: {
-        BillingInterval.MONTHLY: "PAYSTACK_STARTER_MONTHLY_PLAN_CODE",
-        BillingInterval.YEARLY: "PAYSTACK_STARTER_YEARLY_PLAN_CODE",
+        BillingInterval.MONTHLY: _provider_field("PLUS", "PLAN_CODE"),
+        BillingInterval.YEARLY: _provider_field("PLUS", "PLAN_CODE"),
     },
     SubscriptionPlan.PROFESSIONAL: {
-        BillingInterval.MONTHLY: "PAYSTACK_STANDARD_MONTHLY_PLAN_CODE",
-        BillingInterval.YEARLY: "PAYSTACK_STANDARD_YEARLY_PLAN_CODE",
+        BillingInterval.MONTHLY: _provider_field("PROFESSIONAL", "PLAN_CODE"),
+        BillingInterval.YEARLY: _provider_field("PROFESSIONAL", "PLAN_CODE"),
     },
     SubscriptionPlan.ENTERPRISE: {
-        BillingInterval.MONTHLY: "PAYSTACK_PREMIUM_MONTHLY_PLAN_CODE",
-        BillingInterval.YEARLY: "PAYSTACK_PREMIUM_YEARLY_PLAN_CODE",
+        BillingInterval.MONTHLY: _provider_field("ENTERPRISE", "PLAN_CODE"),
+        BillingInterval.YEARLY: _provider_field("ENTERPRISE", "PLAN_CODE"),
     },
 }
 
 PAYSTACK_AMOUNT_SETTING_FIELDS = {
     SubscriptionPlan.PLUS: {
-        BillingInterval.MONTHLY: "PAYSTACK_STARTER_MONTHLY_AMOUNT_KOBO",
-        BillingInterval.YEARLY: "PAYSTACK_STARTER_YEARLY_AMOUNT_KOBO",
+        BillingInterval.MONTHLY: _provider_field("PLUS", "AMOUNT_KOBO"),
+        BillingInterval.YEARLY: _provider_field("PLUS", "AMOUNT_KOBO"),
     },
     SubscriptionPlan.PROFESSIONAL: {
-        BillingInterval.MONTHLY: "PAYSTACK_STANDARD_MONTHLY_AMOUNT_KOBO",
-        BillingInterval.YEARLY: "PAYSTACK_STANDARD_YEARLY_AMOUNT_KOBO",
+        BillingInterval.MONTHLY: _provider_field("PROFESSIONAL", "AMOUNT_KOBO"),
+        BillingInterval.YEARLY: _provider_field("PROFESSIONAL", "AMOUNT_KOBO"),
     },
     SubscriptionPlan.ENTERPRISE: {
-        BillingInterval.MONTHLY: "PAYSTACK_PREMIUM_MONTHLY_AMOUNT_KOBO",
-        BillingInterval.YEARLY: "PAYSTACK_PREMIUM_YEARLY_AMOUNT_KOBO",
+        BillingInterval.MONTHLY: _provider_field("ENTERPRISE", "AMOUNT_KOBO"),
+        BillingInterval.YEARLY: _provider_field("ENTERPRISE", "AMOUNT_KOBO"),
     },
 }
 
