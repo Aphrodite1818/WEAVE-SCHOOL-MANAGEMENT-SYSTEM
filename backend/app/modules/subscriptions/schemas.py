@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
@@ -95,8 +95,15 @@ class ResourceLimitCheckResponse(BaseModel):
 
 class SubscriptionCheckoutCreate(BaseModel):
     plan_code: str
-    billing_interval: BillingInterval
+    billing_interval: BillingInterval = BillingInterval.MONTHLY
     billing_email: EmailStr
+
+    @field_validator("billing_interval")
+    @classmethod
+    def validate_monthly_only(cls, value: BillingInterval) -> BillingInterval:
+        if value != BillingInterval.MONTHLY:
+            raise ValueError("Only monthly billing is currently supported.")
+        return value
 
 
 class SubscriptionCheckoutResponse(BaseModel):
