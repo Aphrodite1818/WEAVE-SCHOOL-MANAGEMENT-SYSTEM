@@ -1,4 +1,5 @@
 import {
+  Activity,
   BarChart3,
   Bell,
   BookOpen,
@@ -30,6 +31,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import logoImage from "../../assets/images/favicon.png";
+import { formatPlanName } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { announcementService } from "../../services/announcementService";
 import { authSession } from "../../services/api";
@@ -138,6 +140,7 @@ const navGroups = {
         { label: "Fees", to: "/admin/fees", icon: Receipt },
         { label: "Payments", to: "/admin/payments", icon: CreditCard },
         { label: "Billing", to: "/admin/billing", icon: CreditCard },
+        { label: "Usage", to: "/admin/usage", icon: Activity },
         { label: "Settings", to: "/admin/settings", icon: Settings },
       ],
     },
@@ -416,6 +419,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   const navigate = useNavigate();
   const user = authSession.getUser() || {};
   const location = useLocation();
+  const { isTenantAdmin, planCode, statusMeta } = useSubscription();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -426,6 +430,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   const avatarSrc = getUserAvatarSrc(user);
   const canSearchWorkspace = workspaceSearchRoles.has(role);
   const notificationPath = announcementPaths[role] || "/profile";
+  const showPlanBadge = role === "admin" && isTenantAdmin;
 
   useEffect(() => {
     let mounted = true;
@@ -556,21 +561,51 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
           </button>
           <Dropdown
             align="right"
-            contentClassName="w-64"
+            contentClassName="w-72"
             trigger={
               <button
                 type="button"
                 className="flex items-center gap-2 rounded-full border border-border bg-surface px-2 py-1.5 shadow-sm transition hover:bg-surface-muted"
               >
                 <Avatar src={avatarSrc} name={userName} size="sm" />
-                <span className="hidden max-w-[9rem] truncate text-sm font-semibold text-text sm:block">
-                  {userName}
+                <span className="hidden max-w-[10rem] flex-col items-start leading-tight sm:flex">
+                  <span className="max-w-full truncate text-sm font-semibold text-text">
+                    {userName}
+                  </span>
+                  {showPlanBadge ? (
+                    <span className="mt-0.5 rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                      {formatPlanName(planCode)}
+                    </span>
+                  ) : null}
                 </span>
                 <ChevronDown className="h-4 w-4 text-text-muted" />
               </button>
             }
           >
             <div className="p-2">
+              <div className="mb-2 rounded-2xl border border-border/70 bg-surface-muted/35 px-3 py-3">
+                <div className="flex items-center gap-3">
+                  <Avatar src={avatarSrc} name={userName} size="sm" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-text">
+                      {userName}
+                    </p>
+                    <p className="truncate text-xs text-text-muted">
+                      {roleLabels[role] || "Workspace"}
+                    </p>
+                  </div>
+                </div>
+                {showPlanBadge ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-primary-soft px-2.5 py-1 text-[11px] font-bold text-primary">
+                      {formatPlanName(planCode)}
+                    </span>
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-text-muted">
+                      {statusMeta.label}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
               <Link
                 to="/profile"
                 className="block rounded-xl px-3 py-2 text-sm font-medium text-text-soft hover:bg-surface-muted"
