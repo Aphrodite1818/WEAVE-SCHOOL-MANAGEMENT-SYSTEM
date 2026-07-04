@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CreditCard, RefreshCw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, CreditCard, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
@@ -53,6 +53,9 @@ function SubscriptionOptionsPage() {
   const [checkoutError, setCheckoutError] = useState(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
+  const paidPlans = LANDING_PRICING_PLANS.filter(
+    (plan) => plan.planCode !== "free_trial"
+  );
   const effectiveSelectedPlanCode = selectedPlanCode || getDefaultSelection(planCode);
   const selectedPlan = LANDING_PRICING_PLANS.find(
     (plan) => plan.planCode === effectiveSelectedPlanCode
@@ -146,7 +149,7 @@ function SubscriptionOptionsPage() {
       description="Compare subscription options and continue to secure checkout."
       actions={refreshAction}
     >
-      <div className="space-y-5">
+      <div className="space-y-5 pb-24 md:pb-0">
         {errors.currentSubscription ? (
           <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
             {errors.currentSubscription}
@@ -163,7 +166,154 @@ function SubscriptionOptionsPage() {
           </div>
         ) : null}
 
-        <section className="dashboard-grid xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="md:hidden">
+          <Card className="overflow-hidden rounded-[2rem] p-5">
+            <div className="flex flex-col items-center text-center">
+              <span className="flex h-14 w-14 rotate-45 items-center justify-center rounded-2xl bg-primary text-text-inverse shadow-sm shadow-primary/30">
+                <Sparkles className="h-6 w-6 -rotate-45" />
+              </span>
+              <h2 className="mt-6 text-3xl font-semibold tracking-tight text-text">
+                Upgrade your plan
+              </h2>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-text-muted">
+                Get higher school limits and more workspace capacity for your team.
+              </p>
+            </div>
+
+            <div className="mt-7 grid grid-cols-2 gap-3">
+              {paidPlans.map((plan) => {
+                const isSelectedPlan = plan.planCode === effectiveSelectedPlanCode;
+                const isCurrentPlan = plan.planCode === planCode;
+
+                return (
+                  <button
+                    key={plan.planCode}
+                    type="button"
+                    onClick={() => setSelectedPlanCode(plan.planCode)}
+                    className={`min-h-[6rem] rounded-2xl border px-4 py-4 text-left transition ${
+                      isSelectedPlan
+                        ? "border-primary bg-primary-soft/60 ring-4 ring-primary/10"
+                        : "border-border bg-surface-muted/30"
+                    }`}
+                  >
+                    <p className="text-lg font-bold leading-tight text-text">
+                      {plan.priceLabel}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-text-muted">
+                      {plan.name}
+                    </p>
+                    {isCurrentPlan ? (
+                      <p className="mt-2 text-[11px] font-bold text-success">
+                        Current plan
+                      </p>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-7 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Selected plan
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-text">
+                    {selectedPlan?.name || formatPlanName(effectiveSelectedPlanCode)}
+                  </p>
+                </div>
+                <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
+              </div>
+            </div>
+
+            <div className="mt-6 text-left">
+              <p className="text-sm font-semibold text-text">
+                Everything included:
+              </p>
+              <ul className="mt-4 space-y-4 text-base text-text-soft">
+                {(selectedPlan?.features || []).map((feature) => (
+                  <li key={feature} className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-6 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-muted">Students</span>
+                <span className="font-semibold text-text">
+                  {formatLimitValue(selectedPlan?.limits?.students)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-muted">Teachers</span>
+                <span className="font-semibold text-text">
+                  {formatLimitValue(selectedPlan?.limits?.teachers)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-muted">Classes</span>
+                <span className="font-semibold text-text">
+                  {formatLimitValue(selectedPlan?.limits?.classes)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text-soft">
+                  Billing interval
+                </label>
+                <select
+                  className="input-base"
+                  value={billingInterval}
+                  onChange={(event) => setBillingInterval(event.target.value)}
+                >
+                  {BILLING_INTERVAL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Input
+                label="Billing email"
+                type="email"
+                value={billingEmail}
+                onChange={(event) => setBillingEmail(event.target.value)}
+                placeholder="tenant-admin-email@example.com"
+              />
+
+              {checkoutDisabledReason ? (
+                <div className="rounded-2xl border border-border bg-surface-muted/35 px-4 py-3 text-sm text-text-muted">
+                  {checkoutDisabledReason}
+                </div>
+              ) : null}
+            </div>
+          </Card>
+
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl md:hidden">
+            <Button
+              className="min-h-14 w-full rounded-full text-base"
+              disabled={
+                isCheckingOut ||
+                !billingEmail ||
+                Boolean(checkoutDisabledReason)
+              }
+              onClick={handleCheckout}
+            >
+              {isCheckingOut ? "Redirecting..." : "Upgrade"}
+            </Button>
+            <p className="mt-2 text-center text-xs text-text-muted">
+              Auto-renews monthly. Cancel anytime.
+            </p>
+          </div>
+        </section>
+
+        <section className="hidden dashboard-grid xl:grid-cols-[minmax(0,1fr)_360px] md:grid">
           <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
             {LANDING_PRICING_PLANS.map((plan) => {
               const isCurrentPlan = plan.planCode === planCode;
