@@ -1,9 +1,15 @@
 import { api } from "./api";
 
-export const subscriptionService = {
-  getCurrentSubscription: () => api.get("/subscriptions/current"),
+const backgroundAuthOptions = {
+  clearAuthOnUnauthorized: false,
+};
 
-  getSubscriptionEntitlements: () => api.get("/subscriptions/entitlements"),
+export const subscriptionService = {
+  getCurrentSubscription: () =>
+    api.get("/subscriptions/current", backgroundAuthOptions),
+
+  getSubscriptionEntitlements: () =>
+    api.get("/subscriptions/entitlements", backgroundAuthOptions),
 
   initializeSubscriptionCheckout: (payload) =>
     api.post("/subscriptions/checkout", payload),
