@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -41,6 +42,15 @@ const isRouteActive = (pathname, itemPath) =>
   pathname === itemPath ||
   (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
 
+const isStandalonePwa = () => {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      window.navigator?.standalone === true ||
+      document.documentElement.dataset.standalonePwa === "true"
+  );
+};
+
 const getIndicatorStyleForElement = (element) => ({
   width: element.offsetWidth,
   transform: `translateX(${element.offsetLeft}px)`,
@@ -49,6 +59,7 @@ const getIndicatorStyleForElement = (element) => ({
 
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
+  const [shouldRender, setShouldRender] = useState(isStandalonePwa);
   const [indicatorStyle, setIndicatorStyle] = useState({
     width: 0,
     transform: "translateX(0px)",
@@ -57,6 +68,24 @@ function BottomNav({ role, onOpenMenu }) {
   const navRef = useRef(null);
   const itemRefs = useRef({});
   const items = bottomNavConfig[role] || bottomNavConfig.admin;
+
+  useEffect(() => {
+    const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
+    const updateDisplayMode = () => setShouldRender(isStandalonePwa());
+
+    updateDisplayMode();
+    displayModeQuery?.addEventListener?.("change", updateDisplayMode);
+    window.addEventListener("pageshow", updateDisplayMode);
+    window.addEventListener("resize", updateDisplayMode);
+    document.addEventListener("visibilitychange", updateDisplayMode);
+
+    return () => {
+      displayModeQuery?.removeEventListener?.("change", updateDisplayMode);
+      window.removeEventListener("pageshow", updateDisplayMode);
+      window.removeEventListener("resize", updateDisplayMode);
+      document.removeEventListener("visibilitychange", updateDisplayMode);
+    };
+  }, []);
 
   const updateIndicator = useCallback(() => {
     const navElement = navRef.current;
@@ -88,10 +117,13 @@ function BottomNav({ role, onOpenMenu }) {
   }, [updateIndicator]);
 
   useLayoutEffect(() => {
+    if (!shouldRender) return;
     scheduleIndicatorUpdate();
-  }, [scheduleIndicatorUpdate]);
+  }, [scheduleIndicatorUpdate, shouldRender]);
 
   useLayoutEffect(() => {
+    if (!shouldRender) return undefined;
+
     const handleResize = () => scheduleIndicatorUpdate();
     const handleVisibilityChange = () => {
       if (!document.hidden) scheduleIndicatorUpdate();
@@ -108,7 +140,7 @@ function BottomNav({ role, onOpenMenu }) {
       window.removeEventListener("pageshow", handleResize);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [scheduleIndicatorUpdate]);
+  }, [scheduleIndicatorUpdate, shouldRender]);
 
   const handleItemPointerDown = useCallback(
     (event, item) => {
@@ -126,24 +158,26 @@ function BottomNav({ role, onOpenMenu }) {
       }
 
       event.preventDefault();
-      scrollDashboardViewportToTop("smooth");
+      scrollDashboardViewportToTop("auto");
     },
     [location.pathname, setIndicatorFromTarget]
   );
 
+  if (!shouldRender) return null;
+
   return (
     <nav
       data-mobile-bottom-nav="true"
-      className="fixed inset-x-0 bottom-0 z-40 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-xl md:hidden"
-      aria-label="Primary mobile navigation"
+      className="fixed inset-x-0 bottom-0 z-40 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-1.5 md:hidden"
+      aria-label="Primary installed app navigation"
     >
       <div
         ref={navRef}
-        className="relative mx-auto flex w-full max-w-[31rem] items-center gap-2 rounded-[2rem] border border-border/70 bg-surface/95 p-2 shadow-[0_18px_48px_rgba(15,23,42,0.22)]"
+        className="relative mx-auto flex w-full max-w-[31rem] items-center gap-2 rounded-[2rem] border border-border/70 bg-surface/95 p-2 shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
       >
         <span
           aria-hidden="true"
-          className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.6rem] bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_10px_22px_rgba(15,23,42,0.14)]"
+          className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.6rem] bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_rgba(15,23,42,0.12)]"
           style={indicatorStyle}
         />
         {items.map((item) => {
@@ -162,14 +196,14 @@ function BottomNav({ role, onOpenMenu }) {
               aria-current={isActive ? "page" : undefined}
               aria-label={item.label}
               className={cn(
-                "relative z-10 flex min-h-16 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.6rem] px-2.5 py-2.5 text-center transition-colors duration-200 ease-out",
+                "relative z-10 flex min-h-16 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.6rem] px-2.5 py-2.5 text-center transition-colors duration-150 ease-out",
                 isActive
                   ? "text-text"
                   : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
               )}
             >
-              <Icon className={cn("pointer-events-none h-[1.375rem] w-[1.375rem] shrink-0 transition-colors duration-200 ease-out", isActive && "text-primary")} />
-              <span className={cn("pointer-events-none max-w-full truncate text-[11.5px] font-bold leading-tight transition-colors duration-200 ease-out", isActive && "text-text")}>
+              <Icon className={cn("pointer-events-none h-[1.375rem] w-[1.375rem] shrink-0 transition-colors duration-150 ease-out", isActive && "text-primary")} />
+              <span className={cn("pointer-events-none max-w-full truncate text-[11.5px] font-bold leading-tight transition-colors duration-150 ease-out", isActive && "text-text")}>
                 {item.label}
               </span>
             </Link>
@@ -178,7 +212,7 @@ function BottomNav({ role, onOpenMenu }) {
         <button
           type="button"
           onClick={onOpenMenu}
-          className="relative z-10 flex min-h-16 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.6rem] px-2.5 py-2.5 text-text-muted transition-colors duration-200 ease-out hover:bg-surface-muted/80 hover:text-text"
+          className="relative z-10 flex min-h-16 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.6rem] px-2.5 py-2.5 text-text-muted transition-colors duration-150 ease-out hover:bg-surface-muted/80 hover:text-text"
           aria-label="Open full navigation menu"
         >
           <Menu className="pointer-events-none h-[1.375rem] w-[1.375rem] shrink-0" />
