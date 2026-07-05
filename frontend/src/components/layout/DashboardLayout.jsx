@@ -39,6 +39,7 @@ import { authService } from "../../services/auth.service";
 import { onboardingService } from "../../services/onboardingService";
 import { tenantService } from "../../services/tenant.service";
 import { cn } from "../../utils/cn";
+import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 import {
   getUserAvatarSrc,
   displayName as resolveDisplayName,
@@ -417,7 +418,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
       <div className="mx-auto flex h-[58px] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:h-[76px] sm:gap-2 sm:px-5 lg:px-8">
         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={onOpenMobileNav} aria-label="Open navigation">
           <Menu className="h-5 w-5" />
@@ -521,6 +522,7 @@ function DashboardLayout({
   onboardingModalEnabled = true,
 }) {
   const user = authSession.getUser() || {};
+  const location = useLocation();
   const role = getRole(user, roleProp);
   const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -539,6 +541,10 @@ function DashboardLayout({
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    scrollDashboardViewportToTop("auto");
+  }, [location.pathname]);
 
   useEffect(() => {
     let mounted = true;

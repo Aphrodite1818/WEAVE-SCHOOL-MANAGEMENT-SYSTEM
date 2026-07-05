@@ -5,9 +5,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText } from "lucide-react";
 import { cn } from "../../utils/cn";
+import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 
 const bottomNavConfig = {
   admin: [
@@ -49,6 +50,7 @@ const isStandaloneDisplay = () => {
 
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isInstalledApp, setIsInstalledApp] = useState(isStandaloneDisplay);
   const [indicatorStyle, setIndicatorStyle] = useState({
     width: 0,
@@ -135,12 +137,26 @@ function BottomNav({ role, onOpenMenu }) {
     };
   }, [isInstalledApp, scheduleIndicatorUpdate]);
 
+  const handleItemClick = useCallback(
+    (event, item, isActive) => {
+      event.preventDefault();
+
+      if (isActive) {
+        scrollDashboardViewportToTop("smooth");
+        return;
+      }
+
+      navigate(item.to);
+    },
+    [navigate]
+  );
+
   if (!isInstalledApp) return null;
 
   return (
     <nav
       data-mobile-bottom-nav="true"
-      className="fixed inset-x-0 -bottom-2 z-40 border-t border-border/70 bg-surface/95 px-2 pb-[calc(0.3rem+env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-surface/95 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl md:hidden"
       aria-label="Primary mobile navigation"
     >
       <div
@@ -162,6 +178,7 @@ function BottomNav({ role, onOpenMenu }) {
             <NavLink
               key={item.label}
               to={item.to}
+              onClick={(event) => handleItemClick(event, item, isActive)}
               ref={(node) => {
                 itemRefs.current[item.to] = node;
               }}

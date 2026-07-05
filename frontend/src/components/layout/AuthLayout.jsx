@@ -50,8 +50,8 @@ function AuthLayout({
         </div>
       </section>
 
-      <main className="flex justify-center py-2 sm:py-4 lg:min-h-screen lg:items-start lg:px-8 lg:py-10">
-        <div className="w-full max-w-md lg:max-w-lg">
+      <main className="flex justify-center py-2 sm:py-4 lg:min-h-screen lg:items-center lg:px-8 lg:py-10">
+        <div className="w-full max-w-md">
           <Link to="/" className="mb-7 flex items-center justify-center gap-3 lg:hidden">
             <img src={logoImage} alt="Learnly AI" className="h-10 w-10 rounded-[1.1rem] border border-white/10 bg-white p-1" />
             <div>
@@ -63,8 +63,8 @@ function AuthLayout({
           <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-2xl sm:p-8">
             <div className="mb-7">
               {iconPosition === "header" ? (
-                <span className="flex h-12 w-12 items-center justify-center rounded-[1.1rem] bg-white/10 text-slate-100">
-                  <ShieldCheck className="h-5 w-5" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-[1rem] bg-white/10 text-slate-100">
+                  <ShieldCheck className="h-4 w-4" />
                 </span>
               ) : null}
               {stepLabel ? (
@@ -82,8 +82,8 @@ function AuthLayout({
           </Card>
           {iconPosition === "below" ? (
             <div className="mt-5 flex justify-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-100 shadow-[0_18px_45px_rgba(2,6,23,0.28)] backdrop-blur-xl">
-                <ShieldCheck className="h-5 w-5" />
+              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-100 shadow-[0_18px_45px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+                <ShieldCheck className="h-4 w-4" />
               </span>
             </div>
           ) : null}

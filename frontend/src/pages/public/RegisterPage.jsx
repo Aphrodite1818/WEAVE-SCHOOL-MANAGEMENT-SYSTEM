@@ -149,18 +149,18 @@ function RegisterPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-3.5">
         <Input label="School name" name="schoolName" value={formData.schoolName} onChange={handleChange} placeholder="Greenfield International School" required error={fieldErrors.schoolName} />
         <Input label="Admin work email" type="email" name="email" value={formData.email} onChange={handleChange} placeholder="admin@school.edu" required error={fieldErrors.email} />
-        <Input label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="At least 8 characters" required minLength={8} error={fieldErrors.password} hint="Use 8+ characters with a mix of letters and numbers." />
+        <Input label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="At least 8 characters" required minLength={8} error={fieldErrors.password} hint="Use 8+ characters with letters and numbers." />
         {formData.password && (
-          <div className="space-y-1.5">
+          <div className="-mt-1 space-y-1">
             <div className="grid grid-cols-5 gap-1">
               {[1, 2, 3, 4, 5].map((level) => (
-                <span key={level} className={`h-1.5 rounded-full ${passwordStrength >= level ? "bg-primary" : "bg-surface-muted"}`} />
+                <span key={level} className={`h-1 rounded-full ${passwordStrength >= level ? "bg-primary" : "bg-surface-muted"}`} />
               ))}
             </div>
-            <p className="text-[11px] text-text-muted">{strengthLabels[passwordStrength]}</p>
+            <p className="text-[11px] leading-4 text-text-muted">{strengthLabels[passwordStrength]}</p>
           </div>
         )}
         <Input label="Confirm password" type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Re-enter password" required error={fieldErrors.confirmPassword} />
