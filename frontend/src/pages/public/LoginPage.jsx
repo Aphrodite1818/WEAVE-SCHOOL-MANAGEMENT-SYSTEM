@@ -75,7 +75,11 @@ function LoginPage() {
 
       authService.clearPendingVerificationEmail();
       const role = String(data?.role || data?.user?.role || "").toUpperCase();
-      if (role === "STUDENT" && data?.user?.password_reset_required) {
+      const passwordResetRequired = Boolean(
+        data?.user?.password_reset_required ?? data?.password_reset_required
+      );
+
+      if (role === "STUDENT" && passwordResetRequired) {
         navigate("/student/change-password", { replace: true });
         return;
       }
