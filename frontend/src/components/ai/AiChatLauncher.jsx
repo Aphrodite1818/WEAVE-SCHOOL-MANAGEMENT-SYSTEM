@@ -10,7 +10,10 @@ const isMobileViewport = () => {
 
 const isMobileBottomNavVisible = () => {
   if (typeof document === "undefined" || !isMobileViewport()) return false;
-  return Boolean(document.querySelector('[data-mobile-bottom-nav="true"]'));
+  // Mirrors the CSS rule in mobileDashboard.css that actually shows the bottom
+  // nav (mobile viewport + installed/standalone PWA). The nav element itself
+  // is always mounted now, so its DOM presence no longer implies visibility.
+  return document.documentElement.dataset.standalonePwa === "true";
 };
 
 function AiChatLauncher() {
