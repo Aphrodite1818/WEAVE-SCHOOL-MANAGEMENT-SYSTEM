@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Learnly AI</title>
+  <desc id="desc">Learnly AI school management app icon.</desc>
+  <defs>
+    <linearGradient id="bg" x1="78" y1="38" x2="434" y2="474" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb" />
+      <stop offset="0.55" stop-color="#1d4ed8" />
+      <stop offset="1" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="card" x1="154" y1="128" x2="358" y2="388" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" />
+      <stop offset="1" stop-color="#dbeafe" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <circle cx="256" cy="256" r="176" fill="#ffffff" opacity="0.12" />
+  <path d="M160 174c0-24 20-44 44-44h104c24 0 44 20 44 44v188c0 12-10 22-22 22H182c-12 0-22-10-22-22V174Z" fill="url(#card)" />
+  <path d="M196 206h120M196 248h120M196 290h84" stroke="#1e3a8a" stroke-width="22" stroke-linecap="round" />
+  <path d="M154 370h204" stroke="#bfdbfe" stroke-width="28" stroke-linecap="round" />
+  <path d="M252 119 132 184v34l120-64 128 68v-36L252 119Z" fill="#f59e0b" />
+  <path d="M256 180 128 248l128 68 128-68-128-68Z" fill="#2563eb" />
+  <path d="M192 281v44c0 26 29 47 64 47s64-21 64-47v-44l-64 34-64-34Z" fill="#1d4ed8" />
+</svg>
