@@ -11,7 +11,7 @@ from alembic import op
 from sqlalchemy import MetaData, text
 
 revision = "20260708_dev_reset_schema"
-down_revision = "20260706_normalize_tenant_enum_values"
+down_revision = "20260706_normalize_tenant_enum"
 branch_labels = None
 depends_on = None
 

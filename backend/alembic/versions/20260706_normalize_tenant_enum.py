@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "20260706_normalize_tenant_enum_values"
+revision = "20260706_normalize_tenant_enum"
 down_revision = "20260705_add_users_is_verified"
 branch_labels = None
 depends_on = None
