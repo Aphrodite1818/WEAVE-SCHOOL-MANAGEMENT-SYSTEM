@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { MessageCircleMore } from "lucide-react";
 import Button from "../ui/Button";
 import AiChatPanel from "./AiChatPanel";
@@ -19,6 +19,8 @@ const isMobileBottomNavVisible = () => {
 function AiChatLauncher() {
   const [open, setOpen] = useState(false);
   const [hasBottomNav, setHasBottomNav] = useState(isMobileViewport);
+  const openPanel = useCallback(() => setOpen(true), []);
+  const closePanel = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
     const updateDisplayMode = () => {
@@ -42,7 +44,7 @@ function AiChatLauncher() {
       <div className={`ai-chat-launcher pointer-events-none fixed z-50 flex justify-end ${hasBottomNav ? "ai-chat-launcher--with-bottom-nav" : ""}`}>
         <Button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={openPanel}
           className={`pointer-events-auto rounded-full shadow-premium ${hasBottomNav ? "h-12 w-12 px-0" : "px-3 py-2 text-xs sm:px-4 sm:text-sm"}`}
           aria-label="Open AI chat"
         >
@@ -55,9 +57,9 @@ function AiChatLauncher() {
           )}
         </Button>
       </div>
-      <AiChatPanel open={open} onClose={() => setOpen(false)} />
+      <AiChatPanel open={open} onClose={closePanel} />
     </>
   );
 }
 
-export default AiChatLauncher;
+export default memo(AiChatLauncher);
