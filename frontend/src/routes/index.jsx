@@ -108,8 +108,10 @@ function AppRoutes() {
             </Route>
 
             <Route element={<RoleGuard allowedRoles={["STUDENT"]} />}>
-              <Route element={<DashboardShell role="student" />}>
+              <Route element={<DashboardShell role="student" onboardingModalEnabled={false} />}>
                 <Route path="/student/change-password" element={<StudentChangePasswordPage />} />
+              </Route>
+              <Route element={<DashboardShell role="student" />}>
                 <Route path="/student/dashboard" element={<StudentDashboardPage />} />
                 <Route path="/student/subjects" element={<StudentSubjectsPage />} />
                 <Route path="/student/subjects/:subjectResultId" element={<StudentSubjectDetailsPage />} />
