@@ -1,4 +1,4 @@
-import { CheckCircle2, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PublicLayout from "../../components/layout/PublicLayout";
 import LoadingState from "../../components/shared/LoadingState";
@@ -38,9 +38,7 @@ function SubscriptionOptionsPage() {
     statusCode,
     statusMeta,
     isLoading,
-    isRefreshing,
     errors,
-    refreshSubscriptionState,
   } = useSubscription();
   const [selectedPlanCode, setSelectedPlanCode] = useState(
     storedSelection?.planCode || getDefaultSelection(planCode),
@@ -151,32 +149,18 @@ function SubscriptionOptionsPage() {
     }
   };
 
-  const refreshAction = (
-    <Button
-      variant="outline"
-      onClick={() => refreshSubscriptionState()}
-      disabled={isLoading || isRefreshing}
-    >
-      <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-      {isRefreshing ? "Refreshing..." : "Refresh"}
-    </Button>
-  );
-
   if (isLoading && !currentSubscription && !entitlements) {
     return (
       <PublicLayout>
         <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="rounded-[1.5rem] border border-border/70 bg-surface p-6 shadow-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold text-text">
-                  Upgrade Plan
-                </h1>
-                <p className="mt-2 text-sm text-text-muted">
-                  Compare subscription options and continue to secure checkout.
-                </p>
-              </div>
-              {refreshAction}
+            <div>
+              <h1 className="text-2xl font-semibold text-text">
+                Upgrade Plan
+              </h1>
+              <p className="mt-2 text-sm text-text-muted">
+                Compare subscription options and continue to secure checkout.
+              </p>
             </div>
           </div>
           <div className="mt-6">
@@ -189,28 +173,26 @@ function SubscriptionOptionsPage() {
 
   return (
     <PublicLayout>
-      <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 rounded-[1.5rem] border border-border/70 bg-surface p-6 shadow-sm md:hidden">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-text">Upgrade Plan</h1>
-              <p className="mt-2 text-sm text-text-muted">
-                Compare subscription options and continue to secure checkout.
-              </p>
-            </div>
-            {refreshAction}
+      <div className="relative mx-auto min-h-screen max-w-7xl overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10"
+        >
+          <div className="absolute inset-x-0 top-4 h-[20rem] rounded-[2.5rem] bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_42%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_36%),linear-gradient(180deg,rgba(15,23,42,0.78),rgba(15,23,42,0))]" />
+          <div className="absolute -left-12 top-28 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute right-0 top-24 h-48 w-48 rounded-full bg-slate-300/10 blur-3xl" />
+          <div className="absolute bottom-20 left-1/3 h-40 w-40 rounded-full bg-primary/[0.08] blur-3xl" />
+        </div>
+
+        <div className="relative z-10 mb-6 rounded-[1.5rem] border border-border/70 bg-surface p-6 shadow-sm md:hidden">
+          <div>
+            <h1 className="text-2xl font-semibold text-text">Upgrade Plan</h1>
+            <p className="mt-2 text-sm text-text-muted">
+              Compare subscription options and continue to secure checkout.
+            </p>
           </div>
         </div>
-        <section className="mb-6 hidden md:grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-faint">
-              Plan Switcher
-            </p>
-            <p className="mt-1 text-sm text-text-muted">
-              Compare plans without the oversized hero card.
-            </p>
-          </div>
-
+        <section className="relative z-10 mb-6 hidden md:flex items-center justify-center">
           <div className="justify-self-center">
             <div className="relative inline-grid grid-cols-3 items-center rounded-full border border-border/70 bg-surface-muted/65 p-1 shadow-soft-card">
               <span
@@ -239,18 +221,13 @@ function SubscriptionOptionsPage() {
                     <span className="block text-sm font-semibold">
                       {plan.name}
                     </span>
-                    <span className="mt-0.5 block text-[11px] font-medium">
-                      {plan.priceLabel}
-                    </span>
                   </button>
                 );
               })}
             </div>
           </div>
-
-          <div className="justify-self-end">{refreshAction}</div>
         </section>
-        <div className="space-y-5 pb-24 md:pb-0">
+        <div className="relative z-10 space-y-5 pb-24 md:pb-0">
           {errors.currentSubscription ? (
             <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
               {errors.currentSubscription}
@@ -519,42 +496,44 @@ function SubscriptionOptionsPage() {
                       </div>
                     </div>
 
-                    <div className="mt-auto pt-6">
-                      <Button
-                        type="button"
-                        className="w-full"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handlePlanAction(
-                            plan.planCode,
-                            isSelectedPlan,
-                            planIsLocked,
-                          );
-                        }}
-                        disabled={planIsLocked || isCheckingOut}
-                      >
-                        {isCheckingOut
-                          ? "Redirecting..."
-                          : planIsLocked
-                          ? "Current plan"
-                          : isSelectedPlan &&
-                              billingEmail &&
-                              !checkoutDisabledReason
-                            ? "Checkout"
-                            : isSelectedPlan
-                              ? "Continue"
-                              : "Select plan"}
-                      </Button>
-                      <div className="mt-3">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                            isSelectedPlan
-                              ? "bg-accent-soft text-accent"
-                              : "bg-surface-muted text-text-muted"
-                          }`}
+                    <div className="flex flex-1 items-center justify-center pt-6">
+                      <div className="w-full max-w-[19rem] text-center">
+                        <Button
+                          type="button"
+                          className="w-full"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handlePlanAction(
+                              plan.planCode,
+                              isSelectedPlan,
+                              planIsLocked,
+                            );
+                          }}
+                          disabled={planIsLocked || isCheckingOut}
                         >
-                          {isSelectedPlan ? "Selected" : plan.ctaLabel}
-                        </span>
+                          {isCheckingOut
+                            ? "Redirecting..."
+                            : planIsLocked
+                            ? "Current plan"
+                            : isSelectedPlan &&
+                                billingEmail &&
+                                !checkoutDisabledReason
+                              ? "Checkout"
+                              : isSelectedPlan
+                                ? "Continue"
+                                : "Select plan"}
+                        </Button>
+                        <div className="mt-3 flex justify-center">
+                          <span
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                              isSelectedPlan
+                                ? "bg-accent-soft text-accent"
+                                : "bg-surface-muted text-text-muted"
+                            }`}
+                          >
+                            {isSelectedPlan ? "Selected" : plan.ctaLabel}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

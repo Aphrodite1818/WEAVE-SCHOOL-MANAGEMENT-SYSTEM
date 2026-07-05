@@ -1122,7 +1122,7 @@ function SetupTab({
   isSaving,
 }) {
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
+    <div className="grid gap-5 2xl:grid-cols-2">
       <Panel title={editingSessionId ? "Edit session" : "Create session"} subtitle="Manage academic years like 2026/2027.">
         <form onSubmit={saveSession} className="form-grid">
           <TextField label="Session" value={sessionForm.name} onChange={(value) => setSessionForm((c) => ({ ...c, name: value }))} placeholder="2026/2027" required />

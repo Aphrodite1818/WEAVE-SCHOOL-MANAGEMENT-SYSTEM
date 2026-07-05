@@ -84,6 +84,27 @@ function DetailValue({ fieldKey, subscription, statusMeta }) {
   return subscription?.[fieldKey] || "--";
 }
 
+function BillingSnapshotCard({ icon: Icon, label, value, hint }) {
+  return (
+    <div className="rounded-[1.2rem] border border-white/10 bg-white/5 px-4 py-4 backdrop-blur-sm">
+      <div className="flex items-center gap-2 text-white/70">
+        <Icon className="h-4 w-4" />
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em]">
+          {label}
+        </p>
+      </div>
+      <p className="mt-3 text-base font-semibold text-white">
+        {value || "--"}
+      </p>
+      {hint ? (
+        <p className="mt-1 text-xs text-white/60">
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function BillingPage() {
   const {
     currentSubscription,
@@ -158,79 +179,114 @@ function BillingPage() {
         ) : null}
 
         <section className="dashboard-grid xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-          <Card className="p-5 sm:p-6">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <Card className="relative overflow-hidden border-border/70 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.2),transparent_45%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))] p-5 sm:p-6">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-0 w-40 bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.14),transparent_70%)]"
+            />
+            <div className="relative flex flex-col gap-5">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
                   <Badge variant="default">{formatPlanName(planCode)}</Badge>
                 </div>
-                <h2 className="mt-4 text-xl font-semibold text-text">
-                  Subscription summary
+                <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/80">
+                  Billing overview
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-white sm:text-[2rem]">
+                  Subscription command center
                 </h2>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">
-                  Billing is kept separate from dashboard analytics. Use this page for subscription state, payment provider details, and transaction history.
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+                  Track plan status, renewal timing, payment provider activity,
+                  and transaction history from one place without leaving the
+                  admin workspace.
                 </p>
               </div>
-            </div>
 
-            <div className="dashboard-kpi-grid mt-5 lg:grid-cols-3">
-              <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
-                <div className="flex items-center gap-2 text-text-muted">
-                  <ShieldCheck className="h-4 w-4" />
-                  <p className="text-[11px] font-semibold uppercase tracking-wide">Current plan</p>
-                </div>
-                <p className="mt-2 text-base font-semibold text-text">
-                  {formatPlanName(planCode)}
-                </p>
-              </div>
-              <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
-                <div className="flex items-center gap-2 text-text-muted">
-                  <CalendarClock className="h-4 w-4" />
-                  <p className="text-[11px] font-semibold uppercase tracking-wide">Renews or expires</p>
-                </div>
-                <p className="mt-2 text-base font-semibold text-text">
-                  {formatDateTime(renewalDate)}
-                </p>
-              </div>
-              <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
-                <div className="flex items-center gap-2 text-text-muted">
-                  <CreditCard className="h-4 w-4" />
-                  <p className="text-[11px] font-semibold uppercase tracking-wide">Payment provider</p>
-                </div>
-                <p className="mt-2 text-base font-semibold text-text">
-                  {provider || "--"}
-                </p>
+              <div className="dashboard-kpi-grid mt-1 lg:grid-cols-3">
+                <BillingSnapshotCard
+                  icon={ShieldCheck}
+                  label="Current plan"
+                  value={formatPlanName(planCode)}
+                  hint="Active workspace tier"
+                />
+                <BillingSnapshotCard
+                  icon={CalendarClock}
+                  label="Renews or expires"
+                  value={formatDateTime(renewalDate)}
+                  hint="Next lifecycle date"
+                />
+                <BillingSnapshotCard
+                  icon={CreditCard}
+                  label="Payment provider"
+                  value={provider || "--"}
+                  hint="Billing infrastructure"
+                />
               </div>
             </div>
           </Card>
 
           <Card className="p-5 sm:p-6">
-            <h2 className="text-lg font-semibold text-text">Billing access</h2>
-            <p className="mt-1 text-sm leading-6 text-text-muted">
-              The dashboard stays analytics-first. Billing remains available from the sidebar and plan changes continue from this billing workspace.
-            </p>
-            <div className="mt-5 grid gap-3">
-              <Link to="/admin/billing/plans">
-                <Button className="w-full">
-                  Upgrade Plan
-                </Button>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">
+                  Quick actions
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-text">
+                  Manage plan and usage
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-text-muted">
+                  Jump straight into plan changes or review resource usage before
+                  the next renewal cycle.
+                </p>
+              </div>
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+                <CreditCard className="h-5 w-5" />
+              </span>
+            </div>
+
+            <div className="mt-6 grid gap-3">
+              <Link to="/admin/billing/plans" className="block">
+                <Button className="w-full">Upgrade Plan</Button>
               </Link>
-              <Link to="/admin/usage">
+              <Link to="/admin/usage" className="block">
                 <Button variant="outline" className="w-full">
                   View Usage
                 </Button>
               </Link>
+            </div>
+
+            <div className="mt-6 rounded-[1.2rem] border border-border/70 bg-surface-muted/30 px-4 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-faint">
+                Admin note
+              </p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">
+                Billing stays separate from day-to-day analytics so finance,
+                renewals, and payment history are easier to review without
+                mixing them into operational dashboards.
+              </p>
             </div>
           </Card>
         </section>
 
         <section className="dashboard-grid xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <Card className="p-5 sm:p-6">
-            <h2 className="text-lg font-semibold text-text">Billing details</h2>
-            <p className="mt-1 text-sm text-text-muted">
-              Live subscription fields from the backend subscription record.
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">
+                  Subscription record
+                </p>
+                <h2 className="mt-2 text-lg font-semibold text-text">
+                  Billing details
+                </h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  Live subscription fields from the backend subscription record.
+                </p>
+              </div>
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-surface-muted/60 text-text-muted">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
+            </div>
 
             {currentSubscription ? (
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -242,7 +298,7 @@ function BillingPage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                       {field.label}
                     </p>
-                    <p className="mt-2 text-sm font-semibold text-text">
+                    <p className="mt-2 text-sm font-semibold leading-6 text-text">
                       <DetailValue
                         fieldKey={field.key}
                         subscription={currentSubscription}
@@ -265,7 +321,10 @@ function BillingPage() {
           <Card className="p-5 sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-text">Payment history</h2>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">
+                  Transactions
+                </p>
+                <h2 className="mt-2 text-lg font-semibold text-text">Payment history</h2>
                 <p className="mt-1 text-sm text-text-muted">
                   Payment rows appear here when the backend returns transactions, invoices, or payment history.
                 </p>

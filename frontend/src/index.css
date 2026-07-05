@@ -291,7 +291,7 @@
   }
 
   .form-grid {
-    @apply grid w-full min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end;
+    @apply grid w-full min-w-0 grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-5 2xl:items-end;
   }
 
   .form-grid-field {
@@ -299,7 +299,7 @@
   }
 
   .form-grid-actions {
-    @apply flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end xl:ml-auto xl:self-end;
+    @apply flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end 2xl:ml-auto 2xl:self-end;
   }
 
   .btn-create {

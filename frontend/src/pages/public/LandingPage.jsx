@@ -8,7 +8,6 @@ import {
   ClipboardCheck,
   GraduationCap,
   ShieldCheck,
-  Sparkles,
   Users,
 } from "lucide-react";
 import {
@@ -75,11 +74,7 @@ function LandingPage() {
           <div className="section-container relative py-14 sm:py-18 lg:py-24">
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
               <div className="max-w-3xl">
-                <Badge variant="primary" className="bg-white/10 text-white ring-white/15">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Premium school management SaaS
-                </Badge>
-                <h1 className="mt-6 text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
+                <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
                   School operations, academics, and communication in one calm workspace.
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8">
@@ -229,7 +224,11 @@ function LandingPage() {
         </section>
 
         <section id="pricing" className="border-y border-border bg-surface">
-          <div className="section-container py-20">
+          <div className="section-container relative overflow-hidden py-20">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-8 -z-10 h-72 rounded-[2.5rem] bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.14),transparent_42%),radial-gradient(circle_at_left,rgba(59,130,246,0.08),transparent_34%)]"
+            />
             <div className="mx-auto max-w-3xl text-center">
               <p className="text-sm font-bold uppercase tracking-wide text-primary">Pricing</p>
               <h2 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -243,57 +242,94 @@ function LandingPage() {
               {LANDING_PRICING_PLANS.map((plan) => (
                 <article
                   key={plan.planCode}
-                  className={`flex min-h-[460px] flex-col rounded-2xl border bg-background p-6 shadow-soft-card ${
-                    plan.highlighted ? "border-primary ring-4 ring-primary/10" : "border-border"
+                  className={`flex min-h-[430px] flex-col rounded-[1.75rem] border p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-premium-hover ${
+                    plan.highlighted
+                      ? "border-accent bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))] ring-4 ring-accent/10"
+                      : "border-border/70 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.92))]"
                   }`}
                 >
-                  <div className="min-h-7">
-                    {plan.highlighted ? <Badge variant="primary">Most selected</Badge> : null}
+                  <div className="flex min-h-8 flex-wrap items-center gap-2">
+                    {plan.highlighted ? (
+                      <Badge variant="primary">Recommended</Badge>
+                    ) : null}
+                    {plan.planCode === "free_trial" ? (
+                      <Badge variant="success">Get started</Badge>
+                    ) : null}
                   </div>
-                  <h3 className="mt-4 text-2xl font-semibold">{plan.name}</h3>
-                  <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
-                  <p className="mt-4 text-sm leading-6 text-text-muted">{plan.description}</p>
-                  <ul className="mt-6 flex-1 space-y-3">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex gap-3 text-sm leading-6 text-text-soft">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-6 rounded-2xl border border-border/70 bg-surface-muted/35 px-4 py-3">
+
+                  <div>
+                    <h3 className="mt-4 text-2xl font-semibold text-white">{plan.name}</h3>
+                    <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
+                    <p className="mt-5 text-sm leading-6 text-slate-300">{plan.description}</p>
+                    <div className="mt-5">
+                      <p className="text-3xl font-bold text-white">{plan.priceLabel}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-400">
+                        Monthly billing
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-white/[0.03] p-4">
+                    <ul className="space-y-3 text-sm text-slate-200">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex gap-3">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-6 grid gap-2 rounded-[1.5rem] border border-border/70 bg-surface-muted/30 px-4 py-4 text-sm">
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-text-muted">Students</span>
-                      <span className="font-semibold text-text">
+                      <span className="text-slate-400">Students</span>
+                      <span className="font-semibold text-white">
                         {formatLimitValue(plan.limits.students)}
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-text-muted">Teachers</span>
-                      <span className="font-semibold text-text">
+                      <span className="text-slate-400">Teachers</span>
+                      <span className="font-semibold text-white">
                         {formatLimitValue(plan.limits.teachers)}
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-text-muted">Classes</span>
-                      <span className="font-semibold text-text">
+                      <span className="text-slate-400">Classes</span>
+                      <span className="font-semibold text-white">
                         {formatLimitValue(plan.limits.classes)}
                       </span>
                     </div>
                   </div>
-                  <Link
-                    to={buildRegistrationHref(plan.planCode)}
-                    className="mt-8"
-                    onClick={() => handlePlanSelection(plan.planCode)}
-                  >
-                    <Button
-                      variant={plan.highlighted ? "primary" : "outline"}
-                      className="w-full"
-                    >
-                      {plan.ctaLabel}
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </Link>
+
+                  <div className="flex flex-1 items-center justify-center pt-6">
+                    <div className="w-full max-w-[19rem] text-center">
+                      <Link
+                        to={buildRegistrationHref(plan.planCode)}
+                        onClick={() => handlePlanSelection(plan.planCode)}
+                      >
+                        <Button
+                          variant={plan.highlighted ? "primary" : "outline"}
+                          className={`w-full ${plan.highlighted ? "" : "border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.08]"}`}
+                        >
+                          {plan.ctaLabel}
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <div className="mt-3 flex justify-center">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                            plan.highlighted
+                              ? "bg-accent-soft text-accent"
+                              : "bg-surface-muted text-text-muted"
+                          }`}
+                        >
+                          {plan.planCode === "free_trial"
+                            ? "30-day trial"
+                            : plan.name}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </article>
               ))}
             </div>
@@ -320,7 +356,7 @@ function LandingPage() {
         <div className="section-container flex flex-col gap-4 py-8 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-bold">Learnly AI</p>
-            <p className="mt-1 text-sm text-text-muted">Premium school management operations.</p>
+            <p className="mt-1 text-sm text-text-muted">School management workspace.</p>
           </div>
           <div className="flex flex-wrap gap-4 text-sm font-semibold text-text-muted">
             <a href="#features" className="hover:text-primary">Features</a>

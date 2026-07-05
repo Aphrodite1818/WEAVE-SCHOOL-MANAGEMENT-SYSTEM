@@ -165,7 +165,7 @@ function StudentSubjectsPage() {
             className={cn(
               "grid gap-4 sm:gap-5",
               isGridView
-                ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+                ? "grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3"
                 : "grid-cols-1",
             )}
           >

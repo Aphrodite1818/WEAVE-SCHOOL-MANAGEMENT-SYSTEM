@@ -382,7 +382,7 @@ function StudentDashboardPage() {
                   </Link>
                 </div>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
                   {dashboardData.subjectCards.map((card) => {
                     const subjectLabel = cleanText(card.subject_name, "Subject");
                     const statusLabel = displayStatusLabel(card.status, card.result_id ? "Pending" : "Awaiting marks");
@@ -544,7 +544,7 @@ function StudentDashboardPage() {
                               </p>
                             </div>
 
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                               <div className="rounded-xl border border-border/60 bg-surface-muted/25 px-3 py-2 text-center">
                                 <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Test</p>
                                 <p className="mt-1 text-sm font-semibold text-text">{cleanText(line.test_score)}</p>

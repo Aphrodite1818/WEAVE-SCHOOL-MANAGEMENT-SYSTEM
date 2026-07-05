@@ -393,9 +393,9 @@ function ResourcePage({ config }) {
           {error}
         </div>
       )}
-      <div className={`resource-page-grid grid w-full min-w-0 gap-5 ${showForm ? "xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]" : ""}`}>
+      <div className={`resource-page-grid grid w-full min-w-0 gap-5 ${showForm ? "2xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]" : ""}`}>
         {showForm && (
-          <Card className="resource-page-form-card p-4 sm:p-5 xl:sticky xl:top-28 xl:self-start">
+          <Card className="resource-page-form-card p-4 sm:p-5 2xl:sticky 2xl:top-28 2xl:self-start">
             <h2 className="text-lg font-semibold">
               {editingItem ? `Edit ${config.singularLabel.toLowerCase()}` : `Create ${config.singularLabel.toLowerCase()}`}
             </h2>
@@ -458,7 +458,7 @@ function ResourcePage({ config }) {
                 event.preventDefault();
                 loadItems(filters);
               }}
-              className="resource-page-filters mt-5 grid gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid-cols-3 xl:grid-cols-4"
+              className="resource-page-filters mt-5 grid gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid-cols-3 2xl:grid-cols-4"
             >
               {filterFields.map((field) => (
                 <FormControl

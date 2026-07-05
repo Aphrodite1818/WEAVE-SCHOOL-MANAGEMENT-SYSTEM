@@ -71,7 +71,7 @@ function UsageProgressCard({ item }) {
   const percent = item.percent;
 
   return (
-    <div className="min-w-0 w-full rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-4">
+    <div className="usage-progress-card min-w-0 w-full rounded-[1.2rem] border border-border/70 bg-surface-muted/25 px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-text">{item.label}</h3>
@@ -189,7 +189,7 @@ function UsagePage() {
             />
           ) : (
             <>
-              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              <section className="usage-metrics-grid grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
                 {usageItems.map((item) => (
                   <UsageProgressCard key={item.key} item={item} />
                 ))}

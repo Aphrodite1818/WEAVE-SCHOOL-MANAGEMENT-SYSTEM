@@ -132,8 +132,7 @@ function RegisterPage() {
   return (
     <AuthLayout
       title="Create your school workspace"
-      description="Register the school tenant and verify the admin email before first login."
-      stepLabel="Tenant onboarding"
+      description="Set up your school workspace and verify the admin email."
       footer={
         <p className="mt-7 text-center text-sm text-text-soft">
           Already have an account?{" "}
@@ -153,15 +152,15 @@ function RegisterPage() {
       <form onSubmit={handleSubmit} className="space-y-5">
         <Input label="School name" name="schoolName" value={formData.schoolName} onChange={handleChange} placeholder="Greenfield International School" required error={fieldErrors.schoolName} />
         <Input label="Admin work email" type="email" name="email" value={formData.email} onChange={handleChange} placeholder="admin@school.edu" required error={fieldErrors.email} />
-        <Input label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="At least 8 characters" required minLength={8} error={fieldErrors.password} />
+        <Input label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="At least 8 characters" required minLength={8} error={fieldErrors.password} hint="Use 8+ characters with a mix of letters and numbers." />
         {formData.password && (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="grid grid-cols-5 gap-1">
               {[1, 2, 3, 4, 5].map((level) => (
                 <span key={level} className={`h-1.5 rounded-full ${passwordStrength >= level ? "bg-primary" : "bg-surface-muted"}`} />
               ))}
             </div>
-            <p className="text-xs text-text-muted">Strength: {strengthLabels[passwordStrength]}</p>
+            <p className="text-[11px] text-text-muted">{strengthLabels[passwordStrength]}</p>
           </div>
         )}
         <Input label="Confirm password" type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Re-enter password" required error={fieldErrors.confirmPassword} />

@@ -103,12 +103,13 @@ function LoginPage() {
   return (
     <AuthLayout
       title="Welcome back"
-      description="Log in to manage your school workspace."
+      description="Log in to continue into your school workspace."
+      iconPosition="below"
       footer={
         <p className="mt-7 text-center text-sm text-text-soft">
-          Do not have an account?{" "}
+          Need a workspace?{" "}
           <Link to="/register" className="font-semibold text-primary hover:text-primary-hover">
-            Create a school workspace
+            Start free
           </Link>
         </p>
       }
