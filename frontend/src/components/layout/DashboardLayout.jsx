@@ -28,8 +28,16 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import logoImage from "../../assets/images/favicon.png";
 import { formatPlanName } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
@@ -53,6 +61,8 @@ import Dropdown from "../ui/Dropdown";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
 import WorkspaceSearch from "./WorkspaceSearch";
+
+const DashboardShellContext = createContext(null);
 
 const roleLabels = {
   admin: "Administrator",
@@ -212,6 +222,16 @@ const navGroups = {
   ],
 };
 
+function getDefaultPageMeta(role, onboardingModalEnabled = true) {
+  return {
+    role,
+    title: null,
+    description: null,
+    actions: null,
+    onboardingModalEnabled,
+  };
+}
+
 function getUserLabel(user) {
   return resolveDisplayName(user);
 }
@@ -238,7 +258,7 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
     window.requestAnimationFrame(() => {
       navElement.scrollTop = savedScroll;
     });
-  }, [scrollStorageKey, collapsed, location.pathname]);
+  }, [scrollStorageKey, collapsed]);
 
   const persistSidebarScroll = () => {
     const navElement = navRef.current;
@@ -372,7 +392,6 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
 function Topbar({ role, onOpenMobileNav, schoolName }) {
   const navigate = useNavigate();
   const user = authSession.getUser() || {};
-  const location = useLocation();
   const { isTenantAdmin, planCode, statusMeta } = useSubscription();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -403,7 +422,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
     return () => {
       mounted = false;
     };
-  }, [location.pathname]);
+  }, [role]);
 
   const handleLogout = () => {
     authService.logout();
@@ -513,7 +532,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   );
 }
 
-function DashboardLayout({
+function DashboardShellFrame({
   role: roleProp = "admin",
   title,
   description,
@@ -683,6 +702,96 @@ function DashboardLayout({
       ) : null}
       {showAiLauncher ? <AiChatLauncher role={role} /> : null}
     </div>
+  );
+}
+
+export function DashboardShell({ role = "admin", onboardingModalEnabled = true }) {
+  const location = useLocation();
+  const [pageMeta, setPageMetaState] = useState(() =>
+    getDefaultPageMeta(role, onboardingModalEnabled)
+  );
+
+  useEffect(() => {
+    setPageMetaState(getDefaultPageMeta(role, onboardingModalEnabled));
+  }, [location.pathname, role, onboardingModalEnabled]);
+
+  const setPageMeta = useCallback(
+    (meta) => {
+      setPageMetaState((current) => {
+        const next = {
+          role: meta.role || role,
+          title: meta.title || null,
+          description: meta.description || null,
+          actions: meta.actions || null,
+          onboardingModalEnabled:
+            meta.onboardingModalEnabled ?? onboardingModalEnabled,
+        };
+
+        if (
+          current.role === next.role &&
+          current.title === next.title &&
+          current.description === next.description &&
+          current.actions === next.actions &&
+          current.onboardingModalEnabled === next.onboardingModalEnabled
+        ) {
+          return current;
+        }
+
+        return next;
+      });
+    },
+    [onboardingModalEnabled, role]
+  );
+
+  const shellContext = useMemo(
+    () => ({ setPageMeta }),
+    [setPageMeta]
+  );
+
+  return (
+    <DashboardShellContext.Provider value={shellContext}>
+      <DashboardShellFrame {...pageMeta}>
+        <Outlet />
+      </DashboardShellFrame>
+    </DashboardShellContext.Provider>
+  );
+}
+
+function DashboardLayout({
+  role: roleProp = "admin",
+  title,
+  description,
+  actions,
+  children,
+  onboardingModalEnabled = true,
+}) {
+  const shell = useContext(DashboardShellContext);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!shell) return;
+
+    shell.setPageMeta({
+      role: roleProp,
+      title,
+      description,
+      actions,
+      onboardingModalEnabled,
+    });
+  }, [shell, location.pathname, roleProp, title, description, onboardingModalEnabled]);
+
+  if (shell) return <>{children}</>;
+
+  return (
+    <DashboardShellFrame
+      role={roleProp}
+      title={title}
+      description={description}
+      actions={actions}
+      onboardingModalEnabled={onboardingModalEnabled}
+    >
+      {children}
+    </DashboardShellFrame>
   );
 }
 
