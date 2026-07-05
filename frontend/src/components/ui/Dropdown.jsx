@@ -1,18 +1,52 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../../utils/cn";
 
-function Dropdown({ trigger, children, align = "right", className = "" }) {
-  const [open, setOpen] = useState(false);
+function Dropdown({
+  trigger,
+  children,
+  align = "right",
+  className = "",
+  open: openProp,
+  onOpenChange,
+}) {
+  const isControlled = openProp !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? openProp : internalOpen;
   const ref = useRef(null);
 
+  const setOpen = useCallback(
+    (nextOrUpdater) => {
+      if (!isControlled) {
+        setInternalOpen((current) => {
+          const next =
+            typeof nextOrUpdater === "function"
+              ? nextOrUpdater(current)
+              : nextOrUpdater;
+          onOpenChange?.(next);
+          return next;
+        });
+        return;
+      }
+
+      const next =
+        typeof nextOrUpdater === "function"
+          ? nextOrUpdater(openProp)
+          : nextOrUpdater;
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange, openProp]
+  );
+
   useEffect(() => {
-    const handleClick = (event) => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event) => {
       if (!ref.current?.contains(event.target)) setOpen(false);
     };
 
-    window.addEventListener("pointerdown", handleClick);
-    return () => window.removeEventListener("pointerdown", handleClick);
-  }, []);
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [open, setOpen]);
 
   return (
     <div ref={ref} className="relative">
