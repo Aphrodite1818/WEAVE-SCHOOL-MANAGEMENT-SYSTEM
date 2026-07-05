@@ -437,7 +437,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+    <header className="z-30 shrink-0 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
       <div className="mx-auto flex h-[58px] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:h-[76px] sm:gap-2 sm:px-5 lg:px-8">
         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={onOpenMobileNav} aria-label="Open navigation">
           <Menu className="h-5 w-5" />
@@ -454,7 +454,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           <Dropdown
             align="right"
-            contentClassName="w-80 max-w-[calc(100vw-1rem)]"
+            className="w-80 max-w-[calc(100vw-1rem)]"
             open={notificationsOpen}
             onOpenChange={setNotificationsOpen}
             trigger={
@@ -496,7 +496,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
 
           <Dropdown
             align="right"
-            contentClassName="w-72 max-w-[calc(100vw-1rem)]"
+            className="w-72 max-w-[calc(100vw-1rem)]"
             trigger={
               <button type="button" className="flex h-9 items-center gap-2 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm transition hover:bg-surface-muted sm:h-auto sm:px-2 sm:py-1.5">
                 <Avatar src={avatarSrc} name={userName} size="sm" />
@@ -634,7 +634,7 @@ function DashboardShellFrame({
   };
 
   return (
-    <div className="min-h-screen bg-background text-text">
+    <div className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-background text-text">
       <aside className={cn("fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block", sidebarCollapsed ? "w-[5.5rem]" : "w-72")}>
         <SidebarContent role={role} collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((value) => !value)} schoolName={schoolName} />
       </aside>
@@ -653,33 +653,38 @@ function DashboardShellFrame({
           </aside>
         </div>
       )}
-      <div className={cn("min-h-screen transition-[padding] duration-300", sidebarCollapsed ? "md:pl-[5.5rem]" : "md:pl-72")}>
+      <div className={cn("flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300", sidebarCollapsed ? "md:pl-[5.5rem]" : "md:pl-72")}>
         <Topbar role={role} onOpenMobileNav={() => setMobileNavOpen(true)} schoolName={schoolName} />
-        <main
-          id="dashboard-content"
+        <div
+          id="dashboard-scroll-viewport"
           ref={mainRef}
-          className={cn(
-            "mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pt-4 sm:gap-6 sm:px-5 sm:pt-6 lg:px-8",
-            showAiLauncher ? "pb-36 sm:pb-24 lg:pb-28" : "pb-28 sm:pb-12"
-          )}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
-          {(title || description || actions) && (
-            <section className="page-header flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between">
-              <div className="min-w-0 flex-1">
-                {title ? <h1 className="page-title">{title}</h1> : null}
-                {description ? (
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">{description}</p>
-                ) : null}
-              </div>
-              {actions ? (
-                <div className="flex w-full justify-start md:w-auto md:max-w-full md:justify-end">
-                  {actions}
+          <main
+            id="dashboard-content"
+            className={cn(
+              "mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pt-4 sm:gap-6 sm:px-5 sm:pt-6 lg:px-8",
+              showAiLauncher ? "pb-36 sm:pb-24 lg:pb-28" : "pb-28 sm:pb-12"
+            )}
+          >
+            {(title || description || actions) && (
+              <section className="page-header flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between">
+                <div className="min-w-0 flex-1">
+                  {title ? <h1 className="page-title">{title}</h1> : null}
+                  {description ? (
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">{description}</p>
+                  ) : null}
                 </div>
-              ) : null}
-            </section>
-          )}
-          {children}
-        </main>
+                {actions ? (
+                  <div className="flex w-full justify-start md:w-auto md:max-w-full md:justify-end">
+                    {actions}
+                  </div>
+                ) : null}
+              </section>
+            )}
+            {children}
+          </main>
+        </div>
       </div>
       <BottomNav role={role} onOpenMenu={() => setMobileNavOpen(true)} />
       {onboardingModalEnabled ? (
@@ -778,7 +783,7 @@ function DashboardLayout({
       actions,
       onboardingModalEnabled,
     });
-  }, [shell, location.pathname, roleProp, title, description, onboardingModalEnabled]);
+  }, [shell, location.pathname, roleProp, title, description, actions, onboardingModalEnabled]);
 
   if (shell) return <>{children}</>;
 
