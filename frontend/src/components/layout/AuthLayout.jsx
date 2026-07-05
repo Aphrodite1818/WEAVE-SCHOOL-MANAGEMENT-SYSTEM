@@ -12,7 +12,7 @@ function AuthLayout({
   iconPosition = "header",
 }) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_26%),linear-gradient(180deg,#0b1220,#0f172a)] px-4 py-8 text-text sm:px-6 lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(440px,0.68fr)] lg:px-0 lg:py-0">
+    <div className="flex min-h-[100svh] flex-col bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_26%),linear-gradient(180deg,#0b1220,#0f172a)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-text sm:px-6 lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(440px,0.68fr)] lg:px-0 lg:py-0">
       <section className="hidden border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.92))] lg:flex lg:flex-col lg:justify-between lg:px-12 lg:py-10">
         <Link to="/" className="flex items-center gap-3">
           <img src={logoImage} alt="Learnly AI" className="h-11 w-11 rounded-[1.15rem] border border-white/10 bg-white p-1" />
@@ -50,7 +50,7 @@ function AuthLayout({
         </div>
       </section>
 
-      <main className="flex justify-center py-2 sm:py-4 lg:min-h-screen lg:items-center lg:px-8 lg:py-10">
+      <main className="flex flex-1 items-center justify-center py-4 sm:py-5 lg:min-h-screen lg:px-8 lg:py-10">
         <div className="w-full max-w-md">
           <Link to="/" className="mb-7 flex items-center justify-center gap-3 lg:hidden">
             <img src={logoImage} alt="Learnly AI" className="h-10 w-10 rounded-[1.1rem] border border-white/10 bg-white p-1" />

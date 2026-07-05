@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
@@ -156,16 +156,16 @@ function BottomNav({ role, onOpenMenu }) {
   return (
     <nav
       data-mobile-bottom-nav="true"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-surface/95 px-2 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 bottom-[max(0.35rem,env(safe-area-inset-bottom))] z-40 px-2 pb-1 pt-1.5 backdrop-blur-xl md:hidden"
       aria-label="Primary mobile navigation"
     >
       <div
         ref={navRef}
-        className="relative mx-auto flex w-full max-w-[28.5rem] items-center gap-1.5 rounded-[1.55rem] border border-border/60 bg-surface p-1 shadow-sm"
+        className="relative mx-auto flex w-full max-w-[30rem] items-center gap-2 rounded-[1.7rem] border border-border/70 bg-surface/95 p-1.5 shadow-[0_18px_48px_rgba(15,23,42,0.22)]"
       >
         <span
           aria-hidden="true"
-          className="bottom-nav-indicator pointer-events-none absolute bottom-1 left-0 top-1 z-0 rounded-[1.25rem] bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_8px_18px_rgba(15,23,42,0.12)]"
+          className="bottom-nav-indicator pointer-events-none absolute bottom-1.5 left-0 top-1.5 z-0 rounded-[1.35rem] bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_10px_22px_rgba(15,23,42,0.14)]"
           style={indicatorStyle}
         />
         {items.map((item) => {
@@ -175,36 +175,37 @@ function BottomNav({ role, onOpenMenu }) {
             (item.to !== "/" && location.pathname.startsWith(`${item.to}/`));
 
           return (
-            <NavLink
+            <button
+              type="button"
               key={item.label}
-              to={item.to}
               onClick={(event) => handleItemClick(event, item, isActive)}
               ref={(node) => {
                 itemRefs.current[item.to] = node;
               }}
               aria-current={isActive ? "page" : undefined}
+              aria-label={item.label}
               className={cn(
-                "relative z-10 flex min-h-[3.25rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-0.5 rounded-[1.25rem] px-2 py-1.5 text-center transition-colors duration-200 ease-out",
+                "relative z-10 flex min-h-[3.7rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.35rem] px-2.5 py-2 text-center transition-colors duration-200 ease-out",
                 isActive
                   ? "text-text"
                   : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
               )}
             >
               <Icon className={cn("pointer-events-none h-5 w-5 shrink-0 transition-colors duration-200 ease-out", isActive && "text-primary")} />
-              <span className={cn("pointer-events-none max-w-full truncate text-[10px] font-bold leading-tight transition-colors duration-200 ease-out", isActive && "text-text")}>
+              <span className={cn("pointer-events-none max-w-full truncate text-[11px] font-bold leading-tight transition-colors duration-200 ease-out", isActive && "text-text")}>
                 {item.label}
               </span>
-            </NavLink>
+            </button>
           );
         })}
         <button
           type="button"
           onClick={onOpenMenu}
-          className="relative z-10 flex min-h-[3.25rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-0.5 rounded-[1.25rem] px-2 py-1.5 text-text-muted transition-colors duration-200 ease-out hover:bg-surface-muted/80 hover:text-text"
+          className="relative z-10 flex min-h-[3.7rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.35rem] px-2.5 py-2 text-text-muted transition-colors duration-200 ease-out hover:bg-surface-muted/80 hover:text-text"
           aria-label="Open full navigation menu"
         >
           <Menu className="pointer-events-none h-5 w-5 shrink-0" />
-          <span className="pointer-events-none text-[10px] font-bold leading-tight">Menu</span>
+          <span className="pointer-events-none text-[11px] font-bold leading-tight">Menu</span>
         </button>
       </div>
     </nav>
