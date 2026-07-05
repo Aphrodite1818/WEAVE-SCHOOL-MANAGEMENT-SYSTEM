@@ -140,7 +140,7 @@ function BottomNav({ role, onOpenMenu }) {
   return (
     <nav
       data-mobile-bottom-nav="true"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-surface/95 px-2 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl md:hidden"
+      className="fixed inset-x-0 -bottom-2 z-40 border-t border-border/70 bg-surface/95 px-2 pb-[calc(0.4rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl md:hidden"
       aria-label="Primary mobile navigation"
     >
       <div
