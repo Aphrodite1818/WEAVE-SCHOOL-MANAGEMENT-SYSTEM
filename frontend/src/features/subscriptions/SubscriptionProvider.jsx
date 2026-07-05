@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { authSession, getErrorMessage } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
@@ -9,6 +9,27 @@ import {
 import { SubscriptionContext } from "./subscriptionContext";
 
 const normalizeRole = (value) => String(value || "").trim().toLowerCase();
+
+const scheduleDeferredWork = (callback, { timeout = 1500, fallbackDelay = 750 } = {}) => {
+  if (typeof window === "undefined") return () => {};
+
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(callback, { timeout });
+    return () => window.cancelIdleCallback?.(handle);
+  }
+
+  const timerId = window.setTimeout(callback, fallbackDelay);
+  return () => window.clearTimeout(timerId);
+};
+
+const commitBackgroundState = (callback) => {
+  if (typeof startTransition === "function") {
+    startTransition(callback);
+    return;
+  }
+
+  callback();
+};
 
 export function SubscriptionProvider({ children }) {
   const location = useLocation();
@@ -48,41 +69,50 @@ export function SubscriptionProvider({ children }) {
         entitlements: null,
       };
 
-      if (subscriptionResult.status === "fulfilled") {
-        setCurrentSubscription(subscriptionResult.value || null);
-      } else {
+      const nextCurrentSubscription =
+        subscriptionResult.status === "fulfilled"
+          ? subscriptionResult.value || null
+          : null;
+      const nextEntitlements =
+        entitlementsResult.status === "fulfilled"
+          ? entitlementsResult.value || null
+          : null;
+
+      if (subscriptionResult.status !== "fulfilled") {
         nextErrors.currentSubscription = getErrorMessage(
           subscriptionResult.reason,
           "Failed to load current subscription."
         );
       }
 
-      if (entitlementsResult.status === "fulfilled") {
-        setEntitlements(entitlementsResult.value || null);
-      } else {
+      if (entitlementsResult.status !== "fulfilled") {
         nextErrors.entitlements = getErrorMessage(
           entitlementsResult.reason,
           "Failed to load subscription entitlements."
         );
       }
 
-      setErrors(nextErrors);
+      commitBackgroundState(() => {
+        if (subscriptionResult.status === "fulfilled") {
+          setCurrentSubscription(nextCurrentSubscription);
+        }
 
-      if (silent) {
-        setIsRefreshing(false);
-      } else {
-        setIsLoading(false);
-      }
+        if (entitlementsResult.status === "fulfilled") {
+          setEntitlements(nextEntitlements);
+        }
+
+        setErrors(nextErrors);
+
+        if (silent) {
+          setIsRefreshing(false);
+        } else {
+          setIsLoading(false);
+        }
+      });
 
       return {
-        currentSubscription:
-          subscriptionResult.status === "fulfilled"
-            ? subscriptionResult.value || null
-            : null,
-        entitlements:
-          entitlementsResult.status === "fulfilled"
-            ? entitlementsResult.value || null
-            : null,
+        currentSubscription: nextCurrentSubscription,
+        entitlements: nextEntitlements,
       };
     },
     [isTenantAdmin]
@@ -102,13 +132,20 @@ export function SubscriptionProvider({ children }) {
     if (!shouldLoadSubscriptionState) return;
 
     subscriptionLoadRequestedRef.current = true;
-    const timerId = window.setTimeout(() => {
-      refreshSubscriptionState();
-    }, 0);
 
-    return () => {
-      window.clearTimeout(timerId);
-    };
+    if (shouldRefreshAfterPaymentRedirect) {
+      const timerId = window.setTimeout(() => {
+        refreshSubscriptionState();
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timerId);
+      };
+    }
+
+    return scheduleDeferredWork(() => {
+      refreshSubscriptionState();
+    });
   }, [isTenantAdmin, location.pathname, refreshSubscriptionState]);
 
   const visibleCurrentSubscription = isTenantAdmin ? currentSubscription : null;
