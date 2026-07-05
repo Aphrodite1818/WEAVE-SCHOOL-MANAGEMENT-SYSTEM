@@ -3,43 +3,32 @@ import { MessageCircleMore } from "lucide-react";
 import Button from "../ui/Button";
 import AiChatPanel from "./AiChatPanel";
 
-const isStandaloneDisplay = () => {
+const isMobileViewport = () => {
   if (typeof window === "undefined") return false;
-
-  const standaloneMedia = window.matchMedia?.("(display-mode: standalone)")?.matches;
-  const fullscreenMedia = window.matchMedia?.("(display-mode: fullscreen)")?.matches;
-  const iosStandalone = window.navigator?.standalone === true;
-
-  return Boolean(standaloneMedia || fullscreenMedia || iosStandalone);
+  return window.matchMedia?.("(max-width: 767px)")?.matches ?? false;
 };
 
 const isMobileBottomNavVisible = () => {
-  if (typeof document === "undefined") return false;
+  if (typeof document === "undefined" || !isMobileViewport()) return false;
   return Boolean(document.querySelector('[data-mobile-bottom-nav="true"]'));
 };
 
 function AiChatLauncher() {
   const [open, setOpen] = useState(false);
-  const [hasBottomNav, setHasBottomNav] = useState(() => isStandaloneDisplay() || isMobileBottomNavVisible());
+  const [hasBottomNav, setHasBottomNav] = useState(isMobileViewport);
 
   useEffect(() => {
-    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
-    const fullscreenQuery = window.matchMedia?.("(display-mode: fullscreen)");
     const updateDisplayMode = () => {
-      setHasBottomNav(isStandaloneDisplay() || isMobileBottomNavVisible());
+      setHasBottomNav(isMobileBottomNavVisible());
     };
 
     updateDisplayMode();
     const timer = window.setTimeout(updateDisplayMode, 0);
-    standaloneQuery?.addEventListener?.("change", updateDisplayMode);
-    fullscreenQuery?.addEventListener?.("change", updateDisplayMode);
     window.addEventListener("resize", updateDisplayMode);
     window.addEventListener("orientationchange", updateDisplayMode);
 
     return () => {
       window.clearTimeout(timer);
-      standaloneQuery?.removeEventListener?.("change", updateDisplayMode);
-      fullscreenQuery?.removeEventListener?.("change", updateDisplayMode);
       window.removeEventListener("resize", updateDisplayMode);
       window.removeEventListener("orientationchange", updateDisplayMode);
     };
