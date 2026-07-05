@@ -37,6 +37,10 @@ const bottomNavConfig = {
   ],
 };
 
+const isRouteActive = (pathname, itemPath) =>
+  pathname === itemPath ||
+  (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
+
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
   const [indicatorStyle, setIndicatorStyle] = useState({
@@ -50,12 +54,9 @@ function BottomNav({ role, onOpenMenu }) {
 
   const updateIndicator = useCallback(() => {
     const navElement = navRef.current;
-    const activeItem = items.find((item) => {
-      return (
-        location.pathname === item.to ||
-        (item.to !== "/" && location.pathname.startsWith(`${item.to}/`))
-      );
-    });
+    const activeItem = items.find((item) =>
+      isRouteActive(location.pathname, item.to)
+    );
 
     const activeElement = activeItem ? itemRefs.current[activeItem.to] : null;
 
@@ -107,12 +108,17 @@ function BottomNav({ role, onOpenMenu }) {
   }, [scheduleIndicatorUpdate]);
 
   const handleItemClick = useCallback(
-    (event, isActive) => {
-      if (!isActive) return;
+    (event, item) => {
+      const currentPathname =
+        typeof window === "undefined"
+          ? location.pathname
+          : window.location.pathname;
+
+      if (!isRouteActive(currentPathname, item.to)) return;
       event.preventDefault();
       scrollDashboardViewportToTop("smooth");
     },
-    []
+    [location.pathname]
   );
 
   return (
@@ -132,15 +138,13 @@ function BottomNav({ role, onOpenMenu }) {
         />
         {items.map((item) => {
           const Icon = item.icon;
-          const isActive =
-            location.pathname === item.to ||
-            (item.to !== "/" && location.pathname.startsWith(`${item.to}/`));
+          const isActive = isRouteActive(location.pathname, item.to);
 
           return (
             <Link
               key={item.label}
               to={item.to}
-              onClick={(event) => handleItemClick(event, isActive)}
+              onClick={(event) => handleItemClick(event, item)}
               ref={(node) => {
                 itemRefs.current[item.to] = node;
               }}
