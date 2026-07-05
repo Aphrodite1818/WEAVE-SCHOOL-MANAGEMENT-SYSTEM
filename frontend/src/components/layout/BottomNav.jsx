@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -42,15 +41,6 @@ const isRouteActive = (pathname, itemPath) =>
   pathname === itemPath ||
   (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
 
-const isStandalonePwa = () => {
-  if (typeof window === "undefined") return false;
-  return Boolean(
-    window.matchMedia?.("(display-mode: standalone)")?.matches ||
-      window.navigator?.standalone === true ||
-      document.documentElement.dataset.standalonePwa === "true"
-  );
-};
-
 const getIndicatorStyleForElement = (element) => ({
   width: element.offsetWidth,
   transform: `translateX(${element.offsetLeft}px)`,
@@ -59,7 +49,6 @@ const getIndicatorStyleForElement = (element) => ({
 
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
-  const [shouldRender, setShouldRender] = useState(isStandalonePwa);
   const [indicatorStyle, setIndicatorStyle] = useState({
     width: 0,
     transform: "translateX(0px)",
@@ -67,25 +56,10 @@ function BottomNav({ role, onOpenMenu }) {
   });
   const navRef = useRef(null);
   const itemRefs = useRef({});
+  const lastViewportWidth = useRef(
+    typeof window === "undefined" ? 0 : window.innerWidth
+  );
   const items = bottomNavConfig[role] || bottomNavConfig.admin;
-
-  useEffect(() => {
-    const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
-    const updateDisplayMode = () => setShouldRender(isStandalonePwa());
-
-    updateDisplayMode();
-    displayModeQuery?.addEventListener?.("change", updateDisplayMode);
-    window.addEventListener("pageshow", updateDisplayMode);
-    window.addEventListener("resize", updateDisplayMode);
-    document.addEventListener("visibilitychange", updateDisplayMode);
-
-    return () => {
-      displayModeQuery?.removeEventListener?.("change", updateDisplayMode);
-      window.removeEventListener("pageshow", updateDisplayMode);
-      window.removeEventListener("resize", updateDisplayMode);
-      document.removeEventListener("visibilitychange", updateDisplayMode);
-    };
-  }, []);
 
   const updateIndicator = useCallback(() => {
     const navElement = navRef.current;
@@ -117,30 +91,40 @@ function BottomNav({ role, onOpenMenu }) {
   }, [updateIndicator]);
 
   useLayoutEffect(() => {
-    if (!shouldRender) return;
     scheduleIndicatorUpdate();
-  }, [scheduleIndicatorUpdate, shouldRender]);
+  }, [scheduleIndicatorUpdate]);
 
   useLayoutEffect(() => {
-    if (!shouldRender) return undefined;
-
-    const handleResize = () => scheduleIndicatorUpdate();
+    const handleResize = () => {
+      // Mobile browsers fire `resize` when the address bar collapses/expands
+      // during scroll — that only changes viewport height, not width. Re-running
+      // indicator layout in that moment can shift the tap target under the
+      // user's finger and cause the browser to drop the click. Only react when
+      // the width actually changed (a real rotation/breakpoint change).
+      if (window.innerWidth === lastViewportWidth.current) return;
+      lastViewportWidth.current = window.innerWidth;
+      scheduleIndicatorUpdate();
+    };
+    const handleOrientationChange = () => {
+      lastViewportWidth.current = window.innerWidth;
+      scheduleIndicatorUpdate();
+    };
     const handleVisibilityChange = () => {
       if (!document.hidden) scheduleIndicatorUpdate();
     };
 
     window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
-    window.addEventListener("pageshow", handleResize);
+    window.addEventListener("orientationchange", handleOrientationChange);
+    window.addEventListener("pageshow", handleVisibilityChange);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      window.removeEventListener("orientationchange", handleResize);
-      window.removeEventListener("pageshow", handleResize);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+      window.removeEventListener("pageshow", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [scheduleIndicatorUpdate, shouldRender]);
+  }, [scheduleIndicatorUpdate]);
 
   const handleItemPointerDown = useCallback(
     (event, item) => {
@@ -162,8 +146,6 @@ function BottomNav({ role, onOpenMenu }) {
     },
     [location.pathname, setIndicatorFromTarget]
   );
-
-  if (!shouldRender) return null;
 
   return (
     <nav
