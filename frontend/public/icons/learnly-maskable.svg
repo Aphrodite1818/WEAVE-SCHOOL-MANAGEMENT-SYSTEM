@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Learnly AI Maskable Icon</title>
+  <desc id="desc">Maskable Learnly AI school management app icon.</desc>
+  <defs>
+    <linearGradient id="bg" x1="72" y1="32" x2="440" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb" />
+      <stop offset="0.55" stop-color="#1d4ed8" />
+      <stop offset="1" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="card" x1="164" y1="138" x2="348" y2="378" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" />
+      <stop offset="1" stop-color="#dbeafe" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)" />
+  <circle cx="256" cy="256" r="196" fill="#ffffff" opacity="0.1" />
+  <circle cx="256" cy="256" r="154" fill="#0f172a" opacity="0.16" />
+  <path d="M170 186c0-22 18-40 40-40h92c22 0 40 18 40 40v166c0 12-10 22-22 22H192c-12 0-22-10-22-22V186Z" fill="url(#card)" />
+  <path d="M204 215h104M204 254h104M204 293h72" stroke="#1e3a8a" stroke-width="20" stroke-linecap="round" />
+  <path d="M158 361h196" stroke="#bfdbfe" stroke-width="26" stroke-linecap="round" />
+  <path d="M256 124 136 188v33l120-64 120 64v-33L256 124Z" fill="#f59e0b" />
+  <path d="M256 187 138 250l118 63 118-63-118-63Z" fill="#2563eb" />
+  <path d="M198 282v40c0 24 26 43 58 43s58-19 58-43v-40l-58 31-58-31Z" fill="#1d4ed8" />
+</svg>
