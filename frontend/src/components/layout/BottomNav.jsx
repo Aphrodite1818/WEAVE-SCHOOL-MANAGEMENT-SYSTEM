@@ -41,6 +41,12 @@ const isRouteActive = (pathname, itemPath) =>
   pathname === itemPath ||
   (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
 
+const getIndicatorStyleForElement = (element) => ({
+  width: element.offsetWidth,
+  transform: `translateX(${element.offsetLeft}px)`,
+  opacity: 1,
+});
+
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
   const [indicatorStyle, setIndicatorStyle] = useState({
@@ -65,22 +71,19 @@ function BottomNav({ role, onOpenMenu }) {
       return;
     }
 
-    const itemRect = activeElement.getBoundingClientRect();
-
-    setIndicatorStyle({
-      width: itemRect.width,
-      transform: `translateX(${activeElement.offsetLeft}px)`,
-      opacity: 1,
-    });
+    setIndicatorStyle(getIndicatorStyleForElement(activeElement));
   }, [items, location.pathname]);
+
+  const setIndicatorFromTarget = useCallback((target) => {
+    if (!target) return;
+    setIndicatorStyle(getIndicatorStyleForElement(target));
+  }, []);
 
   const scheduleIndicatorUpdate = useCallback(() => {
     if (typeof window === "undefined") return;
 
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        updateIndicator();
-      });
+      updateIndicator();
     });
   }, [updateIndicator]);
 
@@ -107,18 +110,25 @@ function BottomNav({ role, onOpenMenu }) {
     };
   }, [scheduleIndicatorUpdate]);
 
+  const handleItemPointerDown = useCallback(
+    (event, item) => {
+      if (isRouteActive(location.pathname, item.to)) return;
+      setIndicatorFromTarget(event.currentTarget);
+    },
+    [location.pathname, setIndicatorFromTarget]
+  );
+
   const handleItemClick = useCallback(
     (event, item) => {
-      const currentPathname =
-        typeof window === "undefined"
-          ? location.pathname
-          : window.location.pathname;
+      if (!isRouteActive(location.pathname, item.to)) {
+        setIndicatorFromTarget(event.currentTarget);
+        return;
+      }
 
-      if (!isRouteActive(currentPathname, item.to)) return;
       event.preventDefault();
       scrollDashboardViewportToTop("smooth");
     },
-    [location.pathname]
+    [location.pathname, setIndicatorFromTarget]
   );
 
   return (
@@ -144,6 +154,7 @@ function BottomNav({ role, onOpenMenu }) {
             <Link
               key={item.label}
               to={item.to}
+              onPointerDown={(event) => handleItemPointerDown(event, item)}
               onClick={(event) => handleItemClick(event, item)}
               ref={(node) => {
                 itemRefs.current[item.to] = node;
