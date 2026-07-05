@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useLayoutEffect,
   useRef,
@@ -205,4 +206,4 @@ function BottomNav({ role, onOpenMenu }) {
   );
 }
 
-export default BottomNav;
+export default memo(BottomNav);
