@@ -1,4 +1,10 @@
 /* Responsive dashboard ergonomics shared by all main dashboards. */
+#dashboard-scroll-viewport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
 #dashboard-content {
   overflow-wrap: normal;
   word-break: normal;
@@ -258,21 +264,4 @@
   .data-table td > * {
     overflow-wrap: anywhere;
   }
-}
-
-/* Light Academic Hub spacing: reduce clutter without redesigning the page. */
-.form-grid {
-  gap: 1rem;
-}
-
-.form-grid-actions {
-  gap: 0.75rem;
-}
-
-.table-wrap {
-  margin-top: 1.25rem;
-}
-
-.aw-table-wrap {
-  margin-top: 1.25rem;
 }
