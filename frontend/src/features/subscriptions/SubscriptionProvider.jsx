@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { authSession, getErrorMessage } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
@@ -12,6 +12,7 @@ const normalizeRole = (value) => String(value || "").trim().toLowerCase();
 
 export function SubscriptionProvider({ children }) {
   const location = useLocation();
+  const subscriptionLoadRequestedRef = useRef(false);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [entitlements, setEntitlements] = useState(null);
   const [errors, setErrors] = useState({
@@ -88,7 +89,19 @@ export function SubscriptionProvider({ children }) {
   );
 
   useEffect(() => {
-    if (!isTenantAdmin) return;
+    if (!isTenantAdmin) {
+      subscriptionLoadRequestedRef.current = false;
+      return;
+    }
+
+    const shouldRefreshAfterPaymentRedirect =
+      location.pathname === "/billing/subscription/verify";
+    const shouldLoadSubscriptionState =
+      !subscriptionLoadRequestedRef.current || shouldRefreshAfterPaymentRedirect;
+
+    if (!shouldLoadSubscriptionState) return;
+
+    subscriptionLoadRequestedRef.current = true;
     const timerId = window.setTimeout(() => {
       refreshSubscriptionState();
     }, 0);
@@ -96,7 +109,7 @@ export function SubscriptionProvider({ children }) {
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [isTenantAdmin, location.key, refreshSubscriptionState]);
+  }, [isTenantAdmin, location.pathname, refreshSubscriptionState]);
 
   const visibleCurrentSubscription = isTenantAdmin ? currentSubscription : null;
   const visibleEntitlements = isTenantAdmin ? entitlements : null;
