@@ -38,7 +38,7 @@ class MetricsService:
         dashboard = await CacheManager.get_or_set(
             key=key,
             fetcher=fetcher,
-            ttl=settings.CACHE_SHORT_TTL_SECONDS,
+            ttl=settings.CACHE_DEFAULT_TTL_SECONDS,
         )
         return DashboardMetricsResponse.model_validate(dashboard)
 
