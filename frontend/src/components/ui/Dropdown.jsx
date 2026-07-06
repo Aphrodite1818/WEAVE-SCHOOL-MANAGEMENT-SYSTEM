@@ -49,12 +49,12 @@ function Dropdown({
   }, [open, setOpen]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative min-w-0">
       <div onClick={() => setOpen((current) => !current)}>{trigger}</div>
       {open && (
         <div
           className={cn(
-            "absolute z-40 mt-2 min-w-56 rounded-2xl border border-border bg-surface p-2 shadow-premium animate-fadein",
+            "absolute z-40 mt-2 min-w-56 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-border bg-surface p-2 shadow-premium animate-fadein [overflow-wrap:anywhere]",
             align === "right" ? "right-0" : "left-0",
             className
           )}
