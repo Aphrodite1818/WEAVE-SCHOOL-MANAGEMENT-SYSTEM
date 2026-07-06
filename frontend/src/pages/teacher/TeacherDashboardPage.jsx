@@ -19,6 +19,7 @@ import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
+import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { teacherService } from "../../services/teacherService";
 import { cleanText } from "../../utils/academicDashboard";
 
@@ -47,27 +48,38 @@ function TeacherDashboardPage() {
       setLoadError(null);
 
       try {
-        const [
-          teacherProfile,
-          subjectResponse,
-          assignmentResponse,
-          classResponse,
-          metricsResponse,
-        ] = await Promise.all([
-          teacherService.getMyTeacher({ signal: controller.signal }),
-          teacherService.getMySubjects({ signal: controller.signal }),
-          academicService.listMyTeacherAssignments({ signal: controller.signal }),
-          classService.getClasses({ limit: 100, active_only: true, signal: controller.signal }),
-          dashboardService.getTeacherAnalytics({ signal: controller.signal }),
-        ]);
+        const cacheKey = getDashboardSessionCacheKey("teacher:dashboard");
+        const bundle = await getCachedDashboardBundle(cacheKey, async () => {
+          const [
+            teacherProfile,
+            subjectResponse,
+            assignmentResponse,
+            classResponse,
+            metricsResponse,
+          ] = await Promise.all([
+            teacherService.getMyTeacher({ signal: controller.signal }),
+            teacherService.getMySubjects({ signal: controller.signal }),
+            academicService.listMyTeacherAssignments({ signal: controller.signal }),
+            classService.getClasses({ limit: 100, active_only: true, signal: controller.signal }),
+            dashboardService.getTeacherAnalytics({ signal: controller.signal }),
+          ]);
+
+          return {
+            teacher: teacherProfile,
+            subjects: subjectResponse?.items || [],
+            assignments: assignmentResponse?.items || [],
+            classTeacherClasses: classResponse?.items || [],
+            metrics: metricsResponse,
+          };
+        });
 
         if (!mounted || controller.signal.aborted) return;
 
-        setTeacher(teacherProfile);
-        setSubjects(subjectResponse?.items || []);
-        setAssignments(assignmentResponse?.items || []);
-        setClassTeacherClasses(classResponse?.items || []);
-        setMetrics(metricsResponse);
+        setTeacher(bundle.teacher);
+        setSubjects(bundle.subjects);
+        setAssignments(bundle.assignments);
+        setClassTeacherClasses(bundle.classTeacherClasses);
+        setMetrics(bundle.metrics);
       } catch (error) {
         if (mounted && !isAbortError(error)) {
           setLoadError(
