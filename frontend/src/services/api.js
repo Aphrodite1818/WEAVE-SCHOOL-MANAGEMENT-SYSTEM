@@ -13,12 +13,18 @@ export const API_BASE_URL = API_URL.replace(/\/$/, "");
 const TOKEN_KEY = "token";
 const USER_KEY = "auth_user";
 const ROLE_KEY = "auth_role";
+export const NAVIGATION_ABORT_EVENT = "learnly:navigation-start";
 const DEFAULT_USER_SAFE_ERROR =
   "Something went wrong while processing your request. Please try again.";
 const NETWORK_ERROR_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
 const TECHNICAL_ERROR_PATTERN =
   /traceback|sql|sqlalchemy|asyncpg|psycopg|uuid|pydantic|stack trace|internal server error|syntax error/i;
+
+export const isAbortError = (error) =>
+  error?.name === "AbortError" ||
+  error?.code === 20 ||
+  error?.isAbortError === true;
 
 const normalizeDetail = (detail) => {
   if (!detail) return null;
@@ -237,6 +243,19 @@ export const authSession = {
 };
 
 export const parseApiError = (error, fallback) => {
+  if (isAbortError(error)) {
+    return {
+      status: null,
+      message: "",
+      fieldErrors: {},
+      headers: {},
+      retryAfter: null,
+      isNetworkError: false,
+      isAbortError: true,
+      technicalMessage: error?.message || null,
+    };
+  }
+
   if (!error?.response) {
     return {
       status: null,
@@ -276,7 +295,7 @@ export const remapFieldErrors = (fieldErrors = {}, fieldMap = {}) =>
   }, {});
 
 export const getErrorMessage = (error, fallback = "An error occurred") => {
-  if (!error) return fallback;
+  if (!error || isAbortError(error)) return "";
   return parseApiError(error, fallback).message;
 };
 
@@ -285,10 +304,14 @@ async function request(endpoint, options = {}) {
     auth = true,
     clearAuthOnUnauthorized = true,
     headers: optionHeaders = {},
+    signal: providedSignal,
     ...restOptions
   } = options;
   const token = auth ? authSession.getToken() : null;
   const hasBody = restOptions.body !== undefined && restOptions.body !== null;
+  const method = restOptions.method || "GET";
+  const autoAbortController = !providedSignal && method === "GET" ? new AbortController() : null;
+  const requestSignal = providedSignal || autoAbortController?.signal;
 
   const headers = {
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
@@ -299,7 +322,16 @@ async function request(endpoint, options = {}) {
   const config = {
     ...restOptions,
     headers,
+    ...(requestSignal ? { signal: requestSignal } : {}),
   };
+
+  const abortOnNavigation = () => {
+    autoAbortController?.abort();
+  };
+
+  if (autoAbortController) {
+    window.addEventListener(NAVIGATION_ABORT_EVENT, abortOnNavigation, { once: true });
+  }
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
@@ -327,8 +359,17 @@ async function request(endpoint, options = {}) {
 
     return data;
   } catch (error) {
+    if (isAbortError(error)) {
+      error.isAbortError = true;
+      throw error;
+    }
+
     console.error(`API Error on ${endpoint}:`, error);
     throw error;
+  } finally {
+    if (autoAbortController) {
+      window.removeEventListener(NAVIGATION_ABORT_EVENT, abortOnNavigation);
+    }
   }
 }
 
