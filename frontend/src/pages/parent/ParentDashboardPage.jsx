@@ -8,9 +8,10 @@ import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import LoadingState from "../../components/shared/LoadingState";
 import StatCard from "../../components/shared/StatCard";
-import { authSession, getErrorMessage } from "../../services/api";
+import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { reportCardService } from "../../services/reportCardService";
+import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { displayName } from "../../utils/user";
 import {
   averageByAcademicPeriod,
@@ -37,6 +38,7 @@ function ParentDashboardPage() {
   } = useParentChildren();
   const [childResults, setChildResults] = useState([]);
   const [childReportCards, setChildReportCards] = useState([]);
+  const [childAcademicsLoading, setChildAcademicsLoading] = useState(false);
 
   const childAverage = averageScore(childResults);
   const subjectHighlights = bestAndWeakestSubject(childResults);
@@ -61,27 +63,42 @@ function ParentDashboardPage() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
 
     async function loadChildAcademics() {
       if (!selectedChildId) {
+        setChildAcademicsLoading(false);
         setChildResults([]);
         setChildReportCards([]);
         return;
       }
 
+      setChildAcademicsLoading(true);
+
       try {
-        const [resultResponse, reportCardResponse] = await Promise.all([
-          academicService.listChildResults(selectedChildId),
-          reportCardService.listChildReportCards(selectedChildId),
-        ]);
-        if (!mounted) return;
-        setChildResults(resultResponse?.items || []);
-        setChildReportCards(reportCardResponse?.items || []);
+        const cacheKey = getDashboardSessionCacheKey(`parent:child:${selectedChildId}:academics`);
+        const bundle = await getCachedDashboardBundle(cacheKey, async () => {
+          const [resultResponse, reportCardResponse] = await Promise.all([
+            academicService.listChildResults(selectedChildId, { signal: controller.signal }),
+            reportCardService.listChildReportCards(selectedChildId, { signal: controller.signal }),
+          ]);
+
+          return {
+            results: resultResponse?.items || [],
+            reportCards: reportCardResponse?.items || [],
+          };
+        });
+
+        if (!mounted || controller.signal.aborted) return;
+        setChildResults(bundle.results);
+        setChildReportCards(bundle.reportCards);
       } catch (error) {
-        if (!mounted) return;
+        if (!mounted || isAbortError(error)) return;
         setChildResults([]);
         setChildReportCards([]);
         setLoadError(getErrorMessage(error, "Failed to load child academic summary."));
+      } finally {
+        if (mounted && !controller.signal.aborted) setChildAcademicsLoading(false);
       }
     }
 
@@ -89,10 +106,11 @@ function ParentDashboardPage() {
 
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, [selectedChildId, setLoadError]);
 
-  if (isLoading) {
+  if (isLoading || childAcademicsLoading) {
     return (
       <DashboardLayout role="parent" title={`${firstName}'s Portal`}>
         <LoadingState label="Loading parent dashboard..." />
