@@ -16,6 +16,15 @@ const NAV_LOADING_SHOW_DELAY_MS = 80;
 const NAV_LOADING_MIN_VISIBLE_MS = 300;
 const NAV_LOADING_MAX_MS = 1200;
 
+const isStandalonePwaDisplay = () => {
+  if (typeof window === "undefined") return false;
+
+  return Boolean(
+    window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      window.navigator?.standalone === true
+  );
+};
+
 const bottomNavConfig = {
   admin: [
     { label: "Home", to: "/admin/dashboard", icon: Home },
@@ -56,6 +65,7 @@ const getIndicatorStyleForElement = (element) => ({
 
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
+  const [isStandalonePwa, setIsStandalonePwa] = useState(isStandalonePwaDisplay);
   const [indicatorStyle, setIndicatorStyle] = useState({
     width: 0,
     transform: "translateX(0px)",
@@ -147,7 +157,32 @@ function BottomNav({ role, onOpenMenu }) {
     }, NAV_LOADING_MAX_MS);
   }, [clearLoadingTimers]);
 
+  useEffect(() => {
+    const syncStandalonePwaMode = () => {
+      const nextValue = isStandalonePwaDisplay();
+      document.documentElement.dataset.standalonePwa = String(nextValue);
+      setIsStandalonePwa(nextValue);
+    };
+
+    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
+
+    syncStandalonePwaMode();
+    standaloneQuery?.addEventListener?.("change", syncStandalonePwaMode);
+    window.addEventListener("pageshow", syncStandalonePwaMode);
+    window.addEventListener("resize", syncStandalonePwaMode);
+    document.addEventListener("visibilitychange", syncStandalonePwaMode);
+
+    return () => {
+      standaloneQuery?.removeEventListener?.("change", syncStandalonePwaMode);
+      window.removeEventListener("pageshow", syncStandalonePwaMode);
+      window.removeEventListener("resize", syncStandalonePwaMode);
+      document.removeEventListener("visibilitychange", syncStandalonePwaMode);
+    };
+  }, []);
+
   useLayoutEffect(() => {
+    if (!isStandalonePwa) return undefined;
+
     clearTimer(indicatorTimerRef);
 
     if (!hasMountedRef.current) {
@@ -165,9 +200,11 @@ function BottomNav({ role, onOpenMenu }) {
     return () => {
       clearTimer(indicatorTimerRef);
     };
-  }, [clearTimer, finishNavigationFeedback, location.pathname, scheduleIndicatorUpdate]);
+  }, [clearTimer, finishNavigationFeedback, isStandalonePwa, location.pathname, scheduleIndicatorUpdate]);
 
   useLayoutEffect(() => {
+    if (!isStandalonePwa) return undefined;
+
     const handleResize = () => {
       if (window.innerWidth === lastViewportWidth.current) return;
       lastViewportWidth.current = window.innerWidth;
@@ -192,7 +229,7 @@ function BottomNav({ role, onOpenMenu }) {
       window.removeEventListener("pageshow", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [scheduleIndicatorUpdate]);
+  }, [isStandalonePwa, scheduleIndicatorUpdate]);
 
   useEffect(() => {
     return () => {
@@ -217,6 +254,8 @@ function BottomNav({ role, onOpenMenu }) {
     [clearLoadingTimers, location.pathname, startNavigationFeedback]
   );
 
+  if (!isStandalonePwa) return null;
+
   return (
     <>
       {loadingVisible ? (
@@ -237,10 +276,10 @@ function BottomNav({ role, onOpenMenu }) {
         style={{ paddingBottom: "max(0.45rem, env(safe-area-inset-bottom))" }}
         aria-label="Primary installed app navigation"
       >
-        <div ref={navRef} className="relative mx-auto flex w-full max-w-[28rem] flex-row items-center gap-1 rounded-[1.5rem] bg-surface/95 p-1.5 shadow-sm">
+        <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2rem] bg-surface/95 p-2 shadow-sm">
           <span
             aria-hidden="true"
-            className="bottom-nav-indicator pointer-events-none absolute bottom-1.5 left-0 top-1.5 z-0 rounded-2xl bg-primary/10"
+            className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary/10"
             style={indicatorStyle}
           />
 
@@ -258,11 +297,11 @@ function BottomNav({ role, onOpenMenu }) {
                 aria-current={isActive ? "page" : undefined}
                 aria-label={item.label}
                 className={cn(
-                  "relative z-10 flex min-h-[3.25rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-2xl px-1.5 py-2 text-center transition-colors duration-150 ease-out",
+                  "relative z-10 flex min-h-[3.65rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.65rem] px-1.5 py-2 text-center transition-colors duration-150 ease-out",
                   isActive ? "text-primary" : "text-text-muted hover:text-text"
                 )}
               >
-                <Icon className={cn("h-5 w-5 shrink-0 transition-transform duration-150", isActive && "scale-110")} />
+                <Icon className={cn("h-[1.35rem] w-[1.35rem] shrink-0 transition-transform duration-150", isActive && "scale-110")} />
                 <span className={cn("max-w-full truncate text-[10.5px] font-semibold leading-none transition-colors duration-150", isActive ? "text-primary" : "text-text-muted")}>
                   {item.label}
                 </span>
@@ -273,10 +312,10 @@ function BottomNav({ role, onOpenMenu }) {
           <button
             type="button"
             onClick={onOpenMenu}
-            className="relative z-10 flex min-h-[3.25rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-2xl px-1.5 py-2 text-text-muted transition-colors duration-150 ease-out hover:text-text"
+            className="relative z-10 flex min-h-[3.65rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.65rem] px-1.5 py-2 text-text-muted transition-colors duration-150 ease-out hover:text-text"
             aria-label="Open full navigation menu"
           >
-            <Menu className="h-5 w-5 shrink-0" />
+            <Menu className="h-[1.35rem] w-[1.35rem] shrink-0" />
             <span className="max-w-full truncate text-[10.5px] font-semibold leading-none">Menu</span>
           </button>
         </div>
