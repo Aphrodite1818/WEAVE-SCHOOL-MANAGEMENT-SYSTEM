@@ -22,8 +22,8 @@ export const studentService = {
   createStudent: (payload) =>
     api.post("/tenant-admin/students", payload),
 
-  getMyStudent: () =>
-    api.get("/students/me"),
+  getMyStudent: (requestOptions) =>
+    api.get("/students/me", requestOptions),
 
   updateMyStudentProfile: (payload) =>
     api.patch("/students/me/profile", payload),
@@ -31,14 +31,14 @@ export const studentService = {
   changeMyPassword: (payload) =>
     api.post("/students/me/change-password", payload),
 
-  getMyParentLinkRequests: () =>
-    api.get("/students/me/parent-link-requests"),
+  getMyParentLinkRequests: (requestOptions) =>
+    api.get("/students/me/parent-link-requests", requestOptions),
 
   respondToParentLinkRequest: (requestId, payload) =>
     api.post(`/students/me/parent-link-requests/${requestId}/respond`, payload),
 
-  getMyParentLinks: () =>
-    api.get("/students/me/parent-links"),
+  getMyParentLinks: (requestOptions) =>
+    api.get("/students/me/parent-links", requestOptions),
 
   getStudent: (studentId) =>
     api.get(`/students/${studentId}`),
@@ -47,7 +47,7 @@ export const studentService = {
     api.get(`/tenant-admin/students/${studentId}`),
 
   updateStudent: (studentId, payload) =>
-    api.patch(`/tenant-admin/students/${studentId}`, payload),
+    api.patch(`/students/${studentId}`, payload),
 
   updateAdminStudent: (studentId, payload) =>
     api.patch(`/tenant-admin/students/${studentId}`, payload),
