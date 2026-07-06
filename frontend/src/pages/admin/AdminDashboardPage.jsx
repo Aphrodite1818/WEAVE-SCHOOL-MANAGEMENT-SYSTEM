@@ -18,6 +18,7 @@ import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
 import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import { dashboardService } from "../../services/dashboard.service";
+import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
@@ -31,6 +32,8 @@ const statItems = [
   { key: "total_subjects", label: "Subjects", description: "active catalog items", icon: BookOpen, tone: "primary" },
   { key: "student_profiles_incomplete", label: "Incomplete Profiles", description: "students needing updates", icon: UserCheck, tone: "warning" },
 ];
+
+const ADMIN_DASHBOARD_CACHE_KEY = getDashboardSessionCacheKey("admin:dashboard");
 
 const metricNumber = (value, fallback = 0) => {
   const nextValue = Number(value);
@@ -58,7 +61,10 @@ function AdminDashboardPage() {
 
     async function loadMetrics() {
       try {
-        const data = await dashboardService.getTenantAdminAnalytics({ signal: controller.signal });
+        const data = await getCachedDashboardBundle(
+          ADMIN_DASHBOARD_CACHE_KEY,
+          () => dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
+        );
         if (!mounted || controller.signal.aborted) return;
         setAnalytics(data);
       } catch (err) {
