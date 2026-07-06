@@ -16,20 +16,20 @@ export const parentService = {
   createParent: (payload) =>
     api.post("/tenant-admin/parents", payload),
 
-  getMyParent: () =>
-    api.get("/parents/me"),
+  getMyParent: (requestOptions) =>
+    api.get("/parents/me", requestOptions),
 
   updateMyParentProfile: (payload) =>
     api.patch("/parents/me/profile", payload),
 
-  getMyStudents: () =>
-    api.get("/parents/me/students"),
+  getMyStudents: (requestOptions) =>
+    api.get("/parents/me/students", requestOptions),
 
   createStudentLinkRequest: (payload) =>
     api.post("/parents/me/student-link-requests", payload),
 
-  getMyStudentLinkRequests: () =>
-    api.get("/parents/me/student-link-requests"),
+  getMyStudentLinkRequests: (requestOptions) =>
+    api.get("/parents/me/student-link-requests", requestOptions),
 
   getParent: (parentId) =>
     api.get(`/tenant-admin/parents/${parentId}`),
