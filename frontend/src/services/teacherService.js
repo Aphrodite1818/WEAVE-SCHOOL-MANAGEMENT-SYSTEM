@@ -17,10 +17,10 @@ export const teacherService = {
   createTeacher: (payload) =>
     api.post("/tenant-admin/teachers", payload),
 
-  getMyTeacher: () =>
-    api.get("/teachers/me"),
+  getMyTeacher: (requestOptions) =>
+    api.get("/teachers/me", requestOptions),
 
-  getMySubjects: (options = {}) =>
+  getMySubjects: (options = {}, requestOptions = {}) =>
     api.get(
       `/teachers/me/subjects?${new URLSearchParams({
         skip: String(options.skip ?? 0),
@@ -29,7 +29,8 @@ export const teacherService = {
         ...(typeof options.isActive === "boolean"
           ? { is_active: String(options.isActive) }
           : {}),
-      }).toString()}`
+      }).toString()}`,
+      requestOptions
     ),
 
   getTeacher: (teacherId) =>
