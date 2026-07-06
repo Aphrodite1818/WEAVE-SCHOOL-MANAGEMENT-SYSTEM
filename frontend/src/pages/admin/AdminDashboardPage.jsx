@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BookOpen,
@@ -18,19 +18,10 @@ import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
 import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import { dashboardService } from "../../services/dashboard.service";
-import { authSession, getErrorMessage } from "../../services/api";
-import { academicService } from "../../services/academicService";
-import { reportCardService } from "../../services/reportCardService";
+import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
-import {
-  averageBy,
-  averageByAcademicPeriod,
-  chartFromCounts,
-  cleanText,
-  completionPercent,
-  reportCardStatusChart,
-} from "../../utils/academicDashboard";
+import { cleanText } from "../../utils/academicDashboard";
 
 const statItems = [
   { key: "total_students", label: "Students", description: "registered learners", icon: GraduationCap, tone: "primary" },
@@ -43,8 +34,6 @@ const statItems = [
 
 function AdminDashboardPage() {
   const [analytics, setAnalytics] = useState(null);
-  const [academicResults, setAcademicResults] = useState([]);
-  const [reportCards, setReportCards] = useState([]);
   const [error, setError] = useState(null);
   const { getFeatureGuard } = useSubscription();
   const user = authSession.getUser();
@@ -55,30 +44,16 @@ function AdminDashboardPage() {
 
   useEffect(() => {
     let mounted = true;
-    let secondaryTimer = null;
-
-    async function loadSecondaryAnalytics() {
-      try {
-        const [resultResponse, reportCardResponse] = await Promise.all([
-          academicService.listAdminResults({ limit: 25 }),
-          reportCardService.listAdminReportCards({ limit: 25 }),
-        ]);
-        if (!mounted) return;
-        setAcademicResults(resultResponse?.items || []);
-        setReportCards(reportCardResponse?.items || []);
-      } catch (err) {
-        console.warn("Failed to load secondary dashboard analytics", err);
-      }
-    }
+    const controller = new AbortController();
 
     async function loadMetrics() {
       try {
-        const data = await dashboardService.getTenantAdminAnalytics();
-        if (!mounted) return;
+        const data = await dashboardService.getTenantAdminAnalytics({ signal: controller.signal });
+        if (!mounted || controller.signal.aborted) return;
         setAnalytics(data);
-        secondaryTimer = window.setTimeout(loadSecondaryAnalytics, 500);
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err, "Failed to load dashboard analytics."));
+        if (!mounted || isAbortError(err)) return;
+        setError(getErrorMessage(err, "Failed to load dashboard analytics."));
       }
     }
 
@@ -86,22 +61,9 @@ function AdminDashboardPage() {
 
     return () => {
       mounted = false;
-      if (secondaryTimer) window.clearTimeout(secondaryTimer);
+      controller.abort();
     };
   }, []);
-
-  const teacherSubmissionProgress = useMemo(
-    () =>
-      averageBy(
-        academicResults.map((item) => ({
-          ...item,
-          completion_score: ["submitted", "published", "locked"].includes(item.status) ? 100 : 0,
-        })),
-        (item) => item.teacher_name || item.teacher_staff_id || "Teacher",
-        "completion_score"
-      ),
-    [academicResults]
-  );
 
   if (!analytics && !error) {
     return (
@@ -113,16 +75,11 @@ function AdminDashboardPage() {
 
   const stats = analytics?.stats || {};
   const charts = analytics?.charts || {};
-  const submittedResults = academicResults.filter((item) =>
-    ["submitted", "published", "locked"].includes(item.status)
-  ).length;
-  const resultCompletion = completionPercent(submittedResults, academicResults.length);
-  const performanceTrend =
-    charts.performance_trend ||
-    averageByAcademicPeriod(
-      reportCards.length > 0 ? reportCards : academicResults,
-      reportCards.length > 0 ? "average_score" : "total_score"
-    );
+  const submittedResults = Number(stats.result_rows_submitted ?? 0);
+  const resultRowsTotal = Number(stats.result_rows_total ?? 0);
+  const resultCompletion = Number(stats.result_completion_percent ?? 0);
+  const reportCardsPublished = Number(stats.report_cards_published ?? 0);
+  const reportCardsGenerated = Number(stats.report_cards_generated ?? 0);
 
   return (
     <DashboardLayout
@@ -172,16 +129,16 @@ function AdminDashboardPage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Result completion</p>
                     <p className="mt-2 text-base font-semibold text-text">{resultCompletion}%</p>
                     <p className="mt-1 text-xs text-text-muted">
-                      {submittedResults} of {academicResults.length} rows submitted
+                      {submittedResults} of {resultRowsTotal} rows submitted
                     </p>
                   </div>
                   <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Report cards</p>
                     <p className="mt-2 text-base font-semibold text-text">
-                      {stats.report_cards_published ?? reportCards.filter((item) => item.status === "published").length}
+                      {reportCardsPublished}
                     </p>
                     <p className="mt-1 text-xs text-text-muted">
-                      {stats.report_cards_generated ?? reportCards.length} generated
+                      {reportCardsGenerated} generated
                     </p>
                   </div>
                 </div>
@@ -248,13 +205,13 @@ function AdminDashboardPage() {
             <AnalyticsLineChart
               title="Performance Trend"
               description="Average tenant performance by academic term."
-              data={performanceTrend}
+              data={charts.performance_trend || []}
               emptyMessage="No term performance trend is available yet."
             />
             <AnalyticsBarChart
               title="Teacher Submission Progress"
               description="Average completion percentage by teacher."
-              data={teacherSubmissionProgress}
+              data={charts.teacher_submission_progress || []}
               emptyMessage="No teacher submission data available yet."
             />
           </section>
@@ -292,44 +249,37 @@ function AdminDashboardPage() {
               <AnalyticsDonutChart
                 title="Report Card Status"
                 description="Generated report-card publishing progress."
-                data={reportCardStatusChart(reportCards)}
+                data={charts.report_card_status || []}
                 emptyMessage="No report cards have been generated yet."
               />
               <AnalyticsBarChart
                 title="Subject Performance"
                 description="Average score by subject."
-                data={charts.subject_performance || averageBy(academicResults, (item) => item.subject_name || item.subject_code || "Subject")}
+                data={charts.subject_performance || []}
                 emptyMessage="No subject performance data available yet."
               />
               <AnalyticsBarChart
                 title="Class Performance"
                 description="Average score by class from recorded results."
-                data={averageBy(academicResults, (item) => [item.class_name, item.class_arm].filter(Boolean).join(" ") || "Class")}
+                data={charts.class_performance || []}
                 emptyMessage="No class performance data available yet."
               />
               <AnalyticsDonutChart
                 title="Grade Distribution"
                 description="All recorded academic grades in this tenant."
-                data={charts.grade_distribution || chartFromCounts(academicResults, "grade", "ungraded")}
+                data={charts.grade_distribution || []}
                 emptyMessage="No grade data has been recorded yet."
               />
               <AnalyticsDonutChart
-                title="Result Status"
-                description="Draft, submitted, published, and locked result rows."
-                data={charts.result_status_distribution || chartFromCounts(academicResults, "status", "draft")}
+                title="Result Status Distribution"
+                description="Draft and submitted result rows."
+                data={charts.result_status_distribution || []}
                 emptyMessage="No result status data has been recorded yet."
               />
               <AnalyticsBarChart
                 title="Result Completion By Subject"
                 description="Average completion signal grouped by subject."
-                data={averageBy(
-                  academicResults.map((item) => ({
-                    ...item,
-                    completion_score: ["submitted", "published", "locked"].includes(item.status) ? 100 : 0,
-                  })),
-                  (item) => item.subject_name || item.subject_code || "Subject",
-                  "completion_score"
-                )}
+                data={charts.result_completion_by_subject || []}
                 emptyMessage="No subject completion data available yet."
               />
             </section>
