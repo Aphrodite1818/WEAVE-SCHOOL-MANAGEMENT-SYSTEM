@@ -1,15 +1,18 @@
 import { api, authSession } from "./api";
+import { clearDashboardSessionCache } from "./dashboardSessionCache";
 import { onboardingService } from "./onboardingService";
 
 const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
 
 export const authService = {
-    login: async (email, password, { remember = true } = {}) => {
+    login: async (identifier, password, { remember = true } = {}) => {
         const response = await api.post(
             "/auth/login",
-            { email, password },
+            { identifier, password },
             { auth: false }
         );
+
+        clearDashboardSessionCache();
 
         if (response.access_token) {
             authSession.setToken(response.access_token, { remember });
@@ -86,6 +89,7 @@ export const authService = {
     },
         
     logout: () => {
+        clearDashboardSessionCache();
         authSession.clear();
     }
 };
