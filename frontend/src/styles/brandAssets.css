@@ -1,0 +1,5 @@
+/* Keep every visible Learnly brand image aligned with the active app icon. */
+img[alt="Learnly AI"] {
+  content: url("/favicon.svg?v=learnly-shield-1");
+  object-fit: contain;
+}
