@@ -17,16 +17,11 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
-import { authSession, getErrorMessage } from "../../services/api";
+import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import { teacherService } from "../../services/teacherService";
-import {
-  averageByAcademicPeriod,
-  chartFromCounts,
-  cleanText,
-} from "../../utils/academicDashboard";
+import { cleanText } from "../../utils/academicDashboard";
 
-const isSubmitted = (result) => result?.status === "submitted";
 const assignmentClassLabel = (item) =>
   cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "");
 const classLabel = (item) =>
@@ -37,7 +32,6 @@ function TeacherDashboardPage() {
   const [subjects, setSubjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [classTeacherClasses, setClassTeacherClasses] = useState([]);
-  const [results, setResults] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -46,6 +40,7 @@ function TeacherDashboardPage() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
 
     async function loadDashboard() {
       setIsLoading(true);
@@ -57,33 +52,30 @@ function TeacherDashboardPage() {
           subjectResponse,
           assignmentResponse,
           classResponse,
-          resultResponse,
           metricsResponse,
         ] = await Promise.all([
-          teacherService.getMyTeacher(),
-          teacherService.getMySubjects(),
-          academicService.listMyTeacherAssignments(),
-          classService.getClasses({ limit: 100, active_only: true }),
-          academicService.listTeacherResults(),
-          dashboardService.getTeacherAnalytics(),
+          teacherService.getMyTeacher({ signal: controller.signal }),
+          teacherService.getMySubjects({ signal: controller.signal }),
+          academicService.listMyTeacherAssignments({ signal: controller.signal }),
+          classService.getClasses({ limit: 100, active_only: true, signal: controller.signal }),
+          dashboardService.getTeacherAnalytics({ signal: controller.signal }),
         ]);
 
-        if (!mounted) return;
+        if (!mounted || controller.signal.aborted) return;
 
         setTeacher(teacherProfile);
         setSubjects(subjectResponse?.items || []);
         setAssignments(assignmentResponse?.items || []);
         setClassTeacherClasses(classResponse?.items || []);
-        setResults(resultResponse?.items || []);
         setMetrics(metricsResponse);
       } catch (error) {
-        if (mounted) {
+        if (mounted && !isAbortError(error)) {
           setLoadError(
             getErrorMessage(error, "Failed to load teacher dashboard."),
           );
         }
       } finally {
-        if (mounted) setIsLoading(false);
+        if (mounted && !controller.signal.aborted) setIsLoading(false);
       }
     }
 
@@ -91,20 +83,12 @@ function TeacherDashboardPage() {
 
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, []);
 
   const charts = metrics?.charts || {};
-  const classSizeByLabel = useMemo(
-    () =>
-      Object.fromEntries(
-        (charts.class_sizes || []).map((item) => [
-          cleanText(item.label),
-          Number(item.value || 0),
-        ]),
-      ),
-    [charts.class_sizes],
-  );
+  const stats = metrics?.stats || {};
   const subjectTeacherClassLabels = useMemo(
     () => [...new Set(assignments.map(assignmentClassLabel))].filter(Boolean),
     [assignments],
@@ -138,36 +122,12 @@ function TeacherDashboardPage() {
   const activeSubjects = subjects.filter(
     (subject) => subject?.is_active !== false,
   ).length;
-  const expectedSubmissions = assignments.reduce((sum, item) => {
-    const label = assignmentClassLabel(item);
-    return sum + Number(classSizeByLabel[label] || 0);
-  }, 0);
-  const draftResults = results.filter((item) => item.status === "draft").length;
-  const submittedResults = results.filter(isSubmitted).length;
-  const pendingSubmissions = Math.max(
-    expectedSubmissions - submittedResults,
-    0,
-  );
-  const resultCompletion =
-    expectedSubmissions > 0
-      ? Math.round((submittedResults / expectedSubmissions) * 100)
-      : 0;
-  const pendingByClass = subjectTeacherClassLabels.map((label) => {
-    const expected = assignments
-      .filter((item) => assignmentClassLabel(item) === label)
-      .reduce((sum) => sum + Number(classSizeByLabel[label] || 0), 0);
-    const submitted = results.filter(
-      (item) => assignmentClassLabel(item) === label && isSubmitted(item),
-    ).length;
-    return { label, value: Math.max(expected - submitted, 0) };
-  });
-  const priorityClasses = pendingByClass
-    .filter((item) => item.value > 0)
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 4);
-  const performanceTrend =
-    charts.performance_trend ||
-    averageByAcademicPeriod(results.filter(isSubmitted));
+  const pendingSubmissions = Number(stats.pending_score_rows ?? 0);
+  const draftResults = Number(stats.result_rows_draft ?? 0);
+  const submittedResults = Number(stats.result_rows_submitted ?? stats.results_submitted ?? 0);
+  const resultCompletion = Number(stats.result_completion_percent ?? 0);
+  const priorityClasses = charts.pending_scores_by_class || [];
+  const performanceTrend = charts.performance_trend || [];
 
   return (
     <DashboardLayout role="teacher" title={`${firstName}'s Workspace`}>
@@ -386,13 +346,13 @@ function TeacherDashboardPage() {
             <AnalyticsDonutChart
               title="Score Status Breakdown"
               description="Draft vs submitted scores you have entered."
-              data={chartFromCounts(results, "status", "draft")}
+              data={charts.result_status_distribution || []}
               emptyMessage="No score status data available yet."
             />
             <AnalyticsBarChart
               title="Pending Scores By Class"
               description="Estimated pending rows from subject classes and submitted scores."
-              data={pendingByClass}
+              data={priorityClasses}
               emptyMessage="No pending score data available yet."
             />
           </section>
