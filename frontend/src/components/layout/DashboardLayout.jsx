@@ -245,7 +245,7 @@ function notificationTimestamp(value) {
 }
 
 const headerIconButtonClass =
-  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text";
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface/90 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text sm:h-10 sm:w-10";
 
 function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile = false, schoolName }) {
   const location = useLocation();
@@ -491,7 +491,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
             align="right"
             className="w-72 max-w-[calc(100vw-1rem)]"
             trigger={
-              <button type="button" className="flex h-9 items-center gap-2 rounded-lg bg-surface px-2 py-1 text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text">
+              <button type="button" className="flex h-10 items-center gap-2 rounded-full bg-surface/90 px-2 py-1 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text">
                 <Avatar src={avatarSrc} name={userName} size="sm" />
                 <span className="hidden max-w-[10rem] flex-col items-start leading-tight sm:flex">
                   <span className="max-w-full truncate text-sm font-semibold text-text">{userName}</span>
