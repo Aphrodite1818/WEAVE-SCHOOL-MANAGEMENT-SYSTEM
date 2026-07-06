@@ -250,7 +250,7 @@ function BottomNav({ role, onOpenMenu }) {
         clearLoadingTimers();
         isTransitioningRef.current = false;
         setLoadingVisible(false);
-        scrollDashboardViewportToTop("auto");
+        scrollDashboardViewportToTop("natural");
         return;
       }
 
