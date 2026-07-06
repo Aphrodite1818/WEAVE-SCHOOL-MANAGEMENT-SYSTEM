@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './styles/mobileDashboard.css'
+import './styles/mobileOverrides.css'
 import App from './App.jsx'
 
 const savedTheme = localStorage.getItem("theme");
