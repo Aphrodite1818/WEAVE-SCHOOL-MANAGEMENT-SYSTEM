@@ -29,8 +29,12 @@ const bindCacheInvalidation = () => {
   });
 };
 
-export const getDashboardSessionCacheKey = (name) =>
-  `${DASHBOARD_BUNDLE_CACHE_PREFIX}:${getActorCacheScope()}:${name}`;
+const resolveCacheKey = (key) => {
+  if (String(key).startsWith(`${DASHBOARD_BUNDLE_CACHE_PREFIX}:`)) return key;
+  return `${DASHBOARD_BUNDLE_CACHE_PREFIX}:${getActorCacheScope()}:${key}`;
+};
+
+export const getDashboardSessionCacheKey = (name) => name;
 
 export const clearDashboardSessionCache = () => {
   dashboardBundleCache.clear();
@@ -43,8 +47,9 @@ export const getCachedDashboardBundle = async (
 ) => {
   bindCacheInvalidation();
 
+  const cacheKey = resolveCacheKey(key);
   const now = Date.now();
-  const cached = dashboardBundleCache.get(key);
+  const cached = dashboardBundleCache.get(cacheKey);
 
   if (cached?.value !== undefined && cached.expiresAt > now) {
     return cached.value;
@@ -57,7 +62,7 @@ export const getCachedDashboardBundle = async (
   const promise = Promise.resolve()
     .then(loader)
     .then((value) => {
-      dashboardBundleCache.set(key, {
+      dashboardBundleCache.set(cacheKey, {
         value,
         expiresAt: Date.now() + ttlMs,
         promise: null,
@@ -65,14 +70,14 @@ export const getCachedDashboardBundle = async (
       return value;
     })
     .catch((error) => {
-      const current = dashboardBundleCache.get(key);
+      const current = dashboardBundleCache.get(cacheKey);
       if (current?.promise === promise) {
-        dashboardBundleCache.delete(key);
+        dashboardBundleCache.delete(cacheKey);
       }
       throw error;
     });
 
-  dashboardBundleCache.set(key, {
+  dashboardBundleCache.set(cacheKey, {
     value: undefined,
     expiresAt: now + ttlMs,
     promise,
