@@ -19,8 +19,9 @@ import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import StatCard from "../../components/shared/StatCard";
-import { authSession, getErrorMessage } from "../../services/api";
+import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
+import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { studentService } from "../../services/studentService";
 import { academicService } from "../../services/academicService";
 import { reportCardService } from "../../services/reportCardService";
@@ -59,43 +60,60 @@ function StudentDashboardPage() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
 
     async function loadDashboard() {
       setIsLoading(true);
       setLoadError(null);
 
       try {
-        const [
-          studentProfile,
-          linksResponse,
-          requestsResponse,
-          metricsResponse,
-          resultResponse,
-          reportCardResponse,
-          subjectCardsResponse,
-        ] = await Promise.all([
-          studentService.getMyStudent(),
-          studentService.getMyParentLinks(),
-          studentService.getMyParentLinkRequests(),
-          dashboardService.getStudentAnalytics(),
-          academicService.listMyResults(),
-          reportCardService.listMyReportCards(),
-          academicService.listMySubjectCards(),
-        ]);
+        const cacheKey = getDashboardSessionCacheKey("student:dashboard");
+        const bundle = await getCachedDashboardBundle(cacheKey, async () => {
+          const [
+            studentProfile,
+            linksResponse,
+            requestsResponse,
+            metricsResponse,
+            resultResponse,
+            reportCardResponse,
+            subjectCardsResponse,
+          ] = await Promise.all([
+            studentService.getMyStudent({ signal: controller.signal }),
+            studentService.getMyParentLinks({ signal: controller.signal }),
+            studentService.getMyParentLinkRequests({ signal: controller.signal }),
+            dashboardService.getStudentAnalytics({ signal: controller.signal }),
+            academicService.listMyResults({ signal: controller.signal }),
+            reportCardService.listMyReportCards({ signal: controller.signal }),
+            academicService.listMySubjectCards({ signal: controller.signal }),
+          ]);
 
-        if (!mounted) return;
-        setStudent(studentProfile);
-        setParentLinks(linksResponse?.items || []);
-        setParentLinkRequests(requestsResponse?.items || []);
-        setMetrics(metricsResponse);
-        setAcademicResults(resultResponse?.items || []);
-        setReportCards(reportCardResponse?.items || []);
-        setSubjectCards(subjectCardsResponse?.items || []);
-        setSubjectContext(subjectCardsResponse?.context || null);
+          return {
+            student: studentProfile,
+            parentLinks: linksResponse?.items || [],
+            parentLinkRequests: requestsResponse?.items || [],
+            metrics: metricsResponse,
+            academicResults: resultResponse?.items || [],
+            reportCards: reportCardResponse?.items || [],
+            subjectCards: subjectCardsResponse?.items || [],
+            subjectContext: subjectCardsResponse?.context || null,
+          };
+        });
+
+        if (!mounted || controller.signal.aborted) return;
+        setStudent(bundle.student);
+        setParentLinks(bundle.parentLinks);
+        setParentLinkRequests(bundle.parentLinkRequests);
+        setMetrics(bundle.metrics);
+        setAcademicResults(bundle.academicResults);
+        setReportCards(bundle.reportCards);
+        setSubjectCards(bundle.subjectCards);
+        setSubjectContext(bundle.subjectContext);
       } catch (error) {
-        if (mounted) setLoadError(getErrorMessage(error, "Failed to load student dashboard."));
+        if (mounted && !isAbortError(error)) {
+          setLoadError(getErrorMessage(error, "Failed to load student dashboard."));
+        }
       } finally {
-        if (mounted) setIsLoading(false);
+        if (mounted && !controller.signal.aborted) setIsLoading(false);
       }
     }
 
@@ -103,6 +121,7 @@ function StudentDashboardPage() {
 
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, []);
 
