@@ -56,7 +56,6 @@ import {
 import AiChatLauncher from "../ai/AiChatLauncher";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import Avatar from "../ui/Avatar";
-import Button from "../ui/Button";
 import Dropdown from "../ui/Dropdown";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
@@ -245,6 +244,9 @@ function notificationTimestamp(value) {
   return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+const headerIconButtonClass =
+  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text";
+
 function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile = false, schoolName }) {
   const location = useLocation();
   const groups = navGroups[role] || navGroups.admin;
@@ -270,15 +272,13 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
     <div className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
-          "relative flex transition-all duration-300",
-          collapsed
-            ? "h-24 flex-col items-center justify-center gap-3 pt-2 sm:h-28"
-            : "h-20 items-center px-4 pr-12"
+          "relative flex h-[4.5rem] shrink-0 items-center border-b border-border/60 transition-all duration-300",
+          collapsed ? "justify-center px-2" : "gap-2 px-3"
         )}
       >
         <Link
           to="/"
-          className={cn("flex min-w-0 items-center gap-3", collapsed && "justify-center")}
+          className={cn("flex min-w-0 items-center gap-2.5", collapsed && "justify-center")}
           onClick={() => {
             persistSidebarScroll();
             onNavigate?.();
@@ -287,56 +287,49 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
           <img
             src={logoImage}
             alt="Learnly AI"
-            className={cn(
-              "rounded-2xl border border-border bg-surface p-1 shadow-sm",
-              collapsed ? "h-9 w-9" : "h-10 w-10"
-            )}
+            className="h-9 w-9 rounded-xl bg-surface p-1 shadow-sm"
           />
           {!collapsed && (
             <span className="min-w-0">
-              <span className="block truncate text-lg font-bold leading-tight">Learnly AI</span>
-              <span className="block truncate text-xs font-medium text-text-muted">School Management</span>
+              <span className="block truncate text-[15px] font-bold leading-tight text-text">Learnly AI</span>
+              <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
             </span>
           )}
         </Link>
         {!mobile && (
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
             className={cn(
-              "hidden h-8 w-8 rounded-lg bg-surface-muted transition-all hover:bg-border/60 md:inline-flex",
-              collapsed ? "relative shadow-sm" : "absolute right-3 top-1/2 -translate-y-1/2"
+              "inline-flex h-7 w-7 items-center justify-center rounded-lg bg-surface-muted/60 text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text",
+              collapsed ? "absolute -right-3.5 top-1/2 -translate-y-1/2" : "ml-auto"
             )}
             onClick={onToggleCollapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? (
-              <PanelLeftOpen className="h-4 w-4 text-text-soft" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4 text-text-soft" />
-            )}
-          </Button>
+            {collapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
+          </button>
         )}
       </div>
 
       {!collapsed && (
-        <div className="mx-4 mb-5 rounded-2xl border border-border/70 bg-surface-muted/35 px-3.5 py-3">
+        <div className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
           <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-text-faint">Workspace</p>
-          <p className="mt-1 truncate text-sm font-semibold text-text">{schoolName || "School workspace"}</p>
-          <p className="mt-0.5 truncate text-xs text-text-muted">{roleLabels[role] || "Workspace"}</p>
+          <p className="mt-1 truncate text-[13px] font-semibold text-text">{schoolName || "School workspace"}</p>
+          <span className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            {roleLabels[role] || "Workspace"}
+          </span>
         </div>
       )}
 
       <nav
         ref={navRef}
         onScroll={persistSidebarScroll}
-        className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-2.5 py-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
       >
         {groups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-wide text-text-faint">{group.label}</p>
+              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-text-faint">{group.label}</p>
             )}
             <div className="space-y-1">
               {group.items.map((item) => {
@@ -354,8 +347,10 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
                     }}
                     title={collapsed ? item.label : undefined}
                     className={cn(
-                      "group relative nav-item",
-                      isActive ? "nav-item-active" : "nav-item-idle",
+                      "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
+                      isActive
+                        ? "bg-primary text-white shadow-sm"
+                        : "text-text-soft hover:bg-surface-muted hover:text-text",
                       collapsed && "justify-center px-2"
                     )}
                   >
@@ -366,6 +361,7 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
                       </span>
                     )}
                     {!collapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/70" />}
                   </Link>
                 );
               })}
@@ -375,13 +371,10 @@ function SidebarContent({ role, collapsed, onToggleCollapsed, onNavigate, mobile
       </nav>
 
       {!collapsed && (
-        <div className="shrink-0 border-t border-border p-4">
-          <div className="rounded-2xl border border-border bg-surface px-3 py-3 text-sm text-text-soft">
-            <div className="flex items-center gap-3 font-medium">
-              <HelpCircle className="h-4 w-4" />
-              Help & Support
-            </div>
-            <p className="mt-2 text-xs text-text-muted">Contact your school administrator for account or school-data issues.</p>
+        <div className="shrink-0 border-t border-border/60 p-2.5">
+          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] text-text-muted">
+            <HelpCircle className="h-4 w-4" />
+            Help & Support
           </div>
         </div>
       )}
@@ -437,11 +430,11 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
   };
 
   return (
-    <header className="z-30 shrink-0 border-b border-border bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
-      <div className="mx-auto flex h-[58px] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:h-[76px] sm:gap-2 sm:px-5 lg:px-8">
-        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 md:hidden" onClick={onOpenMobileNav} aria-label="Open navigation">
+    <header className="z-30 shrink-0 border-b border-border bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+      <div className="mx-auto flex h-[3.75rem] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:gap-2 sm:px-5 md:h-16 lg:px-8">
+        <button type="button" className={cn(headerIconButtonClass, "md:hidden")} onClick={onOpenMobileNav} aria-label="Open navigation">
           <Menu className="h-5 w-5" />
-        </Button>
+        </button>
         <div className="min-w-0 flex-1">
           <p className="hidden truncate text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted sm:block sm:text-xs">Learnly AI</p>
           <p className="truncate text-xs font-semibold text-text sm:text-lg">{schoolName || roleLabels[role] || "Workspace"}</p>
@@ -458,10 +451,10 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
             open={notificationsOpen}
             onOpenChange={setNotificationsOpen}
             trigger={
-              <button type="button" className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text sm:h-10 sm:w-10" aria-label="Open notifications">
+              <button type="button" className={cn(headerIconButtonClass, "relative")} aria-label="Open notifications">
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute -right-1 -top-1 rounded-full bg-error px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadCount}</span>
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none text-white">{unreadCount}</span>
                 )}
               </button>
             }
@@ -488,7 +481,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
           <button
             type="button"
             onClick={toggleTheme}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text sm:h-10 sm:w-10"
+            className={headerIconButtonClass}
             aria-label="Toggle theme"
           >
             {themeHint === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -498,7 +491,7 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
             align="right"
             className="w-72 max-w-[calc(100vw-1rem)]"
             trigger={
-              <button type="button" className="flex h-9 items-center gap-2 rounded-full border border-border bg-surface px-1.5 py-1 shadow-sm transition hover:bg-surface-muted sm:h-auto sm:px-2 sm:py-1.5">
+              <button type="button" className="flex h-9 items-center gap-2 rounded-lg bg-surface px-2 py-1 text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text">
                 <Avatar src={avatarSrc} name={userName} size="sm" />
                 <span className="hidden max-w-[10rem] flex-col items-start leading-tight sm:flex">
                   <span className="max-w-full truncate text-sm font-semibold text-text">{userName}</span>
@@ -528,6 +521,11 @@ function Topbar({ role, onOpenMobileNav, schoolName }) {
           </Dropdown>
         </div>
       </div>
+      {canSearchWorkspace ? (
+        <div className="border-t border-border/60 px-3 py-2 md:hidden">
+          <WorkspaceSearch role={role} />
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -635,17 +633,17 @@ function DashboardShellFrame({
 
   return (
     <div className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-background text-text">
-      <aside className={cn("fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block", sidebarCollapsed ? "w-[5.5rem]" : "w-72")}>
+      <aside className={cn("fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block", sidebarCollapsed ? "w-[4.25rem]" : "w-[15rem]")}>
         <SidebarContent role={role} collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((value) => !value)} schoolName={schoolName} />
       </aside>
       {mobileNavOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/35" onClick={() => setMobileNavOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex h-full w-[min(92vw,22rem)] flex-col overflow-hidden border-r border-border bg-surface shadow-2xl">
+          <div className="absolute inset-0 bg-black/35 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 flex h-full w-[min(88vw,20rem)] flex-col overflow-hidden border-r border-border bg-surface shadow-2xl">
             <div className="flex h-14 shrink-0 items-center justify-end px-4">
-              <Button type="button" variant="ghost" size="icon" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation">
+              <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-surface-muted/60 text-text-muted transition hover:bg-surface-muted hover:text-text" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation">
                 <X className="h-5 w-5" />
-              </Button>
+              </button>
             </div>
             <div className="min-h-0 flex-1">
               <SidebarContent role={role} mobile collapsed={false} onNavigate={() => setMobileNavOpen(false)} schoolName={schoolName} />
@@ -653,7 +651,7 @@ function DashboardShellFrame({
           </aside>
         </div>
       )}
-      <div className={cn("flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300", sidebarCollapsed ? "md:pl-[5.5rem]" : "md:pl-72")}>
+      <div className={cn("flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300", sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[15rem]")}>
         <Topbar role={role} onOpenMobileNav={() => setMobileNavOpen(true)} schoolName={schoolName} />
         <div
           id="dashboard-scroll-viewport"
@@ -668,7 +666,7 @@ function DashboardShellFrame({
             )}
           >
             {(title || description || actions) && (
-              <section className="page-header flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between">
+              <section className="page-header">
                 <div className="min-w-0 flex-1">
                   {title ? <h1 className="page-title">{title}</h1> : null}
                   {description ? (
