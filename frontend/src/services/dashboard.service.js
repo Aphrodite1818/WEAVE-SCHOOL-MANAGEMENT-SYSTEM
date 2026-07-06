@@ -1,47 +1,18 @@
-import { api, authSession } from "./api";
+import { api } from "./api";
+import {
+  clearDashboardSessionCache,
+  getCachedDashboardBundle,
+  getDashboardSessionCacheKey,
+} from "./dashboardSessionCache";
 
-const DASHBOARD_CACHE_PREFIX = "learnly:dashboard-metrics";
-const dashboardMemoryCache = new Map();
-let cacheInvalidationBound = false;
-
-const getActorCacheScope = () => {
-  const user = authSession.getUser() || {};
-  return [
-    user.role || authSession.getRole() || "unknown-role",
-    user.tenant_id || "global",
-    user.id || user.actor_id || user.email || user.admission_number || "anonymous",
-  ].join(":");
-};
-
-const getDashboardCacheKey = (endpoint) =>
-  `${DASHBOARD_CACHE_PREFIX}:${getActorCacheScope()}:${endpoint}`;
-
-const bindCacheInvalidation = () => {
-  if (cacheInvalidationBound || typeof window === "undefined") return;
-  cacheInvalidationBound = true;
-
-  window.addEventListener("pagehide", () => dashboardMemoryCache.clear());
-  window.addEventListener("beforeunload", () => dashboardMemoryCache.clear());
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) dashboardMemoryCache.clear();
-  });
-};
-
-const getDashboardMetrics = async (endpoint, requestOptions = {}) => {
-  bindCacheInvalidation();
-
-  const cacheKey = getDashboardCacheKey(endpoint);
-  const cached = dashboardMemoryCache.get(cacheKey);
-
-  if (cached) return cached;
-
-  const fresh = await api.get(endpoint, requestOptions);
-  dashboardMemoryCache.set(cacheKey, fresh);
-  return fresh;
-};
+const getDashboardMetrics = async (endpoint, requestOptions = {}) =>
+  getCachedDashboardBundle(
+    getDashboardSessionCacheKey(`metrics:${endpoint}`),
+    () => api.get(endpoint, requestOptions),
+  );
 
 export const clearDashboardMetricsCache = () => {
-  dashboardMemoryCache.clear();
+  clearDashboardSessionCache();
 };
 
 export const dashboardService = {
