@@ -14,17 +14,18 @@ const buildQuery = (params) => {
 };
 
 export const superadminService = {
-  getAnalyticsOverview: () => api.get("/metrics/superadmin/dashboard"),
+  getAnalyticsOverview: (requestOptions) => api.get("/metrics/superadmin/dashboard", requestOptions),
 
   createTenant: (data) => api.post("/superadmin/tenants", data),
 
-  getTenants: (skip = 0, limit = 50, includeDeleted = true) =>
+  getTenants: (skip = 0, limit = 50, includeDeleted = true, requestOptions) =>
     api.get(
       `/superadmin/tenants${buildQuery({
         skip,
         limit,
         include_deleted: includeDeleted,
-      })}`
+      })}`,
+      requestOptions
     ),
 
   getTenant: (tenantId, includeDeleted = true) =>
@@ -42,8 +43,8 @@ export const superadminService = {
   restoreTenant: (tenantId) =>
     api.patch(`/superadmin/tenants/${tenantId}/restore`, {}),
 
-  getSuperadmins: (skip = 0, limit = 100) =>
-    api.get(`/superadmin/superadmins${buildQuery({ skip, limit })}`),
+  getSuperadmins: (skip = 0, limit = 100, requestOptions) =>
+    api.get(`/superadmin/superadmins${buildQuery({ skip, limit })}`, requestOptions),
 
   inviteSuperadmin: (data) => api.post("/superadmin/superadmins/invite", data),
 };
