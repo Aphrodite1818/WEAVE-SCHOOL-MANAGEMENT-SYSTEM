@@ -20,18 +20,23 @@ export const teacherService = {
   getMyTeacher: (requestOptions) =>
     api.get("/teachers/me", requestOptions),
 
-  getMySubjects: (options = {}, requestOptions = {}) =>
-    api.get(
+  getMySubjects: (options = {}, requestOptions = {}) => {
+    const { signal, ...queryOptions } = options;
+    return api.get(
       `/teachers/me/subjects?${new URLSearchParams({
-        skip: String(options.skip ?? 0),
-        limit: String(clampLimit(options.limit)),
-        ...(options.search ? { search: options.search } : {}),
-        ...(typeof options.isActive === "boolean"
-          ? { is_active: String(options.isActive) }
+        skip: String(queryOptions.skip ?? 0),
+        limit: String(clampLimit(queryOptions.limit)),
+        ...(queryOptions.search ? { search: queryOptions.search } : {}),
+        ...(typeof queryOptions.isActive === "boolean"
+          ? { is_active: String(queryOptions.isActive) }
           : {}),
       }).toString()}`,
-      requestOptions
-    ),
+      {
+        ...requestOptions,
+        ...(signal ? { signal } : {}),
+      }
+    );
+  },
 
   getTeacher: (teacherId) =>
     api.get(`/tenant-admin/teachers/${teacherId}`),
