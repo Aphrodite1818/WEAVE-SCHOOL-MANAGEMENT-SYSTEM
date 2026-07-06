@@ -1,7 +1,8 @@
 import { api, authSession } from "./api";
 
-const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 const DASHBOARD_CACHE_PREFIX = "learnly:dashboard-metrics";
+const dashboardMemoryCache = new Map();
+let cacheInvalidationBound = false;
 
 const getActorCacheScope = () => {
   const user = authSession.getUser() || {};
@@ -15,46 +16,32 @@ const getActorCacheScope = () => {
 const getDashboardCacheKey = (endpoint) =>
   `${DASHBOARD_CACHE_PREFIX}:${getActorCacheScope()}:${endpoint}`;
 
-const readCachedDashboard = (key) => {
-  try {
-    const rawValue = window.sessionStorage.getItem(key);
-    if (!rawValue) return null;
+const bindCacheInvalidation = () => {
+  if (cacheInvalidationBound || typeof window === "undefined") return;
+  cacheInvalidationBound = true;
 
-    const cached = JSON.parse(rawValue);
-    if (!cached?.timestamp || cached?.data === undefined) return null;
-
-    if (Date.now() - cached.timestamp > DASHBOARD_CACHE_TTL_MS) {
-      window.sessionStorage.removeItem(key);
-      return null;
-    }
-
-    return cached.data;
-  } catch {
-    window.sessionStorage.removeItem(key);
-    return null;
-  }
-};
-
-const writeCachedDashboard = (key, data) => {
-  try {
-    window.sessionStorage.setItem(
-      key,
-      JSON.stringify({ timestamp: Date.now(), data })
-    );
-  } catch {
-    // Cache storage is best-effort only. The dashboard must still work without it.
-  }
+  window.addEventListener("pagehide", () => dashboardMemoryCache.clear());
+  window.addEventListener("beforeunload", () => dashboardMemoryCache.clear());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) dashboardMemoryCache.clear();
+  });
 };
 
 const getDashboardMetrics = async (endpoint, requestOptions = {}) => {
+  bindCacheInvalidation();
+
   const cacheKey = getDashboardCacheKey(endpoint);
-  const cached = readCachedDashboard(cacheKey);
+  const cached = dashboardMemoryCache.get(cacheKey);
 
   if (cached) return cached;
 
   const fresh = await api.get(endpoint, requestOptions);
-  writeCachedDashboard(cacheKey, fresh);
+  dashboardMemoryCache.set(cacheKey, fresh);
   return fresh;
+};
+
+export const clearDashboardMetricsCache = () => {
+  dashboardMemoryCache.clear();
 };
 
 export const dashboardService = {
