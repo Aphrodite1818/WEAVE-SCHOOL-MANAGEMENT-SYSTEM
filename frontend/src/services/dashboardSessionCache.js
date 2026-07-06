@@ -5,6 +5,7 @@ const DASHBOARD_BUNDLE_CACHE_PREFIX = "learnly:dashboard-session";
 
 const dashboardBundleCache = new Map();
 let invalidationBound = false;
+let lastActorCacheScope = null;
 
 const getActorCacheScope = () => {
   const user = authSession.getUser() || {};
@@ -16,29 +17,40 @@ const getActorCacheScope = () => {
   ].join(":");
 };
 
+const clearCache = () => dashboardBundleCache.clear();
+
+const resolveActorScope = () => {
+  const nextScope = getActorCacheScope();
+
+  if (lastActorCacheScope && lastActorCacheScope !== nextScope) {
+    clearCache();
+  }
+
+  lastActorCacheScope = nextScope;
+  return nextScope;
+};
+
 const bindCacheInvalidation = () => {
   if (invalidationBound || typeof window === "undefined") return;
   invalidationBound = true;
 
-  const clearCache = () => dashboardBundleCache.clear();
-
-  window.addEventListener("pagehide", clearCache);
   window.addEventListener("beforeunload", clearCache);
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) clearCache();
-  });
+  window.addEventListener("learnly:dashboard-cache-clear", clearCache);
 };
 
 const resolveCacheKey = (key) => {
   if (String(key).startsWith(`${DASHBOARD_BUNDLE_CACHE_PREFIX}:`)) return key;
-  return `${DASHBOARD_BUNDLE_CACHE_PREFIX}:${getActorCacheScope()}:${key}`;
+  return `${DASHBOARD_BUNDLE_CACHE_PREFIX}:${resolveActorScope()}:${key}`;
 };
 
 export const getDashboardSessionCacheKey = (name) => name;
 
 export const clearDashboardSessionCache = () => {
-  dashboardBundleCache.clear();
+  clearCache();
+  lastActorCacheScope = getActorCacheScope();
 };
+
+export const invalidateDashboardSessionCache = clearDashboardSessionCache;
 
 export const getCachedDashboardBundle = async (
   key,
