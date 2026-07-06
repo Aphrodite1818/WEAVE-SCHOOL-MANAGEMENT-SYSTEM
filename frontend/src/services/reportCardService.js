@@ -3,6 +3,7 @@ import { API_BASE_URL, api, authSession } from "./api";
 const queryString = (params = {}) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
+    if (key === "signal") return;
     if (value !== undefined && value !== null && value !== "") {
       query.set(key, String(value));
     }
@@ -43,8 +44,8 @@ const openPrintWindow = async (endpoint) => {
 };
 
 export const reportCardService = {
-  listAdminReportCards: (params) =>
-    api.get(`/tenant-admin/academic/report-cards${queryString(params)}`),
+  listAdminReportCards: (params, requestOptions) =>
+    api.get(`/tenant-admin/academic/report-cards${queryString(params)}`, requestOptions),
   getClassOverview: (params) =>
     api.get(`/tenant-admin/academic/report-cards/overview${queryString(params)}`),
   generateReportCard: (payload) =>
@@ -56,9 +57,9 @@ export const reportCardService = {
   publishReportCard: (reportCardId) =>
     api.post(`/tenant-admin/academic/report-cards/${reportCardId}/publish`),
 
-  listMyReportCards: () => api.get("/students/me/academic/report-cards"),
-  listChildReportCards: (studentId) =>
-    api.get(`/parents/me/children/${studentId}/academic/report-cards`),
+  listMyReportCards: (requestOptions) => api.get("/students/me/academic/report-cards", requestOptions),
+  listChildReportCards: (studentId, requestOptions) =>
+    api.get(`/parents/me/children/${studentId}/academic/report-cards`, requestOptions),
 
   printAdminReportCard: (reportCardId) =>
     openPrintWindow(`/tenant-admin/academic/report-cards/${reportCardId}/print`),
