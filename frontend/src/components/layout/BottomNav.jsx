@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -9,6 +10,11 @@ import { Link, useLocation } from "react-router-dom";
 import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
+
+const NAV_INDICATOR_COMMIT_DELAY_MS = 350;
+const NAV_LOADING_SHOW_DELAY_MS = 80;
+const NAV_LOADING_MIN_VISIBLE_MS = 300;
+const NAV_LOADING_MAX_MS = 1200;
 
 const bottomNavConfig = {
   admin: [
@@ -55,12 +61,32 @@ function BottomNav({ role, onOpenMenu }) {
     transform: "translateX(0px)",
     opacity: 0,
   });
+  const [loadingVisible, setLoadingVisible] = useState(false);
   const navRef = useRef(null);
   const itemRefs = useRef({});
+  const indicatorTimerRef = useRef(null);
+  const loadingShowTimerRef = useRef(null);
+  const loadingHideTimerRef = useRef(null);
+  const loadingMaxTimerRef = useRef(null);
+  const loadingStartedAtRef = useRef(0);
+  const isTransitioningRef = useRef(false);
+  const hasMountedRef = useRef(false);
   const lastViewportWidth = useRef(
     typeof window === "undefined" ? 0 : window.innerWidth
   );
   const items = bottomNavConfig[role] || bottomNavConfig.admin;
+
+  const clearTimer = useCallback((timerRef) => {
+    if (!timerRef.current) return;
+    window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  const clearLoadingTimers = useCallback(() => {
+    clearTimer(loadingShowTimerRef);
+    clearTimer(loadingHideTimerRef);
+    clearTimer(loadingMaxTimerRef);
+  }, [clearTimer]);
 
   const updateIndicator = useCallback(() => {
     const navElement = navRef.current;
@@ -78,11 +104,6 @@ function BottomNav({ role, onOpenMenu }) {
     setIndicatorStyle(getIndicatorStyleForElement(activeElement));
   }, [items, location.pathname]);
 
-  const setIndicatorFromTarget = useCallback((target) => {
-    if (!target) return;
-    setIndicatorStyle(getIndicatorStyleForElement(target));
-  }, []);
-
   const scheduleIndicatorUpdate = useCallback(() => {
     if (typeof window === "undefined") return;
 
@@ -91,9 +112,60 @@ function BottomNav({ role, onOpenMenu }) {
     });
   }, [updateIndicator]);
 
+  const finishNavigationFeedback = useCallback(() => {
+    if (!isTransitioningRef.current) return;
+
+    clearTimer(loadingShowTimerRef);
+    clearTimer(loadingHideTimerRef);
+    clearTimer(loadingMaxTimerRef);
+
+    const elapsed = Date.now() - loadingStartedAtRef.current;
+    const hideDelay = Math.max(NAV_LOADING_MIN_VISIBLE_MS - elapsed, 0);
+
+    loadingHideTimerRef.current = window.setTimeout(() => {
+      isTransitioningRef.current = false;
+      setLoadingVisible(false);
+      loadingHideTimerRef.current = null;
+    }, hideDelay);
+  }, [clearTimer]);
+
+  const startNavigationFeedback = useCallback(() => {
+    clearLoadingTimers();
+    isTransitioningRef.current = true;
+    loadingStartedAtRef.current = Date.now();
+
+    loadingShowTimerRef.current = window.setTimeout(() => {
+      if (!isTransitioningRef.current) return;
+      setLoadingVisible(true);
+      loadingShowTimerRef.current = null;
+    }, NAV_LOADING_SHOW_DELAY_MS);
+
+    loadingMaxTimerRef.current = window.setTimeout(() => {
+      isTransitioningRef.current = false;
+      setLoadingVisible(false);
+      loadingMaxTimerRef.current = null;
+    }, NAV_LOADING_MAX_MS);
+  }, [clearLoadingTimers]);
+
   useLayoutEffect(() => {
-    scheduleIndicatorUpdate();
-  }, [scheduleIndicatorUpdate]);
+    clearTimer(indicatorTimerRef);
+
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      scheduleIndicatorUpdate();
+      return undefined;
+    }
+
+    indicatorTimerRef.current = window.setTimeout(() => {
+      scheduleIndicatorUpdate();
+      finishNavigationFeedback();
+      indicatorTimerRef.current = null;
+    }, NAV_INDICATOR_COMMIT_DELAY_MS);
+
+    return () => {
+      clearTimer(indicatorTimerRef);
+    };
+  }, [clearTimer, finishNavigationFeedback, location.pathname, scheduleIndicatorUpdate]);
 
   useLayoutEffect(() => {
     const handleResize = () => {
@@ -122,78 +194,93 @@ function BottomNav({ role, onOpenMenu }) {
     };
   }, [scheduleIndicatorUpdate]);
 
-  const handlePointerDown = useCallback(
-    (event, item) => {
-      if (isRouteActive(location.pathname, item.to)) return;
-      setIndicatorFromTarget(event.currentTarget);
-    },
-    [location.pathname, setIndicatorFromTarget]
-  );
+  useEffect(() => {
+    return () => {
+      clearTimer(indicatorTimerRef);
+      clearLoadingTimers();
+    };
+  }, [clearLoadingTimers, clearTimer]);
 
   const handleClick = useCallback(
     (event, item) => {
-      if (!isRouteActive(location.pathname, item.to)) {
-        setIndicatorFromTarget(event.currentTarget);
+      if (isRouteActive(location.pathname, item.to)) {
+        event.preventDefault();
+        clearLoadingTimers();
+        isTransitioningRef.current = false;
+        setLoadingVisible(false);
+        scrollDashboardViewportToTop("auto");
         return;
       }
 
-      event.preventDefault();
-      scrollDashboardViewportToTop("auto");
+      startNavigationFeedback();
     },
-    [location.pathname, setIndicatorFromTarget]
+    [clearLoadingTimers, location.pathname, startNavigationFeedback]
   );
 
   return (
-    <nav
-      data-mobile-bottom-nav="true"
-      className="bottom-nav-shell md:hidden"
-      aria-label="Primary installed app navigation"
-    >
-      <div ref={navRef} className="bottom-nav-inner">
-        <span
+    <>
+      {loadingVisible ? (
+        <div
+          className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center bg-background/55 px-4 md:hidden"
           aria-hidden="true"
-          className="bottom-nav-indicator pointer-events-none absolute inset-y-1.5 left-0 z-0 rounded-2xl bg-primary/10"
-          style={indicatorStyle}
-        />
-
-        {items.map((item) => {
-          const Icon = item.icon;
-          const isActive = isRouteActive(location.pathname, item.to);
-          return (
-            <Link
-              key={item.label}
-              to={item.to}
-              ref={(node) => {
-                itemRefs.current[item.to] = node;
-              }}
-              onPointerDown={(event) => handlePointerDown(event, item)}
-              onClick={(event) => handleClick(event, item)}
-              aria-current={isActive ? "page" : undefined}
-              aria-label={item.label}
-              className={cn(
-                "bottom-nav-item",
-                isActive ? "text-primary" : "text-text-muted hover:text-text"
-              )}
-            >
-              <Icon className={cn("h-5 w-5 shrink-0 transition-transform duration-150", isActive && "scale-110")} />
-              <span className={cn("text-[10.5px] font-semibold leading-none transition-colors duration-150", isActive ? "text-primary" : "text-text-muted")}>
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
-
-        <button
-          type="button"
-          onClick={onOpenMenu}
-          className="bottom-nav-item text-text-muted hover:text-text"
-          aria-label="Open full navigation menu"
         >
-          <Menu className="h-5 w-5 shrink-0" />
-          <span className="text-[10.5px] font-semibold leading-none">Menu</span>
-        </button>
-      </div>
-    </nav>
+          <div className="flex items-center gap-2 rounded-full bg-surface/95 px-4 py-2 text-xs font-semibold text-text-muted shadow-premium">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+            <span>Loading...</span>
+          </div>
+        </div>
+      ) : null}
+
+      <nav
+        data-mobile-bottom-nav="true"
+        className="bottom-nav-shell md:hidden"
+        aria-label="Primary installed app navigation"
+      >
+        <div ref={navRef} className="bottom-nav-inner">
+          <span
+            aria-hidden="true"
+            className="bottom-nav-indicator pointer-events-none absolute inset-y-1.5 left-0 z-0 rounded-2xl bg-primary/10"
+            style={indicatorStyle}
+          />
+
+          {items.map((item) => {
+            const Icon = item.icon;
+            const isActive = isRouteActive(location.pathname, item.to);
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                ref={(node) => {
+                  itemRefs.current[item.to] = node;
+                }}
+                onClick={(event) => handleClick(event, item)}
+                aria-current={isActive ? "page" : undefined}
+                aria-label={item.label}
+                className={cn(
+                  "bottom-nav-item",
+                  isActive ? "text-primary" : "text-text-muted hover:text-text"
+                )}
+              >
+                <Icon className={cn("h-5 w-5 shrink-0 transition-transform duration-150", isActive && "scale-110")} />
+                <span className={cn("text-[10.5px] font-semibold leading-none transition-colors duration-150", isActive ? "text-primary" : "text-text-muted")}>
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={onOpenMenu}
+            className="bottom-nav-item text-text-muted hover:text-text"
+            aria-label="Open full navigation menu"
+          >
+            <Menu className="h-5 w-5 shrink-0" />
+            <span className="text-[10.5px] font-semibold leading-none">Menu</span>
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }
 
