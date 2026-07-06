@@ -97,11 +97,6 @@ function BottomNav({ role, onOpenMenu }) {
 
   useLayoutEffect(() => {
     const handleResize = () => {
-      // Mobile browsers fire `resize` when the address bar collapses/expands
-      // during scroll — that only changes viewport height, not width. Re-running
-      // indicator layout in that moment can shift the tap target under the
-      // user's finger and cause the browser to drop the click. Only react when
-      // the width actually changed (a real rotation/breakpoint change).
       if (window.innerWidth === lastViewportWidth.current) return;
       lastViewportWidth.current = window.innerWidth;
       scheduleIndicatorUpdate();
@@ -127,7 +122,7 @@ function BottomNav({ role, onOpenMenu }) {
     };
   }, [scheduleIndicatorUpdate]);
 
-  const handleItemPointerDown = useCallback(
+  const handlePointerDown = useCallback(
     (event, item) => {
       if (isRouteActive(location.pathname, item.to)) return;
       setIndicatorFromTarget(event.currentTarget);
@@ -135,7 +130,7 @@ function BottomNav({ role, onOpenMenu }) {
     [location.pathname, setIndicatorFromTarget]
   );
 
-  const handleItemClick = useCallback(
+  const handleClick = useCallback(
     (event, item) => {
       if (!isRouteActive(location.pathname, item.to)) {
         setIndicatorFromTarget(event.currentTarget);
@@ -151,55 +146,51 @@ function BottomNav({ role, onOpenMenu }) {
   return (
     <nav
       data-mobile-bottom-nav="true"
-      className="fixed inset-x-0 bottom-0 z-40 px-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-1.5 md:hidden"
+      className="bottom-nav-shell md:hidden"
       aria-label="Primary installed app navigation"
     >
-      <div
-        ref={navRef}
-        className="relative mx-auto flex w-full max-w-[31rem] items-center gap-2 rounded-[2rem] border border-border/70 bg-surface/95 p-2 shadow-[0_12px_28px_rgba(15,23,42,0.16)]"
-      >
+      <div ref={navRef} className="bottom-nav-inner">
         <span
           aria-hidden="true"
-          className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.6rem] bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_rgba(15,23,42,0.12)]"
+          className="bottom-nav-indicator pointer-events-none absolute inset-y-1.5 left-0 z-0 rounded-2xl bg-primary/10"
           style={indicatorStyle}
         />
+
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = isRouteActive(location.pathname, item.to);
-
           return (
             <Link
               key={item.label}
               to={item.to}
-              onPointerDown={(event) => handleItemPointerDown(event, item)}
-              onClick={(event) => handleItemClick(event, item)}
               ref={(node) => {
                 itemRefs.current[item.to] = node;
               }}
+              onPointerDown={(event) => handlePointerDown(event, item)}
+              onClick={(event) => handleClick(event, item)}
               aria-current={isActive ? "page" : undefined}
               aria-label={item.label}
               className={cn(
-                "relative z-10 flex min-h-16 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.6rem] px-2.5 py-2.5 text-center transition-colors duration-150 ease-out",
-                isActive
-                  ? "text-text"
-                  : "text-text-muted hover:bg-surface-muted/80 hover:text-text"
+                "bottom-nav-item",
+                isActive ? "text-primary" : "text-text-muted hover:text-text"
               )}
             >
-              <Icon className={cn("pointer-events-none h-[1.375rem] w-[1.375rem] shrink-0 transition-colors duration-150 ease-out", isActive && "text-primary")} />
-              <span className={cn("pointer-events-none max-w-full truncate text-[11.5px] font-bold leading-tight transition-colors duration-150 ease-out", isActive && "text-text")}>
+              <Icon className={cn("h-5 w-5 shrink-0 transition-transform duration-150", isActive && "scale-110")} />
+              <span className={cn("text-[10.5px] font-semibold leading-none transition-colors duration-150", isActive ? "text-primary" : "text-text-muted")}>
                 {item.label}
               </span>
             </Link>
           );
         })}
+
         <button
           type="button"
           onClick={onOpenMenu}
-          className="relative z-10 flex min-h-16 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.6rem] px-2.5 py-2.5 text-text-muted transition-colors duration-150 ease-out hover:bg-surface-muted/80 hover:text-text"
+          className="bottom-nav-item text-text-muted hover:text-text"
           aria-label="Open full navigation menu"
         >
-          <Menu className="pointer-events-none h-[1.375rem] w-[1.375rem] shrink-0" />
-          <span className="pointer-events-none text-[11.5px] font-bold leading-tight">Menu</span>
+          <Menu className="h-5 w-5 shrink-0" />
+          <span className="text-[10.5px] font-semibold leading-none">Menu</span>
         </button>
       </div>
     </nav>
