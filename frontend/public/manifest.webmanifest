@@ -6,18 +6,18 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#020617",
-  "theme_color": "#0f172a",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563EB",
   "categories": ["education", "productivity"],
   "icons": [
     {
-      "src": "/icons/learnly-icon.svg",
+      "src": "/favicon.svg?v=learnly-shield-1",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icons/learnly-maskable.svg",
+      "src": "/icons/learnly-maskable.svg?v=learnly-shield-1",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
