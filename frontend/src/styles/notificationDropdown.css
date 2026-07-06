@@ -1,0 +1,24 @@
+@media (max-width: 767px) {
+  header div:has(button[aria-label="Open notifications"]) > div.absolute {
+    position: fixed !important;
+    top: calc(env(safe-area-inset-top) + 4.75rem) !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin-top: 0 !important;
+    padding: 0.85rem !important;
+    border-radius: 1.35rem !important;
+    z-index: 70 !important;
+    transform: none !important;
+  }
+
+  header div:has(button[aria-label="Open notifications"]) > div.absolute > div {
+    padding: 0.15rem !important;
+  }
+
+  header div:has(button[aria-label="Open notifications"]) p {
+    overflow-wrap: anywhere;
+  }
+}
