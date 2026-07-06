@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { getErrorMessage } from "../../services/api";
+import { getErrorMessage, isAbortError } from "../../services/api";
+import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { parentService } from "../../services/parentService";
 import { readSelectedChildId, writeSelectedChildId } from "./parentPageUtils";
 
@@ -14,9 +15,13 @@ export function useParentChildren() {
     writeSelectedChildId(childId);
   }, []);
 
-  const reloadChildren = useCallback(async () => {
-    const response = await parentService.getMyStudents();
-    const items = response?.items || [];
+  const reloadChildren = useCallback(async (requestOptions = {}) => {
+    const cacheKey = getDashboardSessionCacheKey("parent:children");
+    const items = await getCachedDashboardBundle(cacheKey, async () => {
+      const response = await parentService.getMyStudents(requestOptions);
+      return response?.items || [];
+    });
+
     setChildren(items);
 
     const nextChildId = readSelectedChildId(items);
@@ -28,23 +33,24 @@ export function useParentChildren() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
 
     async function loadChildren() {
       setIsLoading(true);
       setLoadError(null);
 
       try {
-        const items = await reloadChildren();
-        if (!mounted) return;
+        const items = await reloadChildren({ signal: controller.signal });
+        if (!mounted || controller.signal.aborted) return;
         if (items.length === 0) {
           setSelectedChildIdState("");
           writeSelectedChildId("");
         }
       } catch (error) {
-        if (!mounted) return;
+        if (!mounted || isAbortError(error)) return;
         setLoadError(getErrorMessage(error, "Failed to load linked students."));
       } finally {
-        if (mounted) setIsLoading(false);
+        if (mounted && !controller.signal.aborted) setIsLoading(false);
       }
     }
 
@@ -52,6 +58,7 @@ export function useParentChildren() {
 
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, [reloadChildren]);
 
