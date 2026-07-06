@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText } from "lucide-react";
+import { NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 
@@ -97,6 +98,10 @@ function BottomNav({ role, onOpenMenu }) {
     clearTimer(loadingHideTimerRef);
     clearTimer(loadingMaxTimerRef);
   }, [clearTimer]);
+
+  const abortStalePageRequests = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(NAVIGATION_ABORT_EVENT));
+  }, []);
 
   const updateIndicator = useCallback(() => {
     const navElement = navRef.current;
@@ -249,9 +254,10 @@ function BottomNav({ role, onOpenMenu }) {
         return;
       }
 
+      abortStalePageRequests();
       startNavigationFeedback();
     },
-    [clearLoadingTimers, location.pathname, startNavigationFeedback]
+    [abortStalePageRequests, clearLoadingTimers, location.pathname, startNavigationFeedback]
   );
 
   if (!isStandalonePwa) return null;
