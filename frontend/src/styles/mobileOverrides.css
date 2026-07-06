@@ -7,14 +7,16 @@
     display: block !important;
   }
 
-  aside:has(button[aria-label="Close navigation"]) {
+  [data-mobile-drawer="true"] {
     width: min(88vw, 20.5rem) !important;
   }
 
-  aside:has(button[aria-label="Close navigation"]) .shrink-0.border-t,
-  aside:has(button[aria-label="Close navigation"]) .shrink-0.border-t div {
-    white-space: nowrap !important;
-    flex-wrap: nowrap !important;
+  header button[aria-label="Open navigation"],
+  header button[aria-label="Open notifications"],
+  header button[aria-label="Toggle theme"] {
+    min-width: 2.75rem !important;
+    width: 2.75rem !important;
+    height: 2.75rem !important;
   }
 }
 
