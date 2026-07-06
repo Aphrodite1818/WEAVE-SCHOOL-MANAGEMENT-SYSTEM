@@ -39,16 +39,20 @@ const filterClasses = (items, search) => {
 };
 
 export const classService = {
-  getClasses: async (options = {}) => {
+  getClasses: async (options = {}, requestOptions = {}) => {
+    const { signal, ...queryOptions } = options;
     const result = normalizeListResponse(
-      await api.get(`/classes?${buildQuery(options)}`)
+      await api.get(`/classes?${buildQuery(queryOptions)}`, {
+        ...requestOptions,
+        ...(signal ? { signal } : {}),
+      })
     );
-    const items = filterClasses(result.items, options.search);
+    const items = filterClasses(result.items, queryOptions.search);
 
     return {
       ...result,
       items,
-      total: options.search ? items.length : result.total,
+      total: queryOptions.search ? items.length : result.total,
     };
   },
 
