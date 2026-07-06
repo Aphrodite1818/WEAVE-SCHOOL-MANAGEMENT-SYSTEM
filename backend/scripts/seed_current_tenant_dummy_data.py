@@ -3,15 +3,19 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import random
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, select
 
+# Expected location: backend/scripts/learnly_full_school_seed_with_scores.py
+# If you place it somewhere else, adjust BACKEND_DIR accordingly.
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
@@ -55,6 +59,75 @@ from app.tenant_management.models import Tenant, TenantStatus, TenantVerificatio
 
 
 DEFAULT_PASSWORD = "Test12345!"
+BULK_TAG = "bulkload"
+ACADEMIC_SESSION_NAME = "2025/2026"
+ADMISSION_YEAR_DIGITS = "26"
+RANDOM_SEED = 42
+
+# Result policy: total = 20 + 20 + 60 = 100
+MAX_TEST_SCORE = Decimal("20")
+MAX_ASSESSMENT_SCORE = Decimal("20")
+MAX_EXAM_SCORE = Decimal("60")
+
+LEVELS = [
+    ("JSS 1", "Junior Secondary 1"),
+    ("JSS 2", "Junior Secondary 2"),
+    ("JSS 3", "Junior Secondary 3"),
+    ("SS 1", "Senior Secondary 1"),
+    ("SS 2", "Senior Secondary 2"),
+    ("SS 3", "Senior Secondary 3"),
+]
+DEFAULT_ARMS = ["A", "B", "C", "D"]
+
+# JSS students take junior subjects. SS arms are treated as simple tracks:
+# A = science, B = commercial, C = arts/humanities, D = mixed/general.
+SUBJECTS = [
+    ("MTH", "Mathematics", "Core mathematics"),
+    ("ENG", "English Language", "Reading, grammar, and writing"),
+    ("BST", "Basic Science", "Integrated junior science"),
+    ("BTE", "Basic Technology", "Introductory technology"),
+    ("CMP", "Computer Studies", "Digital literacy and computing"),
+    ("SOS", "Social Studies", "Society and civic awareness"),
+    ("CIV", "Civic Education", "Citizenship and values"),
+    ("BUS", "Business Studies", "Introductory business studies"),
+    ("PHY", "Physics", "Senior secondary physics"),
+    ("CHE", "Chemistry", "Senior secondary chemistry"),
+    ("BIO", "Biology", "Senior secondary biology"),
+    ("ECO", "Economics", "Senior secondary economics"),
+    ("ACC", "Financial Accounting", "Commerce and accounting"),
+    ("GOV", "Government", "Government and civic institutions"),
+    ("LIT", "Literature in English", "Literary studies"),
+    ("CRS", "Christian Religious Studies", "Religious and moral studies"),
+]
+
+JSS_SUBJECT_CODES = ["MTH", "ENG", "BST", "BTE", "CMP", "SOS", "CIV", "BUS"]
+SS_SCIENCE_CODES = ["MTH", "ENG", "CMP", "CIV", "PHY", "CHE", "BIO", "ECO"]
+SS_COMMERCIAL_CODES = ["MTH", "ENG", "CMP", "CIV", "ECO", "ACC", "GOV", "BUS"]
+SS_ARTS_CODES = ["MTH", "ENG", "CMP", "CIV", "GOV", "LIT", "CRS", "ECO"]
+SS_MIXED_CODES = ["MTH", "ENG", "CMP", "CIV", "BIO", "ECO", "GOV", "LIT"]
+
+FIRST_NAMES_MALE = [
+    "Emeka", "Tunde", "Yusuf", "Chidi", "Femi", "Uche", "Segun", "Obinna",
+    "Ayodele", "Kelechi", "Musa", "Chibuike", "Wale", "Nnamdi", "Bashir",
+    "Tobi", "Ikenna", "Rasheed", "Chukwuma", "Damilare",
+]
+FIRST_NAMES_FEMALE = [
+    "Amaka", "Bisi", "Fatima", "Ijeoma", "Kemi", "Ngozi", "Zainab", "Adaeze",
+    "Funke", "Halima", "Chiamaka", "Yetunde", "Blessing", "Aminat", "Ebele",
+    "Folake", "Hauwa", "Chinwe", "Omolara", "Nkechi",
+]
+LAST_NAMES = [
+    "Okafor", "Adewale", "Bello", "Ike", "Yusuf", "Eze", "Balogun", "Nwosu",
+    "Abubakar", "Onyekachi", "Fashola", "Chukwu", "Suleiman", "Okonkwo",
+    "Adeyemi", "Mohammed", "Nnaji", "Obi", "Lawal", "Ibrahim", "Umeh",
+    "Sani", "Anyanwu", "Oduya", "Garba", "Njoku", "Adebayo", "Musa",
+    "Chibundu", "Yakubu",
+]
+OCCUPATIONS = [
+    "Trader", "Nurse", "Engineer", "Civil Servant", "Teacher", "Driver",
+    "Accountant", "Tailor", "Farmer", "Electrician", "Banker", "Caterer",
+]
+QUALIFICATIONS = ["B.Ed", "B.Sc", "B.A", "B.Tech", "M.Ed", "PGDE"]
 
 
 @dataclass(frozen=True)
@@ -64,7 +137,7 @@ class TeacherSeed:
     last_name: str
     staff_id: str
     qualification: str
-    specialization: str
+    specialization_code: str
 
 
 @dataclass(frozen=True)
@@ -83,6 +156,7 @@ class ClassSeed:
     level: str
     arm: str
     homeroom_teacher_email: str
+    offered_subject_codes: list[str]
 
 
 @dataclass(frozen=True)
@@ -113,90 +187,22 @@ def normalize_subject_code(value: str) -> str:
     return value.strip().upper()
 
 
+def bulk_teacher_email(index: int) -> str:
+    return f"{BULK_TAG}teacher{index:04d}@gmail.com"
+
+
+def bulk_parent_email(index: int) -> str:
+    return f"{BULK_TAG}parent{index:04d}@gmail.com"
+
+
+def bulk_admission_number(prefix: str, index: int) -> str:
+    # Example: DBS26000001. This avoids relying on prefix length during purge/tests.
+    return f"{prefix}{ADMISSION_YEAR_DIGITS}{index:06d}"
+
+
 async def scalar_one_or_none(session, statement: Select):
     result = await session.execute(statement)
     return result.scalar_one_or_none()
-
-
-async def ensure_auth_identity(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    identifier: str,
-    identifier_type: IdentifierType,
-    actor_type: ActorType,
-    actor_id: uuid.UUID,
-) -> AuthIdentity:
-    normalized_identifier = (
-        normalize_email(identifier)
-        if identifier_type == IdentifierType.EMAIL
-        else normalize_admission_number(identifier)
-    )
-    identity = await scalar_one_or_none(
-        session,
-        select(AuthIdentity).where(
-            AuthIdentity.actor_type == actor_type,
-            AuthIdentity.actor_id == actor_id,
-        ),
-    )
-    if identity is None:
-        identity = await scalar_one_or_none(
-            session,
-            select(AuthIdentity).where(
-                AuthIdentity.identifier_type == identifier_type,
-                AuthIdentity.identifier == normalized_identifier,
-            ),
-        )
-    if identity is None:
-        identity = AuthIdentity(
-            tenant_id=tenant_id,
-            identifier=normalized_identifier,
-            identifier_type=identifier_type,
-            actor_type=actor_type,
-            actor_id=actor_id,
-            is_active=True,
-        )
-        session.add(identity)
-        await session.flush()
-        return identity
-
-    identity.tenant_id = tenant_id
-    identity.identifier = normalized_identifier
-    identity.identifier_type = identifier_type
-    identity.actor_type = actor_type
-    identity.actor_id = actor_id
-    identity.is_active = True
-    await session.flush()
-    return identity
-
-
-async def resolve_first_seed_student_admission_number(session, tenant_id_arg: str | None) -> str:
-    tenant = await resolve_target_tenant(session, tenant_id_arg)
-    prefix = tenant.admission_number_prefix or "DBS"
-    return f"{prefix}2600001"
-
-
-async def verify_logins(tenant_id_arg: str | None) -> None:
-    async with AsyncSessionLocal() as session:
-        first_student_admission_number = await resolve_first_seed_student_admission_number(
-            session,
-            tenant_id_arg,
-        )
-
-        teacher_auth = await AuthService.authenticate_actor(
-            session,
-            LoginRequest(identifier="testteacher1@gmail.com", password=DEFAULT_PASSWORD),
-        )
-        student_auth = await AuthService.authenticate_actor(
-            session,
-            LoginRequest(identifier=first_student_admission_number, password=DEFAULT_PASSWORD),
-        )
-        print(
-            "Verified login:",
-            f"teacher={teacher_auth.actor_type}",
-            f"student={student_auth.actor_type}",
-            f"tenant_id={teacher_auth.tenant_id or tenant_id_arg}",
-        )
 
 
 async def resolve_target_tenant(session, tenant_id_arg: str | None) -> Tenant:
@@ -224,567 +230,128 @@ async def ensure_tenant_ready(session, tenant: Tenant) -> None:
     await session.flush()
 
 
-async def ensure_teacher(
-    session,
+async def get_tenant_admin(session, tenant_id: uuid.UUID) -> TenantAdmin:
+    tenant_admin = await scalar_one_or_none(
+        session,
+        select(TenantAdmin)
+        .where(TenantAdmin.tenant_id == tenant_id)
+        .order_by(TenantAdmin.created_at.asc()),
+    )
+    if tenant_admin is None:
+        raise ValueError("Tenant has no tenant_admin record; cannot attribute result/audit rows safely.")
+    return tenant_admin
+
+
+def subject_codes_for_class(level_name: str, arm: str) -> list[str]:
+    if level_name.startswith("JSS"):
+        return JSS_SUBJECT_CODES.copy()
+    if arm == "A":
+        return SS_SCIENCE_CODES.copy()
+    if arm == "B":
+        return SS_COMMERCIAL_CODES.copy()
+    if arm == "C":
+        return SS_ARTS_CODES.copy()
+    return SS_MIXED_CODES.copy()
+
+
+def generate_teachers(count: int) -> list[TeacherSeed]:
+    subject_codes = [code for code, _, _ in SUBJECTS]
+    teachers: list[TeacherSeed] = []
+    for i in range(1, count + 1):
+        is_male = i % 2 == 0
+        first = FIRST_NAMES_MALE[i % len(FIRST_NAMES_MALE)] if is_male else FIRST_NAMES_FEMALE[i % len(FIRST_NAMES_FEMALE)]
+        last = LAST_NAMES[(i * 3) % len(LAST_NAMES)]
+        specialization_code = subject_codes[(i - 1) % len(subject_codes)]
+        teachers.append(
+            TeacherSeed(
+                email=bulk_teacher_email(i),
+                first_name=first,
+                last_name=last,
+                staff_id=f"BLK-TCH-{i:04d}",
+                qualification=QUALIFICATIONS[i % len(QUALIFICATIONS)],
+                specialization_code=specialization_code,
+            )
+        )
+    return teachers
+
+
+def generate_parents(count: int) -> list[ParentSeed]:
+    parents: list[ParentSeed] = []
+    for i in range(1, count + 1):
+        is_male = i % 2 == 0
+        first = FIRST_NAMES_MALE[(i * 5) % len(FIRST_NAMES_MALE)] if is_male else FIRST_NAMES_FEMALE[(i * 5) % len(FIRST_NAMES_FEMALE)]
+        last = LAST_NAMES[i % len(LAST_NAMES)]
+        parents.append(
+            ParentSeed(
+                email=bulk_parent_email(i),
+                first_name=first,
+                last_name=last,
+                phone_number=f"0803{i:07d}",
+                occupation=OCCUPATIONS[i % len(OCCUPATIONS)],
+            )
+        )
+    return parents
+
+
+def generate_classes(teachers: list[TeacherSeed], arms: list[str]) -> list[ClassSeed]:
+    classes: list[ClassSeed] = []
+    for class_index, (name, level) in enumerate(LEVELS):
+        for arm_index, arm in enumerate(arms):
+            key = f"bulk-{name.replace(' ', '').lower()}-{arm.lower()}"
+            teacher = teachers[(class_index * len(arms) + arm_index) % len(teachers)]
+            classes.append(
+                ClassSeed(
+                    key=key,
+                    name=f"Bulk {name}",
+                    level=level,
+                    arm=arm,
+                    homeroom_teacher_email=teacher.email,
+                    offered_subject_codes=subject_codes_for_class(name, arm),
+                )
+            )
+    return classes
+
+
+def generate_students(
     *,
-    tenant_id: uuid.UUID,
-    payload: TeacherSeed,
-) -> Teacher:
-    email = normalize_email(payload.email)
-    teacher = await scalar_one_or_none(
-        session,
-        select(Teacher).where(
-            Teacher.tenant_id == tenant_id,
-            Teacher.email == email,
-        ),
-    )
-    if teacher is None:
-        teacher = Teacher(
-            tenant_id=tenant_id,
-            email=email,
-            password_hash=hash_password(DEFAULT_PASSWORD),
+    count: int,
+    admission_prefix: str,
+    classes: list[ClassSeed],
+    parents: list[ParentSeed],
+) -> list[StudentSeed]:
+    students: list[StudentSeed] = []
+    relationships = [ParentRelationship.FATHER, ParentRelationship.MOTHER, ParentRelationship.GUARDIAN]
+    for i in range(1, count + 1):
+        is_male = i % 2 == 0
+        first = FIRST_NAMES_MALE[(i * 7) % len(FIRST_NAMES_MALE)] if is_male else FIRST_NAMES_FEMALE[(i * 7) % len(FIRST_NAMES_FEMALE)]
+        parent = parents[((i - 1) // 2) % len(parents)]
+        classroom = classes[(i - 1) % len(classes)]
+        birth_year = 2010 + (i % 7)
+        students.append(
+            StudentSeed(
+                admission_number=bulk_admission_number(admission_prefix, i),
+                first_name=first,
+                last_name=parent.last_name,
+                class_key=classroom.key,
+                gender=Gender.MALE if is_male else Gender.FEMALE,
+                date_of_birth=date(birth_year, 1 + (i % 12), 1 + (i % 27)),
+                parent_email=parent.email,
+                relationship_type=relationships[i % len(relationships)],
+            )
         )
-        session.add(teacher)
-
-    teacher.email = email
-    teacher.password_hash = hash_password(DEFAULT_PASSWORD)
-    teacher.first_name = payload.first_name
-    teacher.last_name = payload.last_name
-    teacher.staff_id = payload.staff_id
-    teacher.qualification = payload.qualification
-    teacher.specialization = payload.specialization
-    teacher.account_status = TeacherAccountStatus.ACTIVE
-    teacher.status = TeacherStatus.ACTIVE
-    teacher.is_verified = True
-    teacher.is_active = True
-    await session.flush()
-
-    await ensure_auth_identity(
-        session,
-        tenant_id=tenant_id,
-        identifier=email,
-        identifier_type=IdentifierType.EMAIL,
-        actor_type=ActorType.TEACHER,
-        actor_id=teacher.id,
-    )
-    return teacher
+    return students
 
 
-async def ensure_parent(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    payload: ParentSeed,
-) -> Parent:
-    email = normalize_email(payload.email)
-    parent = await scalar_one_or_none(
-        session,
-        select(Parent).where(
-            Parent.tenant_id == tenant_id,
-            Parent.email == email,
-        ),
-    )
-    if parent is None:
-        parent = Parent(
-            tenant_id=tenant_id,
-            email=email,
-            password_hash=hash_password(DEFAULT_PASSWORD),
-        )
-        session.add(parent)
+def resolve_score_components(student_index: int, subject_index: int, term_index: int) -> tuple[Decimal, Decimal, Decimal]:
+    # Deterministic but varied. Keeps totals realistic and always within 100.
+    test_score = Decimal(str(8 + ((student_index + subject_index + term_index) % 13)))
+    assessment_score = Decimal(str(9 + ((student_index * 2 + subject_index + term_index) % 12)))
+    exam_score = Decimal(str(28 + ((student_index * 3 + subject_index * 2 + term_index) % 33)))
 
-    parent.email = email
-    parent.password_hash = hash_password(DEFAULT_PASSWORD)
-    parent.first_name = payload.first_name
-    parent.last_name = payload.last_name
-    parent.phone_number = payload.phone_number
-    parent.occupation = payload.occupation
-    parent.address = "123 Demo Street, Lagos"
-    parent.emergency_phone = payload.phone_number
-    parent.account_status = ParentAccountStatus.ACTIVE
-    parent.is_verified = True
-    parent.is_active = True
-    await session.flush()
-
-    await ensure_auth_identity(
-        session,
-        tenant_id=tenant_id,
-        identifier=email,
-        identifier_type=IdentifierType.EMAIL,
-        actor_type=ActorType.PARENT,
-        actor_id=parent.id,
-    )
-    return parent
-
-
-async def ensure_classroom(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    payload: ClassSeed,
-    teacher_id: uuid.UUID,
-) -> ClassRoom:
-    classroom = await scalar_one_or_none(
-        session,
-        select(ClassRoom).where(
-            ClassRoom.tenant_id == tenant_id,
-            ClassRoom.name == payload.name,
-            ClassRoom.arm == payload.arm,
-        ),
-    )
-    if classroom is None:
-        classroom = ClassRoom(
-            tenant_id=tenant_id,
-            name=payload.name,
-            arm=payload.arm,
-            level=payload.level,
-            teacher_id=teacher_id,
-            is_active=True,
-        )
-        session.add(classroom)
-    else:
-        classroom.level = payload.level
-        classroom.teacher_id = teacher_id
-        classroom.is_active = True
-
-    await session.flush()
-    return classroom
-
-
-async def ensure_subject(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    name: str,
-    code: str,
-    description: str,
-) -> Subject:
-    normalized_name = normalize_subject_name(name)
-    subject = await scalar_one_or_none(
-        session,
-        select(Subject).where(
-            Subject.tenant_id == tenant_id,
-            Subject.normalized_name == normalized_name,
-        ),
-    )
-    if subject is None:
-        subject = Subject(
-            tenant_id=tenant_id,
-            name=name,
-            normalized_name=normalized_name,
-            code=normalize_subject_code(code),
-            normalized_code=normalize_subject_code(code),
-            description=description,
-            is_active=True,
-        )
-        session.add(subject)
-    else:
-        subject.name = name
-        subject.code = normalize_subject_code(code)
-        subject.normalized_code = normalize_subject_code(code)
-        subject.description = description
-        subject.is_active = True
-
-    await session.flush()
-    return subject
-
-
-async def ensure_teacher_subject(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    teacher_id: uuid.UUID,
-    subject_id: uuid.UUID,
-) -> TeacherSubject:
-    link = await scalar_one_or_none(
-        session,
-        select(TeacherSubject).where(
-            TeacherSubject.tenant_id == tenant_id,
-            TeacherSubject.teacher_id == teacher_id,
-            TeacherSubject.subject_id == subject_id,
-        ),
-    )
-    if link is None:
-        link = TeacherSubject(
-            tenant_id=tenant_id,
-            teacher_id=teacher_id,
-            subject_id=subject_id,
-        )
-        session.add(link)
-        await session.flush()
-    return link
-
-
-async def ensure_student(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    payload: StudentSeed,
-    classroom: ClassRoom,
-) -> Student:
-    admission_number = normalize_admission_number(payload.admission_number)
-    student = await scalar_one_or_none(
-        session,
-        select(Student).where(
-            Student.tenant_id == tenant_id,
-            Student.admission_number == admission_number,
-        ),
-    )
-    if student is None:
-        student = Student(
-            tenant_id=tenant_id,
-            admission_number=admission_number,
-            password_hash=hash_password(DEFAULT_PASSWORD),
-        )
-        session.add(student)
-
-    student.admission_number = admission_number
-    student.password_hash = hash_password(DEFAULT_PASSWORD)
-    student.first_name = payload.first_name
-    student.last_name = payload.last_name
-    student.account_status = StudentAccountStatus.ACTIVE
-    student.is_verified = True
-    student.is_active = True
-    student.password_reset_required = False
-    student.date_of_birth = payload.date_of_birth
-    student.gender = payload.gender
-    student.class_id = classroom.id
-    student.arm = classroom.arm
-    student.status = AcademicStatus.ACTIVE
-    student.profile_status = StudentProfileStatus.COMPLETE
-    student.admission_date = date(2025, 9, 8)
-    await session.flush()
-
-    await ensure_auth_identity(
-        session,
-        tenant_id=tenant_id,
-        identifier=admission_number,
-        identifier_type=IdentifierType.ADMISSION_NUMBER,
-        actor_type=ActorType.STUDENT,
-        actor_id=student.id,
-    )
-    return student
-
-
-async def ensure_parent_link(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    student_id: uuid.UUID,
-    parent_id: uuid.UUID,
-    relationship_type: ParentRelationship,
-    is_primary_contact: bool,
-) -> StudentParentLink:
-    link = await scalar_one_or_none(
-        session,
-        select(StudentParentLink).where(
-            StudentParentLink.tenant_id == tenant_id,
-            StudentParentLink.student_id == student_id,
-            StudentParentLink.parent_id == parent_id,
-        ),
-    )
-    if link is None:
-        link = StudentParentLink(
-            tenant_id=tenant_id,
-            student_id=student_id,
-            parent_id=parent_id,
-            relationship_type=relationship_type,
-            is_primary_contact=is_primary_contact,
-            receives_academic_updates=True,
-            receives_fee_updates=True,
-        )
-        session.add(link)
-    else:
-        link.relationship_type = relationship_type
-        link.is_primary_contact = is_primary_contact
-        link.receives_academic_updates = True
-        link.receives_fee_updates = True
-
-    await session.flush()
-    return link
-
-
-async def ensure_academic_session(session, *, tenant_id: uuid.UUID) -> AcademicSession:
-    academic_session = await scalar_one_or_none(
-        session,
-        select(AcademicSession).where(
-            AcademicSession.tenant_id == tenant_id,
-            AcademicSession.name == "2025/2026",
-        ),
-    )
-    if academic_session is None:
-        academic_session = AcademicSession(
-            tenant_id=tenant_id,
-            name="2025/2026",
-            start_date=date(2025, 9, 8),
-            end_date=date(2026, 7, 31),
-            is_current=True,
-            is_active=True,
-        )
-        session.add(academic_session)
-    else:
-        academic_session.start_date = date(2025, 9, 8)
-        academic_session.end_date = date(2026, 7, 31)
-        academic_session.is_current = True
-        academic_session.is_active = True
-
-    result = await session.execute(
-        select(AcademicSession).where(
-            AcademicSession.tenant_id == tenant_id,
-            AcademicSession.name != "2025/2026",
-            AcademicSession.is_current.is_(True),
-        )
-    )
-    for item in result.scalars().all():
-        item.is_current = False
-
-    await session.flush()
-    return academic_session
-
-
-async def ensure_academic_term(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    academic_session_id: uuid.UUID,
-    name: AcademicTermName,
-    start_date_value: date,
-    end_date_value: date,
-    is_current: bool,
-) -> AcademicTerm:
-    term = await scalar_one_or_none(
-        session,
-        select(AcademicTerm).where(
-            AcademicTerm.tenant_id == tenant_id,
-            AcademicTerm.academic_session_id == academic_session_id,
-            AcademicTerm.name == name,
-        ),
-    )
-    if term is None:
-        term = AcademicTerm(
-            tenant_id=tenant_id,
-            academic_session_id=academic_session_id,
-            name=name,
-            start_date=start_date_value,
-            end_date=end_date_value,
-            is_current=is_current,
-            is_active=True,
-        )
-        session.add(term)
-    else:
-        term.start_date = start_date_value
-        term.end_date = end_date_value
-        term.is_current = is_current
-        term.is_active = True
-
-    await session.flush()
-    return term
-
-
-async def ensure_grading_scale(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    grade: str,
-    min_score: Decimal,
-    max_score: Decimal,
-    remark: str,
-) -> GradingScale:
-    scale = await scalar_one_or_none(
-        session,
-        select(GradingScale).where(
-            GradingScale.tenant_id == tenant_id,
-            GradingScale.grade == grade,
-        ),
-    )
-    if scale is None:
-        scale = GradingScale(
-            tenant_id=tenant_id,
-            grade=grade,
-            min_score=min_score,
-            max_score=max_score,
-            remark=remark,
-            is_active=True,
-        )
-        session.add(scale)
-    else:
-        scale.min_score = min_score
-        scale.max_score = max_score
-        scale.remark = remark
-        scale.is_active = True
-
-    await session.flush()
-    return scale
-
-
-async def ensure_class_subject(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    class_id: uuid.UUID,
-    subject_id: uuid.UUID,
-    is_core: bool,
-) -> ClassSubject:
-    class_subject = await scalar_one_or_none(
-        session,
-        select(ClassSubject).where(
-            ClassSubject.tenant_id == tenant_id,
-            ClassSubject.class_id == class_id,
-            ClassSubject.subject_id == subject_id,
-        ),
-    )
-    if class_subject is None:
-        class_subject = ClassSubject(
-            tenant_id=tenant_id,
-            class_id=class_id,
-            subject_id=subject_id,
-            is_core=is_core,
-            is_active=True,
-        )
-        session.add(class_subject)
-    else:
-        class_subject.is_core = is_core
-        class_subject.is_active = True
-
-    await session.flush()
-    return class_subject
-
-
-async def ensure_teacher_assignment(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    class_subject_id: uuid.UUID,
-    teacher_id: uuid.UUID,
-) -> TeacherAssignment:
-    assignment = await scalar_one_or_none(
-        session,
-        select(TeacherAssignment).where(
-            TeacherAssignment.tenant_id == tenant_id,
-            TeacherAssignment.class_subject_id == class_subject_id,
-            TeacherAssignment.is_active.is_(True),
-        ),
-    )
-    if assignment is None:
-        assignment = TeacherAssignment(
-            tenant_id=tenant_id,
-            class_subject_id=class_subject_id,
-            teacher_id=teacher_id,
-            is_active=True,
-            effective_from=date(2026, 5, 4),
-            effective_to=None,
-        )
-        session.add(assignment)
-    else:
-        assignment.teacher_id = teacher_id
-        assignment.is_active = True
-        assignment.effective_from = date(2026, 5, 4)
-        assignment.effective_to = None
-
-    await session.flush()
-    return assignment
-
-
-async def ensure_legacy_class_subject_teacher(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    class_id: uuid.UUID,
-    subject_id: uuid.UUID,
-    teacher_id: uuid.UUID,
-    is_core: bool,
-) -> ClassSubjectTeacher:
-    legacy = await scalar_one_or_none(
-        session,
-        select(ClassSubjectTeacher).where(
-            ClassSubjectTeacher.tenant_id == tenant_id,
-            ClassSubjectTeacher.class_id == class_id,
-            ClassSubjectTeacher.subject_id == subject_id,
-        ),
-    )
-    if legacy is None:
-        legacy = ClassSubjectTeacher(
-            tenant_id=tenant_id,
-            class_id=class_id,
-            subject_id=subject_id,
-            teacher_id=teacher_id,
-            is_core=is_core,
-            sort_order=0,
-            is_active=True,
-        )
-        session.add(legacy)
-    else:
-        legacy.teacher_id = teacher_id
-        legacy.is_core = is_core
-        legacy.is_active = True
-
-    await session.flush()
-    return legacy
-
-
-async def ensure_result(
-    session,
-    *,
-    tenant_id: uuid.UUID,
-    student: Student,
-    class_subject: ClassSubject,
-    legacy_assignment: ClassSubjectTeacher,
-    teacher_assignment: TeacherAssignment,
-    academic_session: AcademicSession,
-    academic_term: AcademicTerm,
-    recorded_by_actor_id: uuid.UUID,
-    test_score: Decimal,
-    assessment_score: Decimal,
-    exam_score: Decimal,
-) -> StudentSubjectResult:
-    total_score = test_score + assessment_score + exam_score
-    grade, remark = resolve_grade(total_score)
-    result = await scalar_one_or_none(
-        session,
-        select(StudentSubjectResult).where(
-            StudentSubjectResult.tenant_id == tenant_id,
-            StudentSubjectResult.student_id == student.id,
-            StudentSubjectResult.class_subject_teacher_id == legacy_assignment.id,
-            StudentSubjectResult.academic_session_id == academic_session.id,
-            StudentSubjectResult.academic_term_id == academic_term.id,
-        ),
-    )
-    if result is None:
-        result = StudentSubjectResult(
-            tenant_id=tenant_id,
-            student_id=student.id,
-            class_id=class_subject.class_id,
-            subject_id=class_subject.subject_id,
-            teacher_id=teacher_assignment.teacher_id,
-            class_subject_teacher_id=legacy_assignment.id,
-            teacher_assignment_id=teacher_assignment.id,
-            academic_session_id=academic_session.id,
-            academic_term_id=academic_term.id,
-            recorded_by_actor_type=ActorType.TENANT_ADMIN.value,
-            recorded_by_actor_id=recorded_by_actor_id,
-            test_score=test_score,
-            assessment_score=assessment_score,
-            exam_score=exam_score,
-            total_score=total_score,
-            grade=grade,
-            remark=remark,
-            status=AcademicResultStatus.SUBMITTED,
-        )
-        session.add(result)
-    else:
-        result.teacher_id = teacher_assignment.teacher_id
-        result.teacher_assignment_id = teacher_assignment.id
-        result.test_score = test_score
-        result.assessment_score = assessment_score
-        result.exam_score = exam_score
-        result.total_score = total_score
-        result.grade = grade
-        result.remark = remark
-        result.status = AcademicResultStatus.SUBMITTED
-        result.recorded_by_actor_type = ActorType.TENANT_ADMIN.value
-        result.recorded_by_actor_id = recorded_by_actor_id
-
-    await session.flush()
-    return result
+    test_score = min(test_score, MAX_TEST_SCORE)
+    assessment_score = min(assessment_score, MAX_ASSESSMENT_SCORE)
+    exam_score = min(exam_score, MAX_EXAM_SCORE)
+    return test_score, assessment_score, exam_score
 
 
 def resolve_grade(total_score: Decimal) -> tuple[str, str]:
@@ -801,274 +368,650 @@ def resolve_grade(total_score: Decimal) -> tuple[str, str]:
     return "F", "Fail"
 
 
-def build_seed_data(admission_prefix: str) -> tuple[
-    list[TeacherSeed],
-    list[ParentSeed],
-    list[ClassSeed],
-    list[StudentSeed],
-]:
-    teachers = [
-        TeacherSeed("testteacher1@gmail.com", "Ada", "Okafor", "TCH-001", "B.Ed", "Mathematics"),
-        TeacherSeed("testteacher2@gmail.com", "Kunle", "Adewale", "TCH-002", "B.A", "English Language"),
-        TeacherSeed("testteacher3@gmail.com", "Mariam", "Bello", "TCH-003", "B.Sc", "Basic Science"),
-        TeacherSeed("testteacher4@gmail.com", "Chinedu", "Ike", "TCH-004", "B.Tech", "Computer Studies"),
-        TeacherSeed("testteacher5@gmail.com", "Aisha", "Yusuf", "TCH-005", "B.Ed", "Social Studies"),
-    ]
-    parents = [
-        ParentSeed("testparent1@gmail.com", "Michael", "Okafor", "08030000001", "Trader"),
-        ParentSeed("testparent2@gmail.com", "Sarah", "Adewale", "08030000002", "Nurse"),
-        ParentSeed("testparent3@gmail.com", "Ibrahim", "Bello", "08030000003", "Engineer"),
-        ParentSeed("testparent4@gmail.com", "Ngozi", "Ike", "08030000004", "Civil Servant"),
-    ]
-    classes = [
-        ClassSeed("jss1a", "JSS 1", "Junior Secondary 1", "A", "testteacher1@gmail.com"),
-        ClassSeed("jss1b", "JSS 1", "Junior Secondary 1", "B", "testteacher2@gmail.com"),
-        ClassSeed("jss2a", "JSS 2", "Junior Secondary 2", "A", "testteacher3@gmail.com"),
-    ]
-    students = [
-        StudentSeed(f"{admission_prefix}2600001", "John", "Okafor", "jss1a", Gender.MALE, date(2014, 2, 14), "testparent1@gmail.com", ParentRelationship.FATHER),
-        StudentSeed(f"{admission_prefix}2600002", "Mary", "Okafor", "jss1a", Gender.FEMALE, date(2014, 5, 9), "testparent1@gmail.com", ParentRelationship.MOTHER),
-        StudentSeed(f"{admission_prefix}2600003", "Daniel", "Adewale", "jss1b", Gender.MALE, date(2013, 10, 21), "testparent2@gmail.com", ParentRelationship.MOTHER),
-        StudentSeed(f"{admission_prefix}2600004", "Esther", "Adewale", "jss1b", Gender.FEMALE, date(2014, 1, 17), "testparent2@gmail.com", ParentRelationship.MOTHER),
-        StudentSeed(f"{admission_prefix}2600005", "Samuel", "Bello", "jss2a", Gender.MALE, date(2012, 7, 3), "testparent3@gmail.com", ParentRelationship.FATHER),
-        StudentSeed(f"{admission_prefix}2600006", "Ruth", "Bello", "jss2a", Gender.FEMALE, date(2012, 11, 11), "testparent3@gmail.com", ParentRelationship.MOTHER),
-        StudentSeed(f"{admission_prefix}2600007", "Grace", "Ike", "jss1a", Gender.FEMALE, date(2014, 8, 29), "testparent4@gmail.com", ParentRelationship.GUARDIAN),
-        StudentSeed(f"{admission_prefix}2600008", "David", "Ike", "jss2a", Gender.MALE, date(2013, 4, 8), "testparent4@gmail.com", ParentRelationship.GUARDIAN),
-    ]
-    return teachers, parents, classes, students
+async def ensure_auth_identity(
+    session,
+    *,
+    tenant_id: uuid.UUID,
+    identifier: str,
+    identifier_type: IdentifierType,
+    actor_type: ActorType,
+    actor_id: uuid.UUID,
+) -> AuthIdentity:
+    normalized_identifier = (
+        normalize_email(identifier)
+        if identifier_type == IdentifierType.EMAIL
+        else normalize_admission_number(identifier)
+    )
+
+    identity = await scalar_one_or_none(
+        session,
+        select(AuthIdentity).where(
+            AuthIdentity.identifier_type == identifier_type,
+            AuthIdentity.identifier == normalized_identifier,
+        ),
+    )
+    if identity is None:
+        identity = AuthIdentity(
+            tenant_id=tenant_id,
+            identifier=normalized_identifier,
+            identifier_type=identifier_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            is_active=True,
+        )
+        session.add(identity)
+    else:
+        identity.tenant_id = tenant_id
+        identity.actor_type = actor_type
+        identity.actor_id = actor_id
+        identity.is_active = True
+    await session.flush()
+    return identity
 
 
-async def seed(tenant_id_arg: str | None) -> None:
-    engine.echo = False
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    async with AsyncSessionLocal() as session:
-        tenant = await resolve_target_tenant(session, tenant_id_arg)
-        await ensure_tenant_ready(session, tenant)
-
-        tenant_admin = await scalar_one_or_none(
+async def ensure_subjects(session, tenant_id: uuid.UUID) -> dict[str, Subject]:
+    subjects_by_code: dict[str, Subject] = {}
+    for code, name, description in SUBJECTS:
+        normalized_code = normalize_subject_code(code)
+        normalized_name = normalize_subject_name(name)
+        subject = await scalar_one_or_none(
             session,
-            select(TenantAdmin).where(TenantAdmin.tenant_id == tenant.id).order_by(TenantAdmin.created_at.asc()),
+            select(Subject).where(
+                Subject.tenant_id == tenant_id,
+                Subject.normalized_code == normalized_code,
+            ),
         )
-        if tenant_admin is None:
-            raise ValueError("Tenant has no tenant_admin record, so result/audit records cannot be attributed safely.")
-
-        teachers_seed, parents_seed, classes_seed, students_seed = build_seed_data(
-            tenant.admission_number_prefix or "DBS"
-        )
-
-        teachers_by_email: dict[str, Teacher] = {}
-        for payload in teachers_seed:
-            teacher = await ensure_teacher(session, tenant_id=tenant.id, payload=payload)
-            teachers_by_email[payload.email] = teacher
-
-        parents_by_email: dict[str, Parent] = {}
-        for payload in parents_seed:
-            parent = await ensure_parent(session, tenant_id=tenant.id, payload=payload)
-            parents_by_email[payload.email] = parent
-
-        classrooms_by_key: dict[str, ClassRoom] = {}
-        for payload in classes_seed:
-            teacher = teachers_by_email[payload.homeroom_teacher_email]
-            classroom = await ensure_classroom(
-                session,
-                tenant_id=tenant.id,
-                payload=payload,
-                teacher_id=teacher.id,
-            )
-            classrooms_by_key[payload.key] = classroom
-
-        subjects_by_code: dict[str, Subject] = {}
-        subject_seed = [
-            ("MTH", "Mathematics", "Core mathematics subject"),
-            ("ENG", "English Language", "Reading, grammar, and writing"),
-            ("BST", "Basic Science", "Integrated junior science"),
-            ("SOS", "Social Studies", "Society and civic awareness"),
-            ("CIV", "Civic Education", "Citizenship and values"),
-            ("CMP", "Computer Studies", "Digital literacy and computing"),
-        ]
-        for code, name, description in subject_seed:
-            subject = await ensure_subject(
-                session,
-                tenant_id=tenant.id,
+        if subject is None:
+            subject = Subject(
+                tenant_id=tenant_id,
                 name=name,
-                code=code,
+                normalized_name=normalized_name,
+                code=normalized_code,
+                normalized_code=normalized_code,
                 description=description,
+                is_active=True,
             )
-            subjects_by_code[code] = subject
+            session.add(subject)
+        else:
+            subject.name = name
+            subject.normalized_name = normalized_name
+            subject.code = normalized_code
+            subject.normalized_code = normalized_code
+            subject.description = description
+            subject.is_active = True
+        await session.flush()
+        subjects_by_code[normalized_code] = subject
+    return subjects_by_code
 
-        teacher_subject_map = {
-            "testteacher1@gmail.com": ["MTH"],
-            "testteacher2@gmail.com": ["ENG"],
-            "testteacher3@gmail.com": ["BST"],
-            "testteacher4@gmail.com": ["CMP", "CIV"],
-            "testteacher5@gmail.com": ["SOS"],
-        }
-        for email, codes in teacher_subject_map.items():
-            teacher = teachers_by_email[email]
-            for code in codes:
-                await ensure_teacher_subject(
-                    session,
-                    tenant_id=tenant.id,
-                    teacher_id=teacher.id,
-                    subject_id=subjects_by_code[code].id,
-                )
 
-        academic_session = await ensure_academic_session(session, tenant_id=tenant.id)
-        await ensure_academic_term(
-            session,
-            tenant_id=tenant.id,
-            academic_session_id=academic_session.id,
-            name=AcademicTermName.FIRST_TERM,
-            start_date_value=date(2025, 9, 8),
-            end_date_value=date(2025, 12, 19),
-            is_current=False,
-        )
-        await ensure_academic_term(
-            session,
-            tenant_id=tenant.id,
-            academic_session_id=academic_session.id,
-            name=AcademicTermName.SECOND_TERM,
-            start_date_value=date(2026, 1, 12),
-            end_date_value=date(2026, 4, 10),
-            is_current=False,
-        )
-        current_term = await ensure_academic_term(
-            session,
-            tenant_id=tenant.id,
-            academic_session_id=academic_session.id,
-            name=AcademicTermName.THIRD_TERM,
-            start_date_value=date(2026, 5, 4),
-            end_date_value=date(2026, 7, 31),
+async def ensure_academic_calendar(session, tenant_id: uuid.UUID) -> tuple[AcademicSession, list[AcademicTerm]]:
+    academic_session = await scalar_one_or_none(
+        session,
+        select(AcademicSession).where(
+            AcademicSession.tenant_id == tenant_id,
+            AcademicSession.name == ACADEMIC_SESSION_NAME,
+        ),
+    )
+    if academic_session is None:
+        academic_session = AcademicSession(
+            tenant_id=tenant_id,
+            name=ACADEMIC_SESSION_NAME,
+            start_date=date(2025, 9, 8),
+            end_date=date(2026, 7, 31),
             is_current=True,
+            is_active=True,
         )
+        session.add(academic_session)
+    else:
+        academic_session.start_date = date(2025, 9, 8)
+        academic_session.end_date = date(2026, 7, 31)
+        academic_session.is_current = True
+        academic_session.is_active = True
+    await session.flush()
 
-        grading_seed = [
-            ("A", Decimal("70"), Decimal("100"), "Excellent"),
-            ("B", Decimal("60"), Decimal("69.99"), "Very Good"),
-            ("C", Decimal("50"), Decimal("59.99"), "Good"),
-            ("D", Decimal("45"), Decimal("49.99"), "Fair"),
-            ("E", Decimal("40"), Decimal("44.99"), "Pass"),
-            ("F", Decimal("0"), Decimal("39.99"), "Fail"),
-        ]
-        for grade, min_score, max_score, remark in grading_seed:
-            await ensure_grading_scale(
-                session,
-                tenant_id=tenant.id,
+    term_payloads = [
+        (AcademicTermName.FIRST_TERM, date(2025, 9, 8), date(2025, 12, 19), False),
+        (AcademicTermName.SECOND_TERM, date(2026, 1, 12), date(2026, 4, 10), False),
+        (AcademicTermName.THIRD_TERM, date(2026, 5, 4), date(2026, 7, 31), True),
+    ]
+    terms: list[AcademicTerm] = []
+    for name, start, end, is_current in term_payloads:
+        term = await scalar_one_or_none(
+            session,
+            select(AcademicTerm).where(
+                AcademicTerm.tenant_id == tenant_id,
+                AcademicTerm.academic_session_id == academic_session.id,
+                AcademicTerm.name == name,
+            ),
+        )
+        if term is None:
+            term = AcademicTerm(
+                tenant_id=tenant_id,
+                academic_session_id=academic_session.id,
+                name=name,
+                start_date=start,
+                end_date=end,
+                is_current=is_current,
+                is_active=True,
+            )
+            session.add(term)
+        else:
+            term.start_date = start
+            term.end_date = end
+            term.is_current = is_current
+            term.is_active = True
+        await session.flush()
+        terms.append(term)
+    return academic_session, terms
+
+
+async def ensure_grading_scale(session, tenant_id: uuid.UUID) -> None:
+    grading_seed = [
+        ("A", Decimal("70"), Decimal("100"), "Excellent"),
+        ("B", Decimal("60"), Decimal("69.99"), "Very Good"),
+        ("C", Decimal("50"), Decimal("59.99"), "Good"),
+        ("D", Decimal("45"), Decimal("49.99"), "Fair"),
+        ("E", Decimal("40"), Decimal("44.99"), "Pass"),
+        ("F", Decimal("0"), Decimal("39.99"), "Fail"),
+    ]
+    for grade, min_score, max_score, remark in grading_seed:
+        scale = await scalar_one_or_none(
+            session,
+            select(GradingScale).where(
+                GradingScale.tenant_id == tenant_id,
+                GradingScale.grade == grade,
+            ),
+        )
+        if scale is None:
+            scale = GradingScale(
+                tenant_id=tenant_id,
                 grade=grade,
                 min_score=min_score,
                 max_score=max_score,
                 remark=remark,
+                is_active=True,
             )
+            session.add(scale)
+        else:
+            scale.min_score = min_score
+            scale.max_score = max_score
+            scale.remark = remark
+            scale.is_active = True
+    await session.flush()
 
-        students_by_admission: dict[str, Student] = {}
-        for payload in students_seed:
-            classroom = classrooms_by_key[payload.class_key]
-            student = await ensure_student(
-                session,
+
+async def has_bulk_seed(session, tenant_id: uuid.UUID) -> bool:
+    marker = await scalar_one_or_none(
+        session,
+        select(Teacher.id).where(
+            Teacher.tenant_id == tenant_id,
+            Teacher.email == bulk_teacher_email(1),
+        ),
+    )
+    return marker is not None
+
+
+async def purge_bulk_school(session, tenant_id: uuid.UUID, admission_prefix: str) -> None:
+    print("Purging generated bulk school data...")
+    admission_like = f"{admission_prefix}{ADMISSION_YEAR_DIGITS}%"
+
+    student_result = await session.execute(
+        select(Student.id).where(
+            Student.tenant_id == tenant_id,
+            Student.admission_number.like(admission_like),
+        )
+    )
+    student_ids = [row[0] for row in student_result.all()]
+
+    class_result = await session.execute(
+        select(ClassRoom.id).where(
+            ClassRoom.tenant_id == tenant_id,
+            ClassRoom.name.like("Bulk %"),
+        )
+    )
+    class_ids = [row[0] for row in class_result.all()]
+
+    parent_result = await session.execute(
+        select(Parent.id).where(
+            Parent.tenant_id == tenant_id,
+            Parent.email.like(f"{BULK_TAG}parent%"),
+        )
+    )
+    parent_ids = [row[0] for row in parent_result.all()]
+
+    teacher_result = await session.execute(
+        select(Teacher.id).where(
+            Teacher.tenant_id == tenant_id,
+            Teacher.email.like(f"{BULK_TAG}teacher%"),
+        )
+    )
+    teacher_ids = [row[0] for row in teacher_result.all()]
+
+    if student_ids:
+        await session.execute(delete(StudentSubjectResult).where(StudentSubjectResult.student_id.in_(student_ids)))
+        await session.execute(delete(StudentParentLink).where(StudentParentLink.student_id.in_(student_ids)))
+        await session.execute(delete(AuthIdentity).where(
+            AuthIdentity.actor_type == ActorType.STUDENT,
+            AuthIdentity.actor_id.in_(student_ids),
+        ))
+        await session.execute(delete(Student).where(Student.id.in_(student_ids)))
+
+    if class_ids:
+        class_subject_ids_result = await session.execute(
+            select(ClassSubject.id).where(ClassSubject.class_id.in_(class_ids))
+        )
+        class_subject_ids = [row[0] for row in class_subject_ids_result.all()]
+        if class_subject_ids:
+            await session.execute(delete(TeacherAssignment).where(TeacherAssignment.class_subject_id.in_(class_subject_ids)))
+            await session.execute(delete(ClassSubject).where(ClassSubject.id.in_(class_subject_ids)))
+        await session.execute(delete(ClassSubjectTeacher).where(ClassSubjectTeacher.class_id.in_(class_ids)))
+        await session.execute(delete(ClassRoom).where(ClassRoom.id.in_(class_ids)))
+
+    if parent_ids:
+        await session.execute(delete(AuthIdentity).where(
+            AuthIdentity.actor_type == ActorType.PARENT,
+            AuthIdentity.actor_id.in_(parent_ids),
+        ))
+        await session.execute(delete(Parent).where(Parent.id.in_(parent_ids)))
+
+    if teacher_ids:
+        await session.execute(delete(TeacherSubject).where(TeacherSubject.teacher_id.in_(teacher_ids)))
+        await session.execute(delete(AuthIdentity).where(
+            AuthIdentity.actor_type == ActorType.TEACHER,
+            AuthIdentity.actor_id.in_(teacher_ids),
+        ))
+        await session.execute(delete(Teacher).where(Teacher.id.in_(teacher_ids)))
+
+    await session.commit()
+    print(
+        "Purged:",
+        f"students={len(student_ids)}",
+        f"classes={len(class_ids)}",
+        f"parents={len(parent_ids)}",
+        f"teachers={len(teacher_ids)}",
+    )
+
+
+async def seed_full_school(
+    *,
+    tenant_id_arg: str | None,
+    student_count: int,
+    teacher_count: int | None,
+    parent_count: int | None,
+    arms: list[str],
+    reset: bool,
+) -> None:
+    started_at = time.monotonic()
+    random.seed(RANDOM_SEED)
+    engine.echo = False
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+    async with AsyncSessionLocal() as session:
+        tenant = await resolve_target_tenant(session, tenant_id_arg)
+        await ensure_tenant_ready(session, tenant)
+        tenant_admin = await get_tenant_admin(session, tenant.id)
+        admission_prefix = tenant.admission_number_prefix or "DBS"
+
+        if reset:
+            await purge_bulk_school(session, tenant.id, admission_prefix)
+
+        if await has_bulk_seed(session, tenant.id):
+            print("Bulk school data already exists for this tenant. Re-run with --reset to regenerate it.")
+            return
+
+        subjects_by_code = await ensure_subjects(session, tenant.id)
+        academic_session, terms = await ensure_academic_calendar(session, tenant.id)
+        await ensure_grading_scale(session, tenant.id)
+        await session.commit()
+
+        teacher_count = teacher_count or max(len(SUBJECTS) * 2, student_count // 20, 24)
+        parent_count = parent_count or max(50, student_count // 2)
+
+        teacher_seeds = generate_teachers(teacher_count)
+        parent_seeds = generate_parents(parent_count)
+        class_seeds = generate_classes(teacher_seeds, arms)
+        student_seeds = generate_students(
+            count=student_count,
+            admission_prefix=admission_prefix,
+            classes=class_seeds,
+            parents=parent_seeds,
+        )
+
+        shared_password_hash = hash_password(DEFAULT_PASSWORD)
+
+        # Teachers
+        teachers_by_email: dict[str, Teacher] = {}
+        teacher_batch: list[Teacher] = []
+        for payload in teacher_seeds:
+            subject_name = subjects_by_code[payload.specialization_code].name
+            teacher = Teacher(
                 tenant_id=tenant.id,
-                payload=payload,
-                classroom=classroom,
+                email=payload.email,
+                password_hash=shared_password_hash,
+                first_name=payload.first_name,
+                last_name=payload.last_name,
+                staff_id=payload.staff_id,
+                qualification=payload.qualification,
+                specialization=subject_name,
+                account_status=TeacherAccountStatus.ACTIVE,
+                status=TeacherStatus.ACTIVE,
+                is_verified=True,
+                is_active=True,
             )
-            students_by_admission[payload.admission_number] = student
+            session.add(teacher)
+            teacher_batch.append(teacher)
+        await session.flush()
+
+        for teacher, payload in zip(teacher_batch, teacher_seeds, strict=True):
+            teachers_by_email[teacher.email] = teacher
+            session.add(AuthIdentity(
+                tenant_id=tenant.id,
+                identifier=teacher.email,
+                identifier_type=IdentifierType.EMAIL,
+                actor_type=ActorType.TEACHER,
+                actor_id=teacher.id,
+                is_active=True,
+            ))
+            session.add(TeacherSubject(
+                tenant_id=tenant.id,
+                teacher_id=teacher.id,
+                subject_id=subjects_by_code[payload.specialization_code].id,
+            ))
+        await session.flush()
+        print(f"[{time.monotonic() - started_at:.1f}s] Created teachers: {len(teacher_batch)}")
+
+        # Parents
+        parents_by_email: dict[str, Parent] = {}
+        parent_batch: list[Parent] = []
+        for payload in parent_seeds:
+            parent = Parent(
+                tenant_id=tenant.id,
+                email=payload.email,
+                password_hash=shared_password_hash,
+                first_name=payload.first_name,
+                last_name=payload.last_name,
+                phone_number=payload.phone_number,
+                occupation=payload.occupation,
+                address="Bulk Test Address, Lagos",
+                emergency_phone=payload.phone_number,
+                account_status=ParentAccountStatus.ACTIVE,
+                is_verified=True,
+                is_active=True,
+            )
+            session.add(parent)
+            parent_batch.append(parent)
+        await session.flush()
+
+        for parent in parent_batch:
+            parents_by_email[parent.email] = parent
+            session.add(AuthIdentity(
+                tenant_id=tenant.id,
+                identifier=parent.email,
+                identifier_type=IdentifierType.EMAIL,
+                actor_type=ActorType.PARENT,
+                actor_id=parent.id,
+                is_active=True,
+            ))
+        await session.flush()
+        print(f"[{time.monotonic() - started_at:.1f}s] Created parents: {len(parent_batch)}")
+
+        # Classes
+        classrooms_by_key: dict[str, ClassRoom] = {}
+        class_batch: list[tuple[ClassSeed, ClassRoom]] = []
+        for payload in class_seeds:
+            homeroom_teacher = teachers_by_email[payload.homeroom_teacher_email]
+            classroom = ClassRoom(
+                tenant_id=tenant.id,
+                name=payload.name,
+                level=payload.level,
+                arm=payload.arm,
+                teacher_id=homeroom_teacher.id,
+                is_active=True,
+            )
+            session.add(classroom)
+            class_batch.append((payload, classroom))
+        await session.flush()
+
+        for payload, classroom in class_batch:
+            classrooms_by_key[payload.key] = classroom
+        print(f"[{time.monotonic() - started_at:.1f}s] Created classes: {len(class_batch)}")
+
+        # Class subjects + legacy class-subject-teacher + new assignment
+        assignment_bundle_by_class_subject: dict[tuple[uuid.UUID, str], tuple[Subject, ClassSubject, ClassSubjectTeacher, TeacherAssignment]] = {}
+        subject_teacher_cursor: dict[str, int] = {code: 0 for code, _, _ in SUBJECTS}
+        teachers_by_subject_code: dict[str, list[Teacher]] = {code: [] for code, _, _ in SUBJECTS}
+        for teacher, payload in zip(teacher_batch, teacher_seeds, strict=True):
+            teachers_by_subject_code[payload.specialization_code].append(teacher)
+
+        for class_payload, classroom in class_batch:
+            for sort_order, subject_code in enumerate(class_payload.offered_subject_codes):
+                subject = subjects_by_code[subject_code]
+                qualified_teachers = teachers_by_subject_code[subject_code] or teacher_batch
+                teacher_cursor = subject_teacher_cursor[subject_code]
+                teacher = qualified_teachers[teacher_cursor % len(qualified_teachers)]
+                subject_teacher_cursor[subject_code] = teacher_cursor + 1
+
+                class_subject = ClassSubject(
+                    tenant_id=tenant.id,
+                    class_id=classroom.id,
+                    subject_id=subject.id,
+                    is_core=True,
+                    is_active=True,
+                )
+                session.add(class_subject)
+                legacy_assignment = ClassSubjectTeacher(
+                    tenant_id=tenant.id,
+                    class_id=classroom.id,
+                    subject_id=subject.id,
+                    teacher_id=teacher.id,
+                    is_core=True,
+                    sort_order=sort_order,
+                    is_active=True,
+                )
+                session.add(legacy_assignment)
+                await session.flush()
+
+                teacher_assignment = TeacherAssignment(
+                    tenant_id=tenant.id,
+                    class_subject_id=class_subject.id,
+                    teacher_id=teacher.id,
+                    is_active=True,
+                    effective_from=date(2025, 9, 8),
+                    effective_to=None,
+                )
+                session.add(teacher_assignment)
+                await session.flush()
+
+                assignment_bundle_by_class_subject[(classroom.id, subject_code)] = (
+                    subject,
+                    class_subject,
+                    legacy_assignment,
+                    teacher_assignment,
+                )
+        print(f"[{time.monotonic() - started_at:.1f}s] Linked class subjects and teacher assignments")
+
+        # Students + student identities
+        FLUSH_EVERY = 250
+        students_created: list[tuple[int, Student, StudentSeed]] = []
+        pending_students: list[Student] = []
+        for index, payload in enumerate(student_seeds, start=1):
+            classroom = classrooms_by_key[payload.class_key]
+            student = Student(
+                tenant_id=tenant.id,
+                admission_number=payload.admission_number,
+                password_hash=shared_password_hash,
+                first_name=payload.first_name,
+                last_name=payload.last_name,
+                account_status=StudentAccountStatus.ACTIVE,
+                is_verified=True,
+                is_active=True,
+                password_reset_required=False,
+                date_of_birth=payload.date_of_birth,
+                gender=payload.gender,
+                class_id=classroom.id,
+                arm=classroom.arm,
+                status=AcademicStatus.ACTIVE,
+                profile_status=StudentProfileStatus.COMPLETE,
+                admission_date=date(2025, 9, 8),
+            )
+            session.add(student)
+            pending_students.append(student)
+            students_created.append((index, student, payload))
+
+            if len(pending_students) >= FLUSH_EVERY:
+                await session.flush()
+                for pending_student in pending_students:
+                    session.add(AuthIdentity(
+                        tenant_id=tenant.id,
+                        identifier=pending_student.admission_number,
+                        identifier_type=IdentifierType.ADMISSION_NUMBER,
+                        actor_type=ActorType.STUDENT,
+                        actor_id=pending_student.id,
+                        is_active=True,
+                    ))
+                await session.flush()
+                pending_students = []
+                print(f"[{time.monotonic() - started_at:.1f}s] Created students: {index}/{student_count}")
+
+        if pending_students:
+            await session.flush()
+            for pending_student in pending_students:
+                session.add(AuthIdentity(
+                    tenant_id=tenant.id,
+                    identifier=pending_student.admission_number,
+                    identifier_type=IdentifierType.ADMISSION_NUMBER,
+                    actor_type=ActorType.STUDENT,
+                    actor_id=pending_student.id,
+                    is_active=True,
+                ))
+            await session.flush()
+        print(f"[{time.monotonic() - started_at:.1f}s] Created students: {len(students_created)}")
+
+        # Parent links
+        for _index, student, payload in students_created:
             parent = parents_by_email[payload.parent_email]
-            await ensure_parent_link(
-                session,
+            session.add(StudentParentLink(
                 tenant_id=tenant.id,
                 student_id=student.id,
                 parent_id=parent.id,
                 relationship_type=payload.relationship_type,
                 is_primary_contact=True,
-            )
+                receives_academic_updates=True,
+                receives_fee_updates=True,
+            ))
+        await session.flush()
+        print(f"[{time.monotonic() - started_at:.1f}s] Linked students to parents")
 
-        class_subject_teacher_map = {
-            "jss1a": [("MTH", "testteacher1@gmail.com"), ("ENG", "testteacher2@gmail.com"), ("BST", "testteacher3@gmail.com"), ("CMP", "testteacher4@gmail.com")],
-            "jss1b": [("MTH", "testteacher1@gmail.com"), ("ENG", "testteacher2@gmail.com"), ("SOS", "testteacher5@gmail.com"), ("CIV", "testteacher4@gmail.com")],
-            "jss2a": [("MTH", "testteacher1@gmail.com"), ("ENG", "testteacher2@gmail.com"), ("BST", "testteacher3@gmail.com"), ("SOS", "testteacher5@gmail.com")],
-        }
-
-        assignment_bundle_by_class_subject: dict[tuple[uuid.UUID, uuid.UUID], tuple[ClassSubject, ClassSubjectTeacher, TeacherAssignment]] = {}
-        for class_key, pairs in class_subject_teacher_map.items():
-            classroom = classrooms_by_key[class_key]
-            for subject_code, teacher_email in pairs:
-                subject = subjects_by_code[subject_code]
-                teacher = teachers_by_email[teacher_email]
-                class_subject = await ensure_class_subject(
-                    session,
-                    tenant_id=tenant.id,
-                    class_id=classroom.id,
-                    subject_id=subject.id,
-                    is_core=True,
-                )
-                legacy = await ensure_legacy_class_subject_teacher(
-                    session,
-                    tenant_id=tenant.id,
-                    class_id=classroom.id,
-                    subject_id=subject.id,
-                    teacher_id=teacher.id,
-                    is_core=True,
-                )
-                assignment = await ensure_teacher_assignment(
-                    session,
-                    tenant_id=tenant.id,
-                    class_subject_id=class_subject.id,
-                    teacher_id=teacher.id,
-                )
-                assignment_bundle_by_class_subject[(classroom.id, subject.id)] = (class_subject, legacy, assignment)
-
-        ordered_subject_codes = ["MTH", "ENG", "BST", "SOS", "CIV", "CMP"]
-        for index, payload in enumerate(students_seed, start=1):
-            student = students_by_admission[payload.admission_number]
+        # Results: test + assessment + exam for every student's offered subjects across all 3 terms.
+        result_count = 0
+        for index, student, payload in students_created:
             classroom = classrooms_by_key[payload.class_key]
-            offered_pairs = class_subject_teacher_map[payload.class_key]
-            for subject_position, (subject_code, _teacher_email) in enumerate(offered_pairs, start=1):
-                subject = subjects_by_code[subject_code]
-                class_subject, legacy, assignment = assignment_bundle_by_class_subject[(classroom.id, subject.id)]
-                subject_bias = ordered_subject_codes.index(subject_code) if subject_code in ordered_subject_codes else subject_position
-                test_score = Decimal(str(12 + ((index + subject_bias) % 8)))
-                assessment_score = Decimal(str(14 + ((index * 2 + subject_bias) % 8)))
-                exam_score = Decimal(str(40 + ((index * 3 + subject_bias) % 21)))
-                await ensure_result(
-                    session,
-                    tenant_id=tenant.id,
-                    student=student,
-                    class_subject=class_subject,
-                    legacy_assignment=legacy,
-                    teacher_assignment=assignment,
-                    academic_session=academic_session,
-                    academic_term=current_term,
-                    recorded_by_actor_id=tenant_admin.id,
-                    test_score=test_score,
-                    assessment_score=assessment_score,
-                    exam_score=exam_score,
-                )
+            class_payload = next(c for c in class_seeds if c.key == payload.class_key)
+            for term_index, academic_term in enumerate(terms, start=1):
+                for subject_index, subject_code in enumerate(class_payload.offered_subject_codes, start=1):
+                    subject, class_subject, legacy_assignment, teacher_assignment = assignment_bundle_by_class_subject[(classroom.id, subject_code)]
+                    test_score, assessment_score, exam_score = resolve_score_components(index, subject_index, term_index)
+                    total_score = test_score + assessment_score + exam_score
+                    grade, remark = resolve_grade(total_score)
+                    session.add(StudentSubjectResult(
+                        tenant_id=tenant.id,
+                        student_id=student.id,
+                        class_id=classroom.id,
+                        subject_id=subject.id,
+                        teacher_id=teacher_assignment.teacher_id,
+                        class_subject_teacher_id=legacy_assignment.id,
+                        teacher_assignment_id=teacher_assignment.id,
+                        academic_session_id=academic_session.id,
+                        academic_term_id=academic_term.id,
+                        recorded_by_actor_type=ActorType.TENANT_ADMIN.value,
+                        recorded_by_actor_id=tenant_admin.id,
+                        test_score=test_score,
+                        assessment_score=assessment_score,
+                        exam_score=exam_score,
+                        total_score=total_score,
+                        grade=grade,
+                        remark=remark,
+                        status=AcademicResultStatus.SUBMITTED,
+                    ))
+                    result_count += 1
 
+            if index % FLUSH_EVERY == 0:
+                await session.flush()
+                print(f"[{time.monotonic() - started_at:.1f}s] Created results for students: {index}/{student_count}")
+
+        await session.flush()
         await session.commit()
 
-    print(f"Seeded tenant: {tenant.school_name} ({tenant.id})")
-    print(f"Default password for teachers, parents, and students: {DEFAULT_PASSWORD}")
-    print("Created or updated:")
-    print("  - 5 teachers")
-    print("  - 4 parents")
-    print("  - 8 students")
-    print("  - 3 classes")
-    print("  - 6 subjects")
-    print("  - 1 academic session with 3 terms")
-    print("  - 6 grading scale rows")
-    print("  - class subjects, teacher assignments, parent links, and submitted results")
+        elapsed = time.monotonic() - started_at
+        print("\nFull school seed complete")
+        print(f"Elapsed: {elapsed:.1f}s")
+        print(f"Tenant: {tenant.school_name} ({tenant.id})")
+        print(f"Default password: {DEFAULT_PASSWORD}")
+        print(f"Teachers: {len(teacher_batch)}")
+        print(f"Parents: {len(parent_batch)}")
+        print(f"Classes: {len(class_batch)}")
+        print(f"Subjects: {len(subjects_by_code)}")
+        print(f"Students: {len(students_created)}")
+        print(f"Results: {result_count} rows ({len(terms)} terms x offered subjects x students)")
+        print(f"Sample teacher login: {bulk_teacher_email(1)} / {DEFAULT_PASSWORD}")
+        print(f"Sample parent login: {bulk_parent_email(1)} / {DEFAULT_PASSWORD}")
+        print(f"Sample student login: {bulk_admission_number(admission_prefix, 1)} / {DEFAULT_PASSWORD}")
+
+        # Lightweight verification against your actual auth service.
+        teacher_auth = await AuthService.authenticate_actor(
+            session,
+            LoginRequest(identifier=bulk_teacher_email(1), password=DEFAULT_PASSWORD),
+        )
+        parent_auth = await AuthService.authenticate_actor(
+            session,
+            LoginRequest(identifier=bulk_parent_email(1), password=DEFAULT_PASSWORD),
+        )
+        student_auth = await AuthService.authenticate_actor(
+            session,
+            LoginRequest(identifier=bulk_admission_number(admission_prefix, 1), password=DEFAULT_PASSWORD),
+        )
+        print(
+            "Verified auth:",
+            f"teacher={teacher_auth.actor_type}",
+            f"parent={parent_auth.actor_type}",
+            f"student={student_auth.actor_type}",
+        )
+
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Seed the current tenant with dummy academic workflow data.")
-    parser.add_argument(
-        "--tenant-id",
-        help="Explicit tenant ID to seed. Required when more than one tenant exists.",
+    parser = argparse.ArgumentParser(
+        description="Seed a full school workflow: teachers, parents, classes, subjects, students, assignments, and scores."
     )
+    parser.add_argument("--tenant-id", help="Explicit tenant ID to seed. Required when more than one tenant exists.")
+    parser.add_argument("--student-count", type=int, default=1000, help="Number of generated students. Default: 1000.")
+    parser.add_argument("--teacher-count", type=int, default=None, help="Optional generated teacher count.")
+    parser.add_argument("--parent-count", type=int, default=None, help="Optional generated parent count.")
+    parser.add_argument(
+        "--arms",
+        default=",".join(DEFAULT_ARMS),
+        help="Comma-separated class arms to generate. Default: A,B,C,D.",
+    )
+    parser.add_argument("--reset", action="store_true", help="Delete generated bulk school rows before reseeding.")
     return parser.parse_args()
+
 
 async def main() -> None:
     args = parse_args()
-    await seed(args.tenant_id)
-    await verify_logins(args.tenant_id)
+    arms = [arm.strip().upper() for arm in args.arms.split(",") if arm.strip()]
+    if not arms:
+        raise ValueError("At least one arm is required.")
+    if args.student_count < 1:
+        raise ValueError("--student-count must be at least 1.")
+
+    await seed_full_school(
+        tenant_id_arg=args.tenant_id,
+        student_count=args.student_count,
+        teacher_count=args.teacher_count,
+        parent_count=args.parent_count,
+        arms=arms,
+        reset=args.reset,
+    )
     await engine.dispose()
 
 
