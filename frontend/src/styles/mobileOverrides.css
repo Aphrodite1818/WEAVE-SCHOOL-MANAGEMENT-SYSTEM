@@ -1,0 +1,25 @@
+@media (max-width: 767px) {
+  html:not([data-standalone-pwa="true"]) [data-mobile-bottom-nav="true"] {
+    display: none !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+    display: block !important;
+  }
+
+  aside:has(button[aria-label="Close navigation"]) {
+    width: min(88vw, 20.5rem) !important;
+  }
+
+  aside:has(button[aria-label="Close navigation"]) .shrink-0.border-t,
+  aside:has(button[aria-label="Close navigation"]) .shrink-0.border-t div {
+    white-space: nowrap !important;
+    flex-wrap: nowrap !important;
+  }
+}
+
+@media (min-width: 768px) {
+  [data-mobile-bottom-nav="true"] {
+    display: none !important;
+  }
+}
