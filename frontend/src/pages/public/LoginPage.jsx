@@ -38,7 +38,7 @@ function LoginPage() {
   const inviteCompleted = searchParams.get("invite") === "success";
 
   const [formData, setFormData] = useState({
-    email: "",
+    identifier: "",
     password: "",
     remember: true,
   });
@@ -46,10 +46,10 @@ function LoginPage() {
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
 
-  const redirectToVerification = (email, notice, purpose = "verification", redirectTo = "/verify-otp") => {
-    if (!email) return;
-    authService.setPendingVerificationEmail(email);
-    navigate(`${redirectTo}?email=${encodeURIComponent(email)}&purpose=${encodeURIComponent(purpose)}`, {
+  const redirectToVerification = (identifier, notice, purpose = "verification", redirectTo = "/verify-otp") => {
+    if (!identifier) return;
+    authService.setPendingVerificationEmail(identifier);
+    navigate(`${redirectTo}?email=${encodeURIComponent(identifier)}&purpose=${encodeURIComponent(purpose)}`, {
       replace: true,
       state: { notice },
     });
@@ -58,7 +58,7 @@ function LoginPage() {
   const handleChange = (event) => {
     const { checked, name, type, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
-    setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+    setFieldErrors((prev) => ({ ...prev, [name]: undefined, email: undefined }));
     setError(null);
   };
 
@@ -69,7 +69,7 @@ function LoginPage() {
     setFieldErrors({});
 
     try {
-      const data = await authService.login(formData.email, formData.password, {
+      const data = await authService.login(formData.identifier, formData.password, {
         remember: formData.remember,
       });
 
@@ -85,13 +85,13 @@ function LoginPage() {
       }
       navigate(ROLE_ROUTES[role] || "/", { replace: true });
     } catch (err) {
-      const apiError = parseApiError(err, "Invalid email or password.");
+      const apiError = parseApiError(err, "Invalid email/admission number or password.");
       if (Object.keys(apiError.fieldErrors || {}).length > 0) {
         setFieldErrors(apiError.fieldErrors);
       }
       if (apiError.verificationRequired) {
         redirectToVerification(
-          apiError.email || formData.email,
+          apiError.email || formData.identifier,
           apiError.message,
           apiError.purpose || "verification",
           apiError.redirectTo || "/verify-otp"
@@ -124,7 +124,7 @@ function LoginPage() {
       {error && <Notice type="error">{error}</Notice>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <Input label="Email or admission number" type="text" name="email" value={formData.email} onChange={handleChange} placeholder="name@school.edu or NHS-2026-12345" required error={fieldErrors.email} />
+        <Input label="Email or admission number" type="text" name="identifier" value={formData.identifier} onChange={handleChange} placeholder="name@school.edu or NHS-2026-12345" required error={fieldErrors.identifier || fieldErrors.email} />
         <Input label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Enter your password" required error={fieldErrors.password} />
         <div className="flex items-center justify-between gap-4 text-sm">
           <label className="flex items-center gap-2">
