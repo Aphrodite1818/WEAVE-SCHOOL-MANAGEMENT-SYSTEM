@@ -46,30 +46,30 @@ const writeCachedDashboard = (key, data) => {
   }
 };
 
-const getDashboardMetrics = async (endpoint) => {
+const getDashboardMetrics = async (endpoint, requestOptions = {}) => {
   const cacheKey = getDashboardCacheKey(endpoint);
   const cached = readCachedDashboard(cacheKey);
 
   if (cached) return cached;
 
-  const fresh = await api.get(endpoint);
+  const fresh = await api.get(endpoint, requestOptions);
   writeCachedDashboard(cacheKey, fresh);
   return fresh;
 };
 
 export const dashboardService = {
-  getTenantAdminAnalytics: () =>
-    getDashboardMetrics("/metrics/tenant-admin/dashboard"),
+  getTenantAdminAnalytics: (requestOptions) =>
+    getDashboardMetrics("/metrics/tenant-admin/dashboard", requestOptions),
 
-  getSuperadminAnalytics: () =>
-    getDashboardMetrics("/metrics/superadmin/dashboard"),
+  getSuperadminAnalytics: (requestOptions) =>
+    getDashboardMetrics("/metrics/superadmin/dashboard", requestOptions),
 
-  getTeacherAnalytics: () =>
-    getDashboardMetrics("/metrics/teacher/dashboard"),
+  getTeacherAnalytics: (requestOptions) =>
+    getDashboardMetrics("/metrics/teacher/dashboard", requestOptions),
 
-  getParentAnalytics: () =>
-    getDashboardMetrics("/metrics/parent/dashboard"),
+  getParentAnalytics: (requestOptions) =>
+    getDashboardMetrics("/metrics/parent/dashboard", requestOptions),
 
-  getStudentAnalytics: () =>
-    getDashboardMetrics("/metrics/student/dashboard"),
+  getStudentAnalytics: (requestOptions) =>
+    getDashboardMetrics("/metrics/student/dashboard", requestOptions),
 };
