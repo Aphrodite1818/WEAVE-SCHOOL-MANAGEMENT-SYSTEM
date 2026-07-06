@@ -5,6 +5,7 @@ const NEW_CLASS_SUBJECT_PREFIX = "catalog-subject";
 const queryString = (params = {}) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
+    if (key === "signal") return;
     if (value !== undefined && value !== null && value !== "") {
       query.set(key, String(value));
     }
@@ -169,23 +170,23 @@ export const academicService = {
   activateTeacherAssignment,
   reassignTeacherAssignment,
 
-  listAdminResults: (params) =>
-    api.get(`/tenant-admin/academic/results${queryString(params)}`),
+  listAdminResults: (params, requestOptions) =>
+    api.get(`/tenant-admin/academic/results${queryString(params)}`, requestOptions),
   saveAdminResult: (payload) => api.post("/tenant-admin/academic/results", payload),
   updateResultStatus: (resultId, payload) =>
     api.patch(`/tenant-admin/academic/results/${resultId}/status`, payload),
 
-  listMyTeacherAssignments: () => api.get("/teachers/me/academic/assignments"),
+  listMyTeacherAssignments: (requestOptions) => api.get("/teachers/me/academic/assignments", requestOptions),
   listMyAssignmentStudents: (assignmentId, params) =>
     api.get(`/teachers/me/academic/assignments/${assignmentId}/students${queryString(params)}`),
-  listTeacherResults: (params) =>
-    api.get(`/teachers/me/academic/results${queryString(params)}`),
+  listTeacherResults: (params, requestOptions) =>
+    api.get(`/teachers/me/academic/results${queryString(params)}`, requestOptions),
   saveTeacherResult: (payload) => api.post("/teachers/me/academic/results", payload),
 
-  listMyResults: () => api.get("/students/me/academic/results"),
-  listMySubjectCards: () => api.get("/students/me/academic/subjects"),
-  listChildResults: (studentId) =>
-    api.get(`/parents/me/children/${studentId}/academic/results`),
+  listMyResults: (requestOptions) => api.get("/students/me/academic/results", requestOptions),
+  listMySubjectCards: (requestOptions) => api.get("/students/me/academic/subjects", requestOptions),
+  listChildResults: (studentId, requestOptions) =>
+    api.get(`/parents/me/children/${studentId}/academic/results`, requestOptions),
 };
 
 export default academicService;
