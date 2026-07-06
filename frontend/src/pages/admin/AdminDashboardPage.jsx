@@ -32,6 +32,16 @@ const statItems = [
   { key: "student_profiles_incomplete", label: "Incomplete Profiles", description: "students needing updates", icon: UserCheck, tone: "warning" },
 ];
 
+const metricNumber = (value, fallback = 0) => {
+  const nextValue = Number(value);
+  return Number.isFinite(nextValue) ? nextValue : fallback;
+};
+
+const chartData = (charts, key) => {
+  const value = charts?.[key];
+  return Array.isArray(value) ? value : [];
+};
+
 function AdminDashboardPage() {
   const [analytics, setAnalytics] = useState(null);
   const [error, setError] = useState(null);
@@ -75,11 +85,11 @@ function AdminDashboardPage() {
 
   const stats = analytics?.stats || {};
   const charts = analytics?.charts || {};
-  const submittedResults = Number(stats.result_rows_submitted ?? 0);
-  const resultRowsTotal = Number(stats.result_rows_total ?? 0);
-  const resultCompletion = Number(stats.result_completion_percent ?? 0);
-  const reportCardsPublished = Number(stats.report_cards_published ?? 0);
-  const reportCardsGenerated = Number(stats.report_cards_generated ?? 0);
+  const submittedResults = metricNumber(stats.result_rows_submitted);
+  const resultRowsTotal = metricNumber(stats.result_rows_total);
+  const resultCompletion = metricNumber(stats.result_completion_percent);
+  const reportCardsPublished = metricNumber(stats.report_cards_published);
+  const reportCardsGenerated = metricNumber(stats.report_cards_generated);
 
   return (
     <DashboardLayout
@@ -205,13 +215,13 @@ function AdminDashboardPage() {
             <AnalyticsLineChart
               title="Performance Trend"
               description="Average tenant performance by academic term."
-              data={charts.performance_trend || []}
+              data={chartData(charts, "performance_trend")}
               emptyMessage="No term performance trend is available yet."
             />
             <AnalyticsBarChart
               title="Teacher Submission Progress"
               description="Average completion percentage by teacher."
-              data={charts.teacher_submission_progress || []}
+              data={chartData(charts, "teacher_submission_progress")}
               emptyMessage="No teacher submission data available yet."
             />
           </section>
@@ -221,65 +231,65 @@ function AdminDashboardPage() {
               <AnalyticsBarChart
                 title="User Population Breakdown"
                 description="Students, teachers, and parents currently in this school."
-                data={charts.user_population_breakdown || []}
+                data={chartData(charts, "user_population_breakdown")}
               />
               <AnalyticsDonutChart
                 title="Student Profile Completion Rate"
                 description="Shows how many student profiles are complete versus still missing required fields."
-                data={charts.student_profile_completion_rate || []}
+                data={chartData(charts, "student_profile_completion_rate")}
               />
               <AnalyticsBarChart
                 title="Account Status Overview"
                 description="Active and pending accounts across teachers and parents."
-                data={charts.account_status_overview || []}
+                data={chartData(charts, "account_status_overview")}
                 emptyMessage="No account status data available yet."
               />
               <AnalyticsDonutChart
                 title="Announcements By Category"
                 description="Announcement categories posted within this school."
-                data={charts.announcements_by_category || []}
+                data={chartData(charts, "announcements_by_category")}
                 emptyMessage="No announcements have been posted yet."
               />
               <AnalyticsBarChart
                 title="Class Population"
                 description="Number of enrolled students in each class."
-                data={charts.class_population || []}
+                data={chartData(charts, "class_population")}
                 emptyMessage="No class population data available yet."
               />
               <AnalyticsDonutChart
                 title="Report Card Status"
                 description="Generated report-card publishing progress."
-                data={charts.report_card_status || []}
+                data={chartData(charts, "report_card_status")}
                 emptyMessage="No report cards have been generated yet."
               />
               <AnalyticsBarChart
                 title="Subject Performance"
                 description="Average score by subject."
-                data={charts.subject_performance || []}
+                data={chartData(charts, "subject_performance")}
                 emptyMessage="No subject performance data available yet."
               />
               <AnalyticsBarChart
                 title="Class Performance"
                 description="Average score by class from recorded results."
-                data={charts.class_performance || []}
+                data={chartData(charts, "class_performance")}
                 emptyMessage="No class performance data available yet."
               />
               <AnalyticsDonutChart
                 title="Grade Distribution"
                 description="All recorded academic grades in this tenant."
-                data={charts.grade_distribution || []}
+                data={chartData(charts, "grade_distribution")}
                 emptyMessage="No grade data has been recorded yet."
               />
               <AnalyticsDonutChart
                 title="Result Status Distribution"
                 description="Draft and submitted result rows."
-                data={charts.result_status_distribution || []}
+                data={chartData(charts, "result_status_distribution")}
                 emptyMessage="No result status data has been recorded yet."
               />
               <AnalyticsBarChart
                 title="Result Completion By Subject"
                 description="Average completion signal grouped by subject."
-                data={charts.result_completion_by_subject || []}
+                data={chartData(charts, "result_completion_by_subject")}
                 emptyMessage="No subject completion data available yet."
               />
             </section>
