@@ -344,3 +344,56 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* Installed-PWA drawer/nav polish. Keep the bottom nav hidden in normal mobile browser. */
+@media (max-width: 767px) {
+  header button[aria-label="Open navigation"],
+  header button[aria-label="Open notifications"],
+  header button[aria-label="Toggle theme"] {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    border: 0 !important;
+    border-radius: 9999px !important;
+    background: rgb(var(--color-surface) / 0.92) !important;
+    box-shadow: 0 12px 28px rgb(2 6 23 / 0.18) !important;
+  }
+
+  button[aria-label="Close navigation"] {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    border: 0 !important;
+    border-radius: 9999px !important;
+    background: rgb(var(--color-surface-muted) / 0.72) !important;
+    box-shadow: 0 12px 28px rgb(2 6 23 / 0.16) !important;
+  }
+
+  aside:has(button[aria-label="Close navigation"]) {
+    width: min(84vw, 19.5rem) !important;
+    padding-top: max(0.75rem, env(safe-area-inset-top)) !important;
+    border-top-right-radius: 1.35rem;
+    border-bottom-right-radius: 1.35rem;
+  }
+
+  aside:has(button[aria-label="Close navigation"]) > div:first-child {
+    height: 3.35rem !important;
+    padding-inline: 1rem !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
+    max-width: 30rem !important;
+    gap: 0.35rem !important;
+    border-radius: 2.1rem !important;
+    padding: 0.6rem !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] a,
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] button {
+    min-height: 3.7rem !important;
+    border-radius: 1.75rem !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] svg {
+    width: 1.35rem !important;
+    height: 1.35rem !important;
+  }
+}
