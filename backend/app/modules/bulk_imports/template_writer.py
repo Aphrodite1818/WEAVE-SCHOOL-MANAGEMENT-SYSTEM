@@ -2,11 +2,10 @@
 #   bulk_imports_template_writer.py  #
 # ================================== #
 
-"""Generate downloadable bulk import templates."""
+"""Generate downloadable XLSX bulk import templates."""
 
 from __future__ import annotations
 
-import csv
 import io
 from dataclasses import dataclass
 from uuid import UUID
@@ -23,7 +22,6 @@ from app.modules.bulk_imports.templates import (
     DATA_HEADERS_BY_RESOURCE,
     TEMPLATE_METADATA_SHEET_NAME,
     TEMPLATE_VERSION_BY_RESOURCE,
-    get_template_definition,
 )
 
 
@@ -61,16 +59,6 @@ def build_template_metadata(
     }
 
 
-def build_example_row(*, resource_type: ImportResourceType) -> dict[str, str]:
-    """Build one editable example row from the template definition."""
-
-    template = get_template_definition(resource_type=resource_type)
-    return {
-        column.name: column.example or ""
-        for column in template.columns
-    }
-
-
 def create_xlsx_template(
     *,
     tenant_id: UUID,
@@ -84,9 +72,7 @@ def create_xlsx_template(
     data_sheet.title = f"{resource_type.value}_import"
 
     data_headers = DATA_HEADERS_BY_RESOURCE[resource_type]
-    example_row = build_example_row(resource_type=resource_type)
     data_sheet.append(data_headers)
-    data_sheet.append([example_row.get(header, "") for header in data_headers])
 
     metadata = build_template_metadata(
         tenant_id=tenant_id,
@@ -110,48 +96,17 @@ def create_xlsx_template(
     )
 
 
-def create_csv_template(
-    *,
-    tenant_id: UUID,
-    resource_type: ImportResourceType,
-) -> GeneratedImportTemplate:
-    """Create a CSV template with visible signed metadata columns."""
-
-    metadata = build_template_metadata(
-        tenant_id=tenant_id,
-        resource_type=resource_type,
-    )
-    data_headers = DATA_HEADERS_BY_RESOURCE[resource_type]
-    headers = [*metadata.keys(), *data_headers]
-    example_row = build_example_row(resource_type=resource_type)
-
-    stream = io.StringIO()
-    writer = csv.writer(stream)
-    writer.writerow(headers)
-    writer.writerow([
-        *metadata.values(),
-        *[example_row.get(header, "") for header in data_headers],
-    ])
-
-    return GeneratedImportTemplate(
-        filename=f"{resource_type.value}_import_template.csv",
-        content_bytes=stream.getvalue().encode("utf-8-sig"),
-        content_type="text/csv",
-    )
-
-
 def create_import_template(
     *,
     tenant_id: UUID,
     resource_type: ImportResourceType,
     file_type: ImportFileType,
 ) -> GeneratedImportTemplate:
-    """Create a signed import template file."""
+    """Create a signed XLSX import template file."""
 
-    if file_type == ImportFileType.XLSX:
-        return create_xlsx_template(tenant_id=tenant_id, resource_type=resource_type)
+    if file_type != ImportFileType.XLSX:
+        raise ValueError(
+            "Bulk import templates are XLSX-only. Download the .xlsx template and upload that file."
+        )
 
-    if file_type == ImportFileType.CSV:
-        return create_csv_template(tenant_id=tenant_id, resource_type=resource_type)
-
-    raise ValueError(f"Unsupported import template file type: {file_type.value}")
+    return create_xlsx_template(tenant_id=tenant_id, resource_type=resource_type)
