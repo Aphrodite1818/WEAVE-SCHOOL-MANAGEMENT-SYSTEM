@@ -78,3 +78,21 @@ class ConflictException(AppException):
     def __init__(self, detail: str = "Resource conflict") -> None:
         """Initialize the ConflictException instance."""
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+
+
+class ImportParserError(ValueError):
+    """Raised when an import file cannot be parsed safely"""
+
+
+    
+
+class ImportTemplateNotFoundError(ValueError):
+    """Raised when a template does not exist for a resource type"""
+
+
+
+
+class ImportChunkingError(ValueError):
+    """Rased when import chunking receives invalid input"""
