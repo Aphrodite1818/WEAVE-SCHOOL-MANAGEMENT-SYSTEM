@@ -70,9 +70,9 @@ def create_student_template() -> ImportTemplateDefinition:
             create_template_column(
                 name="date_of_birth",
                 label="Date of Birth",
-                required=False,
+                required=True,
                 example="2012-09-20",
-                description="Optional. Use YYYY-MM-DD where possible.",
+                description="Required. Use YYYY-MM-DD where possible. Students cannot edit this later.",
             ),
             create_template_column(
                 name="gender",
@@ -93,6 +93,7 @@ def create_student_template() -> ImportTemplateDefinition:
         ],
         notes=[
             "Admission numbers are generated automatically by the backend.",
+            "Date of birth is required because students cannot edit it later.",
             "Student setup/access codes are generated automatically and included once in the result report.",
             "Only fields accepted by manual student creation are allowed.",
             "Students can complete remaining profile details through onboarding.",
