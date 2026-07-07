@@ -71,7 +71,11 @@ class TenantEntitlementsResponse(BaseModel):
 
 
 class FeatureCheckResponse(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
+    """Internal feature-check result.
+
+    Keep enums as enum objects because the service reads `.value` when building
+    HTTP error details.
+    """
 
     allowed: bool
     feature: FeatureCode
@@ -81,7 +85,11 @@ class FeatureCheckResponse(BaseModel):
 
 
 class ResourceLimitCheckResponse(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
+    """Internal resource-limit result.
+
+    Keep enums as enum objects because the service reads `.value` when building
+    HTTP error details.
+    """
 
     allowed: bool
     resource: ResourceLimitCode
