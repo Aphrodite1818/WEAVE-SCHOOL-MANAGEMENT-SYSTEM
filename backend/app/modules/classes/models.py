@@ -7,10 +7,16 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.utils.normalization import (
+    normalize_class_arm,
+    normalize_class_name,
+    normalized_class_arm_key,
+    normalized_class_name_key,
+)
 from app.shared.base_model import BaseModel
 
 if TYPE_CHECKING:
@@ -54,3 +60,20 @@ class ClassRoom(BaseModel):
         Index("ix_classes_tenant_active", "tenant_id", "is_active"),
         Index("ix_classes_tenant_normalized_lookup", "tenant_id", "normalized_name", "normalized_arm"),
     )
+
+
+def _populate_classroom_normalized_fields(_: object, __: object, target: ClassRoom) -> None:
+    """Populate canonical classroom display and lookup fields before persistence."""
+
+    normalized_name = normalized_class_name_key(target.name)
+    if normalized_name is None:
+        return
+
+    target.name = normalize_class_name(target.name) or target.name
+    target.arm = normalize_class_arm(target.arm)
+    target.normalized_name = normalized_name
+    target.normalized_arm = normalized_class_arm_key(target.arm)
+
+
+event.listen(ClassRoom, "before_insert", _populate_classroom_normalized_fields)
+event.listen(ClassRoom, "before_update", _populate_classroom_normalized_fields)
