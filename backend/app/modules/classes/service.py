@@ -1,8 +1,10 @@
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
 from app.modules.classes.models import ClassRoom
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.classes.schemas import (
@@ -58,6 +60,29 @@ class ClassRoomService:
             raise BadRequestException("Cannot assign an inactive teacher")
 
     @staticmethod
+    def _build_classroom_model(
+        *,
+        tenant_id: uuid.UUID,
+        payload: ClassRoomCreate,
+    ) -> ClassRoom:
+        """Build a normalized classroom model from a validated payload."""
+
+        normalized_name = normalized_class_name_key(payload.name)
+        if normalized_name is None:
+            raise BadRequestException("Class name cannot be empty")
+
+        return ClassRoom(
+            tenant_id=tenant_id,
+            name=payload.name,
+            normalized_name=normalized_name,
+            level=payload.level,
+            arm=payload.arm,
+            normalized_arm=normalized_class_arm_key(payload.arm),
+            teacher_id=payload.teacher_id,
+            is_active=True,
+        )
+
+    @staticmethod
     async def create_classroom(
         db: AsyncSession,
         actor: TenantAdmin,
@@ -67,7 +92,7 @@ class ClassRoomService:
 
         ClassRoomService._ensure_tenant_admin(actor)
 
-        existing_classroom = await ClassRoomRepository.get_classroom_by_name_and_arm(
+        existing_classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
             db=db,
             tenant_id=actor.tenant_id,
             class_name=payload.name,
@@ -82,22 +107,24 @@ class ClassRoomService:
             teacher_id=payload.teacher_id,
         )
 
-        classroom = ClassRoom(
+        classroom = ClassRoomService._build_classroom_model(
             tenant_id=actor.tenant_id,
-            name=payload.name,
-            level=payload.level,
-            arm=payload.arm,
-            teacher_id=payload.teacher_id,
-            is_active=True,
+            payload=payload,
         )
 
-        created_classroom = await ClassRoomRepository.create_classroom(
-            db=db,
-            class_room=classroom,
-        )
-        await db.commit()
-        await db.refresh(created_classroom)
-        return ClassRoomResponse.model_validate(created_classroom)
+        try:
+            created_classroom = await ClassRoomRepository.create_classroom(
+                db=db,
+                class_room=classroom,
+            )
+            await db.commit()
+            await db.refresh(created_classroom)
+            return ClassRoomResponse.model_validate(created_classroom)
+        except IntegrityError as exc:
+            await db.rollback()
+            raise BadRequestException(
+                "Classroom creation failed because of a duplicate or invalid value."
+            ) from exc
 
     @staticmethod
     async def get_classroom_by_id(
@@ -237,8 +264,16 @@ class ClassRoomService:
 
         new_name = update_data.get("name", classroom.name)
         new_arm = update_data.get("arm", classroom.arm)
-        if new_name != classroom.name or new_arm != classroom.arm:
-            existing_classroom = await ClassRoomRepository.get_classroom_by_name_and_arm(
+        new_normalized_name = normalized_class_name_key(new_name)
+        if new_normalized_name is None:
+            raise BadRequestException("Class name cannot be empty")
+        new_normalized_arm = normalized_class_arm_key(new_arm)
+
+        if (
+            new_normalized_name != classroom.normalized_name
+            or new_normalized_arm != classroom.normalized_arm
+        ):
+            existing_classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
                 db=db,
                 tenant_id=actor.tenant_id,
                 class_name=new_name,
@@ -257,13 +292,22 @@ class ClassRoomService:
         for field, value in update_data.items():
             setattr(classroom, field, value)
 
-        updated_classroom = await ClassRoomRepository.update_classroom(
-            db=db,
-            classroom=classroom,
-        )
-        await db.commit()
-        await db.refresh(updated_classroom)
-        return ClassRoomResponse.model_validate(updated_classroom)
+        classroom.normalized_name = new_normalized_name
+        classroom.normalized_arm = new_normalized_arm
+
+        try:
+            updated_classroom = await ClassRoomRepository.update_classroom(
+                db=db,
+                classroom=classroom,
+            )
+            await db.commit()
+            await db.refresh(updated_classroom)
+            return ClassRoomResponse.model_validate(updated_classroom)
+        except IntegrityError as exc:
+            await db.rollback()
+            raise BadRequestException(
+                "Classroom update failed because of a duplicate or invalid value."
+            ) from exc
 
     @staticmethod
     async def deactivate_classroom(
