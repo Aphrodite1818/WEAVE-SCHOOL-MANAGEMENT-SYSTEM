@@ -1191,10 +1191,10 @@ class BulkImportService:
         return import_job.resource_type, list(result_rows)
 
     @staticmethod
-    def list_templates():
+    def list_templates(*, file_type: ImportFileType = ImportFileType.XLSX):
         """Return all supported import templates."""
 
-        return list_template_responses()
+        return list_template_responses(file_type=file_type)
 
     @staticmethod
     def get_template(*, resource_type: ImportResourceType, file_type: ImportFileType = ImportFileType.XLSX):
