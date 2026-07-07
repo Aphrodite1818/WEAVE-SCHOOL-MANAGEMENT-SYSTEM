@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile,
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.bulk_imports.models import ImportJobStatus, ImportResourceType
+from app.modules.bulk_imports.models import ImportFileType, ImportJobStatus, ImportResourceType
 from app.modules.bulk_imports.result_writer import create_result_report
 from app.modules.bulk_imports.schemas import (
     ImportJobDetailResponse,
@@ -39,6 +39,7 @@ CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenan
 )
 async def list_import_templates(
     current_user: CurrentTenantAdmin,
+    file_type: ImportFileType = Query(default=ImportFileType.XLSX),
 ) -> list[ImportTemplateResponse]:
     """List supported import templates."""
 
@@ -53,11 +54,80 @@ async def list_import_templates(
 async def get_import_template(
     resource_type: ImportResourceType,
     current_user: CurrentTenantAdmin,
+    file_type: ImportFileType = Query(default=ImportFileType.XLSX),
 ) -> ImportTemplateResponse:
     """Return one supported import template."""
 
     _ = current_user
-    return BulkImportService.get_template(resource_type=resource_type)
+    return BulkImportService.get_template(resource_type=resource_type, file_type=file_type)
+
+
+@router.get(
+    "/templates/{resource_type}/download",
+)
+async def download_import_template(
+    resource_type: ImportResourceType,
+    current_user: CurrentTenantAdmin,
+    file_type: ImportFileType = Query(default=ImportFileType.XLSX),
+) -> Response:
+    """Download a signed backend-generated import template file."""
+
+    template = BulkImportService.generate_template_file(
+        tenant_id=current_user.tenant_id,
+        resource_type=resource_type,
+        file_type=file_type,
+    )
+
+    return Response(
+        content=template.content_bytes,
+        media_type=template.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{template.filename}"',
+        },
+    )
+
+
+@router.post(
+    "/{resource_type}/dry-run",
+    response_model=ImportJobDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def dry_run_bulk_import(
+    resource_type: ImportResourceType,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+    file: UploadFile = File(...),
+    notify_on_completion: bool = Form(default=True),
+) -> ImportJobDetailResponse:
+    """Validate and stage a bulk import file without creating records."""
+
+    return await BulkImportService.create_dry_run_from_upload(
+        db=db,
+        actor=current_user,
+        resource_type=resource_type,
+        upload_file=file,
+        notify_on_completion=notify_on_completion,
+    )
+
+
+@router.post(
+    "/{job_id}/confirm",
+    response_model=ImportJobDetailResponse,
+)
+async def confirm_bulk_import(
+    job_id: UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+    notify_on_completion: bool = Query(default=True),
+) -> ImportJobDetailResponse:
+    """Confirm a staged dry-run import and create records."""
+
+    return await BulkImportService.confirm_import_from_dry_run(
+        db=db,
+        actor=current_user,
+        job_id=job_id,
+        notify_on_completion=notify_on_completion,
+    )
 
 
 @router.post(
@@ -73,7 +143,10 @@ async def upload_bulk_import(
     dry_run: bool = Form(default=False),
     notify_on_completion: bool = Form(default=True),
 ) -> ImportJobDetailResponse:
-    """Upload and process a bulk import file."""
+    """Backward-compatible dry-run upload endpoint.
+
+    Real imports now require confirming the returned dry-run import job.
+    """
 
     return await BulkImportService.create_import_from_upload(
         db=db,
