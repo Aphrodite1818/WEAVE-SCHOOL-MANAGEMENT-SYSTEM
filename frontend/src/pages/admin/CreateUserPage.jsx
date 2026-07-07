@@ -4,6 +4,7 @@ import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 import LoadingState from "../../components/shared/LoadingState";
+import StudentAccessCodeSlipModal from "../../components/students/StudentAccessCodeSlipModal";
 import { classService } from "../../services/academicsService";
 import { studentService } from "../../services/studentService";
 import { teacherService } from "../../services/teacherService";
@@ -12,13 +13,19 @@ import { getErrorMessage, parseApiError } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { formatUsageValue } from "../../features/subscriptions/subscriptionConfig";
+import { displayName } from "../../utils/user";
 
 const USER_TYPES = ["student", "teacher", "parent"];
+const GENDER_OPTIONS = ["male", "female"];
 
 const INITIAL_STUDENT_FORM = {
   first_name: "",
   last_name: "",
+  gender: "",
+  date_of_birth: "",
+  state_of_origin: "",
   class_id: "",
+  arm: "",
 };
 
 const INITIAL_TEACHER_FORM = {
@@ -33,6 +40,32 @@ const INITIAL_PARENT_FORM = {
   first_name: "",
   last_name: "",
 };
+
+const titleCase = (value) =>
+  String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const formatDateValue = (value) => {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const enumOptions = (values) =>
+  values.map((value) => ({ value, label: titleCase(value) }));
+
+const compactPayload = (payload) =>
+  Object.entries(payload).reduce((nextPayload, [key, value]) => {
+    nextPayload[key] = value === "" ? null : value;
+    return nextPayload;
+  }, {});
 
 function TabButton({ active, children, onClick }) {
   return (
@@ -50,6 +83,44 @@ function TabButton({ active, children, onClick }) {
   );
 }
 
+function SelectControl({ label, name, value, options, placeholder, onChange, error }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium text-text-soft">{label}</label>
+      <select
+        name={name}
+        value={value || ""}
+        onChange={onChange}
+        className="input-base"
+      >
+        <option value="">{placeholder || "Select an option"}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {error && <p className="mt-1 text-sm text-error">{error}</p>}
+    </div>
+  );
+}
+
+function buildStudentAccessNotice(student) {
+  const accessCode = student?.setup_code || student?.access_code;
+  if (!student || !accessCode) return null;
+
+  return {
+    title: "Student created successfully",
+    description: "Give these details to the student for first-time login.",
+    fields: [
+      { label: "Student", value: student.full_name || displayName(student) },
+      { label: "Admission number", value: student.admission_number },
+      { label: "Access code", value: accessCode },
+      { label: "Expires", value: formatDateValue(student.access_code_expires_at || student.expires_at) },
+    ],
+  };
+}
+
 function CreateUserPage() {
   const [activeTab, setActiveTab] = useState("student");
   const [classOptions, setClassOptions] = useState([]);
@@ -61,6 +132,7 @@ function CreateUserPage() {
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [successPayload, setSuccessPayload] = useState(null);
+  const [accessCodeNotice, setAccessCodeNotice] = useState(null);
   const { showSuccess, showError } = useToast();
   const { getResourceGuard, refreshSubscriptionState } = useSubscription();
   const studentGuard = getResourceGuard("students", {
@@ -144,13 +216,20 @@ function CreateUserPage() {
 
     try {
       if (activeTab === "student") {
-        const result = await studentService.createStudent({
-          first_name: studentForm.first_name,
-          last_name: studentForm.last_name,
-          class_id: studentForm.class_id || null,
-        });
+        const result = await studentService.createStudent(
+          compactPayload({
+            first_name: studentForm.first_name,
+            last_name: studentForm.last_name,
+            gender: studentForm.gender,
+            date_of_birth: studentForm.date_of_birth,
+            state_of_origin: studentForm.state_of_origin,
+            class_id: studentForm.class_id,
+            arm: studentForm.arm,
+          })
+        );
         setStudentForm(INITIAL_STUDENT_FORM);
         setSuccessPayload({ type: "student", result });
+        setAccessCodeNotice(buildStudentAccessNotice(result));
         showSuccess("Student created successfully.");
         await refreshSubscriptionState({ silent: true });
       } else if (activeTab === "teacher") {
@@ -203,21 +282,47 @@ function CreateUserPage() {
         error={fieldErrors.last_name}
         required
       />
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-text-soft">Class</label>
-        <select
+      <SelectControl
+        label="Gender"
+        name="gender"
+        value={studentForm.gender}
+        options={enumOptions(GENDER_OPTIONS)}
+        onChange={handleStudentChange}
+        error={fieldErrors.gender}
+      />
+      <Input
+        label="Date of birth"
+        type="date"
+        name="date_of_birth"
+        value={studentForm.date_of_birth}
+        onChange={handleStudentChange}
+        error={fieldErrors.date_of_birth}
+      />
+      <Input
+        label="State of origin"
+        name="state_of_origin"
+        value={studentForm.state_of_origin}
+        onChange={handleStudentChange}
+        error={fieldErrors.state_of_origin}
+      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SelectControl
+          label="Class"
           name="class_id"
           value={studentForm.class_id}
+          options={classOptions}
+          placeholder="Select class"
           onChange={handleStudentChange}
-          className="input-base"
-        >
-          <option value="">Select class</option>
-          {classOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          error={fieldErrors.class_id}
+        />
+        <Input
+          label="Arm"
+          name="arm"
+          value={studentForm.arm}
+          onChange={handleStudentChange}
+          error={fieldErrors.arm}
+          placeholder="A"
+        />
       </div>
     </>
   );
@@ -287,6 +392,14 @@ function CreateUserPage() {
 
   return (
     <DashboardLayout role="admin" title="Create User">
+      <StudentAccessCodeSlipModal
+        notice={accessCodeNotice}
+        onClose={() => setAccessCodeNotice(null)}
+        onCopied={() => showSuccess("Access code details copied.")}
+        onCopyFailed={() => showError("Could not copy details automatically. Please copy them manually.")}
+        onPrintFailed={() => showError("Could not open the print window. Check your browser popup setting.")}
+      />
+
       <div className="space-y-5">
         <Card className="p-4 sm:p-5">
           <div className="mb-4 grid gap-3 md:grid-cols-3">
@@ -328,6 +441,11 @@ function CreateUserPage() {
           <h2 className="text-lg font-semibold text-text">
             {activeTab === "student" ? "Student details" : activeTab === "teacher" ? "Teacher details" : "Parent details"}
           </h2>
+          {activeTab === "student" && (
+            <p className="mt-1 text-sm text-text-muted">
+              Admission number and access code are generated after creation. Graduation date can be added later from the student record.
+            </p>
+          )}
 
           {!activeGuard.allowed && activeGuard.reason ? (
             <div className="mt-4 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
@@ -369,8 +487,18 @@ function CreateUserPage() {
                   Admission number: <span className="font-semibold text-text">{successPayload.result.admission_number}</span>
                 </p>
                 <p className="mt-2 text-sm text-text-soft">
-                  Password: <span className="font-semibold text-text">{successPayload.result.default_password || "default"}</span>
+                  Access code: <span className="font-semibold text-text">{successPayload.result.setup_code || "Shown in slip"}</span>
                 </p>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => setAccessCodeNotice(buildStudentAccessNotice(successPayload.result))}
+                  >
+                    View / print slip
+                  </Button>
+                </div>
               </>
             ) : (
               <>
