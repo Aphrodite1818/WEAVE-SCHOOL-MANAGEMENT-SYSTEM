@@ -25,7 +25,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v1",
+    ImportResourceType.STUDENTS: "students_v2",
     ImportResourceType.TEACHERS: "teachers_v1",
     ImportResourceType.PARENTS: "parents_v1",
 }
@@ -36,8 +36,8 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "last_name",
         "date_of_birth",
         "gender",
-        "class_id",
-        "arm",
+        "class_name",
+        "class_arm",
         "state_of_origin",
     ],
     ImportResourceType.TEACHERS: [
@@ -127,21 +127,28 @@ def create_student_template() -> ImportTemplateDefinition:
                 accepted_values=["male", "female"],
             ),
             create_template_column(
-                name="class_id",
-                label="Class ID",
+                name="class_name",
+                label="Class Name",
                 required=False,
-                example="6d1fc27b-1cf4-43d2-a8f1-2f312226ca8f",
-                description="Optional. Must be an existing class UUID if supplied.",
+                example="JSS1",
+                description="Optional. Use the class name visible to admins, for example JSS1 or Primary 4.",
             ),
-            create_template_column(name="arm", label="Arm", required=False, example="A"),
+            create_template_column(
+                name="class_arm",
+                label="Class Arm",
+                required=False,
+                example="A",
+                description="Required when class_name is supplied. Must match an existing class arm in this tenant.",
+            ),
             create_template_column(name="state_of_origin", label="State of Origin", required=False, example="Lagos"),
         ],
         notes=[
             "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
+            "Use class_name and class_arm for student class placement. Do not enter internal class UUIDs.",
+            "The backend resolves class_name + class_arm to the real class record during dry-run.",
             "Student setup/access codes are generated automatically and included once in the result report.",
-            "Only fields accepted by manual student creation are allowed.",
             "Students can complete remaining profile details through onboarding.",
         ],
     )
