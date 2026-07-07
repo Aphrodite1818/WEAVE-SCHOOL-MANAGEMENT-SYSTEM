@@ -128,7 +128,7 @@ class BulkImportValidator:
     """Validate normalized import rows against manual-create-compatible rules."""
 
     REQUIRED_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {
-        ImportResourceType.STUDENTS: ("first_name", "last_name"),
+        ImportResourceType.STUDENTS: ("first_name", "last_name", "date_of_birth"),
         ImportResourceType.TEACHERS: ("email",),
         ImportResourceType.PARENTS: ("email",),
     }
@@ -149,6 +149,33 @@ class BulkImportValidator:
         """Expose UUID parsing for service payload conversion."""
 
         return _parse_uuid(value)
+
+    @staticmethod
+    def _validate_supported_fields(
+        *,
+        resource_type: ImportResourceType,
+        row_number: int,
+        ignored_fields: list[str],
+        errors: list[ImportValidationErrorItem],
+    ) -> None:
+        """Reject columns that do not belong to the selected resource template."""
+
+        unsupported_fields = sorted(
+            {field_name for field_name in ignored_fields if str(field_name).strip()}
+        )
+        if not unsupported_fields:
+            return
+
+        _add_error(
+            errors=errors,
+            row_number=row_number,
+            field_name=None,
+            error_code="unsupported_columns",
+            error_message=(
+                f"Unsupported columns for {resource_type.value} import: "
+                f"{', '.join(unsupported_fields)}. Use the {resource_type.value} template only."
+            ),
+        )
 
     @staticmethod
     def _validate_required_fields(
@@ -203,7 +230,7 @@ class BulkImportValidator:
         normalized_row: dict[str, Any],
         errors: list[ImportValidationErrorItem],
     ) -> None:
-        """Validate student-specific optional fields."""
+        """Validate student-specific fields."""
 
         gender = normalized_row.get("gender")
         if not _is_blank(gender) and gender not in {"male", "female"}:
@@ -322,6 +349,13 @@ class BulkImportValidator:
             raw_row=raw_row,
             normalized_row=normalized_row,
             ignored_fields=ignored_fields,
+        )
+
+        BulkImportValidator._validate_supported_fields(
+            resource_type=resource_type,
+            row_number=row_number,
+            ignored_fields=ignored_fields,
+            errors=validation_result.errors,
         )
 
         BulkImportValidator._validate_required_fields(
