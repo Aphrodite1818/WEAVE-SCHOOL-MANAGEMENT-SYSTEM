@@ -20,6 +20,7 @@ from app.modules.tenant_admins.router import router as tenant_admin_router
 from app.tenant_management.router import router as tenant_router
 from app.modules.subjects.router import router as subject_router
 from app.modules.students.router import router as student_router
+from app.modules.students.runtime_patches import apply_student_runtime_patches
 from app.modules.parents.router import router as parent_router
 from app.modules.teachers.router import router as teacher_router
 from app.modules.classes.router import router as class_router
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [N
 def create_app() -> FastAPI:
     """Create app."""
     import_model_modules()
+    apply_student_runtime_patches()
 
     app = FastAPI(
         title="LearnlyAI Assistant",
@@ -138,7 +140,6 @@ app = create_app()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     import logging
     import uvicorn
