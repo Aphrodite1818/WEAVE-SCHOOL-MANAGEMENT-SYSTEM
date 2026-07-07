@@ -440,6 +440,6 @@ class StudentOnboardingStatusResponse(OutputBase):
 class StudentChangePasswordRequest(InputBase):
     """Student password change payload."""
 
-    current_password: str = Field(..., min_length=1, max_length=64)
+    access_code : str = Field(..., min_length=1, max_length=64)
     new_password: str = Field(..., min_length=8, max_length=64)
     confirm_password: str = Field(..., min_length=8, max_length=64)

@@ -10,7 +10,7 @@ import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
 
 const INITIAL_FORM = {
-  current_password: "",
+  access_code: "",
   new_password: "",
   confirm_password: "",
 };
@@ -37,7 +37,11 @@ function StudentChangePasswordPage() {
     setFieldErrors({});
 
     try {
-      const updatedStudent = await studentService.changeMyPassword(formData);
+      const updatedStudent = await studentService.changeMyPassword({
+          access_code: formData.access_code,
+          new_password: formData.new_password,
+          confirm_password: formData.confirm_password,
+        });
       authSession.setUser({
         ...(currentUser || {}),
         ...updatedStudent,
@@ -86,7 +90,7 @@ function StudentChangePasswordPage() {
             <Input
               label="Access code"
               type="password"
-              name="current_password"
+              name="access_code"
               value={formData.current_password}
               onChange={handleChange}
               error={fieldErrors.current_password}

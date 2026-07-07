@@ -546,18 +546,18 @@ class StudentService:
 
         current_password_matches_existing_password = (
             student.password_hash is not None
-            and verify_password(payload.current_password, student.password_hash)
+            and verify_password(payload.access_code, student.password_hash)
         )
 
 
         current_password_matches_access_code = await StudentService._student_access_code_is_valid(
             db = db ,
             student= student,
-            plain_code=payload.current_password
+            plain_code=payload.access_code
         )
 
         if not current_password_matches_existing_password and not current_password_matches_access_code:
-            raise BadRequestException(detail="Current password or access code is incorrect")
+            raise BadRequestException(detail="access code is incorrect")
 
 
         if student.password_hash is not None and verify_password(
