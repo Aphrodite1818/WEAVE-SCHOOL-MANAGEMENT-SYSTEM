@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +18,7 @@ from app.modules.bulk_imports.models import (
     ImportNotification,
     ImportResourceType,
     ImportRowError,
+    ImportStagedRow,
 )
 from app.modules.bulk_imports.schemas import (
     ImportJobCreate,
@@ -25,6 +26,7 @@ from app.modules.bulk_imports.schemas import (
     ImportNotificationCreate,
     ImportRowErrorCreate,
 )
+from app.modules.bulk_imports.validators import ImportRowValidationResult
 
 
 class ImportJobRepository:
@@ -160,7 +162,7 @@ class ImportJobRepository:
     ) -> None:
         """Delete an import job.
 
-        Row errors and notifications should be deleted by cascade.
+        Row errors, staged rows, and notifications should be deleted by cascade.
         """
 
         await db.delete(import_job)
@@ -256,7 +258,7 @@ class ImportRowErrorRepository:
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[list[ImportRowError], int]:
-        """List row-level errors for an import job."""
+        """List row-level errors for one import job."""
 
         conditions = [
             ImportRowError.tenant_id == tenant_id,
@@ -278,6 +280,80 @@ class ImportRowErrorRepository:
         total = total_result.scalar_one()
 
         return row_errors, total
+
+
+class ImportStagedRowRepository:
+    """Database operations for dry-run staged rows."""
+
+    @staticmethod
+    async def create_many(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        import_job_id: UUID,
+        validation_results: list[ImportRowValidationResult],
+    ) -> list[ImportStagedRow]:
+        """Create staged rows for all valid dry-run rows."""
+
+        staged_rows = [
+            ImportStagedRow(
+                tenant_id=tenant_id,
+                import_job_id=import_job_id,
+                row_number=validation_result.row_number,
+                raw_row=validation_result.raw_row,
+                normalized_row=validation_result.normalized_row,
+            )
+            for validation_result in validation_results
+            if validation_result.is_valid
+        ]
+
+        if not staged_rows:
+            return []
+
+        db.add_all(staged_rows)
+        await db.flush()
+
+        for staged_row in staged_rows:
+            await db.refresh(staged_row)
+
+        return staged_rows
+
+    @staticmethod
+    async def list_by_job(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        import_job_id: UUID,
+    ) -> list[ImportStagedRow]:
+        """List staged rows for one import job."""
+
+        result = await db.execute(
+            select(ImportStagedRow)
+            .where(
+                ImportStagedRow.tenant_id == tenant_id,
+                ImportStagedRow.import_job_id == import_job_id,
+            )
+            .order_by(ImportStagedRow.row_number.asc())
+        )
+
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def delete_by_job(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        import_job_id: UUID,
+    ) -> None:
+        """Delete staged rows for one import job."""
+
+        await db.execute(
+            delete(ImportStagedRow).where(
+                ImportStagedRow.tenant_id == tenant_id,
+                ImportStagedRow.import_job_id == import_job_id,
+            )
+        )
+        await db.flush()
 
 
 class ImportNotificationRepository:
