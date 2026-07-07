@@ -38,10 +38,10 @@ function StudentChangePasswordPage() {
 
     try {
       const updatedStudent = await studentService.changeMyPassword({
-          access_code: formData.access_code,
-          new_password: formData.new_password,
-          confirm_password: formData.confirm_password,
-        });
+        access_code: formData.access_code,
+        new_password: formData.new_password,
+        confirm_password: formData.confirm_password,
+      });
       authSession.setUser({
         ...(currentUser || {}),
         ...updatedStudent,
@@ -52,7 +52,7 @@ function StudentChangePasswordPage() {
       navigate("/student/dashboard", { replace: true });
     } catch (err) {
       const apiError = parseApiError(err, "Failed to update your password.");
-      setFieldErrors(apiError.fieldErrors);
+      setFieldErrors(apiError.fieldErrors || {});
       setError(apiError.message);
     } finally {
       setIsSubmitting(false);
@@ -91,9 +91,9 @@ function StudentChangePasswordPage() {
               label="Access code"
               type="password"
               name="access_code"
-              value={formData.current_password}
+              value={formData.access_code}
               onChange={handleChange}
-              error={fieldErrors.current_password}
+              error={fieldErrors.access_code}
               required
             />
             <Input
