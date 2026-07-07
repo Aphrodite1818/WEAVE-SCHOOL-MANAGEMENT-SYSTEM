@@ -267,8 +267,6 @@ class ImportNotificationResponse(OutputBase):
 
 
 
-
-
 class ImportJobDetailResponse(ImportJobSummaryResponse):
     """Detailed import job response"""
 
@@ -318,13 +316,12 @@ class ImportStatusResponse(OutputBase):
     processed_rows : int 
     successful_rows : int 
     failed_rows : int 
-    skipped_rows : int 
+    skipped_rows : int
 
 
     error_message : str | None = None 
     started_at : datetime | None = None 
     completed_at : datetime | None = None 
-
 
 
 
@@ -339,16 +336,12 @@ class ImportTemplateColumnResponse(OutputBase):
     accepted_values : list[str] = Field(default_factory = list )
 
 
-
 class ImportTemplateResponse(OutputBase):
     """Response schema for a generated import template"""
 
     resource_type : ImportResourceType
-    file_type : ImportFileType = ImportFileType.CSV
+    file_type : ImportFileType = ImportFileType.XLSX
     filename : str 
+    template_version: str | None = None
     columns : list[ImportTemplateColumnResponse]
     notes : list[str] = Field(default_factory=list)
-
-
-
-    
