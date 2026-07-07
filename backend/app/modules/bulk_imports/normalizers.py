@@ -12,6 +12,8 @@ from typing import Any
 from app.modules.bulk_imports.models import ImportResourceType
 
 
+BULK_IMPORT_NO_ARM_SENTINEL = "NO_ARM"
+
 SUPPORTED_IMPORT_RESOURCE_TYPES = {
     ImportResourceType.STUDENTS,
     ImportResourceType.TEACHERS,
@@ -214,6 +216,13 @@ class BulkImportNormalizer:
                 field_name=canonical_field_name,
                 value=raw_value,
             )
+
+        if (
+            resource_type == ImportResourceType.STUDENTS
+            and normalized_row.get("class_name") is not None
+            and normalized_row.get("class_arm") is None
+        ):
+            normalized_row["class_arm"] = BULK_IMPORT_NO_ARM_SENTINEL
 
         return normalized_row, ignored_fields
 
