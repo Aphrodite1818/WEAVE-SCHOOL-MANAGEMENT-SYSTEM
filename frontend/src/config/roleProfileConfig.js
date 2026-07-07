@@ -140,6 +140,13 @@ const ROLE_PROFILE_CONFIG = {
           },
           {
             source: "roleProfile",
+            name: "date_of_birth",
+            label: "Date of birth",
+            readOnly: true,
+            emptyLabel: "Managed by school admin",
+          },
+          {
+            source: "roleProfile",
             name: "profile_status",
             label: "Profile status",
             readOnly: true,
@@ -152,13 +159,6 @@ const ROLE_PROFILE_CONFIG = {
             type: "select",
             required: true,
             options: STUDENT_GENDER_OPTIONS,
-          },
-          {
-            source: "roleProfile",
-            name: "date_of_birth",
-            label: "Date of birth",
-            type: "date",
-            required: true,
           },
           {
             source: "roleProfile",
@@ -219,26 +219,4 @@ const ROLE_PROFILE_CONFIG = {
   },
 };
 
-export const getRoleProfileConfig = (role) =>
-  ROLE_PROFILE_CONFIG[String(role || "").toLowerCase()] || ROLE_PROFILE_CONFIG.admin;
-
-export async function loadRoleProfileContext(role, user) {
-  const config = getRoleProfileConfig(role);
-  if (!config.loadContext) {
-    return { tenant: null, roleProfile: null };
-  }
-  return config.loadContext(user);
-}
-
-export function evaluateOnboardingState(role, user, context = {}) {
-  const config = getRoleProfileConfig(role);
-  const missingBaseFields = COMMON_USER_FIELDS.filter((field) => field.required).map((field) => field.name).filter((fieldName) => !user?.[fieldName]);
-  const roleIncomplete = Boolean(config.isRoleIncomplete?.({ user, ...context }));
-
-  return {
-    missingBaseFields,
-    hasMissingBaseFields: missingBaseFields.length > 0,
-    roleIncomplete,
-    incomplete: missingBaseFields.length > 0 || roleIncomplete,
-  };
-}
+export default ROLE_PROFILE_CONFIG;
