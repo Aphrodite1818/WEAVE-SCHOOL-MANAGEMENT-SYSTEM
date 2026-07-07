@@ -44,7 +44,7 @@ async def list_import_templates(
     """List supported import templates."""
 
     _ = current_user
-    return BulkImportService.list_templates()
+    return BulkImportService.list_templates(file_type=file_type)
 
 
 @router.get(
