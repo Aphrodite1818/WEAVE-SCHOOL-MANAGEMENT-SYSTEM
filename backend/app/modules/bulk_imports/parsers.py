@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import csv
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Sequence
 
 from fastapi import UploadFile
 from openpyxl import load_workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
 from app.core.exceptions import ImportParserError
 from app.modules.bulk_imports.models import ImportFileType
+from app.modules.bulk_imports.templates import CONTROL_COLUMNS, TEMPLATE_METADATA_SHEET_NAME
 
 
 MAX_IMPORT_FILE_SIZE_BYTES = 5 * 1024 * 1024
@@ -30,6 +32,17 @@ class ParsedImportRow:
 
     row_number: int
     raw_data: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ParsedImportFile:
+    """Parsed import file plus file-level metadata."""
+
+    file_type: ImportFileType
+    file_size_bytes: int
+    headers: list[str]
+    rows: list[ParsedImportRow]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _decode_csv_bytes(file_bytes: bytes) -> str:
@@ -59,6 +72,12 @@ def _clean_headers(headers: Sequence[Any]) -> list[str]:
     return cleaned_headers
 
 
+def _normalize_header_key(header: Any) -> str:
+    """Normalize a header key for metadata/control column detection."""
+
+    return str(header or "").strip().lower()
+
+
 def _ensure_unique_headers(headers: list[str]) -> None:
     """Reject duplicate non-empty headers."""
 
@@ -74,6 +93,70 @@ def _ensure_unique_headers(headers: list[str]) -> None:
             raise ImportParserError(f"Duplicate column header found: {header}")
 
         seen_headers.add(normalized_header)
+
+
+def _data_headers_from_headers(headers: list[str]) -> list[str]:
+    """Return data headers with signed template control columns removed."""
+
+    return [
+        header
+        for header in headers
+        if _normalize_header_key(header) not in CONTROL_COLUMNS
+    ]
+
+
+def _extract_csv_metadata(rows: list[ParsedImportRow]) -> dict[str, Any]:
+    """Extract visible control-column metadata from the first CSV data row."""
+
+    if not rows:
+        return {}
+
+    first_row = rows[0].raw_data
+    metadata: dict[str, Any] = {}
+
+    for key, value in first_row.items():
+        normalized_key = _normalize_header_key(key)
+        if normalized_key in CONTROL_COLUMNS:
+            metadata[normalized_key] = value
+
+    return metadata
+
+
+def _read_xlsx_metadata(workbook) -> dict[str, Any]:
+    """Read template metadata from the hidden XLSX metadata sheet."""
+
+    if TEMPLATE_METADATA_SHEET_NAME not in workbook.sheetnames:
+        return {}
+
+    worksheet = workbook[TEMPLATE_METADATA_SHEET_NAME]
+    metadata: dict[str, Any] = {}
+
+    for row in worksheet.iter_rows(values_only=True):
+        if not row or len(row) < 2:
+            continue
+
+        key = _to_serializable_value(row[0])
+        value = _to_serializable_value(row[1])
+
+        if not key or str(key).strip().lower() == "key":
+            continue
+
+        metadata[str(key).strip()] = value
+
+    return metadata
+
+
+def _select_xlsx_data_sheet(workbook) -> Worksheet:
+    """Select the first visible non-metadata worksheet as the import data sheet."""
+
+    for worksheet in workbook.worksheets:
+        if worksheet.title == TEMPLATE_METADATA_SHEET_NAME:
+            continue
+
+        if getattr(worksheet, "sheet_state", "visible") == "visible":
+            return worksheet
+
+    raise ImportParserError("XLSX file must contain a visible import data sheet.")
 
 
 def _is_blank_row(row_data: dict[str, Any]) -> bool:
@@ -146,9 +229,10 @@ class BulkImportParser:
     def parse_csv_bytes(
         *,
         file_bytes: bytes,
+        file_size_bytes: int,
         max_rows: int = MAX_IMPORT_ROWS,
-    ) -> list[ParsedImportRow]:
-        """Parse CSV bytes into row dictionaries."""
+    ) -> ParsedImportFile:
+        """Parse CSV bytes into a parsed import file."""
 
         text = _decode_csv_bytes(file_bytes)
         stream = io.StringIO(text)
@@ -184,25 +268,30 @@ class BulkImportParser:
             if len(rows) > max_rows:
                 raise ImportParserError(f"Import file cannot exceed {max_rows} data rows.")
 
-        return rows
+        return ParsedImportFile(
+            file_type=ImportFileType.CSV,
+            file_size_bytes=file_size_bytes,
+            headers=_data_headers_from_headers(headers),
+            rows=rows,
+            metadata=_extract_csv_metadata(rows),
+        )
 
     @staticmethod
     def parse_xlsx_bytes(
         *,
         file_bytes: bytes,
+        file_size_bytes: int,
         max_rows: int = MAX_IMPORT_ROWS,
-    ) -> list[ParsedImportRow]:
-        """Parse XLSX bytes into row dictionaries."""
+    ) -> ParsedImportFile:
+        """Parse XLSX bytes into a parsed import file."""
 
         workbook = load_workbook(
             filename=io.BytesIO(file_bytes),
-            read_only=True,
+            read_only=False,
             data_only=True,
         )
-        worksheet = workbook.active
-
-        if worksheet is None:
-            raise ImportParserError("Workbook has no active worksheet.")
+        worksheet = _select_xlsx_data_sheet(workbook)
+        metadata = _read_xlsx_metadata(workbook)
 
         rows_iter = worksheet.iter_rows(values_only=True)
 
@@ -236,7 +325,13 @@ class BulkImportParser:
             if len(parsed_rows) > max_rows:
                 raise ImportParserError(f"Import file cannot exceed {max_rows} data rows.")
 
-        return parsed_rows
+        return ParsedImportFile(
+            file_type=ImportFileType.XLSX,
+            file_size_bytes=file_size_bytes,
+            headers=headers,
+            rows=parsed_rows,
+            metadata=metadata,
+        )
 
     @staticmethod
     async def parse_upload(
@@ -245,8 +340,8 @@ class BulkImportParser:
         file_type: ImportFileType | None = None,
         max_file_size_bytes: int = MAX_IMPORT_FILE_SIZE_BYTES,
         max_rows: int = MAX_IMPORT_ROWS,
-    ) -> tuple[ImportFileType, int, list[ParsedImportRow]]:
-        """Read an uploaded file and return parsed rows with file metadata."""
+    ) -> ParsedImportFile:
+        """Read an uploaded file and return parsed file metadata and rows."""
 
         file_bytes = await upload_file.read()
 
@@ -266,17 +361,17 @@ class BulkImportParser:
         )
 
         if resolved_file_type == ImportFileType.CSV:
-            rows = BulkImportParser.parse_csv_bytes(
+            return BulkImportParser.parse_csv_bytes(
                 file_bytes=file_bytes,
+                file_size_bytes=file_size_bytes,
                 max_rows=max_rows,
             )
-            return resolved_file_type, file_size_bytes, rows
 
         if resolved_file_type == ImportFileType.XLSX:
-            rows = BulkImportParser.parse_xlsx_bytes(
+            return BulkImportParser.parse_xlsx_bytes(
                 file_bytes=file_bytes,
+                file_size_bytes=file_size_bytes,
                 max_rows=max_rows,
             )
-            return resolved_file_type, file_size_bytes, rows
 
         raise ImportParserError("Unsupported import file type.")
