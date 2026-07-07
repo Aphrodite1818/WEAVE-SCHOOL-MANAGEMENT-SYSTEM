@@ -1,6 +1,6 @@
-# ============================= #
-#   bulk_imports_result_writer.py #
-# ============================= #
+# ================================ #
+#   bulk_imports_result_writer.py  #
+# ================================ #
 
 """Result file writers for tenant bulk import workflows."""
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 import io
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.modules.bulk_imports.models import ImportResourceType
@@ -24,10 +24,6 @@ class ImportResultFile:
     content_bytes: bytes
 
 
-class ImportResultWriterError(ValueError):
-    """Raised when an import result file cannot be generated."""
-
-
 def create_result_filename(
     *,
     resource_type: ImportResourceType,
@@ -35,7 +31,7 @@ def create_result_filename(
 ) -> str:
     """Create a timestamped result filename."""
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return f"{resource_type.value}_{suffix}_{timestamp}.csv"
 
 
@@ -80,106 +76,71 @@ def write_csv_bytes(
     """Write rows to CSV bytes."""
 
     output = io.StringIO()
-    writer = csv.DictWriter(
-        output,
-        fieldnames=headers,
-        extrasaction="ignore",
-    )
-
+    writer = csv.DictWriter(output, fieldnames=headers, extrasaction="ignore")
     writer.writeheader()
 
     for row in rows:
-        csv_row = {
-            header: convert_value_for_csv(row.get(header))
-            for header in headers
-        }
-        writer.writerow(csv_row)
+        writer.writerow(
+            {
+                header: convert_value_for_csv(row.get(header))
+                for header in headers
+            }
+        )
 
     return output.getvalue().encode("utf-8-sig")
 
 
-def build_error_report_rows(
-    *,
-    row_errors: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Build CSV rows for failed import rows."""
-
-    report_rows: list[dict[str, Any]] = []
-
-    for row_error in row_errors:
-        normalized_row = row_error.get("normalized_row") or {}
-        raw_row = row_error.get("raw_row") or {}
-
-        report_row = {
-            "row_number": row_error.get("row_number"),
-            "field_name": row_error.get("field_name"),
-            "error_code": row_error.get("error_code"),
-            "error_message": row_error.get("error_message"),
-        }
-
-        if isinstance(raw_row, dict):
-            for key, value in raw_row.items():
-                report_row[f"raw_{key}"] = value
-
-        if isinstance(normalized_row, dict):
-            for key, value in normalized_row.items():
-                report_row[f"normalized_{key}"] = value
-
-        report_rows.append(report_row)
-
-    return report_rows
-
-
-def build_summary_report_rows(
+def create_result_report(
     *,
     resource_type: ImportResourceType,
-    total_rows: int,
-    successful_rows: int,
-    failed_rows: int,
-    skipped_rows: int,
-    status: str,
-) -> list[dict[str, Any]]:
-    """Build CSV rows for import summary data."""
-
-    return [
-        {
-            "resource_type": resource_type.value,
-            "status": status,
-            "total_rows": total_rows,
-            "successful_rows": successful_rows,
-            "failed_rows": failed_rows,
-            "skipped_rows": skipped_rows,
-        }
-    ]
-
-
-def create_empty_error_report(
-    *,
-    resource_type: ImportResourceType,
+    result_rows: list[dict[str, Any]],
 ) -> ImportResultFile:
-    """Create an empty error report."""
+    """Create a CSV report containing successful and failed row outcomes."""
 
-    filename = create_result_filename(
-        resource_type=resource_type,
-        suffix="errors",
+    preferred_headers_by_resource = {
+        ImportResourceType.STUDENTS: [
+            "row_number",
+            "status",
+            "first_name",
+            "last_name",
+            "admission_number",
+            "setup_code",
+            "access_code_expires_at",
+            "error_message",
+        ],
+        ImportResourceType.TEACHERS: [
+            "row_number",
+            "status",
+            "invite_status",
+            "email",
+            "first_name",
+            "last_name",
+            "staff_id",
+            "error_message",
+        ],
+        ImportResourceType.PARENTS: [
+            "row_number",
+            "status",
+            "invite_status",
+            "email",
+            "first_name",
+            "last_name",
+            "error_message",
+        ],
+    }
+
+    headers = collect_csv_headers(
+        rows=result_rows,
+        preferred_headers=preferred_headers_by_resource.get(resource_type, []),
     )
 
-    headers = [
-        "row_number",
-        "field_name",
-        "error_code",
-        "error_message",
-    ]
-
-    content_bytes = write_csv_bytes(
-        rows=[],
-        headers=headers,
-    )
+    if not headers:
+        headers = ["row_number", "status", "error_message"]
 
     return ImportResultFile(
-        filename=filename,
+        filename=create_result_filename(resource_type=resource_type, suffix="result"),
         content_type="text/csv",
-        content_bytes=content_bytes,
+        content_bytes=write_csv_bytes(rows=result_rows, headers=headers),
     )
 
 
@@ -188,83 +149,20 @@ def create_error_report(
     resource_type: ImportResourceType,
     row_errors: list[dict[str, Any]],
 ) -> ImportResultFile:
-    """Create a CSV error report for failed rows."""
-
-    if not row_errors:
-        return create_empty_error_report(resource_type=resource_type)
-
-    report_rows = build_error_report_rows(row_errors=row_errors)
-
-    preferred_headers = [
-        "row_number",
-        "field_name",
-        "error_code",
-        "error_message",
-    ]
+    """Create a CSV report containing only row errors."""
 
     headers = collect_csv_headers(
-        rows=report_rows,
-        preferred_headers=preferred_headers,
-    )
-
-    content_bytes = write_csv_bytes(
-        rows=report_rows,
-        headers=headers,
-    )
-
-    filename = create_result_filename(
-        resource_type=resource_type,
-        suffix="errors",
+        rows=row_errors,
+        preferred_headers=[
+            "row_number",
+            "field_name",
+            "error_code",
+            "error_message",
+        ],
     )
 
     return ImportResultFile(
-        filename=filename,
+        filename=create_result_filename(resource_type=resource_type, suffix="errors"),
         content_type="text/csv",
-        content_bytes=content_bytes,
-    )
-
-
-def create_summary_report(
-    *,
-    resource_type: ImportResourceType,
-    total_rows: int,
-    successful_rows: int,
-    failed_rows: int,
-    skipped_rows: int,
-    status: str,
-) -> ImportResultFile:
-    """Create a CSV summary report for an import job."""
-
-    report_rows = build_summary_report_rows(
-        resource_type=resource_type,
-        total_rows=total_rows,
-        successful_rows=successful_rows,
-        failed_rows=failed_rows,
-        skipped_rows=skipped_rows,
-        status=status,
-    )
-
-    headers = [
-        "resource_type",
-        "status",
-        "total_rows",
-        "successful_rows",
-        "failed_rows",
-        "skipped_rows",
-    ]
-
-    content_bytes = write_csv_bytes(
-        rows=report_rows,
-        headers=headers,
-    )
-
-    filename = create_result_filename(
-        resource_type=resource_type,
-        suffix="summary",
-    )
-
-    return ImportResultFile(
-        filename=filename,
-        content_type="text/csv",
-        content_bytes=content_bytes,
+        content_bytes=write_csv_bytes(rows=row_errors, headers=headers),
     )
