@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
+from app.config.security import hash_password
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
     get_current_onboarded_student,
@@ -10,8 +11,11 @@ from app.core.dependencies.route_guards import (
     get_current_student,
     get_current_tenant_member,
 )
+from app.core.exceptions import BadRequestException, NotFoundException
+from app.core.utils.validators import validate_password_strength
 from app.modules.parents.models import Parent
 from app.modules.students.models import AcademicStatus, Student
+from app.modules.students.repository import StudentAccessCodeRepository, StudentRepository
 from app.modules.students.schemas import (
     StudentChangePasswordRequest,
     StudentLinkCodeRedeem,
@@ -120,20 +124,55 @@ async def update_my_student_profile(
 @router.post(
     "/me/change-password",
     response_model=StudentResponse,
-    summary="Change my student password",
+    summary="Set my student password",
 )
 async def change_my_student_password(
     payload: StudentChangePasswordRequest,
     db: DbSession,
     current_user: CurrentStudent,
 ) -> StudentResponse:
-    """Allow the logged-in student to change the default password."""
+    """Allow the logged-in student to set a new password using an access code."""
 
-    return await StudentService.change_my_password(
+    StudentService._ensure_student_actor(current_user)
+
+    student = await StudentRepository.get_student_by_id(
         db=db,
-        actor=current_user,
-        payload=payload,
+        tenant_id=current_user.tenant_id,
+        student_id=current_user.id,
     )
+    if student is None:
+        raise NotFoundException(detail="Student profile not found")
+
+    if payload.new_password != payload.confirm_password:
+        raise BadRequestException(detail="New password and confirmation do not match")
+
+    access_code_is_valid = await StudentService._student_access_code_is_valid(
+        db=db,
+        student=student,
+        plain_code=payload.access_code,
+    )
+    if not access_code_is_valid:
+        raise BadRequestException(detail="Access code is incorrect")
+
+    try:
+        validate_password_strength(payload.new_password)
+    except ValueError as exc:
+        raise BadRequestException(detail=str(exc)) from exc
+
+    student.password_hash = hash_password(payload.new_password)
+    student.password_reset_required = False
+
+    await StudentAccessCodeRepository.mark_all_codes_used(
+        db=db,
+        tenant_id=student.tenant_id,
+        student_id=student.id,
+    )
+
+    updated_student = await StudentRepository.save(db=db, student=student)
+    await db.commit()
+    await db.refresh(updated_student)
+
+    return StudentResponse.model_validate(updated_student)
 
 
 @router.get(
