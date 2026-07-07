@@ -75,7 +75,7 @@ const ROLE_FORM_CONFIG = {
         { name: "admission_number", label: "Admission number", readOnly: true },
         { name: "first_name", label: "First name", required: true },
         { name: "last_name", label: "Last name", required: true },
-        { name: "date_of_birth", label: "Date of birth", type: "date", required: true },
+        { name: "date_of_birth", label: "Date of birth", type: "date", readOnly: true },
         {
           name: "gender",
           label: "Gender",
