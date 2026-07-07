@@ -71,12 +71,175 @@ const buildAccessCodeText = (notice) => {
     notice.title,
     "",
     ...notice.fields.map((field) => `${field.label}: ${field.value || "-"}`),
+    "",
+    "Use this access code once to create your student password.",
   ];
 
   return lines.join("\n");
 };
 
-function AccessCodeNotice({ notice, onClose, onCopy }) {
+const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const getNoticeValue = (notice, label) =>
+  notice?.fields.find((field) => field.label === label)?.value || "-";
+
+const buildPrintableSlipHtml = (notice) => {
+  const student = getNoticeValue(notice, "Student");
+  const admissionNumber = getNoticeValue(notice, "Admission number");
+  const accessCode = getNoticeValue(notice, "Access code");
+  const expires = getNoticeValue(notice, "Expires");
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Student Access Slip</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      color: #111827;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 24px;
+    }
+    .page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .slip {
+      width: min(100%, 520px);
+      border: 1px solid #d1d5db;
+      border-radius: 24px;
+      background: #ffffff;
+      padding: 28px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: #6b7280;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+    .subtitle {
+      margin: 10px 0 0;
+      color: #4b5563;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .field {
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: #f9fafb;
+    }
+    .label {
+      color: #6b7280;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .value {
+      margin-top: 6px;
+      word-break: break-word;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .code .value {
+      font-size: clamp(28px, 9vw, 44px);
+      letter-spacing: 0.16em;
+      text-align: center;
+    }
+    .note {
+      margin-top: 22px;
+      border-radius: 16px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .footer {
+      margin-top: 20px;
+      color: #6b7280;
+      font-size: 12px;
+      text-align: center;
+    }
+    .actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      background: #111827;
+      color: #ffffff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 12px 18px;
+    }
+    @media (max-width: 520px) {
+      body { padding: 12px; }
+      .page { align-items: flex-start; padding-top: 16px; }
+      .slip { border-radius: 20px; padding: 20px; }
+      h1 { font-size: 21px; }
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .page { min-height: auto; display: block; }
+      .slip { width: 100%; box-shadow: none; border-color: #111827; border-radius: 18px; }
+      .actions { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="slip" aria-label="Student access slip">
+      <p class="eyebrow">Student access slip</p>
+      <h1>${escapeHtml(notice.title)}</h1>
+      <p class="subtitle">${escapeHtml(notice.description)}</p>
+      <div class="grid">
+        <div class="field"><div class="label">Student</div><div class="value">${escapeHtml(student)}</div></div>
+        <div class="field"><div class="label">Admission number</div><div class="value">${escapeHtml(admissionNumber)}</div></div>
+        <div class="field code"><div class="label">Access code</div><div class="value">${escapeHtml(accessCode)}</div></div>
+        <div class="field"><div class="label">Expires</div><div class="value">${escapeHtml(expires)}</div></div>
+      </div>
+      <div class="note">Use the admission number and access code to log in once. The student must create a new private password immediately after login.</div>
+      <p class="footer">Give this slip only to the correct student.</p>
+      <div class="actions"><button type="button" onclick="window.print()">Print slip</button></div>
+    </section>
+  </main>
+</body>
+</html>`;
+};
+
+function AccessCodeNotice({ notice, onClose, onCopy, onPrint }) {
   if (!notice) return null;
 
   return (
@@ -114,6 +277,9 @@ function AccessCodeNotice({ notice, onClose, onCopy }) {
         <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
           <Button type="button" onClick={() => onCopy(buildAccessCodeText(notice))} className="w-full sm:w-auto">
             Copy details
+          </Button>
+          <Button type="button" variant="outline" onClick={() => onPrint(notice)} className="w-full sm:w-auto">
+            Print slip
           </Button>
           <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">
             Done
@@ -235,13 +401,12 @@ function StudentDirectoryPage() {
 
     try {
       const payload = compactPayload(formData);
-      let result;
 
       if (editingStudent) {
-        result = await studentService.updateAdminStudent(editingStudent.id, payload);
+        await studentService.updateAdminStudent(editingStudent.id, payload);
         showSuccess("Student updated successfully.");
       } else {
-        result = await studentService.createStudent(payload);
+        const result = await studentService.createStudent(payload);
         const notice = buildNotice(result, "create");
         if (notice) setAccessCodeNotice(notice);
         showSuccess("Student created successfully.");
@@ -321,6 +486,23 @@ function StudentDirectoryPage() {
     }
   };
 
+  const handlePrintNotice = (notice) => {
+    const printWindow = window.open("", "_blank", "width=720,height=760");
+    if (!printWindow) {
+      showError("Could not open the print window. Check your browser popup setting.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(buildPrintableSlipHtml(notice));
+    printWindow.document.close();
+    printWindow.focus();
+
+    window.setTimeout(() => {
+      printWindow.print();
+    }, 300);
+  };
+
   const applyFilters = async (event) => {
     event.preventDefault();
     await loadPage(filters);
@@ -341,6 +523,7 @@ function StudentDirectoryPage() {
         notice={accessCodeNotice}
         onClose={() => setAccessCodeNotice(null)}
         onCopy={handleCopyNotice}
+        onPrint={handlePrintNotice}
       />
 
       {error && (
