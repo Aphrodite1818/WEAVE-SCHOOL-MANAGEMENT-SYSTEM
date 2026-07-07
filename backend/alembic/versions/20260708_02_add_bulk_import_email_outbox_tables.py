@@ -260,17 +260,31 @@ DROP TYPE IF EXISTS public.import_resource_type;
 """
 
 
+def execute_sql_block(sql_block: str) -> None:
+    """Execute semicolon-separated SQL statements one at a time.
+
+    asyncpg rejects multiple SQL commands inside one prepared statement, so each
+    CREATE TABLE / CREATE INDEX / DROP statement must be executed separately.
+    """
+
+    for statement in sql_block.split(";"):
+        statement = statement.strip()
+
+        if statement:
+            op.execute(statement)
+
+
 def upgrade() -> None:
     """Create bulk import and email outbox database objects."""
 
     op.execute(CREATE_ENUMS_SQL)
-    op.execute(CREATE_TABLES_SQL)
-    op.execute(CREATE_INDEXES_SQL)
+    execute_sql_block(CREATE_TABLES_SQL)
+    execute_sql_block(CREATE_INDEXES_SQL)
 
 
 def downgrade() -> None:
     """Drop bulk import and email outbox database objects."""
 
-    op.execute(DROP_INDEXES_SQL)
-    op.execute(DROP_TABLES_SQL)
-    op.execute(DROP_ENUMS_SQL)
+    execute_sql_block(DROP_INDEXES_SQL)
+    execute_sql_block(DROP_TABLES_SQL)
+    execute_sql_block(DROP_ENUMS_SQL)
