@@ -1,8 +1,9 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
 from app.modules.classes.models import ClassRoom
 
 
@@ -38,44 +39,45 @@ class ClassRoomRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_classroom_by_name_and_arm(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        class_name: str,
-        class_arm: str,
-    ) -> ClassRoom | None:
-        """Get classroom by name and arm within tenant scope."""
-
-        result = await db.execute(
-            select(ClassRoom).where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.name == class_name,
-                ClassRoom.arm == class_arm,
-            )
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
     async def get_classroom_by_normalized_name_and_arm(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
         class_name: str,
-        class_arm: str,
+        class_arm: str | None = None,
     ) -> ClassRoom | None:
-        """Get a classroom by case-insensitive name and arm within tenant scope."""
+        """Get a classroom by canonical name and optional arm within tenant scope."""
 
-        normalized_name = class_name.strip().lower()
-        normalized_arm = class_arm.strip().lower()
+        normalized_name = normalized_class_name_key(class_name)
+        normalized_arm = normalized_class_arm_key(class_arm)
+
+        if normalized_name is None:
+            return None
 
         result = await db.execute(
             select(ClassRoom).where(
                 ClassRoom.tenant_id == tenant_id,
-                func.lower(func.trim(ClassRoom.name)) == normalized_name,
-                func.lower(func.trim(ClassRoom.arm)) == normalized_arm,
+                ClassRoom.normalized_name == normalized_name,
+                ClassRoom.normalized_arm == normalized_arm,
             )
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_classroom_by_name_and_arm(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_name: str,
+        class_arm: str | None = None,
+    ) -> ClassRoom | None:
+        """Compatibility wrapper for normalized classroom lookup."""
+
+        return await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
+            db=db,
+            tenant_id=tenant_id,
+            class_name=class_name,
+            class_arm=class_arm,
+        )
 
     @staticmethod
     async def get_all_classrooms(
@@ -89,7 +91,7 @@ class ClassRoomRepository:
         result = await db.execute(
             select(ClassRoom)
             .where(ClassRoom.tenant_id == tenant_id)
-            .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
             .offset(skip)
             .limit(limit)
         )
@@ -110,7 +112,7 @@ class ClassRoomRepository:
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.is_active.is_(True),
             )
-            .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
             .offset(skip)
             .limit(limit)
         )
@@ -133,7 +135,7 @@ class ClassRoomRepository:
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.teacher_id == teacher_id,
             )
-            .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
             .offset(skip)
             .limit(limit)
         )
@@ -196,16 +198,14 @@ class ClassRoomRepository:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         class_name: str,
-        class_arm: str,
+        class_arm: str | None = None,
     ) -> bool:
-        """Check whether classroom already exists by name and arm."""
+        """Check whether classroom already exists by canonical name and arm."""
 
-        result = await db.execute(
-            select(ClassRoom.id).where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.name == class_name,
-                ClassRoom.arm == class_arm,
-            )
+        classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
+            db=db,
+            tenant_id=tenant_id,
+            class_name=class_name,
+            class_arm=class_arm,
         )
-
-        return result.scalar_one_or_none() is not None
+        return classroom is not None
