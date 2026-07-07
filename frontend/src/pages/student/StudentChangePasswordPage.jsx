@@ -71,7 +71,7 @@ function StudentChangePasswordPage() {
             <div>
               <h2 className="text-lg font-semibold text-text">Password setup required</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Use your current password or the access code from your school to create your own password.
+                Enter the access code from your school, then create your password.
               </p>
             </div>
           </div>
@@ -84,7 +84,7 @@ function StudentChangePasswordPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <Input
-              label="Current password or access code"
+              label="Access code"
               type="password"
               name="current_password"
               value={formData.current_password}
