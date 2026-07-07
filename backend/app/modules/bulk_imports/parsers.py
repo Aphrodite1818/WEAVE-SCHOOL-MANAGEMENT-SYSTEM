@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Sequence
+from zipfile import BadZipFile
 
 from fastapi import UploadFile
 from openpyxl import load_workbook
@@ -196,7 +197,7 @@ class BulkImportParser:
                 read_only=False,
                 data_only=True,
             )
-        except (InvalidFileException, OSError, ValueError) as exc:
+        except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
             raise ImportParserError(
                 "Uploaded file is not a readable XLSX workbook. Download a fresh backend-generated template and try again."
             ) from exc
