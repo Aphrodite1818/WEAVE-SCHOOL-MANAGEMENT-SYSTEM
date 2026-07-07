@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile,
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.bulk_imports.models import ImportFileType, ImportJobStatus, ImportResourceType
+from app.modules.bulk_imports.models import ImportJobStatus, ImportResourceType
 from app.modules.bulk_imports.result_writer import create_result_report
 from app.modules.bulk_imports.schemas import (
     ImportJobDetailResponse,
@@ -39,12 +39,11 @@ CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenan
 )
 async def list_import_templates(
     current_user: CurrentTenantAdmin,
-    file_type: ImportFileType = Query(default=ImportFileType.XLSX),
 ) -> list[ImportTemplateResponse]:
-    """List supported import templates."""
+    """List supported XLSX import templates."""
 
     _ = current_user
-    return BulkImportService.list_templates(file_type=file_type)
+    return BulkImportService.list_templates()
 
 
 @router.get(
@@ -54,12 +53,11 @@ async def list_import_templates(
 async def get_import_template(
     resource_type: ImportResourceType,
     current_user: CurrentTenantAdmin,
-    file_type: ImportFileType = Query(default=ImportFileType.XLSX),
 ) -> ImportTemplateResponse:
-    """Return one supported import template."""
+    """Return one supported XLSX import template description."""
 
     _ = current_user
-    return BulkImportService.get_template(resource_type=resource_type, file_type=file_type)
+    return BulkImportService.get_template(resource_type=resource_type)
 
 
 @router.get(
@@ -68,14 +66,12 @@ async def get_import_template(
 async def download_import_template(
     resource_type: ImportResourceType,
     current_user: CurrentTenantAdmin,
-    file_type: ImportFileType = Query(default=ImportFileType.XLSX),
 ) -> Response:
-    """Download a signed backend-generated import template file."""
+    """Download a signed backend-generated XLSX import template file."""
 
     template = BulkImportService.generate_template_file(
         tenant_id=current_user.tenant_id,
         resource_type=resource_type,
-        file_type=file_type,
     )
 
     return Response(
@@ -99,7 +95,7 @@ async def dry_run_bulk_import(
     file: UploadFile = File(...),
     notify_on_completion: bool = Form(default=True),
 ) -> ImportJobDetailResponse:
-    """Validate and stage a bulk import file without creating records."""
+    """Validate and stage a bulk import XLSX file without creating records."""
 
     return await BulkImportService.create_dry_run_from_upload(
         db=db,
