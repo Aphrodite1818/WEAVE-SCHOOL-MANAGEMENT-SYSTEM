@@ -1,3 +1,6 @@
+#==========================#
+#  student model.py#
+#==========================#
 from __future__ import annotations
 
 import uuid
@@ -6,7 +9,17 @@ from enum import Enum as PyEnum
 from secrets import token_urlsafe
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SQLEnum, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +62,13 @@ class StudentAccountStatus(str, PyEnum):
     INACTIVE = "inactive"
 
 
+class StudentAccessCodePurpose(str, PyEnum):
+    """Reason why a temporary student access code was created."""
+
+    INITIAL_SETUP = "initial_setup"
+    PASSWORD_RESET = "password_reset"
+
+
 class StudentParentLinkRequestStatus(str, PyEnum):
     """Lifecycle states for parent-student link approval requests."""
 
@@ -68,6 +88,8 @@ class Student(BaseModel):
         nullable=False,
     )
 
+    # Nullable because a new student may not have created their real password yet.
+    # Initial access is handled through StudentAccessCode.
     password_hash: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
@@ -91,8 +113,8 @@ class Student(BaseModel):
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
         nullable=False,
-        default=StudentAccountStatus.PENDING,
-        server_default=StudentAccountStatus.PENDING.value,
+        default=StudentAccountStatus.ACTIVE,
+        server_default=StudentAccountStatus.ACTIVE.value,
     )
 
     is_verified: Mapped[bool] = mapped_column(
@@ -121,7 +143,12 @@ class Student(BaseModel):
         nullable=True,
     )
 
-    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Admin-controlled field. Students should not be allowed to edit this
+    # through student self-service schemas.
+    date_of_birth: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
 
     gender: Mapped[Gender | None] = mapped_column(
         SQLEnum(
@@ -133,7 +160,16 @@ class Student(BaseModel):
         nullable=True,
     )
 
-    passport_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Admin-controlled for now. Keep length limited.
+    state_of_origin: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    passport_photo_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
 
     admission_date: Mapped[date] = mapped_column(
         Date,
@@ -141,7 +177,10 @@ class Student(BaseModel):
         server_default=text("CURRENT_DATE"),
     )
 
-    graduation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    graduation_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
 
     class_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -149,7 +188,10 @@ class Student(BaseModel):
         nullable=True,
     )
 
-    arm: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    arm: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
 
     status: Mapped[AcademicStatus] = mapped_column(
         SQLEnum(
@@ -160,6 +202,7 @@ class Student(BaseModel):
         ),
         nullable=False,
         default=AcademicStatus.ACTIVE,
+        server_default=AcademicStatus.ACTIVE.value,
     )
 
     profile_status: Mapped[StudentProfileStatus] = mapped_column(
@@ -169,8 +212,9 @@ class Student(BaseModel):
             schema=PUBLIC_SCHEMA,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
-        default=StudentProfileStatus.INCOMPLETE,
         nullable=False,
+        default=StudentProfileStatus.INCOMPLETE,
+        server_default=StudentProfileStatus.INCOMPLETE.value,
     )
 
     parent_links: Mapped[list["StudentParentLink"]] = relationship(
@@ -191,6 +235,12 @@ class Student(BaseModel):
         cascade="all, delete-orphan",
     )
 
+    access_codes: Mapped[list["StudentAccessCode"]] = relationship(
+        "StudentAccessCode",
+        back_populates="student",
+        cascade="all, delete-orphan",
+    )
+
     @property
     def parents(self) -> list["Parent"]:
         """Return linked parents."""
@@ -207,6 +257,71 @@ class Student(BaseModel):
         Index("ix_students_tenant_class", "tenant_id", "class_id"),
         Index("ix_students_tenant_status", "tenant_id", "status"),
         Index("ix_students_tenant_account_status", "tenant_id", "account_status"),
+    )
+
+
+class StudentAccessCode(BaseModel):
+    """Temporary code used for student first login or password reset."""
+
+    __tablename__ = "student_access_codes"
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("students.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Store a deterministic digest of the code, not the plain code.
+    # The plain code should only be returned once to the admin.
+    code_digest: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    purpose: Mapped[StudentAccessCodePurpose] = mapped_column(
+        SQLEnum(
+            StudentAccessCodePurpose,
+            name="student_access_code_purpose",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    is_used: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    student: Mapped["Student"] = relationship(
+        "Student",
+        back_populates="access_codes",
+    )
+
+    __table_args__ = (
+        Index("ix_student_access_codes_tenant_student", "tenant_id", "student_id"),
+        Index("ix_student_access_codes_tenant_code_digest", "tenant_id", "code_digest"),
+        Index("ix_student_access_codes_tenant_student_used", "tenant_id", "student_id", "is_used"),
+        Index("ix_student_access_codes_expires_at", "expires_at"),
+        Index("ix_student_access_codes_is_used", "is_used"),
     )
 
 
@@ -236,13 +351,29 @@ class StudentParentLink(BaseModel):
         ),
         nullable=False,
         default=ParentRelationship.GUARDIAN,
+        server_default=ParentRelationship.GUARDIAN.value,
     )
 
-    is_primary_contact: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_primary_contact: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
 
-    receives_academic_updates: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    receives_academic_updates: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
 
-    receives_fee_updates: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    receives_fee_updates: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
 
     student: Mapped["Student"] = relationship(
         "Student",
@@ -283,7 +414,10 @@ class StudentParentLinkRequest(BaseModel):
         nullable=False,
     )
 
-    admission_number_snapshot: Mapped[str] = mapped_column(String(50), nullable=False)
+    admission_number_snapshot: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
 
     relationship_type: Mapped[ParentRelationship] = mapped_column(
         SQLEnum(
@@ -360,15 +494,32 @@ class StudentLinkCode(BaseModel):
         nullable=False,
     )
 
-    code: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    code: Mapped[str] = mapped_column(
+        String(80),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
 
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
 
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
-    max_use: Mapped[int] = mapped_column(default=1, nullable=False)
+    max_use: Mapped[int] = mapped_column(
+        default=1,
+        nullable=False,
+    )
 
-    use_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    use_count: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False,
+    )
 
     student: Mapped["Student"] = relationship(
         "Student",
@@ -377,18 +528,26 @@ class StudentLinkCode(BaseModel):
 
     @staticmethod
     def generate_code() -> str:
+        """Generate a parent-student linking code."""
+
         return f"STU{token_urlsafe(6).upper()}"
 
     @property
     def is_expired(self) -> bool:
+        """Return whether the link code has expired."""
+
         return datetime.now(timezone.utc) >= self.expires_at
 
     @property
     def is_exhausted(self) -> bool:
+        """Return whether the link code has reached max use."""
+
         return self.use_count >= self.max_use
 
     @property
     def is_active(self) -> bool:
+        """Return whether the link code can still be used."""
+
         return self.used_at is None and not self.is_expired and not self.is_exhausted
 
     __table_args__ = (

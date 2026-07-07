@@ -100,7 +100,8 @@ class Settings(BaseSettings):
     TENANT_ACTIVATION_EXPIRATION_HOURS: int = 48
 
     FRONTEND_APP_URL: str = Field(..., description="Frontend application URL")
-    DEFAULT_STUDENT_PASSWORD: str = "default"
+    STUDENT_ACCESS_CODE_EXPIRY_HOURS : int = 48
+    STUDENT_ACCESS_CODE_LENGTH : int = 8 
 
     APP_SCRIPT_URL: str = Field(...)
 

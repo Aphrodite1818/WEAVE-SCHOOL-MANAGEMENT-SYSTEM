@@ -52,7 +52,7 @@ from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.parents.repository import ParentRepository
 from app.modules.students.models import Student, StudentAccountStatus
-from app.modules.students.repository import StudentRepository
+from app.modules.students.repository import StudentRepository , StudentAccessCodeRepository
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
 from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
@@ -401,18 +401,50 @@ async def _authenticate_tenant_actor(
 
     if resolution.actor_type == ActorType.STUDENT:
         student = await StudentRepository.get_by_id(db, resolution.actor_id)
-        if student is None or student.password_hash is None:
-            raise UnauthorizedException("Account not found")
-        if not verify_password(password, student.password_hash):
+        if student is None or student.tenant_id != resolution.tenant_id:
+             raise UnauthorizedException("Account not found")
+        
+
+        password_matches = (
+            student.password_hash is not None
+            and verify_password(password , student.password_hash)
+        )
+
+        access_code = None
+        if not password_matches:
+            access_code = await StudentAccessCodeRepository.get_active_code_by_digest(
+                db = db ,
+                tenant_id = student.tenant_id,
+                student_id = student.id,
+                code_digest = hash_auth_secret(password)
+            )
+
+        if not password_matches and access_code is None:
             raise UnauthorizedException("Invalid credentials")
+        
+        needs_commit = False
+
+        if access_code is not None:
+            student.password_reset_required = True
+            db.add(student)
+            await db.flush()
+            needs_commit = True
+
         if (
             not student.is_active
             or not student.is_verified
             or student.account_status != StudentAccountStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
+
         if await _update_last_login_if_due(db, student):
+            needs_commit = True
+
+        if needs_commit:
             await db.commit()
+
+
+
         return AuthenticatedActor(
             actor_type=ActorType.STUDENT.value,
             account_type=ActorType.STUDENT.value,
