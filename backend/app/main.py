@@ -19,8 +19,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.tenant_admins.router import router as tenant_admin_router
 from app.tenant_management.router import router as tenant_router
 from app.modules.subjects.router import router as subject_router
+from app.modules.students.admin_access_router import router as student_admin_access_router
 from app.modules.students.router import router as student_router
-from app.modules.students.runtime_patches import apply_student_runtime_patches
 from app.modules.parents.router import router as parent_router
 from app.modules.teachers.router import router as teacher_router
 from app.modules.classes.router import router as class_router
@@ -70,7 +70,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [N
 def create_app() -> FastAPI:
     """Create app."""
     import_model_modules()
-    apply_student_runtime_patches()
 
     app = FastAPI(
         title="LearnlyAI Assistant",
@@ -104,6 +103,13 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(superadmin_router, prefix="/api/v1")
+    # Student access routes are registered before the wider tenant-admin router so
+    # the refined access-code implementation handles the overlapping student paths.
+    app.include_router(
+        student_admin_access_router,
+        prefix="/api/v1/tenant-admin",
+        tags=["Tenant Admin"],
+    )
     app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
     app.include_router(tenant_router, prefix="/api/v1/tenants", tags=["Tenants"])
     app.include_router(teacher_router, prefix="/api/v1/teachers", tags=["Teachers"])
