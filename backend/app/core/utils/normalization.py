@@ -27,6 +27,8 @@ _CLASS_PREFIX_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^KG\s*[-_]?\s*(\d+)$", re.IGNORECASE), "KG"),
 )
 
+_NO_ARM_SENTINELS = {"-", "NOARM", "NO_ARM", "NO ARM", "NONE", "N/A", "NA"}
+
 
 def clean_string(value: Any) -> str | None:
     """Trim and collapse whitespace; return None for blank values."""
@@ -160,7 +162,11 @@ def normalize_class_arm(value: Any) -> str | None:
     if cleaned is None:
         return None
 
-    return re.sub(r"\s+", "", cleaned).upper()
+    normalized = re.sub(r"\s+", "", cleaned).upper()
+    if normalized in _NO_ARM_SENTINELS:
+        return None
+
+    return normalized or None
 
 
 def normalized_class_arm_key(value: Any) -> str:
