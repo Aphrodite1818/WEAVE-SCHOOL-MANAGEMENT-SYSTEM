@@ -20,6 +20,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -213,6 +214,13 @@ class ImportJob(BaseModel):
         passive_deletes=True,
     )
 
+    staged_rows: Mapped[list["ImportStagedRow"]] = relationship(
+        "ImportStagedRow",
+        back_populates="import_job",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     notifications: Mapped[list["ImportNotification"]] = relationship(
         "ImportNotification",
         back_populates="import_job",
@@ -284,6 +292,46 @@ class ImportRowError(BaseModel):
             "row_number",
         ),
         Index("ix_import_row_errors_tenant_error_code", "tenant_id", "error_code"),
+    )
+
+
+class ImportStagedRow(BaseModel):
+    """Stores valid dry-run rows that can later be confirmed for real creation."""
+
+    __tablename__ = "import_staged_rows"
+
+    import_job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.import_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    row_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    raw_row: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    normalized_row: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    import_job: Mapped["ImportJob"] = relationship(
+        "ImportJob",
+        back_populates="staged_rows",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("import_job_id", "row_number", name="uq_import_staged_rows_job_row"),
+        Index("ix_import_staged_rows_tenant_job", "tenant_id", "import_job_id"),
+        Index("ix_import_staged_rows_job_row", "import_job_id", "row_number"),
     )
 
 
