@@ -15,6 +15,51 @@ from app.modules.bulk_imports.schemas import (
 )
 
 
+TEMPLATE_METADATA_SHEET_NAME = "_import_metadata"
+
+CONTROL_COLUMNS: set[str] = {
+    "_import_resource_type",
+    "_import_template_version",
+    "_import_headers_hash",
+    "_import_template_signature",
+}
+
+TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
+    ImportResourceType.STUDENTS: "students_v1",
+    ImportResourceType.TEACHERS: "teachers_v1",
+    ImportResourceType.PARENTS: "parents_v1",
+}
+
+DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
+    ImportResourceType.STUDENTS: [
+        "first_name",
+        "last_name",
+        "date_of_birth",
+        "gender",
+        "class_id",
+        "arm",
+        "state_of_origin",
+    ],
+    ImportResourceType.TEACHERS: [
+        "email",
+        "first_name",
+        "last_name",
+        "staff_id",
+        "qualification",
+        "specialization",
+    ],
+    ImportResourceType.PARENTS: [
+        "email",
+        "first_name",
+        "last_name",
+        "phone_number",
+        "occupation",
+        "address",
+        "emergency_phone",
+    ],
+}
+
+
 @dataclass(frozen=True)
 class ImportTemplateColumn:
     """Internal representation of one template column."""
@@ -63,7 +108,7 @@ def create_student_template() -> ImportTemplateDefinition:
 
     return ImportTemplateDefinition(
         resource_type=ImportResourceType.STUDENTS,
-        filename="students_import_template.csv",
+        filename="students_import_template.xlsx",
         columns=[
             create_template_column(name="first_name", label="First Name", required=True, example="Ade"),
             create_template_column(name="last_name", label="Last Name", required=True, example="Johnson"),
@@ -92,6 +137,7 @@ def create_student_template() -> ImportTemplateDefinition:
             create_template_column(name="state_of_origin", label="State of Origin", required=False, example="Lagos"),
         ],
         notes=[
+            "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
             "Student setup/access codes are generated automatically and included once in the result report.",
@@ -106,7 +152,7 @@ def create_teacher_template() -> ImportTemplateDefinition:
 
     return ImportTemplateDefinition(
         resource_type=ImportResourceType.TEACHERS,
-        filename="teachers_import_template.csv",
+        filename="teachers_import_template.xlsx",
         columns=[
             create_template_column(name="email", label="Email", required=True, example="mary.adebayo@example.com"),
             create_template_column(name="first_name", label="First Name", required=False, example="Mary"),
@@ -116,6 +162,7 @@ def create_teacher_template() -> ImportTemplateDefinition:
             create_template_column(name="specialization", label="Specialization", required=False, example="Mathematics"),
         ],
         notes=[
+            "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Teacher email is required and must be unique.",
             "Teacher invite emails are queued through the email outbox worker instead of sent inline.",
             "Only fields accepted by manual teacher creation are allowed.",
@@ -128,7 +175,7 @@ def create_parent_template() -> ImportTemplateDefinition:
 
     return ImportTemplateDefinition(
         resource_type=ImportResourceType.PARENTS,
-        filename="parents_import_template.csv",
+        filename="parents_import_template.xlsx",
         columns=[
             create_template_column(name="email", label="Email", required=True, example="parent@example.com"),
             create_template_column(name="first_name", label="First Name", required=False, example="Tunde"),
@@ -139,6 +186,7 @@ def create_parent_template() -> ImportTemplateDefinition:
             create_template_column(name="emergency_phone", label="Emergency Phone", required=False, example="+2348098765432"),
         ],
         notes=[
+            "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Parent email is required and must be unique.",
             "Parent invite emails are queued through the email outbox worker instead of sent inline.",
             "Parent-student linking is intentionally not handled by this first bulk import version.",
@@ -178,14 +226,15 @@ def convert_column_to_response(
 def convert_template_to_response(
     *,
     template: ImportTemplateDefinition,
-    file_type: ImportFileType = ImportFileType.CSV,
+    file_type: ImportFileType = ImportFileType.XLSX,
 ) -> ImportTemplateResponse:
     """Convert one template definition to response schema."""
 
     return ImportTemplateResponse(
         resource_type=template.resource_type,
         file_type=file_type,
-        filename=template.filename,
+        filename=f"{template.resource_type.value}_import_template.{file_type.value}",
+        template_version=TEMPLATE_VERSION_BY_RESOURCE.get(template.resource_type),
         columns=[
             convert_column_to_response(column=column)
             for column in template.columns
@@ -212,7 +261,7 @@ def get_template_definition(
 def get_template_response(
     *,
     resource_type: ImportResourceType,
-    file_type: ImportFileType = ImportFileType.CSV,
+    file_type: ImportFileType = ImportFileType.XLSX,
 ) -> ImportTemplateResponse:
     """Return one template response."""
 
@@ -226,7 +275,7 @@ def get_template_response(
 
 def list_template_responses(
     *,
-    file_type: ImportFileType = ImportFileType.CSV,
+    file_type: ImportFileType = ImportFileType.XLSX,
 ) -> list[ImportTemplateResponse]:
     """Return all supported template responses."""
 
