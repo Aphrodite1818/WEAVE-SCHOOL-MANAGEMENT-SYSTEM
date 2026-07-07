@@ -34,9 +34,10 @@ class BulkImportNormalizer:
             "dob": "date_of_birth",
             "gender": "gender",
             "sex": "gender",
-            "class_id": "class_id",
-            "class": "class_id",
-            "arm": "arm",
+            "class_name": "class_name",
+            "class": "class_name",
+            "class_arm": "class_arm",
+            "arm": "class_arm",
             "state": "state_of_origin",
             "state_of_origin": "state_of_origin",
         },
@@ -77,8 +78,8 @@ class BulkImportNormalizer:
             "last_name",
             "date_of_birth",
             "gender",
-            "class_id",
-            "arm",
+            "class_name",
+            "class_arm",
             "state_of_origin",
         },
         ImportResourceType.TEACHERS: {
@@ -184,9 +185,6 @@ class BulkImportNormalizer:
 
         if field_name == "gender":
             return BulkImportNormalizer.normalize_gender(value)
-
-        if field_name == "class_id":
-            return str(value).strip() if value is not None else None
 
         return BulkImportNormalizer.normalize_text(value)
 
