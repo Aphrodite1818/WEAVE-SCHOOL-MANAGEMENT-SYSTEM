@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.classes.models import ClassRoom
@@ -51,6 +51,28 @@ class ClassRoomRepository:
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.name == class_name,
                 ClassRoom.arm == class_arm,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_classroom_by_normalized_name_and_arm(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        class_name: str,
+        class_arm: str,
+    ) -> ClassRoom | None:
+        """Get a classroom by case-insensitive name and arm within tenant scope."""
+
+        normalized_name = class_name.strip().lower()
+        normalized_arm = class_arm.strip().lower()
+
+        result = await db.execute(
+            select(ClassRoom).where(
+                ClassRoom.tenant_id == tenant_id,
+                func.lower(func.trim(ClassRoom.name)) == normalized_name,
+                func.lower(func.trim(ClassRoom.arm)) == normalized_arm,
             )
         )
         return result.scalar_one_or_none()
