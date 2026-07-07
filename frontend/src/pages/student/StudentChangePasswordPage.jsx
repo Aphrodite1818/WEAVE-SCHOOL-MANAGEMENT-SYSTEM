@@ -58,8 +58,8 @@ function StudentChangePasswordPage() {
   return (
     <DashboardLayout
       role="student"
-      title="Change Default Password"
-      description={`Finish first-time access for ${displayName(currentUser)} before entering your dashboard.`}
+      title="Create Your Password"
+      description={`Finish secure access for ${displayName(currentUser)} before entering your dashboard.`}
       onboardingModalEnabled={false}
     >
       <div className="mx-auto max-w-2xl">
@@ -69,9 +69,9 @@ function StudentChangePasswordPage() {
               <ShieldCheck className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-lg font-semibold text-text">Password reset required</h2>
+              <h2 className="text-lg font-semibold text-text">Password setup required</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Students can log in with the admission number and default password once, but must change it before using dashboard resources.
+                Use your current password or the access code from your school to create your own password.
               </p>
             </div>
           </div>
@@ -84,7 +84,7 @@ function StudentChangePasswordPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <Input
-              label="Current password"
+              label="Current password or access code"
               type="password"
               name="current_password"
               value={formData.current_password}
