@@ -94,7 +94,7 @@ def create_xlsx_template(
     )
 
     metadata_sheet = workbook.create_sheet(TEMPLATE_METADATA_SHEET_NAME)
-    metadata_sheet.sheet_state = "hidden"
+    metadata_sheet.sheet_state = "veryHidden"
     metadata_sheet.append(["key", "value"])
 
     for key, value in metadata.items():
