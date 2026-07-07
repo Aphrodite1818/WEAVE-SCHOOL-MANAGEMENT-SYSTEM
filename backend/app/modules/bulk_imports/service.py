@@ -53,7 +53,12 @@ from app.modules.bulk_imports.templates import (
     get_template_response,
     list_template_responses,
 )
-from app.modules.bulk_imports.validators import BulkImportValidator, ImportRowValidationResult
+from app.modules.bulk_imports.validators import (
+    BulkImportValidator,
+    ImportRowValidationResult,
+    ImportValidationErrorItem,
+)
+from app.modules.classes.repository import ClassRoomRepository
 from app.modules.email_outbox.service import EmailOutboxService
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.parents.repository import ParentRepository
@@ -148,6 +153,31 @@ def strip_control_columns(raw_row: dict[str, Any]) -> dict[str, Any]:
         for key, value in raw_row.items()
         if BulkImportNormalizer.normalize_key(key) not in CONTROL_COLUMNS
     }
+
+
+def _is_blank(value: Any) -> bool:
+    """Return True when a value is blank."""
+
+    return value is None or str(value).strip() == ""
+
+
+def append_validation_error(
+    *,
+    validation_result: ImportRowValidationResult,
+    field_name: str | None,
+    error_code: str,
+    error_message: str,
+) -> None:
+    """Append one service-level validation error to a row result."""
+
+    validation_result.errors.append(
+        ImportValidationErrorItem(
+            row_number=validation_result.row_number,
+            field_name=field_name,
+            error_code=error_code,
+            error_message=error_message,
+        )
+    )
 
 
 class BulkImportService:
@@ -325,6 +355,67 @@ class BulkImportService:
         return row_items
 
     @staticmethod
+    async def resolve_student_class_references(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        validation_results: list[ImportRowValidationResult],
+    ) -> None:
+        """Resolve class_name/class_arm values to the real class UUID for student imports."""
+
+        for validation_result in validation_results:
+            normalized_row = validation_result.normalized_row
+            class_name = normalized_row.get("class_name")
+            class_arm = normalized_row.get("class_arm")
+
+            if _is_blank(class_name) and _is_blank(class_arm):
+                normalized_row["class_id"] = None
+                normalized_row["arm"] = None
+                continue
+
+            if _is_blank(class_name):
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="class_name",
+                    error_code="required_with_class_arm",
+                    error_message="class_name is required when class_arm is supplied.",
+                )
+                continue
+
+            if _is_blank(class_arm):
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="class_arm",
+                    error_code="required_with_class_name",
+                    error_message="class_arm is required when class_name is supplied.",
+                )
+                continue
+
+            classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
+                db=db,
+                tenant_id=tenant_id,
+                class_name=str(class_name),
+                class_arm=str(class_arm),
+            )
+
+            if classroom is None:
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="class_name",
+                    error_code="class_not_found",
+                    error_message=(
+                        f"Class {class_name} {class_arm} does not exist. "
+                        "Create the class first before importing students."
+                    ),
+                )
+                continue
+
+            normalized_row["class_id"] = str(classroom.id)
+            normalized_row["class_name"] = classroom.name
+            normalized_row["class_arm"] = classroom.arm
+            normalized_row["arm"] = classroom.arm
+
+    @staticmethod
     async def create_student_from_row(
         db: AsyncSession,
         *,
@@ -340,7 +431,7 @@ class BulkImportService:
             date_of_birth=BulkImportValidator.parse_date(normalized_row.get("date_of_birth")),
             gender=normalized_row.get("gender"),
             class_id=BulkImportValidator.parse_uuid(normalized_row.get("class_id")),
-            arm=normalized_row.get("arm"),
+            arm=normalized_row.get("arm") or normalized_row.get("class_arm"),
             state_of_origin=normalized_row.get("state_of_origin"),
             status=AcademicStatus.ACTIVE,
         )
@@ -607,6 +698,8 @@ class BulkImportService:
                 "first_name": student.first_name,
                 "last_name": student.last_name,
                 "admission_number": student.admission_number,
+                "class_name": validation_result.normalized_row.get("class_name"),
+                "class_arm": validation_result.normalized_row.get("class_arm"),
                 "setup_code": created["setup_code"],
                 "access_code_expires_at": access_code.expires_at.isoformat(),
                 "error_message": "",
@@ -818,6 +911,14 @@ class BulkImportService:
             resource_type=resource_type,
             row_items=row_items,
         )
+
+        if resource_type == ImportResourceType.STUDENTS:
+            await BulkImportService.resolve_student_class_references(
+                db=db,
+                tenant_id=actor.tenant_id,
+                validation_results=validation_results,
+            )
+
         invalid_results = [result for result in validation_results if not result.is_valid]
         valid_results = [result for result in validation_results if result.is_valid]
 
