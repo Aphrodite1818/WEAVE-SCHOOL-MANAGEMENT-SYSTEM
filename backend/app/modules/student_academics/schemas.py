@@ -10,6 +10,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.utils.normalization import normalize_grade
 from app.core.utils.validators import validate_academic_session_name
 from app.modules.student_academics.models import AcademicResultStatus, AcademicTermName
 
@@ -104,6 +105,14 @@ class GradingScaleCreate(InputBase):
     remark: str | None = Field(default=None, max_length=100)
     is_active: bool = True
 
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str) -> str:
+        normalized = normalize_grade(value)
+        if normalized is None:
+            raise ValueError("grade cannot be empty")
+        return normalized
+
     @model_validator(mode="after")
     def validate_score_range(self):
         if self.min_score > self.max_score:
@@ -117,6 +126,16 @@ class GradingScaleUpdate(InputBase):
     grade: str | None = Field(default=None, min_length=1, max_length=10)
     remark: str | None = Field(default=None, max_length=100)
     is_active: bool | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_grade(value)
+        if normalized is None:
+            raise ValueError("grade cannot be empty")
+        return normalized
 
     @model_validator(mode="after")
     def validate_score_range(self):
@@ -259,109 +278,24 @@ class StudentSubjectCardResponse(OutputBase):
     academic_session_name: str | None = None
     academic_term_id: uuid.UUID | None = None
     academic_term_name: str | None = None
+    is_core: bool = True
+    result_status: AcademicResultStatus | None = None
     test_score: Decimal | None = None
     assessment_score: Decimal | None = None
     exam_score: Decimal | None = None
     total_score: Decimal | None = None
     grade: str | None = None
     remark: str | None = None
-    status: str = "pending"
-    is_complete: bool = False
-
-
-class StudentSubjectCardContextResponse(OutputBase):
-    class_id: uuid.UUID | None = None
-    class_name: str | None = None
-    class_arm: str | None = None
-    academic_session_id: uuid.UUID | None = None
-    academic_session_name: str | None = None
-    academic_term_id: uuid.UUID | None = None
-    academic_term_name: str | None = None
 
 
 class StudentSubjectCardListResponse(OutputBase):
     items: list[StudentSubjectCardResponse]
     total: int
-    context: StudentSubjectCardContextResponse
 
 
-class StudentSubjectResultListResponse(OutputBase):
-    items: list[StudentSubjectResultResponse]
-    total: int
-
-
-class AcademicSessionListResponse(OutputBase):
-    items: list[AcademicSessionResponse]
-    total: int
-
-
-class AcademicTermListResponse(OutputBase):
-    items: list[AcademicTermResponse]
-    total: int
-
-
-class GradingScaleListResponse(OutputBase):
-    items: list[GradingScaleResponse]
-    total: int
-
-
-class ClassSubjectTeacherListResponse(OutputBase):
-    items: list[ClassSubjectTeacherDetailResponse]
-    total: int
-
-
-class ClassSubjectCreate(InputBase):
-    subject_id: uuid.UUID
-    is_core: bool = False
-
-
-class ClassSubjectResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    class_id: uuid.UUID
-    subject_id: uuid.UUID
-    subject_name: str | None = None
-    subject_code: str | None = None
-    is_core: bool
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-class ClassSubjectListResponse(OutputBase):
-    items: list[ClassSubjectResponse]
-    total: int
-
-
-class TeacherAssignmentCreate(InputBase):
-    teacher_id: uuid.UUID
-    class_subject_id: uuid.UUID
-
-
-class TeacherAssignmentReassign(InputBase):
-    teacher_id: uuid.UUID
-
-
-class TeacherAssignmentResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    class_subject_id: uuid.UUID
-    teacher_id: uuid.UUID
-    class_id: uuid.UUID | None = None
-    class_name: str | None = None
-    class_arm: str | None = None
-    subject_id: uuid.UUID | None = None
-    subject_name: str | None = None
-    subject_code: str | None = None
-    teacher_name: str | None = None
-    teacher_staff_id: str | None = None
-    is_active: bool
-    effective_from: date
-    effective_to: date | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
-class TeacherAssignmentListResponse(OutputBase):
-    items: list[TeacherAssignmentResponse]
-    total: int
+class StudentSubjectCardContextResponse(OutputBase):
+    current_academic_session_id: uuid.UUID | None = None
+    current_academic_session_name: str | None = None
+    current_academic_term_id: uuid.UUID | None = None
+    current_academic_term_name: str | None = None
+    cards: list[StudentSubjectCardResponse]
