@@ -47,3 +47,27 @@ async def enqueue_email_outbox_batch(*, batch_size: int = DEFAULT_EMAIL_OUTBOX_B
         await redis.close()
 
     return True
+
+
+async def enqueue_bulk_import_job(
+    *,
+    job_id: str,
+    tenant_id: str,
+    actor_id: str,
+    notify_on_completion: bool = True,
+) -> bool:
+    """Enqueue a confirmed bulk import background processing job."""
+
+    redis = await create_pool(get_arq_redis_settings())
+    try:
+        await redis.enqueue_job(
+            "process_bulk_import_job",
+            job_id,
+            tenant_id,
+            actor_id,
+            notify_on_completion,
+        )
+    finally:
+        await redis.close()
+
+    return True
