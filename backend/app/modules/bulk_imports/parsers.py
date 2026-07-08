@@ -61,6 +61,36 @@ def _clean_headers(headers: Sequence[Any]) -> list[str]:
     return cleaned_headers
 
 
+def _trim_trailing_blank_headers(headers: list[str]) -> list[str]:
+    """Remove Excel artifact columns that appear after the real header set.
+
+    XLSX keeps a worksheet's used range after a user creates, clears, and saves
+    an extra column. That produces a trailing blank header, which should not
+    invalidate an otherwise valid backend-generated template.
+    """
+
+    trimmed_headers = list(headers)
+
+    while trimmed_headers and not trimmed_headers[-1]:
+        trimmed_headers.pop()
+
+    return trimmed_headers
+
+
+def _has_values_beyond_headers(*, headers: list[str], values: Sequence[Any]) -> bool:
+    """Return True if row data exists beyond the accepted header range."""
+
+    if len(values) <= len(headers):
+        return False
+
+    for value in values[len(headers):]:
+        serialized_value = _to_serializable_value(value)
+        if serialized_value is not None and str(serialized_value).strip() != "":
+            return True
+
+    return False
+
+
 def _ensure_unique_headers(headers: list[str]) -> None:
     """Reject duplicate non-empty headers."""
 
@@ -212,7 +242,7 @@ class BulkImportParser:
         except StopIteration as exc:
             raise ImportParserError("XLSX file is empty.") from exc
 
-        headers = _clean_headers(header_row)
+        headers = _trim_trailing_blank_headers(_clean_headers(header_row))
 
         if not any(headers):
             raise ImportParserError("XLSX file must contain at least one valid column header.")
@@ -222,6 +252,11 @@ class BulkImportParser:
         parsed_rows: list[ParsedImportRow] = []
 
         for row_number, row_values in enumerate(rows_iter, start=2):
+            if _has_values_beyond_headers(headers=headers, values=row_values):
+                raise ImportParserError(
+                    f"Row {row_number} contains data outside the template columns. Remove extra columns and try again."
+                )
+
             raw_data = _build_row_from_values(headers=headers, values=row_values)
 
             if _is_blank_row(raw_data):
