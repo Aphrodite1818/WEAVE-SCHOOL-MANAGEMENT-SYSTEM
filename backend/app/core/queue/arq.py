@@ -14,6 +14,9 @@ from arq.connections import RedisSettings
 from app.config.settings import settings
 
 
+DEFAULT_EMAIL_OUTBOX_BATCH_SIZE = 20
+
+
 def get_arq_redis_settings() -> RedisSettings:
     """Build ARQ Redis settings from REDIS_URL."""
 
@@ -33,12 +36,13 @@ def get_arq_redis_settings() -> RedisSettings:
     )
 
 
-async def enqueue_email_outbox_batch(*, batch_size: int = 50) -> bool:
+async def enqueue_email_outbox_batch(*, batch_size: int = DEFAULT_EMAIL_OUTBOX_BATCH_SIZE) -> bool:
     """Enqueue a background email outbox batch job."""
 
+    safe_batch_size = min(batch_size, DEFAULT_EMAIL_OUTBOX_BATCH_SIZE)
     redis = await create_pool(get_arq_redis_settings())
     try:
-        await redis.enqueue_job("process_email_outbox_batch", batch_size)
+        await redis.enqueue_job("process_email_outbox_batch", safe_batch_size)
     finally:
         await redis.close()
 
