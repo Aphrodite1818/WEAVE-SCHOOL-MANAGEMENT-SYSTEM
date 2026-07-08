@@ -266,9 +266,9 @@ class EmailOutboxRepository:
 
         filters = [EmailOutbox.tenant_id == tenant_id]
         if import_job_id is not None:
-            filters.append(EmailOutbox.metadata_json["import_job_id"].astext == str(import_job_id))
+            filters.append(EmailOutbox.metadata_json.op("->>")("import_job_id") == str(import_job_id))
         if source is not None:
-            filters.append(EmailOutbox.metadata_json["source"].astext == source)
+            filters.append(EmailOutbox.metadata_json.op("->>")("source") == source)
 
         result = await db.execute(
             select(EmailOutbox.status, func.count())
