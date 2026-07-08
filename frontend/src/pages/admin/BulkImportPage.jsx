@@ -66,6 +66,295 @@ const formatDate = (value) => {
   return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+const escapeHtml = (value) => String(value ?? "")
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;")
+  .replaceAll("'", "&#039;");
+
+const printableValue = (value, fallback = "--") => {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+};
+
+const formatExpiryDistance = (milliseconds) => {
+  const absMilliseconds = Math.abs(milliseconds);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (absMilliseconds < minute) return "less than 1 minute";
+  if (absMilliseconds < hour) {
+    const minutes = Math.round(absMilliseconds / minute);
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+  if (absMilliseconds < day) {
+    const hours = Math.round(absMilliseconds / hour);
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+
+  const days = Math.round(absMilliseconds / day);
+  return `${days} day${days === 1 ? "" : "s"}`;
+};
+
+const formatSlipExpiry = (value) => {
+  const rawValue = printableValue(value, "");
+  if (!rawValue) {
+    return {
+      primary: "No expiry date provided",
+      secondary: "Confirm the expiry from the spreadsheet report if needed.",
+    };
+  }
+
+  const expiryDate = new Date(rawValue);
+  if (Number.isNaN(expiryDate.getTime())) {
+    return {
+      primary: rawValue,
+      secondary: "Expiry value could not be converted to a readable date.",
+    };
+  }
+
+  const formattedDate = expiryDate.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  const timeDifference = expiryDate.getTime() - Date.now();
+  const distance = formatExpiryDistance(timeDifference);
+
+  return {
+    primary: `Expires ${formattedDate}`,
+    secondary: timeDifference >= 0 ? `About ${distance} remaining` : `Expired about ${distance} ago`,
+  };
+};
+
+const studentSlipRows = (job) => getResultRows(job).filter(
+  (row) => String(row?.status || "").toLowerCase() === "created" && printableValue(row?.setup_code, ""),
+);
+
+const studentFullName = (row) => [row?.first_name, row?.last_name]
+  .map((part) => printableValue(part, ""))
+  .filter(Boolean)
+  .join(" ") || "Student";
+
+const studentClassName = (row) => [row?.class_name, row?.class_arm]
+  .map((part) => printableValue(part, ""))
+  .filter(Boolean)
+  .join(" ") || "--";
+
+const createStudentSlipDocument = (job) => {
+  const rows = studentSlipRows(job);
+  const generatedAt = new Date().toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+
+  const slipMarkup = rows.length > 0
+    ? rows.map((row) => {
+      const expiry = formatSlipExpiry(row.access_code_expires_at);
+      return `
+        <article class="slip">
+          <header class="slip-header">
+            <div>
+              <p class="eyebrow">Student Access Slip</p>
+              <h2>${escapeHtml(studentFullName(row))}</h2>
+            </div>
+            <span class="badge">Initial Setup</span>
+          </header>
+          <table>
+            <tbody>
+              <tr><th>Student Name</th><td>${escapeHtml(studentFullName(row))}</td></tr>
+              <tr><th>Admission Number</th><td class="strong">${escapeHtml(printableValue(row.admission_number))}</td></tr>
+              <tr><th>Class</th><td>${escapeHtml(studentClassName(row))}</td></tr>
+              <tr><th>Setup / Access Code</th><td class="code">${escapeHtml(printableValue(row.setup_code))}</td></tr>
+              <tr><th>Code Expiry</th><td><span class="expiry-primary">${escapeHtml(expiry.primary)}</span><span class="expiry-secondary">${escapeHtml(expiry.secondary)}</span></td></tr>
+            </tbody>
+          </table>
+          <p class="note">Give this slip only to the student or guardian. The student must change their password after first login.</p>
+        </article>`;
+    }).join("\n")
+    : `
+      <section class="empty-state">
+        <h2>No printable student slips available</h2>
+        <p>This report only includes successfully created student rows that have generated setup codes.</p>
+      </section>`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Student Access Slips</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111827;
+        --muted: #6b7280;
+        --line: #d1d5db;
+        --soft: #f3f4f6;
+        --brand: #2563eb;
+        --brand-soft: #eff6ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #f8fafc;
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(12px);
+      }
+      .toolbar h1 { margin: 0; font-size: 1rem; }
+      .toolbar p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.8rem; }
+      button {
+        border: 0;
+        border-radius: 999px;
+        background: var(--brand);
+        color: white;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 0.75rem 1rem;
+      }
+      main { padding: 1rem; }
+      .sheet {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .slip {
+        break-inside: avoid;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: white;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      }
+      .slip-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem;
+        border-bottom: 1px solid var(--line);
+        background: linear-gradient(135deg, var(--brand-soft), #ffffff);
+      }
+      .eyebrow {
+        margin: 0 0 0.25rem;
+        color: var(--brand);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      h2 { margin: 0; font-size: 1.05rem; }
+      .badge {
+        white-space: nowrap;
+        border-radius: 999px;
+        background: var(--brand);
+        color: white;
+        font-size: 0.72rem;
+        font-weight: 800;
+        padding: 0.35rem 0.65rem;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        border-bottom: 1px solid var(--line);
+        padding: 0.68rem 0.85rem;
+        text-align: left;
+        vertical-align: top;
+        font-size: 0.86rem;
+      }
+      th { width: 42%; background: var(--soft); color: #374151; font-weight: 800; }
+      td { font-weight: 600; }
+      .strong { font-weight: 900; letter-spacing: 0.02em; }
+      .code {
+        color: var(--brand);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 1.2rem;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+      }
+      .expiry-primary { display: block; font-weight: 900; }
+      .expiry-secondary { display: block; margin-top: 0.2rem; color: var(--muted); font-size: 0.76rem; font-weight: 700; }
+      .note {
+        margin: 0;
+        padding: 0.8rem 1rem 1rem;
+        color: var(--muted);
+        font-size: 0.76rem;
+        line-height: 1.45;
+      }
+      .empty-state {
+        grid-column: 1 / -1;
+        border: 1px dashed var(--line);
+        border-radius: 20px;
+        background: white;
+        padding: 2rem;
+        text-align: center;
+      }
+      @media print {
+        @page { size: A4; margin: 10mm; }
+        body { background: white; }
+        .toolbar { display: none; }
+        main { padding: 0; }
+        .sheet { gap: 6mm; max-width: none; }
+        .slip { box-shadow: none; border-radius: 12px; }
+      }
+      @media (max-width: 760px) {
+        .sheet { grid-template-columns: 1fr; }
+        .toolbar { align-items: flex-start; flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <div>
+        <h1>Student Access Slips</h1>
+        <p>${rows.length} printable slips · Generated ${escapeHtml(generatedAt)}</p>
+      </div>
+      <button type="button" onclick="window.print()">Print slips</button>
+    </div>
+    <main>
+      <section class="sheet">
+        ${slipMarkup}
+      </section>
+    </main>
+  </body>
+</html>`;
+};
+
+const downloadHtmlFile = (content, filename) => {
+  const blob = new Blob([content], { type: "text/html;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 function ProgressBar({ value = 0 }) {
   return (
     <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
@@ -442,14 +731,28 @@ function BulkImportPage() {
 
   const handleDownloadResult = async (format = "spreadsheet") => {
     if (!currentJob?.id) return;
+
+    if (format === "slip") {
+      const rows = studentSlipRows(currentJob);
+      if (rows.length === 0) {
+        showWarning("No printable student slips are available for this import job.");
+        return;
+      }
+
+      const html = createStudentSlipDocument(currentJob);
+      downloadHtmlFile(html, `students_${currentJob.id}_student_access_slips.html`);
+      showSuccess("Student access slips downloaded with readable expiry details.");
+      return;
+    }
+
     try {
       await bulkImportService.downloadResult(currentJob.id, {
         format,
         resourceType: currentJob.resource_type || activeResource,
       });
-      showSuccess(format === "slip" ? "Student access slips downloaded." : "Spreadsheet report downloaded.");
+      showSuccess("Spreadsheet report downloaded.");
     } catch (err) {
-      showError(getErrorMessage(err, format === "slip" ? "Student slip download failed." : "Result download failed."));
+      showError(getErrorMessage(err, "Result download failed."));
     }
   };
 
