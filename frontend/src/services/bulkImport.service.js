@@ -1,4 +1,4 @@
-import { API_BASE_URL, api, authSession, getErrorMessage } from "./api";
+import { API_BASE_URL, api, authSession } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
 
 const getAuthHeaders = () => {
@@ -6,9 +6,15 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-const parseErrorMessage = async (response, fallback) => {
-  const data = await response.json().catch(() => ({}));
-  return getErrorMessage({ response: { status: response.status, data, headers: {} } }, fallback);
+const buildApiError = async (response, fallback) => {
+  const data = await response.json().catch(() => ({ detail: fallback }));
+  const error = new Error(data?.detail || data?.message || fallback);
+  error.response = {
+    status: response.status,
+    data,
+    headers: Object.fromEntries(response.headers.entries()),
+  };
+  return error;
 };
 
 const fetchJsonWithBody = async (endpoint, { method = "GET", body, signal, fallback } = {}) => {
@@ -20,7 +26,7 @@ const fetchJsonWithBody = async (endpoint, { method = "GET", body, signal, fallb
   });
 
   if (!response.ok) {
-    throw new Error(await parseErrorMessage(response, fallback || "Bulk import request failed."));
+    throw await buildApiError(response, fallback || "Bulk import request failed.");
   }
 
   return response.json();
@@ -34,7 +40,7 @@ const downloadBlob = async (endpoint, filename, signal) => {
   });
 
   if (!response.ok) {
-    throw new Error(await parseErrorMessage(response, "Download failed."));
+    throw await buildApiError(response, "Download failed.");
   }
 
   const blob = await response.blob();
