@@ -22,6 +22,10 @@ from app.modules.bulk_imports.schemas import (
     ImportTemplateResponse,
 )
 from app.modules.bulk_imports.service import BulkImportService
+from app.modules.metrics.cache import (
+    invalidate_superadmin_dashboard_cache,
+    invalidate_tenant_admin_dashboard_cache,
+)
 from app.modules.tenant_admins.models import TenantAdmin
 
 
@@ -118,12 +122,18 @@ async def confirm_bulk_import(
 ) -> ImportJobDetailResponse:
     """Confirm a staged dry-run import and create records."""
 
-    return await BulkImportService.confirm_import_from_dry_run(
+    import_job = await BulkImportService.confirm_import_from_dry_run(
         db=db,
         actor=current_user,
         job_id=job_id,
         notify_on_completion=notify_on_completion,
     )
+
+    if import_job.successful_rows > 0:
+        await invalidate_tenant_admin_dashboard_cache(current_user.tenant_id)
+        await invalidate_superadmin_dashboard_cache()
+
+    return import_job
 
 
 @router.post(
