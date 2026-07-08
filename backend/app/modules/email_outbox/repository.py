@@ -161,6 +161,82 @@ class EmailOutboxRepository:
         return email_item
 
     @staticmethod
+    async def recover_stale_processing(
+        db: AsyncSession,
+        *,
+        stale_before: datetime,
+        tenant_id: UUID | None = None,
+    ) -> dict[str, int]:
+        """Recover emails stuck in processing after a worker timeout/crash."""
+
+        filters = [
+            EmailOutbox.status == EmailOutboxStatus.PROCESSING,
+            EmailOutbox.processing_started_at.is_not(None),
+            EmailOutbox.processing_started_at <= stale_before,
+        ]
+        if tenant_id is not None:
+            filters.append(EmailOutbox.tenant_id == tenant_id)
+
+        result = await db.execute(
+            select(EmailOutbox)
+            .where(*filters)
+            .order_by(EmailOutbox.processing_started_at.asc())
+            .with_for_update(skip_locked=True)
+        )
+        email_items = list(result.scalars().all())
+
+        recovered = 0
+        failed = 0
+        now = utc_now()
+
+        for email_item in email_items:
+            if email_item.attempts >= email_item.max_attempts:
+                email_item.status = EmailOutboxStatus.FAILED
+                email_item.next_retry_at = None
+                email_item.failure_reason = "Exceeded retry attempts after stale processing recovery."
+                failed += 1
+            else:
+                email_item.status = EmailOutboxStatus.PENDING
+                email_item.next_retry_at = now
+                email_item.failure_reason = "Recovered from stale processing timeout."
+                recovered += 1
+
+            email_item.processing_started_at = None
+            db.add(email_item)
+
+        await db.flush()
+        return {"recovered": recovered, "failed": failed, "checked": len(email_items)}
+
+    @staticmethod
+    async def retry_failed(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+    ) -> int:
+        """Move failed emails for a tenant back to pending when attempts remain."""
+
+        result = await db.execute(
+            select(EmailOutbox)
+            .where(
+                EmailOutbox.tenant_id == tenant_id,
+                EmailOutbox.status == EmailOutboxStatus.FAILED,
+                EmailOutbox.attempts < EmailOutbox.max_attempts,
+            )
+            .with_for_update(skip_locked=True)
+        )
+        email_items = list(result.scalars().all())
+
+        for email_item in email_items:
+            email_item.status = EmailOutboxStatus.PENDING
+            email_item.next_retry_at = utc_now()
+            email_item.processing_started_at = None
+            email_item.failure_reason = "Manually queued for retry."
+            db.add(email_item)
+
+        await db.flush()
+        return len(email_items)
+
+    @staticmethod
     async def count_pending(
         db: AsyncSession,
     ) -> int:
@@ -177,3 +253,32 @@ class EmailOutboxRepository:
             )
         )
         return int(result.scalar_one())
+
+    @staticmethod
+    async def count_by_status(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        import_job_id: UUID | None = None,
+        source: str | None = None,
+    ) -> dict[str, int]:
+        """Count tenant email outbox rows by status with optional metadata filters."""
+
+        filters = [EmailOutbox.tenant_id == tenant_id]
+        if import_job_id is not None:
+            filters.append(EmailOutbox.metadata_json["import_job_id"].astext == str(import_job_id))
+        if source is not None:
+            filters.append(EmailOutbox.metadata_json["source"].astext == source)
+
+        result = await db.execute(
+            select(EmailOutbox.status, func.count())
+            .where(*filters)
+            .group_by(EmailOutbox.status)
+        )
+
+        counts = {status.value: 0 for status in EmailOutboxStatus}
+        for status, count in result.all():
+            key = status.value if isinstance(status, EmailOutboxStatus) else str(status)
+            counts[key] = int(count or 0)
+
+        return counts
