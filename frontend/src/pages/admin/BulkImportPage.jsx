@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   History,
   MailCheck,
+  Printer,
   RefreshCw,
   RotateCcw,
   UploadCloud,
@@ -150,9 +151,13 @@ function JobSummary({ job, onClear }) {
   );
 }
 
-function ErrorPreview({ job, onDownloadResult }) {
+function ErrorPreview({ job, onDownloadSpreadsheet, onDownloadSlip }) {
   const rows = getResultRows(job);
   const failedRows = rows.filter((row) => row.status === "failed").slice(0, 8);
+  const canDownloadSlip = job?.resource_type === "students"
+    && job?.metadata_json?.dry_run === false
+    && isFinishedJob(job)
+    && Number(job?.successful_rows || 0) > 0;
 
   if (!job) return null;
 
@@ -161,12 +166,22 @@ function ErrorPreview({ job, onDownloadResult }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="section-title">Validation details</h2>
-          <p className="mt-1 text-sm text-text-muted">Invalid rows are shown first. Download the result file for the full report.</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Invalid rows are shown first. Download the spreadsheet for all rows, or download printable student slips after student creation.
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={onDownloadResult} disabled={!job?.id}>
-          <Download className="h-4 w-4" />
-          Result report
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="outline" size="sm" onClick={onDownloadSpreadsheet} disabled={!job?.id}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Spreadsheet report
+          </Button>
+          {canDownloadSlip ? (
+            <Button variant="primary" size="sm" onClick={onDownloadSlip} disabled={!job?.id}>
+              <Printer className="h-4 w-4" />
+              Student slips
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {failedRows.length === 0 ? (
@@ -425,13 +440,16 @@ function BulkImportPage() {
     }
   };
 
-  const handleDownloadResult = async () => {
+  const handleDownloadResult = async (format = "spreadsheet") => {
     if (!currentJob?.id) return;
     try {
-      await bulkImportService.downloadResult(currentJob.id);
-      showSuccess("Result report downloaded.");
+      await bulkImportService.downloadResult(currentJob.id, {
+        format,
+        resourceType: currentJob.resource_type || activeResource,
+      });
+      showSuccess(format === "slip" ? "Student access slips downloaded." : "Spreadsheet report downloaded.");
     } catch (err) {
-      showError(getErrorMessage(err, "Result download failed."));
+      showError(getErrorMessage(err, format === "slip" ? "Student slip download failed." : "Result download failed."));
     }
   };
 
@@ -511,7 +529,7 @@ function BulkImportPage() {
         <Card className="p-5 sm:p-6">
           <h2 className="section-title">How this works</h2>
           <div className="mt-4 grid gap-3">
-            {["Download the signed XLSX template.", "Fill rows without changing headers.", "Run dry-run to catch row errors.", "Confirm only valid staged rows.", "Watch live import progress after confirmation."].map((item, index) => (
+            {["Download the signed XLSX template.", "Fill rows without changing headers.", "Run dry-run to catch row errors.", "Confirm only valid staged rows.", "Download a spreadsheet report or student access slips after creation."].map((item, index) => (
               <div key={item} className="flex gap-3 rounded-2xl border border-border bg-surface-muted/20 px-4 py-3">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-bold text-primary">{index + 1}</span>
                 <p className="text-sm leading-6 text-text-soft">{item}</p>
@@ -521,7 +539,11 @@ function BulkImportPage() {
         </Card>
       </section>
 
-      <ErrorPreview job={currentJob} onDownloadResult={handleDownloadResult} />
+      <ErrorPreview
+        job={currentJob}
+        onDownloadSpreadsheet={() => handleDownloadResult("spreadsheet")}
+        onDownloadSlip={() => handleDownloadResult("slip")}
+      />
 
       {confirmable ? (
         <Card className="p-5 sm:p-6">
