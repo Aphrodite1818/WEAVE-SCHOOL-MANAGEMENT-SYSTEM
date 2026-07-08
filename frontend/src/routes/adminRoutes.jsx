@@ -23,6 +23,9 @@ import RoleGuard from "./RoleGuard";
 
 export const adminRoutes = (
   <Route element={<RoleGuard allowedRoles={["ADMIN"]} />}>
+    <Route path="/admin/billing/plans" element={<SubscriptionOptionsPage />} />
+    <Route path="/billing/subscription/verify" element={<SubscriptionVerifyPage />} />
+
     <Route element={<DashboardShell role="admin" />}>
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
       <Route path="/admin/create-user" element={<CreateUserPage />} />
@@ -39,9 +42,7 @@ export const adminRoutes = (
       <Route path="/admin/fees" element={<FeesPage />} />
       <Route path="/admin/payments" element={<PaymentsPage />} />
       <Route path="/admin/billing" element={<BillingPage />} />
-      <Route path="/admin/billing/plans" element={<SubscriptionOptionsPage />} />
       <Route path="/admin/usage" element={<UsagePage />} />
-      <Route path="/billing/subscription/verify" element={<SubscriptionVerifyPage />} />
       <Route path="/admin/timetable" element={<StaticModulePage role="admin" title="Timetable" description="Professional schedule grid and class timetable planning." type="timetable" />} />
       <Route path="/admin/announcements" element={<AnnouncementsWorkspacePage mode="tenant-admin" />} />
       <Route path="/admin/messages" element={<AnnouncementsWorkspacePage mode="tenant-admin" variant="messages" />} />
