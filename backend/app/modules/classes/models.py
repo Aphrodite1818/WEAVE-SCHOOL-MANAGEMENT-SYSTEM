@@ -12,7 +12,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.utils.normalization import (
+    clean_string,
     normalize_class_arm,
+    normalize_class_level,
     normalize_class_name,
     normalized_class_arm_key,
     normalized_class_name_key,
@@ -69,7 +71,14 @@ def _populate_classroom_normalized_fields(_: object, __: object, target: ClassRo
     if normalized_name is None:
         return
 
+    normalized_level = normalize_class_level(target.level)
+    if target.level is not None and clean_string(target.level) is not None and normalized_level is None:
+        raise ValueError(
+            "class level can only contain letters, numbers, spaces, hyphens, slashes, ampersands, or parentheses"
+        )
+
     target.name = normalize_class_name(target.name) or target.name
+    target.level = normalized_level
     target.arm = normalize_class_arm(target.arm)
     target.normalized_name = normalized_name
     target.normalized_arm = normalized_class_arm_key(target.arm)
