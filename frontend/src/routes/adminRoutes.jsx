@@ -5,6 +5,7 @@ import AcademicHubPage from "../pages/admin/AcademicHubPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
+import BulkImportPage from "../pages/admin/BulkImportPage";
 import ClassesPage from "../pages/admin/ClassesPage";
 import CreateUserPage from "../pages/admin/CreateUserPage";
 import FeesPage from "../pages/admin/FeesPage";
@@ -30,6 +31,7 @@ export const adminRoutes = (
       <Route path="/admin/parents" element={<ParentsPage />} />
       <Route path="/admin/classes" element={<ClassesPage />} />
       <Route path="/admin/subjects" element={<SubjectsPage />} />
+      <Route path="/admin/imports" element={<BulkImportPage />} />
       <Route path="/admin/attendance" element={<AttendancePage />} />
       <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />
       <Route path="/admin/results" element={<Navigate to="/admin/academic" replace />} />
