@@ -84,6 +84,8 @@ export const bulkImportService = {
     return result;
   },
 
+  getJob: (jobId, requestOptions) => api.get(`/tenant-admin/imports/${jobId}`, requestOptions),
+
   listJobs: (requestOptions) => api.get("/tenant-admin/imports?limit=20", requestOptions),
 
   getErrors: (jobId, requestOptions) =>
