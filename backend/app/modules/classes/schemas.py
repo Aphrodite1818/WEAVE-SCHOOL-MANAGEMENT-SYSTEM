@@ -8,9 +8,10 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.utils.normalization import (
+    clean_string,
     normalize_class_arm,
+    normalize_class_level,
     normalize_class_name,
-    normalize_display_text,
 )
 
 
@@ -46,7 +47,7 @@ class ClassRoomBase(InputBase):
     level: str | None = Field(
         default=None,
         max_length=100,
-        description="Academic level e.g Junior Secondary, Senior Secondary",
+        description="Academic level e.g Junior Secondary School 1, Senior Secondary School 2",
     )
 
     arm: str | None = Field(
@@ -80,9 +81,17 @@ class ClassRoomBase(InputBase):
     @field_validator("level", mode="before")
     @classmethod
     def normalize_level(cls, value: str | None) -> str | None:
-        """Clean optional class level text."""
+        """Validate and normalize optional class level text."""
 
-        return normalize_display_text(value)
+        if value is None or clean_string(value) is None:
+            return None
+
+        normalized = normalize_class_level(value)
+        if normalized is None:
+            raise ValueError(
+                "class level can only contain letters, numbers, spaces, hyphens, slashes, ampersands, or parentheses"
+            )
+        return normalized
 
 
 class ClassRoomCreate(ClassRoomBase):
@@ -136,9 +145,17 @@ class ClassRoomUpdate(InputBase):
     @field_validator("level", mode="before")
     @classmethod
     def normalize_level(cls, value: str | None) -> str | None:
-        """Clean optional class level text."""
+        """Validate and normalize optional class level text."""
 
-        return normalize_display_text(value)
+        if value is None or clean_string(value) is None:
+            return None
+
+        normalized = normalize_class_level(value)
+        if normalized is None:
+            raise ValueError(
+                "class level can only contain letters, numbers, spaces, hyphens, slashes, ampersands, or parentheses"
+            )
+        return normalized
 
 
 class ClassRoomResponse(OutputBase):
