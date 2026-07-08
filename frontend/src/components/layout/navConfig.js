@@ -16,6 +16,7 @@ import {
   Receipt,
   Settings,
   Shield,
+  UploadCloud,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -86,6 +87,7 @@ export const navGroups = {
         { label: "Students", to: "/admin/students", icon: GraduationCap },
         { label: "Teachers", to: "/admin/teachers", icon: Users },
         { label: "Parents", to: "/admin/parents", icon: Users },
+        { label: "Bulk Imports", to: "/admin/imports", icon: UploadCloud },
         { label: "Classes", to: "/admin/classes", icon: Library },
         { label: "Subjects", to: "/admin/subjects", icon: BookOpen },
         { label: "Timetable", to: "/admin/timetable", icon: CalendarDays },
