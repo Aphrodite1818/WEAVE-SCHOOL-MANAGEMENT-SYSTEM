@@ -91,8 +91,17 @@ export const bulkImportService = {
   getErrors: (jobId, requestOptions) =>
     api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, requestOptions),
 
-  downloadResult: (jobId, requestOptions = {}) =>
-    downloadBlob(`/tenant-admin/imports/${jobId}/result`, `import_${jobId}_result.csv`, requestOptions.signal),
+  downloadResult: (jobId, { format = "spreadsheet", resourceType = "import", signal } = {}) => {
+    const safeFormat = format === "slip" ? "slip" : "spreadsheet";
+    const extension = safeFormat === "slip" ? "html" : "xlsx";
+    const label = safeFormat === "slip" ? "student_access_slips" : "result";
+
+    return downloadBlob(
+      `/tenant-admin/imports/${jobId}/result?format=${safeFormat}`,
+      `${resourceType}_${jobId}_${label}.${extension}`,
+      signal,
+    );
+  },
 
   getEmailSummary: ({ importJobId, source = "bulk_import" } = {}, requestOptions = {}) => {
     const params = new URLSearchParams();
