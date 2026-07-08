@@ -79,3 +79,28 @@ class EmailOutboxResponse(OutputBase):
     metadata_json: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class EmailOutboxSummaryResponse(OutputBase):
+    """Status counts for a tenant email outbox view."""
+
+    total: int = 0
+    pending: int = 0
+    processing: int = 0
+    sent: int = 0
+    failed: int = 0
+    cancelled: int = 0
+
+
+class EmailOutboxRecoveryResponse(OutputBase):
+    """Recovery result for stale processing emails."""
+
+    checked: int = 0
+    recovered: int = 0
+    failed: int = 0
+
+
+class EmailOutboxRetryResponse(OutputBase):
+    """Retry result for failed emails."""
+
+    retried: int = 0
