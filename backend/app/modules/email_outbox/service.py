@@ -16,10 +16,12 @@ from app.core.utils.email import send_email
 from app.core.utils.email_templates import get_user_invite_email_html
 from app.modules.email_outbox.models import EmailOutbox
 from app.modules.email_outbox.repository import EmailOutboxRepository, utc_now
-from app.modules.email_outbox.schemas import EmailOutboxCreate
+from app.modules.email_outbox.schemas import EmailOutboxCreate, EmailOutboxSummaryResponse
 
 
 USER_INVITE_TEMPLATE = "user_invite"
+DEFAULT_EMAIL_BATCH_SIZE = 20
+STALE_PROCESSING_MINUTES = 10
 
 
 def build_retry_delay(*, attempts: int) -> timedelta:
@@ -89,10 +91,28 @@ class EmailOutboxService:
         )
 
     @staticmethod
+    async def recover_stale_processing_emails(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID | None = None,
+        stale_minutes: int = STALE_PROCESSING_MINUTES,
+    ) -> dict[str, int]:
+        """Recover emails stuck in processing after a worker timeout or crash."""
+
+        stale_before = utc_now() - timedelta(minutes=stale_minutes)
+        result = await EmailOutboxRepository.recover_stale_processing(
+            db=db,
+            tenant_id=tenant_id,
+            stale_before=stale_before,
+        )
+        await db.commit()
+        return result
+
+    @staticmethod
     async def claim_pending_emails(
         db: AsyncSession,
         *,
-        batch_size: int = 50,
+        batch_size: int = DEFAULT_EMAIL_BATCH_SIZE,
     ) -> list[EmailOutbox]:
         """Claim pending emails for processing."""
 
@@ -144,13 +164,15 @@ class EmailOutboxService:
     async def process_pending_batch(
         db: AsyncSession,
         *,
-        batch_size: int = 50,
+        batch_size: int = DEFAULT_EMAIL_BATCH_SIZE,
     ) -> dict[str, int]:
         """Process one batch of queued emails."""
 
+        recovery_result = await EmailOutboxService.recover_stale_processing_emails(db=db)
+
         email_items = await EmailOutboxService.claim_pending_emails(
             db=db,
-            batch_size=batch_size,
+            batch_size=min(batch_size, DEFAULT_EMAIL_BATCH_SIZE),
         )
         await db.commit()
 
@@ -175,4 +197,45 @@ class EmailOutboxService:
             "sent": sent_count,
             "failed": failed_count,
             "remaining": remaining_count,
+            "recovered": recovery_result.get("recovered", 0),
+            "stale_failed": recovery_result.get("failed", 0),
         }
+
+    @staticmethod
+    async def summarize_tenant_outbox(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        import_job_id: UUID | None = None,
+        source: str | None = None,
+    ) -> EmailOutboxSummaryResponse:
+        """Return status counts for tenant email outbox rows."""
+
+        counts = await EmailOutboxRepository.count_by_status(
+            db=db,
+            tenant_id=tenant_id,
+            import_job_id=import_job_id,
+            source=source,
+        )
+
+        total = sum(counts.values())
+        return EmailOutboxSummaryResponse(
+            total=total,
+            pending=counts.get("pending", 0),
+            processing=counts.get("processing", 0),
+            sent=counts.get("sent", 0),
+            failed=counts.get("failed", 0),
+            cancelled=counts.get("cancelled", 0),
+        )
+
+    @staticmethod
+    async def retry_failed_for_tenant(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+    ) -> dict[str, int]:
+        """Retry failed emails that still have attempts remaining."""
+
+        retried = await EmailOutboxRepository.retry_failed(db=db, tenant_id=tenant_id)
+        await db.commit()
+        return {"retried": retried}
