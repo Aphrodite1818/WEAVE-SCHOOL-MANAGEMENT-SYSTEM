@@ -18,6 +18,7 @@ import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
+import { useToast } from "../../hooks/useToast";
 import { bulkImportService } from "../../services/bulkImport.service";
 import { getErrorMessage } from "../../services/api";
 
@@ -247,9 +248,8 @@ function BulkImportPage() {
   const [currentJob, setCurrentJob] = useState(null);
   const [emailSummary, setEmailSummary] = useState(null);
   const [jobs, setJobs] = useState([]);
-  const [error, setError] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
   const [loadingState, setLoadingState] = useState("idle");
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
 
   const selectedResource = useMemo(
     () => RESOURCE_OPTIONS.find((option) => option.key === activeResource) || RESOURCE_OPTIONS[0],
@@ -270,13 +270,12 @@ function BulkImportPage() {
   }, []);
 
   const handleDownloadTemplate = async (resourceType = activeResource) => {
-    setError("");
     setLoadingState("template");
     try {
       await bulkImportService.downloadTemplate(resourceType);
-      setStatusMessage("Template downloaded. Fill it without changing the headers.");
+      showSuccess("Template downloaded. Fill it without changing the headers.");
     } catch (err) {
-      setError(getErrorMessage(err, "Template download failed."));
+      showError(getErrorMessage(err, "Template download failed."));
     } finally {
       setLoadingState("idle");
     }
@@ -284,21 +283,20 @@ function BulkImportPage() {
 
   const handleDryRun = async () => {
     if (!file) {
-      setError("Choose the completed XLSX template before running dry-run.");
+      showWarning("Choose the completed XLSX template before running dry-run.");
       return;
     }
 
-    setError("");
-    setStatusMessage("Validating file...");
+    showInfo("Validating file...", { duration: 2200 });
     setLoadingState("dry-run");
     try {
       const job = await bulkImportService.dryRun(activeResource, file);
       setCurrentJob(job);
       setEmailSummary(null);
-      setStatusMessage("Dry-run completed. Review the summary before confirming.");
+      showSuccess("Dry-run completed. Review the summary before confirming.");
       await loadJobs();
     } catch (err) {
-      setError(getErrorMessage(err, "Dry-run failed."));
+      showError(getErrorMessage(err, "Dry-run failed."));
     } finally {
       setLoadingState("idle");
     }
@@ -306,22 +304,25 @@ function BulkImportPage() {
 
   const refreshEmailSummary = async (job = currentJob) => {
     if (!job?.id || !["parents", "teachers"].includes(job.resource_type)) return;
-    const summary = await bulkImportService.getEmailSummary({ source: "bulk_import" });
-    setEmailSummary(summary);
+    try {
+      const summary = await bulkImportService.getEmailSummary({ source: "bulk_import" });
+      setEmailSummary(summary);
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not refresh email delivery status."));
+    }
   };
 
   const handleConfirm = async () => {
     if (!currentJob?.id || Number(currentJob.successful_rows || 0) <= 0) return;
-    setError("");
-    setStatusMessage("Creating records. This can take a few minutes for large files...");
+    showInfo("Creating records. Large imports can take a few minutes...", { duration: 4200 });
     setLoadingState("confirm");
     try {
       const job = await bulkImportService.confirm(currentJob.id);
       setCurrentJob(job);
-      setStatusMessage("Import confirmed. Records were created and dashboard cache was cleared.");
+      showSuccess("Import confirmed. Records were created and dashboard cache was cleared.", { duration: 5200 });
       await Promise.all([loadJobs(), refreshEmailSummary(job)]);
     } catch (err) {
-      setError(getErrorMessage(err, "Import confirmation failed."));
+      showError(getErrorMessage(err, "Import confirmation failed."), { duration: 5200 });
     } finally {
       setLoadingState("idle");
     }
@@ -331,8 +332,9 @@ function BulkImportPage() {
     if (!currentJob?.id) return;
     try {
       await bulkImportService.downloadResult(currentJob.id);
+      showSuccess("Result report downloaded.");
     } catch (err) {
-      setError(getErrorMessage(err, "Result download failed."));
+      showError(getErrorMessage(err, "Result download failed."));
     }
   };
 
@@ -341,8 +343,9 @@ function BulkImportPage() {
     try {
       await bulkImportService.recoverStaleEmails();
       await refreshEmailSummary();
+      showSuccess("Stuck email jobs recovered where possible.");
     } catch (err) {
-      setError(getErrorMessage(err, "Could not recover stale emails."));
+      showError(getErrorMessage(err, "Could not recover stale emails."));
     } finally {
       setLoadingState("idle");
     }
@@ -353,8 +356,9 @@ function BulkImportPage() {
     try {
       await bulkImportService.retryFailedEmails();
       await refreshEmailSummary();
+      showSuccess("Failed emails were queued for retry where possible.");
     } catch (err) {
-      setError(getErrorMessage(err, "Could not retry failed emails."));
+      showError(getErrorMessage(err, "Could not retry failed emails."));
     } finally {
       setLoadingState("idle");
     }
@@ -369,9 +373,6 @@ function BulkImportPage() {
       description="Create students, teachers, and parents from backend-generated XLSX templates with dry-run validation first."
       actions={<Button variant="outline" onClick={() => handleDownloadTemplate(activeResource)} disabled={busy}><Download className="h-4 w-4" />Download template</Button>}
     >
-      {error ? <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">{error}</div> : null}
-      {statusMessage ? <div className="rounded-2xl border border-primary/20 bg-primary-soft/30 px-4 py-3 text-sm font-medium text-text-soft">{statusMessage}</div> : null}
-
       <section className="grid gap-4 lg:grid-cols-3">
         {RESOURCE_OPTIONS.map((option) => (
           <ResourceCard
