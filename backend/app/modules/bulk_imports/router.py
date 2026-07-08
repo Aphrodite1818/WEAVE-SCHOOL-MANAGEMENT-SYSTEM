@@ -6,16 +6,17 @@
 
 from __future__ import annotations
 
-from typing import Annotated, TypeAlias
+from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
+from app.core.exceptions import BadRequestException
 from app.modules.bulk_imports.live_service import BulkImportLiveService
 from app.modules.bulk_imports.models import ImportJobStatus, ImportResourceType
-from app.modules.bulk_imports.result_writer import create_result_report
+from app.modules.bulk_imports.result_writer import create_result_report, create_student_access_slip_report
 from app.modules.bulk_imports.schemas import (
     ImportJobDetailResponse,
     ImportJobListResponse,
@@ -24,6 +25,7 @@ from app.modules.bulk_imports.schemas import (
 )
 from app.modules.bulk_imports.service import BulkImportService
 from app.modules.tenant_admins.models import TenantAdmin
+from app.tenant_management.repository import TenantRepository
 
 
 router = APIRouter(
@@ -32,6 +34,7 @@ router = APIRouter(
 )
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+ResultDownloadFormat: TypeAlias = Literal["spreadsheet", "slip"]
 
 
 @router.get(
@@ -226,18 +229,30 @@ async def download_bulk_import_result(
     job_id: UUID,
     db: DbSession,
     current_user: CurrentTenantAdmin,
+    result_format: ResultDownloadFormat = Query(default="spreadsheet", alias="format"),
 ) -> Response:
-    """Download the CSV result report for one import job."""
+    """Download a spreadsheet result report or student access-code slip report."""
 
     resource_type, result_rows = await BulkImportService.get_result_rows(
         db=db,
         actor=current_user,
         job_id=job_id,
     )
-    result_file = create_result_report(
-        resource_type=resource_type,
-        result_rows=result_rows,
-    )
+
+    if result_format == "slip":
+        if resource_type != ImportResourceType.STUDENTS:
+            raise BadRequestException(detail="Printable slips are only available for student imports.")
+
+        tenant = await TenantRepository.get_by_id(db=db, tenant_id=current_user.tenant_id)
+        result_file = create_student_access_slip_report(
+            result_rows=result_rows,
+            school_name=tenant.school_name if tenant is not None else None,
+        )
+    else:
+        result_file = create_result_report(
+            resource_type=resource_type,
+            result_rows=result_rows,
+        )
 
     return Response(
         content=result_file.content_bytes,
