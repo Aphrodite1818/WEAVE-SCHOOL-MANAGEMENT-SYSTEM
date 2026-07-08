@@ -10,7 +10,7 @@ argon2-cffi-bindings==25.1.0
 arq==0.26.3
 asttokens==3.0.1
 asyncpg==0.31.0
-attrs==26.1.1
+attrs==26.1.0
 bcrypt==4.2.0
 beautifulsoup4==4.14.3
 certifi==2026.4.22
