@@ -263,7 +263,7 @@ function StudentDashboardPage() {
             ]}
           />
 
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Current average"
               value={hasValue(dashboardData.currentAverage) ? formatMetricNumber(dashboardData.currentAverage) : "-"}
@@ -307,7 +307,7 @@ function StudentDashboardPage() {
               primaryAction={{ to: "/student/subjects", label: "Open subjects", icon: BookOpen }}
               secondaryAction={{ to: "/student/report-cards", label: "Report cards", icon: FileText }}
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Best subject" value={dashboardData.subjectHighlights.best?.label || "Awaiting results"} />
                 <InfoTile label="Needs support" value={dashboardData.subjectHighlights.weakest?.label || "No weak spot yet"} />
                 <InfoTile label="Latest report" value={dashboardData.latestReportCard ? cleanText(dashboardData.latestReportCard.academic_term_name, "Published") : "Awaiting release"} />
@@ -335,9 +335,9 @@ function StudentDashboardPage() {
                   </Link>
                 }
               />
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {dashboardData.subjectCards.slice(0, 4).map((card) => (
-                  <Card key={card.id} as={card.result_id ? Link : "div"} to={card.result_id ? `/student/subjects/${card.result_id}` : undefined} className="p-4 transition hover:border-primary/30 hover:shadow-premium">
+                  <Card key={card.id} as={card.result_id ? Link : "div"} to={card.result_id ? `/student/subjects/${card.result_id}` : undefined} className="p-3 transition hover:border-primary/30 hover:shadow-premium sm:p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-text">{cleanText(card.subject_name, "Subject")}</p>
@@ -389,8 +389,8 @@ function StudentDashboardPage() {
 
 function InfoTile({ label, value }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
     </div>
   );
