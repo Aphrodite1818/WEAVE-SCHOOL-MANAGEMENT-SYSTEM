@@ -195,10 +195,8 @@ function StudentsPage() {
           <div className="relative grid grid-cols-2 rounded-2xl border border-border/70 bg-surface-muted/35 p-1 shadow-inner lg:w-[24rem]">
             <span
               aria-hidden="true"
-              className={cn(
-                "absolute bottom-1 top-1 w-[calc(50%-0.25rem)] rounded-xl bg-surface shadow-sm transition-transform duration-300 ease-out",
-                activeTab === "class" ? "translate-x-[calc(100%+0.25rem)]" : "translate-x-0",
-              )}
+              className="absolute bottom-1 top-1 w-[calc(50%-0.25rem)] rounded-xl bg-surface shadow-sm transition-transform duration-300 ease-out"
+              style={{ transform: activeTab === "class" ? "translateX(calc(100% + 0.25rem))" : "translateX(0)" }}
             />
             {rosterTabs.map((tab) => {
               const Icon = tab.icon;
