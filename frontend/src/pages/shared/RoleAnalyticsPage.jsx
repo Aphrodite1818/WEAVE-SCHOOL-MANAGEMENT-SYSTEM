@@ -171,7 +171,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
       <DashboardLayout role={role} title="Advanced Analytics">
         <Card className="p-6 sm:p-8">
           <div className="flex max-w-3xl flex-col gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-warning-soft text-amber-700">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-warning-soft text-amber-950">
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
@@ -204,13 +204,13 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
 
       {!error ? (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
             {copy.metricCards.map((metric, index) => (
               <DashboardMetricCard
                 key={metric.key}
                 label={metric.label}
                 value={formatMetric(stats[metric.key], metric.suffix)}
-                description="Pulled from the dashboard metrics endpoint."
+                description="Dashboard metric"
                 icon={index === 0 ? BarChart3 : index === 1 ? LineChart : PieChart}
                 tone={index === 0 ? "primary" : index === 1 ? "success" : "warning"}
               />
