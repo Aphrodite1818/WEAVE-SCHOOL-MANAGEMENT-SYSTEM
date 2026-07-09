@@ -245,6 +245,7 @@ async def accept_invite(
     payload: UserInviteAcceptanceRequest,
     db: DbSession,
 ) -> dict[str, str]:
-    """Accept a tenant user or superadmin invite."""
+    """Accept a tenant user or superadmin invite without auto-login."""
 
-    return await UserInviteService.accept_invite(db, payload)
+    result = await UserInviteService.accept_invite(db, payload)
+    return {"detail": result.get("detail", "Account setup completed successfully.")}
