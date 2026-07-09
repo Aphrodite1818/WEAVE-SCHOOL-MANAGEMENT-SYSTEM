@@ -8,6 +8,7 @@ import StudentReportCardsPage from "../pages/student/StudentReportCardsPage";
 import StudentSubjectDetailsPage from "../pages/student/StudentSubjectDetailsPage";
 import StudentSubjectsPage from "../pages/student/StudentSubjectsPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import RoleGuard from "./RoleGuard";
 
@@ -18,6 +19,7 @@ export const studentRoutes = (
     </Route>
     <Route element={<DashboardShell role="student" />}>
       <Route path="/student/dashboard" element={<StudentDashboardPage />} />
+      <Route path="/student/analytics" element={<RoleAnalyticsPage role="student" />} />
       <Route path="/student/subjects" element={<StudentSubjectsPage />} />
       <Route path="/student/subjects/:subjectResultId" element={<StudentSubjectDetailsPage />} />
       <Route path="/student/parent-linking" element={<StudentParentLinkingPage />} />
