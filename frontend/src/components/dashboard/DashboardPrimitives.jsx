@@ -233,6 +233,7 @@ export function DashboardQuickActions({ actions = [], title = "Quick actions", d
       <DashboardSectionHeader title={title} description={description} />
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {actions.map((action) => {
+          const ActionIcon = action.icon;
           const toneStyle = toneStyles[action.tone || "primary"] || toneStyles.primary;
           const Wrapper = action.to ? Link : "button";
           return (
@@ -244,7 +245,7 @@ export function DashboardQuickActions({ actions = [], title = "Quick actions", d
               className="group rounded-2xl border border-border/70 bg-surface px-4 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium"
             >
               <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", toneStyle.icon)}>
-                {action.icon ? <action.icon className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
+                {ActionIcon ? <ActionIcon className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
               </div>
               <p className="mt-3 text-sm font-semibold text-text">{action.label}</p>
               {action.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.description}</p> : null}
