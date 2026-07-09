@@ -158,6 +158,12 @@ function ParentDashboardPage() {
   const linkedStudents = parentStats.linked_students ?? children.length;
   const primaryContacts = parentStats.primary_contacts ?? children.filter((item) => item.link?.is_primary_contact).length;
   const unreadNotices = parentStats.unread_count ?? 0;
+  const hasChildResults = childResults.length > 0;
+  const latestAverageValue = latestReportCard
+    ? cleanText(latestReportCard.average_score)
+    : hasChildResults
+      ? cleanText(childAverage, "-")
+      : "-";
 
   const attentionItems = [
     unreadNotices > 0
@@ -231,10 +237,10 @@ function ParentDashboardPage() {
             />
             <DashboardMetricCard
               label="Latest average"
-              value={latestReportCard ? cleanText(latestReportCard.average_score) : cleanText(childAverage, "-")}
+              value={latestAverageValue}
               description="Selected child"
               icon={BarChart3}
-              tone={childResults.length > 0 || latestReportCard ? "success" : "warning"}
+              tone={hasChildResults || latestReportCard ? "success" : "warning"}
               to="/parent/results"
             />
             <DashboardMetricCard
@@ -266,7 +272,7 @@ function ParentDashboardPage() {
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <InfoTile label="Selected child" value={selectedChildName} />
-                <InfoTile label="Latest average" value={latestReportCard ? cleanText(latestReportCard.average_score) : cleanText(childAverage, "-")} />
+                <InfoTile label="Latest average" value={latestAverageValue} />
                 <InfoTile label="Strongest subject" value={subjectHighlights.best?.label || "Awaiting results"} />
                 <InfoTile label="Needs support" value={subjectHighlights.weakest?.label || "No weak spot yet"} />
               </div>
