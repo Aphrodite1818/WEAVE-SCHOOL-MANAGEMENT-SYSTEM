@@ -71,8 +71,8 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
     };
   }, [role]);
 
-  const handleLogout = () => {
-    authService.logout();
+  const handleLogout = async () => {
+    await authService.logout();
     navigate("/login", { replace: true });
   };
 
