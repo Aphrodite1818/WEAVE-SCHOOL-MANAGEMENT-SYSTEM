@@ -1,18 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { BarChart3, Bell, FileText, GraduationCap, Link2, Users } from "lucide-react";
 
-import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
-import Button from "../../components/ui/Button";
-import Card from "../../components/ui/Card";
 import {
   DashboardFocusCard,
   DashboardListCard,
   DashboardMetricCard,
   DashboardQuickActions,
-  DashboardSectionHeader,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
 import { academicService } from "../../services/academicService";
@@ -21,11 +16,9 @@ import { dashboardService } from "../../services/dashboard.service";
 import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { reportCardService } from "../../services/reportCardService";
 import {
-  averageByAcademicPeriod,
   averageScore,
   bestAndWeakestSubject,
   cleanText,
-  subjectPerformanceChart,
 } from "../../utils/academicDashboard";
 import { displayName } from "../../utils/user";
 import ParentChildSelector from "./ParentChildSelector";
@@ -52,23 +45,6 @@ function ParentDashboardPage() {
   const subjectHighlights = bestAndWeakestSubject(childResults);
   const latestReportCard = childReportCards[0] || null;
   const parentStats = parentMetrics?.stats || {};
-
-  const selectedChildAcademicLabel = useMemo(() => {
-    const latestResult = childResults[0];
-    const latestCard = childReportCards[0];
-    const session = latestResult?.academic_session_name || latestCard?.academic_session_name;
-    const term = latestResult?.academic_term_name || latestCard?.academic_term_name;
-    return [session, cleanText(term, "")].filter(Boolean).join(" / ") || "-";
-  }, [childResults, childReportCards]);
-
-  const performanceTrend = useMemo(
-    () =>
-      averageByAcademicPeriod(
-        childReportCards.length > 0 ? childReportCards : childResults,
-        childReportCards.length > 0 ? "average_score" : "total_score",
-      ),
-    [childReportCards, childResults],
-  );
 
   useEffect(() => {
     let mounted = true;
@@ -153,8 +129,13 @@ function ParentDashboardPage() {
     );
   }
 
+  const latestResult = childResults[0];
+  const latestCard = childReportCards[0];
+  const selectedChildAcademicLabel = [
+    latestResult?.academic_session_name || latestCard?.academic_session_name,
+    cleanText(latestResult?.academic_term_name || latestCard?.academic_term_name, ""),
+  ].filter(Boolean).join(" / ") || "-";
   const selectedChildName = selectedChildRecord ? displayName(selectedChildRecord.student) : "No child selected";
-  const subjectChart = subjectPerformanceChart(childResults);
   const linkedStudents = parentStats.linked_students ?? children.length;
   const primaryContacts = parentStats.primary_contacts ?? children.filter((item) => item.link?.is_primary_contact).length;
   const unreadNotices = parentStats.unread_count ?? 0;
@@ -226,7 +207,7 @@ function ParentDashboardPage() {
             />
           </DashboardWelcomePanel>
 
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Linked children"
               value={linkedStudents}
@@ -270,7 +251,7 @@ function ParentDashboardPage() {
               primaryAction={{ to: "/parent/results", label: "View results", icon: BarChart3, disabled: !selectedChildId }}
               secondaryAction={{ to: "/parent/report-cards", label: "Report cards", icon: FileText, disabled: !selectedChildId }}
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Selected child" value={selectedChildName} />
                 <InfoTile label="Latest average" value={latestAverageValue} />
                 <InfoTile label="Strongest subject" value={subjectHighlights.best?.label || "Awaiting results"} />
@@ -285,41 +266,6 @@ function ParentDashboardPage() {
               emptyTitle="Everything looks calm"
               emptyDescription="No unread notices, linking issues, or report-card actions need attention right now."
             />
-          </section>
-
-          <section className="space-y-4">
-            <DashboardSectionHeader
-              title="Subject snapshot"
-              description="A short academic preview for the selected child."
-              action={
-                <Link to="/parent/results">
-                  <Button variant="outline" size="sm">Open results</Button>
-                </Link>
-              }
-            />
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-              <AnalyticsBarChart
-                title="Subject performance"
-                description="Published subject scores for the selected child."
-                data={subjectChart}
-                emptyMessage="No published subject results for the selected child yet."
-              />
-              <Card className="p-5 sm:p-6">
-                <h3 className="section-title">Latest report card</h3>
-                <p className="mt-1 text-sm text-text-muted">The full report-card workflow stays on its own page.</p>
-                {latestReportCard ? (
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                    <InfoTile label="Average" value={cleanText(latestReportCard.average_score)} />
-                    <InfoTile label="Subjects" value={latestReportCard.lines?.length || 0} />
-                    <InfoTile label="Position" value={cleanText(latestReportCard.position, "-")} />
-                  </div>
-                ) : (
-                  <p className="mt-4 rounded-2xl border border-dashed border-border bg-surface-muted/20 px-4 py-5 text-sm text-text-muted">
-                    No report card available yet for this child.
-                  </p>
-                )}
-              </Card>
-            </div>
           </section>
 
           <DashboardQuickActions
@@ -340,8 +286,8 @@ function ParentDashboardPage() {
 
 function InfoTile({ label, value }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
     </div>
   );
