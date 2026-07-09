@@ -1521,23 +1521,8 @@ class UserInviteService:
         )
         await db.commit()
 
-        access_token = create_access_token(
-            data={
-                "sub": str(actor.id),
-                "email": actor.email,
-                "actor_type": normalized_actor_type,
-                "role": actor_role,
-                "account_type": normalized_actor_type,
-                "tenant_id": str(actor.tenant_id),
-            }
-        )
         return {
-            "detail": "Account setup completed successfully.",
-            "access_token": access_token,
-            "token_type": "bearer",
-            "actor_type": normalized_actor_type,
-            "role": actor_role,
-            "account_type": normalized_actor_type,
+            "detail": "Account setup completed successfully. You may now log in.",
         }
 
     @staticmethod
