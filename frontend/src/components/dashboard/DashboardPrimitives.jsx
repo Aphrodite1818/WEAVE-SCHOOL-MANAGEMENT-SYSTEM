@@ -15,8 +15,8 @@ const toneStyles = {
     badge: "bg-success-soft text-success",
   },
   warning: {
-    icon: "bg-warning-soft text-text",
-    badge: "bg-warning-soft text-text",
+    icon: "bg-warning-soft text-amber-950",
+    badge: "bg-warning-soft text-amber-950",
   },
   danger: {
     icon: "bg-error-soft text-error",
@@ -63,18 +63,22 @@ export function DashboardWelcomePanel({
           {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{description}</p> : null}
           {chips.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              {chips.filter(Boolean).map((chip) => (
-                <span
-                  key={`${chip.label}-${chip.value || ""}`}
-                  className={cn(
-                    "inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold sm:text-xs",
-                    toneStyles[chip.tone || "neutral"]?.badge || toneStyles.neutral.badge,
-                  )}
-                >
-                  <span className="truncate">{chip.label}</span>
-                  {chip.value ? <span className="truncate text-text/70">{chip.value}</span> : null}
-                </span>
-              ))}
+              {chips.filter(Boolean).map((chip) => {
+                const chipTone = chip.tone || "neutral";
+                const chipToneStyle = toneStyles[chipTone] || toneStyles.neutral;
+                return (
+                  <span
+                    key={`${chip.label}-${chip.value || ""}`}
+                    className={cn(
+                      "inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold sm:text-xs",
+                      chipToneStyle.badge,
+                    )}
+                  >
+                    <span className="truncate">{chip.label}</span>
+                    {chip.value ? <span className="truncate opacity-80">{chip.value}</span> : null}
+                  </span>
+                );
+              })}
             </div>
           ) : null}
         </div>
@@ -109,7 +113,7 @@ export function DashboardMetricCard({
         <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-11 sm:w-11", toneStyle.icon)}>
           {Icon ? <Icon className="h-4 w-4 sm:h-5 sm:w-5" /> : null}
         </div>
-        {badge ? <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold sm:px-2.5 sm:text-[11px]", toneStyle.badge)}>{badge}</span> : null}
+        {badge ? <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px]", toneStyle.badge)}>{badge}</span> : null}
       </div>
       <div className="mt-3 sm:mt-4">
         <p className="line-clamp-2 text-xs font-semibold leading-4 text-text-muted sm:text-sm">{label}</p>
@@ -185,7 +189,10 @@ export function DashboardListCard({
   return (
     <Card className={cn("flex h-full flex-col p-4 sm:p-6", className)}>
       <DashboardSectionHeader title={title} description={description} action={action} />
-      <div className="mt-4 grid gap-3">
+      <div
+        className="mt-4 grid gap-3"
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(12rem, 100%), 1fr))" }}
+      >
         {items.length > 0 ? (
           items.map((item) => <DashboardListItem key={item.key || item.title} {...item} />)
         ) : (
@@ -207,22 +214,24 @@ export function DashboardListItem({ title, description, meta, icon: Icon, tone =
     <Wrapper
       to={to}
       className={cn(
-        "group flex items-center gap-3 rounded-2xl border border-border/70 bg-surface px-3 py-3 transition sm:px-4",
-        to ? "hover:border-primary/30 hover:bg-primary-subtle/25" : "",
+        "group flex min-h-[8rem] flex-col justify-between rounded-2xl border border-border/70 bg-surface px-3 py-3 transition sm:px-4",
+        to ? "hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-sm" : "",
       )}
     >
-      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
-        {Icon ? <Icon className="h-4 w-4" /> : null}
+      <div className="flex items-start justify-between gap-3">
+        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
+          {Icon ? <Icon className="h-4 w-4" /> : null}
+        </div>
+        {value !== undefined && value !== null ? <span className="shrink-0 text-sm font-semibold text-text">{value}</span> : null}
+        {to ? <ChevronRight className="h-4 w-4 shrink-0 text-text-faint transition group-hover:translate-x-0.5" /> : null}
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-semibold text-text">{title}</p>
+      <div className="mt-3 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 break-words text-sm font-semibold leading-5 text-text">{title}</p>
           {meta ? <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-semibold text-text-muted">{meta}</span> : null}
         </div>
-        {description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{description}</p> : null}
+        {description ? <p className="mt-1 line-clamp-3 text-xs leading-5 text-text-muted">{description}</p> : null}
       </div>
-      {value !== undefined && value !== null ? <span className="shrink-0 text-sm font-semibold text-text">{value}</span> : null}
-      {to ? <ChevronRight className="h-4 w-4 shrink-0 text-text-faint transition group-hover:translate-x-0.5" /> : null}
     </Wrapper>
   );
 }
