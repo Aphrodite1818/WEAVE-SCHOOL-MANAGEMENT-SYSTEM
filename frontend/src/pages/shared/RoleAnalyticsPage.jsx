@@ -7,7 +7,6 @@ import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Card from "../../components/ui/Card";
-import Button from "../../components/ui/Button";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { getErrorMessage, isAbortError } from "../../services/api";
