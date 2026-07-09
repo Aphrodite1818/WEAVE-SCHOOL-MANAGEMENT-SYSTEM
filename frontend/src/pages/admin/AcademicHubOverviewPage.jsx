@@ -103,7 +103,7 @@ function AcademicHubOverviewPage() {
       ? {
           key: "reports",
           title: "Report cards pending publication",
-          description: `${reportCardsPublished} published from ${reportCardsGenerated} generated.",
+          description: `${reportCardsPublished} published from ${reportCardsGenerated} generated.`,
           icon: FileText,
           tone: "warning",
           to: "/admin/academic/reports",
