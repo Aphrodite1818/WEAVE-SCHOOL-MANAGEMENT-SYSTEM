@@ -111,7 +111,7 @@ function ParentStudentLinkingPage() {
         </div>
       )}
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard
           label="Linked Students"
           value={children.length}
@@ -185,42 +185,46 @@ function ParentStudentLinkingPage() {
         <h2 className="section-title">Request status</h2>
         <p className="mt-1 text-sm text-text-muted">Track every parent-student link request you have submitted.</p>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {requests.length === 0 ? (
-            <EmptyState
-              icon={UserRound}
-              title="No link requests yet"
-              description="Submitted requests will appear here with their approval status."
-            />
+            <div className="sm:col-span-2 xl:col-span-3">
+              <EmptyState
+                icon={UserRound}
+                title="No link requests yet"
+                description="Submitted requests will appear here with their approval status."
+              />
+            </div>
           ) : (
             requests.map((request) => (
               <div
                 key={request.id}
-                className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3"
+                className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-4"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex h-full flex-col gap-4">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-text">
+                    <p className="break-words text-sm font-semibold text-text">
                       {displayName(request.student)}
                     </p>
-                    <p className="mt-1 text-xs text-text-muted">
+                    <p className="mt-1 break-words text-xs text-text-muted">
                       {request.admission_number_snapshot ||
                         request.student?.admission_number ||
                         "No admission number"}{" "}
                       / {cleanText(request.relationship_type)}
                     </p>
                   </div>
-                  <Badge
-                    variant={
-                      request.status === "approved"
-                        ? "success"
-                        : request.status === "rejected"
-                          ? "error"
-                          : "warning"
-                    }
-                  >
-                    {request.status}
-                  </Badge>
+                  <div className="mt-auto">
+                    <Badge
+                      variant={
+                        request.status === "approved"
+                          ? "success"
+                          : request.status === "rejected"
+                            ? "error"
+                            : "warning"
+                      }
+                    >
+                      {request.status}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             ))
@@ -232,29 +236,33 @@ function ParentStudentLinkingPage() {
         <h2 className="section-title">Linked students</h2>
         <p className="mt-1 text-sm text-text-muted">Children currently connected to your parent account.</p>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {children.length === 0 ? (
-            <EmptyState
-              icon={Link2}
-              title="No linked students"
-              description="Approved student links will appear here."
-            />
+            <div className="sm:col-span-2 xl:col-span-3">
+              <EmptyState
+                icon={Link2}
+                title="No linked students"
+                description="Approved student links will appear here."
+              />
+            </div>
           ) : (
             children.map(({ student, link }) => (
               <div
                 key={link.id}
-                className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3"
+                className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-4"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex h-full flex-col gap-4">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-text">{displayName(student)}</p>
-                    <p className="mt-1 text-xs text-text-muted">
+                    <p className="break-words text-sm font-semibold text-text">{displayName(student)}</p>
+                    <p className="mt-1 break-words text-xs text-text-muted">
                       {cleanText(student.admission_number)} / {cleanText(student.profile_status)}
                     </p>
                   </div>
-                  <Badge variant={link.is_primary_contact ? "success" : "default"}>
-                    {cleanText(link.relationship_type)}
-                  </Badge>
+                  <div className="mt-auto">
+                    <Badge variant={link.is_primary_contact ? "success" : "default"}>
+                      {cleanText(link.relationship_type)}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             ))
