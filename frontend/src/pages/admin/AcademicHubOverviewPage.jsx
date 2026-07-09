@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
@@ -14,7 +13,6 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
-import Button from "../../components/ui/Button";
 import {
   DashboardFocusCard,
   DashboardListCard,
