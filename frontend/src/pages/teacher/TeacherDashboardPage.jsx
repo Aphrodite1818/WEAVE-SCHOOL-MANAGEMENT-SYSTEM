@@ -121,7 +121,6 @@ function TeacherDashboardPage() {
   const draftResults = Number(stats.result_rows_draft ?? 0);
   const submittedResults = Number(stats.result_rows_submitted ?? stats.results_submitted ?? 0);
   const resultCompletion = Number(stats.result_completion_percent ?? 0);
-  const priorityClasses = charts.pending_scores_by_class || [];
   const classSizes = charts.class_sizes || [];
 
   if (isLoading) {
@@ -197,7 +196,7 @@ function TeacherDashboardPage() {
             ]}
           />
 
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Subject classes"
               value={subjectTeacherClassLabels.length}
@@ -241,7 +240,7 @@ function TeacherDashboardPage() {
               primaryAction={{ to: "/teacher/score-entry", label: "Enter scores", icon: Send, disabled: !hasSubjectTeacherDuties }}
               secondaryAction={{ to: "/teacher/attendance", label: "Attendance", icon: CheckSquare, disabled: !hasClassTeacherDuties }}
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Assigned subjects" value={assignedSubjectLabels.length || activeSubjects} />
                 <InfoTile label="Subject classes" value={subjectTeacherClassLabels.length} />
                 <InfoTile label="Class teacher duties" value={classTeacherLabels.length} />
@@ -275,7 +274,7 @@ function TeacherDashboardPage() {
                 data={classSizes}
                 emptyMessage="No class size data available yet."
               />
-              <Card className="p-5 sm:p-6">
+              <Card className="p-4 sm:p-6">
                 <h3 className="section-title">Assigned work</h3>
                 <p className="mt-1 text-sm text-text-muted">Visible assignments stay short here. Open rosters for the full workflow.</p>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -311,8 +310,8 @@ function TeacherDashboardPage() {
 
 function InfoTile({ label, value }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
     </div>
   );
