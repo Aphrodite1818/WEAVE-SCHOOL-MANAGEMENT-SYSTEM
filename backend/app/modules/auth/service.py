@@ -1,13 +1,17 @@
-#======================================#
-#            auth/service.py           #
-#======================================#
+# ====================================== #
+#            auth/service.py             #
+# ====================================== #
 
-import uuid
+"""Authentication, OTP, invite, and persistent-session services."""
+
+from __future__ import annotations
+
 import random
 import secrets
 import string
+import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from fastapi import BackgroundTasks
@@ -16,16 +20,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.security import (
     create_access_token,
+    generate_refresh_token,
+    generate_token_jti,
     hash_auth_secret,
     hash_otp,
     hash_password,
+    hash_refresh_token,
     verify_otp as verify_otp_hash,
     verify_password,
-    generate_refresh_token,
-    generate_token_jti,
-    hash_refresh_token,
-    verify_refresh_token
 )
+from app.config.settings import settings
 from app.core.exceptions import (
     AccountNotVerifiedException,
     BadRequestException,
@@ -39,63 +43,43 @@ from app.core.utils.email_templates import (
     get_tenant_invite_email_html,
     get_user_invite_email_html,
 )
-from app.config.settings import settings
-from app.modules import superadmin
+from app.core.utils.otp_rate_limiter import OTPRateLimiter
 from app.modules.auth.models import (
     AuthPurpose,
     AuthRecord,
     AuthRefreshToken,
     AuthSession,
-    AuthSessionActorType
+    AuthSessionActorType,
 )
-
-
-
-from app.modules.auth.repository import(
+from app.modules.auth.repository import (
     AuthRefreshTokenRepository,
-    AuthSessionRepository
+    AuthSessionRepository,
 )
-
-
-
 from app.modules.auth.schemas import (
-    LoginSessionUser,
     LoginRequest,
+    LoginSessionUser,
     RequestOTP,
     TenantActivationRequest,
-    UserInviteAcceptanceRequest,
     UpdatePassword,
+    UserInviteAcceptanceRequest,
     VerifyOTP,
 )
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import IdentityResolution
 from app.modules.auth_identity.service import AuthIdentityService
-
-
-
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.parents.repository import ParentRepository
-
-
 from app.modules.students.models import Student, StudentAccountStatus
-from app.modules.students.repository import StudentRepository , StudentAccessCodeRepository
-
-
+from app.modules.students.repository import StudentAccessCodeRepository, StudentRepository
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
-
-
 from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
 from app.modules.teachers.repository import TeacherRepository
-
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
-
 from app.tenant_management.models import Tenant, TenantStatus, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
 
-from app.core.utils.otp_rate_limiter import OTPRateLimiter
-from app.config.settings import settings
 
 EmailActor = TenantAdmin | Teacher | Parent
 LAST_LOGIN_UPDATE_INTERVAL = timedelta(minutes=10)
@@ -103,6 +87,7 @@ LAST_LOGIN_UPDATE_INTERVAL = timedelta(minutes=10)
 
 def _normalize_email(email: str) -> str:
     """Normalize the email address."""
+
     return email.strip().lower()
 
 
@@ -111,11 +96,17 @@ def _enum_value(value: str | object | None) -> str | None:
 
     if value is None:
         return None
-
     if isinstance(value, str):
         return value
-
     return getattr(value, "value", str(value))
+
+
+def _ensure_timezone_aware(value: datetime) -> datetime:
+    """Return a timezone-aware datetime."""
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def _last_login_is_due(last_login_at: datetime | None, now: datetime) -> bool:
@@ -123,11 +114,7 @@ def _last_login_is_due(last_login_at: datetime | None, now: datetime) -> bool:
 
     if last_login_at is None:
         return True
-
-    if last_login_at.tzinfo is None:
-        last_login_at = last_login_at.replace(tzinfo=timezone.utc)
-
-    return now - last_login_at >= LAST_LOGIN_UPDATE_INTERVAL
+    return now - _ensure_timezone_aware(last_login_at) >= LAST_LOGIN_UPDATE_INTERVAL
 
 
 async def _update_last_login_if_due(
@@ -151,14 +138,19 @@ async def _get_platform_email_conflicts(
     db: AsyncSession,
     email: str,
 ) -> tuple[object | None, Tenant | None, SuperAdmin | None]:
-    """Internal helper for get platform email conflicts."""
+    """Return cross-platform email conflicts."""
+
     normalized_email = _normalize_email(email)
     existing_user = await TenantAdminRepository.get_by_email(db, normalized_email)
     if existing_user is None:
         existing_user = await TeacherRepository.get_by_email(db, normalized_email)
     if existing_user is None:
         existing_user = await ParentRepository.get_by_email(db, normalized_email)
-    existing_tenant = await TenantRepository.get_by_email_including_deleted(db, normalized_email)
+
+    existing_tenant = await TenantRepository.get_by_email_including_deleted(
+        db,
+        normalized_email,
+    )
     existing_superadmin = await SuperAdminRepository.get_by_email(db, normalized_email)
     return existing_user, existing_tenant, existing_superadmin
 
@@ -169,7 +161,8 @@ async def _authenticate_superadmin(
     email: str,
     password: str,
 ) -> SuperAdmin | None:
-    """Internal helper for authenticate superadmin."""
+    """Authenticate a superadmin by email/password."""
+
     superadmin = await SuperAdminRepository.get_by_email(db, email)
     if superadmin is None:
         return None
@@ -178,8 +171,7 @@ async def _authenticate_superadmin(
     if not superadmin.is_active:
         raise UnauthorizedException("Superadmin account is not active")
 
-    if await _update_last_login_if_due(db, superadmin):
-        await db.commit()
+    await _update_last_login_if_due(db, superadmin)
     return superadmin
 
 
@@ -247,14 +239,13 @@ async def _authenticate_tenant_admin(
             background_tasks=background_tasks,
         )
 
-    if await _update_last_login_if_due(db, admin):
-        await db.commit()
-
+    await _update_last_login_if_due(db, admin)
     return admin
 
 
 def _tenant_allows_login(tenant: Tenant | None) -> bool:
-    """Internal helper for tenant allows login."""
+    """Return whether a tenant currently allows user login."""
+
     return (
         tenant is not None
         and not tenant.is_deleted
@@ -264,12 +255,14 @@ def _tenant_allows_login(tenant: Tenant | None) -> bool:
 
 
 def _tenant_allows_user_invite_completion(tenant: Tenant | None) -> bool:
-    """Internal helper for tenant allows user invite completion."""
+    """Return whether user invite completion is allowed."""
+
     return _tenant_allows_login(tenant)
 
 
 def _tenant_allows_activation_completion(tenant: Tenant | None) -> bool:
-    """Internal helper for tenant allows activation completion."""
+    """Return whether tenant activation completion is allowed."""
+
     return (
         tenant is not None
         and not tenant.is_deleted
@@ -279,7 +272,8 @@ def _tenant_allows_activation_completion(tenant: Tenant | None) -> bool:
 
 
 def _tenant_allows_otp_verification(tenant: Tenant | None) -> bool:
-    """Internal helper for tenant allows otp verification."""
+    """Return whether OTP verification is allowed for a tenant signup."""
+
     return (
         tenant is not None
         and not tenant.is_deleted
@@ -377,8 +371,8 @@ async def _authenticate_tenant_actor(
             or teacher.status != TeacherStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-        if await _update_last_login_if_due(db, teacher):
-            await db.commit()
+
+        await _update_last_login_if_due(db, teacher)
         return AuthenticatedActor(
             actor_type=ActorType.TEACHER.value,
             account_type=ActorType.TEACHER.value,
@@ -411,8 +405,8 @@ async def _authenticate_tenant_actor(
             or parent.account_status != ParentAccountStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-        if await _update_last_login_if_due(db, parent):
-            await db.commit()
+
+        await _update_last_login_if_due(db, parent)
         return AuthenticatedActor(
             actor_type=ActorType.PARENT.value,
             account_type=ActorType.PARENT.value,
@@ -436,33 +430,29 @@ async def _authenticate_tenant_actor(
     if resolution.actor_type == ActorType.STUDENT:
         student = await StudentRepository.get_by_id(db, resolution.actor_id)
         if student is None or student.tenant_id != resolution.tenant_id:
-             raise UnauthorizedException("Account not found")
-        
+            raise UnauthorizedException("Account not found")
 
         password_matches = (
             student.password_hash is not None
-            and verify_password(password , student.password_hash)
+            and verify_password(password, student.password_hash)
         )
 
         access_code = None
         if not password_matches:
             access_code = await StudentAccessCodeRepository.get_active_code_by_digest(
-                db = db ,
-                tenant_id = student.tenant_id,
-                student_id = student.id,
-                code_digest = hash_auth_secret(password)
+                db=db,
+                tenant_id=student.tenant_id,
+                student_id=student.id,
+                code_digest=hash_auth_secret(password),
             )
 
         if not password_matches and access_code is None:
             raise UnauthorizedException("Invalid credentials")
-        
-        needs_commit = False
 
         if access_code is not None:
             student.password_reset_required = True
             db.add(student)
             await db.flush()
-            needs_commit = True
 
         if (
             not student.is_active
@@ -471,14 +461,7 @@ async def _authenticate_tenant_actor(
         ):
             raise UnauthorizedException("Account is not active")
 
-        if await _update_last_login_if_due(db, student):
-            needs_commit = True
-
-        if needs_commit:
-            await db.commit()
-
-
-
+        await _update_last_login_if_due(db, student)
         return AuthenticatedActor(
             actor_type=ActorType.STUDENT.value,
             account_type=ActorType.STUDENT.value,
@@ -590,7 +573,8 @@ def _email_actor_can_reset_password(
 
 @dataclass
 class AuthenticatedActor:
-    """Represent the AuthenticatedActor type."""
+    """Authenticated actor payload shared between login and session creation."""
+
     actor_type: str
     account_type: str
     actor_id: uuid.UUID
@@ -601,143 +585,107 @@ class AuthenticatedActor:
     user: LoginSessionUser | None = None
 
 
-
-
-
 @dataclass
 class AuthSessionTokenPair:
-    """Tokens and session metadata returned after login or refresh"""
+    """Tokens and session metadata returned after login or refresh."""
 
-
-    access_token : str
-    refresh_token : str
-    session_id : uuid.UUID
-    session_jti : str
-    refresh_token_expires_at : datetime 
-
-
-
+    access_token: str
+    refresh_token: str
+    session_id: uuid.UUID
+    session_jti: str
+    refresh_token_expires_at: datetime
 
 
 class AuthSessionService:
-    """Business logic persistent auth sessions and refresh-token rotation"""
+    """Business logic for persistent auth sessions and refresh-token rotation."""
 
     DEFAULT_SESSION_DAYS = settings.DEFAULT_SESSION_DAYS
     REMEMBER_ME_SESSION_DAYS = settings.REMEMBER_ME_SESSION_DAYS
 
-
-
     @staticmethod
-    def _session_lifetime(*, remember_me : bool) -> timedelta:
-        """Return session lifetime"""
-
+    def _session_lifetime(*, remember_me: bool) -> timedelta:
+        """Return session lifetime."""
 
         days = (
             AuthSessionService.REMEMBER_ME_SESSION_DAYS
             if remember_me
             else AuthSessionService.DEFAULT_SESSION_DAYS
         )
-        return timedelta(days = days)
-    
-
+        return timedelta(days=days)
 
     @staticmethod
-    def _to_session_actor_type(actor_type : str) -> AuthSessionActorType:
-        """Convert authenticated actor type into session actor type"""
+    def _to_session_actor_type(actor_type: str) -> AuthSessionActorType:
+        """Convert authenticated actor type into session actor type."""
 
         try:
             return AuthSessionActorType(actor_type)
-        
         except ValueError as exc:
-            raise BadRequestException("Unsupported authenticated actor type") from exc
-        
-
-
+            raise BadRequestException("Unsupported authenticated actor type.") from exc
 
     @staticmethod
-    def _build_access_token_claims_from_actor(actor: AuthenticatedActor):# -> dict[str, Any]:
-        """Build an access-token claims from the freshly authenticated actor"""
+    def _build_access_token_claims_from_actor(
+        actor: AuthenticatedActor,
+    ) -> dict[str, str | None]:
+        """Build access-token claims from a freshly authenticated actor."""
 
-        claims = {
-            "sub" : str(actor.actor_id),
-            "email" : actor.email,
-            "actor_type" : actor.actor_type,
-            "role" : actor.role,
-            "account_type" : actor.account_type
+        claims: dict[str, str | None] = {
+            "sub": str(actor.actor_id),
+            "email": actor.email,
+            "actor_type": actor.actor_type,
+            "role": actor.role,
+            "account_type": actor.account_type,
         }
-
         if actor.tenant_id is not None:
             claims["tenant_id"] = str(actor.tenant_id)
-
         return claims
-    
-
-
 
     @staticmethod
     async def _build_access_token_claims_from_session(
-        db : AsyncSession,
-        session : AuthSession
+        db: AsyncSession,
+        session: AuthSession,
     ) -> dict[str, str]:
-        """
-        Rebuild access-token claims from an existing session 
-
-        This revalidates the actor/account status during refresh
-        """
-
+        """Rebuild access-token claims from an existing session."""
 
         if session.actor_type == AuthSessionActorType.SUPERADMIN:
-            superadmin = await SuperAdminRepository.get_by_id(db , session.actor_id)
+            superadmin = await SuperAdminRepository.get_by_id(db, session.actor_id)
             if superadmin is None or not superadmin.is_active:
                 raise UnauthorizedException("Account is not active")
-            
-
-            return{
-                "sub" : str(superadmin.id),
-                "email" : superadmin.email,
-                "actor_type" : AuthSessionActorType.SUPERADMIN.value,
+            return {
+                "sub": str(superadmin.id),
+                "email": superadmin.email,
+                "actor_type": AuthSessionActorType.SUPERADMIN.value,
                 "role": "superadmin",
-                "account_type" : AuthSessionActorType.SUPERADMIN.value
+                "account_type": AuthSessionActorType.SUPERADMIN.value,
             }
 
-
-
         if session.tenant_id is None:
-            raise UnauthorizedException("Invalid Session")
-        
+            raise UnauthorizedException("Invalid session")
 
-        tenant = await TenantRepository.get_by_id(db , session.tenant_id)
-
+        tenant = await TenantRepository.get_by_id(db, session.tenant_id)
         if not _tenant_allows_login(tenant):
             raise UnauthorizedException("Account is not active")
-        
 
         if session.actor_type == AuthSessionActorType.TENANT_ADMIN:
             admin = await TenantAdminRepository.get_active_by_id(
-                db = db ,
-                admin_id = session.actor_id
+                db=db,
+                admin_id=session.actor_id,
             )
-
             if (
                 admin is None
                 or admin.tenant_id != session.tenant_id
                 or not admin.is_active
                 or not admin.is_verified
-                or not admin.account_status != TenantAdminStatus.ACTIVE
+                or admin.account_status != TenantAdminStatus.ACTIVE
             ):
                 raise UnauthorizedException("Account is not active")
-            
-
-            return{
+            return {
                 "sub": str(admin.id),
-                "email" : admin.email ,
-                "actor_type" : AuthSessionActorType.TENANT_ADMIN.value,
+                "email": admin.email,
+                "actor_type": AuthSessionActorType.TENANT_ADMIN.value,
                 "role": "admin",
-                "account_type" : AuthSessionActorType.TENANT_ADMIN.value,
-                "tenant_id" : str(admin.tenant_id)
+                "account_type": AuthSessionActorType.TENANT_ADMIN.value,
+                "tenant_id": str(admin.tenant_id),
             }
-        
-
 
         if session.actor_type == AuthSessionActorType.TEACHER:
             teacher = await TeacherRepository.get_by_id(db, session.actor_id)
@@ -750,7 +698,6 @@ class AuthSessionService:
                 or teacher.status != TeacherStatus.ACTIVE
             ):
                 raise UnauthorizedException("Account is not active")
-
             return {
                 "sub": str(teacher.id),
                 "email": teacher.email,
@@ -770,7 +717,6 @@ class AuthSessionService:
                 or parent.account_status != ParentAccountStatus.ACTIVE
             ):
                 raise UnauthorizedException("Account is not active")
-
             return {
                 "sub": str(parent.id),
                 "email": parent.email,
@@ -790,7 +736,6 @@ class AuthSessionService:
                 or student.account_status != StudentAccountStatus.ACTIVE
             ):
                 raise UnauthorizedException("Account is not active")
-
             return {
                 "sub": str(student.id),
                 "email": student.admission_number,
@@ -802,87 +747,60 @@ class AuthSessionService:
 
         raise UnauthorizedException("Invalid session")
 
-        
     @staticmethod
     async def create_login_session(
-        db : AsyncSession,
+        db: AsyncSession,
         *,
-        actor : AuthenticatedActor,
-        user_agent : str | None = None ,
-        ip_address : str | None = None ,
-        remember_me : bool = False
-    ):
-        """Create a database-backed login session and first refresh token"""
+        actor: AuthenticatedActor,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+        remember_me: bool = False,
+    ) -> AuthSessionTokenPair:
+        """Create a database-backed login session and first refresh token."""
+
         now = datetime.now(timezone.utc)
-        session_lifetime = AuthSessionService._session_lifetime(
-            remember_me = remember_me
+        session_expires_at = now + AuthSessionService._session_lifetime(
+            remember_me=remember_me,
         )
-        session_expires_at = now + session_lifetime
-
-
         session_jti = generate_token_jti()
-        refresh_token_raw = generate_refresh_token()
-        refresh_token_jti = generate_token_jti()
-
-
-
+        raw_refresh_token = generate_refresh_token()
 
         session = AuthSession(
-            tenant_id = actor.tenant_id,
-            actor_type = AuthSessionService._to_session_actor_type(actor.actor_type),
-            actor_id = actor.actor_id,
-            session_jti = session_jti,
-            user_agent = user_agent,
-            ip_address = ip_address,
-            remember_me = remember_me,
-            last_used_at = now ,
-            expires_at = session_expires_at
+            tenant_id=actor.tenant_id,
+            actor_type=AuthSessionService._to_session_actor_type(actor.actor_type),
+            actor_id=actor.actor_id,
+            session_jti=session_jti,
+            user_agent=user_agent,
+            ip_address=ip_address,
+            remember_me=remember_me,
+            last_used_at=now,
+            expires_at=session_expires_at,
         )
-
-
-        session = await AuthSessionRepository.create_session(db , session)
-
-
+        session = await AuthSessionRepository.create_session(db, session)
 
         refresh_token = AuthRefreshToken(
-            session_id = session.id,
-            token_hash = hash_refresh_token(refresh_token_raw),
-            token_jti = refresh_token_jti,
-            issued_ip_address = ip_address,
-            issued_user_agent = user_agent ,
-            expires_at = session_expires_at
-
+            session_id=session.id,
+            token_hash=hash_refresh_token(raw_refresh_token),
+            token_jti=generate_token_jti(),
+            issued_ip_address=ip_address,
+            issued_user_agent=user_agent,
+            expires_at=session_expires_at,
         )
-
-
-
-        await AuthRefreshTokenRepository.create_refresh_token(db , refresh_token)
-
-        claims = AuthSessionService._build_access_token_claims_from_actor(actor)
-
+        await AuthRefreshTokenRepository.create_refresh_token(db, refresh_token)
 
         access_token = create_access_token(
-            data = claims,
-            session_jti = session.session_jti
+            data=AuthSessionService._build_access_token_claims_from_actor(actor),
+            session_jti=session.session_jti,
         )
-
-
         await db.commit()
 
-
-
         return AuthSessionTokenPair(
-            access_token = access_token ,
-            refresh_token = refresh_token_raw,
-            session_id = session.id,
-            session_jti = session.session_jti,
-            refresh_token_expires_at= session_expires_at
+            access_token=access_token,
+            refresh_token=raw_refresh_token,
+            session_id=session.id,
+            session_jti=session.session_jti,
+            refresh_token_expires_at=session_expires_at,
         )
-
-
-
-
-
 
     @staticmethod
     async def rotate_refresh_token(
@@ -895,14 +813,11 @@ class AuthSessionService:
         """Rotate a refresh token and return a new access/refresh pair."""
 
         now = datetime.now(timezone.utc)
-        token_hash = hash_refresh_token(refresh_token)
-
         stored_token = await AuthRefreshTokenRepository.get_by_hash(
             db,
-            token_hash,
+            hash_refresh_token(refresh_token),
             lock=True,
         )
-
         if stored_token is None:
             raise UnauthorizedException("Invalid session")
 
@@ -911,7 +826,6 @@ class AuthSessionService:
             stored_token.session_id,
             lock=True,
         )
-
         if session is None:
             raise UnauthorizedException("Invalid session")
 
@@ -936,14 +850,10 @@ class AuthSessionService:
             await db.commit()
             raise UnauthorizedException("Session expired. Please log in again.")
 
-        token_expires_at = AuthSessionService._ensure_timezone_aware(
-            stored_token.expires_at,
-        )
-        session_expires_at = AuthSessionService._ensure_timezone_aware(
-            session.expires_at,
-        )
-
-        if token_expires_at <= now or session_expires_at <= now:
+        if (
+            _ensure_timezone_aware(stored_token.expires_at) <= now
+            or _ensure_timezone_aware(session.expires_at) <= now
+        ):
             await AuthRefreshTokenRepository.revoke_token(
                 db,
                 stored_token,
@@ -962,49 +872,39 @@ class AuthSessionService:
         if session.revoked_at is not None or session.compromised_at is not None:
             raise UnauthorizedException("Session expired. Please log in again.")
 
-        new_refresh_token_raw = generate_refresh_token()
+        raw_new_refresh_token = generate_refresh_token()
         new_refresh_token = AuthRefreshToken(
             session_id=session.id,
-            token_hash=hash_refresh_token(new_refresh_token_raw),
+            token_hash=hash_refresh_token(raw_new_refresh_token),
             token_jti=generate_token_jti(),
             issued_ip_address=ip_address,
             issued_user_agent=user_agent,
             expires_at=session.expires_at,
         )
-
         new_refresh_token = await AuthRefreshTokenRepository.create_refresh_token(
             db,
             new_refresh_token,
         )
-
         await AuthRefreshTokenRepository.mark_used(
             db,
             stored_token,
             used_at=now,
             replaced_by_token_id=new_refresh_token.id,
         )
-
-        await AuthSessionRepository.touch_session(
-            db,
-            session,
-            last_used_at=now,
-        )
-
-        claims = await AuthSessionService._build_access_token_claims_from_session(
-            db,
-            session,
-        )
+        await AuthSessionRepository.touch_session(db, session, last_used_at=now)
 
         access_token = create_access_token(
-            data=claims,
+            data=await AuthSessionService._build_access_token_claims_from_session(
+                db,
+                session,
+            ),
             session_jti=session.session_jti,
         )
-
         await db.commit()
 
         return AuthSessionTokenPair(
             access_token=access_token,
-            refresh_token=new_refresh_token_raw,
+            refresh_token=raw_new_refresh_token,
             session_id=session.id,
             session_jti=session.session_jti,
             refresh_token_expires_at=session.expires_at,
@@ -1016,20 +916,14 @@ class AuthSessionService:
         *,
         refresh_token: str,
     ) -> None:
-        """Revoke the session associated with a refresh token.
-
-        Logout should be mostly idempotent: if the token is unknown, do nothing.
-        """
+        """Revoke the session associated with a refresh token."""
 
         now = datetime.now(timezone.utc)
-        token_hash = hash_refresh_token(refresh_token)
-
         stored_token = await AuthRefreshTokenRepository.get_by_hash(
             db,
-            token_hash,
+            hash_refresh_token(refresh_token),
             lock=True,
         )
-
         if stored_token is None:
             return
 
@@ -1038,7 +932,6 @@ class AuthSessionService:
             stored_token.session_id,
             lock=True,
         )
-
         if session is not None and session.revoked_at is None:
             await AuthSessionRepository.revoke_session(
                 db,
@@ -1053,26 +946,7 @@ class AuthSessionService:
             revoked_at=now,
             reason="logout",
         )
-
         await db.commit()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class AuthService:
@@ -1086,6 +960,7 @@ class AuthService:
         resend_otp_available: bool,
     ) -> dict[str, str | bool]:
         """Build verification required payload."""
+
         normalized_email = _normalize_email(email)
         return {
             "message": detail,
@@ -1102,7 +977,8 @@ class AuthService:
         *,
         resend_otp_available: bool,
     ) -> dict[str, str]:
-        """Internal helper for otp verification headers."""
+        """Build verification-required headers."""
+
         normalized_email = _normalize_email(email)
         return {
             "X-Verification-Required": "true",
@@ -1119,7 +995,8 @@ class AuthService:
         email: str,
         background_tasks: BackgroundTasks | None = None,
     ) -> None:
-        """Internal helper for raise verification required."""
+        """Raise verification-required and send/reuse OTP."""
+
         normalized_email = _normalize_email(email)
         detail = "Your account needs verification. We sent a new verification code."
         resend_otp_available = True
@@ -1132,6 +1009,7 @@ class AuthService:
                     email=normalized_email,
                     purpose=AuthPurpose.VERIFICATION.value,
                 ),
+                background_tasks=background_tasks,
             )
         except TooManyRequestsException as exc:
             resend_otp_available = False
@@ -1165,7 +1043,8 @@ class AuthService:
         payload: LoginRequest,
         background_tasks: BackgroundTasks | None = None,
     ) -> AuthenticatedActor:
-        """Perform authenticate actor."""
+        """Authenticate an actor without creating a session."""
+
         raw_identifier = payload.identifier.strip()
         identifier_type = _resolve_identifier_type(raw_identifier)
         normalized_identifier = (
@@ -1182,16 +1061,16 @@ class AuthService:
             )
             if superadmin is not None:
                 return AuthenticatedActor(
-                    actor_type="superadmin",
-                    account_type="superadmin",
+                    actor_type=AuthSessionActorType.SUPERADMIN.value,
+                    account_type=AuthSessionActorType.SUPERADMIN.value,
                     actor_id=superadmin.id,
                     email=superadmin.email,
                     role="superadmin",
                     user=LoginSessionUser(
                         id=str(superadmin.id),
                         email=superadmin.email,
-                        actor_type="superadmin",
-                        account_type="superadmin",
+                        actor_type=AuthSessionActorType.SUPERADMIN.value,
+                        account_type=AuthSessionActorType.SUPERADMIN.value,
                         role="superadmin",
                     ),
                 )
@@ -1210,7 +1089,8 @@ class AuthService:
 
     @staticmethod
     async def reset_password(db: AsyncSession, payload: UpdatePassword) -> None:
-        """Perform reset password."""
+        """Reset password using a verified password-reset token."""
+
         normalized_email = _normalize_email(payload.email)
         hashed_token = hash_auth_secret(payload.reset_token)
         now = datetime.now(timezone.utc)
@@ -1228,12 +1108,12 @@ class AuthService:
         if reset_record is None:
             raise UnauthorizedException("Invalid or expired reset token")
 
-        if reset_record.expires_at.replace(tzinfo=timezone.utc) < now:
+        if _ensure_timezone_aware(reset_record.expires_at) < now:
             await db.delete(reset_record)
             await db.commit()
             raise UnauthorizedException("Invalid or expired reset token")
 
-        actor, tenant, _actor_type = await _get_email_actor_with_tenant(
+        actor, tenant, actor_type = await _get_email_actor_with_tenant(
             db,
             normalized_email,
             lock=True,
@@ -1241,15 +1121,20 @@ class AuthService:
         if not _email_actor_can_reset_password(actor, tenant):
             raise UnauthorizedException("Password reset is not available for this account")
 
-        hashed_pw = hash_password(payload.new_password)
-
-        actor.password_hash = hashed_pw
+        actor.password_hash = hash_password(payload.new_password)
+        await AuthSessionRepository.revoke_all_sessions_for_actor(
+            db,
+            actor_type=AuthSessionService._to_session_actor_type(_enum_value(actor_type) or ""),
+            actor_id=actor.id,
+            revoked_at=now,
+            reason="password_reset",
+        )
         await db.delete(reset_record)
         await db.commit()
 
 
 class TenantActivationService:
-    """Business logic for the auth domain."""
+    """Business logic for tenant activation."""
 
     @staticmethod
     def _build_invite_link(
@@ -1257,6 +1142,7 @@ class TenantActivationService:
         frontend_app_url: str | None = None,
     ) -> str:
         """Build invite link."""
+
         base_url = (frontend_app_url or settings.FRONTEND_APP_URL).strip().rstrip("/")
         return f"{base_url}/invite?token={quote(raw_token, safe='')}"
 
@@ -1268,7 +1154,8 @@ class TenantActivationService:
         admin_user: TenantAdmin,
         frontend_app_url: str | None = None,
     ) -> str:
-        """Create activation record."""
+        """Create tenant activation record."""
+
         raw_token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(
             hours=settings.TENANT_ACTIVATION_EXPIRATION_HOURS
@@ -1280,7 +1167,6 @@ class TenantActivationService:
                 AuthRecord.purpose == AuthPurpose.TENANT_ACTIVATION,
             )
         )
-
         db.add(
             AuthRecord(
                 email=admin_user.email,
@@ -1305,7 +1191,8 @@ class TenantActivationService:
         invite_link: str,
         background_tasks: BackgroundTasks | None = None,
     ) -> None:
-        """Perform send activation email."""
+        """Send tenant activation email."""
+
         subject = f"Activate your {school_name} administrator account"
         html_body = get_tenant_invite_email_html(school_name, invite_link)
 
@@ -1326,16 +1213,15 @@ class TenantActivationService:
             is_html=True,
         )
         if not email_sent:
-            raise BadRequestException(
-                "Unable to send activation email. Please try again."
-            )
+            raise BadRequestException("Unable to send activation email. Please try again.")
 
     @staticmethod
     async def activate_tenant(
         db: AsyncSession,
         payload: TenantActivationRequest,
     ) -> dict[str, str]:
-        """Perform activate tenant."""
+        """Activate a tenant admin account and tenant trial."""
+
         hashed_token = hash_auth_secret(payload.token)
         now = datetime.now(timezone.utc)
 
@@ -1351,17 +1237,15 @@ class TenantActivationService:
         if activation_record is None:
             raise BadRequestException("Invalid or expired activation link.")
 
-        if activation_record.expires_at.replace(tzinfo=timezone.utc) < now:
+        if _ensure_timezone_aware(activation_record.expires_at) < now:
             await db.delete(activation_record)
             await db.commit()
             raise BadRequestException("Invalid or expired activation link.")
 
-        normalized_email = payload.email.strip().lower()
-        if activation_record.email.strip().lower() != normalized_email:
+        normalized_email = _normalize_email(payload.email)
+        if _normalize_email(activation_record.email) != normalized_email:
             await db.rollback()
-            raise BadRequestException(
-                "Activation link does not match this email address."
-            )
+            raise BadRequestException("Activation link does not match this email address.")
 
         admin_result = await db.execute(
             select(TenantAdmin).where(
@@ -1375,12 +1259,7 @@ class TenantActivationService:
         )
         tenant = tenant_result.scalar_one_or_none()
 
-        if admin is None or tenant is None:
-            await db.delete(activation_record)
-            await db.commit()
-            raise BadRequestException("Activation link is no longer valid.")
-
-        if admin.tenant_id != tenant.id:
+        if admin is None or tenant is None or admin.tenant_id != tenant.id:
             await db.delete(activation_record)
             await db.commit()
             raise BadRequestException("Activation link is no longer valid.")
@@ -1405,7 +1284,6 @@ class TenantActivationService:
             tenant_id=tenant.id,
             notes="Trial started after activation link completion.",
         )
-
         await db.delete(activation_record)
         await db.commit()
 
@@ -1413,7 +1291,7 @@ class TenantActivationService:
 
 
 class UserInviteService:
-    """Business logic for the auth domain."""
+    """Business logic for tenant user and superadmin invites."""
 
     @staticmethod
     def _build_invite_link(
@@ -1421,6 +1299,7 @@ class UserInviteService:
         frontend_app_url: str | None = None,
     ) -> str:
         """Build invite link."""
+
         base_url = (frontend_app_url or settings.FRONTEND_APP_URL).strip().rstrip("/")
         return f"{base_url}/invite?token={quote(raw_token, safe='')}"
 
@@ -1433,6 +1312,7 @@ class UserInviteService:
         frontend_app_url: str | None = None,
     ) -> str:
         """Create invite record."""
+
         raw_token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(
             hours=settings.TENANT_ACTIVATION_EXPIRATION_HOURS
@@ -1445,7 +1325,6 @@ class UserInviteService:
                 AuthRecord.is_used == False,
             )
         )
-
         db.add(
             AuthRecord(
                 email=_normalize_email(email),
@@ -1471,7 +1350,8 @@ class UserInviteService:
         invite_link: str,
         background_tasks: BackgroundTasks | None = None,
     ) -> None:
-        """Perform send invite email."""
+        """Send invite email."""
+
         subject = f"Set up your {school_name} account"
         html_body = get_user_invite_email_html(user_name, school_name, invite_link)
 
@@ -1492,9 +1372,7 @@ class UserInviteService:
             is_html=True,
         )
         if not email_sent:
-            raise BadRequestException(
-                "Unable to send invite email. Please try again."
-            )
+            raise BadRequestException("Unable to send invite email. Please try again.")
 
     @staticmethod
     async def get_invite_status(
@@ -1502,6 +1380,7 @@ class UserInviteService:
         token: str,
     ) -> dict[str, str | None]:
         """Return invite status."""
+
         hashed_token = hash_auth_secret(token)
         now = datetime.now(timezone.utc)
 
@@ -1524,23 +1403,18 @@ class UserInviteService:
                 return {"status": "invalid", "purpose": None}
 
             normalized_invite_email = _normalize_email(superadmin_invite.email)
-            existing_user, existing_tenant, existing_superadmin = await _get_platform_email_conflicts(
-                db,
-                normalized_invite_email,
+            existing_user, existing_tenant, existing_superadmin = (
+                await _get_platform_email_conflicts(db, normalized_invite_email)
             )
 
             if existing_superadmin is not None and existing_superadmin.is_active:
                 return {"status": "used", "purpose": "superadmin_invite"}
-
             if existing_user is not None or existing_tenant is not None or existing_superadmin is not None:
                 return {"status": "invalid", "purpose": "superadmin_invite"}
-
             if superadmin_invite.is_used:
                 return {"status": "used", "purpose": "superadmin_invite"}
-
-            if superadmin_invite.expires_at.replace(tzinfo=timezone.utc) < now:
+            if _ensure_timezone_aware(superadmin_invite.expires_at) < now:
                 return {"status": "expired", "purpose": "superadmin_invite"}
-
             return {"status": "valid", "purpose": "superadmin_invite"}
 
         tenant_result = await db.execute(select(Tenant).where(Tenant.id == record.tenant_id))
@@ -1549,16 +1423,13 @@ class UserInviteService:
         if record.purpose == AuthPurpose.USER_INVITE:
             if not _tenant_allows_user_invite_completion(tenant):
                 return {"status": "invalid", "purpose": None}
-
-        if record.purpose == AuthPurpose.TENANT_ACTIVATION and not _tenant_allows_activation_completion(tenant):
-            return {"status": "invalid", "purpose": None}
-
+        if record.purpose == AuthPurpose.TENANT_ACTIVATION:
+            if not _tenant_allows_activation_completion(tenant):
+                return {"status": "invalid", "purpose": None}
         if record.is_used:
             return {"status": "used", "purpose": record.purpose.value}
-
-        if record.expires_at.replace(tzinfo=timezone.utc) < now:
+        if _ensure_timezone_aware(record.expires_at) < now:
             return {"status": "expired", "purpose": record.purpose.value}
-
         return {"status": "valid", "purpose": record.purpose.value}
 
     @staticmethod
@@ -1566,7 +1437,8 @@ class UserInviteService:
         db: AsyncSession,
         payload: UserInviteAcceptanceRequest,
     ) -> dict[str, str]:
-        """Perform accept invite."""
+        """Accept a teacher/parent invite, or delegate to superadmin invite."""
+
         hashed_token = hash_auth_secret(payload.token)
         now = datetime.now(timezone.utc)
 
@@ -1582,20 +1454,15 @@ class UserInviteService:
             return await UserInviteService.accept_superadmin_invite(db, payload)
 
         if invite_record.is_used:
-            raise BadRequestException(
-                "This invite link has already been used. Please log in instead."
-            )
-
-        if invite_record.expires_at.replace(tzinfo=timezone.utc) < now:
+            raise BadRequestException("This invite link has already been used. Please log in instead.")
+        if _ensure_timezone_aware(invite_record.expires_at) < now:
             raise BadRequestException(
                 "This invite link has expired. Please request a new invite from your school admin."
             )
 
-        normalized_email = payload.email.strip().lower()
-        if invite_record.email.strip().lower() != normalized_email:
-            raise BadRequestException(
-                "Invite link does not match this email address."
-            )
+        normalized_email = _normalize_email(payload.email)
+        if _normalize_email(invite_record.email) != normalized_email:
+            raise BadRequestException("Invite link does not match this email address.")
 
         actor, tenant, actor_type = await _get_email_actor_with_tenant(
             db,
@@ -1604,47 +1471,36 @@ class UserInviteService:
         )
         normalized_actor_type = _enum_value(actor_type)
 
-        if tenant.id != invite_record.tenant_id:
-            raise BadRequestException(
-                "This invite link is invalid or has expired. Please request a new invite from your school admin."
-            )
-
-        if not _tenant_allows_user_invite_completion(tenant):
+        if tenant.id != invite_record.tenant_id or not _tenant_allows_user_invite_completion(tenant):
             raise BadRequestException(
                 "This invite link is invalid or has expired. Please request a new invite from your school admin."
             )
 
         if normalized_actor_type == ActorType.TENANT_ADMIN.value:
             raise BadRequestException("This invite link is not valid for administrator setup.")
-
         if normalized_actor_type == ActorType.STUDENT.value:
             raise BadRequestException("This invite link is not valid for student setup.")
 
-        if actor.account_status != TeacherAccountStatus.PENDING and isinstance(actor, Teacher):
+        if isinstance(actor, Teacher) and actor.account_status != TeacherAccountStatus.PENDING:
             invite_record.is_used = True
             await db.commit()
-            raise BadRequestException(
-                "This invite link has already been used. Please log in instead."
-            )
+            raise BadRequestException("This invite link has already been used. Please log in instead.")
 
-        if actor.account_status != ParentAccountStatus.PENDING and isinstance(actor, Parent):
+        if isinstance(actor, Parent) and actor.account_status != ParentAccountStatus.PENDING:
             invite_record.is_used = True
             await db.commit()
-            raise BadRequestException(
-                "This invite link has already been used. Please log in instead."
-            )
+            raise BadRequestException("This invite link has already been used. Please log in instead.")
 
         if actor.is_verified:
             invite_record.is_used = True
             await db.commit()
-            raise BadRequestException(
-                "This invite link has already been used. Please log in instead."
-            )
+            raise BadRequestException("This invite link has already been used. Please log in instead.")
 
         actor.password_hash = hash_password(payload.password)
         actor.is_verified = True
         actor.is_active = True
         actor.last_login_at = now
+
         if isinstance(actor, Teacher):
             actor.account_status = TeacherAccountStatus.ACTIVE
             actor_role = "teacher"
@@ -1653,8 +1509,8 @@ class UserInviteService:
             actor_role = "parent"
         else:
             raise BadRequestException("Unsupported invite actor type.")
-        invite_record.is_used = True
 
+        invite_record.is_used = True
         await db.execute(
             delete(AuthRecord).where(
                 func.lower(AuthRecord.email) == _normalize_email(invite_record.email),
@@ -1664,6 +1520,7 @@ class UserInviteService:
             )
         )
         await db.commit()
+
         access_token = create_access_token(
             data={
                 "sub": str(actor.id),
@@ -1674,7 +1531,6 @@ class UserInviteService:
                 "tenant_id": str(actor.tenant_id),
             }
         )
-
         return {
             "detail": "Account setup completed successfully.",
             "access_token": access_token,
@@ -1689,7 +1545,8 @@ class UserInviteService:
         db: AsyncSession,
         payload: UserInviteAcceptanceRequest,
     ) -> dict[str, str]:
-        """Perform accept superadmin invite."""
+        """Accept a superadmin invite."""
+
         hashed_token = hash_auth_secret(payload.token)
         now = datetime.now(timezone.utc)
 
@@ -1702,35 +1559,28 @@ class UserInviteService:
                 "This invite link is invalid or has expired. Please request a new invite from the platform owner."
             )
         if invite_record.is_used:
-            raise BadRequestException(
-                "This invite link has already been used. Please log in instead."
-            )
-        if invite_record.expires_at.replace(tzinfo=timezone.utc) < now:
+            raise BadRequestException("This invite link has already been used. Please log in instead.")
+        if _ensure_timezone_aware(invite_record.expires_at) < now:
             raise BadRequestException(
                 "This invite link has expired. Please request a new invite from the platform owner."
             )
 
         normalized_email = _normalize_email(payload.email)
-        if invite_record.email.strip().lower() != normalized_email:
+        if _normalize_email(invite_record.email) != normalized_email:
             raise BadRequestException("Invite link does not match this email address.")
 
         existing_user, existing_tenant, existing_superadmin = await _get_platform_email_conflicts(
             db,
             normalized_email,
         )
-
         if existing_user is not None or existing_tenant is not None:
             raise BadRequestException(
                 "This invite can no longer be used because this email already belongs to another platform account."
             )
-
         if existing_superadmin is not None and existing_superadmin.is_active:
             invite_record.is_used = True
             await db.commit()
-            raise BadRequestException(
-                "This invite link has already been used. Please log in instead."
-            )
-
+            raise BadRequestException("This invite link has already been used. Please log in instead.")
         if existing_superadmin is not None:
             raise BadRequestException(
                 "A superadmin account record already exists for this email. Ask another superadmin to reset or reactivate that account instead of accepting a new invite."
@@ -1742,7 +1592,6 @@ class UserInviteService:
             is_active=True,
         )
         await SuperAdminRepository.create(db, superadmin)
-
         invite_record.is_used = True
         await SuperAdminRepository.delete_active_invites_for_email(db, normalized_email)
         await db.commit()
@@ -1750,7 +1599,7 @@ class UserInviteService:
 
 
 class OTPService:
-    """Business logic for the auth domain."""
+    """Business logic for OTP verification and password reset."""
 
     @staticmethod
     async def _get_verification_target(
@@ -1762,7 +1611,6 @@ class OTPService:
         """Resolve a verification email to its tenant admin and tenant."""
 
         normalized_email = _normalize_email(email)
-
         try:
             resolution = await AuthIdentityService.resolve_identifier(
                 db=db,
@@ -1779,7 +1627,6 @@ class OTPService:
 
         admin_query = select(TenantAdmin).where(TenantAdmin.id == resolution.actor_id)
         tenant_query = select(Tenant).where(Tenant.id == resolution.tenant_id)
-
         if lock:
             admin_query = admin_query.with_for_update()
             tenant_query = tenant_query.with_for_update()
@@ -1795,9 +1642,7 @@ class OTPService:
             raise NotFoundException("Tenant not found.")
 
         if admin.tenant_id != tenant.id:
-            raise BadRequestException(
-                "OTP verification is not available for this account."
-            )
+            raise BadRequestException("OTP verification is not available for this account.")
 
         return admin, tenant
 
@@ -1809,17 +1654,11 @@ class OTPService:
         """Validate whether a tenant admin can complete OTP verification."""
 
         if admin.account_status != TenantAdminStatus.PENDING or admin.is_verified:
-            raise BadRequestException(
-                "OTP verification is not available for this account."
-            )
-
+            raise BadRequestException("OTP verification is not available for this account.")
         if tenant.verification_status == TenantVerificationStatus.REJECTED:
             raise BadRequestException("Tenant verification has been rejected.")
-
         if not _tenant_allows_otp_verification(tenant):
-            raise BadRequestException(
-                "OTP verification is not available for this account."
-            )
+            raise BadRequestException("OTP verification is not available for this account.")
 
     @staticmethod
     async def _replace_otp_record(
@@ -1828,10 +1667,12 @@ class OTPService:
         otp_code: str,
         expires_at: datetime,
     ) -> None:
-        """Internal helper for replace otp record."""
-        normalized_email = _normalize_email(payload.email)
+        """Replace existing OTP records for the target/purpose."""
 
-        if payload.purpose == AuthPurpose.VERIFICATION:
+        normalized_email = _normalize_email(payload.email)
+        purpose = _enum_value(payload.purpose)
+
+        if purpose == AuthPurpose.VERIFICATION.value:
             admin, _tenant = await OTPService._get_verification_target(
                 db,
                 normalized_email,
@@ -1839,7 +1680,7 @@ class OTPService:
             )
             record_email = admin.email
             tenant_id = admin.tenant_id
-        elif payload.purpose == AuthPurpose.PASSWORD_RESET:
+        elif purpose == AuthPurpose.PASSWORD_RESET.value:
             actor, _tenant, _actor_type = await _get_email_actor_with_tenant(
                 db,
                 normalized_email,
@@ -1848,7 +1689,7 @@ class OTPService:
             record_email = actor.email
             tenant_id = actor.tenant_id
         else:
-            raise BadRequestException(f"Unhandled OTP purpose : {payload.purpose}")
+            raise BadRequestException(f"Unhandled OTP purpose: {payload.purpose}")
 
         await db.execute(
             delete(AuthRecord).where(
@@ -1856,7 +1697,6 @@ class OTPService:
                 AuthRecord.purpose == payload.purpose,
             )
         )
-
         db.add(
             AuthRecord(
                 email=record_email,
@@ -1876,50 +1716,40 @@ class OTPService:
         *,
         commit: bool = True,
     ) -> None:
-        """Perform generate otp."""
+        """Generate and send an OTP."""
+
         normalized_email = _normalize_email(payload.email)
+        purpose = _enum_value(payload.purpose)
 
-        if payload.purpose == AuthPurpose.VERIFICATION:
-            admin, tenant = await OTPService._get_verification_target(
-                db,
-                normalized_email,
-            )
+        if purpose == AuthPurpose.VERIFICATION.value:
+            admin, tenant = await OTPService._get_verification_target(db, normalized_email)
             OTPService._ensure_verification_target_allowed(admin, tenant)
-        elif payload.purpose == AuthPurpose.PASSWORD_RESET:
-            actor, tenant, _actor_type = await _get_email_actor_with_tenant(
-                db,
-                normalized_email,
-            )
-
+        elif purpose == AuthPurpose.PASSWORD_RESET.value:
+            actor, tenant, _actor_type = await _get_email_actor_with_tenant(db, normalized_email)
             if not _email_actor_can_reset_password(actor, tenant):
-                raise BadRequestException(
-                    "Password reset is not available for this account."
-                )
+                raise BadRequestException("Password reset is not available for this account.")
         else:
-            raise BadRequestException(f"Unhandled OTP purpose : {payload.purpose}")
+            raise BadRequestException(f"Unhandled OTP purpose: {payload.purpose}")
 
         rate_limiter = OTPRateLimiter()
-        allowed, retry_after = rate_limiter.is_allowed(
-            normalized_email,
-            payload.purpose,
-        )
-
+        allowed, retry_after = rate_limiter.is_allowed(normalized_email, payload.purpose)
         if not allowed:
             raise TooManyRequestsException(
                 detail="Too many OTP requests. Please wait before trying again.",
                 retry_after=retry_after,
             )
 
-        otp_code = ''.join(random.choices(string.digits, k=6))
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRATION_MINUTES)
-
+        otp_code = "".join(random.choices(string.digits, k=6))
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.OTP_EXPIRATION_MINUTES
+        )
         await OTPService._replace_otp_record(db, payload, otp_code, expires_at)
         if commit:
             await db.commit()
 
         subject = "Your Verification Code"
         purpose_str = "verification"
-        if payload.purpose == AuthPurpose.PASSWORD_RESET:
+        if purpose == AuthPurpose.PASSWORD_RESET.value:
             subject = "Password Reset Code"
             purpose_str = "password reset"
 
@@ -1945,15 +1775,16 @@ class OTPService:
             body=html_body,
             is_html=True,
         )
-
         if not email_sent:
             raise BadRequestException("Unable to send OTP email. Please try again.")
 
     @staticmethod
     async def verify_otp(db: AsyncSession, payload: VerifyOTP) -> dict[str, str]:
-        """Perform verify otp."""
+        """Verify an OTP and return the next-step payload."""
+
         now = datetime.now(timezone.utc)
         normalized_email = _normalize_email(payload.email)
+        purpose = _enum_value(payload.purpose)
 
         result = await db.execute(
             select(AuthRecord).where(
@@ -1966,13 +1797,12 @@ class OTPService:
 
         if not otp_record or not verify_otp_hash(payload.code, otp_record.hashed_value):
             raise BadRequestException("Invalid OTP")
-
-        if otp_record.expires_at.replace(tzinfo=timezone.utc) < now:
+        if _ensure_timezone_aware(otp_record.expires_at) < now:
             raise BadRequestException("OTP has expired")
 
         response_data = {"detail": "OTP verified successfully"}
 
-        if payload.purpose == AuthPurpose.VERIFICATION:
+        if purpose == AuthPurpose.VERIFICATION.value:
             admin, tenant = await OTPService._get_verification_target(
                 db,
                 normalized_email,
@@ -1995,20 +1825,17 @@ class OTPService:
             )
             otp_record.is_used = True
 
-        elif payload.purpose == AuthPurpose.PASSWORD_RESET:
+        elif purpose == AuthPurpose.PASSWORD_RESET.value:
             actor, tenant, _actor_type = await _get_email_actor_with_tenant(
                 db,
                 payload.email,
                 lock=True,
             )
-
             if not _email_actor_can_reset_password(actor, tenant):
                 raise BadRequestException("Password reset is not available for this account.")
 
             reset_token = secrets.token_urlsafe(32)
             reset_token_expires_at = now + timedelta(minutes=15)
-
-            # Replace any previous reset token so only the latest one remains valid.
             await db.execute(
                 delete(AuthRecord).where(
                     func.lower(AuthRecord.email) == _normalize_email(actor.email),
@@ -2025,10 +1852,8 @@ class OTPService:
                 )
             )
             response_data["reset_token"] = reset_token
-
         else:
-            raise BadRequestException(f"Unhandled OTP purpose : {payload.purpose}")
+            raise BadRequestException(f"Unhandled OTP purpose: {payload.purpose}")
 
         await db.commit()
-
         return response_data
