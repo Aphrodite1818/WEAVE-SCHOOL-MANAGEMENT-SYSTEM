@@ -1,6 +1,9 @@
 """Authentication and authorization dependencies for tenant actors and superadmins."""
 
+from __future__ import annotations
+
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated, TypeAlias
 
 from fastapi import Depends
@@ -13,6 +16,8 @@ from app.core.cache.base import build_cache_key, tenant_prefix
 from app.core.cache.manager import CacheManager
 from app.core.dependencies.db import get_db
 from app.core.exceptions import ForbiddenException, UnauthorizedException
+from app.modules.auth.models import AuthSessionActorType
+from app.modules.auth.repository import AuthSessionRepository
 from app.modules.auth_identity.models import ActorType
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.parents.repository import ParentRepository
@@ -34,6 +39,80 @@ DbDependency: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
 
 TenantActor: TypeAlias = TenantAdmin | Teacher | Parent | Student
 CurrentActor: TypeAlias = TenantActor | SuperAdmin
+
+
+def _ensure_timezone_aware(value: datetime) -> datetime:
+    """Return a timezone-aware datetime."""
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _session_actor_type_from_token(
+    *,
+    actor_type: str | None,
+    account_type: str | None,
+) -> AuthSessionActorType:
+    """Map token actor/account claims to a session actor type."""
+
+    resolved_type = actor_type or account_type
+    if resolved_type is None:
+        raise UnauthorizedException("Could not validate credentials")
+
+    try:
+        return AuthSessionActorType(resolved_type)
+    except ValueError as exc:
+        raise UnauthorizedException("Could not validate credentials") from exc
+
+
+async def _ensure_active_session(
+    db: AsyncSession,
+    *,
+    payload: dict,
+    actor_id: uuid.UUID,
+    actor_type: str | None,
+    account_type: str | None,
+    tenant_id: uuid.UUID | None,
+) -> AuthSessionActorType:
+    """Ensure the access token belongs to an active, non-revoked DB session."""
+
+    if payload.get("token_type") != "access":
+        raise UnauthorizedException("Could not validate credentials")
+
+    session_jti = payload.get("sid")
+    if not session_jti:
+        raise UnauthorizedException("Session is no longer valid. Please log in again.")
+
+    expected_actor_type = _session_actor_type_from_token(
+        actor_type=actor_type,
+        account_type=account_type,
+    )
+
+    session = await AuthSessionRepository.get_session_by_jti(db, session_jti)
+    if session is None:
+        raise UnauthorizedException("Session is no longer valid. Please log in again.")
+
+    now = datetime.now(timezone.utc)
+    if (
+        session.revoked_at is not None
+        or session.compromised_at is not None
+        or _ensure_timezone_aware(session.expires_at) <= now
+    ):
+        raise UnauthorizedException("Session is no longer valid. Please log in again.")
+
+    if session.actor_id != actor_id or session.actor_type != expected_actor_type:
+        raise UnauthorizedException("Could not validate credentials")
+
+    if expected_actor_type == AuthSessionActorType.SUPERADMIN:
+        if session.tenant_id is not None or tenant_id is not None:
+            raise UnauthorizedException("Could not validate credentials")
+        return expected_actor_type
+
+    if tenant_id is None or session.tenant_id != tenant_id:
+        raise UnauthorizedException("Could not validate credentials")
+
+    return expected_actor_type
 
 
 async def _ensure_active_tenant(
@@ -71,53 +150,63 @@ async def get_current_actor(
     token: TokenDependency,
     db: DbDependency,
 ) -> CurrentActor:
-    """Return the authenticated actor from the JWT."""
+    """Return the authenticated actor from a session-backed JWT."""
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         actor_id_str: str | None = payload.get("sub")
         actor_type: str | None = payload.get("actor_type")
         account_type: str | None = payload.get("account_type")
+        tenant_id_str: str | None = payload.get("tenant_id")
+
         if actor_id_str is None:
             raise UnauthorizedException("Could not validate credentials")
 
         actor_id = uuid.UUID(actor_id_str)
-        if actor_type is None and account_type is None:
-            account_type = "superadmin" if payload.get("role") == "superadmin" else None
+        tenant_id = uuid.UUID(tenant_id_str) if tenant_id_str else None
+
+        session_actor_type = await _ensure_active_session(
+            db,
+            payload=payload,
+            actor_id=actor_id,
+            actor_type=actor_type,
+            account_type=account_type,
+            tenant_id=tenant_id,
+        )
     except (JWTError, ValueError):
         raise UnauthorizedException("Could not validate credentials")
 
-    if actor_type == ActorType.TENANT_ADMIN.value:
+    if session_actor_type == AuthSessionActorType.TENANT_ADMIN:
         actor = await TenantAdminRepository.get_by_id(db, actor_id)
         if actor is None:
             raise UnauthorizedException("Tenant admin not found")
         return actor
 
-    if actor_type == ActorType.TEACHER.value:
+    if session_actor_type == AuthSessionActorType.TEACHER:
         actor = await TeacherRepository.get_by_id(db, actor_id)
         if actor is None:
             raise UnauthorizedException("Teacher not found")
         return actor
 
-    if actor_type == ActorType.PARENT.value:
+    if session_actor_type == AuthSessionActorType.PARENT:
         actor = await ParentRepository.get_by_id(db, actor_id)
         if actor is None:
             raise UnauthorizedException("Parent not found")
         return actor
 
-    if actor_type == ActorType.STUDENT.value:
+    if session_actor_type == AuthSessionActorType.STUDENT:
         actor = await StudentRepository.get_by_id(db, actor_id)
         if actor is None:
             raise UnauthorizedException("Student not found")
         return actor
 
-    if account_type == "superadmin":
+    if session_actor_type == AuthSessionActorType.SUPERADMIN:
         actor = await SuperAdminRepository.get_by_id(db, actor_id)
         if actor is None:
             raise UnauthorizedException("Superadmin not found")
         return actor
 
-    raise UnauthorizedException("Legacy user tokens are no longer supported")
+    raise UnauthorizedException("Could not validate credentials")
 
 
 async def get_current_tenant_admin(
@@ -210,7 +299,7 @@ async def get_current_tenant_member(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     db: DbDependency,
 ) -> TenantActor:
-    """Return the current tenant actor in the new actor-based architecture."""
+    """Return the current tenant actor in the actor-based architecture."""
 
     if isinstance(actor, SuperAdmin):
         raise ForbiddenException("Tenant credentials are required for this operation")
