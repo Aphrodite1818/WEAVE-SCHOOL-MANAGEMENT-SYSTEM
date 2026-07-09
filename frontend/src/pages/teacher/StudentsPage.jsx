@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, CheckSquare, ClipboardList, Users } from "lucide-react";
+
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
@@ -10,13 +11,38 @@ import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { studentService } from "../../services/studentService";
+import { cn } from "../../utils/cn";
 
-const studentName = (student) => [student.first_name, student.last_name].filter(Boolean).join(" ") || student.admission_number || "Student";
-const classLabel = (item) => [item.name || item.class_name, item.arm || item.class_arm].filter(Boolean).join(" ") || "Class";
-const assignmentLabel = (item) => `${item.subject_name || "Subject"} - ${item.class_name || "Class"} ${item.class_arm || ""}`.trim();
+const studentName = (student) =>
+  [student.first_name, student.last_name].filter(Boolean).join(" ") ||
+  student.admission_number ||
+  "Student";
+const classLabel = (item) =>
+  [item.name || item.class_name, item.arm || item.class_arm].filter(Boolean).join(" ") ||
+  "Class";
+const assignmentLabel = (item) =>
+  `${item.subject_name || "Subject"} - ${item.class_name || "Class"} ${item.class_arm || ""}`.trim();
 const subjectLabel = (item) => item.subject_name || item.subject_code || "Subject";
 
+const rosterTabs = [
+  {
+    id: "subject",
+    label: "Subject roster",
+    shortLabel: "Subject",
+    icon: BookOpen,
+    description: "Students you teach for a selected class-subject.",
+  },
+  {
+    id: "class",
+    label: "Class teacher roster",
+    shortLabel: "Class",
+    icon: CheckSquare,
+    description: "Full class list only when you are the class teacher.",
+  },
+];
+
 function StudentsPage() {
+  const [activeTab, setActiveTab] = useState("subject");
   const [classTeacherClasses, setClassTeacherClasses] = useState([]);
   const [subjectAssignments, setSubjectAssignments] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -76,7 +102,7 @@ function StudentsPage() {
   useEffect(() => {
     if (!filteredAssignments.some((assignment) => assignment.id === selectedAssignmentId)) {
       const timeoutId = window.setTimeout(() => {
-      setSelectedAssignmentId(filteredAssignments[0]?.id || "");
+        setSelectedAssignmentId(filteredAssignments[0]?.id || "");
       }, 0);
       return () => window.clearTimeout(timeoutId);
     }
@@ -139,67 +165,112 @@ function StudentsPage() {
   }
 
   const selectedAssignment = subjectAssignments.find((item) => item.id === selectedAssignmentId);
+  const activeTabMeta = rosterTabs.find((tab) => tab.id === activeTab) || rosterTabs[0];
+  const ActiveIcon = activeTabMeta.icon;
 
   return (
     <DashboardLayout
       role="teacher"
       title="Teaching Rosters"
-      description="View students by duty type: full class roster for class teachers, and class-subject roster for subject teachers."
+      description="Switch between subject-teaching rosters and class-teacher rosters without crowding one page."
     >
-      {error ? <div className="rounded-xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-semibold text-error">{error}</div> : null}
+      {error ? (
+        <div className="rounded-xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-semibold text-error">
+          {error}
+        </div>
+      ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-2">
-        <Card className="p-4 sm:p-5">
+      <Card className="overflow-hidden p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-primary-soft p-3 text-primary"><BookOpen className="h-5 w-5" /></div>
-            <div>
-              <h2 className="section-title">Subject-teaching rosters</h2>
-              <p className="mt-1 text-sm text-text-muted">Filter by subject, then class. This is based on class-subject teacher assignments.</p>
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+              <ActiveIcon className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="section-title">{activeTabMeta.label}</h2>
+              <p className="mt-1 text-sm leading-6 text-text-muted">{activeTabMeta.description}</p>
             </div>
           </div>
-          {subjectAssignments.length === 0 ? (
-            <EmptyState icon={ClipboardList} title="No subject-teacher assignment" description="When an admin assigns you to a class-subject, the student roster for that class-subject will appear here." />
-          ) : (
-            <>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <SelectField label="Subject" value={selectedSubjectId} onChange={setSelectedSubjectId}>
-                  {subjectOptions.map((subject) => <option key={subject.id} value={subject.id}>{subject.label}</option>)}
-                </SelectField>
-                <SelectField label="Class for that subject" value={selectedAssignmentId} onChange={setSelectedAssignmentId}>
-                  {filteredAssignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.class_name} {assignment.class_arm || ""}</option>)}
-                </SelectField>
-              </div>
-              <RosterList
-                title={selectedAssignment ? assignmentLabel(selectedAssignment) : "Subject roster"}
-                students={subjectStudents}
-                isLoading={isRosterLoading}
-                empty="No students found for this assigned class-subject."
+
+          <div className="relative grid grid-cols-2 rounded-2xl border border-border/70 bg-surface-muted/35 p-1 shadow-inner lg:w-[24rem]">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute bottom-1 top-1 w-[calc(50%-0.25rem)] rounded-xl bg-surface shadow-sm transition-transform duration-300 ease-out",
+                activeTab === "class" ? "translate-x-[calc(100%+0.25rem)]" : "translate-x-0",
+              )}
+            />
+            {rosterTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "relative z-10 flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition sm:text-sm",
+                    isActive ? "text-primary" : "text-text-muted hover:text-text",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.shortLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </Card>
+
+      <section className="grid gap-5">
+        {activeTab === "subject" ? (
+          <Card className="p-4 sm:p-5">
+            {subjectAssignments.length === 0 ? (
+              <EmptyState
+                icon={ClipboardList}
+                title="No subject-teacher assignment"
+                description="When an admin assigns you to a class-subject, the student roster for that class-subject will appear here."
               />
-            </>
-          )}
-        </Card>
-
-        <Card className="p-4 sm:p-5">
-          <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-success-soft p-3 text-success"><CheckSquare className="h-5 w-5" /></div>
-            <div>
-              <h2 className="section-title">Class-teacher roster</h2>
-              <p className="mt-1 text-sm text-text-muted">Only available when you are assigned as the main class teacher for a class.</p>
-            </div>
-          </div>
-          {classTeacherClasses.length === 0 ? (
-            <EmptyState icon={Users} title="No class-teacher class" description="You are not assigned as a class teacher, so full class oversight features are hidden." />
-          ) : (
-            <>
-              <div className="mt-4">
-                <SelectField label="Class you oversee" value={selectedClassId} onChange={setSelectedClassId}>
-                  {classTeacherClasses.map((item) => <option key={item.id} value={item.id}>{classLabel(item)}</option>)}
-                </SelectField>
-              </div>
-              <RosterList title="Full class roster" students={classStudents} empty="No students found in this class." />
-            </>
-          )}
-        </Card>
+            ) : (
+              <>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <SelectField label="Subject" value={selectedSubjectId} onChange={setSelectedSubjectId}>
+                    {subjectOptions.map((subject) => <option key={subject.id} value={subject.id}>{subject.label}</option>)}
+                  </SelectField>
+                  <SelectField label="Class for that subject" value={selectedAssignmentId} onChange={setSelectedAssignmentId}>
+                    {filteredAssignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.class_name} {assignment.class_arm || ""}</option>)}
+                  </SelectField>
+                </div>
+                <RosterList
+                  title={selectedAssignment ? assignmentLabel(selectedAssignment) : "Subject roster"}
+                  students={subjectStudents}
+                  isLoading={isRosterLoading}
+                  empty="No students found for this assigned class-subject."
+                />
+              </>
+            )}
+          </Card>
+        ) : (
+          <Card className="p-4 sm:p-5">
+            {classTeacherClasses.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No class-teacher class"
+                description="You are not assigned as a class teacher, so full class oversight features are hidden."
+              />
+            ) : (
+              <>
+                <div className="max-w-xl">
+                  <SelectField label="Class you oversee" value={selectedClassId} onChange={setSelectedClassId}>
+                    {classTeacherClasses.map((item) => <option key={item.id} value={item.id}>{classLabel(item)}</option>)}
+                  </SelectField>
+                </div>
+                <RosterList title="Full class roster" students={classStudents} empty="No students found in this class." />
+              </>
+            )}
+          </Card>
+        )}
       </section>
     </DashboardLayout>
   );
@@ -207,22 +278,24 @@ function StudentsPage() {
 
 function RosterList({ title, students, empty, isLoading = false }) {
   return (
-    <div className="mt-4 rounded-2xl border border-border bg-surface-muted/20 p-3">
+    <div className="mt-4 rounded-2xl border border-border bg-surface-muted/20 p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3 px-1 py-1">
-        <p className="text-sm font-semibold text-text">{title}</p>
+        <p className="min-w-0 truncate text-sm font-semibold text-text">{title}</p>
         <Badge variant="default">{students.length} students</Badge>
       </div>
       {isLoading ? <LoadingState label="Loading students..." /> : null}
       {!isLoading && students.length === 0 ? <p className="px-1 py-4 text-sm text-text-muted">{empty}</p> : null}
       {!isLoading && students.length > 0 ? (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {students.map((student) => (
-            <div key={student.id} className="flex flex-col gap-1 rounded-xl border border-border bg-surface px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-text">{studentName(student)}</p>
-                <p className="text-xs text-text-muted">{student.admission_number || "No admission number"}</p>
+            <div key={student.id} className="rounded-xl border border-border bg-surface px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-text">{studentName(student)}</p>
+                  <p className="mt-1 text-xs text-text-muted">{student.admission_number || "No admission number"}</p>
+                </div>
+                <Badge variant={student.status === "active" ? "success" : "warning"}>{student.status || "student"}</Badge>
               </div>
-              <Badge variant={student.status === "active" ? "success" : "warning"}>{student.status || "student"}</Badge>
             </div>
           ))}
         </div>
