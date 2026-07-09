@@ -44,21 +44,12 @@ export function DashboardSectionHeader({ title, description, action, className =
   );
 }
 
-export function DashboardWelcomePanel({
-  eyebrow,
-  title,
-  description,
-  chips = [],
-  children,
-  className = "",
-}) {
+export function DashboardWelcomePanel({ eyebrow, title, description, chips = [], children, className = "" }) {
   return (
     <Card className={cn("overflow-hidden p-4 sm:p-6", className)}>
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          {eyebrow ? (
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs">{eyebrow}</p>
-          ) : null}
+          {eyebrow ? <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs">{eyebrow}</p> : null}
           <h2 className="mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl">{title}</h2>
           {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{description}</p> : null}
           {chips.length > 0 ? (
@@ -69,10 +60,7 @@ export function DashboardWelcomePanel({
                 return (
                   <span
                     key={`${chip.label}-${chip.value || ""}`}
-                    className={cn(
-                      "inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold sm:text-xs",
-                      chipToneStyle.badge,
-                    )}
+                    className={cn("inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold sm:text-xs", chipToneStyle.badge)}
                   >
                     <span className="truncate">{chip.label}</span>
                     {chip.value ? <span className="truncate opacity-80">{chip.value}</span> : null}
@@ -88,15 +76,7 @@ export function DashboardWelcomePanel({
   );
 }
 
-export function DashboardMetricCard({
-  label,
-  value,
-  description,
-  icon: Icon,
-  tone = "primary",
-  to,
-  badge,
-}) {
+export function DashboardMetricCard({ label, value, description, icon: Icon, tone = "primary", to, badge }) {
   const Wrapper = to ? Link : "div";
   const toneStyle = toneStyles[tone] || toneStyles.primary;
 
@@ -124,16 +104,7 @@ export function DashboardMetricCard({
   );
 }
 
-export function DashboardFocusCard({
-  title,
-  description,
-  icon: Icon,
-  tone = "primary",
-  primaryAction,
-  secondaryAction,
-  children,
-  className = "",
-}) {
+export function DashboardFocusCard({ title, description, icon: Icon, tone = "primary", primaryAction, secondaryAction, children, className = "" }) {
   const toneStyle = toneStyles[tone] || toneStyles.primary;
 
   return (
@@ -177,22 +148,11 @@ export function DashboardActionButton({ to, label, icon: Icon, variant = "primar
   );
 }
 
-export function DashboardListCard({
-  title,
-  description,
-  items = [],
-  emptyTitle = "Nothing needs attention",
-  emptyDescription = "You are all caught up.",
-  action,
-  className = "",
-}) {
+export function DashboardListCard({ title, description, items = [], emptyTitle = "Nothing needs attention", emptyDescription = "You are all caught up.", action, className = "" }) {
   return (
     <Card className={cn("flex h-full flex-col p-4 sm:p-6", className)}>
       <DashboardSectionHeader title={title} description={description} action={action} />
-      <div
-        className="mt-4 grid gap-3"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(12rem, 100%), 1fr))" }}
-      >
+      <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(10rem, 100%), 1fr))" }}>
         {items.length > 0 ? (
           items.map((item) => <DashboardListItem key={item.key || item.title} {...item} />)
         ) : (
@@ -240,10 +200,7 @@ export function DashboardQuickActions({ actions = [], title = "Quick actions", d
   return (
     <Card className="p-4 sm:p-6">
       <DashboardSectionHeader title={title} description={description} />
-      <div
-        className="mt-4 grid gap-3"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(9.25rem, 100%), 1fr))" }}
-      >
+      <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(9.25rem, 100%), 1fr))" }}>
         {actions.map((action) => {
           const ActionIcon = action.icon;
           const toneStyle = toneStyles[action.tone || "primary"] || toneStyles.primary;
