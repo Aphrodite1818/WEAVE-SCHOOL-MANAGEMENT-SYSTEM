@@ -5,16 +5,7 @@ import AuthLayout from "../../components/layout/AuthLayout";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 import { authService } from "../../services/auth.service";
-import { authSession, parseApiError } from "../../services/api";
-import { onboardingService } from "../../services/onboardingService";
-
-const ROLE_ROUTES = {
-  SUPERADMIN: "/superadmin/dashboard",
-  ADMIN: "/admin/dashboard",
-  TEACHER: "/teacher/dashboard",
-  STUDENT: "/student/dashboard",
-  PARENT: "/parent/dashboard",
-};
+import { parseApiError } from "../../services/api";
 
 function StateMessage({ type = "info", title, children }) {
   const icons = { error: TriangleAlert, success: CheckCircle2, warning: Clock3, info: CheckCircle2 };
@@ -116,21 +107,6 @@ function InvitePage() {
           : await authService.acceptInvite(formData.email, formData.password, token);
 
       setSuccessMessage(result?.detail || "Account setup completed successfully.");
-
-      if (result?.access_token) {
-        const normalizedRole = onboardingService.normalizeRole(
-          result.role || onboardingService.roleFromActorType(result.actor_type)
-        );
-        authSession.setToken(result.access_token);
-        authSession.setUser({
-          email: formData.email,
-          role: normalizedRole,
-          actor_type: result.actor_type,
-        });
-        navigate(ROLE_ROUTES[String(normalizedRole || "").toUpperCase()] || "/", { replace: true });
-        return;
-      }
-
       navigate("/login?invite=success", { replace: true });
     } catch (err) {
       const apiError = parseApiError(err, "Failed to complete account setup.");
