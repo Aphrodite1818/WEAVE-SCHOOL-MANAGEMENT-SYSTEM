@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowRight,
@@ -73,6 +74,13 @@ function AcademicWorkflowPage() {
   const { workflow = "setup" } = useParams();
   const section = workflowSections[workflow] || workflowSections.setup;
   const SectionIcon = section.icon;
+  const [activeStepId, setActiveStepId] = useState(section.tabs[0]?.id);
+  const activeStep = section.tabs.find((tab) => tab.id === activeStepId) || section.tabs[0];
+  const ActiveStepIcon = activeStep.icon;
+
+  useEffect(() => {
+    setActiveStepId(section.tabs[0]?.id);
+  }, [workflow, section.tabs]);
 
   return (
     <DashboardLayout role="admin" title={section.title} description={section.description}>
@@ -111,40 +119,74 @@ function AcademicWorkflowPage() {
         </div>
       </Card>
 
+      <Card className="p-4 sm:p-5">
+        <div className="relative grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:grid-cols-2 xl:grid-cols-4">
+          {section.tabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = tab.id === activeStep.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveStepId(tab.id)}
+                className={cn(
+                  "flex min-h-12 items-center justify-center gap-2 rounded-xl px-3 py-2 text-center text-xs font-semibold transition sm:text-sm",
+                  active ? "bg-surface text-primary shadow-sm" : "text-text-muted hover:bg-surface/60 hover:text-text",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
+          <div className="rounded-2xl border border-border/70 bg-surface-muted/20 p-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+              <ActiveStepIcon className="h-5 w-5" />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-text">{activeStep.label}</h3>
+            <p className="mt-2 text-sm leading-6 text-text-muted">{activeStep.description}</p>
+          </div>
+          <div className="rounded-2xl border border-border/70 bg-surface p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-text-muted">How to use this step</p>
+            <p className="mt-3 text-sm leading-6 text-text-soft">{activeStep.workbenchHint}</p>
+            <p className="mt-3 text-sm leading-6 text-text-muted">
+              Open the full workbench when you are ready to create, update, or review records for this step.
+            </p>
+            <Link to="/admin/academic/manage" className="mt-5 inline-flex">
+              <Button>
+                <Pencil className="h-4 w-4" />
+                {section.workbenchLabel}
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </Card>
+
       <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {section.tabs.map((tab) => {
           const Icon = tab.icon;
           return (
-            <Card key={tab.id} className="p-4">
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveStepId(tab.id)}
+              className={cn(
+                "rounded-2xl border bg-surface p-4 text-left transition hover:border-primary/30 hover:bg-primary-subtle/25",
+                activeStep.id === tab.id ? "border-primary/50 ring-2 ring-primary/10" : "border-border/70",
+              )}
+            >
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                 <Icon className="h-5 w-5" />
               </div>
               <h3 className="mt-4 text-sm font-semibold text-text sm:text-base">{tab.label}</h3>
               <p className="mt-2 text-xs leading-5 text-text-muted sm:text-sm">{tab.description}</p>
-              <p className="mt-4 rounded-2xl border border-border/70 bg-surface-muted/25 px-3 py-2 text-[11px] leading-5 text-text-muted">
-                {tab.workbenchHint}
-              </p>
-            </Card>
+            </button>
           );
         })}
       </section>
-
-      <Card className="p-4 sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h3 className="section-title">Ready to edit records?</h3>
-            <p className="mt-1 text-sm leading-6 text-text-muted">
-              The heavy forms stay in the full workbench, but this page separates the workflow so admins know what to do first.
-            </p>
-          </div>
-          <Link to="/admin/academic/manage" className="shrink-0">
-            <Button className="w-full lg:w-auto">
-              <Pencil className="h-4 w-4" />
-              {section.workbenchLabel}
-            </Button>
-          </Link>
-        </div>
-      </Card>
     </DashboardLayout>
   );
 }
