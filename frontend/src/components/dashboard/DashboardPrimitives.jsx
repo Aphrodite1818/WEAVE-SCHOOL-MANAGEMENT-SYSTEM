@@ -1,0 +1,257 @@
+import { Link } from "react-router-dom";
+import { ArrowRight, ChevronRight } from "lucide-react";
+
+import Card from "../ui/Card";
+import Button from "../ui/Button";
+import { cn } from "../../utils/cn";
+
+const toneStyles = {
+  primary: {
+    icon: "bg-primary-soft text-primary",
+    badge: "bg-primary-subtle text-primary",
+  },
+  success: {
+    icon: "bg-success-soft text-success",
+    badge: "bg-success-soft text-success",
+  },
+  warning: {
+    icon: "bg-warning-soft text-amber-700",
+    badge: "bg-warning-soft text-amber-700",
+  },
+  danger: {
+    icon: "bg-error-soft text-error",
+    badge: "bg-error-soft text-error",
+  },
+  accent: {
+    icon: "bg-accent-soft text-accent",
+    badge: "bg-accent-soft text-accent",
+  },
+  neutral: {
+    icon: "bg-surface-muted text-text-muted",
+    badge: "bg-surface-muted text-text-soft",
+  },
+};
+
+export function DashboardSectionHeader({ title, description, action, className = "" }) {
+  return (
+    <div className={cn("flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between", className)}>
+      <div className="min-w-0">
+        <h2 className="section-title">{title}</h2>
+        {description ? <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">{description}</p> : null}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
+}
+
+export function DashboardWelcomePanel({
+  eyebrow,
+  title,
+  description,
+  chips = [],
+  children,
+  className = "",
+}) {
+  return (
+    <Card className={cn("overflow-hidden p-5 sm:p-6", className)}>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          {eyebrow ? (
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-text-muted">{eyebrow}</p>
+          ) : null}
+          <h2 className="mt-2 text-2xl font-semibold leading-tight text-text sm:text-3xl">{title}</h2>
+          {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{description}</p> : null}
+          {chips.length > 0 ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {chips.filter(Boolean).map((chip) => (
+                <span
+                  key={`${chip.label}-${chip.value || ""}`}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold",
+                    toneStyles[chip.tone || "neutral"]?.badge || toneStyles.neutral.badge,
+                  )}
+                >
+                  {chip.label}
+                  {chip.value ? <span className="text-text/70">{chip.value}</span> : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {children ? <div className="w-full shrink-0 lg:w-auto lg:max-w-md">{children}</div> : null}
+      </div>
+    </Card>
+  );
+}
+
+export function DashboardMetricCard({
+  label,
+  value,
+  description,
+  icon: Icon,
+  tone = "primary",
+  to,
+  badge,
+}) {
+  const Wrapper = to ? Link : "div";
+  const toneStyle = toneStyles[tone] || toneStyles.primary;
+
+  return (
+    <Card
+      as={Wrapper}
+      to={to}
+      className={cn(
+        "group flex min-h-[8.25rem] flex-col justify-between p-4 transition hover:border-primary/30 hover:shadow-premium sm:p-5",
+        to ? "cursor-pointer" : "",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", toneStyle.icon)}>
+          {Icon ? <Icon className="h-5 w-5" /> : null}
+        </div>
+        {badge ? <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", toneStyle.badge)}>{badge}</span> : null}
+      </div>
+      <div className="mt-4">
+        <p className="text-sm font-medium text-text-muted">{label}</p>
+        <p className="mt-1 text-2xl font-semibold tracking-tight text-text">{value}</p>
+        {description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{description}</p> : null}
+      </div>
+    </Card>
+  );
+}
+
+export function DashboardFocusCard({
+  title,
+  description,
+  icon: Icon,
+  tone = "primary",
+  primaryAction,
+  secondaryAction,
+  children,
+  className = "",
+}) {
+  const toneStyle = toneStyles[tone] || toneStyles.primary;
+
+  return (
+    <Card className={cn("flex h-full flex-col p-5 sm:p-6", className)}>
+      <div className="flex items-start gap-4">
+        {Icon ? (
+          <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
+            <Icon className="h-5 w-5" />
+          </div>
+        ) : null}
+        <div className="min-w-0">
+          <h3 className="section-title">{title}</h3>
+          {description ? <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p> : null}
+        </div>
+      </div>
+      {children ? <div className="mt-5 flex-1">{children}</div> : null}
+      {(primaryAction || secondaryAction) ? (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {primaryAction ? <DashboardActionButton {...primaryAction} /> : null}
+          {secondaryAction ? <DashboardActionButton variant="outline" {...secondaryAction} /> : null}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+export function DashboardActionButton({ to, label, icon: Icon, variant = "primary", disabled = false }) {
+  const content = (
+    <Button variant={variant} className="w-full" disabled={disabled}>
+      {Icon ? <Icon className="h-4 w-4" /> : null}
+      {label}
+    </Button>
+  );
+
+  if (!to) return content;
+
+  return (
+    <Link to={to} className={disabled ? "pointer-events-none opacity-50" : "block"} aria-disabled={disabled}>
+      {content}
+    </Link>
+  );
+}
+
+export function DashboardListCard({
+  title,
+  description,
+  items = [],
+  emptyTitle = "Nothing needs attention",
+  emptyDescription = "You are all caught up.",
+  action,
+  className = "",
+}) {
+  return (
+    <Card className={cn("flex h-full flex-col p-5 sm:p-6", className)}>
+      <DashboardSectionHeader title={title} description={description} action={action} />
+      <div className="mt-4 grid gap-3">
+        {items.length > 0 ? (
+          items.map((item) => <DashboardListItem key={item.key || item.title} {...item} />)
+        ) : (
+          <div className="rounded-2xl border border-dashed border-border bg-surface-muted/20 px-4 py-5">
+            <p className="text-sm font-semibold text-text">{emptyTitle}</p>
+            <p className="mt-1 text-sm leading-6 text-text-muted">{emptyDescription}</p>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+export function DashboardListItem({ title, description, meta, icon: Icon, tone = "neutral", to, value }) {
+  const Wrapper = to ? Link : "div";
+  const toneStyle = toneStyles[tone] || toneStyles.neutral;
+
+  return (
+    <Wrapper
+      to={to}
+      className={cn(
+        "group flex items-center gap-3 rounded-2xl border border-border/70 bg-surface px-4 py-3 transition",
+        to ? "hover:border-primary/30 hover:bg-primary-subtle/25" : "",
+      )}
+    >
+      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
+        {Icon ? <Icon className="h-4 w-4" /> : null}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-semibold text-text">{title}</p>
+          {meta ? <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-semibold text-text-muted">{meta}</span> : null}
+        </div>
+        {description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{description}</p> : null}
+      </div>
+      {value !== undefined && value !== null ? <span className="shrink-0 text-sm font-semibold text-text">{value}</span> : null}
+      {to ? <ChevronRight className="h-4 w-4 shrink-0 text-text-faint transition group-hover:translate-x-0.5" /> : null}
+    </Wrapper>
+  );
+}
+
+export function DashboardQuickActions({ actions = [], title = "Quick actions", description }) {
+  return (
+    <Card className="p-5 sm:p-6">
+      <DashboardSectionHeader title={title} description={description} />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {actions.map((action) => {
+          const toneStyle = toneStyles[action.tone || "primary"] || toneStyles.primary;
+          const Wrapper = action.to ? Link : "button";
+          return (
+            <Wrapper
+              key={action.label}
+              to={action.to}
+              type={action.to ? undefined : "button"}
+              onClick={action.onClick}
+              className="group rounded-2xl border border-border/70 bg-surface px-4 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium"
+            >
+              <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", toneStyle.icon)}>
+                {action.icon ? <action.icon className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
+              </div>
+              <p className="mt-3 text-sm font-semibold text-text">{action.label}</p>
+              {action.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.description}</p> : null}
+            </Wrapper>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
