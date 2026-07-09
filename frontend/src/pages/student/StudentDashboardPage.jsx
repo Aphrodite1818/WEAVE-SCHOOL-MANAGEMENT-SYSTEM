@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
@@ -37,6 +36,7 @@ import {
   bestAndWeakestSubject,
   chartFromCounts,
   cleanText,
+  formatChartLabel,
   subjectPerformanceChart,
 } from "../../utils/academicDashboard";
 import { displayName } from "../../utils/user";
@@ -49,6 +49,8 @@ import {
   scoreDisplayValue,
   statusVariant,
 } from "./studentPageUtils";
+
+const PROGRESS_COLORS = ["#3452DB", "#16A34A", "#F59E0B", "#7C3AED", "#0EA5E9"];
 
 function StudentDashboardPage() {
   const [student, setStudent] = useState(null);
@@ -324,6 +326,20 @@ function StudentDashboardPage() {
             />
           </section>
 
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+            <SubjectProgressPreview data={dashboardData.subjectChart} />
+            <DashboardQuickActions
+              title="Quick actions"
+              description="Common student workflows stay one tap away."
+              actions={[
+                { label: "Subjects", description: "View scores and components", to: "/student/subjects", icon: BookOpen, tone: "primary" },
+                { label: "Performance", description: "Open full analytics", to: "/student/analytics", icon: BarChart3, tone: "success" },
+                { label: "Report cards", description: "Published term reports", to: "/student/report-cards", icon: FileText, tone: "warning" },
+                { label: "Notices", description: "School updates", to: "/student/notices", icon: Megaphone, tone: "accent" },
+              ]}
+            />
+          </section>
+
           {dashboardData.subjectCards.length > 0 ? (
             <section className="space-y-4">
               <DashboardSectionHeader
@@ -362,28 +378,58 @@ function StudentDashboardPage() {
               </div>
             </section>
           ) : null}
-
-          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-            <AnalyticsBarChart
-              title="Performance snapshot"
-              description="Published subject scores. Full charts are now on the performance page."
-              data={dashboardData.subjectChart}
-              emptyMessage="No published subject results yet."
-            />
-            <DashboardQuickActions
-              title="Quick actions"
-              description="Common student workflows stay one tap away."
-              actions={[
-                { label: "Subjects", description: "View scores and components", to: "/student/subjects", icon: BookOpen, tone: "primary" },
-                { label: "Performance", description: "Open full analytics", to: "/student/analytics", icon: BarChart3, tone: "success" },
-                { label: "Report cards", description: "Published term reports", to: "/student/report-cards", icon: FileText, tone: "warning" },
-                { label: "Notices", description: "School updates", to: "/student/notices", icon: Megaphone, tone: "accent" },
-              ]}
-            />
-          </section>
         </>
       ) : null}
     </DashboardLayout>
+  );
+}
+
+function SubjectProgressPreview({ data = [] }) {
+  const items = (Array.isArray(data) ? data : [])
+    .map((item) => ({
+      label: formatChartLabel(item?.label, "Subject"),
+      value: Math.max(0, Math.min(100, Number(item?.value) || 0)),
+    }))
+    .filter((item) => item.label && Number.isFinite(item.value))
+    .slice(0, 5);
+
+  return (
+    <Card className="p-4 sm:p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="section-title">Subject progress</h3>
+          <p className="mt-1 text-sm text-text-muted">A readable score snapshot without the heavy chart wall.</p>
+        </div>
+        <Link to="/student/analytics" className="shrink-0 text-xs font-semibold text-primary hover:underline">
+          View all
+        </Link>
+      </div>
+      {items.length === 0 ? (
+        <p className="mt-4 rounded-2xl border border-dashed border-border bg-surface-muted/20 px-4 py-5 text-sm text-text-muted">
+          No published subject scores yet.
+        </p>
+      ) : (
+        <div className="mt-5 space-y-4">
+          {items.map((item, index) => (
+            <div key={`${item.label}-${index}`} className="space-y-2">
+              <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
+                <span className="min-w-0 truncate font-semibold text-text">{item.label}</span>
+                <span className="shrink-0 font-semibold text-text-muted">{item.value}%</span>
+              </div>
+              <div className="h-2.5 rounded-full bg-surface-muted">
+                <div
+                  className="h-2.5 rounded-full"
+                  style={{
+                    width: `${item.value}%`,
+                    backgroundColor: PROGRESS_COLORS[index % PROGRESS_COLORS.length],
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
