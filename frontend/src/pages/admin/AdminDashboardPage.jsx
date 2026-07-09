@@ -1,37 +1,34 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  BarChart3,
+  Bell,
   BookOpen,
+  FileText,
   GraduationCap,
   PlusCircle,
-  Shapes,
-  UserCheck,
+  UploadCloud,
+  UserPlus,
   Users,
 } from "lucide-react";
-import DashboardLayout from "../../components/layout/DashboardLayout";
-import Card from "../../components/ui/Card";
-import Button from "../../components/ui/Button";
-import StatCard from "../../components/shared/StatCard";
-import LoadingState from "../../components/shared/LoadingState";
-import EmptyState from "../../components/shared/EmptyState";
+
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
-import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
-import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import LoadingState from "../../components/shared/LoadingState";
+import Button from "../../components/ui/Button";
+import {
+  DashboardFocusCard,
+  DashboardListCard,
+  DashboardMetricCard,
+  DashboardQuickActions,
+  DashboardWelcomePanel,
+} from "../../components/dashboard/DashboardPrimitives";
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
-import { authSession, getErrorMessage, isAbortError } from "../../services/api";
-import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { cleanText } from "../../utils/academicDashboard";
-
-const statItems = [
-  { key: "total_students", label: "Students", description: "registered learners", icon: GraduationCap, tone: "primary" },
-  { key: "total_teachers", label: "Teachers", description: "teacher accounts", icon: Users, tone: "success" },
-  { key: "total_parents", label: "Parents", description: "parent accounts", icon: UserCheck, tone: "accent" },
-  { key: "total_classes", label: "Classes", description: "academic groups", icon: Shapes, tone: "warning" },
-  { key: "total_subjects", label: "Subjects", description: "active catalog items", icon: BookOpen, tone: "primary" },
-  { key: "student_profiles_incomplete", label: "Incomplete Profiles", description: "students needing updates", icon: UserCheck, tone: "warning" },
-];
 
 const ADMIN_DASHBOARD_CACHE_KEY = getDashboardSessionCacheKey("admin:dashboard");
 
@@ -51,9 +48,7 @@ function AdminDashboardPage() {
   const { getFeatureGuard } = useSubscription();
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
-  const advancedAnalyticsGuard = getFeatureGuard(
-    FEATURE_CODES.ADVANCED_ANALYTICS
-  );
+  const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
 
   useEffect(() => {
     let mounted = true;
@@ -61,9 +56,8 @@ function AdminDashboardPage() {
 
     async function loadMetrics() {
       try {
-        const data = await getCachedDashboardBundle(
-          ADMIN_DASHBOARD_CACHE_KEY,
-          () => dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
+        const data = await getCachedDashboardBundle(ADMIN_DASHBOARD_CACHE_KEY, () =>
+          dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
         );
         if (!mounted || controller.signal.aborted) return;
         setAnalytics(data);
@@ -91,11 +85,60 @@ function AdminDashboardPage() {
 
   const stats = analytics?.stats || {};
   const charts = analytics?.charts || {};
+  const totalStudents = metricNumber(stats.total_students);
+  const totalTeachers = metricNumber(stats.total_teachers);
+  const totalClasses = metricNumber(stats.total_classes);
+  const resultCompletion = metricNumber(stats.result_completion_percent);
   const submittedResults = metricNumber(stats.result_rows_submitted);
   const resultRowsTotal = metricNumber(stats.result_rows_total);
-  const resultCompletion = metricNumber(stats.result_completion_percent);
   const reportCardsPublished = metricNumber(stats.report_cards_published);
   const reportCardsGenerated = metricNumber(stats.report_cards_generated);
+  const incompleteProfiles = metricNumber(stats.student_profiles_incomplete);
+  const pendingTeachers = metricNumber(stats.pending_teacher_accounts);
+  const pendingParents = metricNumber(stats.pending_parent_accounts);
+  const schoolOverviewItems = [
+    incompleteProfiles > 0
+      ? {
+          key: "profiles",
+          title: "Incomplete student profiles",
+          description: "Students with missing profile information.",
+          icon: GraduationCap,
+          tone: "warning",
+          to: "/admin/students",
+          value: incompleteProfiles,
+        }
+      : null,
+    pendingTeachers > 0
+      ? {
+          key: "pending-teachers",
+          title: "Pending teacher accounts",
+          description: "Teacher accounts waiting for setup or verification.",
+          icon: Users,
+          tone: "warning",
+          to: "/admin/teachers",
+          value: pendingTeachers,
+        }
+      : null,
+    pendingParents > 0
+      ? {
+          key: "pending-parents",
+          title: "Pending parent accounts",
+          description: "Parent accounts waiting for setup or verification.",
+          icon: Users,
+          tone: "warning",
+          to: "/admin/parents",
+          value: pendingParents,
+        }
+      : null,
+    {
+      key: "reports",
+      title: "Report card publishing",
+      description: `${reportCardsPublished} published from ${reportCardsGenerated} generated.`,
+      icon: FileText,
+      tone: reportCardsGenerated > reportCardsPublished ? "warning" : "success",
+      to: "/admin/academic",
+    },
+  ].filter(Boolean);
 
   return (
     <DashboardLayout
@@ -110,199 +153,115 @@ function AdminDashboardPage() {
         </Link>
       }
     >
-      {error && (
+      {error ? (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {error}
         </div>
-      )}
+      ) : null}
 
-      {!error && (
+      {!error ? (
         <>
-          <section className="dashboard-grid lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
-            <Card className="p-5 sm:p-6">
-              <div className="flex flex-col gap-4">
-                <div>
-                  <h2 className="section-title">School overview</h2>
-                  <p className="mt-1 text-sm text-text-muted">
-                    Core academic context first, so the larger analytics below feel grounded instead of scattered.
-                  </p>
-                </div>
+          <DashboardWelcomePanel
+            eyebrow="Admin dashboard"
+            title={`Welcome back, ${firstName}`}
+            description="A simpler control room: key school signals first, deep charts moved to analytics."
+            chips={[
+              { label: "Session", value: cleanText(stats.active_academic_session, "Not set"), tone: stats.active_academic_session ? "success" : "warning" },
+              { label: "Term", value: cleanText(stats.active_academic_term, "Not set"), tone: stats.active_academic_term ? "primary" : "warning" },
+            ]}
+          />
 
-                <div className="dashboard-kpi-grid dashboard-kpi-grid-four">
-                  <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Active session</p>
-                    <p className="mt-2 text-base font-semibold text-text">
-                      {cleanText(stats.active_academic_session, "-")}
-                    </p>
-                  </div>
-                  <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Active term</p>
-                    <p className="mt-2 text-base font-semibold text-text">
-                      {cleanText(stats.active_academic_term, "-")}
-                    </p>
-                  </div>
-                  <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Result completion</p>
-                    <p className="mt-2 text-base font-semibold text-text">{resultCompletion}%</p>
-                    <p className="mt-1 text-xs text-text-muted">
-                      {submittedResults} of {resultRowsTotal} rows submitted
-                    </p>
-                  </div>
-                  <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Report cards</p>
-                    <p className="mt-2 text-base font-semibold text-text">
-                      {reportCardsPublished}
-                    </p>
-                    <p className="mt-1 text-xs text-text-muted">
-                      {reportCardsGenerated} generated
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="flex h-full flex-col p-5 sm:p-6">
-              <h2 className="section-title">Operational snapshot</h2>
-              <p className="mt-1 text-sm text-text-muted">
-                A compact health readout for onboarding, account status, and publishing readiness.
-              </p>
-              {analytics ? (
-                <div className="dashboard-kpi-grid mt-auto pt-4 lg:grid-cols-1 xl:grid-cols-2">
-                  <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Profiles complete</p>
-                    <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_complete ?? 0}</p>
-                  </div>
-                  <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Profiles incomplete</p>
-                    <p className="mt-2 text-lg font-semibold text-text">{stats.student_profiles_incomplete ?? 0}</p>
-                  </div>
-                  <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending teacher accounts</p>
-                    <p className="mt-2 text-lg font-semibold text-text">{stats.pending_teacher_accounts ?? 0}</p>
-                  </div>
-                  <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Pending parent accounts</p>
-                    <p className="mt-2 text-lg font-semibold text-text">{stats.pending_parent_accounts ?? 0}</p>
-                  </div>
-                </div>
-              ) : (
-                <EmptyState
-                  title="No analytics available"
-                  description="Tenant analytics will appear here once the backend responds."
-                />
-              )}
-            </Card>
-          </section>
-
-          <section className="stat-grid stat-grid-six">
-            {statItems.map((item) => (
-              <StatCard
-                key={item.key}
-                label={item.label}
-                value={stats[item.key] ?? 0}
-                description={
-                  item.key === "student_profiles_incomplete" && Number(stats[item.key] ?? 0) === 0
-                    ? "no student records need updates"
-                    : item.description
-                }
-                valueBadge={
-                  item.key === "student_profiles_incomplete" && Number(stats[item.key] ?? 0) === 0
-                    ? { label: "All up to date", variant: "success" }
-                    : null
-                }
-                icon={item.icon}
-                tone={item.tone}
-                compact
-              />
-            ))}
-          </section>
-
-          <section className="dashboard-grid xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-            <AnalyticsLineChart
-              title="Performance Trend"
-              description="Average tenant performance by academic term."
-              data={chartData(charts, "performance_trend")}
-              emptyMessage="No term performance trend is available yet."
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <DashboardMetricCard
+              label="Students"
+              value={totalStudents}
+              description="Registered learners"
+              icon={GraduationCap}
+              tone="primary"
+              to="/admin/students"
             />
+            <DashboardMetricCard
+              label="Teachers"
+              value={totalTeachers}
+              description="Teacher accounts"
+              icon={Users}
+              tone="success"
+              to="/admin/teachers"
+            />
+            <DashboardMetricCard
+              label="Classes"
+              value={totalClasses}
+              description="Academic groups"
+              icon={BookOpen}
+              tone="warning"
+              to="/admin/classes"
+            />
+            <DashboardMetricCard
+              label="Result completion"
+              value={`${resultCompletion}%`}
+              description={`${submittedResults} of ${resultRowsTotal} rows submitted`}
+              icon={BarChart3}
+              tone={resultCompletion >= 80 ? "success" : resultCompletion > 0 ? "warning" : "neutral"}
+              to="/admin/analytics"
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+            <DashboardFocusCard
+              title="School overview"
+              description="The admin dashboard now shows what needs action, not every possible chart."
+              icon={BookOpen}
+              tone="primary"
+              primaryAction={{ to: "/admin/academic", label: "Open academic hub", icon: BookOpen }}
+              secondaryAction={{ to: "/admin/analytics", label: "Advanced analytics", icon: BarChart3, disabled: !advancedAnalyticsGuard.allowed }}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <InfoTile label="Active session" value={cleanText(stats.active_academic_session, "Not set")} />
+                <InfoTile label="Active term" value={cleanText(stats.active_academic_term, "Not set")} />
+                <InfoTile label="Generated reports" value={reportCardsGenerated} />
+                <InfoTile label="Published reports" value={reportCardsPublished} />
+              </div>
+            </DashboardFocusCard>
+
+            <DashboardListCard
+              title="Needs attention"
+              description="Operational items that may need admin follow-up."
+              items={schoolOverviewItems}
+              emptyTitle="School setup looks calm"
+              emptyDescription="No pending account or publishing issue is showing on the dashboard."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <AnalyticsBarChart
-              title="Teacher Submission Progress"
-              description="Average completion percentage by teacher."
+              title="Teacher submission progress"
+              description="A light preview. Open analytics for the full chart set."
               data={chartData(charts, "teacher_submission_progress")}
               emptyMessage="No teacher submission data available yet."
             />
+            <DashboardQuickActions
+              title="Quick actions"
+              description="Common admin workflows in one clear area."
+              actions={[
+                { label: "Create user", description: "Add student, teacher, or parent", to: "/admin/create-user", icon: UserPlus, tone: "primary" },
+                { label: "Bulk import", description: "Upload school records", to: "/admin/imports", icon: UploadCloud, tone: "success" },
+                { label: "Academic hub", description: "Sessions, subjects, results", to: "/admin/academic", icon: BookOpen, tone: "warning" },
+                { label: "Announcements", description: "Send school updates", to: "/admin/announcements", icon: Bell, tone: "accent" },
+              ]}
+            />
           </section>
-
-          {advancedAnalyticsGuard.allowed ? (
-            <section className="dashboard-grid md:grid-cols-2 2xl:grid-cols-3">
-              <AnalyticsBarChart
-                title="User Population Breakdown"
-                description="Students, teachers, and parents currently in this school."
-                data={chartData(charts, "user_population_breakdown")}
-              />
-              <AnalyticsDonutChart
-                title="Student Profile Completion Rate"
-                description="Shows how many student profiles are complete versus still missing required fields."
-                data={chartData(charts, "student_profile_completion_rate")}
-              />
-              <AnalyticsBarChart
-                title="Account Status Overview"
-                description="Active and pending accounts across teachers and parents."
-                data={chartData(charts, "account_status_overview")}
-                emptyMessage="No account status data available yet."
-              />
-              <AnalyticsDonutChart
-                title="Announcements By Category"
-                description="Announcement categories posted within this school."
-                data={chartData(charts, "announcements_by_category")}
-                emptyMessage="No announcements have been posted yet."
-              />
-              <AnalyticsBarChart
-                title="Class Population"
-                description="Number of enrolled students in each class."
-                data={chartData(charts, "class_population")}
-                emptyMessage="No class population data available yet."
-              />
-              <AnalyticsDonutChart
-                title="Report Card Status"
-                description="Generated report-card publishing progress."
-                data={chartData(charts, "report_card_status")}
-                emptyMessage="No report cards have been generated yet."
-              />
-              <AnalyticsBarChart
-                title="Subject Performance"
-                description="Average score by subject."
-                data={chartData(charts, "subject_performance")}
-                emptyMessage="No subject performance data available yet."
-              />
-              <AnalyticsBarChart
-                title="Class Performance"
-                description="Average score by class from recorded results."
-                data={chartData(charts, "class_performance")}
-                emptyMessage="No class performance data available yet."
-              />
-              <AnalyticsDonutChart
-                title="Grade Distribution"
-                description="All recorded academic grades in this tenant."
-                data={chartData(charts, "grade_distribution")}
-                emptyMessage="No grade data has been recorded yet."
-              />
-              <AnalyticsDonutChart
-                title="Result Status Distribution"
-                description="Draft and submitted result rows."
-                data={chartData(charts, "result_status_distribution")}
-                emptyMessage="No result status data has been recorded yet."
-              />
-              <AnalyticsBarChart
-                title="Result Completion By Subject"
-                description="Average completion signal grouped by subject."
-                data={chartData(charts, "result_completion_by_subject")}
-                emptyMessage="No subject completion data available yet."
-              />
-            </section>
-          ) : null}
         </>
-      )}
+      ) : null}
     </DashboardLayout>
+  );
+}
+
+function InfoTile({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
+    </div>
   );
 }
 
