@@ -43,8 +43,8 @@ export const adminRoutes = (
       <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />
       <Route path="/admin/results" element={<Navigate to="/admin/academic/results" replace />} />
       <Route path="/admin/academic" element={<AcademicHubOverviewPage />} />
-      <Route path="/admin/academic/:workflow" element={<AcademicWorkflowPage />} />
       <Route path="/admin/academic/manage" element={<AcademicHubPage />} />
+      <Route path="/admin/academic/:workflow" element={<AcademicWorkflowPage />} />
       <Route path="/admin/fees" element={<FeesPage />} />
       <Route path="/admin/payments" element={<PaymentsPage />} />
       <Route path="/admin/billing" element={<BillingPage />} />
