@@ -21,6 +21,10 @@ from app.config.security import (
     hash_password,
     verify_otp as verify_otp_hash,
     verify_password,
+    generate_refresh_token,
+    generate_token_jti,
+    hash_refresh_token,
+    verify_refresh_token
 )
 from app.core.exceptions import (
     AccountNotVerifiedException,
@@ -36,7 +40,24 @@ from app.core.utils.email_templates import (
     get_user_invite_email_html,
 )
 from app.config.settings import settings
-from app.modules.auth.models import AuthPurpose, AuthRecord
+from app.modules import superadmin
+from app.modules.auth.models import (
+    AuthPurpose,
+    AuthRecord,
+    AuthRefreshToken,
+    AuthSession,
+    AuthSessionActorType
+)
+
+
+
+from app.modules.auth.repository import(
+    AuthRefreshTokenRepository,
+    AuthSessionRepository
+)
+
+
+
 from app.modules.auth.schemas import (
     LoginSessionUser,
     LoginRequest,
@@ -49,19 +70,32 @@ from app.modules.auth.schemas import (
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import IdentityResolution
 from app.modules.auth_identity.service import AuthIdentityService
+
+
+
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.parents.repository import ParentRepository
+
+
 from app.modules.students.models import Student, StudentAccountStatus
 from app.modules.students.repository import StudentRepository , StudentAccessCodeRepository
+
+
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
+
+
 from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
 from app.modules.teachers.repository import TeacherRepository
+
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
+
 from app.tenant_management.models import Tenant, TenantStatus, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
+
 from app.core.utils.otp_rate_limiter import OTPRateLimiter
+from app.config.settings import settings
 
 EmailActor = TenantAdmin | Teacher | Parent
 LAST_LOGIN_UPDATE_INTERVAL = timedelta(minutes=10)
@@ -565,6 +599,480 @@ class AuthenticatedActor:
     tenant_id: uuid.UUID | None = None
     password_reset_required: bool | None = None
     user: LoginSessionUser | None = None
+
+
+
+
+
+@dataclass
+class AuthSessionTokenPair:
+    """Tokens and session metadata returned after login or refresh"""
+
+
+    access_token : str
+    refresh_token : str
+    session_id : uuid.UUID
+    session_jti : str
+    refresh_token_expires_at : datetime 
+
+
+
+
+
+class AuthSessionService:
+    """Business logic persistent auth sessions and refresh-token rotation"""
+
+    DEFAULT_SESSION_DAYS = settings.DEFAULT_SESSION_DAYS
+    REMEMBER_ME_SESSION_DAYS = settings.REMEMBER_ME_SESSION_DAYS
+
+
+
+    @staticmethod
+    def _session_lifetime(*, remember_me : bool) -> timedelta:
+        """Return session lifetime"""
+
+
+        days = (
+            AuthSessionService.REMEMBER_ME_SESSION_DAYS
+            if remember_me
+            else AuthSessionService.DEFAULT_SESSION_DAYS
+        )
+        return timedelta(days = days)
+    
+
+
+    @staticmethod
+    def _to_session_actor_type(actor_type : str) -> AuthSessionActorType:
+        """Convert authenticated actor type into session actor type"""
+
+        try:
+            return AuthSessionActorType(actor_type)
+        
+        except ValueError as exc:
+            raise BadRequestException("Unsupported authenticated actor type") from exc
+        
+
+
+
+    @staticmethod
+    def _build_access_token_claims_from_actor(actor: AuthenticatedActor):# -> dict[str, Any]:
+        """Build an access-token claims from the freshly authenticated actor"""
+
+        claims = {
+            "sub" : str(actor.actor_id),
+            "email" : actor.email,
+            "actor_type" : actor.actor_type,
+            "role" : actor.role,
+            "account_type" : actor.account_type
+        }
+
+        if actor.tenant_id is not None:
+            claims["tenant_id"] = str(actor.tenant_id)
+
+        return claims
+    
+
+
+
+    @staticmethod
+    async def _build_access_token_claims_from_session(
+        db : AsyncSession,
+        session : AuthSession
+    ) -> dict[str, str]:
+        """
+        Rebuild access-token claims from an existing session 
+
+        This revalidates the actor/account status during refresh
+        """
+
+
+        if session.actor_type == AuthSessionActorType.SUPERADMIN:
+            superadmin = await SuperAdminRepository.get_by_id(db , session.actor_id)
+            if superadmin is None or not superadmin.is_active:
+                raise UnauthorizedException("Account is not active")
+            
+
+            return{
+                "sub" : str(superadmin.id),
+                "email" : superadmin.email,
+                "actor_type" : AuthSessionActorType.SUPERADMIN.value,
+                "role": "superadmin",
+                "account_type" : AuthSessionActorType.SUPERADMIN.value
+            }
+
+
+
+        if session.tenant_id is None:
+            raise UnauthorizedException("Invalid Session")
+        
+
+        tenant = await TenantRepository.get_by_id(db , session.tenant_id)
+
+        if not _tenant_allows_login(tenant):
+            raise UnauthorizedException("Account is not active")
+        
+
+        if session.actor_type == AuthSessionActorType.TENANT_ADMIN:
+            admin = await TenantAdminRepository.get_active_by_id(
+                db = db ,
+                admin_id = session.actor_id
+            )
+
+            if (
+                admin is None
+                or admin.tenant_id != session.tenant_id
+                or not admin.is_active
+                or not admin.is_verified
+                or not admin.account_status != TenantAdminStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+            
+
+            return{
+                "sub": str(admin.id),
+                "email" : admin.email ,
+                "actor_type" : AuthSessionActorType.TENANT_ADMIN.value,
+                "role": "admin",
+                "account_type" : AuthSessionActorType.TENANT_ADMIN.value,
+                "tenant_id" : str(admin.tenant_id)
+            }
+        
+
+
+        if session.actor_type == AuthSessionActorType.TEACHER:
+            teacher = await TeacherRepository.get_by_id(db, session.actor_id)
+            if (
+                teacher is None
+                or teacher.tenant_id != session.tenant_id
+                or not teacher.is_active
+                or not teacher.is_verified
+                or teacher.account_status != TeacherAccountStatus.ACTIVE
+                or teacher.status != TeacherStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+
+            return {
+                "sub": str(teacher.id),
+                "email": teacher.email,
+                "actor_type": AuthSessionActorType.TEACHER.value,
+                "role": "teacher",
+                "account_type": AuthSessionActorType.TEACHER.value,
+                "tenant_id": str(teacher.tenant_id),
+            }
+
+        if session.actor_type == AuthSessionActorType.PARENT:
+            parent = await ParentRepository.get_by_id(db, session.actor_id)
+            if (
+                parent is None
+                or parent.tenant_id != session.tenant_id
+                or not parent.is_active
+                or not parent.is_verified
+                or parent.account_status != ParentAccountStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+
+            return {
+                "sub": str(parent.id),
+                "email": parent.email,
+                "actor_type": AuthSessionActorType.PARENT.value,
+                "role": "parent",
+                "account_type": AuthSessionActorType.PARENT.value,
+                "tenant_id": str(parent.tenant_id),
+            }
+
+        if session.actor_type == AuthSessionActorType.STUDENT:
+            student = await StudentRepository.get_by_id(db, session.actor_id)
+            if (
+                student is None
+                or student.tenant_id != session.tenant_id
+                or not student.is_active
+                or not student.is_verified
+                or student.account_status != StudentAccountStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+
+            return {
+                "sub": str(student.id),
+                "email": student.admission_number,
+                "actor_type": AuthSessionActorType.STUDENT.value,
+                "role": "student",
+                "account_type": AuthSessionActorType.STUDENT.value,
+                "tenant_id": str(student.tenant_id),
+            }
+
+        raise UnauthorizedException("Invalid session")
+
+        
+    @staticmethod
+    async def create_login_session(
+        db : AsyncSession,
+        *,
+        actor : AuthenticatedActor,
+        user_agent : str | None = None ,
+        ip_address : str | None = None ,
+        remember_me : bool = False
+    ):
+        """Create a database-backed login session and first refresh token"""
+        now = datetime.now(timezone.utc)
+        session_lifetime = AuthSessionService._session_lifetime(
+            remember_me = remember_me
+        )
+        session_expires_at = now + session_lifetime
+
+
+        session_jti = generate_token_jti()
+        refresh_token_raw = generate_refresh_token()
+        refresh_token_jti = generate_token_jti()
+
+
+
+
+        session = AuthSession(
+            tenant_id = actor.tenant_id,
+            actor_type = AuthSessionService._to_session_actor_type(actor.actor_type),
+            actor_id = actor.actor_id,
+            session_jti = session_jti,
+            user_agent = user_agent,
+            ip_address = ip_address,
+            remember_me = remember_me,
+            last_used_at = now ,
+            expires_at = session_expires_at
+        )
+
+
+        session = await AuthSessionRepository.create_session(db , session)
+
+
+
+        refresh_token = AuthRefreshToken(
+            session_id = session.id,
+            token_hash = hash_refresh_token(refresh_token_raw),
+            token_jti = refresh_token_jti,
+            issued_ip_address = ip_address,
+            issued_user_agent = user_agent ,
+            expires_at = session_expires_at
+
+        )
+
+
+
+        await AuthRefreshTokenRepository.create_refresh_token(db , refresh_token)
+
+        claims = AuthSessionService._build_access_token_claims_from_actor(actor)
+
+
+        access_token = create_access_token(
+            data = claims,
+            session_jti = session.session_jti
+        )
+
+
+        await db.commit()
+
+
+
+        return AuthSessionTokenPair(
+            access_token = access_token ,
+            refresh_token = refresh_token_raw,
+            session_id = session.id,
+            session_jti = session.session_jti,
+            refresh_token_expires_at= session_expires_at
+        )
+
+
+
+
+
+
+    @staticmethod
+    async def rotate_refresh_token(
+        db: AsyncSession,
+        *,
+        refresh_token: str,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ) -> AuthSessionTokenPair:
+        """Rotate a refresh token and return a new access/refresh pair."""
+
+        now = datetime.now(timezone.utc)
+        token_hash = hash_refresh_token(refresh_token)
+
+        stored_token = await AuthRefreshTokenRepository.get_by_hash(
+            db,
+            token_hash,
+            lock=True,
+        )
+
+        if stored_token is None:
+            raise UnauthorizedException("Invalid session")
+
+        session = await AuthSessionRepository.get_session_by_id(
+            db,
+            stored_token.session_id,
+            lock=True,
+        )
+
+        if session is None:
+            raise UnauthorizedException("Invalid session")
+
+        if stored_token.used_at is not None or stored_token.revoked_at is not None:
+            await AuthRefreshTokenRepository.mark_reuse_detected(
+                db,
+                stored_token,
+                detected_at=now,
+            )
+            await AuthSessionRepository.mark_session_compromised(
+                db,
+                session,
+                compromised_at=now,
+                reason="refresh_reuse_detected",
+            )
+            await AuthRefreshTokenRepository.revoke_tokens_for_session(
+                db,
+                session_id=session.id,
+                revoked_at=now,
+                reason="refresh_reuse_detected",
+            )
+            await db.commit()
+            raise UnauthorizedException("Session expired. Please log in again.")
+
+        token_expires_at = AuthSessionService._ensure_timezone_aware(
+            stored_token.expires_at,
+        )
+        session_expires_at = AuthSessionService._ensure_timezone_aware(
+            session.expires_at,
+        )
+
+        if token_expires_at <= now or session_expires_at <= now:
+            await AuthRefreshTokenRepository.revoke_token(
+                db,
+                stored_token,
+                revoked_at=now,
+                reason="expired",
+            )
+            await AuthSessionRepository.revoke_session(
+                db,
+                session,
+                revoked_at=now,
+                reason="expired",
+            )
+            await db.commit()
+            raise UnauthorizedException("Session expired. Please log in again.")
+
+        if session.revoked_at is not None or session.compromised_at is not None:
+            raise UnauthorizedException("Session expired. Please log in again.")
+
+        new_refresh_token_raw = generate_refresh_token()
+        new_refresh_token = AuthRefreshToken(
+            session_id=session.id,
+            token_hash=hash_refresh_token(new_refresh_token_raw),
+            token_jti=generate_token_jti(),
+            issued_ip_address=ip_address,
+            issued_user_agent=user_agent,
+            expires_at=session.expires_at,
+        )
+
+        new_refresh_token = await AuthRefreshTokenRepository.create_refresh_token(
+            db,
+            new_refresh_token,
+        )
+
+        await AuthRefreshTokenRepository.mark_used(
+            db,
+            stored_token,
+            used_at=now,
+            replaced_by_token_id=new_refresh_token.id,
+        )
+
+        await AuthSessionRepository.touch_session(
+            db,
+            session,
+            last_used_at=now,
+        )
+
+        claims = await AuthSessionService._build_access_token_claims_from_session(
+            db,
+            session,
+        )
+
+        access_token = create_access_token(
+            data=claims,
+            session_jti=session.session_jti,
+        )
+
+        await db.commit()
+
+        return AuthSessionTokenPair(
+            access_token=access_token,
+            refresh_token=new_refresh_token_raw,
+            session_id=session.id,
+            session_jti=session.session_jti,
+            refresh_token_expires_at=session.expires_at,
+        )
+
+    @staticmethod
+    async def logout_by_refresh_token(
+        db: AsyncSession,
+        *,
+        refresh_token: str,
+    ) -> None:
+        """Revoke the session associated with a refresh token.
+
+        Logout should be mostly idempotent: if the token is unknown, do nothing.
+        """
+
+        now = datetime.now(timezone.utc)
+        token_hash = hash_refresh_token(refresh_token)
+
+        stored_token = await AuthRefreshTokenRepository.get_by_hash(
+            db,
+            token_hash,
+            lock=True,
+        )
+
+        if stored_token is None:
+            return
+
+        session = await AuthSessionRepository.get_session_by_id(
+            db,
+            stored_token.session_id,
+            lock=True,
+        )
+
+        if session is not None and session.revoked_at is None:
+            await AuthSessionRepository.revoke_session(
+                db,
+                session,
+                revoked_at=now,
+                reason="logout",
+            )
+
+        await AuthRefreshTokenRepository.revoke_tokens_for_session(
+            db,
+            session_id=stored_token.session_id,
+            revoked_at=now,
+            reason="logout",
+        )
+
+        await db.commit()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class AuthService:

@@ -26,6 +26,7 @@ from app.modules.students.repository import StudentParentLinkRepository
 from app.modules.students.schemas import StudentParentLinkResponse, StudentResponse
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
+from app.modules.auth.account_email_guard import AccountEmailGuard
 
 
 class ParentService:
@@ -63,6 +64,11 @@ class ParentService:
         ParentService._ensure_tenant_admin(actor)
 
         normalized_email = ParentService._normalize_email(payload.email)
+
+        normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+            db = db ,
+            email = normalized_email
+        )
 
         await AuthIdentityService.ensure_identifier_available(
             db=db,
@@ -317,6 +323,10 @@ class ParentService:
 
         if "email" in update_data and update_data["email"] is not None:
             normalized_email = ParentService._normalize_email(update_data["email"])
+            normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+                db = db ,
+                email = normalized_email
+            )
             if normalized_email != parent.email:
                 await AuthIdentityService.ensure_identifier_available(
                     db=db,

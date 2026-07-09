@@ -190,6 +190,10 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must be set for the active environment.")
 
         return self
+    
+
+    DEFAULT_SESSION_DAYS : int = Field(..., description="number of days a session last for")
+    REMEMBER_ME_SESSION_DAYS : int = Field(..., description = "remember me session days ")
 
     @property
     def is_development(self) -> bool:

@@ -427,7 +427,7 @@ async def ensure_student(
 async def seed(tenant_id_arg: str | None) -> None:
     async with AsyncSessionLocal() as session:
         tenant = await resolve_target_tenant(session, tenant_id_arg)
-        tenant.admission_number_prefix = (tenant.admission_number_prefix or "NHS").upper()
+        tenant.admission_number_prefix = (tenant.admission_number_prefix or "DBS").upper()
 
         teacher = await ensure_teacher(
             session,

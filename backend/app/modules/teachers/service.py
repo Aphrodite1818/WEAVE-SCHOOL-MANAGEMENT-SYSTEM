@@ -4,6 +4,7 @@
 
 """Teacher service layer."""
 
+from locale import normalize
 import secrets
 from fastapi import BackgroundTasks
 from uuid import UUID
@@ -17,6 +18,7 @@ from app.core.utils.normalization import normalize_staff_id
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.subjects.models import Subject
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.auth.service import UserInviteService
@@ -68,6 +70,12 @@ class TeacherService:
         TeacherService._ensure_tenant_admin(actor)
 
         normalized_email = TeacherService._normalize_email(teacher_data.email)
+
+        normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+            db = db ,
+            email = normalized_email,
+        )
+
         normalized_staff_id = normalize_staff_id(teacher_data.staff_id)
 
         await AuthIdentityService.ensure_identifier_available(
@@ -372,6 +380,11 @@ class TeacherService:
 
         if "email" in update_data and update_data["email"] is not None:
             normalized_email = TeacherService._normalize_email(update_data["email"])
+
+            normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+                db = db ,
+                email = normalized_email
+            )
 
             if normalized_email != teacher.email:
                 await AuthIdentityService.ensure_identifier_available(
