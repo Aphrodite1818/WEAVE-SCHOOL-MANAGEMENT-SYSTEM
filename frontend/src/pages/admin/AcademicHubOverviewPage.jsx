@@ -134,7 +134,7 @@ function AcademicHubOverviewPage() {
             ]}
           />
 
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Students"
               value={metricNumber(stats.total_students)}
@@ -178,7 +178,7 @@ function AcademicHubOverviewPage() {
               primaryAction={{ to: "/admin/academic/manage", label: "Open workbench", icon: Pencil }}
               secondaryAction={{ to: "/admin/analytics", label: "View analytics", icon: BarChart3 }}
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <WorkflowTile icon={BookOpen} title="Setup" description="Sessions, terms, grading scales, and subjects" />
                 <WorkflowTile icon={Users} title="Assignments" description="Attach teachers to class subjects" />
                 <WorkflowTile icon={Pencil} title="Results" description="Record, correct, submit, and reopen scores" />
@@ -215,7 +215,7 @@ function AcademicHubOverviewPage() {
 
 function WorkflowTile({ icon: Icon, title, description }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-4 py-3">
+    <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
           <Icon className="h-4 w-4" />
