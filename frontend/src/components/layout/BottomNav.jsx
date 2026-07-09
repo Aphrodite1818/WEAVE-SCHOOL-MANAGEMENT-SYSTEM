@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText } from "lucide-react";
+import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText, BarChart3, ClipboardList } from "lucide-react";
 import { NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
@@ -29,8 +29,8 @@ const isStandalonePwaDisplay = () => {
 const bottomNavConfig = {
   admin: [
     { label: "Home", to: "/admin/dashboard", icon: Home },
-    { label: "Calendar", to: "/admin/timetable", icon: CalendarDays },
-    { label: "Messages", to: "/admin/messages", icon: MessageSquare },
+    { label: "Academic", to: "/admin/academic", icon: ClipboardList },
+    { label: "Analytics", to: "/admin/analytics", icon: BarChart3 },
   ],
   teacher: [
     { label: "Home", to: "/teacher/dashboard", icon: Home },
@@ -40,7 +40,7 @@ const bottomNavConfig = {
   student: [
     { label: "Home", to: "/student/dashboard", icon: Home },
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
-    { label: "Reports", to: "/student/report-cards", icon: FileText },
+    { label: "Progress", to: "/student/analytics", icon: BarChart3 },
   ],
   parent: [
     { label: "Home", to: "/parent/dashboard", icon: Home },
