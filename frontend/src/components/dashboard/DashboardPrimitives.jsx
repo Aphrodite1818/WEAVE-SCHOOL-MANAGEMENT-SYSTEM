@@ -15,8 +15,8 @@ const toneStyles = {
     badge: "bg-success-soft text-success",
   },
   warning: {
-    icon: "bg-warning-soft text-amber-700",
-    badge: "bg-warning-soft text-amber-700",
+    icon: "bg-warning-soft text-amber-700 dark:text-amber-300",
+    badge: "bg-warning-soft text-amber-700 dark:text-amber-300",
   },
   danger: {
     icon: "bg-error-soft text-error",
@@ -53,13 +53,13 @@ export function DashboardWelcomePanel({
   className = "",
 }) {
   return (
-    <Card className={cn("overflow-hidden p-5 sm:p-6", className)}>
+    <Card className={cn("overflow-hidden p-4 sm:p-6", className)}>
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           {eyebrow ? (
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-text-muted">{eyebrow}</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs">{eyebrow}</p>
           ) : null}
-          <h2 className="mt-2 text-2xl font-semibold leading-tight text-text sm:text-3xl">{title}</h2>
+          <h2 className="mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl">{title}</h2>
           {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{description}</p> : null}
           {chips.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -67,12 +67,12 @@ export function DashboardWelcomePanel({
                 <span
                   key={`${chip.label}-${chip.value || ""}`}
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold",
+                    "inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold sm:text-xs",
                     toneStyles[chip.tone || "neutral"]?.badge || toneStyles.neutral.badge,
                   )}
                 >
-                  {chip.label}
-                  {chip.value ? <span className="text-text/70">{chip.value}</span> : null}
+                  <span className="truncate">{chip.label}</span>
+                  {chip.value ? <span className="truncate text-text/70">{chip.value}</span> : null}
                 </span>
               ))}
             </div>
@@ -101,20 +101,20 @@ export function DashboardMetricCard({
       as={Wrapper}
       to={to}
       className={cn(
-        "group flex min-h-[8.25rem] flex-col justify-between p-4 transition hover:border-primary/30 hover:shadow-premium sm:p-5",
+        "group flex min-h-[7.6rem] flex-col justify-between p-3 transition hover:border-primary/30 hover:shadow-premium sm:min-h-[8.25rem] sm:p-5",
         to ? "cursor-pointer" : "",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", toneStyle.icon)}>
-          {Icon ? <Icon className="h-5 w-5" /> : null}
+      <div className="flex items-start justify-between gap-2 sm:gap-3">
+        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-11 sm:w-11", toneStyle.icon)}>
+          {Icon ? <Icon className="h-4 w-4 sm:h-5 sm:w-5" /> : null}
         </div>
-        {badge ? <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", toneStyle.badge)}>{badge}</span> : null}
+        {badge ? <span className={cn("rounded-full px-2 py-1 text-[10px] font-semibold sm:px-2.5 sm:text-[11px]", toneStyle.badge)}>{badge}</span> : null}
       </div>
-      <div className="mt-4">
-        <p className="text-sm font-medium text-text-muted">{label}</p>
-        <p className="mt-1 text-2xl font-semibold tracking-tight text-text">{value}</p>
-        {description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{description}</p> : null}
+      <div className="mt-3 sm:mt-4">
+        <p className="line-clamp-2 text-xs font-semibold leading-4 text-text-muted sm:text-sm">{label}</p>
+        <p className="mt-1 break-words text-xl font-semibold tracking-tight text-text sm:text-2xl">{value}</p>
+        {description ? <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-muted sm:text-xs sm:leading-5">{description}</p> : null}
       </div>
     </Card>
   );
@@ -133,10 +133,10 @@ export function DashboardFocusCard({
   const toneStyle = toneStyles[tone] || toneStyles.primary;
 
   return (
-    <Card className={cn("flex h-full flex-col p-5 sm:p-6", className)}>
-      <div className="flex items-start gap-4">
+    <Card className={cn("flex h-full flex-col p-4 sm:p-6", className)}>
+      <div className="flex items-start gap-3 sm:gap-4">
         {Icon ? (
-          <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
+          <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12", toneStyle.icon)}>
             <Icon className="h-5 w-5" />
           </div>
         ) : null}
@@ -183,7 +183,7 @@ export function DashboardListCard({
   className = "",
 }) {
   return (
-    <Card className={cn("flex h-full flex-col p-5 sm:p-6", className)}>
+    <Card className={cn("flex h-full flex-col p-4 sm:p-6", className)}>
       <DashboardSectionHeader title={title} description={description} action={action} />
       <div className="mt-4 grid gap-3">
         {items.length > 0 ? (
@@ -207,7 +207,7 @@ export function DashboardListItem({ title, description, meta, icon: Icon, tone =
     <Wrapper
       to={to}
       className={cn(
-        "group flex items-center gap-3 rounded-2xl border border-border/70 bg-surface px-4 py-3 transition",
+        "group flex items-center gap-3 rounded-2xl border border-border/70 bg-surface px-3 py-3 transition sm:px-4",
         to ? "hover:border-primary/30 hover:bg-primary-subtle/25" : "",
       )}
     >
@@ -229,9 +229,9 @@ export function DashboardListItem({ title, description, meta, icon: Icon, tone =
 
 export function DashboardQuickActions({ actions = [], title = "Quick actions", description }) {
   return (
-    <Card className="p-5 sm:p-6">
+    <Card className="p-4 sm:p-6">
       <DashboardSectionHeader title={title} description={description} />
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {actions.map((action) => {
           const ActionIcon = action.icon;
           const toneStyle = toneStyles[action.tone || "primary"] || toneStyles.primary;
@@ -242,13 +242,13 @@ export function DashboardQuickActions({ actions = [], title = "Quick actions", d
               to={action.to}
               type={action.to ? undefined : "button"}
               onClick={action.onClick}
-              className="group rounded-2xl border border-border/70 bg-surface px-4 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium"
+              className="group flex min-h-[9.25rem] flex-col rounded-2xl border border-border/70 bg-surface px-3 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium sm:min-h-[9.75rem] sm:px-4"
             >
-              <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", toneStyle.icon)}>
+              <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
                 {ActionIcon ? <ActionIcon className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
               </div>
-              <p className="mt-3 text-sm font-semibold text-text">{action.label}</p>
-              {action.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.description}</p> : null}
+              <p className="mt-3 line-clamp-2 break-words text-sm font-semibold leading-5 text-text">{action.label}</p>
+              {action.description ? <p className="mt-1 break-words text-xs leading-5 text-text-muted">{action.description}</p> : null}
             </Wrapper>
           );
         })}
