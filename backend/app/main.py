@@ -20,6 +20,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.tenant_admins.router import router as tenant_admin_router
 from app.modules.bulk_imports.router import router as bulk_import_router
 from app.modules.email_outbox.router import router as email_outbox_router
+from app.modules.media.router import router as media_router
 from app.tenant_management.router import router as tenant_router
 from app.modules.subjects.router import router as subject_router
 from app.modules.students.admin_access_router import router as student_admin_access_router
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
         tags=["Tenant Admin"],
     )
     app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
+    app.include_router(media_router, prefix="/api/v1/tenant-admin")
     app.include_router(bulk_import_router, prefix="/api/v1/tenant-admin")
     app.include_router(email_outbox_router, prefix="/api/v1/tenant-admin")
     app.include_router(tenant_router, prefix="/api/v1/tenants", tags=["Tenants"])
