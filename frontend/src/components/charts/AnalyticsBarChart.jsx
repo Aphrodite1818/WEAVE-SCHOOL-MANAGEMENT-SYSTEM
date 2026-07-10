@@ -58,17 +58,17 @@ function useMobileChartLayout() {
   return isMobileChart;
 }
 
-function XAxisTick({ x, y, payload, isMobileChart }) {
-  const label = shortLabel(payload?.value, isMobileChart ? 11 : 16);
+function XAxisTick({ x, y, payload, isMobileChart, expanded }) {
+  const label = shortLabel(payload?.value, expanded ? 18 : isMobileChart ? 10 : 16);
 
   return (
     <g transform={`translate(${x},${y})`}>
       <text
         x={0}
         y={0}
-        dy={isMobileChart ? 16 : 14}
-        textAnchor={isMobileChart ? "end" : "middle"}
-        transform={isMobileChart ? "rotate(-35)" : undefined}
+        dy={isMobileChart ? 18 : 14}
+        textAnchor="end"
+        transform={`rotate(${isMobileChart ? -48 : -28})`}
         className="fill-text-muted text-[12px] font-medium sm:text-xs"
       >
         {label}
@@ -88,28 +88,6 @@ function AnalyticsBarChart({
   const isMobileChart = useMobileChartLayout();
   const items = normalizeItems(data, valueKey);
   const hasVisibleValues = items.some((item) => Number(item?.[valueKey]) > 0);
-  const hasLongLabels = items.some((item) => formatChartLabel(item?.[labelKey]).length > 10);
-  const useHorizontalBars = isMobileChart && (items.length >= 4 || hasLongLabels);
-
-  const renderZeroValueRows = (expanded = false) => (
-    <div
-      className={`chart-interactive-scroll mt-5 rounded-2xl border border-border bg-surface-muted/30 px-4 py-5 ${expanded ? "max-h-none" : "max-h-[18rem]"}`}
-    >
-      <div className="grid gap-4">
-        {items.map((item, index) => (
-          <div key={`${item?.[labelKey]}-${index}`} className="space-y-2">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="min-w-0 break-words font-medium text-text">{formatChartLabel(item?.[labelKey])}</span>
-              <span className="shrink-0 font-semibold text-text-muted">{Number(item?.[valueKey])}</span>
-            </div>
-            <div className="h-2 rounded-full bg-surface-subtle">
-              <div className="h-2 rounded-full bg-primary/20" style={{ width: "100%" }} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 
   const renderChartBody = (expanded = false) => {
     if (items.length === 0) {
@@ -120,76 +98,44 @@ function AnalyticsBarChart({
       );
     }
 
-    if (!hasVisibleValues) return renderZeroValueRows(expanded);
-
-    const chartHeight = useHorizontalBars
-      ? Math.max(expanded ? 420 : 280, items.length * (expanded ? 56 : 48))
-      : expanded
-        ? 500
-        : isMobileChart
-          ? 300
-          : 280;
-    const yAxisWidth = expanded ? 170 : 138;
-    const verticalChartMinWidth = !useHorizontalBars
-      ? Math.max(expanded ? 780 : isMobileChart ? 340 : 520, items.length * (expanded ? 140 : isMobileChart ? 88 : 118))
-      : expanded
-        ? 640
-        : "100%";
+    const chartHeight = expanded ? 520 : isMobileChart ? 340 : 300;
+    const chartMinWidth = Math.max(
+      expanded ? 820 : isMobileChart ? 380 : 560,
+      items.length * (expanded ? 132 : isMobileChart ? 76 : 108),
+    );
+    const xAxisHeight = expanded ? 104 : isMobileChart ? 104 : 76;
 
     return (
       <div className="chart-interactive-scroll mt-5 min-h-0 flex-1 rounded-2xl border border-border/50 bg-surface-muted/10 px-1 py-3 sm:px-2">
-        <div style={{ minWidth: verticalChartMinWidth, height: chartHeight }}>
+        <div style={{ minWidth: chartMinWidth, height: chartHeight }}>
           <ResponsiveContainer width="100%" height="100%">
-            {useHorizontalBars ? (
-              <BarChart data={items} layout="vertical" margin={{ left: 0, right: expanded ? 28 : 16, top: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148, 163, 184, 0.25)" />
-                <XAxis
-                  type="number"
-                  allowDecimals={false}
-                  tickLine={false}
-                  axisLine={false}
-                  width={36}
-                  tick={{ fontSize: expanded ? 14 : 13 }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey={labelKey}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={10}
-                  width={yAxisWidth}
-                  tickFormatter={(value) => shortLabel(value, expanded ? 24 : 18)}
-                  tick={{ fontSize: expanded ? 14 : 13, fontWeight: 500 }}
-                />
-                <Tooltip labelFormatter={formatChartLabel} />
-                <Bar dataKey={valueKey} radius={[0, 10, 10, 0]} barSize={expanded ? 24 : 20}>
-                  {items.map((item, index) => (
-                    <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            ) : (
-              <BarChart data={items} margin={{ left: 0, right: expanded ? 28 : 12, top: 8, bottom: isMobileChart ? 36 : 24 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
-                <XAxis
-                  dataKey={labelKey}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={10}
-                  tick={<XAxisTick isMobileChart={isMobileChart} />}
-                  interval={0}
-                  minTickGap={0}
-                  height={isMobileChart ? 88 : 64}
-                />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} tick={{ fontSize: isMobileChart ? 13 : 12 }} />
-                <Tooltip labelFormatter={formatChartLabel} />
-                <Bar dataKey={valueKey} radius={[10, 10, 0, 0]} maxBarSize={expanded ? 64 : isMobileChart ? 48 : 56}>
-                  {items.map((item, index) => (
-                    <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            )}
+            <BarChart data={items} margin={{ left: 0, right: expanded ? 28 : 14, top: 16, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
+              <XAxis
+                dataKey={labelKey}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={12}
+                tick={<XAxisTick isMobileChart={isMobileChart} expanded={expanded} />}
+                interval={0}
+                minTickGap={0}
+                height={xAxisHeight}
+              />
+              <YAxis
+                allowDecimals={false}
+                tickLine={false}
+                axisLine={false}
+                width={isMobileChart ? 34 : 38}
+                domain={hasVisibleValues ? [0, "auto"] : [0, 1]}
+                tick={{ fontSize: isMobileChart ? 13 : 12 }}
+              />
+              <Tooltip labelFormatter={formatChartLabel} />
+              <Bar dataKey={valueKey} radius={[10, 10, 0, 0]} maxBarSize={expanded ? 62 : isMobileChart ? 44 : 56} minPointSize={hasVisibleValues ? 0 : 3}>
+                {items.map((item, index) => (
+                  <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -201,6 +147,7 @@ function AnalyticsBarChart({
       title={title}
       description={description}
       expandedChildren={renderChartBody(true)}
+      hint="Swipe sideways or expand this vertical bar chart."
     >
       {renderChartBody(false)}
     </InteractiveChartShell>
