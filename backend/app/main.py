@@ -13,6 +13,7 @@ from app.config.database import engine
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis
 from app.core.exception_handlers import register_exception_handlers
+from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.modules import import_model_modules
 from app.modules.superadmin.router import router as superadmin_router
 from app.modules.auth.router import router as auth_router
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         **middleware_options,
     )
+    app.add_middleware(PlatformLockdownMiddleware)
 
     # ── Exception Handlers ────────────────────────────────────────────────────
     register_exception_handlers(app)
@@ -159,8 +161,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8080,
+        port=8000,
         reload=is_development(),
-        log_config=None,
         log_level=logging.getLevelName(resolve_log_level()).lower(),
     )
