@@ -64,21 +64,43 @@ class AccountNotVerifiedException(AppException):
 
 class TooManyRequestsException(AppException):
     """Raised when rate limits are exceeded."""
-    def __init__(self, detail: str = "Too many requests", retry_after: int = 60) -> None:
+    def __init__(
+        self,
+        detail: str = "Too many requests",
+        retry_after: int = 60,
+        *,
+        reason: str | None = None,
+        scope: str | None = None,
+    ) -> None:
         """Initialize the TooManyRequestsException instance."""
+
+        retry_after_seconds = max(int(retry_after), 1)
+        payload: dict[str, Any] = {
+            "rate_limited": True,
+            "retry_after": retry_after_seconds,
+            "retry_after_seconds": retry_after_seconds,
+            "next_allowed_in_seconds": retry_after_seconds,
+        }
+        if reason:
+            payload["rate_limit_reason"] = reason
+        if scope:
+            payload["rate_limit_scope"] = scope
+
         super().__init__(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=detail,
-            headers={"Retry-After": str(retry_after)},
+            headers={"Retry-After": str(retry_after_seconds)},
+            payload=payload,
         )
-        self.retry_after = retry_after
+        self.retry_after = retry_after_seconds
+        self.reason = reason
+        self.scope = scope
 
 class ConflictException(AppException):
     """Raised when a conflicting resource already exists."""
     def __init__(self, detail: str = "Resource conflict") -> None:
         """Initialize the ConflictException instance."""
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
-
 
 
 
@@ -90,7 +112,6 @@ class ImportParserError(ValueError):
 
 class ImportTemplateNotFoundError(ValueError):
     """Raised when a template does not exist for a resource type"""
-
 
 
 
