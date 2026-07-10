@@ -1,92 +1,80 @@
-#==========================#
-#      media.schemas       #
-#==========================#
-"""Pydantic schemas for the media module.
+# ========================== #
+#      media/schemas.py      #
+# ========================== #
 
-This file will define request and response shapes used by the API layer
-when media resources are created, updated, or returned.
-"""
-
-
-
-
+"""Pydantic schemas for tenant-scoped media assets."""
 
 from __future__ import annotations
-from pydantic import BaseModel , ConfigDict , Field , field_validator
-from datetime import datetime 
-from typing import Any
-import uuid
 
-from app.modules.media.models import(
+import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.modules.media.models import (
     MediaOwnerType,
     MediaPurpose,
     MediaStatus,
     MediaStorageProvider,
     MediaUploadedByActorType,
-    MediaVisibility
+    MediaVisibility,
 )
 
 
-
 class InputBase(BaseModel):
-    model_config = ConfigDict(
-        str_strip_whitespace= True ,
-        extra="forbid"
-    )
+    """Base schema for media request/internal input payloads."""
 
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        extra="forbid",
+    )
 
 
 class OutputBase(BaseModel):
-    model_config = ConfigDict(
-        from_attributes = True,
-        use_enum_values=True ,
-        populate_by_name=True
-    )
+    """Base schema for media API responses."""
 
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True,
+        populate_by_name=True,
+    )
 
 
 class MediaAssetResponse(OutputBase):
-    """full media asset respons returned afrer upload or direct lookup"""
+    """Full media asset response returned after upload or direct lookup."""
 
+    id: uuid.UUID
+    tenant_id: uuid.UUID
 
+    owner_type: MediaOwnerType
+    owner_id: uuid.UUID
+    purpose: MediaPurpose
 
-    id : uuid.UUID  #id of the media file
-    tenant_id : uuid.UUID
+    visibility: MediaVisibility
+    status: MediaStatus
+    storage_provider: MediaStorageProvider
 
-    owner_type : MediaOwnerType
-    owner_id : uuid.UUID    #id of the owner of the media file
-    purpose : MediaPurpose
+    bucket: str
+    object_key: str
 
-
-    visibility : MediaVisibility
-    status : MediaStatus
-    storage_provider :  MediaStorageProvider
-
-    bucket : str 
-    object_key : str
-
-
-    public_url : str | None = None 
-    cdn_url : str | None = None
-    signed_url : str | None = Field(
-        default = None,
-        description = (
-            "Temporary URL for private media. this should ony be returned when"
-            "the current actor is allowed to view the file"
-        )
+    public_url: str | None = None
+    cdn_url: str | None = None
+    signed_url: str | None = Field(
+        default=None,
+        description=(
+            "Temporary URL for private media. This should only be returned when "
+            "the current actor is allowed to view the file."
+        ),
     )
+    signed_url_expires_at: datetime | None = None
 
+    original_filename: str | None = None
+    content_type: str
+    extension: str | None = None
+    size_bytes: int
 
-    original_filename : str | None = None
-    content_type : str 
-    extension : str | None = None
-    size_bytes : int
-
-
-    checksum_sha256 : str | None = None
-
-
-
+    checksum_sha256: str | None = None
     etag: str | None = Field(
         default=None,
         description="Cloudflare R2/S3-compatible ETag returned after upload.",
@@ -98,7 +86,6 @@ class MediaAssetResponse(OutputBase):
 
     width_px: int | None = None
     height_px: int | None = None
-
     metadata_json: dict[str, Any] | None = None
 
     uploaded_by_actor_type: MediaUploadedByActorType | None = None
@@ -110,9 +97,6 @@ class MediaAssetResponse(OutputBase):
 
     created_at: datetime
     updated_at: datetime
-
-
-
 
 
 class MediaAssetSummaryResponse(OutputBase):
@@ -143,9 +127,6 @@ class MediaAssetSummaryResponse(OutputBase):
     updated_at: datetime
 
 
-
-
-
 class MediaUploadResponse(OutputBase):
     """Response returned after a successful media upload."""
 
@@ -154,13 +135,11 @@ class MediaUploadResponse(OutputBase):
         default=None,
         description=(
             "Best URL for immediate frontend rendering. For public assets this is "
-            "usually cdn_url or public_url. For private assets this may be signed_url."
+            "usually cdn_url or public_url. For private assets this may be null "
+            "until a signed URL is requested."
         ),
     )
     message: str = "Media uploaded successfully."
-
-
-
 
 
 class MediaDeleteResponse(OutputBase):
@@ -174,16 +153,11 @@ class MediaDeleteResponse(OutputBase):
     message: str = "Media deleted successfully."
 
 
-
-
 class MediaAssetListResponse(OutputBase):
     """Paginated media asset list response."""
 
     items: list[MediaAssetSummaryResponse]
     total: int
-
-
-
 
 
 class MediaAssetFilter(InputBase):
@@ -195,10 +169,6 @@ class MediaAssetFilter(InputBase):
     visibility: MediaVisibility | None = None
     status: MediaStatus | None = None
     current_only: bool = True
-
-
-
-
 
 
 class MediaUploadContext(BaseModel):
@@ -224,7 +194,8 @@ class MediaUploadContext(BaseModel):
 
 class MediaCreateData(BaseModel):
     """Internal payload used to persist a MediaAsset after storage upload."""
-    id : uuid.UUID
+
+    id: uuid.UUID
     tenant_id: uuid.UUID
 
     owner_type: MediaOwnerType
@@ -306,7 +277,7 @@ class MediaSignedUrlResponse(OutputBase):
     owner_id: uuid.UUID
     purpose: MediaPurpose
     signed_url: str
-    signed_url_expires_at: datetime
+    signed_url_expires_at: datetime | None = None
 
 
 class MediaAttachResponse(OutputBase):
@@ -318,9 +289,3 @@ class MediaAttachResponse(OutputBase):
     purpose: MediaPurpose
     attached: bool = True
     message: str = "Media attached successfully."
-
-
-
-
-
-
