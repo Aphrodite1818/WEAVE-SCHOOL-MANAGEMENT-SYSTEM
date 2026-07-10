@@ -18,8 +18,10 @@ const AUTH_REFRESH_ENDPOINT = "/auth/refresh";
 const AUTH_LOGOUT_ENDPOINT = "/auth/logout";
 const AUTH_LOGIN_ENDPOINT = "/auth/login";
 const MAINTENANCE_STORAGE_KEY = "learnly_platform_maintenance";
+const SECURITY_BLOCK_STORAGE_KEY = "learnly_security_block";
 export const NAVIGATION_ABORT_EVENT = "learnly:navigation-start";
 export const PLATFORM_MAINTENANCE_EVENT = "learnly:platform-maintenance";
+export const SECURITY_BLOCK_EVENT = "learnly:security-block";
 const DEFAULT_USER_SAFE_ERROR =
   "Something went wrong while processing your request. Please try again.";
 const NETWORK_ERROR_MESSAGE =
@@ -196,6 +198,10 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
       : "Please correct the highlighted fields and try again.";
   }
 
+  if (data?.security_block === true) {
+    return backendMessage || "Access from this network has been temporarily blocked for security reasons.";
+  }
+
   if (data?.maintenance_mode === true) {
     return backendMessage || "LearnlyAI is temporarily in maintenance mode. Please try again later.";
   }
@@ -231,6 +237,28 @@ const persistMaintenanceState = (data = {}) => {
   }
 };
 
+const persistSecurityBlockState = (data = {}) => {
+  if (data?.security_block !== true) return;
+
+  const payload = {
+    message:
+      normalizeDetail(data?.detail) ||
+      normalizeDetail(data?.message) ||
+      "Access from this network has been temporarily blocked for security reasons.",
+    reason: data?.reason || null,
+    ipLabel: data?.ip_label || null,
+    expiresAt: data?.expires_at || null,
+    detectedAt: new Date().toISOString(),
+  };
+
+  sessionStorage.setItem(SECURITY_BLOCK_STORAGE_KEY, JSON.stringify(payload));
+  window.dispatchEvent(new CustomEvent(SECURITY_BLOCK_EVENT, { detail: payload }));
+
+  if (window.location.pathname !== "/network-blocked") {
+    window.location.assign("/network-blocked");
+  }
+};
+
 export const getStoredMaintenanceState = () => {
   const rawValue = sessionStorage.getItem(MAINTENANCE_STORAGE_KEY);
   if (!rawValue) return null;
@@ -245,6 +273,22 @@ export const getStoredMaintenanceState = () => {
 
 export const clearStoredMaintenanceState = () => {
   sessionStorage.removeItem(MAINTENANCE_STORAGE_KEY);
+};
+
+export const getStoredSecurityBlockState = () => {
+  const rawValue = sessionStorage.getItem(SECURITY_BLOCK_STORAGE_KEY);
+  if (!rawValue) return null;
+
+  try {
+    return JSON.parse(rawValue);
+  } catch {
+    sessionStorage.removeItem(SECURITY_BLOCK_STORAGE_KEY);
+    return null;
+  }
+};
+
+export const clearStoredSecurityBlockState = () => {
+  sessionStorage.removeItem(SECURITY_BLOCK_STORAGE_KEY);
 };
 
 export const authSession = {
@@ -330,6 +374,7 @@ export const parseApiError = (error, fallback) => {
       isNetworkError: false,
       isAbortError: true,
       isMaintenanceMode: false,
+      isSecurityBlock: false,
       technicalMessage: error?.message || null,
     };
   }
@@ -344,6 +389,7 @@ export const parseApiError = (error, fallback) => {
       isNetworkError: true,
       isAbortError: false,
       isMaintenanceMode: false,
+      isSecurityBlock: false,
       technicalMessage: error?.message || null,
     };
   }
@@ -363,7 +409,9 @@ export const parseApiError = (error, fallback) => {
     isNetworkError: false,
     isAbortError: false,
     isMaintenanceMode: data?.maintenance_mode === true,
+    isSecurityBlock: data?.security_block === true,
     maintenanceReason: data?.maintenance_reason || null,
+    securityBlockReason: data?.reason || null,
     technicalMessage: error?.message || null,
     data,
     ...verificationMetadata,
@@ -396,6 +444,17 @@ const createApiError = (response, data, headers) => {
   return error;
 };
 
+const handleControlResponse = (response, data) => {
+  if (response.status === 403 && data?.security_block === true) {
+    persistSecurityBlockState(data);
+    return;
+  }
+
+  if (response.status === 503 && data?.maintenance_mode === true) {
+    persistMaintenanceState(data);
+  }
+};
+
 const refreshAccessToken = async () => {
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_BASE_URL}${AUTH_REFRESH_ENDPOINT}`, {
@@ -407,9 +466,7 @@ const refreshAccessToken = async () => {
         const responseHeaders = Object.fromEntries(response.headers.entries());
 
         if (!response.ok) {
-          if (response.status === 503 && data?.maintenance_mode === true) {
-            persistMaintenanceState(data);
-          }
+          handleControlResponse(response, data);
           throw createApiError(response, data, responseHeaders);
         }
 
@@ -473,9 +530,7 @@ async function request(endpoint, options = {}, hasRetried = false) {
     const responseHeaders = Object.fromEntries(response.headers.entries());
 
     if (!response.ok) {
-      if (response.status === 503 && data?.maintenance_mode === true) {
-        persistMaintenanceState(data);
-      }
+      handleControlResponse(response, data);
 
       const canAttemptRefresh =
         response.status === 401 &&
