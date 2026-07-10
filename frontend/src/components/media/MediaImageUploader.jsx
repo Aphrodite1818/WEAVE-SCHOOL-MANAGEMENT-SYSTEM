@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Camera, ImagePlus, Loader2, Trash2, UploadCloud } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Trash2, UploadCloud, X } from "lucide-react";
 
 import { parseApiError } from "../../services/api";
 import { cn } from "../../utils/cn";
@@ -152,8 +152,7 @@ export default function MediaImageUploader({
   };
 
   const handleDelete = async () => {
-    if (!onDelete) return;
-    if (!currentImageUrl && !previewUrl) return;
+    if (!onDelete || !currentImageUrl) return;
     if (!window.confirm("Remove this image?")) return;
 
     setIsDeleting(true);
@@ -246,16 +245,29 @@ export default function MediaImageUploader({
               {isUploading ? "Uploading..." : "Upload"}
             </Button>
 
-            {(currentImageUrl || previewUrl) && onDelete ? (
+            {previewUrl ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full sm:w-auto"
+                disabled={isBusy}
+                onClick={resetSelection}
+              >
+                <X className="h-4 w-4" />
+                Clear preview
+              </Button>
+            ) : null}
+
+            {currentImageUrl && onDelete ? (
               <Button
                 type="button"
                 variant="danger"
                 className="w-full sm:w-auto"
                 disabled={isBusy}
-                onClick={previewUrl && !currentImageUrl ? resetSelection : handleDelete}
+                onClick={handleDelete}
               >
                 {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                {previewUrl && !currentImageUrl ? "Clear preview" : isDeleting ? "Removing..." : "Remove"}
+                {isDeleting ? "Removing..." : "Remove"}
               </Button>
             ) : null}
           </div>
