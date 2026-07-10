@@ -56,6 +56,8 @@ class AuthRateLimitService:
         rules: list[RateLimitRule],
         *,
         detail: str,
+        reason: str,
+        scope: str,
     ) -> None:
         """Check all buckets first, then consume all when currently allowed."""
 
@@ -77,6 +79,8 @@ class AuthRateLimitService:
             raise TooManyRequestsException(
                 detail=detail,
                 retry_after=max(retry_after, 1),
+                reason=reason,
+                scope=scope,
             )
 
         for rule in rules:
@@ -89,6 +93,8 @@ class AuthRateLimitService:
                 raise TooManyRequestsException(
                     detail=detail,
                     retry_after=max(result.retry_after, 1),
+                    reason=reason,
+                    scope=scope,
                 )
 
     @classmethod
@@ -97,6 +103,8 @@ class AuthRateLimitService:
         rules: list[RateLimitRule],
         *,
         detail: str,
+        reason: str,
+        scope: str,
     ) -> None:
         """Check current bucket state without consuming."""
 
@@ -118,6 +126,8 @@ class AuthRateLimitService:
             raise TooManyRequestsException(
                 detail=detail,
                 retry_after=max(retry_after, 1),
+                reason=reason,
+                scope=scope,
             )
 
     @classmethod
@@ -176,12 +186,22 @@ class AuthRateLimitService:
 
         await cls._enforce_rules(
             cls._login_ip_rules(ip_address),
-            detail="Too many login attempts. Please wait before trying again.",
+            detail=(
+                "Login is temporarily locked from this device because there were too many "
+                "recent attempts. Correct passwords are also blocked until the countdown ends."
+            ),
+            reason="login_attempt_rate_limit",
+            scope="ip",
         )
 
         await cls._assert_not_blocked(
             cls._login_failure_rules(identifier=identifier, ip_address=ip_address),
-            detail="Too many failed login attempts. Please wait before trying again.",
+            detail=(
+                "Login is temporarily locked for this account because there were too many "
+                "failed attempts. Correct passwords are also blocked until the countdown ends."
+            ),
+            reason="login_failed_credentials_rate_limit",
+            scope="identifier",
         )
 
     @classmethod
@@ -274,7 +294,9 @@ class AuthRateLimitService:
 
         await cls._enforce_rules(
             cls._otp_request_ip_rules(purpose=purpose, ip_address=ip_address),
-            detail="Too many OTP requests. Please wait before trying again.",
+            detail="Too many OTP requests from this device. Please wait before requesting another code.",
+            reason="otp_request_rate_limit",
+            scope="ip",
         )
 
     @classmethod
@@ -293,7 +315,9 @@ class AuthRateLimitService:
                 purpose=purpose,
                 ip_address=ip_address,
             ),
-            detail="Too many invalid OTP attempts. Please wait before trying again.",
+            detail="OTP verification is temporarily locked after too many invalid code attempts.",
+            reason="otp_verify_failed_attempts_rate_limit",
+            scope="email",
         )
 
     @classmethod
