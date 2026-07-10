@@ -41,6 +41,12 @@ class AcademicSession(BaseModel):
             "name",
             name="uq_academic_session_tenant_name",
         ),
+        Index(
+            "uq_academic_sessions_current_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("is_current = true AND is_active = true"),
+        ),
     )
 
     name: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -71,6 +77,12 @@ class AcademicTerm(BaseModel):
             "academic_session_id",
             "name",
             name="uq_academic_term_tenant_session_name",
+        ),
+        Index(
+            "uq_academic_terms_current_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("is_current = true AND is_active = true"),
         ),
     )
 
@@ -226,6 +238,12 @@ class ClassSubjectTeacher(BaseModel):
             "subject_id",
             name="uq_class_subject_teacher_tenant_class_subject",
         ),
+        Index(
+            "ix_class_subject_teachers_tenant_teacher_active",
+            "tenant_id",
+            "teacher_id",
+            "is_active",
+        ),
     )
 
     class_id: Mapped[uuid.UUID] = mapped_column(
@@ -287,6 +305,28 @@ class StudentSubjectResult(BaseModel):
         Index("ix_student_subject_results_tenant_class", "tenant_id", "class_id"),
         Index("ix_student_subject_results_tenant_teacher", "tenant_id", "teacher_id"),
         Index("ix_student_subject_results_tenant_status", "tenant_id", "status"),
+        Index(
+            "ix_student_subject_results_student_period",
+            "tenant_id",
+            "student_id",
+            "academic_session_id",
+            "academic_term_id",
+        ),
+        Index(
+            "ix_student_subject_results_class_period_status",
+            "tenant_id",
+            "class_id",
+            "academic_session_id",
+            "academic_term_id",
+            "status",
+        ),
+        Index(
+            "ix_student_subject_results_teacher_period",
+            "tenant_id",
+            "teacher_id",
+            "academic_session_id",
+            "academic_term_id",
+        ),
     )
 
     student_id: Mapped[uuid.UUID] = mapped_column(
