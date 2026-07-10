@@ -130,12 +130,7 @@ class Settings(BaseSettings):
     REDIS_URL: str | None = Field(default=None, description="Redis connection URL")
     CACHE_ENABLED: bool = Field(default=False, description="Enable application caching")
 
-
-
-
-
-
-        RATE_LIMIT_ENABLED: bool = Field(
+    RATE_LIMIT_ENABLED: bool = Field(
         default=False,
         description="Enable Redis-backed security rate limiting.",
     )
@@ -157,10 +152,6 @@ class Settings(BaseSettings):
 
     OTP_VERIFY_EMAIL_FAIL_LIMIT_10M: int = Field(default=5, gt=0)
     OTP_VERIFY_IP_FAIL_LIMIT_1H: int = Field(default=30, gt=0)
-
-
-
-
 
     CACHE_DEFAULT_TTL_SECONDS: int = Field(
         default=300,
@@ -209,10 +200,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_cache_settings(self) -> "Settings":
-        """Ensure cache settings are internally consistent."""
+        """Ensure cache and rate-limit settings are internally consistent."""
 
         if self.CACHE_ENABLED and not self.REDIS_URL:
             raise ValueError("REDIS_URL must be set when CACHE_ENABLED is true.")
+
+        if self.RATE_LIMIT_ENABLED and not (self.RATE_LIMIT_REDIS_URL or self.REDIS_URL):
+            raise ValueError(
+                "RATE_LIMIT_REDIS_URL or REDIS_URL must be set when RATE_LIMIT_ENABLED is true."
+            )
 
         if not (
             self.CACHE_SHORT_TTL_SECONDS
@@ -232,16 +228,8 @@ class Settings(BaseSettings):
 
         if not self.DATABASE_URL:
             raise ValueError("DATABASE_URL must be set for the active environment.")
-        
-
-        if self.RATE_LIMIT_ENABLED and not (self.RATE_LIMIT_REDIS_URL or self.REDIS_URL):
-            raise ValueError(
-                "RATE_LIMIT_REDIS_URL or REDIS_URL must be set when RATE_LIMIT_ENABLED is true."
-            )
 
         return self
-    
-    
 
     @property
     def is_development(self) -> bool:
