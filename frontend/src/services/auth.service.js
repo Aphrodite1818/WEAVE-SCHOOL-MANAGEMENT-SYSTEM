@@ -4,6 +4,28 @@ import { onboardingService } from "./onboardingService";
 
 const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
 
+const normalizeAuthResponse = (response = {}) => {
+    const role =
+        onboardingService.normalizeRole(
+            response.role || response.user?.role || onboardingService.roleFromActorType(response.actor_type)
+        ) || null;
+
+    const currentUser = {
+        ...(response.user || {}),
+        email: response.email || response.user?.email || null,
+        role,
+        actor_type: response.actor_type || response.user?.actor_type || null,
+        password_reset_required:
+            response.user?.password_reset_required ?? response.password_reset_required ?? false,
+    };
+
+    return {
+        ...response,
+        role,
+        user: currentUser,
+    };
+};
+
 export const authService = {
     login: async (identifier, password, { remember = true } = {}) => {
         const response = await api.post(
@@ -18,31 +40,60 @@ export const authService = {
             authSession.setToken(response.access_token, { remember });
         }
 
-        const role =
-            onboardingService.normalizeRole(
-                response.role || response.user?.role || onboardingService.roleFromActorType(response.actor_type)
-            ) || null;
+        const normalizedResponse = normalizeAuthResponse(response);
 
-        const currentUser = {
-            ...(response.user || {}),
-            email: response.email || response.user?.email || null,
-            role,
-            actor_type: response.actor_type || response.user?.actor_type || null,
-            password_reset_required:
-                response.user?.password_reset_required ?? response.password_reset_required ?? false,
-        };
-
-        if (currentUser.email || currentUser.role || currentUser.actor_type) {
-            authSession.setUser(currentUser, { remember });
-        } else if (role) {
-            authSession.setRole(role, { remember });
+        if (
+            normalizedResponse.user.email ||
+            normalizedResponse.user.role ||
+            normalizedResponse.user.actor_type
+        ) {
+            authSession.setUser(normalizedResponse.user, { remember });
+        } else if (normalizedResponse.role) {
+            authSession.setRole(normalizedResponse.role, { remember });
         }
 
-        return {
-            ...response,
-            role,
-            user: currentUser,
-        };
+        return normalizedResponse;
+    },
+
+    bootstrapSession: async () => {
+        try {
+            const remember = authSession.getRememberPreference?.() ?? true;
+
+            const tokenResponse = await api.post(
+                "/auth/refresh",
+                undefined,
+                {
+                    auth: false,
+                    clearAuthOnUnauthorized: false,
+                    skipAuthRefresh: true,
+                }
+            );
+
+            if (tokenResponse.access_token) {
+                authSession.setToken(tokenResponse.access_token, { remember });
+            }
+
+            const sessionResponse = await api.get("/auth/me/session", {
+                clearAuthOnUnauthorized: false,
+            });
+
+            const normalizedResponse = normalizeAuthResponse(sessionResponse);
+
+            if (
+                normalizedResponse.user.email ||
+                normalizedResponse.user.role ||
+                normalizedResponse.user.actor_type
+            ) {
+                authSession.setUser(normalizedResponse.user, { remember });
+            } else if (normalizedResponse.role) {
+                authSession.setRole(normalizedResponse.role, { remember });
+            }
+
+            return normalizedResponse;
+        } catch {
+            authSession.clear();
+            return null;
+        }
     },
 
     requestOtp: (email, purpose) =>
