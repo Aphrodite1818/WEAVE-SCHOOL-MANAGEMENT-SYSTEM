@@ -106,7 +106,6 @@ const buildFieldErrors = (detail) => {
     const loc = Array.isArray(item.loc)
       ? item.loc.filter((segment) => segment !== "body")
       : [];
-
     const fieldName = loc.map(String).join(".");
     const message = normalizeDetail(item.msg) || "Invalid value";
 
@@ -488,6 +487,9 @@ const refreshAccessToken = async () => {
   return refreshPromise;
 };
 
+const isFormDataBody = (body) =>
+  typeof FormData !== "undefined" && body instanceof FormData;
+
 async function request(endpoint, options = {}, hasRetried = false) {
   const {
     auth = true,
@@ -499,12 +501,13 @@ async function request(endpoint, options = {}, hasRetried = false) {
   } = options;
   const token = auth ? authSession.getToken() : null;
   const hasBody = restOptions.body !== undefined && restOptions.body !== null;
+  const isMultipartBody = isFormDataBody(restOptions.body);
   const method = restOptions.method || "GET";
   const autoAbortController = !providedSignal && method === "GET" ? new AbortController() : null;
   const requestSignal = providedSignal || autoAbortController?.signal;
 
   const headers = {
-    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(hasBody && !isMultipartBody ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...optionHeaders,
   };
@@ -580,6 +583,13 @@ export const api = {
     request(endpoint, {
       method: "POST",
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...options,
+    }),
+
+  postForm: (endpoint, formData, options) =>
+    request(endpoint, {
+      method: "POST",
+      body: formData,
       ...options,
     }),
 
