@@ -8,6 +8,7 @@ from app.core.dependencies.route_guards import require_superadmin
 from app.core.utils.frontend_urls import resolve_frontend_app_url
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.schemas import SuperadminInviteCreate, SuperadminResponse
+from app.modules.superadmin.security_service import SuperadminSecurityService
 from app.modules.superadmin.service import SuperadminService
 from app.tenant_management.models import Tenant
 from app.tenant_management.schemas import TenantManagementResponse, TenantCreate, TenantStatusUpdate
@@ -112,6 +113,16 @@ async def get_superadmin_analytics_overview(
     """Return analytics data for the superadmin dashboard."""
 
     return await SuperadminService.get_analytics_overview(db)
+
+
+@router.get("/security/overview", status_code=status.HTTP_200_OK)
+async def get_superadmin_security_overview(
+    db: DbSession,
+    current_superadmin: SuperadminActor,
+) -> dict[str, object]:
+    """Return security signals for the superadmin dashboard."""
+
+    return await SuperadminSecurityService.get_overview(db)
 
 
 @router.post("/superadmins/invite", status_code=status.HTTP_201_CREATED)
