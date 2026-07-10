@@ -122,6 +122,35 @@ class PlatformMaintenanceException(AppException):
             payload=payload,
         )
 
+class SecurityBlockException(AppException):
+    """Raised when a manual IP/network containment rule blocks traffic."""
+
+    def __init__(
+        self,
+        detail: str = "Access from this network has been temporarily blocked for security reasons.",
+        *,
+        reason: str | None = None,
+        ip_label: str | None = None,
+        expires_at: str | None = None,
+    ) -> None:
+        """Initialize the SecurityBlockException instance."""
+
+        payload: dict[str, Any] = {
+            "security_block": True,
+            "ip_blocked": True,
+            "retryable": True,
+            "ip_label": ip_label,
+            "reason": reason,
+            "expires_at": expires_at,
+        }
+
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail,
+            headers={"Retry-After": "300"},
+            payload=payload,
+        )
+
 class ConflictException(AppException):
     """Raised when a conflicting resource already exists."""
     def __init__(self, detail: str = "Resource conflict") -> None:

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.core.cache.manager import CacheManager
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException, PlatformMaintenanceException
+from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException, SecurityBlockException
 from app.modules.auth.models import AuthRefreshToken, AuthSession, AuthSessionActorType
 from app.modules.superadmin.models import SecurityIPBlock, SuperAdmin
 from app.modules.superadmin.schemas import (
@@ -126,7 +126,7 @@ class SecurityResponseService:
         ip_address: str | None,
         actor_type: str | AuthSessionActorType | None,
     ) -> None:
-        """Block non-superadmin login when the source IP is manually blocked."""
+        """Block non-superadmin actors when the source IP is manually blocked."""
 
         state = await cls.is_ip_blocked(db, ip_address)
         if not state.get("blocked"):
@@ -136,9 +136,11 @@ class SecurityResponseService:
         if actor_type_value == AuthSessionActorType.SUPERADMIN.value:
             return
 
-        raise PlatformMaintenanceException(
+        raise SecurityBlockException(
             detail="Access from this network has been temporarily blocked for security reasons.",
             reason=str(state.get("reason") or "Manual IP block is active."),
+            ip_label=str(state.get("ip_label") or "blocked-network"),
+            expires_at=str(state.get("expires_at")) if state.get("expires_at") else None,
         )
 
     @classmethod
@@ -232,51 +234,46 @@ class SecurityResponseService:
         current_superadmin: SuperAdmin,
         payload: SecurityRevokeIPSessionsRequest,
     ) -> int:
-        """Revoke active sessions created from a specific IP address."""
+        """Revoke active non-superadmin sessions created from a specific IP address."""
 
         normalized_ip = cls.normalize_ip_address(payload.ip_address)
         if not normalized_ip:
             raise BadRequestException("Enter a valid IPv4 or IPv6 address.")
 
-        now = datetime.now(timezone.utc)
-        result = await db.execute(
-            update(AuthSession)
-            .where(
+        session_ids_result = await db.execute(
+            select(AuthSession.id).where(
                 AuthSession.ip_address == normalized_ip,
                 AuthSession.actor_type != AuthSessionActorType.SUPERADMIN,
                 AuthSession.revoked_at.is_(None),
                 AuthSession.compromised_at.is_(None),
+            )
+        )
+        session_ids = [row[0] for row in session_ids_result.all()]
+        if not session_ids:
+            return 0
+
+        now = datetime.now(timezone.utc)
+        await db.execute(
+            update(AuthSession)
+            .where(AuthSession.id.in_(session_ids))
+            .values(
+                revoked_at=now,
+                revoked_reason=payload.reason,
+            )
+        )
+        await db.execute(
+            update(AuthRefreshToken)
+            .where(
+                AuthRefreshToken.session_id.in_(session_ids),
+                AuthRefreshToken.revoked_at.is_(None),
             )
             .values(
                 revoked_at=now,
                 revoked_reason=payload.reason,
             )
         )
-        affected_count = result.rowcount or 0
-
-        if affected_count:
-            session_ids = await db.execute(
-                select(AuthSession.id).where(
-                    AuthSession.ip_address == normalized_ip,
-                    AuthSession.revoked_at == now,
-                )
-            )
-            ids = [row[0] for row in session_ids.all()]
-            if ids:
-                await db.execute(
-                    update(AuthRefreshToken)
-                    .where(
-                        AuthRefreshToken.session_id.in_(ids),
-                        AuthRefreshToken.revoked_at.is_(None),
-                    )
-                    .values(
-                        revoked_at=now,
-                        revoked_reason=payload.reason,
-                    )
-                )
-
         await db.commit()
-        return affected_count
+        return len(session_ids)
 
     @classmethod
     async def revoke_sessions_for_actor(
