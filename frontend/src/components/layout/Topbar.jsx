@@ -84,7 +84,7 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
   };
 
   return (
-    <header className="z-30 shrink-0 border-b border-border bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-border bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur-md">
       <div className="mx-auto flex h-[3.75rem] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:gap-2 sm:px-5 md:h-16 lg:px-8">
         <button
           type="button"
