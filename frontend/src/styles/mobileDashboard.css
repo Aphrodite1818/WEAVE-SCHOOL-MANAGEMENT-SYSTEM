@@ -10,6 +10,24 @@
   word-break: normal;
 }
 
+.chart-interactive-scroll {
+  min-width: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+}
+
+.chart-interactive-scroll * {
+  min-width: 0;
+}
+
+.dashboard-topbar {
+  transform: translateZ(0);
+  isolation: isolate;
+}
+
 .page-header {
   display: flex;
   flex-direction: column;
@@ -116,6 +134,12 @@
     touch-action: manipulation;
   }
 
+  .dashboard-topbar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 50 !important;
+  }
+
   .backdrop-blur-xl {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
@@ -220,7 +244,7 @@
     height: auto;
     border-radius: 1.15rem;
     padding: 0.9rem;
-    overflow: visible;
+    overflow: hidden;
   }
 
   #dashboard-content .dashboard-chart-card h3 {
