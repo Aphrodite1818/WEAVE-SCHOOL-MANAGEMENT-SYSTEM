@@ -4,12 +4,10 @@ import {
   ArrowRight,
   BarChart3,
   BookOpen,
-  ClipboardList,
   FileSearch,
   FileText,
   GraduationCap,
   Layers3,
-  Library,
   Pencil,
   Settings2,
   Users,
@@ -49,7 +47,7 @@ const workflowCards = [
   {
     key: "class-subjects",
     title: "Classes & subjects",
-    description: "Review classes, subjects, and the subjects attached to each class.",
+    description: "Create classes, manage subjects, and attach subjects to classes.",
     to: "/admin/academic/class-subjects",
     icon: Layers3,
     tone: "success",
@@ -94,14 +92,6 @@ const workflowCards = [
 ];
 
 const supportCards = [
-  {
-    key: "full-workbench",
-    title: "Full workbench",
-    description: "Open the original all-in-one academic workspace when you need every form on one page.",
-    to: "/admin/academic/manage",
-    icon: ClipboardList,
-    tone: "neutral",
-  },
   {
     key: "analytics",
     title: "Academic analytics",
@@ -223,7 +213,7 @@ function AcademicHubOverviewPage() {
           <DashboardWelcomePanel
             eyebrow="Academic operations"
             title="Choose the academic workflow you want to manage"
-            description="The hub now starts with clear route cards. Pick a workflow, use the focused switcher, then return here when you are done."
+            description="The hub now starts with clear route cards. Pick a workflow, make edits inside the focused page, then return here when you are done."
             chips={[
               { label: "Session", value: cleanText(stats.active_academic_session, "Not set"), tone: stats.active_academic_session ? "success" : "warning" },
               { label: "Term", value: cleanText(stats.active_academic_term, "Not set"), tone: stats.active_academic_term ? "primary" : "warning" },
@@ -269,7 +259,7 @@ function AcademicHubOverviewPage() {
             <div>
               <h2 className="section-title">Academic workflows</h2>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                These cards are actions. Each one opens a focused page with a smaller switcher instead of one long crowded workspace.
+                These cards open focused pages with editing and viewing areas. The old all-in-one workbench has been removed from the main flow.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
@@ -286,11 +276,11 @@ function AcademicHubOverviewPage() {
                 <div className="min-w-0">
                   <h2 className="section-title">Helpful admin shortcuts</h2>
                   <p className="mt-1 text-sm leading-6 text-text-muted">
-                    Use these when you need the old workbench, analytics, or student profile records.
+                    Use these when you need academic analytics or student profile records.
                   </p>
                 </div>
               </div>
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {supportCards.map((card) => <SupportRouteCard key={card.key} {...card} />)}
               </div>
             </Card>
