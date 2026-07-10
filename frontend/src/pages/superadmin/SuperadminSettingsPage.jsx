@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, LockKeyhole, RefreshCw, ShieldAlert, UnlockKeyhole } from "lucide-react";
+import { AlertTriangle, CheckCircle2, LockKeyhole, RefreshCw, ShieldAlert, Unlock } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
@@ -206,7 +206,7 @@ function SuperadminSettingsPage() {
         <Card className="p-4 sm:p-6">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-success-soft text-success">
-              <UnlockKeyhole className="h-5 w-5" />
+              <Unlock className="h-5 w-5" />
             </div>
             <div>
               <h2 className="text-lg font-semibold text-text">Disable lockdown</h2>
@@ -236,7 +236,7 @@ function SuperadminSettingsPage() {
               variant="success"
               disabled={isSubmitting || !lockdownEnabled || unlockConfirm !== "UNLOCK"}
             >
-              <UnlockKeyhole className="h-4 w-4" />
+              <Unlock className="h-4 w-4" />
               Disable lockdown
             </Button>
           </form>
