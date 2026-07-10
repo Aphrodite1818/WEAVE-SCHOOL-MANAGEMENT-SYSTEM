@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import DateTime, Enum as SQLEnum, Index, Integer, String, Text
+from sqlalchemy import DateTime, Enum as SQLEnum, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -65,4 +65,15 @@ class EmailOutbox(BaseModel):
         Index("ix_email_outbox_tenant_retry", "tenant_id", "status", "next_retry_at"),
         Index("ix_email_outbox_recipient_status", "recipient_email", "status"),
         Index("ix_email_outbox_template_status", "template_name", "status"),
+        Index(
+            "ix_email_outbox_pending_claim",
+            "next_retry_at",
+            "created_at",
+            postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "ix_email_outbox_processing_recovery",
+            "processing_started_at",
+            postgresql_where=text("status = 'processing'"),
+        ),
     )
