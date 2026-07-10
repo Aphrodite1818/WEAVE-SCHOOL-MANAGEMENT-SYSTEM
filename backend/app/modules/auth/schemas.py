@@ -32,9 +32,6 @@ class LoginSessionUser(BaseModel):
     meta: dict[str, Any] | None = None
 
 
-
-
-
 class SessionBootstrapResponse(BaseModel):
     """Current authenticated browser/session bootstrap payload."""
 
@@ -46,10 +43,6 @@ class SessionBootstrapResponse(BaseModel):
     email: str | None = None
     password_reset_required: bool | None = None
     user: LoginSessionUser
-
-
-
-    
 
 
 class LoginRequest(BaseModel):
