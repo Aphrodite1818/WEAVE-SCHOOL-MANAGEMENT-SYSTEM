@@ -37,6 +37,11 @@ class TenantAdmin(BaseModel):
         nullable=False,
     )
 
+    passport_photo_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
     account_status: Mapped[TenantAdminStatus] = mapped_column(
         SqlEnum(
             TenantAdminStatus,

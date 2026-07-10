@@ -54,12 +54,17 @@ class StudentRepository:
     async def get_by_id(
         db: AsyncSession,
         student_id: UUID,
+        *,
+        lock: bool = False,
     ) -> Student | None:
         """Get a student by global ID."""
 
-        result = await db.execute(
-            select(Student).where(Student.id == student_id)
-        )
+        query = select(Student).where(Student.id == student_id)
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod

@@ -94,7 +94,6 @@ class TenantBase(InputBase):
     city: str | None = Field(default=None, max_length=100)
     state: str | None = Field(default=None, max_length=100)
     country: str = Field(default="Nigeria", max_length=100)
-    logo_url: HttpUrl | None = None
     timezone: str = Field(default="Africa/Lagos", max_length=50)
     language: str = Field(default="en", max_length=10)
     admission_number_prefix: str | None = Field(
@@ -247,7 +246,6 @@ class TenantUpdate(InputBase):
     city: str | None = Field(default=None, max_length=100)
     state: str | None = Field(default=None, max_length=100)
     country: str | None = Field(default=None, max_length=100)
-    logo_url: HttpUrl | None = None
     timezone: str | None = Field(default=None, max_length=50)
     language: str | None = Field(default=None, max_length=10)
     admission_number_prefix: str | None = Field(
@@ -307,7 +305,6 @@ class TenantOnboardingUpdate(InputBase):
     city: str = Field(..., min_length=2, max_length=100)
     state: str = Field(..., min_length=2, max_length=100)
     country: str = Field(default="Nigeria", max_length=100)
-    logo_url: HttpUrl | None = None
     timezone: str = Field(default="Africa/Lagos", max_length=50)
     language: str = Field(default="en", max_length=10)
     school_bot_whatssap_number: str | None = Field(

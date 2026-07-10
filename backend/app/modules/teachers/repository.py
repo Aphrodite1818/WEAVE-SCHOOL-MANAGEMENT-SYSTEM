@@ -55,10 +55,12 @@ class TeacherRepository:
     async def get_by_id(
         db: AsyncSession,
         teacher_id: UUID,
+        *,
+        lock: bool = False,
     ) -> Teacher | None:
         """Fetch teacher by ID globally."""
 
-        result = await db.execute(
+        query = (
             select(Teacher)
             .options(
                 selectinload(Teacher.subjects),
@@ -68,6 +70,11 @@ class TeacherRepository:
             )
             .where(Teacher.id == teacher_id)
         )
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod

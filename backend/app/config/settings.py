@@ -230,6 +230,31 @@ class Settings(BaseSettings):
 
         return self
 
+
+
+
+
+    MEDIA_STORAGE_PROVIDER: Literal["local", "r2"] = "local"
+
+    R2_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_ENDPOINT_URL: str | None = None  # https://<account_id>.r2.cloudflarestorage.com
+    R2_BUCKET_NAME: str = "learnly-public-media"
+    R2_PUBLIC_URL: str | None = None  # custom domain or r2.dev public URL, if bucket is public
+
+    MEDIA_PUBLIC_BASE_URL : str | None = None
+
+    MEDIA_MAX_LOGO_SIZE_BYTES : int = 1 * 1024 * 1024
+    MEDIA_MAX_PASSPORT_SIZE_BYTES : int = 2 * 1024 * 1024
+
+
+    MEDIA_ALLOWED_IMAGE_TYPES : list[str] = [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+    ]
+
     @property
     def is_development(self) -> bool:
         """Return whether the application is running in development mode."""

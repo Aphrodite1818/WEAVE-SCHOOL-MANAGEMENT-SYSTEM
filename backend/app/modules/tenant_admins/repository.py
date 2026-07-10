@@ -31,14 +31,19 @@ class TenantAdminRepository:
     async def get_by_id(
         db: AsyncSession,
         admin_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> TenantAdmin | None:
         """Fetch tenant admin by ID."""
 
-        result = await db.execute(
-            select(TenantAdmin).where(
-                TenantAdmin.id == admin_id,
-            )
+        query = select(TenantAdmin).where(
+            TenantAdmin.id == admin_id,
         )
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -60,14 +65,40 @@ class TenantAdminRepository:
     async def get_by_email(
         db: AsyncSession,
         email: str,
+        *,
+        lock: bool = False,
     ) -> TenantAdmin | None:
         """Fetch tenant admin by email."""
 
-        result = await db.execute(
-            select(TenantAdmin).where(
-                func.lower(TenantAdmin.email) == email.strip().lower(),
-            )
+        query = select(TenantAdmin).where(
+            func.lower(TenantAdmin.email) == email.strip().lower(),
         )
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_tenant_and_id(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        admin_id: uuid.UUID,
+        lock: bool = False,
+    ) -> TenantAdmin | None:
+        """Fetch a tenant admin by ID within a tenant."""
+
+        query = select(TenantAdmin).where(
+            TenantAdmin.tenant_id == tenant_id,
+            TenantAdmin.id == admin_id,
+        )
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod

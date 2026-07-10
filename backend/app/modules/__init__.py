@@ -11,6 +11,7 @@ def import_model_modules() -> None:
     import app.modules.bulk_imports.models  # noqa: F401
     import app.modules.classes.models  # noqa: F401
     import app.modules.email_outbox.models  # noqa: F401
+    import app.modules.media.models  # noqa: F401
     import app.modules.parents.models  # noqa: F401
     import app.modules.students.models  # noqa: F401
     import app.modules.subjects.models  # noqa: F401
@@ -19,5 +20,6 @@ def import_model_modules() -> None:
     import app.modules.subscriptions.models  # noqa: F401
     import app.modules.superadmin.models  # noqa: F401
     import app.modules.teachers.models  # noqa: F401
+    import app.modules.tenant_branding.models  # noqa: F401
     import app.modules.tenant_admins.models  # noqa: F401
     import app.tenant_management.models  # noqa: F401

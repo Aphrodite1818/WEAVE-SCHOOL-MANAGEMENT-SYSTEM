@@ -54,7 +54,6 @@ class StudentInputBase(InputBase):
     last_name: str | None = Field(default=None, max_length=100)
     date_of_birth: date | None = None
     gender: Gender | None = None
-    passport_photo_url: str | None = Field(default=None, max_length=500)
     graduation_date: date | None = None
     class_id: uuid.UUID | None = None
     arm: str | None = Field(default=None, max_length=20)
@@ -69,7 +68,6 @@ class StudentInputBase(InputBase):
         "admission_number",
         "first_name",
         "last_name",
-        "passport_photo_url",
         "state_of_origin",
         "arm",
         mode="before",
@@ -89,7 +87,6 @@ class StudentCreate(InputBase):
     last_name: str | None = Field(default=None, max_length=100)
     date_of_birth: date | None = None
     gender: Gender | None = None
-    passport_photo_url: str | None = Field(default=None, max_length=500)
     graduation_date: date | None = None
     class_id: uuid.UUID | None = None
     arm: str | None = Field(default=None, max_length=20)
@@ -100,7 +97,6 @@ class StudentCreate(InputBase):
         "admission_number",
         "first_name",
         "last_name",
-        "passport_photo_url",
         "state_of_origin",
         "arm",
         mode="before",
@@ -121,7 +117,6 @@ class StudentUpdate(InputBase):
     last_name: str | None = Field(default=None, max_length=100)
     date_of_birth: date | None = None
     gender: Gender | None = None
-    passport_photo_url: str | None = Field(default=None, max_length=500)
     graduation_date: date | None = None
     class_id: uuid.UUID | None = None
     arm: str | None = Field(default=None, max_length=20)
@@ -138,7 +133,6 @@ class StudentUpdate(InputBase):
         "admission_number",
         "first_name",
         "last_name",
-        "passport_photo_url",
         "state_of_origin",
         "arm",
         mode="before",
@@ -156,9 +150,8 @@ class StudentSelfUpdate(InputBase):
     first_name: str | None = Field(default=None, max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
     gender: Gender | None = None
-    passport_photo_url: str | None = Field(default=None, max_length=500)
 
-    @field_validator("first_name", "last_name", "passport_photo_url", mode="before")
+    @field_validator("first_name", "last_name", mode="before")
     @classmethod
     def clean_self_service_fields(cls, value: str | None) -> str | None:
         """Normalize optional text fields."""
@@ -172,9 +165,8 @@ class StudentOnboardingUpdate(InputBase):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     gender: Gender
-    passport_photo_url: str | None = Field(default=None, max_length=500)
 
-    @field_validator("first_name", "last_name", "passport_photo_url", mode="before")
+    @field_validator("first_name", "last_name", mode="before")
     @classmethod
     def clean_onboarding_fields(cls, value: str | None) -> str | None:
         """Normalize student onboarding fields."""
@@ -242,6 +234,7 @@ class StudentLoginProfile(OutputBase):
     is_verified: bool
     is_active: bool
     password_reset_required: bool
+    passport_photo_url : str | None = None
 
 
 class StudentListResponse(OutputBase):

@@ -41,12 +41,17 @@ class ParentRepository:
     async def get_by_id(
         db: AsyncSession,
         parent_id: UUID,
+        *,
+        lock: bool = False,
     ) -> Parent | None:
         """Get parent by global ID."""
 
-        result = await db.execute(
-            select(Parent).where(Parent.id == parent_id)
-        )
+        query = select(Parent).where(Parent.id == parent_id)
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod

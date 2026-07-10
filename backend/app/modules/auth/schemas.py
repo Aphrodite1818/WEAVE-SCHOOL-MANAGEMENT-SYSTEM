@@ -30,6 +30,8 @@ class LoginSessionUser(BaseModel):
     password_reset_required: bool | None = None
     profile_status: str | None = None
     meta: dict[str, Any] | None = None
+    passport_photo_url: str | None = None
+    tenant_logo_url: str | None = None
 
 
 class SessionBootstrapResponse(BaseModel):

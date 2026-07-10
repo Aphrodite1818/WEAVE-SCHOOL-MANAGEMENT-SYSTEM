@@ -508,31 +508,37 @@ async def _get_email_actor_with_tenant(
     except NotFoundException as exc:
         raise NotFoundException("Account with this email not found.") from exc
 
-    actor_query = None
     if resolution.actor_type == ActorType.TENANT_ADMIN:
-        actor_query = select(TenantAdmin).where(TenantAdmin.id == resolution.actor_id)
+        actor = await TenantAdminRepository.get_by_id(
+            db,
+            admin_id=resolution.actor_id,
+            lock=lock,
+        )
     elif resolution.actor_type == ActorType.TEACHER:
-        actor_query = select(Teacher).where(Teacher.id == resolution.actor_id)
+        actor = await TeacherRepository.get_by_id(
+            db,
+            teacher_id=resolution.actor_id,
+            lock=lock,
+        )
     elif resolution.actor_type == ActorType.PARENT:
-        actor_query = select(Parent).where(Parent.id == resolution.actor_id)
+        actor = await ParentRepository.get_by_id(
+            db,
+            parent_id=resolution.actor_id,
+            lock=lock,
+        )
     else:
         raise BadRequestException(
             "This email address is not eligible for this authentication flow."
         )
 
-    tenant_query = select(Tenant).where(Tenant.id == resolution.tenant_id)
-
-    if lock:
-        actor_query = actor_query.with_for_update()
-        tenant_query = tenant_query.with_for_update()
-
-    actor_result = await db.execute(actor_query)
-    actor = actor_result.scalar_one_or_none()
     if actor is None:
         raise NotFoundException("Account not found.")
 
-    tenant_result = await db.execute(tenant_query)
-    tenant = tenant_result.scalar_one_or_none()
+    tenant = await TenantRepository.get_by_id(
+        db,
+        resolution.tenant_id,
+        lock=lock,
+    )
     if tenant is None:
         raise NotFoundException("Tenant not found.")
 
@@ -1249,17 +1255,16 @@ class TenantActivationService:
             await db.rollback()
             raise BadRequestException("Activation link does not match this email address.")
 
-        admin_result = await db.execute(
-            select(TenantAdmin).where(
-                func.lower(TenantAdmin.email) == _normalize_email(activation_record.email)
-            ).with_for_update()
+        admin = await TenantAdminRepository.get_by_email(
+            db,
+            _normalize_email(activation_record.email),
+            lock=True,
         )
-        admin = admin_result.scalar_one_or_none()
-
-        tenant_result = await db.execute(
-            select(Tenant).where(Tenant.id == activation_record.tenant_id).with_for_update()
+        tenant = await TenantRepository.get_by_id(
+            db,
+            activation_record.tenant_id,
+            lock=True,
         )
-        tenant = tenant_result.scalar_one_or_none()
 
         if admin is None or tenant is None or admin.tenant_id != tenant.id:
             await db.delete(activation_record)
@@ -1419,8 +1424,10 @@ class UserInviteService:
                 return {"status": "expired", "purpose": "superadmin_invite"}
             return {"status": "valid", "purpose": "superadmin_invite"}
 
-        tenant_result = await db.execute(select(Tenant).where(Tenant.id == record.tenant_id))
-        tenant = tenant_result.scalar_one_or_none()
+        tenant = await TenantRepository.get_by_id(
+            db,
+            record.tenant_id,
+        )
 
         if record.purpose == AuthPurpose.USER_INVITE:
             if not _tenant_allows_user_invite_completion(tenant):
@@ -1612,19 +1619,19 @@ class OTPService:
                 "OTP verification is only available for tenant admin signup accounts."
             )
 
-        admin_query = select(TenantAdmin).where(TenantAdmin.id == resolution.actor_id)
-        tenant_query = select(Tenant).where(Tenant.id == resolution.tenant_id)
-        if lock:
-            admin_query = admin_query.with_for_update()
-            tenant_query = tenant_query.with_for_update()
-
-        admin_result = await db.execute(admin_query)
-        admin = admin_result.scalar_one_or_none()
+        admin = await TenantAdminRepository.get_by_id(
+            db,
+            admin_id=resolution.actor_id,
+            lock=lock,
+        )
         if admin is None:
             raise NotFoundException("Tenant admin not found.")
 
-        tenant_result = await db.execute(tenant_query)
-        tenant = tenant_result.scalar_one_or_none()
+        tenant = await TenantRepository.get_by_id(
+            db,
+            resolution.tenant_id,
+            lock=lock,
+        )
         if tenant is None:
             raise NotFoundException("Tenant not found.")
 

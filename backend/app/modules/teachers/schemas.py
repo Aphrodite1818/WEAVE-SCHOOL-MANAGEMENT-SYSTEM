@@ -185,6 +185,9 @@ class TeacherResponse(OutputBase):
     updated_at: datetime
 
 
+    passport_photo_url : str | None = None
+
+
 class TeacherLoginProfile(OutputBase):
     """Compact teacher profile used after authentication."""
 
@@ -195,6 +198,7 @@ class TeacherLoginProfile(OutputBase):
     status: TeacherStatus
     is_verified: bool
     is_active: bool
+    passport_photo_url : str | None
 
 
 class TeacherListResponse(OutputBase):

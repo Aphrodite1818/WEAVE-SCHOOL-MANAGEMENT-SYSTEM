@@ -1,0 +1,94 @@
+"""Database models for tenant branding."""
+
+from __future__ import annotations
+
+import uuid
+from enum import Enum
+
+from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
+
+
+class TenantBrandingThemeMode(str, Enum):
+    """Supported tenant branding theme modes."""
+
+    LIGHT = "light"
+    DARK = "dark"
+
+
+class TenantBranding(BaseModel):
+    """Tenant-scoped branding configuration used inside school workspaces."""
+
+    __tablename__ = "tenant_branding"
+
+    brand_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    logo_url: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    primary_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+    )
+
+    accent_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+    )
+
+    sidebar_color: Mapped[str] = mapped_column(
+        String(7),
+        nullable=False,
+    )
+
+    theme_mode: Mapped[TenantBrandingThemeMode] = mapped_column(
+        SQLEnum(
+            TenantBrandingThemeMode,
+            name="tenant_branding_theme_mode",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=TenantBrandingThemeMode.LIGHT,
+        server_default=TenantBrandingThemeMode.LIGHT.value,
+    )
+
+    tokens: Mapped[dict[str, str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+
+    is_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    theme_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    updated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_tenant_branding_tenant_id"),
+        Index("ix_tenant_branding_tenant_enabled", "tenant_id", "is_enabled"),
+    )

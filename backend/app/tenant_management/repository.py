@@ -32,14 +32,23 @@ class TenantRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_id(db: AsyncSession, tenant_id: uuid.UUID) -> Tenant | None:
+    async def get_by_id(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> Tenant | None:
         """Return a non-deleted tenant by ID."""
-        result = await db.execute(
-            select(Tenant).where(
-                Tenant.id == tenant_id,
-                Tenant.is_deleted == False
-            )
+
+        query = select(Tenant).where(
+            Tenant.id == tenant_id,
+            Tenant.is_deleted == False
         )
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod

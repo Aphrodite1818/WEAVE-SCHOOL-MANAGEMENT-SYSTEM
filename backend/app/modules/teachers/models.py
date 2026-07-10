@@ -73,6 +73,11 @@ class Teacher(BaseModel):
         nullable=True,
     )
 
+    passport_photo_url: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
     account_status: Mapped[TeacherAccountStatus] = mapped_column(
         SQLEnum(
             TeacherAccountStatus,
