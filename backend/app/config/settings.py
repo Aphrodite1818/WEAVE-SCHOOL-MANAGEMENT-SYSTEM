@@ -105,6 +105,10 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = Field(default=None, description="SMTP Password")
     SMTP_FROM_EMAIL: str | None = Field(default=None, description="Sender Email Address")
 
+    # Security alert settings. The recipient is configured by env and is never stored in the database.
+    SECURITY_ALERTS_ENABLED: bool = Field(default=True, description="Send platform-owner security alert emails")
+    SECURITY_ALERT_EMAIL: str | None = Field(default=None, description="Developer/security recipient for high-signal alerts")
+
     # OTP Settings
     OTP_EXPIRATION_MINUTES: int = 10
     TENANT_ACTIVATION_EXPIRATION_HOURS: int = 48
