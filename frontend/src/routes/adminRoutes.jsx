@@ -12,6 +12,7 @@ import CreateUserPage from "../pages/admin/CreateUserPage";
 import FeesPage from "../pages/admin/FeesPage";
 import ParentsPage from "../pages/admin/ParentsPage";
 import PaymentsPage from "../pages/admin/PaymentsPage";
+import SchoolCustomizationPage from "../pages/admin/SchoolCustomizationPage";
 import StudentsPage from "../pages/admin/StudentsPage";
 import SubjectsPage from "../pages/admin/SubjectsPage";
 import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
@@ -52,7 +53,7 @@ export const adminRoutes = (
       <Route path="/admin/announcements" element={<AnnouncementsWorkspacePage mode="tenant-admin" />} />
       <Route path="/admin/messages" element={<AnnouncementsWorkspacePage mode="tenant-admin" variant="messages" />} />
       <Route path="/admin/reports" element={<StaticModulePage role="admin" title="Reports" description="Operational reports will appear here when backend reporting endpoints are available." type="settings" />} />
-      <Route path="/admin/settings" element={<StaticModulePage role="admin" title="Settings" description="School profile, security, users, and account configuration." type="settings" />} />
+      <Route path="/admin/settings" element={<SchoolCustomizationPage />} />
     </Route>
   </Route>
 );
