@@ -58,7 +58,7 @@ function useMobileChartLayout() {
 }
 
 function XAxisTick({ x, y, payload, isMobileChart }) {
-  const label = shortLabel(payload?.value, isMobileChart ? 11 : 14);
+  const label = shortLabel(payload?.value, isMobileChart ? 11 : 16);
 
   return (
     <g transform={`translate(${x},${y})`}>
@@ -88,12 +88,12 @@ function AnalyticsBarChart({
   const items = normalizeItems(data, valueKey);
   const hasVisibleValues = items.some((item) => Number(item?.[valueKey]) > 0);
   const hasLongLabels = items.some((item) => formatChartLabel(item?.[labelKey]).length > 10);
-  const useHorizontalBars = isMobileChart
-    ? items.length >= 4 || hasLongLabels
-    : items.length > 6 || (items.length >= 5 && hasLongLabels);
-  const chartHeight = useHorizontalBars ? Math.max(isMobileChart ? 280 : 260, items.length * (isMobileChart ? 48 : 42)) : isMobileChart ? 300 : 260;
-  const yAxisWidth = isMobileChart ? 138 : 128;
-  const mobileVerticalChartWidth = isMobileChart && !useHorizontalBars ? Math.max(340, items.length * 88) : "100%";
+  const useHorizontalBars = isMobileChart && (items.length >= 4 || hasLongLabels);
+  const chartHeight = useHorizontalBars ? Math.max(280, items.length * 48) : isMobileChart ? 300 : 280;
+  const yAxisWidth = 138;
+  const verticalChartMinWidth = !useHorizontalBars
+    ? Math.max(isMobileChart ? 340 : 520, items.length * (isMobileChart ? 88 : 118))
+    : "100%";
 
   return (
     <div className="dashboard-chart-card flex min-h-[22rem] flex-col overflow-hidden p-4 sm:p-5">
@@ -122,7 +122,7 @@ function AnalyticsBarChart({
         </div>
       ) : (
         <div className="mt-5 min-h-0 flex-1 overflow-x-auto overflow-y-hidden rounded-2xl border border-border/50 bg-surface-muted/10 px-1 py-3 sm:px-2">
-          <div style={{ minWidth: mobileVerticalChartWidth, height: chartHeight }}>
+          <div style={{ minWidth: verticalChartMinWidth, height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
               {useHorizontalBars ? (
                 <BarChart data={items} layout="vertical" margin={{ left: 0, right: 16, top: 8, bottom: 8 }}>
@@ -133,7 +133,7 @@ function AnalyticsBarChart({
                     tickLine={false}
                     axisLine={false}
                     width={36}
-                    tick={{ fontSize: isMobileChart ? 13 : 12 }}
+                    tick={{ fontSize: 13 }}
                   />
                   <YAxis
                     type="category"
@@ -142,18 +142,18 @@ function AnalyticsBarChart({
                     axisLine={false}
                     tickMargin={10}
                     width={yAxisWidth}
-                    tickFormatter={(value) => shortLabel(value, isMobileChart ? 18 : 20)}
-                    tick={{ fontSize: isMobileChart ? 13 : 12, fontWeight: 500 }}
+                    tickFormatter={(value) => shortLabel(value, 18)}
+                    tick={{ fontSize: 13, fontWeight: 500 }}
                   />
                   <Tooltip labelFormatter={formatChartLabel} />
-                  <Bar dataKey={valueKey} radius={[0, 10, 10, 0]} barSize={isMobileChart ? 20 : 18}>
+                  <Bar dataKey={valueKey} radius={[0, 10, 10, 0]} barSize={20}>
                     {items.map((item, index) => (
                       <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
                     ))}
                   </Bar>
                 </BarChart>
               ) : (
-                <BarChart data={items} margin={{ left: 0, right: 12, top: 8, bottom: isMobileChart ? 36 : 18 }}>
+                <BarChart data={items} margin={{ left: 0, right: 12, top: 8, bottom: isMobileChart ? 36 : 24 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
                   <XAxis
                     dataKey={labelKey}
@@ -163,11 +163,11 @@ function AnalyticsBarChart({
                     tick={<XAxisTick isMobileChart={isMobileChart} />}
                     interval={0}
                     minTickGap={0}
-                    height={isMobileChart ? 88 : 56}
+                    height={isMobileChart ? 88 : 64}
                   />
                   <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} tick={{ fontSize: isMobileChart ? 13 : 12 }} />
                   <Tooltip labelFormatter={formatChartLabel} />
-                  <Bar dataKey={valueKey} radius={[10, 10, 0, 0]} maxBarSize={isMobileChart ? 48 : 54}>
+                  <Bar dataKey={valueKey} radius={[10, 10, 0, 0]} maxBarSize={isMobileChart ? 48 : 56}>
                     {items.map((item, index) => (
                       <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
                     ))}
