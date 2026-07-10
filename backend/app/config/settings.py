@@ -131,8 +131,8 @@ class Settings(BaseSettings):
     CACHE_ENABLED: bool = Field(default=False, description="Enable application caching")
 
     RATE_LIMIT_ENABLED: bool = Field(
-        default=False,
-        description="Enable Redis-backed security rate limiting.",
+        default=True,
+        description="Enable security rate limiting. Uses Redis when available and local fallback otherwise.",
     )
     RATE_LIMIT_REDIS_URL: str | None = Field(
         default=None,
@@ -200,15 +200,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_cache_settings(self) -> "Settings":
-        """Ensure cache and rate-limit settings are internally consistent."""
+        """Ensure cache settings are internally consistent."""
 
         if self.CACHE_ENABLED and not self.REDIS_URL:
             raise ValueError("REDIS_URL must be set when CACHE_ENABLED is true.")
-
-        if self.RATE_LIMIT_ENABLED and not (self.RATE_LIMIT_REDIS_URL or self.REDIS_URL):
-            raise ValueError(
-                "RATE_LIMIT_REDIS_URL or REDIS_URL must be set when RATE_LIMIT_ENABLED is true."
-            )
 
         if not (
             self.CACHE_SHORT_TTL_SECONDS
