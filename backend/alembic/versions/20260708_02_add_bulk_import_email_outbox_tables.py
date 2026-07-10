@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from alembic import op
 
 
-revision: str = "20260708_add_bulk_import_email_outbox"
+revision: str = "20260708_add_bulk_import"
 down_revision: str | Sequence[str] | None = "20260708_dev_reset_schema"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

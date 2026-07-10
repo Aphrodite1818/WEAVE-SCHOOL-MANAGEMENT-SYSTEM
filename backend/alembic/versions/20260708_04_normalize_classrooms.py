@@ -13,7 +13,7 @@ from alembic import op
 
 
 revision: str = "20260708_normalize_classrooms"
-down_revision: str | Sequence[str] | None = "20260708_add_import_staged_rows"
+down_revision: str | Sequence[str] | None = "add_import_staged_rows"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

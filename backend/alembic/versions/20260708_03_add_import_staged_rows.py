@@ -12,8 +12,8 @@ from collections.abc import Sequence
 from alembic import op
 
 
-revision: str = "20260708_add_import_staged_rows"
-down_revision: str | Sequence[str] | None = "20260708_add_bulk_import_email_outbox"
+revision: str = "add_import_staged_rows"
+down_revision: str | Sequence[str] | None = "20260708_add_bulk_import"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
