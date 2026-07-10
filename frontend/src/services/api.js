@@ -13,6 +13,9 @@ export const API_BASE_URL = API_URL.replace(/\/$/, "");
 const TOKEN_KEY = "token";
 const USER_KEY = "auth_user";
 const ROLE_KEY = "auth_role";
+const AUTH_REFRESH_ENDPOINT = "/auth/refresh";
+const AUTH_LOGOUT_ENDPOINT = "/auth/logout";
+const AUTH_LOGIN_ENDPOINT = "/auth/login";
 export const NAVIGATION_ABORT_EVENT = "learnly:navigation-start";
 const DEFAULT_USER_SAFE_ERROR =
   "Something went wrong while processing your request. Please try again.";
@@ -20,6 +23,8 @@ const NETWORK_ERROR_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
 const TECHNICAL_ERROR_PATTERN =
   /traceback|sql|sqlalchemy|asyncpg|psycopg|uuid|pydantic|stack trace|internal server error|syntax error/i;
+
+let refreshPromise = null;
 
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
@@ -65,6 +70,13 @@ const removeStoredValue = (key) => {
   localStorage.removeItem(key);
   sessionStorage.removeItem(key);
 };
+
+const getStoredRememberPreference = () => localStorage.getItem(TOKEN_KEY) !== null;
+
+const isRefreshManagedEndpoint = (endpoint) =>
+  endpoint === AUTH_REFRESH_ENDPOINT ||
+  endpoint === AUTH_LOGOUT_ENDPOINT ||
+  endpoint === AUTH_LOGIN_ENDPOINT;
 
 const buildFieldErrors = (detail) => {
   if (!Array.isArray(detail)) return {};
@@ -299,10 +311,57 @@ export const getErrorMessage = (error, fallback = "An error occurred") => {
   return parseApiError(error, fallback).message;
 };
 
-async function request(endpoint, options = {}) {
+const createApiError = (response, data, headers) => {
+  const errorPayload = {
+    response: {
+      status: response.status,
+      data,
+      headers,
+    },
+  };
+
+  const error = new Error(getErrorMessage(errorPayload, "An error occurred"));
+  error.response = errorPayload.response;
+  return error;
+};
+
+const refreshAccessToken = async () => {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE_URL}${AUTH_REFRESH_ENDPOINT}`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        const responseHeaders = Object.fromEntries(response.headers.entries());
+
+        if (!response.ok) {
+          throw createApiError(response, data, responseHeaders);
+        }
+
+        if (!data?.access_token) {
+          throw new Error("Refresh response did not include an access token.");
+        }
+
+        authSession.setToken(data.access_token, {
+          remember: getStoredRememberPreference(),
+        });
+
+        return data.access_token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+};
+
+async function request(endpoint, options = {}, hasRetried = false) {
   const {
     auth = true,
     clearAuthOnUnauthorized = true,
+    skipAuthRefresh = false,
     headers: optionHeaders = {},
     signal: providedSignal,
     ...restOptions
@@ -322,6 +381,7 @@ async function request(endpoint, options = {}) {
   const config = {
     ...restOptions,
     headers,
+    credentials: "include",
     ...(requestSignal ? { signal: requestSignal } : {}),
   };
 
@@ -339,22 +399,29 @@ async function request(endpoint, options = {}) {
     const responseHeaders = Object.fromEntries(response.headers.entries());
 
     if (!response.ok) {
+      const canAttemptRefresh =
+        response.status === 401 &&
+        auth &&
+        clearAuthOnUnauthorized &&
+        !skipAuthRefresh &&
+        !hasRetried &&
+        !isRefreshManagedEndpoint(endpoint);
+
+      if (canAttemptRefresh) {
+        try {
+          await refreshAccessToken();
+          return request(endpoint, options, true);
+        } catch (refreshError) {
+          authSession.clear();
+          throw refreshError;
+        }
+      }
+
       if (response.status === 401 && clearAuthOnUnauthorized) {
         authSession.clear();
       }
 
-      const errorPayload = {
-        response: {
-          status: response.status,
-          data,
-          headers: responseHeaders,
-        },
-      };
-
-      const error = new Error(getErrorMessage(errorPayload, "An error occurred"));
-      error.response = errorPayload.response;
-
-      throw error;
+      throw createApiError(response, data, responseHeaders);
     }
 
     return data;

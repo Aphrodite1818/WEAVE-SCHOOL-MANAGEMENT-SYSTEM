@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { authSession } from "../services/api";
-import { getValidTokenPayload } from "../utils/auth";
+import { getStoredTokenPayload } from "../utils/auth";
 
 const ROLE_DASHBOARD_ROUTES = {
   admin: "/admin/dashboard",
@@ -11,7 +11,7 @@ const ROLE_DASHBOARD_ROUTES = {
 };
 
 function RoleGuard({ allowedRoles = [] }) {
-  const payload = getValidTokenPayload();
+  const payload = getStoredTokenPayload();
   const userRole = payload?.role?.toLowerCase();
   const normalizedRoles = allowedRoles.map((role) => role.toLowerCase());
 

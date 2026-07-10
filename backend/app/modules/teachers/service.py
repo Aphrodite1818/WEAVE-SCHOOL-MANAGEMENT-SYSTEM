@@ -4,6 +4,7 @@
 
 """Teacher service layer."""
 
+from locale import normalize
 import secrets
 from fastapi import BackgroundTasks
 from uuid import UUID
@@ -13,9 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.security import hash_password
 from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
+from app.core.utils.normalization import normalize_staff_id
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.subjects.models import Subject
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.auth.service import UserInviteService
@@ -68,6 +71,13 @@ class TeacherService:
 
         normalized_email = TeacherService._normalize_email(teacher_data.email)
 
+        normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+            db = db ,
+            email = normalized_email,
+        )
+
+        normalized_staff_id = normalize_staff_id(teacher_data.staff_id)
+
         await AuthIdentityService.ensure_identifier_available(
             db=db,
             identifier=normalized_email,
@@ -81,11 +91,11 @@ class TeacherService:
         if existing_teacher_email is not None:
             raise ConflictException(detail="A teacher with this email already exists")
 
-        if teacher_data.staff_id is not None:
+        if normalized_staff_id is not None:
             staff_id_exists = await TeacherRepository.staff_id_exists(
                 db=db,
                 tenant_id=actor.tenant_id,
-                staff_id=teacher_data.staff_id,
+                staff_id=normalized_staff_id,
             )
             if staff_id_exists:
                 raise ConflictException(detail="A teacher with this staff ID already exists")
@@ -108,7 +118,7 @@ class TeacherService:
             password_hash=hash_password(temporary_password),
             first_name=teacher_data.first_name,
             last_name=teacher_data.last_name,
-            staff_id=teacher_data.staff_id,
+            staff_id=normalized_staff_id,
             qualification=teacher_data.qualification,
             specialization=teacher_data.specialization,
             account_status=TeacherAccountStatus.PENDING,
@@ -266,20 +276,20 @@ class TeacherService:
         if not update_data:
             raise BadRequestException(detail="No update data provided")
 
-        if (
-            "staff_id" in update_data
-            and update_data["staff_id"] is not None
-            and update_data["staff_id"] != teacher.staff_id
-        ):
-            staff_id_exists = await TeacherRepository.staff_id_exists(
-                db=db,
-                tenant_id=actor.tenant_id,
-                staff_id=update_data["staff_id"],
-                exclude_teacher_id=teacher.id,
-            )
+        if "staff_id" in update_data:
+            normalized_staff_id = normalize_staff_id(update_data["staff_id"])
+            update_data["staff_id"] = normalized_staff_id
 
-            if staff_id_exists:
-                raise ConflictException(detail="A teacher with this staff ID already exists")
+            if normalized_staff_id is not None and normalized_staff_id != teacher.staff_id:
+                staff_id_exists = await TeacherRepository.staff_id_exists(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    staff_id=normalized_staff_id,
+                    exclude_teacher_id=teacher.id,
+                )
+
+                if staff_id_exists:
+                    raise ConflictException(detail="A teacher with this staff ID already exists")
 
         for field, value in update_data.items():
             setattr(teacher, field, value)
@@ -371,6 +381,11 @@ class TeacherService:
         if "email" in update_data and update_data["email"] is not None:
             normalized_email = TeacherService._normalize_email(update_data["email"])
 
+            normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+                db = db ,
+                email = normalized_email
+            )
+
             if normalized_email != teacher.email:
                 await AuthIdentityService.ensure_identifier_available(
                     db=db,
@@ -398,20 +413,20 @@ class TeacherService:
 
                 update_data["email"] = normalized_email
 
-        if (
-            "staff_id" in update_data
-            and update_data["staff_id"] is not None
-            and update_data["staff_id"] != teacher.staff_id
-        ):
-            staff_id_exists = await TeacherRepository.staff_id_exists(
-                db=db,
-                tenant_id=actor.tenant_id,
-                staff_id=update_data["staff_id"],
-                exclude_teacher_id=teacher.id,
-            )
+        if "staff_id" in update_data:
+            normalized_staff_id = normalize_staff_id(update_data["staff_id"])
+            update_data["staff_id"] = normalized_staff_id
 
-            if staff_id_exists:
-                raise ConflictException(detail="A teacher with this staff ID already exists")
+            if normalized_staff_id is not None and normalized_staff_id != teacher.staff_id:
+                staff_id_exists = await TeacherRepository.staff_id_exists(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    staff_id=normalized_staff_id,
+                    exclude_teacher_id=teacher.id,
+                )
+
+                if staff_id_exists:
+                    raise ConflictException(detail="A teacher with this staff ID already exists")
 
         if "password" in update_data and update_data["password"] is not None:
             update_data["password_hash"] = hash_password(update_data.pop("password"))

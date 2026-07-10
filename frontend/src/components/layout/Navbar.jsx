@@ -9,8 +9,24 @@ function Navbar() {
   const links = [
     { label: "Features", href: "#features" },
     { label: "Benefits", href: "#benefits" },
-    { label: "Pricing", href: "#pricing" },
+    { label: "Pricing", to: "/pricing" },
   ];
+
+  const renderNavLink = (link, className, onClick) => {
+    if (link.to) {
+      return (
+        <Link key={link.to} to={link.to} onClick={onClick} className={className}>
+          {link.label}
+        </Link>
+      );
+    }
+
+    return (
+      <a key={link.href} href={link.href} onClick={onClick} className={className}>
+        {link.label}
+      </a>
+    );
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-xl">
@@ -24,11 +40,9 @@ function Navbar() {
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">
-          {links.map((link) => (
-            <a key={link.href} href={link.href} className="text-sm font-semibold text-text-soft hover:text-primary">
-              {link.label}
-            </a>
-          ))}
+          {links.map((link) =>
+            renderNavLink(link, "text-sm font-semibold text-text-soft hover:text-primary")
+          )}
           <Link to="/login" className="text-sm font-semibold text-text-soft hover:text-primary">
             Log in
           </Link>
@@ -45,11 +59,13 @@ function Navbar() {
       {open && (
         <div className="border-t border-border bg-surface px-4 py-4 md:hidden">
           <nav className="grid gap-2">
-            {links.map((link) => (
-              <a key={link.href} href={link.href} onClick={() => setOpen(false)} className="rounded-xl px-3 py-2 text-sm font-semibold text-text-soft hover:bg-surface-muted hover:text-primary">
-                {link.label}
-              </a>
-            ))}
+            {links.map((link) =>
+              renderNavLink(
+                link,
+                "rounded-xl px-3 py-2 text-sm font-semibold text-text-soft hover:bg-surface-muted hover:text-primary",
+                () => setOpen(false),
+              )
+            )}
             <Link to="/login" onClick={() => setOpen(false)} className="rounded-xl px-3 py-2 text-sm font-semibold text-text-soft hover:bg-surface-muted hover:text-primary">
               Log in
             </Link>

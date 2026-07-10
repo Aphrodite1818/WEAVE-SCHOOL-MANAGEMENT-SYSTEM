@@ -1,5 +1,6 @@
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import PublicLayout from "../../components/layout/PublicLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
@@ -51,38 +52,15 @@ function SubscriptionOptionsPage() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   const checkoutRef = useRef(null);
-  const paidPlans = LANDING_PRICING_PLANS.filter(
-    (plan) => plan.planCode !== "free_trial",
-  );
-  const effectiveSelectedPlanCode =
-    selectedPlanCode || getDefaultSelection(planCode);
-  const selectedPlan = LANDING_PRICING_PLANS.find(
-    (plan) => plan.planCode === effectiveSelectedPlanCode,
-  );
+  const paidPlans = LANDING_PRICING_PLANS.filter((plan) => plan.planCode !== "free_trial");
+  const effectiveSelectedPlanCode = selectedPlanCode || getDefaultSelection(planCode);
+  const selectedPlan = LANDING_PRICING_PLANS.find((plan) => plan.planCode === effectiveSelectedPlanCode);
   const selectedPaidPlanIndex = Math.max(
     paidPlans.findIndex((plan) => plan.planCode === effectiveSelectedPlanCode),
     0,
   );
-  const scrollToBillingDetails = () => {
-    checkoutRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
 
-  const handlePlanAction = (planCodeToSelect, isSelectedPlan, planIsLocked) => {
-    if (planIsLocked) return;
-    setSelectedPlanCode(planCodeToSelect);
-
-    if (isSelectedPlan && !checkoutDisabledReason && billingEmail) {
-      handleCheckout();
-    } else {
-      scrollToBillingDetails();
-    }
-  };
-
-  const selectedPlanRequiresCheckout =
-    effectiveSelectedPlanCode !== "free_trial";
+  const selectedPlanRequiresCheckout = effectiveSelectedPlanCode !== "free_trial";
   const currentPlanIsSelected = effectiveSelectedPlanCode === planCode;
   const canRetryCurrentPlan = ["past_due", "grace_period", "expired"].includes(
     String(statusCode || "").toLowerCase(),
@@ -101,35 +79,38 @@ function SubscriptionOptionsPage() {
   }, [billingInterval, effectiveSelectedPlanCode]);
 
   useEffect(() => {
-    if (
-      planCode &&
-      statusCode === "active" &&
-      storedSelection?.planCode === planCode
-    ) {
+    if (planCode && statusCode === "active" && storedSelection?.planCode === planCode) {
       clearSelectedSubscriptionPlan();
     }
   }, [planCode, statusCode, storedSelection?.planCode]);
 
-  const handleCheckout = async () => {
-    if (
-      isCheckingOut ||
-      !selectedPlanRequiresCheckout ||
-      checkoutDisabledReason
-    ) {
-      return;
+  const scrollToBillingDetails = () => {
+    checkoutRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handlePlanAction = (planCodeToSelect, isSelectedPlan, planIsLocked) => {
+    if (planIsLocked) return;
+    setSelectedPlanCode(planCodeToSelect);
+
+    if (isSelectedPlan && !checkoutDisabledReason && billingEmail) {
+      handleCheckout();
+    } else {
+      scrollToBillingDetails();
     }
+  };
+
+  const handleCheckout = async () => {
+    if (isCheckingOut || !selectedPlanRequiresCheckout || checkoutDisabledReason) return;
 
     setIsCheckingOut(true);
     setCheckoutError(null);
 
     try {
-      const response = await subscriptionService.initializeSubscriptionCheckout(
-        {
-          plan_code: effectiveSelectedPlanCode,
-          billing_interval: billingInterval,
-          billing_email: billingEmail,
-        },
-      );
+      const response = await subscriptionService.initializeSubscriptionCheckout({
+        plan_code: effectiveSelectedPlanCode,
+        billing_interval: billingInterval,
+        billing_email: billingEmail,
+      });
 
       saveSelectedSubscriptionPlan({
         planCode: effectiveSelectedPlanCode,
@@ -137,14 +118,8 @@ function SubscriptionOptionsPage() {
       });
       window.location.assign(response.authorization_url);
     } catch (error) {
-      const apiError = parseApiError(
-        error,
-        "We could not initialize billing right now.",
-      );
-      setCheckoutError(
-        getSubscriptionCheckoutErrorMessage(apiError.message) ||
-          apiError.message,
-      );
+      const apiError = parseApiError(error, "We could not initialize billing right now.");
+      setCheckoutError(getSubscriptionCheckoutErrorMessage(apiError.message) || apiError.message);
       setIsCheckingOut(false);
     }
   };
@@ -155,9 +130,7 @@ function SubscriptionOptionsPage() {
         <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="rounded-[1.5rem] border border-border/70 bg-surface p-6 shadow-sm">
             <div>
-              <h1 className="text-2xl font-semibold text-text">
-                Upgrade Plan
-              </h1>
+              <h1 className="text-2xl font-semibold text-text">Upgrade Plan</h1>
               <p className="mt-2 text-sm text-text-muted">
                 Compare subscription options and continue to secure checkout.
               </p>
@@ -174,10 +147,7 @@ function SubscriptionOptionsPage() {
   return (
     <PublicLayout>
       <div className="relative mx-auto min-h-screen max-w-7xl overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 -z-10"
-        >
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
           <div className="absolute inset-x-0 top-4 h-[20rem] rounded-[2.5rem] bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_42%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_36%),linear-gradient(180deg,rgba(15,23,42,0.78),rgba(15,23,42,0))]" />
           <div className="absolute -left-12 top-28 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
           <div className="absolute right-0 top-24 h-48 w-48 rounded-full bg-slate-300/10 blur-3xl" />
@@ -192,7 +162,8 @@ function SubscriptionOptionsPage() {
             </p>
           </div>
         </div>
-        <section className="relative z-10 mb-6 hidden md:flex items-center justify-center">
+
+        <section className="relative z-10 mb-6 hidden items-center justify-center md:flex">
           <div className="justify-self-center">
             <div className="relative inline-grid grid-cols-3 items-center rounded-full border border-border/70 bg-surface-muted/65 p-1 shadow-soft-card">
               <span
@@ -204,8 +175,7 @@ function SubscriptionOptionsPage() {
                 }}
               />
               {paidPlans.map((plan) => {
-                const isSelectedPlan =
-                  plan.planCode === effectiveSelectedPlanCode;
+                const isSelectedPlan = plan.planCode === effectiveSelectedPlanCode;
 
                 return (
                   <button
@@ -213,28 +183,25 @@ function SubscriptionOptionsPage() {
                     type="button"
                     onClick={() => setSelectedPlanCode(plan.planCode)}
                     className={`relative z-10 min-w-[8.5rem] rounded-full px-4 py-2.5 text-center transition ${
-                      isSelectedPlan
-                        ? "text-text"
-                        : "text-text-muted hover:text-text"
+                      isSelectedPlan ? "text-text" : "text-text-muted hover:text-text"
                     }`}
                   >
-                    <span className="block text-sm font-semibold">
-                      {plan.name}
-                    </span>
+                    <span className="block text-sm font-semibold">{plan.name}</span>
                   </button>
                 );
               })}
             </div>
           </div>
         </section>
+
         <div className="relative z-10 space-y-5 pb-24 md:pb-0">
           {errors.currentSubscription ? (
-            <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
+            <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-950">
               {errors.currentSubscription}
             </div>
           ) : null}
           {errors.entitlements ? (
-            <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
+            <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-950">
               {errors.entitlements}
             </div>
           ) : null}
@@ -250,19 +217,15 @@ function SubscriptionOptionsPage() {
                 <span className="flex h-14 w-14 rotate-45 items-center justify-center rounded-2xl bg-primary text-text-inverse shadow-sm shadow-primary/30">
                   <Sparkles className="h-6 w-6 -rotate-45" />
                 </span>
-                <h2 className="mt-6 text-3xl font-semibold tracking-tight text-text">
-                  Upgrade your plan
-                </h2>
+                <h2 className="mt-6 text-3xl font-semibold tracking-tight text-text">Upgrade your plan</h2>
                 <p className="mt-2 max-w-sm text-sm leading-6 text-text-muted">
-                  Get higher school limits and more workspace capacity for your
-                  team.
+                  Get higher school limits and more workspace capacity for your team.
                 </p>
               </div>
 
               <div className="mt-7 grid grid-cols-1 gap-3">
                 {paidPlans.map((plan) => {
-                  const isSelectedPlan =
-                    plan.planCode === effectiveSelectedPlanCode;
+                  const isSelectedPlan = plan.planCode === effectiveSelectedPlanCode;
                   const isCurrentPlan = plan.planCode === planCode;
                   const planIsLocked = isCurrentPlan && !canRetryCurrentPlan;
 
@@ -273,9 +236,7 @@ function SubscriptionOptionsPage() {
                       tabIndex={0}
                       onClick={() => setSelectedPlanCode(plan.planCode)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          setSelectedPlanCode(plan.planCode);
-                        }
+                        if (event.key === "Enter" || event.key === " ") setSelectedPlanCode(plan.planCode);
                       }}
                       className={`min-h-[6rem] rounded-2xl border px-4 py-4 text-left transition ${
                         isSelectedPlan
@@ -283,42 +244,28 @@ function SubscriptionOptionsPage() {
                           : "border-border bg-surface-muted/30"
                       } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/35`}
                     >
-                      <p className="text-lg font-bold leading-tight text-text">
-                        {plan.priceLabel}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-text-muted">
-                        {plan.name}
-                      </p>
-                      {isCurrentPlan ? (
-                        <p className="mt-2 text-[11px] font-bold text-success">
-                          Current plan
-                        </p>
-                      ) : null}
+                      <p className="text-lg font-bold leading-tight text-text">{plan.priceLabel}</p>
+                      <p className="mt-1 text-sm font-semibold text-text-muted">{plan.name}</p>
+                      {isCurrentPlan ? <p className="mt-2 text-[11px] font-bold text-success">Current plan</p> : null}
                       <div className="mt-4">
                         <Button
                           type="button"
                           className="w-full"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handlePlanAction(
-                              plan.planCode,
-                              isSelectedPlan,
-                              planIsLocked,
-                            );
+                            handlePlanAction(plan.planCode, isSelectedPlan, planIsLocked);
                           }}
                           disabled={planIsLocked || isCheckingOut}
                         >
                           {isCheckingOut
                             ? "Redirecting..."
                             : planIsLocked
-                            ? "Current plan"
-                            : isSelectedPlan &&
-                                billingEmail &&
-                                !checkoutDisabledReason
-                              ? "Checkout"
-                              : isSelectedPlan
-                                ? "Continue"
-                                : "Select plan"}
+                              ? "Current plan"
+                              : isSelectedPlan && billingEmail && !checkoutDisabledReason
+                                ? "Checkout"
+                                : isSelectedPlan
+                                  ? "Continue"
+                                  : "Select plan"}
                         </Button>
                       </div>
                     </div>
@@ -329,24 +276,17 @@ function SubscriptionOptionsPage() {
               <div className="mt-7 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                      Selected plan
-                    </p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Selected plan</p>
                     <p className="mt-1 text-base font-semibold text-text">
-                      {selectedPlan?.name ||
-                        formatPlanName(effectiveSelectedPlanCode)}
+                      {selectedPlan?.name || formatPlanName(effectiveSelectedPlanCode)}
                     </p>
                   </div>
-                  <Badge variant={statusMeta.badgeVariant}>
-                    {statusMeta.label}
-                  </Badge>
+                  <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
                 </div>
               </div>
 
               <div className="mt-6 text-left">
-                <p className="text-sm font-semibold text-text">
-                  Everything included:
-                </p>
+                <p className="text-sm font-semibold text-text">Everything included:</p>
                 <ul className="mt-4 space-y-4 text-base text-text-soft">
                   {(selectedPlan?.features || []).map((feature) => (
                     <li key={feature} className="flex items-start gap-3">
@@ -358,40 +298,17 @@ function SubscriptionOptionsPage() {
               </div>
 
               <div className="mt-6 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-text-muted">Students</span>
-                  <span className="font-semibold text-text">
-                    {formatLimitValue(selectedPlan?.limits?.students)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-text-muted">Teachers</span>
-                  <span className="font-semibold text-text">
-                    {formatLimitValue(selectedPlan?.limits?.teachers)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-text-muted">Classes</span>
-                  <span className="font-semibold text-text">
-                    {formatLimitValue(selectedPlan?.limits?.classes)}
-                  </span>
-                </div>
+                <PlanLimit label="Students" value={formatLimitValue(selectedPlan?.limits?.students)} />
+                <PlanLimit label="Teachers" value={formatLimitValue(selectedPlan?.limits?.teachers)} />
+                <PlanLimit label="Classes" value={formatLimitValue(selectedPlan?.limits?.classes)} />
               </div>
 
               <div ref={checkoutRef} className="mt-6 space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-text-soft">
-                    Billing interval
-                  </label>
-                  <select
-                    className="input-base"
-                    value={billingInterval}
-                    onChange={(event) => setBillingInterval(event.target.value)}
-                  >
+                  <label className="mb-1.5 block text-sm font-medium text-text-soft">Billing interval</label>
+                  <select className="input-base" value={billingInterval} onChange={(event) => setBillingInterval(event.target.value)}>
                     {BILLING_INTERVAL_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
+                      <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </div>
@@ -417,8 +334,7 @@ function SubscriptionOptionsPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {paidPlans.map((plan) => {
                 const isCurrentPlan = plan.planCode === planCode;
-                const isSelectedPlan =
-                  plan.planCode === effectiveSelectedPlanCode;
+                const isSelectedPlan = plan.planCode === effectiveSelectedPlanCode;
                 const planIsLocked = isCurrentPlan && !canRetryCurrentPlan;
 
                 return (
@@ -428,39 +344,23 @@ function SubscriptionOptionsPage() {
                     tabIndex={0}
                     onClick={() => setSelectedPlanCode(plan.planCode)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        setSelectedPlanCode(plan.planCode);
-                      }
+                      if (event.key === "Enter" || event.key === " ") setSelectedPlanCode(plan.planCode);
                     }}
                     className={`flex min-h-[430px] flex-col rounded-[1.5rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-premium-hover ${
-                      isSelectedPlan
-                        ? "border-accent ring-4 ring-accent/10"
-                        : "border-border/70"
+                      isSelectedPlan ? "border-accent ring-4 ring-accent/10" : "border-border/70"
                     } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50`}
                   >
                     <div className="flex min-h-8 flex-wrap items-center gap-2">
-                      {plan.highlighted ? (
-                        <Badge variant="primary">Recommended</Badge>
-                      ) : null}
-                      {isCurrentPlan ? (
-                        <Badge variant="success">Current plan</Badge>
-                      ) : null}
+                      {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
+                      {isCurrentPlan ? <Badge variant="success">Current plan</Badge> : null}
                     </div>
 
-                    <h2 className="mt-4 text-2xl font-semibold text-text">
-                      {plan.name}
-                    </h2>
-                    <p className="mt-2 text-sm font-semibold text-primary">
-                      {plan.bestFor}
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-text-muted">
-                      {plan.description}
-                    </p>
+                    <h2 className="mt-4 text-2xl font-semibold text-text">{plan.name}</h2>
+                    <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
+                    <p className="mt-3 text-sm leading-6 text-text-muted">{plan.description}</p>
 
                     <div className="mt-5">
-                      <p className="text-2xl font-bold text-text">
-                        {plan.priceLabel}
-                      </p>
+                      <p className="text-2xl font-bold text-text">{plan.priceLabel}</p>
                       <p className="mt-1 text-xs font-medium text-text-muted">
                         {formatBillingInterval(billingInterval)} billing
                       </p>
@@ -476,24 +376,9 @@ function SubscriptionOptionsPage() {
                     </ul>
 
                     <div className="mt-5 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-text-muted">Students</span>
-                        <span className="font-semibold text-text">
-                          {formatLimitValue(plan.limits.students)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-text-muted">Teachers</span>
-                        <span className="font-semibold text-text">
-                          {formatLimitValue(plan.limits.teachers)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-text-muted">Classes</span>
-                        <span className="font-semibold text-text">
-                          {formatLimitValue(plan.limits.classes)}
-                        </span>
-                      </div>
+                      <PlanLimit label="Students" value={formatLimitValue(plan.limits.students)} />
+                      <PlanLimit label="Teachers" value={formatLimitValue(plan.limits.teachers)} />
+                      <PlanLimit label="Classes" value={formatLimitValue(plan.limits.classes)} />
                     </div>
 
                     <div className="flex flex-1 items-center justify-center pt-6">
@@ -503,32 +388,24 @@ function SubscriptionOptionsPage() {
                           className="w-full"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handlePlanAction(
-                              plan.planCode,
-                              isSelectedPlan,
-                              planIsLocked,
-                            );
+                            handlePlanAction(plan.planCode, isSelectedPlan, planIsLocked);
                           }}
                           disabled={planIsLocked || isCheckingOut}
                         >
                           {isCheckingOut
                             ? "Redirecting..."
                             : planIsLocked
-                            ? "Current plan"
-                            : isSelectedPlan &&
-                                billingEmail &&
-                                !checkoutDisabledReason
-                              ? "Checkout"
-                              : isSelectedPlan
-                                ? "Continue"
-                                : "Select plan"}
+                              ? "Current plan"
+                              : isSelectedPlan && billingEmail && !checkoutDisabledReason
+                                ? "Checkout"
+                                : isSelectedPlan
+                                  ? "Continue"
+                                  : "Select plan"}
                         </Button>
                         <div className="mt-3 flex justify-center">
                           <span
                             className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                              isSelectedPlan
-                                ? "bg-accent-soft text-accent"
-                                : "bg-surface-muted text-text-muted"
+                              isSelectedPlan ? "bg-accent-soft text-accent" : "bg-surface-muted text-text-muted"
                             }`}
                           >
                             {isSelectedPlan ? "Selected" : plan.ctaLabel}
@@ -544,6 +421,15 @@ function SubscriptionOptionsPage() {
         </div>
       </div>
     </PublicLayout>
+  );
+}
+
+function PlanLimit({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-text-muted">{label}</span>
+      <span className="font-semibold text-text">{value}</span>
+    </div>
   );
 }
 

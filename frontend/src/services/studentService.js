@@ -22,6 +22,9 @@ export const studentService = {
   createStudent: (payload) =>
     api.post("/tenant-admin/students", payload),
 
+  resetStudentAccessCode: (studentId) =>
+    api.post(`/tenant-admin/students/${studentId}/reset-access-code`),
+
   getMyStudent: (requestOptions) =>
     api.get("/students/me", requestOptions),
 

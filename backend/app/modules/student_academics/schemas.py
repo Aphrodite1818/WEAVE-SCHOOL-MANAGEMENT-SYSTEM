@@ -10,6 +10,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.utils.normalization import normalize_grade
 from app.core.utils.validators import validate_academic_session_name
 from app.modules.student_academics.models import AcademicResultStatus, AcademicTermName
 
@@ -104,6 +105,14 @@ class GradingScaleCreate(InputBase):
     remark: str | None = Field(default=None, max_length=100)
     is_active: bool = True
 
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str) -> str:
+        normalized = normalize_grade(value)
+        if normalized is None:
+            raise ValueError("grade cannot be empty")
+        return normalized
+
     @model_validator(mode="after")
     def validate_score_range(self):
         if self.min_score > self.max_score:
@@ -117,6 +126,16 @@ class GradingScaleUpdate(InputBase):
     grade: str | None = Field(default=None, min_length=1, max_length=10)
     remark: str | None = Field(default=None, max_length=100)
     is_active: bool | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_grade(value)
+        if normalized is None:
+            raise ValueError("grade cannot be empty")
+        return normalized
 
     @model_validator(mode="after")
     def validate_score_range(self):

@@ -100,7 +100,7 @@ function StudentParentLinkingPage() {
         </div>
       )}
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard
           label="Active Links"
           value={parentLinks.length}
@@ -133,31 +133,33 @@ function StudentParentLinkingPage() {
           These parents have asked to be linked to your profile. Review before approving.
         </p>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {summary.pending.length === 0 ? (
-            <EmptyState
-              icon={UserRound}
-              title="No pending requests"
-              description="New parent access requests will appear here for approval."
-            />
+            <div className="sm:col-span-2 xl:col-span-3">
+              <EmptyState
+                icon={UserRound}
+                title="No pending requests"
+                description="New parent access requests will appear here for approval."
+              />
+            </div>
           ) : (
             summary.pending.map((request) => (
-              <div key={request.id} className="rounded-[1.25rem] border border-border bg-surface px-4 py-3">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex min-w-0 items-center gap-3">
+              <div key={request.id} className="rounded-[1.25rem] border border-border bg-surface px-4 py-4">
+                <div className="flex h-full flex-col gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-sm font-bold text-primary">
                       {displayName(request.parent).slice(0, 2).toUpperCase()}
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-text">
+                      <p className="break-words text-sm font-semibold text-text">
                         {displayName(request.parent)} · {cleanText(request.relationship_type)}
                       </p>
-                      <p className="mt-1 truncate text-xs text-text-muted">
+                      <p className="mt-1 break-words text-xs text-text-muted">
                         {request.parent?.email || "No email provided"}
                       </p>
                     </div>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2 md:flex md:shrink-0">
+                  <div className="mt-auto grid gap-2 grid-cols-2">
                     <Button
                       type="button"
                       onClick={() => handleRequestResponse(request.id, "approve")}
@@ -186,33 +188,37 @@ function StudentParentLinkingPage() {
         <h2 className="section-title">Linked contacts</h2>
         <p className="mt-1 text-sm text-text-muted">People currently connected to your academic record.</p>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {parentLinks.length === 0 ? (
-            <EmptyState
-              icon={Link2}
-              title="No linked contacts"
-              description="Approved parent contacts will appear here."
-            />
+            <div className="sm:col-span-2 xl:col-span-3">
+              <EmptyState
+                icon={Link2}
+                title="No linked contacts"
+                description="Approved parent contacts will appear here."
+              />
+            </div>
           ) : (
             parentLinks.map((link) => (
-              <div key={link.id} className="rounded-[1.25rem] border border-border bg-surface px-4 py-3">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex min-w-0 items-center gap-3">
+              <div key={link.id} className="rounded-[1.25rem] border border-border bg-surface px-4 py-4">
+                <div className="flex h-full flex-col gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-sm font-bold text-primary">
                       {displayName(link.parent).slice(0, 2).toUpperCase()}
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-text">
+                      <p className="break-words text-sm font-semibold text-text">
                         {displayName(link.parent)} · {cleanText(link.relationship_type)}
                       </p>
-                      <p className="mt-1 truncate text-xs text-text-muted">
+                      <p className="mt-1 break-words text-xs text-text-muted">
                         {link.parent?.email || "No email provided"}
                       </p>
                     </div>
                   </div>
-                  <Badge variant={statusVariant("active")}>
-                    {link.is_primary_contact ? "Primary contact" : "Active"}
-                  </Badge>
+                  <div className="mt-auto">
+                    <Badge variant={statusVariant("active")}>
+                      {link.is_primary_contact ? "Primary contact" : "Active"}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             ))

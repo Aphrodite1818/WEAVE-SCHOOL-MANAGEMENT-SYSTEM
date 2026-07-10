@@ -8,7 +8,9 @@ def import_model_modules() -> None:
     import app.modules.auth.models  # noqa: F401
     import app.modules.auth_identity.models  # noqa: F401
     import app.modules.announcements.models  # noqa: F401
+    import app.modules.bulk_imports.models  # noqa: F401
     import app.modules.classes.models  # noqa: F401
+    import app.modules.email_outbox.models  # noqa: F401
     import app.modules.parents.models  # noqa: F401
     import app.modules.students.models  # noqa: F401
     import app.modules.subjects.models  # noqa: F401

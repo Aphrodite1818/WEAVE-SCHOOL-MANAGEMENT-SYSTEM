@@ -11,6 +11,7 @@ from app.modules.students.models import (
     StudentAccountStatus,
     StudentParentLinkRequestStatus,
     StudentProfileStatus,
+    StudentAccessCodePurpose
 )
 
 
@@ -49,7 +50,6 @@ class StudentInputBase(InputBase):
     """Base input schema for student actor data."""
 
     admission_number: str | None = Field(default=None, min_length=1, max_length=50)
-    password: str | None = Field(default=None, min_length=8, max_length=64)
     first_name: str | None = Field(default=None, max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
     date_of_birth: date | None = None
@@ -59,16 +59,18 @@ class StudentInputBase(InputBase):
     class_id: uuid.UUID | None = None
     arm: str | None = Field(default=None, max_length=20)
     status: AcademicStatus = AcademicStatus.ACTIVE
-    account_status: StudentAccountStatus = StudentAccountStatus.PENDING
+    account_status: StudentAccountStatus = StudentAccountStatus.ACTIVE
     is_verified: bool = False
     is_active: bool = True
     last_login_at: datetime | None = None
+    state_of_origin: str | None = Field(default=None, max_length=100)
 
     @field_validator(
         "admission_number",
         "first_name",
         "last_name",
         "passport_photo_url",
+        "state_of_origin",
         "arm",
         mode="before",
     )
@@ -92,12 +94,14 @@ class StudentCreate(InputBase):
     class_id: uuid.UUID | None = None
     arm: str | None = Field(default=None, max_length=20)
     status: AcademicStatus = AcademicStatus.ACTIVE
+    state_of_origin: str | None = Field(default=None, max_length=100)
 
     @field_validator(
         "admission_number",
         "first_name",
         "last_name",
         "passport_photo_url",
+        "state_of_origin",
         "arm",
         mode="before",
     )
@@ -108,28 +112,11 @@ class StudentCreate(InputBase):
         return _clean_optional_string(value)
 
 
-class StudentProfileComplete(InputBase):
-    """Schema for completing an incomplete student profile."""
-
-    date_of_birth: date
-    gender: Gender
-    class_id: uuid.UUID
-    arm: str | None = Field(default=None, max_length=20)
-    passport_photo_url: str | None = Field(default=None, max_length=500)
-
-    @field_validator("arm", "passport_photo_url", mode="before")
-    @classmethod
-    def clean_optional_fields(cls, value: str | None) -> str | None:
-        """Normalize optional text fields."""
-
-        return _clean_optional_string(value)
-
 
 class StudentUpdate(InputBase):
     """Schema for admin updating a student actor."""
 
     admission_number: str | None = Field(default=None, min_length=1, max_length=50)
-    password: str | None = Field(default=None, min_length=8, max_length=64)
     first_name: str | None = Field(default=None, max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
     date_of_birth: date | None = None
@@ -145,12 +132,14 @@ class StudentUpdate(InputBase):
     is_active: bool | None = None
     password_reset_required: bool | None = None
     last_login_at: datetime | None = None
+    state_of_origin: str | None = Field(default=None, max_length=100)
 
     @field_validator(
         "admission_number",
         "first_name",
         "last_name",
         "passport_photo_url",
+        "state_of_origin",
         "arm",
         mode="before",
     )
@@ -166,10 +155,8 @@ class StudentSelfUpdate(InputBase):
 
     first_name: str | None = Field(default=None, max_length=100)
     last_name: str | None = Field(default=None, max_length=100)
-    date_of_birth: date | None = None
     gender: Gender | None = None
     passport_photo_url: str | None = Field(default=None, max_length=500)
-    password: str | None = Field(default=None, min_length=8, max_length=64)
 
     @field_validator("first_name", "last_name", "passport_photo_url", mode="before")
     @classmethod
@@ -184,7 +171,6 @@ class StudentOnboardingUpdate(InputBase):
 
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
-    date_of_birth: date
     gender: Gender
     passport_photo_url: str | None = Field(default=None, max_length=500)
 
@@ -220,13 +206,28 @@ class StudentOutputBase(OutputBase):
     profile_status: StudentProfileStatus
     created_at: datetime
     updated_at: datetime
+    state_of_origin: str | None = None
 
 
 class StudentResponse(StudentOutputBase):
     """Schema returned for student profile data."""
 
-    temporary_password: str | None = None
-    default_password: str | None = None
+    setup_code : str | None = None
+    access_code_expires_at : datetime | None = None
+
+
+
+class StudentAdminAccessCodeResponse(OutputBase):
+    """Response returned when an admin generates a  student access code"""
+    
+    student_id : uuid.UUID
+    admission_number : str
+    full_name : str | None = None
+    purpose: StudentAccessCodePurpose
+    access_code : str
+    expires_at : datetime 
+
+
 
 
 class StudentLoginProfile(OutputBase):
@@ -439,6 +440,6 @@ class StudentOnboardingStatusResponse(OutputBase):
 class StudentChangePasswordRequest(InputBase):
     """Student password change payload."""
 
-    current_password: str = Field(..., min_length=1, max_length=64)
+    access_code : str = Field(..., min_length=1, max_length=64)
     new_password: str = Field(..., min_length=8, max_length=64)
     confirm_password: str = Field(..., min_length=8, max_length=64)

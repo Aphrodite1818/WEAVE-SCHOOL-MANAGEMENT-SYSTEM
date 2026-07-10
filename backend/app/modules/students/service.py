@@ -1,12 +1,13 @@
 import secrets
 from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.security import hash_password, verify_password
+from app.config.security import hash_password, verify_password , hash_auth_secret , verify_auth_secret
 from app.config.settings import settings
 from app.core.utils.validators import validate_password_strength
 from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
@@ -20,6 +21,8 @@ from app.modules.students.models import (
     AcademicStatus,
     Student,
     StudentAccountStatus,
+    StudentAccessCode,
+    StudentAccessCodePurpose,
     StudentLinkCode,
     StudentParentLink,
     StudentParentLinkRequest,
@@ -27,6 +30,7 @@ from app.modules.students.models import (
     StudentProfileStatus,
 )
 from app.modules.students.repository import (
+    StudentAccessCodeRepository,
     StudentLinkCodeRepository,
     StudentParentLinkRepository,
     StudentParentLinkRequestRepository,
@@ -47,11 +51,15 @@ from app.modules.students.schemas import (
     StudentParentLinkRequestResponse,
     StudentParentLinkResponse,
     StudentParentLinkUpdate,
-    StudentProfileComplete,
     StudentResponse,
     StudentSelfUpdate,
     StudentUpdate,
+    StudentAdminAccessCodeResponse,
+    StudentChangePasswordRequest
 )
+
+
+
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
@@ -107,7 +115,6 @@ class StudentService:
         required_fields = (
             student.first_name,
             student.last_name,
-            student.date_of_birth,
             student.gender,
         )
         return (
@@ -115,6 +122,91 @@ class StudentService:
             if all(value is not None for value in required_fields)
             else StudentProfileStatus.INCOMPLETE
         )
+    
+    @staticmethod
+    def _generate_student_access_code() -> str:
+        """Generate a short code the school can give to student for login or password reset"""
+        code_length = settings.STUDENT_ACCESS_CODE_LENGTH
+        max_value = 10 ** code_length
+        return f"{secrets.randbelow(max_value):0{code_length}d}"
+    
+
+    @staticmethod
+    def _student_full_name(student : Student) -> str | None:
+        """Return a readable student full name if available"""
+
+        full_name = " ".join(
+            part for part in [student.first_name , student.last_name] if part
+        ).strip()
+        return full_name or None
+    
+
+
+    @staticmethod
+    async def _create_student_access_code(
+        db : AsyncSession,
+        *,
+        tenant_id : UUID,
+        student_id : UUID,
+        purpose : StudentAccessCodePurpose,
+        created_by_admin_id  : UUID | None
+    ) -> tuple[str, StudentAccessCode]:
+        """Create a temporary access code and return the plain code once"""
+
+        plain_code = StudentService._generate_student_access_code()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            hours = settings.STUDENT_ACCESS_CODE_EXPIRY_HOURS
+        )
+
+        await StudentAccessCodeRepository.invalidate_active_codes(
+            db = db ,
+            tenant_id = tenant_id,
+            student_id = student_id
+        )
+
+        access_code = StudentAccessCode(
+            tenant_id = tenant_id ,
+            student_id = student_id ,
+            code_digest = hash_auth_secret(plain_code),
+            purpose = purpose ,
+            expires_at = expires_at,
+            created_by_admin_id = created_by_admin_id
+        )
+
+        created_code = await StudentAccessCodeRepository.create_access_code(
+            db = db ,
+            access_code = access_code
+        )
+        return plain_code , created_code
+
+
+
+
+
+    @staticmethod
+    async def _student_access_code_is_valid(
+        db  : AsyncSession ,
+        *,
+        student : Student,
+        plain_code : str
+    )  -> bool:
+        """Return whether a temporary access code is valid for the tenant"""
+        if not student.tenant_id:
+            return False
+        
+        code_hash = hash_auth_secret(plain_code)
+        
+        active_code = await StudentAccessCodeRepository.get_active_code_by_digest(
+            db = db ,
+            tenant_id = student.tenant_id,
+            student_id = student.id,
+            code_digest = code_hash
+        )
+        return active_code is not None
+
+
+
+
 
     @staticmethod
     async def _assert_parent_can_view_student(
@@ -188,12 +280,13 @@ class StudentService:
             identifier_type=IdentifierType.ADMISSION_NUMBER,
         )
 
-        raw_password = settings.DEFAULT_STUDENT_PASSWORD
+        setup_code : str  | None = None
+        created_access_code : StudentAccessCode | None = None
 
         student = Student(
             tenant_id=actor.tenant_id,
             admission_number=admission_number,
-            password_hash=hash_password(raw_password),
+            password_hash=None,
             first_name=payload.first_name,
             last_name=payload.last_name,
             date_of_birth=payload.date_of_birth,
@@ -226,12 +319,24 @@ class StudentService:
                     is_active=True,
                 ),
             )
+            setup_code , created_access_code = await StudentService._create_student_access_code(
+                db = db ,
+                tenant_id = actor.tenant_id ,
+                student_id = created_student.id,
+                purpose = StudentAccessCodePurpose.INITIAL_SETUP,
+                created_by_admin_id = actor.id
+            )
+
             await db.commit()
             await db.refresh(created_student)
+
+
             return StudentResponse.model_validate(created_student).model_copy(
                 update={
-                    "temporary_password": raw_password,
-                    "default_password": raw_password,
+                    "setup_code": setup_code,
+                    "access_code_expires_at" : (
+                        created_access_code.expires_at if created_access_code else None
+                    )
                 }
             )
         except IntegrityError as exc:
@@ -239,6 +344,63 @@ class StudentService:
             raise BadRequestException(
                 detail="Student creation failed because of a duplicate or invalid value."
             ) from exc
+
+
+
+    @staticmethod
+    async def admin_reset_student_access_code(
+        db :AsyncSession ,
+        *,
+        actor : TenantAdmin,
+        student_id : UUID
+    ):
+        """Allow a tenant admin to generate a new student access code logic used for password reset"""
+
+        StudentService._ensure_tenant_admin(actor)
+        
+        student = await StudentRepository.get_student_by_id(
+            db = db ,
+            tenant_id = actor.tenant_id ,
+            student_id = student_id
+        )
+
+        if student is None:
+            raise NotFoundException(detail = "Student profile not found")
+        
+        plain_code , access_code = await StudentService._create_student_access_code(
+            db = db ,
+            tenant_id = actor.tenant_id,
+            student_id = student.id,
+            purpose = StudentAccessCodePurpose.PASSWORD_RESET,
+            created_by_admin_id = actor.id
+        )
+        
+        student.password_reset_required = True
+        await StudentRepository.save(
+            db = db , 
+            student = student
+        )
+        
+
+        await db.commit()
+        await db.refresh(student)
+
+        return StudentAdminAccessCodeResponse(
+            student_id = student.id ,
+            admission_number = student.admission_number,
+            full_name = StudentService._student_full_name(student),
+            purpose = StudentAccessCodePurpose.PASSWORD_RESET,
+            access_code = plain_code,
+            expires_at = access_code.expires_at
+        )
+
+
+
+
+
+
+
+
 
     @staticmethod
     async def get_student_profile(
@@ -348,7 +510,7 @@ class StudentService:
             ),
             profile_status=student.profile_status,
             completion_target="student",
-            required_fields=["first_name", "last_name", "date_of_birth", "gender"],
+            required_fields=["first_name", "last_name", "gender"],
             current_values={
                 "admission_number": student.admission_number,
                 "first_name": student.first_name,
@@ -375,19 +537,34 @@ class StudentService:
             tenant_id=actor.tenant_id,
             student_id=actor.id,
         )
-        if student is None or student.password_hash is None:
+        if student is None:
             raise NotFoundException(detail="Student profile not found")
 
         if payload.new_password != payload.confirm_password:
             raise BadRequestException(detail="New password and confirmation do not match")
+        
 
-        if not verify_password(payload.current_password, student.password_hash):
-            raise BadRequestException(detail="Current password is incorrect")
+        current_password_matches_existing_password = (
+            student.password_hash is not None
+            and verify_password(payload.access_code, student.password_hash)
+        )
 
-        if verify_password(payload.new_password, student.password_hash):
-            raise BadRequestException(
-                detail="New password must be different from the current password"
-            )
+
+        current_password_matches_access_code = await StudentService._student_access_code_is_valid(
+            db = db ,
+            student= student,
+            plain_code=payload.access_code
+        )
+
+        if not current_password_matches_existing_password and not current_password_matches_access_code:
+            raise BadRequestException(detail="access code is incorrect")
+
+
+        if student.password_hash is not None and verify_password(
+            payload.new_password,
+            student.password_hash
+        ):
+            raise BadRequestException("New password must be different from the current password")
 
         try:
             validate_password_strength(payload.new_password)
@@ -396,6 +573,12 @@ class StudentService:
 
         student.password_hash = hash_password(payload.new_password)
         student.password_reset_required = False
+
+        await StudentAccessCodeRepository.mark_all_codes_used(
+            db = db ,
+            tenant_id = student.tenant_id ,
+            student_id = student.id
+        )
 
         updated_student = await StudentRepository.save(db=db, student=student)
         await db.commit()
@@ -591,37 +774,8 @@ class StudentService:
             raise BadRequestException(
                 detail="Student update failed because of a duplicate or invalid value."
             ) from exc
+        
 
-    @staticmethod
-    async def complete_student_profile(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        student_id: UUID,
-        payload: StudentProfileComplete,
-    ) -> StudentResponse:
-        """Complete an incomplete student profile."""
-
-        StudentService._ensure_tenant_admin(actor)
-
-        student = await StudentRepository.get_student_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            student_id=student_id,
-        )
-        if student is None:
-            raise NotFoundException(detail="Student profile not found")
-
-        student.date_of_birth = payload.date_of_birth
-        student.gender = payload.gender
-        student.class_id = payload.class_id
-        student.arm = payload.arm
-        student.passport_photo_url = payload.passport_photo_url
-        student.profile_status = StudentService._resolve_profile_status(student)
-
-        updated_student = await StudentRepository.save(db=db, student=student)
-        await db.commit()
-        await db.refresh(updated_student)
-        return StudentResponse.model_validate(updated_student)
 
     @staticmethod
     async def generate_admission_number(

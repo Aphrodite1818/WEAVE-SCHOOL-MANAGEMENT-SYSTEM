@@ -10,7 +10,7 @@ import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
 
 const INITIAL_FORM = {
-  current_password: "",
+  access_code: "",
   new_password: "",
   confirm_password: "",
 };
@@ -37,7 +37,11 @@ function StudentChangePasswordPage() {
     setFieldErrors({});
 
     try {
-      const updatedStudent = await studentService.changeMyPassword(formData);
+      const updatedStudent = await studentService.changeMyPassword({
+        access_code: formData.access_code,
+        new_password: formData.new_password,
+        confirm_password: formData.confirm_password,
+      });
       authSession.setUser({
         ...(currentUser || {}),
         ...updatedStudent,
@@ -48,7 +52,7 @@ function StudentChangePasswordPage() {
       navigate("/student/dashboard", { replace: true });
     } catch (err) {
       const apiError = parseApiError(err, "Failed to update your password.");
-      setFieldErrors(apiError.fieldErrors);
+      setFieldErrors(apiError.fieldErrors || {});
       setError(apiError.message);
     } finally {
       setIsSubmitting(false);
@@ -58,8 +62,8 @@ function StudentChangePasswordPage() {
   return (
     <DashboardLayout
       role="student"
-      title="Change Default Password"
-      description={`Finish first-time access for ${displayName(currentUser)} before entering your dashboard.`}
+      title="Create Your Password"
+      description={`Finish secure access for ${displayName(currentUser)} before entering your dashboard.`}
       onboardingModalEnabled={false}
     >
       <div className="mx-auto max-w-2xl">
@@ -69,9 +73,9 @@ function StudentChangePasswordPage() {
               <ShieldCheck className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-lg font-semibold text-text">Password reset required</h2>
+              <h2 className="text-lg font-semibold text-text">Password setup required</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Students can log in with the admission number and default password once, but must change it before using dashboard resources.
+                Enter the access code from your school, then create your password.
               </p>
             </div>
           </div>
@@ -84,12 +88,12 @@ function StudentChangePasswordPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <Input
-              label="Current password"
+              label="Access code"
               type="password"
-              name="current_password"
-              value={formData.current_password}
+              name="access_code"
+              value={formData.access_code}
               onChange={handleChange}
-              error={fieldErrors.current_password}
+              error={fieldErrors.access_code}
               required
             />
             <Input

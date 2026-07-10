@@ -17,8 +17,11 @@ from app.modules import import_model_modules
 from app.modules.superadmin.router import router as superadmin_router
 from app.modules.auth.router import router as auth_router
 from app.modules.tenant_admins.router import router as tenant_admin_router
+from app.modules.bulk_imports.router import router as bulk_import_router
+from app.modules.email_outbox.router import router as email_outbox_router
 from app.tenant_management.router import router as tenant_router
 from app.modules.subjects.router import router as subject_router
+from app.modules.students.admin_access_router import router as student_admin_access_router
 from app.modules.students.router import router as student_router
 from app.modules.parents.router import router as parent_router
 from app.modules.teachers.router import router as teacher_router
@@ -102,7 +105,16 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(superadmin_router, prefix="/api/v1")
+    # Student access routes are registered before the wider tenant-admin router so
+    # the refined access-code implementation handles the overlapping student paths.
+    app.include_router(
+        student_admin_access_router,
+        prefix="/api/v1/tenant-admin",
+        tags=["Tenant Admin"],
+    )
     app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
+    app.include_router(bulk_import_router, prefix="/api/v1/tenant-admin")
+    app.include_router(email_outbox_router, prefix="/api/v1/tenant-admin")
     app.include_router(tenant_router, prefix="/api/v1/tenants", tags=["Tenants"])
     app.include_router(teacher_router, prefix="/api/v1/teachers", tags=["Teachers"])
     app.include_router(student_router, prefix="/api/v1/students", tags=["Students"])
@@ -138,7 +150,6 @@ app = create_app()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     import logging
     import uvicorn

@@ -2,18 +2,18 @@
   "dry_run": false,
   "tenant_id": null,
   "counts_before": {
-    "class_subject_teachers": 8,
-    "teacher_subjects": 2,
-    "student_subject_results": 7,
+    "class_subject_teachers": 0,
+    "teacher_subjects": 0,
+    "student_subject_results": 0,
     "class_subjects": 0,
     "teacher_assignments": 0
   },
   "counts_after": {
-    "class_subjects": 8,
-    "teacher_assignments": 8,
-    "results_with_teacher_assignment_id": 7
+    "class_subjects": 0,
+    "teacher_assignments": 0,
+    "results_with_teacher_assignment_id": 0
   },
-  "legacy_to_new_mapping_count": 8,
+  "legacy_to_new_mapping_count": 0,
   "orphaned_results": [],
   "duplicate_active_teacher_assignments": [],
   "submitted_without_teacher_assignment_id": [],

@@ -8,8 +8,8 @@ export const authService = {
     login: async (identifier, password, { remember = true } = {}) => {
         const response = await api.post(
             "/auth/login",
-            { identifier, password },
-            { auth: false }
+            { identifier, password, remember_me: remember },
+            { auth: false, skipAuthRefresh: true }
         );
 
         clearDashboardSessionCache();
@@ -44,11 +44,11 @@ export const authService = {
             user: currentUser,
         };
     },
-    
-    requestOtp: (email, purpose) => 
+
+    requestOtp: (email, purpose) =>
         api.post("/auth/request-otp", { email, purpose }, { auth: false }),
-        
-    verifyOtp: (email, code, purpose) => 
+
+    verifyOtp: (email, code, purpose) =>
         api.post("/auth/verify-otp", { email, code, purpose }, { auth: false }),
 
     activateTenant: (email, password, token) =>
@@ -69,8 +69,8 @@ export const authService = {
             { email, password, token },
             { auth: false }
         ),
-        
-    resetPassword: (email, reset_token, new_password) => 
+
+    resetPassword: (email, reset_token, new_password) =>
         api.post(
             "/auth/reset-password",
             { email, reset_token, new_password },
@@ -87,9 +87,20 @@ export const authService = {
     clearPendingVerificationEmail: () => {
         sessionStorage.removeItem(PENDING_VERIFICATION_EMAIL_KEY);
     },
-        
-    logout: () => {
+
+    logout: async () => {
         clearDashboardSessionCache();
-        authSession.clear();
-    }
+
+        try {
+            await api.post("/auth/logout", undefined, {
+                auth: false,
+                clearAuthOnUnauthorized: false,
+                skipAuthRefresh: true,
+            });
+        } catch {
+            // Local logout should still complete even if the network request fails.
+        } finally {
+            authSession.clear();
+        }
+    },
 };

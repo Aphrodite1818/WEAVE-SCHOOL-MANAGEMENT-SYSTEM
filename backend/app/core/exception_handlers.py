@@ -6,7 +6,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.config.logging import get_logger
-from app.core.exceptions import AppException
+from app.core.exceptions import (
+    AppException,
+    ImportParserError,
+    ImportTemplateNotFoundError,
+)
 
 logger = get_logger(__name__)
 
@@ -37,6 +41,46 @@ def register_exception_handlers(app: FastAPI) -> None:
             headers=headers,
         )
 
+    @app.exception_handler(ImportParserError)
+    async def import_parser_error_handler(
+        request: Request,
+        exc: ImportParserError,
+    ) -> JSONResponse:
+        """Return clean 400 responses for invalid import files."""
+
+        logger.warning(
+            "Bulk import parser error",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "detail": str(exc),
+            },
+        )
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(ImportTemplateNotFoundError)
+    async def import_template_error_handler(
+        request: Request,
+        exc: ImportTemplateNotFoundError,
+    ) -> JSONResponse:
+        """Return clean 400 responses for unsupported import templates."""
+
+        logger.warning(
+            "Bulk import template error",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "detail": str(exc),
+            },
+        )
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         """Handle unexpected exceptions."""
@@ -48,4 +92,3 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=500,
             content={"detail": "Internal server error"},
         )
-

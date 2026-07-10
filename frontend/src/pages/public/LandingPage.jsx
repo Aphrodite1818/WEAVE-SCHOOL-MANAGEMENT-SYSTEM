@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   GraduationCap,
   ShieldCheck,
+  Sparkles,
   Users,
 } from "lucide-react";
 import {
@@ -54,6 +55,13 @@ const testimonials = [
   },
 ];
 
+const pricingHighlights = [
+  "Start free before billing",
+  "Upgrade only when limits matter",
+  "Bulk imports on paid plans",
+  "Tenant-safe capacity controls",
+];
+
 function LandingPage() {
   const handlePlanSelection = (planCode, billingInterval = "monthly") => {
     saveSelectedSubscriptionPlan({ planCode, billingInterval });
@@ -86,15 +94,15 @@ function LandingPage() {
                       Start Free Trial
                     </Button>
                   </Link>
-                  <a href="#pricing" className="w-full sm:w-auto">
+                  <Link to="/pricing" className="w-full sm:w-auto">
                     <Button
                       variant="outline"
                       size="large"
                       className="w-full border-white/20 bg-white/10 text-white hover:bg-white/15"
                     >
-                      View Plans
+                      View Pricing
                     </Button>
-                  </a>
+                  </Link>
                 </div>
                 <div className="mt-8 grid gap-3 sm:grid-cols-3">
                   {[
@@ -122,15 +130,10 @@ function LandingPage() {
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {LANDING_PRICING_PLANS.slice(0, 4).map((plan) => (
-                    <button
+                    <Link
                       key={plan.planCode}
-                      type="button"
-                      onClick={() =>
-                        handlePlanSelection(
-                          plan.planCode,
-                          plan.planCode === "free_trial" ? "monthly" : "monthly"
-                        )
-                      }
+                      to="/pricing"
+                      onClick={() => handlePlanSelection(plan.planCode)}
                       className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
                         plan.highlighted
                           ? "border-primary/40 bg-primary/10"
@@ -146,9 +149,9 @@ function LandingPage() {
                         ) : null}
                       </div>
                       <p className="mt-1 text-xs uppercase tracking-wide text-slate-300">
-                        {plan.bestFor}
+                        {plan.priceLabel}
                       </p>
-                    </button>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -208,7 +211,7 @@ function LandingPage() {
           <div className="grid gap-6 lg:grid-cols-3">
             {testimonials.map((testimonial) => (
               <article key={testimonial.name} className="rounded-2xl border border-border bg-surface p-6 shadow-soft-card">
-                <p className="text-base leading-7 text-text-soft">"{testimonial.quote}"</p>
+                <p className="text-base leading-7 text-text-soft">&quot;{testimonial.quote}&quot;</p>
                 <div className="mt-6 flex items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-soft font-bold text-primary">
                     {testimonial.name.split(" ").map((part) => part[0]).join("")}
@@ -223,115 +226,96 @@ function LandingPage() {
           </div>
         </section>
 
-        <section id="pricing" className="border-y border-border bg-surface">
-          <div className="section-container relative overflow-hidden py-20">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-8 -z-10 h-72 rounded-[2.5rem] bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.14),transparent_42%),radial-gradient(circle_at_left,rgba(59,130,246,0.08),transparent_34%)]"
-            />
-            <div className="mx-auto max-w-3xl text-center">
-              <p className="text-sm font-bold uppercase tracking-wide text-primary">Pricing</p>
-              <h2 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
-                Plans that match how schools actually grow.
-              </h2>
-              <p className="mt-4 text-base leading-7 text-text-muted">
-                Pick a plan, continue to registration, and keep your selection ready for billing after tenant-admin setup.
-              </p>
+        <section id="pricing" className="relative overflow-hidden border-y border-border bg-slate-950 text-white">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.22),transparent_34%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.16),transparent_28%),linear-gradient(180deg,rgba(15,23,42,1),rgba(15,23,42,0.98))]" />
+          <div className="section-container relative py-20">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-end">
+              <div>
+                <Badge variant="primary">Pricing</Badge>
+                <h2 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                  Pay for the school capacity you actually need.
+                </h2>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+                  Start with a free workspace, then upgrade when you need larger limits, bulk import, advanced analytics, and AI-assisted operations.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {pricingHighlights.map((item) => (
+                  <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-slate-100 backdrop-blur-xl">
+                    {item}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="mt-10 grid items-stretch gap-5 md:grid-cols-2 2xl:grid-cols-4">
-              {LANDING_PRICING_PLANS.map((plan) => (
-                <article
-                  key={plan.planCode}
-                  className={`flex min-h-[430px] flex-col rounded-[1.75rem] border p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-premium-hover ${
-                    plan.highlighted
-                      ? "border-accent bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))] ring-4 ring-accent/10"
-                      : "border-border/70 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.92))]"
-                  }`}
-                >
-                  <div className="flex min-h-8 flex-wrap items-center gap-2">
-                    {plan.highlighted ? (
-                      <Badge variant="primary">Recommended</Badge>
-                    ) : null}
-                    {plan.planCode === "free_trial" ? (
-                      <Badge variant="success">Get started</Badge>
-                    ) : null}
-                  </div>
 
-                  <div>
-                    <h3 className="mt-4 text-2xl font-semibold text-white">{plan.name}</h3>
-                    <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
-                    <p className="mt-5 text-sm leading-6 text-slate-300">{plan.description}</p>
-                    <div className="mt-5">
-                      <p className="text-3xl font-bold text-white">{plan.priceLabel}</p>
-                      <p className="mt-1 text-xs font-medium text-slate-400">
-                        Monthly billing
-                      </p>
+            <div className="mt-10 rounded-[2rem] border border-white/10 bg-white/[0.06] p-4 shadow-premium backdrop-blur-xl sm:p-5">
+              <div className="grid gap-4 lg:grid-cols-4">
+                {LANDING_PRICING_PLANS.map((plan) => (
+                  <article
+                    key={plan.planCode}
+                    className={`flex min-h-[24rem] flex-col rounded-[1.5rem] border p-5 transition hover:-translate-y-0.5 ${
+                      plan.highlighted
+                        ? "border-primary/50 bg-primary/15 ring-2 ring-primary/10"
+                        : "border-white/10 bg-slate-950/40"
+                    }`}
+                  >
+                    <div className="flex min-h-8 flex-wrap items-center gap-2">
+                      {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
+                      {plan.planCode === "free_trial" ? <Badge variant="success">Start here</Badge> : null}
                     </div>
-                  </div>
+                    <h3 className="mt-4 text-xl font-semibold text-white">{plan.name}</h3>
+                    <p className="mt-2 text-sm font-semibold text-primary-soft">{plan.bestFor}</p>
+                    <p className="mt-4 text-3xl font-bold text-white">{plan.priceLabel}</p>
+                    <p className="mt-1 text-xs text-slate-400">Monthly billing</p>
 
-                  <div className="mt-6 rounded-[1.5rem] border border-border/70 bg-white/[0.03] p-4">
-                    <ul className="space-y-3 text-sm text-slate-200">
-                      {plan.features.map((feature) => (
+                    <div className="mt-5 grid gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm">
+                      <div className="flex justify-between gap-3"><span className="text-slate-400">Students</span><span>{formatLimitValue(plan.limits.students)}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-slate-400">Teachers</span><span>{formatLimitValue(plan.limits.teachers)}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-slate-400">Parents</span><span>{formatLimitValue(plan.limits.parents)}</span></div>
+                    </div>
+
+                    <ul className="mt-5 space-y-3 text-sm text-slate-200">
+                      {plan.features.slice(0, 3).map((feature) => (
                         <li key={feature} className="flex gap-3">
                           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                           <span>{feature}</span>
                         </li>
                       ))}
                     </ul>
-                  </div>
 
-                  <div className="mt-6 grid gap-2 rounded-[1.5rem] border border-border/70 bg-surface-muted/30 px-4 py-4 text-sm">
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-slate-400">Students</span>
-                      <span className="font-semibold text-white">
-                        {formatLimitValue(plan.limits.students)}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-slate-400">Teachers</span>
-                      <span className="font-semibold text-white">
-                        {formatLimitValue(plan.limits.teachers)}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-slate-400">Classes</span>
-                      <span className="font-semibold text-white">
-                        {formatLimitValue(plan.limits.classes)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-1 items-center justify-center pt-6">
-                    <div className="w-full max-w-[19rem] text-center">
+                    <div className="mt-auto pt-6">
                       <Link
                         to={buildRegistrationHref(plan.planCode)}
                         onClick={() => handlePlanSelection(plan.planCode)}
                       >
                         <Button
                           variant={plan.highlighted ? "primary" : "outline"}
-                          className={`w-full ${plan.highlighted ? "" : "border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.08]"}`}
+                          className={`w-full ${plan.highlighted ? "" : "border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.1]"}`}
                         >
                           {plan.ctaLabel}
                           <ChevronRight className="h-4 w-4" />
                         </Button>
                       </Link>
-                      <div className="mt-3 flex justify-center">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                            plan.highlighted
-                              ? "bg-accent-soft text-accent"
-                              : "bg-surface-muted text-text-muted"
-                          }`}
-                        >
-                          {plan.planCode === "free_trial"
-                            ? "30-day trial"
-                            : plan.name}
-                        </span>
-                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.06] px-5 py-5 text-center backdrop-blur-xl sm:flex-row sm:text-left">
+              <div>
+                <div className="flex items-center justify-center gap-2 sm:justify-start">
+                  <Sparkles className="h-4 w-4 text-primary-soft" />
+                  <p className="text-sm font-semibold text-white">Need the full comparison?</p>
+                </div>
+                <p className="mt-1 text-sm leading-6 text-slate-300">Open the dedicated pricing page for the full plan matrix and FAQs.</p>
+              </div>
+              <Link to="/pricing" className="w-full sm:w-auto">
+                <Button className="w-full sm:w-auto">
+                  View full pricing
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </Link>
             </div>
           </div>
         </section>
@@ -361,7 +345,7 @@ function LandingPage() {
           <div className="flex flex-wrap gap-4 text-sm font-semibold text-text-muted">
             <a href="#features" className="hover:text-primary">Features</a>
             <a href="#benefits" className="hover:text-primary">Benefits</a>
-            <a href="#pricing" className="hover:text-primary">Pricing</a>
+            <Link to="/pricing" className="hover:text-primary">Pricing</Link>
             <Link to="/login" className="hover:text-primary">Log in</Link>
           </div>
         </div>

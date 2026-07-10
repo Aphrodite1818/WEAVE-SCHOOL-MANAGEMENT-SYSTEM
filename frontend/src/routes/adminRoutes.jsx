@@ -1,10 +1,13 @@
 import { Navigate, Route } from "react-router-dom";
 
 import { DashboardShell } from "../components/layout/DashboardLayout";
+import AcademicHubOverviewPage from "../pages/admin/AcademicHubOverviewPage";
 import AcademicHubPage from "../pages/admin/AcademicHubPage";
+import AcademicWorkflowPage from "../pages/admin/AcademicWorkflowPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
+import BulkImportPage from "../pages/admin/BulkImportPage";
 import ClassesPage from "../pages/admin/ClassesPage";
 import CreateUserPage from "../pages/admin/CreateUserPage";
 import FeesPage from "../pages/admin/FeesPage";
@@ -17,29 +20,35 @@ import SubscriptionVerifyPage from "../pages/admin/SubscriptionVerifyPage";
 import TeachersPage from "../pages/admin/TeachersPage";
 import UsagePage from "../pages/admin/UsagePage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import RoleGuard from "./RoleGuard";
 
 export const adminRoutes = (
   <Route element={<RoleGuard allowedRoles={["ADMIN"]} />}>
+    <Route path="/admin/billing/plans" element={<SubscriptionOptionsPage />} />
+    <Route path="/billing/subscription/verify" element={<SubscriptionVerifyPage />} />
+
     <Route element={<DashboardShell role="admin" />}>
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+      <Route path="/admin/analytics" element={<RoleAnalyticsPage role="admin" />} />
       <Route path="/admin/create-user" element={<CreateUserPage />} />
       <Route path="/admin/teachers" element={<TeachersPage />} />
       <Route path="/admin/students" element={<StudentsPage />} />
       <Route path="/admin/parents" element={<ParentsPage />} />
       <Route path="/admin/classes" element={<ClassesPage />} />
       <Route path="/admin/subjects" element={<SubjectsPage />} />
+      <Route path="/admin/imports" element={<BulkImportPage />} />
       <Route path="/admin/attendance" element={<AttendancePage />} />
       <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />
-      <Route path="/admin/results" element={<Navigate to="/admin/academic" replace />} />
-      <Route path="/admin/academic" element={<AcademicHubPage />} />
+      <Route path="/admin/results" element={<Navigate to="/admin/academic/results" replace />} />
+      <Route path="/admin/academic" element={<AcademicHubOverviewPage />} />
+      <Route path="/admin/academic/manage" element={<AcademicHubPage />} />
+      <Route path="/admin/academic/:workflow" element={<AcademicWorkflowPage />} />
       <Route path="/admin/fees" element={<FeesPage />} />
       <Route path="/admin/payments" element={<PaymentsPage />} />
       <Route path="/admin/billing" element={<BillingPage />} />
-      <Route path="/admin/billing/plans" element={<SubscriptionOptionsPage />} />
       <Route path="/admin/usage" element={<UsagePage />} />
-      <Route path="/billing/subscription/verify" element={<SubscriptionVerifyPage />} />
       <Route path="/admin/timetable" element={<StaticModulePage role="admin" title="Timetable" description="Professional schedule grid and class timetable planning." type="timetable" />} />
       <Route path="/admin/announcements" element={<AnnouncementsWorkspacePage mode="tenant-admin" />} />
       <Route path="/admin/messages" element={<AnnouncementsWorkspacePage mode="tenant-admin" variant="messages" />} />

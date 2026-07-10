@@ -4,6 +4,7 @@
 
 """Implement the tenant management service layer."""
 
+from locale import normalize
 import uuid
 from enum import StrEnum
 
@@ -20,6 +21,7 @@ from app.core.exceptions import (
 )
 from app.core.utils.validators import generate_slug
 from app.modules.auth.models import AuthPurpose
+from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth.schemas import RequestOTP
 from app.modules.auth.service import OTPService
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
@@ -204,6 +206,10 @@ class TenantService:
         reused_pending_account = False
 
         async with db.begin():
+            await AccountEmailGuard.ensure_not_superadmin_email(
+                db = db ,
+                email = normalized_email
+            )
             existing_tenant_by_name = await TenantRepository.get_by_school_name(
                 db,
                 school_name,

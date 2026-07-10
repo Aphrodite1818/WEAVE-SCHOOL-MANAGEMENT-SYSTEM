@@ -23,9 +23,9 @@ from app.modules.students.schemas import (
     StudentParentLinkCreate,
     StudentParentLinkResponse,
     StudentParentLinkUpdate,
-    StudentProfileComplete,
     StudentResponse,
     StudentUpdate,
+    StudentAdminAccessCodeResponse
 )
 from app.modules.students.service import (
     StudentLinkCodeService,
@@ -440,6 +440,25 @@ async def get_student(
     )
 
 
+@router.post(
+        "/students/{student_id}/reset-access-code",
+        response_model = StudentAdminAccessCodeResponse,
+        summary = "Generate a new student access code"
+)
+async def reset_student_access_code(
+    student_id : UUID,
+    db : DbSession,
+    current_admin : CurrentTenantAdmin
+) -> StudentAdminAccessCodeResponse:
+    """Generate a temporary access code for student"""
+
+    return await StudentService.admin_reset_student_access_code(
+        db = db ,
+        actor = current_admin,
+        student_id = student_id
+    )
+
+
 @router.patch(
     "/students/{student_id}",
     response_model=StudentResponse,
@@ -479,27 +498,6 @@ async def delete_student(
         student_id=student_id,
     )
     await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
-
-
-@router.patch(
-    "/students/{student_id}/complete-profile",
-    response_model=StudentResponse,
-    summary="Complete a student profile",
-)
-async def complete_student_profile(
-    student_id: UUID,
-    payload: StudentProfileComplete,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> StudentResponse:
-    """Complete a student profile in the current tenant."""
-
-    return await StudentService.complete_student_profile(
-        db=db,
-        actor=current_admin,
-        student_id=student_id,
-        payload=payload,
-    )
 
 
 @router.post(

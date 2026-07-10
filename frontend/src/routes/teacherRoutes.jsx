@@ -8,6 +8,7 @@ import TeacherResultsPage from "../pages/teacher/ResultsPage";
 import TeacherStudentsPage from "../pages/teacher/StudentsPage";
 import TeacherSubjectsPage from "../pages/teacher/SubjectsPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import RoleGuard from "./RoleGuard";
 
@@ -15,6 +16,7 @@ export const teacherRoutes = (
   <Route element={<RoleGuard allowedRoles={["TEACHER"]} />}>
     <Route element={<DashboardShell role="teacher" />}>
       <Route path="/teacher/dashboard" element={<TeacherDashboardPage />} />
+      <Route path="/teacher/analytics" element={<RoleAnalyticsPage role="teacher" />} />
       <Route path="/teacher/classes" element={<TeacherClassesPage />} />
       <Route path="/teacher/students" element={<TeacherStudentsPage />} />
       <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />

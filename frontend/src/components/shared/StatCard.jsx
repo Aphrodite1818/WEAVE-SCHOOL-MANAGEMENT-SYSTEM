@@ -5,15 +5,16 @@ import { cn } from "../../utils/cn";
 
 const toneClasses = {
   primary: "bg-primary-soft text-primary",
-  success: "bg-success-soft text-emerald-700",
-  warning: "bg-warning-soft text-amber-700",
-  error: "bg-error-soft text-rose-700",
+  success: "bg-success-soft text-emerald-800",
+  warning: "bg-warning-soft text-amber-950",
+  error: "bg-error-soft text-rose-800",
   accent: "bg-accent-soft text-accent",
 };
 
 function StatCard({
   label,
   value,
+  description,
   change,
   trend = "up",
   icon: Icon,
@@ -29,14 +30,14 @@ function StatCard({
       className={cn(
         "flex h-full min-h-0 flex-col border-border/50 bg-surface shadow-sm",
         compact
-          ? "p-3 sm:p-3.5 md:p-4"
+          ? "min-h-[7.25rem] p-3 sm:p-3.5 md:p-4"
           : "p-4 sm:min-h-[132px] sm:p-5 lg:min-h-[144px]",
         className
       )}
     >
       <div className="flex items-start justify-between gap-2 sm:gap-3">
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-1 text-[10px] font-semibold uppercase leading-snug tracking-wide text-text-muted sm:text-[11px] md:text-xs">
+          <p className="line-clamp-2 text-[10px] font-semibold uppercase leading-snug tracking-wide text-text-muted sm:text-[11px] md:text-xs">
             {label}
           </p>
           {valueBadge ? (
@@ -45,8 +46,8 @@ function StatCard({
                 variant={valueBadge.variant || "success"}
                 className={cn(
                   compact
-                    ? "max-w-full whitespace-nowrap px-2 py-1 text-[9px] font-semibold leading-none sm:px-2.5 sm:text-[10px]"
-                    : "max-w-full whitespace-nowrap px-2.5 py-1 text-[10px] font-semibold leading-none sm:px-3 sm:py-1.5 sm:text-[11px]",
+                    ? "max-w-full whitespace-normal px-2 py-1 text-[9px] font-bold leading-tight sm:px-2.5 sm:text-[10px]"
+                    : "max-w-full whitespace-normal px-2.5 py-1 text-[10px] font-bold leading-tight sm:px-3 sm:py-1.5 sm:text-[11px]",
                   valueBadge.className
                 )}
               >
@@ -58,7 +59,7 @@ function StatCard({
               className={cn(
                 "mt-1 line-clamp-2 font-semibold leading-[1.04] tracking-tight text-text sm:mt-1.5",
                 compact
-                  ? "text-[1.35rem] sm:text-[2rem] md:text-[2.25rem]"
+                  ? "text-[1.4rem] sm:text-[2rem] md:text-[2.25rem]"
                   : "text-xl sm:text-2xl md:text-3xl"
               )}
               title={typeof value === "string" ? value : undefined}
@@ -79,6 +80,11 @@ function StatCard({
           </span>
         )}
       </div>
+      {description ? (
+        <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-text-muted sm:text-xs">
+          {description}
+        </p>
+      ) : null}
       {change && (
         <div className="mt-auto flex flex-wrap items-center gap-1 pt-2 sm:gap-2 sm:pt-3">
           <Badge variant={trend === "down" ? "error" : "success"}>

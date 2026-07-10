@@ -41,6 +41,12 @@ ENUM_TYPES = [
     "billing_interval",
     "payment_provider",
     "payment_status",
+    "import_resource_type",
+    "import_file_type",
+    "import_job_status",
+    "import_notification_channel",
+    "import_notification_status",
+    "email_outbox_status",
 ]
 
 

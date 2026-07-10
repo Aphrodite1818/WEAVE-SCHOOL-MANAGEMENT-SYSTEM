@@ -16,6 +16,7 @@ import {
   Receipt,
   Settings,
   Shield,
+  UploadCloud,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -76,6 +77,7 @@ export const navGroups = {
       label: "Overview",
       items: [
         { label: "Dashboard", to: "/admin/dashboard", icon: Home },
+        { label: "Analytics", to: "/admin/analytics", icon: BarChart3 },
         { label: "Create User", to: "/admin/create-user", icon: UserPlus },
         { label: "Calendar", to: "/admin/timetable", icon: CalendarDays },
       ],
@@ -83,14 +85,15 @@ export const navGroups = {
     {
       label: "Academics",
       items: [
+        { label: "Academic Hub", to: "/admin/academic", icon: ClipboardList },
         { label: "Students", to: "/admin/students", icon: GraduationCap },
         { label: "Teachers", to: "/admin/teachers", icon: Users },
         { label: "Parents", to: "/admin/parents", icon: Users },
+        { label: "Bulk Imports", to: "/admin/imports", icon: UploadCloud },
         { label: "Classes", to: "/admin/classes", icon: Library },
         { label: "Subjects", to: "/admin/subjects", icon: BookOpen },
         { label: "Timetable", to: "/admin/timetable", icon: CalendarDays },
         { label: "Attendance", to: "/admin/attendance", icon: CheckSquare },
-        { label: "Academic Hub", to: "/admin/academic", icon: ClipboardList },
       ],
     },
     {
@@ -117,6 +120,7 @@ export const navGroups = {
       label: "Subject teaching",
       items: [
         { label: "Dashboard", to: "/teacher/dashboard", icon: Home },
+        { label: "Analytics", to: "/teacher/analytics", icon: BarChart3 },
         { label: "Teaching Rosters", to: "/teacher/students", icon: GraduationCap },
         { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen },
         { label: "Score Entry", to: "/teacher/score-entry", icon: BarChart3 },
@@ -139,6 +143,7 @@ export const navGroups = {
       label: "Learning",
       items: [
         { label: "Dashboard", to: "/student/dashboard", icon: Home },
+        { label: "Performance", to: "/student/analytics", icon: BarChart3 },
         { label: "Subjects", to: "/student/subjects", icon: BookOpen },
         { label: "Parent Linking", to: "/student/parent-linking", icon: Link2 },
         { label: "Report Cards", to: "/student/report-cards", icon: FileText },

@@ -15,6 +15,7 @@ from app.modules.auth.models import AuthPurpose, AuthRecord
 from app.modules.auth_identity.models import ActorType , IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.classes.models import ClassRoom
 from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.students.models import Student, StudentParentLinkRequest, StudentParentLinkRequestStatus, StudentProfileStatus
@@ -52,6 +53,11 @@ class TenantAdminService:
 
 
         normalized_email = TenantAdminService._normalize_email(email = payload.email)
+
+        normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+            db = db ,
+            email = normalized_email
+        )
 
         existing_admin = await TenantAdminRepository.get_by_email(
             db = db ,
@@ -168,6 +174,10 @@ class TenantAdminService:
         if "email"  in update_data and update_data["email"] is not None:
             normalized_email = TenantAdminService._normalize_email(update_data["email"])
 
+            normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+                db = db ,
+                email = normalized_email
+            )
 
             existing_admin = await TenantAdminRepository.get_by_email(
                 db = db ,

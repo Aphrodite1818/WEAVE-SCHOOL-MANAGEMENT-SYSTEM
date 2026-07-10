@@ -1,12 +1,17 @@
+#==========================#
+# student repository.py#
+#==========================#
+from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.modules.students.models import (
     AcademicStatus,
     Student,
+    StudentAccessCode,
     StudentLinkCode,
     StudentParentLink,
     StudentParentLinkRequest,
@@ -581,3 +586,95 @@ class StudentParentLinkRequestRepository:
         await db.flush()
         await db.refresh(link_request)
         return link_request
+
+
+class StudentAccessCodeRepository:
+    """Database operations for temporary student access codes."""
+
+    @staticmethod
+    async def invalidate_active_codes(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        student_id: UUID,
+    ) -> None:
+        """Invalidate all active access codes for a student."""
+
+        now = datetime.now(timezone.utc)
+
+        await db.execute(
+            update(StudentAccessCode)
+            .where(
+                StudentAccessCode.tenant_id == tenant_id,
+                StudentAccessCode.student_id == student_id,
+                StudentAccessCode.is_used.is_(False),
+            )
+            .values(
+                is_used=True,
+                used_at=now,
+            )
+        )
+
+    @staticmethod
+    async def create_access_code(
+        db: AsyncSession,
+        *,
+        access_code: StudentAccessCode,
+    ) -> StudentAccessCode:
+        """Create an access code record for a student."""
+
+        db.add(access_code)
+        await db.flush()
+        await db.refresh(access_code)
+        return access_code
+
+    @staticmethod
+    async def get_active_code_by_digest(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        student_id: UUID,
+        code_digest: str,
+    ) -> StudentAccessCode | None:
+        """Fetch an active access code by its stored digest."""
+
+        now = datetime.now(timezone.utc)
+
+        result = await db.execute(
+            select(StudentAccessCode)
+            .where(
+                StudentAccessCode.tenant_id == tenant_id,
+                StudentAccessCode.student_id == student_id,
+                StudentAccessCode.code_digest == code_digest,
+                StudentAccessCode.is_used.is_(False),
+                StudentAccessCode.expires_at > now,
+            )
+            .order_by(StudentAccessCode.created_at.desc())
+            .limit(1)
+        )
+
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def mark_all_codes_used(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        student_id: UUID,
+    ) -> None:
+        """Mark all active access codes for a student as used."""
+
+        now = datetime.now(timezone.utc)
+
+        await db.execute(
+            update(StudentAccessCode)
+            .where(
+                StudentAccessCode.tenant_id == tenant_id,
+                StudentAccessCode.student_id == student_id,
+                StudentAccessCode.is_used.is_(False),
+            )
+            .values(
+                is_used=True,
+                used_at=now,
+            )
+        )

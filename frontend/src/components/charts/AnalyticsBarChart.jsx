@@ -2,12 +2,22 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { formatChartLabel } from "../../utils/academicDashboard";
+
+const CHART_BAR_COLORS = [
+  "#3452DB",
+  "#16A34A",
+  "#F59E0B",
+  "#7C3AED",
+  "#0EA5E9",
+  "#F97316",
+];
 
 const normalizeItems = (data, valueKey) =>
   Array.isArray(data)
@@ -56,7 +66,11 @@ function AnalyticsBarChart({
               <XAxis dataKey={labelKey} tickLine={false} axisLine={false} tickMargin={10} tickFormatter={formatChartLabel} angle={-30} textAnchor="end" height={84} />
               <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
               <Tooltip />
-              <Bar dataKey={valueKey} fill="#0f766e" radius={[10, 10, 0, 0]} />
+              <Bar dataKey={valueKey} radius={[10, 10, 0, 0]}>
+                {items.map((item, index) => (
+                  <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>

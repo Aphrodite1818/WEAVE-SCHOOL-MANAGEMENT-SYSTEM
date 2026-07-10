@@ -11,15 +11,24 @@ export const getTokenPayload = (token) => {
   }
 };
 
-export const getValidTokenPayload = () => {
+export const getStoredTokenPayload = () => {
   const token = authSession.getToken();
   if (!token) return null;
 
   const payload = getTokenPayload(token);
+  if (!payload) {
+    authSession.clear();
+    return null;
+  }
+
+  return payload;
+};
+
+export const getValidTokenPayload = () => {
+  const payload = getStoredTokenPayload();
   const expiresAt = payload?.exp ? payload.exp * 1000 : null;
 
   if (!payload || !expiresAt || expiresAt <= Date.now()) {
-    authSession.clear();
     return null;
   }
 
