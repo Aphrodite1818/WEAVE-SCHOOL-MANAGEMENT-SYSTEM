@@ -28,18 +28,18 @@ const roleCopy = {
     ],
     charts: [
       { kind: "line", key: "performance_trend", title: "Performance Trend", description: "Average tenant performance by academic term." },
-      { kind: "bar", key: "teacher_submission_progress", title: "Teacher Submission Progress", description: "Average completion percentage by teacher." },
-      { kind: "bar", key: "user_population_breakdown", title: "User Population Breakdown", description: "Students, teachers, and parents currently in this school." },
+      { kind: "donut", key: "user_population_breakdown", title: "User Population Breakdown", description: "Students, teachers, and parents currently in this school." },
       { kind: "donut", key: "student_profile_completion_rate", title: "Student Profile Completion", description: "Complete versus incomplete student profiles." },
-      { kind: "bar", key: "account_status_overview", title: "Account Status Overview", description: "Active and pending teacher/parent accounts." },
-      { kind: "donut", key: "announcements_by_category", title: "Announcements By Category", description: "Communication categories posted by the school." },
-      { kind: "bar", key: "class_population", title: "Class Population", description: "Number of enrolled students in each class." },
+      { kind: "donut", key: "account_status_overview", title: "Account Status Overview", description: "Active and pending teacher/parent accounts." },
       { kind: "donut", key: "report_card_status", title: "Report Card Status", description: "Generated report-card publishing progress." },
+      { kind: "bar", key: "teacher_submission_progress", title: "Teacher Submission Progress", description: "Average completion percentage by teacher." },
+      { kind: "bar", key: "class_population", title: "Class Population", description: "Number of enrolled students in each class." },
       { kind: "bar", key: "subject_performance", title: "Subject Performance", description: "Average score by subject." },
-      { kind: "bar", key: "class_performance", title: "Class Performance", description: "Average score by class." },
+      { kind: "line", key: "class_performance", title: "Class Performance Pattern", description: "Average score signal across classes." },
       { kind: "donut", key: "grade_distribution", title: "Grade Distribution", description: "All recorded academic grades in this tenant." },
       { kind: "donut", key: "result_status_distribution", title: "Result Status Distribution", description: "Draft and submitted result rows." },
-      { kind: "bar", key: "result_completion_by_subject", title: "Result Completion By Subject", description: "Average completion signal grouped by subject." },
+      { kind: "line", key: "result_completion_by_subject", title: "Result Completion Pattern", description: "Completion signal grouped by subject." },
+      { kind: "donut", key: "announcements_by_category", title: "Announcements By Category", description: "Communication categories posted by the school." },
     ],
   },
   teacher: {
@@ -165,8 +165,9 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
     const populatedCharts = copy.charts.filter((chart) => chartData(charts, chart.key).length > 0);
     return populatedCharts.length > 0 ? populatedCharts : copy.charts;
   }, [copy.charts, charts]);
-  const barCharts = visibleCharts.filter((chart) => chart.kind === "bar");
-  const otherCharts = visibleCharts.filter((chart) => chart.kind !== "bar");
+  const trendCharts = visibleCharts.filter((chart) => chart.kind === "line");
+  const distributionCharts = visibleCharts.filter((chart) => chart.kind === "donut");
+  const comparisonCharts = visibleCharts.filter((chart) => chart.kind === "bar");
 
   if (shouldGateAdmin) {
     return (
@@ -219,26 +220,38 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
             ))}
           </section>
 
-          {barCharts.length > 0 ? (
+          {trendCharts.length > 0 ? (
             <section className="space-y-4">
               <DashboardSectionHeader
-                title="Bar chart highlights"
-                description="Main comparisons stay visible here, with responsive bars that remain readable on mobile and desktop."
+                title="Trend signals"
+                description="Line charts stay at the top for movement and progress patterns over time or grouped academic signals."
               />
               <div className="grid gap-5 xl:grid-cols-2">
-                {barCharts.map((chart) => renderChart(chart, charts))}
+                {trendCharts.map((chart) => renderChart(chart, charts))}
               </div>
             </section>
           ) : null}
 
-          {otherCharts.length > 0 ? (
+          {distributionCharts.length > 0 ? (
             <section className="space-y-4">
               <DashboardSectionHeader
-                title="Trend and distribution charts"
-                description="Line and donut charts stay available below the comparison charts."
+                title="Breakdowns and status mix"
+                description="Donut charts handle composition data so the page does not become a long wall of bars."
               />
               <div className="grid gap-5 xl:grid-cols-2">
-                {otherCharts.map((chart) => renderChart(chart, charts))}
+                {distributionCharts.map((chart) => renderChart(chart, charts))}
+              </div>
+            </section>
+          ) : null}
+
+          {comparisonCharts.length > 0 ? (
+            <section className="space-y-4">
+              <DashboardSectionHeader
+                title="Key comparisons"
+                description="Only the strongest category comparisons use bar charts here."
+              />
+              <div className="grid gap-5 xl:grid-cols-2">
+                {comparisonCharts.map((chart) => renderChart(chart, charts))}
               </div>
             </section>
           ) : null}
