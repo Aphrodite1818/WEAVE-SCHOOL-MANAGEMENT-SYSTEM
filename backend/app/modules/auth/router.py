@@ -5,10 +5,18 @@
 """Auth routes for login, refresh-token rotation, logout, OTP, and invites."""
 
 from __future__ import annotations
+from typing import Annotated
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Cookie, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
+from app.core.dependencies.route_guards import get_current_actor
+from app.modules.parents.models import Parent
+from app.modules.students.models import Student
+from app.modules.superadmin.models import SuperAdmin
+from app.modules.teachers.models import Teacher
+from app.modules.tenant_admins.models import TenantAdmin
+from app.tenant_management.repository import TenantRepository
 
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
@@ -22,6 +30,7 @@ from app.modules.auth.schemas import (
     UpdatePassword,
     UserInviteAcceptanceRequest,
     VerifyOTP,
+    SessionBootstrapResponse
 )
 from app.modules.auth.service import (
     AuthService,
@@ -88,6 +97,103 @@ def _delete_refresh_token_cookie(response: Response) -> None:
         secure=_refresh_cookie_secure(),
         httponly=True,
         samesite=_refresh_cookie_samesite(),
+    )
+
+
+
+
+
+
+CurrentActorDependency = Annotated[
+    SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+    Depends(get_current_actor),
+]
+
+
+def _client_ip(request: Request) -> str | None:
+    """Return the best client IP available behind a proxy/load balancer."""
+
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or None
+
+    return request.client.host if request.client else None
+
+
+def _actor_type_and_role(
+    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+) -> tuple[str, str]:
+    """Return normalized actor_type and frontend role."""
+
+    if isinstance(actor, SuperAdmin):
+        return "superadmin", "superadmin"
+
+    if isinstance(actor, TenantAdmin):
+        return "tenant_admin", "admin"
+
+    if isinstance(actor, Teacher):
+        return "teacher", "teacher"
+
+    if isinstance(actor, Parent):
+        return "parent", "parent"
+
+    if isinstance(actor, Student):
+        return "student", "student"
+
+    raise UnauthorizedException("Invalid session")
+
+
+async def _build_session_bootstrap_response(
+    db: DbSession,
+    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+) -> SessionBootstrapResponse:
+    """Build a safe current-session response for frontend bootstrapping."""
+
+    actor_type, role = _actor_type_and_role(actor)
+
+    tenant_id = getattr(actor, "tenant_id", None)
+    school_name = None
+
+    if tenant_id is not None:
+        tenant = await TenantRepository.get_by_id(db, tenant_id)
+        school_name = tenant.school_name if tenant else None
+
+    if isinstance(actor, Student):
+        email = actor.admission_number
+        admission_number = actor.admission_number
+    else:
+        email = getattr(actor, "email", None)
+        admission_number = None
+
+    user = LoginSessionUser(
+        id=str(actor.id),
+        tenant_id=str(tenant_id) if tenant_id else None,
+        school_name=school_name,
+        email=email,
+        admission_number=admission_number,
+        first_name=getattr(actor, "first_name", None),
+        last_name=getattr(actor, "last_name", None),
+        actor_type=actor_type,
+        account_type=actor_type,
+        role=role,
+        password_reset_required=getattr(actor, "password_reset_required", None),
+        profile_status=(
+            getattr(getattr(actor, "profile_status", None), "value", None)
+            or str(getattr(actor, "profile_status", ""))
+            if getattr(actor, "profile_status", None) is not None
+            else None
+        ),
+    )
+
+    return SessionBootstrapResponse(
+        authenticated=True,
+        actor_type=actor_type,
+        account_type=actor_type,
+        role=role,
+        tenant_id=str(tenant_id) if tenant_id else None,
+        email=email,
+        password_reset_required=getattr(actor, "password_reset_required", None),
+        user=user,
     )
 
 
@@ -189,6 +295,24 @@ async def logout(
 
     _delete_refresh_token_cookie(response)
     return {"detail": "Logged out successfully."}
+
+
+
+
+
+
+@router.get("/me/session", response_model=SessionBootstrapResponse)
+async def get_current_session(
+    db: DbSession,
+    current_actor: CurrentActorDependency,
+) -> SessionBootstrapResponse:
+    """Return the current authenticated session/user payload."""
+
+    return await _build_session_bootstrap_response(db, current_actor)
+
+
+
+
 
 
 @router.post("/request-otp")

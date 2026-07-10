@@ -130,6 +130,38 @@ class Settings(BaseSettings):
     REDIS_URL: str | None = Field(default=None, description="Redis connection URL")
     CACHE_ENABLED: bool = Field(default=False, description="Enable application caching")
 
+
+
+
+
+
+        RATE_LIMIT_ENABLED: bool = Field(
+        default=False,
+        description="Enable Redis-backed security rate limiting.",
+    )
+    RATE_LIMIT_REDIS_URL: str | None = Field(
+        default=None,
+        description="Dedicated Redis URL for rate limiting. Falls back to REDIS_URL.",
+    )
+
+    LOGIN_IP_LIMIT_5M: int = Field(default=20, gt=0)
+    LOGIN_IP_LIMIT_1H: int = Field(default=100, gt=0)
+    LOGIN_IDENTIFIER_FAIL_LIMIT_10M: int = Field(default=5, gt=0)
+    LOGIN_IDENTIFIER_FAIL_LIMIT_1H: int = Field(default=15, gt=0)
+    LOGIN_IDENTIFIER_IP_FAIL_LIMIT_10M: int = Field(default=5, gt=0)
+
+    OTP_EMAIL_COOLDOWN_SECONDS: int = Field(default=60, gt=0)
+    OTP_EMAIL_LIMIT_10M: int = Field(default=3, gt=0)
+    OTP_EMAIL_LIMIT_24H: int = Field(default=8, gt=0)
+    OTP_IP_LIMIT_1H: int = Field(default=20, gt=0)
+
+    OTP_VERIFY_EMAIL_FAIL_LIMIT_10M: int = Field(default=5, gt=0)
+    OTP_VERIFY_IP_FAIL_LIMIT_1H: int = Field(default=30, gt=0)
+
+
+
+
+
     CACHE_DEFAULT_TTL_SECONDS: int = Field(
         default=300,
         gt=0,
@@ -200,8 +232,16 @@ class Settings(BaseSettings):
 
         if not self.DATABASE_URL:
             raise ValueError("DATABASE_URL must be set for the active environment.")
+        
+
+        if self.RATE_LIMIT_ENABLED and not (self.RATE_LIMIT_REDIS_URL or self.REDIS_URL):
+            raise ValueError(
+                "RATE_LIMIT_REDIS_URL or REDIS_URL must be set when RATE_LIMIT_ENABLED is true."
+            )
 
         return self
+    
+    
 
     @property
     def is_development(self) -> bool:

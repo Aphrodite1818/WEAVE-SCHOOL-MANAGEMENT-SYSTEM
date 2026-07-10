@@ -32,6 +32,26 @@ class LoginSessionUser(BaseModel):
     meta: dict[str, Any] | None = None
 
 
+
+
+
+class SessionBootstrapResponse(BaseModel):
+    """Current authenticated browser/session bootstrap payload."""
+
+    authenticated: bool = True
+    actor_type: str
+    account_type: str
+    role: str | None = None
+    tenant_id: str | None = None
+    email: str | None = None
+    password_reset_required: bool | None = None
+    user: LoginSessionUser
+
+
+
+    
+
+
 class LoginRequest(BaseModel):
     """Login request for email/admission-number authentication."""
 
