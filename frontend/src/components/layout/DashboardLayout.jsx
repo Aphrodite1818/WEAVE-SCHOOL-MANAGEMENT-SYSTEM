@@ -28,9 +28,10 @@ import useTenantWorkspaceName from "./useTenantWorkspaceName";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
-const DRAWER_EDGE_WIDTH = 28;
 const DRAWER_OPEN_DISTANCE = 72;
 const DRAWER_VERTICAL_TOLERANCE = 70;
+const DRAWER_CENTER_START_MIN = 0.28;
+const DRAWER_CENTER_START_MAX = 0.72;
 
 function getDefaultPageMeta(role, onboardingModalEnabled = true) {
   return {
@@ -49,6 +50,22 @@ function getRole(user, fallback) {
 function isMobileViewport() {
   if (typeof window === "undefined") return false;
   return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function isCenterDrawerGestureStart(clientX) {
+  if (typeof window === "undefined") return false;
+  const width = window.innerWidth || 0;
+  if (!width) return false;
+  return clientX >= width * DRAWER_CENTER_START_MIN && clientX <= width * DRAWER_CENTER_START_MAX;
+}
+
+function blocksDrawerGesture(target) {
+  if (!target || typeof target.closest !== "function") return false;
+  return Boolean(
+    target.closest(
+      "button, a, input, select, textarea, [role='button'], [data-mobile-drawer='true'], .chart-interactive-scroll"
+    )
+  );
 }
 
 function DashboardShellFrame({
@@ -103,7 +120,7 @@ function DashboardShellFrame({
     const touch = event.touches?.[0];
     if (!touch) return;
 
-    if (!mobileNavOpen && touch.clientX <= DRAWER_EDGE_WIDTH) {
+    if (!mobileNavOpen && isCenterDrawerGestureStart(touch.clientX) && !blocksDrawerGesture(event.target)) {
       drawerSwipeRef.current = {
         tracking: true,
         startX: touch.clientX,
@@ -250,8 +267,8 @@ function DashboardShellFrame({
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-full bg-primary/80 transition-[width,opacity] duration-150 md:hidden"
-            style={{ width: drawerSwipeDistance ? `${Math.max(4, drawerSwipeDistance / 8)}px` : 0, height: drawerSwipeDistance ? "5rem" : 0, opacity: drawerSwipeDistance ? 1 : 0 }}
+            className="pointer-events-none fixed left-1/2 top-1/2 z-30 hidden -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/80 transition-[width,opacity] duration-150 md:hidden"
+            style={{ width: drawerSwipeDistance ? `${Math.max(8, drawerSwipeDistance / 2)}px` : 0, height: drawerSwipeDistance ? "0.35rem" : 0, opacity: drawerSwipeDistance ? 1 : 0 }}
           />
           <div
             className="pointer-events-none sticky top-0 z-20 flex justify-center overflow-hidden transition-[height,opacity] duration-150 md:hidden"

@@ -15,13 +15,12 @@ import {
 
 import Card from "../../components/ui/Card";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import LoadingState from "../../components/shared/LoadingState";
 import {
   DashboardListCard,
   DashboardMetricCard,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
-import { getErrorMessage, isAbortError } from "../../services/api";
+import { isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { cleanText } from "../../utils/academicDashboard";
@@ -29,7 +28,7 @@ import { cn } from "../../utils/cn";
 
 const ACADEMIC_HUB_CACHE_KEY = getDashboardSessionCacheKey("admin:academic-hub-overview");
 
-const metricNumber = (value, fallback = 0) => {
+const metricNumber = (value, fallback = "-") => {
   const nextValue = Number(value);
   return Number.isFinite(nextValue) ? nextValue : fallback;
 };
@@ -118,15 +117,29 @@ const toneStyles = {
   neutral: "bg-surface-muted text-text-muted",
 };
 
+function scheduleBackgroundTask(callback) {
+  if (typeof window === "undefined") return undefined;
+
+  if (typeof window.requestIdleCallback === "function") {
+    const id = window.requestIdleCallback(callback, { timeout: 1200 });
+    return () => window.cancelIdleCallback(id);
+  }
+
+  const id = window.setTimeout(callback, 250);
+  return () => window.clearTimeout(id);
+}
+
 function AcademicHubOverviewPage() {
   const [analytics, setAnalytics] = useState(null);
-  const [error, setError] = useState(null);
+  const [isMetricsRefreshing, setIsMetricsRefreshing] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
 
-    async function loadOverview() {
+    const cancelIdleTask = scheduleBackgroundTask(async () => {
+      if (!mounted) return;
+      setIsMetricsRefreshing(true);
       try {
         const data = await getCachedDashboardBundle(ACADEMIC_HUB_CACHE_KEY, () =>
           dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
@@ -135,32 +148,26 @@ function AcademicHubOverviewPage() {
         setAnalytics(data);
       } catch (err) {
         if (!mounted || isAbortError(err)) return;
-        setError(getErrorMessage(err, "Failed to load academic hub overview."));
+        setAnalytics(null);
+      } finally {
+        if (mounted) setIsMetricsRefreshing(false);
       }
-    }
-
-    loadOverview();
+    });
 
     return () => {
       mounted = false;
       controller.abort();
+      if (typeof cancelIdleTask === "function") cancelIdleTask();
     };
   }, []);
 
-  if (!analytics && !error) {
-    return (
-      <DashboardLayout role="admin" title="Academic Hub">
-        <LoadingState label="Loading academic hub..." />
-      </DashboardLayout>
-    );
-  }
-
   const stats = analytics?.stats || {};
+  const hasMetrics = Boolean(analytics?.stats);
   const resultCompletion = metricNumber(stats.result_completion_percent);
   const reportCardsPublished = metricNumber(stats.report_cards_published);
   const reportCardsGenerated = metricNumber(stats.report_cards_generated);
-  const incompleteProfiles = metricNumber(stats.student_profiles_incomplete);
-  const needsSetup = !stats.active_academic_session || !stats.active_academic_term;
+  const incompleteProfiles = Number(stats.student_profiles_incomplete || 0);
+  const needsSetup = hasMetrics && (!stats.active_academic_session || !stats.active_academic_term);
 
   const attentionItems = [
     needsSetup
@@ -184,7 +191,7 @@ function AcademicHubOverviewPage() {
           value: incompleteProfiles,
         }
       : null,
-    reportCardsGenerated > reportCardsPublished
+    Number(reportCardsGenerated) > Number(reportCardsPublished)
       ? {
           key: "reports",
           title: "Report cards pending publication",
@@ -202,99 +209,90 @@ function AcademicHubOverviewPage() {
       title="Academic Hub"
       description="A workflow-first academic hub for setup, subjects, assignments, results, report cards, and search."
     >
-      {error ? (
-        <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
-          {error}
+      <DashboardWelcomePanel
+        eyebrow="Academic operations"
+        title="Choose the academic workflow you want to manage"
+        description="The hub now renders instantly. Metrics refresh quietly in the background while the workflow cards stay usable."
+        chips={[
+          { label: "Session", value: cleanText(stats.active_academic_session, hasMetrics ? "Not set" : "Loading"), tone: stats.active_academic_session ? "success" : "warning" },
+          { label: "Term", value: cleanText(stats.active_academic_term, hasMetrics ? "Not set" : "Loading"), tone: stats.active_academic_term ? "primary" : "warning" },
+          isMetricsRefreshing ? { label: "Metrics", value: "Refreshing", tone: "primary" } : null,
+        ].filter(Boolean)}
+      />
+
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <DashboardMetricCard
+          label="Students"
+          value={metricNumber(stats.total_students)}
+          description="Learners attached to this school"
+          icon={GraduationCap}
+          tone="primary"
+          to="/admin/students"
+        />
+        <DashboardMetricCard
+          label="Subjects"
+          value={metricNumber(stats.total_subjects)}
+          description="Catalog items available"
+          icon={BookOpen}
+          tone="success"
+          to="/admin/academic/class-subjects"
+        />
+        <DashboardMetricCard
+          label="Result completion"
+          value={Number.isFinite(Number(resultCompletion)) ? `${resultCompletion}%` : "-"}
+          description="Submitted result rows"
+          icon={BarChart3}
+          tone={Number(resultCompletion) >= 80 ? "success" : Number(resultCompletion) > 0 ? "warning" : "neutral"}
+          to="/admin/academic/results"
+        />
+        <DashboardMetricCard
+          label="Report cards"
+          value={reportCardsPublished}
+          description={hasMetrics ? `${reportCardsGenerated} generated` : "Published reports"}
+          icon={FileText}
+          tone={Number(reportCardsGenerated) > Number(reportCardsPublished) ? "warning" : "success"}
+          to="/admin/academic/report-cards"
+        />
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="section-title">Academic workflows</h2>
+          <p className="mt-1 text-sm leading-6 text-text-muted">
+            These cards open focused pages with editing and viewing areas. The old all-in-one workbench has been removed from the main flow.
+          </p>
         </div>
-      ) : null}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+          {workflowCards.map((card) => <HubRouteCard key={card.key} {...card} />)}
+        </div>
+      </section>
 
-      {!error ? (
-        <>
-          <DashboardWelcomePanel
-            eyebrow="Academic operations"
-            title="Choose the academic workflow you want to manage"
-            description="The hub now starts with clear route cards. Pick a workflow, make edits inside the focused page, then return here when you are done."
-            chips={[
-              { label: "Session", value: cleanText(stats.active_academic_session, "Not set"), tone: stats.active_academic_session ? "success" : "warning" },
-              { label: "Term", value: cleanText(stats.active_academic_term, "Not set"), tone: stats.active_academic_term ? "primary" : "warning" },
-            ]}
-          />
-
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-            <DashboardMetricCard
-              label="Students"
-              value={metricNumber(stats.total_students)}
-              description="Learners attached to this school"
-              icon={GraduationCap}
-              tone="primary"
-              to="/admin/students"
-            />
-            <DashboardMetricCard
-              label="Subjects"
-              value={metricNumber(stats.total_subjects)}
-              description="Catalog items available"
-              icon={BookOpen}
-              tone="success"
-              to="/admin/academic/class-subjects"
-            />
-            <DashboardMetricCard
-              label="Result completion"
-              value={`${resultCompletion}%`}
-              description="Submitted result rows"
-              icon={BarChart3}
-              tone={resultCompletion >= 80 ? "success" : resultCompletion > 0 ? "warning" : "neutral"}
-              to="/admin/academic/results"
-            />
-            <DashboardMetricCard
-              label="Report cards"
-              value={reportCardsPublished}
-              description={`${reportCardsGenerated} generated`}
-              icon={FileText}
-              tone={reportCardsGenerated > reportCardsPublished ? "warning" : "success"}
-              to="/admin/academic/report-cards"
-            />
-          </section>
-
-          <section className="space-y-4">
-            <div>
-              <h2 className="section-title">Academic workflows</h2>
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+        <Card className="p-4 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+              <Settings2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="section-title">Helpful admin shortcuts</h2>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                These cards open focused pages with editing and viewing areas. The old all-in-one workbench has been removed from the main flow.
+                Use these when you need academic analytics or student profile records.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
-              {workflowCards.map((card) => <HubRouteCard key={card.key} {...card} />)}
-            </div>
-          </section>
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {supportCards.map((card) => <SupportRouteCard key={card.key} {...card} />)}
+          </div>
+        </Card>
 
-          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-            <Card className="p-4 sm:p-6">
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-                  <Settings2 className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="section-title">Helpful admin shortcuts</h2>
-                  <p className="mt-1 text-sm leading-6 text-text-muted">
-                    Use these when you need academic analytics or student profile records.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {supportCards.map((card) => <SupportRouteCard key={card.key} {...card} />)}
-              </div>
-            </Card>
-
-            <DashboardListCard
-              title="Needs attention"
-              description="Academic blockers and follow-ups stay visible here."
-              items={attentionItems}
-              emptyTitle="Academic setup looks calm"
-              emptyDescription="No active setup, profile, or report-card issue is showing right now."
-            />
-          </section>
-        </>
-      ) : null}
+        <DashboardListCard
+          title="Needs attention"
+          description={hasMetrics ? "Academic blockers and follow-ups stay visible here." : "Metrics are loading quietly in the background."}
+          items={attentionItems}
+          emptyTitle={hasMetrics ? "Academic setup looks calm" : "Open a workflow immediately"}
+          emptyDescription={hasMetrics ? "No active setup, profile, or report-card issue is showing right now." : "You do not need to wait for metrics before using the Academic Hub."}
+        />
+      </section>
     </DashboardLayout>
   );
 }
