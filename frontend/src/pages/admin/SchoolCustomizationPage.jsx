@@ -11,6 +11,8 @@ import { tenantService } from "../../services/tenant.service";
 import { cn } from "../../utils/cn";
 import { schoolName as resolveSchoolName } from "../../utils/user";
 
+const TENANT_BRAND_EVENT = "learnly:tenant-brand-updated";
+
 const BRAND_STEPS = [
   {
     title: "Upload logo",
@@ -103,6 +105,12 @@ function updateStoredTenantLogo(nextLogoUrl) {
     {
       remember: Boolean(window.localStorage.getItem("auth_user")),
     }
+  );
+
+  window.dispatchEvent(
+    new CustomEvent(TENANT_BRAND_EVENT, {
+      detail: { logoUrl: nextLogoUrl || null },
+    })
   );
 }
 
