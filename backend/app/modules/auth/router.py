@@ -38,6 +38,7 @@ from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.platform_control_service import PlatformControlService
+from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
@@ -241,6 +242,12 @@ async def login(
             ip_address=client_ip,
         )
         raise
+
+    await SecurityResponseService.enforce_actor_ip_allowed(
+        db,
+        ip_address=client_ip,
+        actor_type=actor.actor_type,
+    )
 
     await PlatformControlService.enforce_actor_allowed(
         db,
