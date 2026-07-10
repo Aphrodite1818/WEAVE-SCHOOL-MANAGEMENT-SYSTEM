@@ -37,6 +37,7 @@ from app.modules.auth.service import (
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.superadmin.models import SuperAdmin
+from app.modules.superadmin.platform_control_service import PlatformControlService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
@@ -240,6 +241,11 @@ async def login(
             ip_address=client_ip,
         )
         raise
+
+    await PlatformControlService.enforce_actor_allowed(
+        db,
+        actor_type=actor.actor_type,
+    )
 
     await AuthRateLimitService.clear_login_failures(
         identifier=payload.identifier,
