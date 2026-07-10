@@ -115,7 +115,7 @@ function updateStoredTenantLogo(nextLogoUrl) {
 }
 
 export default function SchoolCustomizationPage() {
-  const { showSuccess, showError } = useToast();
+  const { showSuccess } = useToast();
   const user = authSession.getUser() || {};
   const [tenant, setTenant] = useState(user.tenant || null);
   const [isLoading, setIsLoading] = useState(Boolean(user.tenant_id));
