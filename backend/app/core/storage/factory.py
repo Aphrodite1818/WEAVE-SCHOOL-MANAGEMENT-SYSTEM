@@ -11,7 +11,7 @@ from functools import lru_cache
 from app.config.settings import settings
 from app.core.storage.base import MediaStorageBackend
 from app.core.storage.local import LocalMediaStorage
-from app.core.storage.R2 import CloudflareR2MediaStorage
+from app.core.storage.r2 import CloudflareR2MediaStorage
 
 
 class MediaStorageConfigurationError(RuntimeError):
