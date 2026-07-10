@@ -96,6 +96,32 @@ class TooManyRequestsException(AppException):
         self.reason = reason
         self.scope = scope
 
+class PlatformMaintenanceException(AppException):
+    """Raised when platform lockdown blocks non-superadmin traffic."""
+
+    def __init__(
+        self,
+        detail: str = "LearnlyAI is temporarily in maintenance mode. Please try again later.",
+        *,
+        reason: str | None = None,
+    ) -> None:
+        """Initialize the PlatformMaintenanceException instance."""
+
+        payload: dict[str, Any] = {
+            "maintenance_mode": True,
+            "platform_lockdown": True,
+            "retryable": True,
+        }
+        if reason:
+            payload["maintenance_reason"] = reason
+
+        super().__init__(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=detail,
+            headers={"Retry-After": "60"},
+            payload=payload,
+        )
+
 class ConflictException(AppException):
     """Raised when a conflicting resource already exists."""
     def __init__(self, detail: str = "Resource conflict") -> None:
@@ -106,14 +132,9 @@ class ConflictException(AppException):
 
 class ImportParserError(ValueError):
     """Raised when an import file cannot be parsed safely"""
+    pass
 
-
-    
 
 class ImportTemplateNotFoundError(ValueError):
-    """Raised when a template does not exist for a resource type"""
-
-
-
-class ImportChunkingError(ValueError):
-    """Rased when import chunking receives invalid input"""
+    """Raised when an import template is not registered for a resource/file type."""
+    pass
