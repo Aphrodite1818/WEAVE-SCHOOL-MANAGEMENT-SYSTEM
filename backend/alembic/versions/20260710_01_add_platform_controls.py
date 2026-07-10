@@ -38,12 +38,12 @@ def upgrade() -> None:
         sa.Column("disabled_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(
             ["enabled_by_superadmin_id"],
-            ["superadmins.id"],
+            ["public.superadmins.id"],
             ondelete="SET NULL",
         ),
         sa.ForeignKeyConstraint(
             ["disabled_by_superadmin_id"],
-            ["superadmins.id"],
+            ["public.superadmins.id"],
             ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id"),
