@@ -153,10 +153,20 @@ class SuperadminSecurityService:
             warnings=warnings,
         )
 
-        compromised_sessions = await SuperadminSecurityService._safe_scalar(
+        compromised_sessions_total = await SuperadminSecurityService._safe_scalar(
             db,
             select(func.count()).select_from(AuthSession).where(AuthSession.compromised_at.is_not(None)),
-            label="compromised_sessions",
+            label="compromised_sessions_total",
+            warnings=warnings,
+        )
+
+        compromised_sessions_last_7d = await SuperadminSecurityService._safe_scalar(
+            db,
+            select(func.count()).select_from(AuthSession).where(
+                AuthSession.compromised_at.is_not(None),
+                AuthSession.compromised_at >= last_7d,
+            ),
+            label="compromised_sessions_last_7d",
             warnings=warnings,
         )
 
@@ -322,10 +332,10 @@ class SuperadminSecurityService:
         revoked_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in revoked_day_rows}
 
         unusual_login_signals = len(unusual_rows)
-        security_event_count = compromised_sessions + refresh_reuse_last_7d + unusual_login_signals
+        security_event_count = compromised_sessions_last_7d + refresh_reuse_last_7d + unusual_login_signals
         platform_risk_score = min(
             100,
-            compromised_sessions * 35
+            compromised_sessions_last_7d * 35
             + refresh_reuse_last_7d * 25
             + unusual_login_signals * 12
             + inactive_superadmins * 4
@@ -335,13 +345,13 @@ class SuperadminSecurityService:
         session_pressure_score = min(100, sessions_last_24h * 4 + distinct_login_ips_7d * 3)
 
         findings: list[dict[str, object]] = []
-        if compromised_sessions:
+        if compromised_sessions_last_7d:
             findings.append(
                 {
-                    "title": "Compromised sessions detected",
-                    "description": "One or more sessions were marked compromised, usually after refresh-token reuse.",
+                    "title": "Recent compromised sessions detected",
+                    "description": "One or more sessions were marked compromised in the last seven days, usually after refresh-token reuse.",
                     "severity": "danger",
-                    "value": compromised_sessions,
+                    "value": compromised_sessions_last_7d,
                 }
             )
         if refresh_reuse_last_7d:
@@ -384,7 +394,7 @@ class SuperadminSecurityService:
             findings.append(
                 {
                     "title": "Security posture looks calm",
-                    "description": "No compromised sessions, token reuse, or unusual IP spread is currently visible.",
+                    "description": "No recent compromised sessions, token reuse, or unusual IP spread is currently visible.",
                     "severity": "success",
                     "value": 0,
                 }
@@ -397,7 +407,9 @@ class SuperadminSecurityService:
                 "sessions_last_7d": sessions_last_7d,
                 "superadmin_sessions_last_24h": superadmin_sessions_last_24h,
                 "distinct_login_ips_7d": distinct_login_ips_7d,
-                "compromised_sessions": compromised_sessions,
+                "compromised_sessions": compromised_sessions_last_7d,
+                "compromised_sessions_last_7d": compromised_sessions_last_7d,
+                "compromised_sessions_total": compromised_sessions_total,
                 "refresh_reuse_last_7d": refresh_reuse_last_7d,
                 "revoked_sessions_last_7d": revoked_sessions_last_7d,
                 "unusual_login_signals": unusual_login_signals,
@@ -445,7 +457,7 @@ class SuperadminSecurityService:
                 "security_session_mix": [
                     {"label": "active_sessions", "value": active_sessions},
                     {"label": "revoked_7d", "value": revoked_sessions_last_7d},
-                    {"label": "compromised", "value": compromised_sessions},
+                    {"label": "compromised_7d", "value": compromised_sessions_last_7d},
                     {"label": "token_reuse_7d", "value": refresh_reuse_last_7d},
                 ],
                 "risk_vector": [
