@@ -182,6 +182,9 @@ async def seed_report_cards_and_dashboard_status(*, tenant_id_arg: str | None, m
                 AcademicSession.name == "2025/2026",
             ),
         )
+        if academic_session is None:
+            raise ValueError("Academic session was not seeded. Run without --skip-base first.")
+
         academic_term = await scalar_one_or_none(
             session,
             select(AcademicTerm).where(
@@ -190,8 +193,8 @@ async def seed_report_cards_and_dashboard_status(*, tenant_id_arg: str | None, m
                 AcademicTerm.name == AcademicTermName.THIRD_TERM,
             ),
         )
-        if academic_session is None or academic_term is None:
-            raise ValueError("Academic session/term was not seeded. Run without --skip-base first.")
+        if academic_term is None:
+            raise ValueError("Academic term was not seeded. Run without --skip-base first.")
 
         draft_count = await ensure_some_draft_results(session, tenant_id=tenant.id, max_drafts=max_drafts)
 
@@ -227,7 +230,7 @@ async def seed_report_cards_and_dashboard_status(*, tenant_id_arg: str | None, m
             students_by_class[student.class_id].append((student, average))
 
         position_map: dict[uuid.UUID, tuple[int, int]] = {}
-        for class_id, class_rows in students_by_class.items():
+        for _class_id, class_rows in students_by_class.items():
             ranked_rows = sorted(class_rows, key=lambda item: item[1], reverse=True)
             out_of = len(ranked_rows)
             for position, (student, _average) in enumerate(ranked_rows, start=1):
