@@ -13,7 +13,6 @@ import {
   Layers3,
   Library,
   Pencil,
-  Plus,
   Search,
   Settings2,
   Users,
@@ -27,6 +26,7 @@ import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
@@ -35,7 +35,6 @@ import { searchService } from "../../services/searchService";
 import { studentService } from "../../services/studentService";
 import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
-import { useToast } from "../../hooks/useToast";
 import { cn } from "../../utils/cn";
 
 const blankSession = { name: "", start_date: "", end_date: "", is_current: false, is_active: true };
@@ -137,6 +136,7 @@ const toNullableScore = (value) => value === "" || value === null || value === u
 const scoreTotal = (form) => [form.test_score, form.assessment_score, form.exam_score].reduce((sum, value) => sum + (Number(value) || 0), 0);
 const hasAllScores = (form) => [form.test_score, form.assessment_score, form.exam_score].every((value) => value !== "" && value !== null && value !== undefined);
 const getResolvedWorkflow = (workflow) => workflowAliases[workflow] || workflow || "setup";
+const emptyItems = { items: [] };
 
 function AcademicWorkflowPage() {
   const { workflow = "setup" } = useParams();
@@ -194,26 +194,47 @@ function AcademicWorkflowPage() {
 
   useEffect(() => {
     setActiveStepId(section.tabs[0]?.id);
+    setError(null);
+    setClassSubjects([]);
+    setStudents([]);
+    setResults([]);
+    setReportCards([]);
+    setReportCardOverview(null);
+    setEditingSessionId("");
+    setEditingTermId("");
+    setEditingScaleId("");
+    setEditingSubjectId("");
+    setEditingClassId("");
+    setEditingAssignmentId("");
+    setEditingResultId("");
   }, [resolvedWorkflow, section.tabs]);
 
   const loadWorkspace = async () => {
     setError(null);
-    const [sessionResponse, termResponse, scaleResponse, subjectResponse, classResponse, teacherResponse, assignmentResponse, reportCardResponse] = await Promise.all([
-      academicService.listSessions(),
-      academicService.listTerms(),
-      academicService.listGradingScales(),
-      subjectService.getSubjects({ isActive: true, limit: 100 }),
-      classService.getClasses({ limit: 100 }),
-      teacherService.getTeachers({ limit: 100 }),
-      academicService.listTeacherAssignments({ limit: 100 }),
-      reportCardService.listAdminReportCards({ limit: 100 }),
+    const needsAcademicPeriod = ["setup", "results", "report-cards"].includes(resolvedWorkflow);
+    const needsScales = resolvedWorkflow === "setup";
+    const needsSubjects = ["setup", "class-subjects", "assignments", "results"].includes(resolvedWorkflow);
+    const needsClasses = ["class-subjects", "assignments", "results", "report-cards"].includes(resolvedWorkflow);
+    const needsTeachers = ["class-subjects", "assignments"].includes(resolvedWorkflow);
+    const needsAssignments = ["assignments", "results"].includes(resolvedWorkflow);
+
+    const [sessionResponse, termResponse, scaleResponse, subjectResponse, classResponse, teacherResponse, assignmentResponse] = await Promise.all([
+      needsAcademicPeriod ? academicService.listSessions() : Promise.resolve(emptyItems),
+      needsAcademicPeriod ? academicService.listTerms() : Promise.resolve(emptyItems),
+      needsScales ? academicService.listGradingScales() : Promise.resolve(emptyItems),
+      needsSubjects ? subjectService.getSubjects({ isActive: true, limit: 100 }) : Promise.resolve(emptyItems),
+      needsClasses ? classService.getClasses({ limit: 100 }) : Promise.resolve(emptyItems),
+      needsTeachers ? teacherService.getTeachers({ limit: 100 }) : Promise.resolve(emptyItems),
+      needsAssignments ? academicService.listTeacherAssignments({ limit: 100 }) : Promise.resolve(emptyItems),
     ]);
+
     const nextSessions = sessionResponse?.items || [];
     const nextTerms = termResponse?.items || [];
     const nextClasses = classResponse?.items || [];
     const defaultSessionId = nextSessions.find((item) => item.is_current)?.id || nextSessions[0]?.id || "";
     const defaultTermId = nextTerms.find((item) => item.is_current)?.id || nextTerms[0]?.id || "";
     const defaultClassId = nextClasses[0]?.id || "";
+
     setSessions(nextSessions);
     setTerms(nextTerms);
     setScales(scaleResponse?.items || []);
@@ -221,12 +242,17 @@ function AcademicWorkflowPage() {
     setClasses(nextClasses);
     setTeachers(teacherResponse?.items || []);
     setAssignments(assignmentResponse?.items || []);
-    setReportCards(reportCardResponse?.items || []);
-    setTermForm((current) => ({ ...current, academic_session_id: current.academic_session_id || defaultSessionId }));
-    setClassSubjectForm((current) => ({ ...current, class_id: current.class_id || defaultClassId }));
-    setAssignmentForm((current) => ({ ...current, class_id: current.class_id || defaultClassId }));
-    setResultFilters((current) => ({ ...current, academic_session_id: current.academic_session_id || defaultSessionId, academic_term_id: current.academic_term_id || defaultTermId }));
-    setReportFilters((current) => ({ ...current, academic_session_id: current.academic_session_id || defaultSessionId, academic_term_id: current.academic_term_id || defaultTermId }));
+
+    if (needsAcademicPeriod) {
+      setTermForm((current) => ({ ...current, academic_session_id: current.academic_session_id || defaultSessionId }));
+      setResultFilters((current) => ({ ...current, academic_session_id: current.academic_session_id || defaultSessionId, academic_term_id: current.academic_term_id || defaultTermId }));
+      setReportFilters((current) => ({ ...current, academic_session_id: current.academic_session_id || defaultSessionId, academic_term_id: current.academic_term_id || defaultTermId }));
+    }
+
+    if (needsClasses) {
+      setClassSubjectForm((current) => ({ ...current, class_id: current.class_id || defaultClassId }));
+      setAssignmentForm((current) => ({ ...current, class_id: current.class_id || defaultClassId }));
+    }
   };
 
   useEffect(() => {
@@ -243,12 +269,12 @@ function AcademicWorkflowPage() {
     }
     load();
     return () => { mounted = false; };
-  }, []);
+  }, [resolvedWorkflow]);
 
   useEffect(() => {
     let mounted = true;
     async function loadClassSubjects() {
-      if (!activeClassSubjectClassId) {
+      if (!["class-subjects", "assignments"].includes(resolvedWorkflow) || !activeClassSubjectClassId) {
         setClassSubjects([]);
         return;
       }
@@ -262,12 +288,12 @@ function AcademicWorkflowPage() {
     }
     loadClassSubjects();
     return () => { mounted = false; };
-  }, [activeClassSubjectClassId, showError]);
+  }, [resolvedWorkflow, activeClassSubjectClassId, showError]);
 
   useEffect(() => {
     let mounted = true;
     async function loadStudentsForClass() {
-      if (!resultFilters.class_id) {
+      if (resolvedWorkflow !== "results" || !resultFilters.class_id) {
         setStudents([]);
         return;
       }
@@ -282,12 +308,12 @@ function AcademicWorkflowPage() {
     }
     loadStudentsForClass();
     return () => { mounted = false; };
-  }, [resultFilters.class_id, showError]);
+  }, [resolvedWorkflow, resultFilters.class_id, showError]);
 
   useEffect(() => {
     let mounted = true;
     async function loadResults() {
-      if (!resultFilters.class_id || !resultFilters.academic_session_id || !resultFilters.academic_term_id) {
+      if (resolvedWorkflow !== "results" || !resultFilters.class_id || !resultFilters.academic_session_id || !resultFilters.academic_term_id) {
         setResults([]);
         return;
       }
@@ -301,30 +327,40 @@ function AcademicWorkflowPage() {
     }
     loadResults();
     return () => { mounted = false; };
-  }, [resultFilters.class_id, resultFilters.academic_session_id, resultFilters.academic_term_id, showError]);
+  }, [resolvedWorkflow, resultFilters.class_id, resultFilters.academic_session_id, resultFilters.academic_term_id, showError]);
 
   useEffect(() => {
     let mounted = true;
-    async function loadReportOverview() {
-      if (!reportFilters.class_id || !reportFilters.academic_session_id || !reportFilters.academic_term_id) {
+    async function loadReportData() {
+      if (resolvedWorkflow !== "report-cards" || !reportFilters.class_id || !reportFilters.academic_session_id || !reportFilters.academic_term_id) {
         setReportCardOverview(null);
+        setReportCards([]);
         return;
       }
       try {
-        const response = await reportCardService.getClassOverview({ class_id: reportFilters.class_id, academic_session_id: reportFilters.academic_session_id, academic_term_id: reportFilters.academic_term_id });
-        if (mounted) setReportCardOverview(response);
+        const [overviewResponse, cardResponse] = await Promise.all([
+          reportCardService.getClassOverview({ class_id: reportFilters.class_id, academic_session_id: reportFilters.academic_session_id, academic_term_id: reportFilters.academic_term_id }),
+          reportCardService.listAdminReportCards({ class_id: reportFilters.class_id, academic_session_id: reportFilters.academic_session_id, academic_term_id: reportFilters.academic_term_id, limit: 100 }),
+        ]);
+        if (mounted) {
+          setReportCardOverview(overviewResponse);
+          setReportCards(cardResponse?.items || []);
+        }
       } catch {
-        if (mounted) setReportCardOverview(null);
+        if (mounted) {
+          setReportCardOverview(null);
+          setReportCards([]);
+        }
       }
     }
-    loadReportOverview();
+    loadReportData();
     return () => { mounted = false; };
-  }, [reportFilters.class_id, reportFilters.academic_session_id, reportFilters.academic_term_id]);
+  }, [resolvedWorkflow, reportFilters.class_id, reportFilters.academic_session_id, reportFilters.academic_term_id]);
 
   useEffect(() => {
     let mounted = true;
     const timeout = window.setTimeout(async () => {
-      if (searchQuery.trim().length < 2) {
+      if (resolvedWorkflow !== "search" || searchQuery.trim().length < 2) {
         setSearchResults([]);
         return;
       }
@@ -336,7 +372,7 @@ function AcademicWorkflowPage() {
       }
     }, 250);
     return () => { mounted = false; window.clearTimeout(timeout); };
-  }, [searchQuery]);
+  }, [resolvedWorkflow, searchQuery]);
 
   const resetSessionForm = () => { setSessionForm(blankSession); setEditingSessionId(""); };
   const resetTermForm = () => { setTermForm({ ...blankTerm, academic_session_id: currentSession?.id || "" }); setEditingTermId(""); };
@@ -353,15 +389,13 @@ function AcademicWorkflowPage() {
   const saveScale = async (event) => { event.preventDefault(); setIsSaving("scale"); try { const payload = { grade: scaleForm.grade, min_score: Number(scaleForm.min_score), max_score: Number(scaleForm.max_score), remark: scaleForm.remark || null, is_active: scaleForm.is_active }; const saved = editingScaleId ? await academicService.updateGradingScale(editingScaleId, payload) : await academicService.createGradingScale(payload); setScales((current) => [saved, ...current.filter((item) => item.id !== saved.id)]); resetScaleForm(); showSuccess(editingScaleId ? "Grading scale updated." : "Grading scale created."); } catch (err) { showError(getErrorMessage(err, "Could not save grading scale.")); } finally { setIsSaving(""); } };
   const saveSubject = async (event) => { event.preventDefault(); setIsSaving("subject"); try { const payload = { name: subjectForm.name, code: subjectForm.code || null, description: subjectForm.description || null }; const saved = editingSubjectId ? await subjectService.updateSubject(editingSubjectId, payload) : await subjectService.createSubject(payload); setSubjects((current) => [saved, ...current.filter((item) => item.id !== saved.id)]); resetSubjectForm(); showSuccess(editingSubjectId ? "Subject updated." : "Subject created."); } catch (err) { showError(getErrorMessage(err, "Could not save subject.")); } finally { setIsSaving(""); } };
   const saveClass = async (event) => { event.preventDefault(); setIsSaving("class"); try { const payload = { name: classForm.name, arm: classForm.arm || null, level: classForm.level || null, teacher_id: classForm.teacher_id || null, is_active: classForm.is_active }; const saved = editingClassId ? await classService.updateClass(editingClassId, payload) : await classService.createClass(payload); setClasses((current) => [saved, ...current.filter((item) => item.id !== saved.id)]); resetClassForm(); showSuccess(editingClassId ? "Class updated." : "Class created."); } catch (err) { showError(getErrorMessage(err, "Could not save class.")); } finally { setIsSaving(""); } };
-
   const attachClassSubject = async (event) => { event.preventDefault(); if (!classSubjectForm.class_id || !classSubjectForm.subject_id) return showWarning("Select class and subject before attaching."); setIsSaving("classSubject"); try { await academicService.addClassSubject(classSubjectForm.class_id, { subject_id: classSubjectForm.subject_id, is_core: classSubjectForm.is_core }); const response = await academicService.listClassSubjects(classSubjectForm.class_id, { active_only: false, limit: 100 }); setClassSubjects(response?.items || []); showSuccess("Subject attached to class."); } catch (err) { showError(getErrorMessage(err, "Could not attach subject to class.")); } finally { setIsSaving(""); } };
   const deactivateClassSubject = async (item) => { if (!item?.id || !item?.is_offered_by_class) return; setIsSaving(item.id); try { await academicService.deactivateClassSubject(item.id); const response = await academicService.listClassSubjects(classSubjectForm.class_id, { active_only: false, limit: 100 }); setClassSubjects(response?.items || []); showSuccess("Subject removed from class."); } catch (err) { showError(getErrorMessage(err, "Could not remove subject from class.")); } finally { setIsSaving(""); } };
   const saveAssignment = async (event) => { event.preventDefault(); if (!assignmentForm.class_id || !assignmentForm.class_subject_id || !assignmentForm.teacher_id) return showWarning("Select a class, subject, and teacher before saving."); setIsSaving("assignment"); try { const saved = editingAssignmentId ? await academicService.reassignTeacherAssignment(editingAssignmentId, { teacher_id: assignmentForm.teacher_id }) : await academicService.createTeacherAssignment({ class_subject_id: assignmentForm.class_subject_id, teacher_id: assignmentForm.teacher_id, is_core: assignmentForm.is_core }); const response = await academicService.listTeacherAssignments({ limit: 100 }); setAssignments(response?.items || []); setAssignmentFilters({ class_id: saved.class_id || assignmentForm.class_id, subject_id: saved.subject_id || "", teacher_id: saved.teacher_id || assignmentForm.teacher_id }); resetAssignmentForm(); showSuccess(editingAssignmentId ? "Subject teacher changed." : "Subject teacher assigned."); } catch (err) { showError(getErrorMessage(err, "Could not save teacher assignment.")); } finally { setIsSaving(""); } };
   const updateAssignmentStatus = async (assignment, shouldActivate) => { setIsSaving(assignment.id); try { const saved = shouldActivate ? await academicService.activateTeacherAssignment(assignment.id) : await academicService.deactivateTeacherAssignment(assignment.id); setAssignments((current) => current.map((item) => item.id === saved.id ? saved : item)); showSuccess(shouldActivate ? "Assignment reactivated." : "Assignment deactivated."); } catch (err) { showError(getErrorMessage(err, "Could not update assignment.")); } finally { setIsSaving(""); } };
-
   const saveResult = async (event) => { event.preventDefault(); const assignmentId = editingResultId && resultForm.teacher_assignment_id ? resultForm.teacher_assignment_id : selectedAssignment?.id; if (!resultFilters.class_id || !resultFilters.subject_id) return showWarning("Select class and subject before recording scores."); if (!assignmentId) return showWarning("Assign a teacher to this class-subject before saving scores."); if (!resultForm.student_id || !resultFilters.academic_session_id || !resultFilters.academic_term_id) return showWarning("Select student, session, and term before saving scores."); if (resultForm.status === "submitted" && !hasAllScores(resultForm)) return showWarning("All three scores are required before submitting a result."); if (scoreTotal(resultForm) > 100) return showWarning("The combined score cannot exceed 100."); setIsSaving("result"); try { const saved = await academicService.saveAdminResult({ student_id: resultForm.student_id, teacher_assignment_id: assignmentId, academic_session_id: resultFilters.academic_session_id, academic_term_id: resultFilters.academic_term_id, test_score: toNullableScore(resultForm.test_score), assessment_score: toNullableScore(resultForm.assessment_score), exam_score: toNullableScore(resultForm.exam_score), status: resultForm.status }); setResults((current) => [saved, ...current.filter((item) => item.id !== saved.id)]); resetResultForm(); showSuccess(saved.status === "submitted" ? "Result submitted." : "Result saved as draft."); } catch (err) { showError(getErrorMessage(err, "Could not save result.")); } finally { setIsSaving(""); } };
   const updateResultStatus = async (result, nextStatus) => { setIsSaving(result.id); try { const saved = await academicService.updateResultStatus(result.id, { status: nextStatus }); setResults((current) => current.map((item) => item.id === saved.id ? saved : item)); showSuccess(nextStatus === "submitted" ? "Result submitted." : "Result reopened as draft."); } catch (err) { showError(getErrorMessage(err, "Could not update result status.")); } finally { setIsSaving(""); } };
-  const generateReportCard = async (bulk = true) => { if (!reportFilters.class_id || !reportFilters.academic_session_id || !reportFilters.academic_term_id) return showWarning("Select class, session, and term first."); setIsSaving("reportBulk"); try { const payload = { class_id: reportFilters.class_id, academic_session_id: reportFilters.academic_session_id, academic_term_id: reportFilters.academic_term_id, generate_for_class: bulk }; const response = await reportCardService.generateReportCard(payload); if (Array.isArray(response?.generated)) { setReportCards((current) => [...response.generated, ...current]); showSuccess(`Generated ${response.generated.length} report cards.`); } else { setReportCards((current) => [response, ...current.filter((item) => item.id !== response.id)]); showSuccess("Report card generated."); } } catch (err) { showError(getErrorMessage(err, "Could not generate report card.")); } finally { setIsSaving(""); } };
+  const generateReportCard = async () => { if (!reportFilters.class_id || !reportFilters.academic_session_id || !reportFilters.academic_term_id) return showWarning("Select class, session, and term first."); setIsSaving("reportBulk"); try { const response = await reportCardService.generateReportCard({ class_id: reportFilters.class_id, academic_session_id: reportFilters.academic_session_id, academic_term_id: reportFilters.academic_term_id, generate_for_class: true }); if (Array.isArray(response?.generated)) { setReportCards((current) => [...response.generated, ...current]); showSuccess(`Generated ${response.generated.length} report cards.`); } else { setReportCards((current) => [response, ...current.filter((item) => item.id !== response.id)]); showSuccess("Report card generated."); } } catch (err) { showError(getErrorMessage(err, "Could not generate report card.")); } finally { setIsSaving(""); } };
   const publishReportCard = async (reportCardId) => { setIsSaving(reportCardId); try { const saved = await reportCardService.publishReportCard(reportCardId); setReportCards((current) => current.map((item) => item.id === saved.id ? saved : item)); showSuccess("Report card published."); } catch (err) { showError(getErrorMessage(err, "Could not publish report card.")); } finally { setIsSaving(""); } };
 
   const editSession = (item) => { setEditingSessionId(item.id); setSessionForm({ name: item.name || "", start_date: item.start_date || "", end_date: item.end_date || "", is_current: Boolean(item.is_current), is_active: item.is_active !== false }); };
@@ -371,10 +405,6 @@ function AcademicWorkflowPage() {
   const editClass = (item) => { setEditingClassId(item.id); setClassForm({ name: item.name || "", arm: item.arm || "", level: item.level || "", teacher_id: item.teacher_id || "", is_active: item.is_active !== false }); };
   const editAssignment = (item) => { setEditingAssignmentId(item.id); setAssignmentForm({ class_id: item.class_id || "", class_subject_id: item.class_subject_id || "", teacher_id: item.teacher_id || "", is_core: true }); };
   const editResult = (item) => { setEditingResultId(item.id); setResultFilters({ class_id: item.class_id || "", subject_id: item.subject_id || "", academic_session_id: item.academic_session_id || "", academic_term_id: item.academic_term_id || "" }); setResultForm({ student_id: item.student_id || "", teacher_assignment_id: item.teacher_assignment_id || "", test_score: item.test_score ?? "", assessment_score: item.assessment_score ?? "", exam_score: item.exam_score ?? "", status: item.status || "draft" }); };
-
-  if (isLoading) {
-    return <DashboardLayout role="admin" title={section.title}><LoadingState label="Loading academic workflow..." /></DashboardLayout>;
-  }
 
   const props = { sessions, terms, scales, subjects, classes, teachers, assignments: visibleAssignments, allAssignments: assignments, classSubjects, students, results: visibleResults, reportCards: visibleReportCards, reportCardOverview, searchQuery, searchResults, setSearchQuery, sessionForm, setSessionForm, termForm, setTermForm, scaleForm, setScaleForm, subjectForm, setSubjectForm, classForm, setClassForm, classSubjectForm, setClassSubjectForm, assignmentForm, setAssignmentForm, resultForm, setResultForm, assignmentFilters, setAssignmentFilters, resultFilters, updateResultFilter, reportFilters, updateReportFilter, termsForResultSession, termsForReportSession, selectedAssignment, saveSession, saveTerm, saveScale, saveSubject, saveClass, attachClassSubject, deactivateClassSubject, saveAssignment, updateAssignmentStatus, saveResult, updateResultStatus, generateReportCard, publishReportCard, editSession, editTerm, editScale, editSubject, editClass, editAssignment, editResult, resetSessionForm, resetTermForm, resetScaleForm, resetSubjectForm, resetClassForm, resetAssignmentForm, resetResultForm, editingSessionId, editingTermId, editingScaleId, editingSubjectId, editingClassId, editingAssignmentId, editingResultId, isSaving };
 
@@ -403,8 +433,10 @@ function AcademicWorkflowPage() {
           </div>
         </div>
       </Card>
+
       <Card className="p-4 sm:p-5"><div className="grid grid-cols-2 gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:grid-cols-4">{section.tabs.map((tab) => { const Icon = tab.icon; return <button key={tab.id} type="button" onClick={() => setActiveStepId(tab.id)} className={cn("flex min-h-12 items-center justify-center gap-2 rounded-xl px-3 py-2 text-center text-xs font-semibold transition sm:text-sm", tab.id === activeStep.id ? "bg-surface text-primary shadow-sm" : "text-text-muted hover:bg-surface/60 hover:text-text")}><Icon className="h-4 w-4 shrink-0" /><span className="line-clamp-1">{tab.label}</span></button>; })}</div></Card>
-      <WorkflowContent workflow={resolvedWorkflow} step={activeStep.id} {...props} />
+
+      {isLoading ? <LoadingState label="Loading this workflow..." /> : <WorkflowContent workflow={resolvedWorkflow} step={activeStep.id} {...props} />}
     </DashboardLayout>
   );
 }
@@ -460,11 +492,11 @@ function AssignmentEditor({ classes, teachers, classSubjects, assignmentForm, se
 function AssignmentViewer({ classes, subjects, teachers, assignments, assignmentFilters, setAssignmentFilters, editAssignment, updateAssignmentStatus, isSaving }) { return <Panel title="View assigned subjects" subtitle="Viewing area"><div className="mb-4 grid gap-3 sm:grid-cols-3"><SelectField label="Class" value={assignmentFilters.class_id} onChange={(value) => setAssignmentFilters((c) => ({ ...c, class_id: value }))}><option value="">All classes</option>{classes.map((item) => <option key={item.id} value={item.id}>{displayClass(item)}</option>)}</SelectField><SelectField label="Subject" value={assignmentFilters.subject_id} onChange={(value) => setAssignmentFilters((c) => ({ ...c, subject_id: value }))}><option value="">All subjects</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectField><SelectField label="Teacher" value={assignmentFilters.teacher_id} onChange={(value) => setAssignmentFilters((c) => ({ ...c, teacher_id: value }))}><option value="">All teachers</option>{teachers.map((item) => <option key={item.id} value={item.id}>{teacherLabel(item)}</option>)}</SelectField></div><div className="grid gap-3 sm:grid-cols-2">{assignments.length === 0 ? <EmptyState icon={Users} title="No assignments" description="Assign teachers to class subjects first." /> : assignments.map((item) => <RecordCard key={item.id} title={`${item.subject_name || "Subject"} - ${item.class_name || "Class"} ${item.class_arm || ""}`.trim()} meta={item.teacher_name || teacherLabel(teachers.find((teacher) => teacher.id === item.teacher_id))} status={item.is_active ? "active" : "inactive"} onEdit={() => editAssignment(item)} actions={<Button size="sm" variant="outline" disabled={isSaving === item.id} onClick={() => updateAssignmentStatus(item, !item.is_active)}>{item.is_active ? "Deactivate" : "Activate"}</Button>} />)}</div></Panel>; }
 function ResultFilters({ classes, subjects, sessions, termsForResultSession, resultFilters, updateResultFilter }) { return <Panel title="Select result records" subtitle="Editing area"><div className="grid gap-3"><SelectField label="Session" value={resultFilters.academic_session_id} onChange={(value) => updateResultFilter("academic_session_id", value)}><option value="">Select session</option>{sessions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectField><SelectField label="Term" value={resultFilters.academic_term_id} onChange={(value) => updateResultFilter("academic_term_id", value)}><option value="">Select term</option>{termsForResultSession.map((item) => <option key={item.id} value={item.id}>{displayTerm(item.name)}</option>)}</SelectField><SelectField label="Class" value={resultFilters.class_id} onChange={(value) => updateResultFilter("class_id", value)}><option value="">Select class</option>{classes.map((item) => <option key={item.id} value={item.id}>{displayClass(item)}</option>)}</SelectField><SelectField label="Subject" value={resultFilters.subject_id} onChange={(value) => updateResultFilter("subject_id", value)}><option value="">Select subject</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectField></div></Panel>; }
 function ResultEditor(props) { const { students, resultForm, setResultForm, saveResult, resetResultForm, editingResultId, selectedAssignment, isSaving } = props; return <><ResultFilters {...props} /><Panel title={editingResultId ? "Edit result" : "Record score"} subtitle={selectedAssignment ? `Assigned teacher: ${selectedAssignment.teacher_name || "Teacher"}` : "Assign a teacher before score entry."}><form onSubmit={saveResult} className="grid gap-3"><SelectField label="Student" value={resultForm.student_id} onChange={(value) => setResultForm((c) => ({ ...c, student_id: value }))} required><option value="">Select student</option>{students.map((item) => <option key={item.id} value={item.id}>{studentLabel(item)}</option>)}</SelectField><TextField label="Test" type="number" min="0" max="100" value={resultForm.test_score} onChange={(value) => setResultForm((c) => ({ ...c, test_score: value }))} /><TextField label="Assessment" type="number" min="0" max="100" value={resultForm.assessment_score} onChange={(value) => setResultForm((c) => ({ ...c, assessment_score: value }))} /><TextField label="Exam" type="number" min="0" max="100" value={resultForm.exam_score} onChange={(value) => setResultForm((c) => ({ ...c, exam_score: value }))} /><SelectField label="Status" value={resultForm.status} onChange={(value) => setResultForm((c) => ({ ...c, status: value }))}><option value="draft">Draft</option><option value="submitted">Submitted</option></SelectField><p className="rounded-xl border border-border/70 bg-surface-muted/25 px-3 py-2 text-sm font-semibold text-text">Total: {scoreTotal(resultForm)}</p><FormActions editing={Boolean(editingResultId)} onCancel={resetResultForm} isSaving={isSaving === "result"} label={editingResultId ? "Update result" : "Save result"} /></form></Panel></>; }
-function ResultViewer({ results, status, editResult, updateResultStatus, isSaving }) { const rows = status ? results.filter((item) => item.status === status) : results; return <CardList title="View results" items={rows} empty="No results for the selected filters." render={(item) => <RecordCard key={item.id} title={item.student_name || "Student"} meta={`${item.subject_name || "Subject"} / Total ${item.total_score ?? "--"}`} description={`Grade: ${item.grade || "--"}`} status={item.status} onEdit={() => editResult(item)} actions={<Button size="sm" variant="outline" disabled={isSaving === item.id} onClick={() => updateResultStatus(item, item.status === "submitted" ? "draft" : "submitted")}>{item.status === "submitted" ? "Reopen" : "Submit"}</Button>} />} />; }
+function ResultViewer({ results, status, editResult, updateResultStatus, isSaving }) { const rows = status ? results.filter((item) => item.status === status) : results; return <CardList title="View results" items={rows} empty="Select filters to load results." render={(item) => <RecordCard key={item.id} title={item.student_name || "Student"} meta={`${item.subject_name || "Subject"} / Total ${item.total_score ?? "--"}`} description={`Grade: ${item.grade || "--"}`} status={item.status} onEdit={() => editResult(item)} actions={<Button size="sm" variant="outline" disabled={isSaving === item.id} onClick={() => updateResultStatus(item, item.status === "submitted" ? "draft" : "submitted")}>{item.status === "submitted" ? "Reopen" : "Submit"}</Button>} />} />; }
 function ReportFilters({ classes, sessions, termsForReportSession, reportFilters, updateReportFilter }) { return <Panel title="Report-card filters" subtitle="Editing area"><div className="grid gap-3"><SelectField label="Session" value={reportFilters.academic_session_id} onChange={(value) => updateReportFilter("academic_session_id", value)}><option value="">Select session</option>{sessions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</SelectField><SelectField label="Term" value={reportFilters.academic_term_id} onChange={(value) => updateReportFilter("academic_term_id", value)}><option value="">Select term</option>{termsForReportSession.map((item) => <option key={item.id} value={item.id}>{displayTerm(item.name)}</option>)}</SelectField><SelectField label="Class" value={reportFilters.class_id} onChange={(value) => updateReportFilter("class_id", value)}><option value="">Select class</option>{classes.map((item) => <option key={item.id} value={item.id}>{displayClass(item)}</option>)}</SelectField></div></Panel>; }
 function ReportOverview({ reportCardOverview }) { return <Panel title="Report-card overview" subtitle="Viewing area"><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><MiniStat label="Students" value={reportCardOverview?.total_students ?? 0} /><MiniStat label="Generated" value={reportCardOverview?.generated_count ?? 0} /><MiniStat label="Published" value={reportCardOverview?.published_count ?? 0} /><MiniStat label="Missing" value={reportCardOverview?.missing_count ?? 0} /></div></Panel>; }
-function ReportGenerate({ generateReportCard, isSaving }) { return <Panel title="Generate report cards" subtitle="Use selected class/session/term filters."><Button disabled={isSaving === "reportBulk"} onClick={() => generateReportCard(true)}><FileText className="h-4 w-4" /> Generate class batch</Button></Panel>; }
-function ReportCardViewer({ reportCards, publishReportCard, publishMode, isSaving }) { return <CardList title={publishMode ? "Publish report cards" : "Review report cards"} items={reportCards} empty="No report cards for the selected filters." render={(item) => <RecordCard key={item.id} title={item.student_name || "Student"} meta={`${item.academic_term_name || "Term"} / Avg ${item.average_score ?? "--"}`} description={`Position: ${item.position || "--"}/${item.position_out_of || "--"}`} status={item.status} actions={item.status !== "published" ? <Button size="sm" variant="outline" disabled={isSaving === item.id} onClick={() => publishReportCard(item.id)}>Publish</Button> : null} />} />; }
+function ReportGenerate({ generateReportCard, isSaving }) { return <Panel title="Generate report cards" subtitle="Use selected class/session/term filters."><Button disabled={isSaving === "reportBulk"} onClick={generateReportCard}><FileText className="h-4 w-4" /> Generate class batch</Button></Panel>; }
+function ReportCardViewer({ reportCards, publishReportCard, publishMode, isSaving }) { return <CardList title={publishMode ? "Publish report cards" : "Review report cards"} items={reportCards} empty="Select filters to load report cards." render={(item) => <RecordCard key={item.id} title={item.student_name || "Student"} meta={`${item.academic_term_name || "Term"} / Avg ${item.average_score ?? "--"}`} description={`Position: ${item.position || "--"}/${item.position_out_of || "--"}`} status={item.status} actions={item.status !== "published" ? <Button size="sm" variant="outline" disabled={isSaving === item.id} onClick={() => publishReportCard(item.id)}>Publish</Button> : null} />} />; }
 function SearchEditor({ searchQuery, setSearchQuery }) { return <Panel title="Search academic records" subtitle="Editing area"><TextField label="Search" value={searchQuery} onChange={setSearchQuery} placeholder="Student name, admission number, report card..." /></Panel>; }
 function SearchViewer({ searchResults }) { return <CardList title="Search results" items={searchResults} empty="Start typing at least two characters." render={(item) => <RecordCard key={item.id || item.label} title={item.title || item.name || item.label || "Record"} meta={item.type || item.category || "Academic record"} description={item.description || item.subtitle || ""} status={item.status || "found"} />} />; }
 function CardList({ title, items, empty, render }) { return <Panel title={title} subtitle="Viewing area">{items.length === 0 ? <EmptyState icon={FileSearch} title={empty} description="Records will appear here when available." /> : <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{items.map(render)}</div>}</Panel>; }
