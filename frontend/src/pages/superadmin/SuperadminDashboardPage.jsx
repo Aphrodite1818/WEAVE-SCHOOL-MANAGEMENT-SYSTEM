@@ -48,6 +48,7 @@ const findingIcon = (severity) => {
 function SuperadminDashboardPage() {
   const [analytics, setAnalytics] = useState(null);
   const [security, setSecurity] = useState(null);
+  const [platformControl, setPlatformControl] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [superadmins, setSuperadmins] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,15 +59,17 @@ function SuperadminDashboardPage() {
     setError(null);
 
     try {
-      const [analyticsResult, securityResult, tenantResult, superadminResult] = await Promise.all([
+      const [analyticsResult, securityResult, platformControlResult, tenantResult, superadminResult] = await Promise.all([
         superadminService.getAnalyticsOverview(),
         superadminService.getSecurityOverview(),
+        superadminService.getPlatformControl(),
         superadminService.getTenants(0, 8),
         superadminService.getSuperadmins(0, 8),
       ]);
 
       setAnalytics(analyticsResult);
       setSecurity(securityResult);
+      setPlatformControl(platformControlResult);
       setTenants(Array.isArray(tenantResult) ? tenantResult : []);
       setSuperadmins(Array.isArray(superadminResult) ? superadminResult : []);
     } catch (err) {
@@ -83,6 +86,7 @@ function SuperadminDashboardPage() {
 
   const stats = analytics?.stats || {};
   const securityStats = security?.stats || {};
+  const lockdownEnabled = Boolean(platformControl?.lockdown_enabled);
   const totalTenants = metricNumber(stats.total_tenants, tenants.length);
   const activeTenants = metricNumber(stats.active_tenants);
   const pendingTenants = metricNumber(stats.pending_tenants ?? stats.pending_verification);
@@ -137,15 +141,23 @@ function SuperadminDashboardPage() {
           <DashboardWelcomePanel
             eyebrow="Superadmin mission control"
             title="Platform command, security posture, and tenant orbit"
-            description="This page now stays clean: command summary only. Deep security telemetry has moved to the dedicated analytics page."
+            description="Critical signals stay visible first. Emergency platform lockdown lives in Settings for deliberate damage-control actions."
             chips={[
+              { label: "Mode", value: lockdownEnabled ? "Lockdown active" : "Normal", tone: lockdownEnabled ? "danger" : "success" },
               { label: "Risk", value: `${riskScore}/100 · ${riskLevel}`, tone: riskScore >= 50 ? "danger" : riskScore > 0 ? "warning" : "success" },
-              { label: "Active sessions", value: activeSessions, tone: "primary" },
               { label: "Schools", value: totalTenants, tone: "neutral" },
             ]}
           />
 
           <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+            <DashboardMetricCard
+              label="Platform mode"
+              value={lockdownEnabled ? "Locked" : "Normal"}
+              description={lockdownEnabled ? "Only superadmin traffic is allowed" : "All authorized traffic is allowed"}
+              icon={LockKeyhole}
+              tone={lockdownEnabled ? "danger" : "success"}
+              to="/superadmin/settings"
+            />
             <DashboardMetricCard
               label="Platform risk score"
               value={`${riskScore}/100`}
@@ -163,14 +175,6 @@ function SuperadminDashboardPage() {
               to="/superadmin/analytics"
             />
             <DashboardMetricCard
-              label="Active schools"
-              value={activeTenants}
-              description={`${pendingTenants} pending verification`}
-              icon={Building2}
-              tone="primary"
-              to="/superadmin/verification"
-            />
-            <DashboardMetricCard
               label="Active sessions"
               value={activeSessions}
               description={`${distinctIps} IPs observed in 7 days`}
@@ -181,13 +185,25 @@ function SuperadminDashboardPage() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
+            <DashboardListCard
+              title="Threat findings"
+              description="Critical platform-owner security findings are visible first."
+              items={securityFindings}
+              emptyTitle="Security posture looks calm"
+              emptyDescription="No compromised sessions, token reuse, or unusual IP spread is currently visible."
+            />
+
             <DashboardFocusCard
-              title="Security radar"
-              description="High-signal auth posture. Open analytics for session velocity, token reuse, IP concentration, and actor surface-area charts."
+              title={lockdownEnabled ? "Emergency lockdown active" : "Emergency controls ready"}
+              description={
+                lockdownEnabled
+                  ? "Non-superadmin requests are blocked and users see the maintenance prompt."
+                  : "Use Settings to lock down the platform during damage control without killing the backend."
+              }
               icon={Shield}
-              tone={securityEvents > 0 ? "danger" : "success"}
-              primaryAction={{ to: "/superadmin/analytics", label: "Open security analytics", icon: BarChart3 }}
-              secondaryAction={{ to: "/superadmin/activity", label: "Activity log", icon: Activity }}
+              tone={lockdownEnabled ? "danger" : "success"}
+              primaryAction={{ to: "/superadmin/settings", label: lockdownEnabled ? "Review lockdown" : "Open platform settings", icon: KeyRound }}
+              secondaryAction={{ to: "/superadmin/analytics", label: "Security analytics", icon: BarChart3 }}
             >
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Token reuse" value={tokenReuse} />
@@ -196,14 +212,6 @@ function SuperadminDashboardPage() {
                 <InfoTile label="Superadmin 24h" value={metricNumber(securityStats.superadmin_sessions_last_24h)} />
               </div>
             </DashboardFocusCard>
-
-            <DashboardListCard
-              title="Priority signals"
-              description="Only the most important platform-owner signals stay on this page."
-              items={securityFindings}
-              emptyTitle="Security posture looks calm"
-              emptyDescription="No compromised sessions, token reuse, or unusual IP spread is currently visible."
-            />
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(320px,1fr)]">
@@ -215,7 +223,7 @@ function SuperadminDashboardPage() {
             >
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Total schools" value={totalTenants} />
-                <InfoTile label="Loaded tenants" value={tenants.length} />
+                <InfoTile label="Active schools" value={activeTenants} />
                 <InfoTile label="Loaded admins" value={superadmins.length} />
                 <InfoTile label="Pending schools" value={pendingTenants} />
               </div>
@@ -226,9 +234,9 @@ function SuperadminDashboardPage() {
               description="Navigation stays focused. Heavy work happens on dedicated pages."
               actions={[
                 { label: "Security analytics", description: "Open the full mission dashboard", to: "/superadmin/analytics", icon: BarChart3, tone: "danger" },
+                { label: "Platform settings", description: "Lockdown and platform controls", to: "/superadmin/settings", icon: KeyRound, tone: lockdownEnabled ? "danger" : "neutral" },
                 { label: "Tenant verification", description: "Review school approvals", to: "/superadmin/verification", icon: Shield, tone: "primary" },
                 { label: "Platform activity", description: "Audit recent platform movement", to: "/superadmin/activity", icon: Activity, tone: "accent" },
-                { label: "Settings", description: "Control platform configuration", to: "/superadmin/settings", icon: KeyRound, tone: "neutral" },
               ]}
             />
           </section>
