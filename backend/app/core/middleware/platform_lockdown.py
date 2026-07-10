@@ -11,6 +11,7 @@ from app.modules.superadmin.platform_control_service import (
     DEFAULT_MAINTENANCE_MESSAGE,
     PlatformControlService,
 )
+from app.modules.superadmin.security_response_service import SecurityResponseService
 
 
 logger = get_logger(__name__)
@@ -30,8 +31,15 @@ _ALLOWED_PREFIXES = (
 )
 
 
+def _client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or None
+    return request.client.host if request.client else None
+
+
 class PlatformLockdownMiddleware:
-    """Block non-superadmin platform traffic during emergency lockdown."""
+    """Block non-superadmin platform traffic during emergency controls."""
 
     def __init__(self, app: Callable[[Request], Awaitable[Response]]) -> None:
         self.app = app
@@ -58,6 +66,21 @@ class PlatformLockdownMiddleware:
             },
         )
 
+    @staticmethod
+    def _ip_block_response(state: dict[str, object]) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            headers={"Retry-After": "300"},
+            content={
+                "detail": "Access from this network has been temporarily blocked for security reasons.",
+                "security_block": True,
+                "ip_blocked": True,
+                "ip_label": state.get("ip_label"),
+                "reason": state.get("reason"),
+                "expires_at": state.get("expires_at"),
+            },
+        )
+
     async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
@@ -70,18 +93,24 @@ class PlatformLockdownMiddleware:
 
         try:
             async with AsyncSessionLocal() as db:
-                state = await PlatformControlService.get_state(db)
+                ip_state = await SecurityResponseService.is_ip_blocked(db, _client_ip(request))
+                if ip_state.get("blocked"):
+                    response = self._ip_block_response(ip_state)
+                    await response(scope, receive, send)
+                    return
+
+                lockdown_state = await PlatformControlService.get_state(db)
         except Exception as exc:
             logger.exception(
-                "Failed to read platform lockdown state; allowing request to avoid self-lockout",
+                "Failed to read emergency control state; allowing request to avoid self-lockout",
                 extra={"path": request.url.path, "error": str(exc)},
             )
             await self.app(scope, receive, send)
             return
 
-        if not state.get("lockdown_enabled"):
+        if not lockdown_state.get("lockdown_enabled"):
             await self.app(scope, receive, send)
             return
 
-        response = self._maintenance_response(state)
+        response = self._maintenance_response(lockdown_state)
         await response(scope, receive, send)
