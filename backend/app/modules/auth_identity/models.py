@@ -86,11 +86,6 @@ class AuthIdentity(BaseModel):
             name="uq_auth_identities_actor",
         ),
         Index(
-            "ix_auth_identities_actor",
-            "actor_type",
-            "actor_id",
-        ),
-        Index(
             "ix_auth_identities_active_identifier",
             "identifier_type",
             "identifier",
