@@ -124,7 +124,7 @@ function SuperadminAnalyticsPage() {
   if (isLoading && !security && !error) {
     return (
       <DashboardLayout role="superadmin" title="Security Analytics">
-        <LoadingState label="Loading orbital security telemetry..." />
+        <LoadingState label="Loading security analytics..." />
       </DashboardLayout>
     );
   }
@@ -136,7 +136,7 @@ function SuperadminAnalyticsPage() {
       actions={
         <Button variant="outline" onClick={loadSecurityAnalytics} disabled={isLoading}>
           <RefreshCw className="h-4 w-4" />
-          Refresh telemetry
+          Refresh data
         </Button>
       }
     >
@@ -148,35 +148,29 @@ function SuperadminAnalyticsPage() {
 
       {!error ? (
         <>
-          <section className="relative overflow-hidden rounded-[2rem] border border-slate-700/70 bg-slate-950 px-4 py-5 text-white shadow-premium sm:px-6 sm:py-7">
-            <div className="pointer-events-none absolute inset-0 opacity-60" aria-hidden="true">
-              <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/30 blur-3xl" />
-              <div className="absolute -bottom-32 left-10 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.16)_1px,transparent_0)] [background-size:24px_24px]" />
-            </div>
-
+          <section className="relative overflow-hidden rounded-2xl border border-border bg-surface px-4 py-5 sm:px-6 sm:py-7">
             <div className="relative grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-center">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">
+                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-400">
                   <Radar className="h-3.5 w-3.5" />
-                  Orbital security command
+                  Security Overview
                 </div>
-                <h2 className="mt-4 max-w-4xl text-3xl font-semibold leading-tight sm:text-5xl">
-                  Platform threat telemetry, session physics, and access-control posture.
+                <h2 className="mt-4 max-w-4xl text-2xl font-semibold leading-tight text-text sm:text-3xl">
+                  Platform threat monitoring, session activity, and access-control posture.
                 </h2>
-                <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-300 sm:text-base">
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-text-muted sm:text-base">
                   Critical findings now stay above the fold so compromised sessions, token reuse, and unusual login spread are visible immediately.
                 </p>
               </div>
 
-              <div className="rounded-[1.75rem] border border-white/10 bg-white/10 p-4 backdrop-blur">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-300">Platform risk score</p>
+              <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-text-muted">Platform risk score</p>
                 <div className="mt-4 flex items-end gap-2">
-                  <span className="text-6xl font-semibold tracking-tight">{riskScore}</span>
-                  <span className="pb-2 text-lg font-semibold text-slate-300">/100</span>
+                  <span className="text-4xl font-semibold tracking-tight text-text sm:text-5xl">{riskScore}</span>
+                  <span className="pb-1.5 text-base font-semibold text-text-muted">/100</span>
                 </div>
                 <RiskBar value={riskScore} tone={tone} className="mt-4" />
-                <p className="mt-3 text-sm font-semibold capitalize text-slate-200">Current posture: {riskLevel}</p>
+                <p className="mt-3 text-sm font-semibold capitalize text-text">Current posture: {riskLevel}</p>
               </div>
             </div>
           </section>
@@ -197,10 +191,10 @@ function SuperadminAnalyticsPage() {
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
             <AnalyticsLineChart
-              title="Session velocity — 7 day orbit"
+              title="Session creation — 7 day trend"
               description="Daily login-session creation across the platform. Spikes here are the first signal of abnormal auth pressure."
               data={chartData(charts, "session_velocity_7d")}
-              emptyMessage="No session velocity data available yet."
+              emptyMessage="No session data available yet."
             />
             <AnalyticsLineChart
               title="Superadmin access velocity"
@@ -224,7 +218,7 @@ function SuperadminAnalyticsPage() {
               emptyMessage="No revoked sessions in the current window."
             />
             <AnalyticsBarChart
-              title="Risk vector matrix"
+              title="Risk distribution"
               description="Composite security pressure across sessions, token reuse, unusual spread, and admin drift."
               data={chartData(charts, "risk_vector")}
               emptyMessage="No risk vector data available yet."
@@ -245,7 +239,7 @@ function SuperadminAnalyticsPage() {
               emptyMessage="No actor session data available yet."
             />
             <AnalyticsDonutChart
-              title="Session integrity mix"
+              title="Session integrity"
               description="Active sessions compared with revoked, compromised, and token-reuse signals."
               data={chartData(charts, "security_session_mix")}
               emptyMessage="No session integrity data available yet."
@@ -274,14 +268,14 @@ function SuperadminAnalyticsPage() {
 
 function ThreatFindingsCard({ findings }) {
   return (
-    <Card className="overflow-hidden border-slate-800 bg-slate-950 p-4 text-white sm:p-6">
+    <Card className="overflow-hidden p-4 sm:p-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-400/15 text-red-100">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-error-soft text-error">
           <LockKeyhole className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Threat findings</h2>
-          <p className="text-sm text-slate-400">Highest-priority items from platform security telemetry.</p>
+          <h2 className="text-lg font-semibold text-text">Threat findings</h2>
+          <p className="text-sm text-text-muted">Highest-priority items from platform security monitoring.</p>
         </div>
       </div>
 
@@ -289,19 +283,19 @@ function ThreatFindingsCard({ findings }) {
         {findings.map((finding, index) => {
           const FindingIcon = severityIcon(finding.severity);
           return (
-            <div key={`${finding.title}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+            <div key={`${finding.title}-${index}`} className="rounded-2xl border border-border/60 bg-surface-muted/30 px-4 py-3">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-cyan-100">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-muted/50 text-text-soft">
                   <FindingIcon className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-white">{finding.title}</p>
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-300">
+                    <p className="font-semibold text-text">{finding.title}</p>
+                    <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-text-soft">
                       {finding.severity || "signal"}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-slate-400">{finding.description}</p>
+                  <p className="mt-1 text-sm leading-6 text-text-muted">{finding.description}</p>
                 </div>
               </div>
             </div>

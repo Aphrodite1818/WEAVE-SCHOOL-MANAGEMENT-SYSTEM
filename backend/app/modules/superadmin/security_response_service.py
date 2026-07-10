@@ -22,6 +22,7 @@ from app.modules.superadmin.schemas import (
     SecurityRevokeIPSessionsRequest,
 )
 from app.modules.superadmin.security_alert_service import SecurityAlertService
+from fastapi import BackgroundTasks
 
 
 SECURITY_IP_BLOCK_CACHE_PREFIX = "security:ip-block"
@@ -162,6 +163,7 @@ class SecurityResponseService:
         cls,
         db: AsyncSession,
         *,
+        background_tasks: BackgroundTasks,
         current_superadmin: SuperAdmin,
         payload: SecurityIPBlockCreate,
     ) -> SecurityIPBlock:
@@ -186,7 +188,8 @@ class SecurityResponseService:
         await db.commit()
         await db.refresh(block)
         await CacheManager.delete(cls._cache_key(normalized_ip))
-        await SecurityAlertService.notify_ip_block_created(
+        SecurityAlertService.notify_ip_block_created(
+            background_tasks=background_tasks,
             ip_label=block.ip_address_label,
             superadmin_id=current_superadmin.id,
             reason=block.reason,

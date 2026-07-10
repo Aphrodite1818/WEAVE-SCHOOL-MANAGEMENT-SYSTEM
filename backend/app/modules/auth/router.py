@@ -289,6 +289,7 @@ async def refresh_access_token(
     db: DbSession,
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
 ) -> Token:
     """Rotate the refresh token and issue a new access token."""
@@ -298,6 +299,7 @@ async def refresh_access_token(
 
     token_pair = await AuthSessionService.rotate_refresh_token(
         db,
+        background_tasks=background_tasks,
         refresh_token=refresh_token,
         user_agent=request.headers.get("user-agent"),
         ip_address=_client_ip(request),

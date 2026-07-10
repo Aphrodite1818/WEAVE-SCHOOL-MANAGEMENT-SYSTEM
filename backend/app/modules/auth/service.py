@@ -806,6 +806,7 @@ class AuthSessionService:
     async def rotate_refresh_token(
         db: AsyncSession,
         *,
+        background_tasks: BackgroundTasks,
         refresh_token: str,
         user_agent: str | None = None,
         ip_address: str | None = None,
@@ -838,6 +839,7 @@ class AuthSessionService:
             await AuthSessionRepository.mark_session_compromised(
                 db,
                 session,
+                background_tasks=background_tasks,
                 compromised_at=now,
                 reason="refresh_reuse_detected",
             )

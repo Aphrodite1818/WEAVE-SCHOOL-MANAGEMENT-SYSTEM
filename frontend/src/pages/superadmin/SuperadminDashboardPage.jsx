@@ -73,7 +73,7 @@ function SuperadminDashboardPage() {
       setTenants(Array.isArray(tenantResult) ? tenantResult : []);
       setSuperadmins(Array.isArray(superadminResult) ? superadminResult : []);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load superadmin command center."));
+      setError(getErrorMessage(err, "Failed to load dashboard data."));
     } finally {
       setIsLoading(false);
     }
@@ -113,8 +113,8 @@ function SuperadminDashboardPage() {
 
   if (isLoading && !analytics && !error) {
     return (
-      <DashboardLayout role="superadmin" title="Mission Control">
-        <LoadingState label="Booting platform command center..." />
+      <DashboardLayout role="superadmin" title="Dashboard">
+        <LoadingState label="Loading dashboard data..." />
       </DashboardLayout>
     );
   }
@@ -122,11 +122,11 @@ function SuperadminDashboardPage() {
   return (
     <DashboardLayout
       role="superadmin"
-      title="Mission Control"
+      title="Dashboard"
       actions={
         <Button variant="outline" onClick={loadDashboardData} disabled={isLoading}>
           <RefreshCw className="h-4 w-4" />
-          Refresh telemetry
+          Refresh data
         </Button>
       }
     >
@@ -139,13 +139,13 @@ function SuperadminDashboardPage() {
       {!error ? (
         <>
           <DashboardWelcomePanel
-            eyebrow="Superadmin mission control"
-            title="Platform command, security posture, and tenant orbit"
-            description="Critical signals stay visible first. Emergency platform lockdown lives in Settings for deliberate damage-control actions."
+            eyebrow="Superadmin Overview"
+            title="Platform Status & Security Posture"
+            description="Monitor key security metrics and manage active schools across the platform."
             chips={[
-              { label: "Mode", value: lockdownEnabled ? "Lockdown active" : "Normal", tone: lockdownEnabled ? "danger" : "success" },
-              { label: "Risk", value: `${riskScore}/100 · ${riskLevel}`, tone: riskScore >= 50 ? "danger" : riskScore > 0 ? "warning" : "success" },
-              { label: "Schools", value: totalTenants, tone: "neutral" },
+              { label: "Status", value: lockdownEnabled ? "Lockdown active" : "Normal", tone: lockdownEnabled ? "danger" : "success" },
+              { label: "Risk Score", value: `${riskScore}/100 · ${riskLevel}`, tone: riskScore >= 50 ? "danger" : riskScore > 0 ? "warning" : "success" },
+              { label: "Total Schools", value: totalTenants, tone: "neutral" },
             ]}
           />
 
@@ -167,9 +167,9 @@ function SuperadminDashboardPage() {
               to="/superadmin/analytics"
             />
             <DashboardMetricCard
-              label="Security events"
+              label="Security alerts"
               value={securityEvents}
-              description="Compromise, reuse, unusual spread"
+              description="Critical security events in the last 7 days"
               icon={LockKeyhole}
               tone={securityEvents > 0 ? "danger" : "success"}
               to="/superadmin/analytics"
@@ -186,23 +186,23 @@ function SuperadminDashboardPage() {
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
             <DashboardListCard
-              title="Threat findings"
-              description="Critical platform-owner security findings are visible first."
+              title="Recent security findings"
+              description="Highest priority alerts from the platform security monitoring."
               items={securityFindings}
-              emptyTitle="Security posture looks calm"
-              emptyDescription="No compromised sessions, token reuse, or unusual IP spread is currently visible."
+              emptyTitle="No security issues detected"
+              emptyDescription="There are no active security alerts or compromised sessions to review."
             />
 
             <DashboardFocusCard
-              title={lockdownEnabled ? "Emergency lockdown active" : "Emergency controls ready"}
+              title={lockdownEnabled ? "Platform Lockdown Active" : "Platform Controls"}
               description={
                 lockdownEnabled
-                  ? "Non-superadmin requests are blocked and users see the maintenance prompt."
-                  : "Use Settings to lock down the platform during damage control without killing the backend."
+                  ? "Non-admin access is currently blocked. Users will see a maintenance message."
+                  : "Manage platform lockdown and emergency settings."
               }
               icon={Shield}
               tone={lockdownEnabled ? "danger" : "success"}
-              primaryAction={{ to: "/superadmin/settings", label: lockdownEnabled ? "Review lockdown" : "Open platform settings", icon: KeyRound }}
+              primaryAction={{ to: "/superadmin/settings", label: lockdownEnabled ? "Manage Lockdown" : "Platform Settings", icon: KeyRound }}
               secondaryAction={{ to: "/superadmin/analytics", label: "Security analytics", icon: BarChart3 }}
             >
               <div className="grid grid-cols-2 gap-3">
@@ -216,8 +216,8 @@ function SuperadminDashboardPage() {
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(320px,1fr)]">
             <DashboardFocusCard
-              title="Platform orbit"
-              description="Tenant and operator posture without cramming operational tables into the dashboard."
+              title="School Management"
+              description="Quick overview of active schools and platform administrators."
               icon={GaugeIcon}
               tone="primary"
             >
@@ -230,13 +230,13 @@ function SuperadminDashboardPage() {
             </DashboardFocusCard>
 
             <DashboardQuickActions
-              title="Command actions"
-              description="Navigation stays focused. Heavy work happens on dedicated pages."
+              title="Quick Actions"
+              description="Access commonly used platform management tools."
               actions={[
-                { label: "Security analytics", description: "Open the full mission dashboard", to: "/superadmin/analytics", icon: BarChart3, tone: "danger" },
-                { label: "Platform settings", description: "Lockdown and platform controls", to: "/superadmin/settings", icon: KeyRound, tone: lockdownEnabled ? "danger" : "neutral" },
-                { label: "Tenant verification", description: "Review school approvals", to: "/superadmin/verification", icon: Shield, tone: "primary" },
-                { label: "Platform activity", description: "Audit recent platform movement", to: "/superadmin/activity", icon: Activity, tone: "accent" },
+                { label: "Security Analytics", description: "View detailed security metrics", to: "/superadmin/analytics", icon: BarChart3, tone: "danger" },
+                { label: "Platform Settings", description: "Lockdown and platform configuration", to: "/superadmin/settings", icon: KeyRound, tone: lockdownEnabled ? "danger" : "neutral" },
+                { label: "School Verification", description: "Review and approve school registrations", to: "/superadmin/verification", icon: Shield, tone: "primary" },
+                { label: "Audit Logs", description: "View recent platform activity", to: "/superadmin/activity", icon: Activity, tone: "accent" },
               ]}
             />
           </section>

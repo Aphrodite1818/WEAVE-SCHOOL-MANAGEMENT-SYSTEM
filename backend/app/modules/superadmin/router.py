@@ -159,12 +159,14 @@ async def list_security_ip_blocks(
 async def create_security_ip_block(
     payload: SecurityIPBlockCreate,
     db: DbSession,
+    background_tasks: BackgroundTasks,
     current_superadmin: SuperadminActor,
 ) -> SecurityIPBlock:
     """Create a manual IP containment rule."""
 
     return await SecurityResponseService.block_ip(
         db,
+        background_tasks=background_tasks,
         current_superadmin=current_superadmin,
         payload=payload,
     )
@@ -233,12 +235,14 @@ async def get_platform_control(
 async def enable_platform_lockdown(
     payload: PlatformLockdownRequest,
     db: DbSession,
+    background_tasks: BackgroundTasks,
     current_superadmin: SuperadminActor,
 ) -> PlatformControl:
     """Enable emergency platform lockdown for non-superadmin traffic."""
 
     return await PlatformControlService.enable_lockdown(
         db,
+        background_tasks=background_tasks,
         current_superadmin=current_superadmin,
         payload=payload,
     )
@@ -248,12 +252,14 @@ async def enable_platform_lockdown(
 async def disable_platform_lockdown(
     payload: PlatformUnlockRequest,
     db: DbSession,
+    background_tasks: BackgroundTasks,
     current_superadmin: SuperadminActor,
 ) -> PlatformControl:
     """Disable emergency platform lockdown."""
 
     return await PlatformControlService.disable_lockdown(
         db,
+        background_tasks=background_tasks,
         current_superadmin=current_superadmin,
         payload=payload,
     )

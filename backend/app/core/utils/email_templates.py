@@ -150,3 +150,27 @@ def get_tenant_invite_email_html(school_name: str, invite_link: str) -> str:
             {_fallback_link(invite_link)}
 """
     return _email_shell(school_name, "Workspace activation", body)
+
+
+def get_security_alert_email_html(title: str, rows: dict[str, object]) -> str:
+    """Return security alert email html."""
+    row_markup = "".join(
+        f"<tr><td style='padding:12px 16px;color:#64748B;font-weight:600;border-bottom:1px solid #E2E8F0'>{_html(key)}</td>"
+        f"<td style='padding:12px 16px;color:#0F172A;border-bottom:1px solid #E2E8F0'>{_html(value)}</td></tr>"
+        for key, value in rows.items()
+        if value is not None and value != ""
+    )
+    body = f"""
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; color: #334155;">
+                A high-signal LearnlyAI security event was detected. Please review the details below.
+            </p>
+            <table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;background-color:#F8FAFC">
+                <tbody>
+                    {row_markup}
+                </tbody>
+            </table>
+            <p style="font-size: 15px; line-height: 1.6; margin: 24px 0 0 0; color: #64748B;">
+                If immediate action is required, log into the Superadmin dashboard to manage platform controls.
+            </p>
+"""
+    return _email_shell(title, "Security Alert", body)

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, ShieldAlert, Wrench } from "lucide-react";
+import { RefreshCw, Wrench, ArrowLeft } from "lucide-react";
 
 import Button from "../../components/ui/Button";
 import { clearStoredMaintenanceState, getStoredMaintenanceState, PLATFORM_MAINTENANCE_EVENT } from "../../services/api";
 
-const DEFAULT_MESSAGE = "LearnlyAI is temporarily in maintenance mode. Please try again later.";
+const DEFAULT_MESSAGE = "The platform is temporarily down for maintenance. We are working to restore access as quickly as possible.";
 
 function MaintenanceModePage() {
   const [state, setState] = useState(() => getStoredMaintenanceState());
@@ -26,58 +26,47 @@ function MaintenanceModePage() {
     window.location.assign("/login");
   };
 
+  const handleGoBack = () => {
+    clearStoredMaintenanceState();
+    window.history.back();
+  };
+
   return (
-    <main className="min-h-screen bg-app px-4 py-8 text-text sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center">
-        <section className="relative w-full overflow-hidden rounded-[2rem] border border-border bg-surface p-6 shadow-premium sm:p-8 lg:p-10">
-          <div className="pointer-events-none absolute inset-0 opacity-70" aria-hidden="true">
-            <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
-            <div className="absolute -bottom-24 left-8 h-72 w-72 rounded-full bg-warning/20 blur-3xl" />
+    <main className="flex min-h-screen flex-col items-center justify-center bg-app px-6 py-12 text-text">
+      <div className="w-full max-w-md text-center">
+        <div className="mx-auto mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-surface shadow-sm ring-1 ring-border">
+          <Wrench className="h-10 w-10 text-text-muted" strokeWidth={1.5} />
+        </div>
+        
+        <h1 className="mb-4 text-3xl font-bold tracking-tight text-text">
+          We'll be right back
+        </h1>
+        
+        <p className="mb-8 text-base leading-relaxed text-text-soft">
+          {message}
+        </p>
+
+        {reason ? (
+          <div className="mb-8 rounded-xl bg-surface p-5 text-left text-sm text-text-soft shadow-sm ring-1 ring-border">
+            <span className="mb-2 block font-semibold text-text">Maintenance Note</span> 
+            {reason}
           </div>
+        ) : null}
 
-          <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-warning/30 bg-warning/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-warning">
-                <ShieldAlert className="h-3.5 w-3.5" />
-                Platform maintenance
-              </div>
-
-              <h1 className="mt-5 max-w-2xl text-3xl font-semibold tracking-tight text-text sm:text-5xl">
-                LearnlyAI is temporarily under maintenance.
-              </h1>
-
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-text-muted sm:text-base">
-                {message}
-              </p>
-
-              {reason ? (
-                <div className="mt-5 rounded-2xl border border-border/70 bg-surface-muted/40 px-4 py-3 text-sm text-text-soft">
-                  <span className="font-semibold text-text">Reason:</span> {reason}
-                </div>
-              ) : null}
-
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                <Button onClick={handleRetry}>
-                  <RefreshCw className="h-4 w-4" />
-                  Retry login
-                </Button>
-                <Button variant="outline" onClick={() => window.location.reload()}>
-                  Check again
-                </Button>
-              </div>
-            </div>
-
-            <div className="rounded-[1.75rem] border border-border bg-surface-muted/30 p-5">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-warning/10 text-warning">
-                <Wrench className="h-7 w-7" />
-              </div>
-              <p className="mt-5 text-sm font-semibold uppercase tracking-wide text-text-muted">What this means</p>
-              <p className="mt-2 text-sm leading-6 text-text-soft">
-                Your school data is safe. Platform access is temporarily paused while the owner handles maintenance or damage control.
-              </p>
-            </div>
-          </div>
-        </section>
+        <div className="flex flex-col justify-center gap-3 sm:flex-row">
+          <Button onClick={handleRetry} className="w-full justify-center sm:w-auto sm:px-8">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Try again
+          </Button>
+          <Button variant="outline" onClick={handleGoBack} className="w-full justify-center sm:w-auto sm:px-8">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Go back
+          </Button>
+        </div>
+      </div>
+      
+      <div className="fixed bottom-8 text-center text-sm font-medium text-text-muted">
+        Your data remains secure during this process.
       </div>
     </main>
   );

@@ -6,6 +6,8 @@ from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 
 from app.config.database import AsyncSessionLocal
+from jose import jwt
+
 from app.config.logging import get_logger
 from app.modules.superadmin.platform_control_service import (
     DEFAULT_MAINTENANCE_MESSAGE,
@@ -51,6 +53,19 @@ class PlatformLockdownMiddleware:
         return any(path.startswith(prefix) for prefix in _ALLOWED_PREFIXES)
 
     @staticmethod
+    def _is_superadmin_request(request: Request) -> bool:
+        auth = request.headers.get("authorization")
+        if not auth or not auth.startswith("Bearer "):
+            return False
+        
+        token = auth.split(" ")[1]
+        try:
+            payload = jwt.get_unverified_claims(token)
+            return payload.get("role") == "superadmin"
+        except Exception:
+            return False
+
+    @staticmethod
     def _maintenance_response(state: dict[str, object]) -> JSONResponse:
         message = str(state.get("lockdown_message") or DEFAULT_MAINTENANCE_MESSAGE)
         reason = state.get("lockdown_reason")
@@ -87,7 +102,7 @@ class PlatformLockdownMiddleware:
             return
 
         request = Request(scope, receive=receive)
-        if request.method == "OPTIONS" or self._is_allowed_path(request.url.path):
+        if request.method == "OPTIONS" or self._is_allowed_path(request.url.path) or self._is_superadmin_request(request):
             await self.app(scope, receive, send)
             return
 

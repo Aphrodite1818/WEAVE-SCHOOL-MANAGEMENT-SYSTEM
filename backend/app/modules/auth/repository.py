@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import AuthRefreshToken, AuthSession, AuthSessionActorType
 from app.modules.superadmin.security_alert_service import SecurityAlertService
+from fastapi import BackgroundTasks
 
 
 class AuthSessionRepository:
@@ -123,6 +124,7 @@ class AuthSessionRepository:
         db: AsyncSession,
         session: AuthSession,
         *,
+        background_tasks: BackgroundTasks,
         compromised_at: datetime,
         reason: str = "refresh_reuse_detected",
     ) -> AuthSession:
@@ -136,7 +138,8 @@ class AuthSessionRepository:
         await db.refresh(session)
 
         if reason == "refresh_reuse_detected":
-            await SecurityAlertService.notify_refresh_token_reuse(
+            SecurityAlertService.notify_refresh_token_reuse(
+                background_tasks=background_tasks,
                 actor_type=session.actor_type.value,
                 actor_id=session.actor_id,
                 tenant_id=session.tenant_id,

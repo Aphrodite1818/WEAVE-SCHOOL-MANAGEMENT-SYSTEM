@@ -11,7 +11,9 @@ from app.core.exceptions import BadRequestException, PlatformMaintenanceExceptio
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.superadmin.models import PlatformControl, SuperAdmin
 from app.modules.superadmin.schemas import PlatformLockdownRequest, PlatformUnlockRequest
+from app.modules.superadmin.schemas import PlatformLockdownRequest, PlatformUnlockRequest
 from app.modules.superadmin.security_alert_service import SecurityAlertService
+from fastapi import BackgroundTasks
 
 
 PLATFORM_LOCKDOWN_CACHE_KEY = "platform:control:lockdown"
@@ -127,6 +129,7 @@ class PlatformControlService:
         cls,
         db: AsyncSession,
         *,
+        background_tasks: BackgroundTasks,
         current_superadmin: SuperAdmin,
         payload: PlatformLockdownRequest,
     ) -> PlatformControl:
@@ -149,7 +152,9 @@ class PlatformControlService:
         await db.commit()
         await db.refresh(control)
         await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
-        await SecurityAlertService.notify_platform_lockdown_change(
+        await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
+        SecurityAlertService.notify_platform_lockdown_change(
+            background_tasks=background_tasks,
             enabled=True,
             superadmin_id=current_superadmin.id,
             reason=payload.reason,
@@ -161,6 +166,7 @@ class PlatformControlService:
         cls,
         db: AsyncSession,
         *,
+        background_tasks: BackgroundTasks,
         current_superadmin: SuperAdmin,
         payload: PlatformUnlockRequest,
     ) -> PlatformControl:
@@ -179,7 +185,9 @@ class PlatformControlService:
         await db.commit()
         await db.refresh(control)
         await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
-        await SecurityAlertService.notify_platform_lockdown_change(
+        await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
+        SecurityAlertService.notify_platform_lockdown_change(
+            background_tasks=background_tasks,
             enabled=False,
             superadmin_id=current_superadmin.id,
             reason=control.lockdown_reason,
