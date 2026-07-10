@@ -18,6 +18,12 @@ export const superadminService = {
 
   getSecurityOverview: (requestOptions) => api.get("/superadmin/security/overview", requestOptions),
 
+  getPlatformControl: (requestOptions) => api.get("/superadmin/platform-control", requestOptions),
+
+  enablePlatformLockdown: (data) => api.post("/superadmin/platform-control/lockdown", data),
+
+  disablePlatformLockdown: (data) => api.post("/superadmin/platform-control/unlock", data),
+
   createTenant: (data) => api.post("/superadmin/tenants", data),
 
   getTenants: (skip = 0, limit = 50, includeDeleted = true, requestOptions) =>
