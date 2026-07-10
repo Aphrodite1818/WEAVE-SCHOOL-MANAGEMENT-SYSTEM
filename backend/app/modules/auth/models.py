@@ -19,6 +19,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -40,6 +41,17 @@ class AuthRecord(BaseModel):
     """Stores OTP, password-reset, activation, and invite secrets."""
 
     __tablename__ = "auth"
+
+    __table_args__ = (
+        Index(
+            "ix_auth_active_email_purpose",
+            "tenant_id",
+            "email",
+            "purpose",
+            "expires_at",
+            postgresql_where=text("is_used = false"),
+        ),
+    )
 
     email: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     hashed_value: Mapped[str] = mapped_column(String(255), nullable=False)
