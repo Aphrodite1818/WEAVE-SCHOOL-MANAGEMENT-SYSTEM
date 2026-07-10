@@ -10,12 +10,12 @@ export default function MobileDrawer({ open, role, schoolName, onClose }) {
       <div className="absolute inset-0 bg-black/35 backdrop-blur-sm" onClick={onClose} />
       <aside
         data-mobile-drawer="true"
-        className="absolute inset-y-0 left-0 flex h-full w-[min(88vw,20rem)] flex-col overflow-hidden border-r border-border bg-surface shadow-2xl"
+        className="absolute inset-y-0 left-0 flex h-full w-[min(88vw,20rem)] flex-col overflow-hidden border-r border-white/10 bg-sidebar shadow-2xl"
       >
         <div className="flex h-14 shrink-0 items-center justify-end px-4">
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-surface-muted/60 text-text-muted transition hover:bg-surface-muted hover:text-text"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-sidebar-text/70 transition hover:bg-white/15 hover:text-sidebar-text"
             onClick={onClose}
             aria-label="Close navigation"
           >

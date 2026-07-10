@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.tenant_branding.models import TenantBrandingThemeMode
+
+
+STRICT_HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 class InputBase(BaseModel):
@@ -44,17 +48,23 @@ class TenantBrandingUpdate(InputBase):
     """Admin-controlled branding update payload."""
 
     brand_name: str | None = Field(default=None, max_length=255)
+    logo_url: str | None = Field(default=None, max_length=2000)
     primary_color: str | None = Field(default=None, min_length=4, max_length=7)
     accent_color: str | None = Field(default=None, min_length=4, max_length=7)
     sidebar_color: str | None = Field(default=None, min_length=4, max_length=7)
+    header_color: str | None = Field(default=None, min_length=4, max_length=7)
+    background_color: str | None = Field(default=None, min_length=4, max_length=7)
     theme_mode: TenantBrandingThemeMode | None = None
     is_enabled: bool | None = None
 
     @field_validator(
         "brand_name",
+        "logo_url",
         "primary_color",
         "accent_color",
         "sidebar_color",
+        "header_color",
+        "background_color",
         mode="before",
     )
     @classmethod
@@ -62,6 +72,25 @@ class TenantBrandingUpdate(InputBase):
         """Normalize optional text fields."""
 
         return _clean_optional_text(value)
+
+    @field_validator(
+        "primary_color",
+        "accent_color",
+        "sidebar_color",
+        "header_color",
+        "background_color",
+    )
+    @classmethod
+    def validate_strict_hex_colors(cls, value: str | None) -> str | None:
+        """Require full hex colors so frontend and backend share one contract."""
+
+        if value is None:
+            return None
+
+        if not STRICT_HEX_COLOR_PATTERN.fullmatch(value):
+            raise ValueError("Color must use full hex format like #2563EB.")
+
+        return value
 
 
 class TenantBrandingResponse(OutputBase):
@@ -74,6 +103,8 @@ class TenantBrandingResponse(OutputBase):
     primary_color: str
     accent_color: str
     sidebar_color: str
+    header_color: str
+    background_color: str
     theme_mode: TenantBrandingThemeMode
     tokens: dict[str, str]
     is_enabled: bool
@@ -92,6 +123,8 @@ class TenantBrandingEffectiveResponse(OutputBase):
     primary_color: str
     accent_color: str
     sidebar_color: str
+    header_color: str
+    background_color: str
     theme_mode: TenantBrandingThemeMode
     tokens: dict[str, str]
     is_enabled: bool

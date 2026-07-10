@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from functools import cached_property
+from typing import Any
 
 import boto3
 from botocore.client import Config
@@ -78,7 +79,7 @@ class CloudflareR2MediaStorage:
         )
 
     @cached_property
-    def client(self):
+    def client(self) -> Any:
         """Create a boto3 S3 client for Cloudflare R2."""
 
         return boto3.client(
@@ -164,9 +165,8 @@ class CloudflareR2MediaStorage:
                 "Failed to upload object to Cloudflare R2."
             ) from exc
 
-        etag = response.get("ETag")
-        if isinstance(etag, str):
-            etag = etag.strip('"')
+        etag_value = response.get("ETag")
+        etag: str | None = etag_value.strip('"') if isinstance(etag_value, str) else None
 
         render_url = self._build_render_url(cleaned_key)
 

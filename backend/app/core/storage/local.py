@@ -21,7 +21,7 @@ class LocalMediaStorage:
     def __init__(self) -> None:
         self.bucket = str(getattr(settings, "LOCAL_MEDIA_BUCKET_NAME", "local-media"))
         self.storage_root = Path(
-            getattr(settings, "LOCAL_MEDIA_ROOT", "storage/media")
+            str(getattr(settings, "LOCAL_MEDIA_ROOT", "storage/media"))
         ).resolve()
         self.public_base_url = str(
             getattr(settings, "LOCAL_MEDIA_PUBLIC_BASE_URL", "/media")

@@ -26,12 +26,17 @@ from app.modules.tenant_branding.schemas import (
 )
 from app.modules.tenant_branding.theme_builder import (
     DEFAULT_ACCENT_COLOR,
+    DEFAULT_BACKGROUND_COLOR,
     DEFAULT_BRAND_NAME,
+    DEFAULT_HEADER_COLOR,
     DEFAULT_PRIMARY_COLOR,
     DEFAULT_SIDEBAR_COLOR,
     DEFAULT_THEME_MODE,
     build_default_theme_tokens,
     build_theme_tokens,
+    channels_to_hex,
+    get_default_background_color,
+    get_default_header_color,
     is_complete_theme_token_set,
     normalize_hex_color,
 )
@@ -127,6 +132,42 @@ class TenantBrandingService:
         )
 
     @staticmethod
+    def _resolve_header_color(
+        *,
+        theme_mode: TenantBrandingThemeMode,
+        tokens: dict[str, str] | None,
+    ) -> str:
+        """Resolve a header color from tokens with a safe theme-mode fallback."""
+
+        fallback = get_default_header_color(theme_mode)
+        token_value = (tokens or {}).get("--color-header-background")
+        if not token_value:
+            return fallback
+
+        try:
+            return channels_to_hex(token_value)
+        except ValueError:
+            return fallback
+
+    @staticmethod
+    def _resolve_background_color(
+        *,
+        theme_mode: TenantBrandingThemeMode,
+        tokens: dict[str, str] | None,
+    ) -> str:
+        """Resolve a workspace background color from tokens with a safe fallback."""
+
+        fallback = get_default_background_color(theme_mode)
+        token_value = (tokens or {}).get("--color-workspace-background")
+        if not token_value:
+            return fallback
+
+        try:
+            return channels_to_hex(token_value)
+        except ValueError:
+            return fallback
+
+    @staticmethod
     def _build_admin_response(
         *,
         tenant_id: UUID,
@@ -144,6 +185,8 @@ class TenantBrandingService:
                 primary_color=DEFAULT_PRIMARY_COLOR,
                 accent_color=DEFAULT_ACCENT_COLOR,
                 sidebar_color=DEFAULT_SIDEBAR_COLOR,
+                header_color=DEFAULT_HEADER_COLOR,
+                background_color=DEFAULT_BACKGROUND_COLOR,
                 theme_mode=DEFAULT_THEME_MODE,
                 tokens=build_default_theme_tokens(),
                 is_enabled=False,
@@ -153,6 +196,7 @@ class TenantBrandingService:
                 updated_at=None,
             )
 
+        tokens = TenantBrandingService._ensure_tokens(branding)
         return TenantBrandingResponse(
             id=branding.id,
             tenant_id=branding.tenant_id,
@@ -161,8 +205,16 @@ class TenantBrandingService:
             primary_color=branding.primary_color,
             accent_color=branding.accent_color,
             sidebar_color=branding.sidebar_color,
+            header_color=TenantBrandingService._resolve_header_color(
+                theme_mode=branding.theme_mode,
+                tokens=tokens,
+            ),
+            background_color=TenantBrandingService._resolve_background_color(
+                theme_mode=branding.theme_mode,
+                tokens=tokens,
+            ),
             theme_mode=branding.theme_mode,
-            tokens=TenantBrandingService._ensure_tokens(branding),
+            tokens=tokens,
             is_enabled=branding.is_enabled,
             theme_version=branding.theme_version,
             updated_by_admin_id=branding.updated_by_admin_id,
@@ -186,6 +238,8 @@ class TenantBrandingService:
             primary_color=DEFAULT_PRIMARY_COLOR,
             accent_color=DEFAULT_ACCENT_COLOR,
             sidebar_color=DEFAULT_SIDEBAR_COLOR,
+            header_color=DEFAULT_HEADER_COLOR,
+            background_color=DEFAULT_BACKGROUND_COLOR,
             theme_mode=DEFAULT_THEME_MODE,
             tokens=build_default_theme_tokens(),
             is_enabled=False,
@@ -214,6 +268,7 @@ class TenantBrandingService:
                 theme_version=branding.theme_version,
             )
 
+        tokens = TenantBrandingService._ensure_tokens(branding)
         return TenantBrandingEffectiveResponse(
             tenant_id=tenant.id,
             brand_name=branding.brand_name,
@@ -221,8 +276,16 @@ class TenantBrandingService:
             primary_color=branding.primary_color,
             accent_color=branding.accent_color,
             sidebar_color=branding.sidebar_color,
+            header_color=TenantBrandingService._resolve_header_color(
+                theme_mode=branding.theme_mode,
+                tokens=tokens,
+            ),
+            background_color=TenantBrandingService._resolve_background_color(
+                theme_mode=branding.theme_mode,
+                tokens=tokens,
+            ),
             theme_mode=branding.theme_mode,
-            tokens=TenantBrandingService._ensure_tokens(branding),
+            tokens=tokens,
             is_enabled=True,
             theme_version=branding.theme_version,
             is_default_theme=False,
@@ -235,6 +298,8 @@ class TenantBrandingService:
         current_primary_color: str,
         current_accent_color: str,
         current_sidebar_color: str,
+        current_header_color: str,
+        current_background_color: str,
         current_theme_mode: TenantBrandingThemeMode,
         current_is_enabled: bool,
         payload: TenantBrandingUpdate,
@@ -267,9 +332,34 @@ class TenantBrandingService:
                 update_data["sidebar_color"] or DEFAULT_SIDEBAR_COLOR
             )
 
+        next_header_color = current_header_color
+        if "header_color" in update_data:
+            next_header_color = normalize_hex_color(
+                update_data["header_color"] or get_default_header_color(current_theme_mode)
+            )
+
+        next_background_color = current_background_color
+        if "background_color" in update_data:
+            next_background_color = normalize_hex_color(
+                update_data["background_color"] or get_default_background_color(current_theme_mode)
+            )
+
         next_theme_mode = current_theme_mode
         if "theme_mode" in update_data and update_data["theme_mode"] is not None:
             next_theme_mode = TenantBrandingThemeMode(update_data["theme_mode"])
+
+        if "header_color" not in update_data:
+            next_header_color = (
+                get_default_header_color(next_theme_mode)
+                if current_header_color == get_default_header_color(current_theme_mode)
+                else current_header_color
+            )
+        if "background_color" not in update_data:
+            next_background_color = (
+                get_default_background_color(next_theme_mode)
+                if current_background_color == get_default_background_color(current_theme_mode)
+                else current_background_color
+            )
 
         next_is_enabled = current_is_enabled
         if "is_enabled" in update_data and update_data["is_enabled"] is not None:
@@ -280,9 +370,31 @@ class TenantBrandingService:
             "primary_color": next_primary_color,
             "accent_color": next_accent_color,
             "sidebar_color": next_sidebar_color,
+            "header_color": next_header_color,
+            "background_color": next_background_color,
             "theme_mode": next_theme_mode,
             "is_enabled": next_is_enabled,
         }
+
+    @staticmethod
+    def _validate_logo_url_input(
+        *,
+        tenant_logo_url: str | None,
+        payload: TenantBrandingUpdate,
+    ) -> None:
+        """Only allow logo references that already belong to the tenant media flow."""
+
+        update_data = payload.model_dump(exclude_unset=True)
+        if "logo_url" not in update_data:
+            return
+
+        if update_data["logo_url"] != tenant_logo_url:
+            raise BadRequestException(
+                detail=(
+                    "logo_url must match the tenant's uploaded school logo. "
+                    "Use the media upload endpoint to change the logo."
+                )
+            )
 
     @staticmethod
     async def get_admin_branding(
@@ -354,6 +466,10 @@ class TenantBrandingService:
             db=db,
             tenant_id=tenant_id,
         )
+        TenantBrandingService._validate_logo_url_input(
+            tenant_logo_url=tenant.logo_url,
+            payload=payload,
+        )
 
         branding = await TenantBrandingRepository.get_by_tenant_id_for_update(
             db=db,
@@ -366,6 +482,19 @@ class TenantBrandingService:
         current_sidebar_color = branding.sidebar_color if branding is not None else DEFAULT_SIDEBAR_COLOR
         current_theme_mode = branding.theme_mode if branding is not None else DEFAULT_THEME_MODE
         current_is_enabled = branding.is_enabled if branding is not None else False
+        current_tokens = (
+            TenantBrandingService._ensure_tokens(branding)
+            if branding is not None
+            else build_default_theme_tokens()
+        )
+        current_header_color = TenantBrandingService._resolve_header_color(
+            theme_mode=current_theme_mode,
+            tokens=current_tokens,
+        )
+        current_background_color = TenantBrandingService._resolve_background_color(
+            theme_mode=current_theme_mode,
+            tokens=current_tokens,
+        )
 
         try:
             next_values = TenantBrandingService._normalize_update_values(
@@ -373,6 +502,8 @@ class TenantBrandingService:
                 current_primary_color=current_primary_color,
                 current_accent_color=current_accent_color,
                 current_sidebar_color=current_sidebar_color,
+                current_header_color=current_header_color,
+                current_background_color=current_background_color,
                 current_theme_mode=current_theme_mode,
                 current_is_enabled=current_is_enabled,
                 payload=payload,
@@ -381,16 +512,27 @@ class TenantBrandingService:
                 primary_color=next_values["primary_color"],
                 accent_color=next_values["accent_color"],
                 sidebar_color=next_values["sidebar_color"],
+                header_color=next_values["header_color"],
+                background_color=next_values["background_color"],
                 theme_mode=next_values["theme_mode"],
             )
         except ValueError as exc:
             raise BadRequestException(detail=str(exc)) from exc
 
-        next_values["logo_url"] = tenant.logo_url
-        next_values["updated_by_admin_id"] = actor.id
+        persisted_values = {
+            "brand_name": next_values["brand_name"],
+            "primary_color": next_values["primary_color"],
+            "accent_color": next_values["accent_color"],
+            "sidebar_color": next_values["sidebar_color"],
+            "theme_mode": next_values["theme_mode"],
+            "tokens": next_values["tokens"],
+            "is_enabled": next_values["is_enabled"],
+            "logo_url": tenant.logo_url,
+            "updated_by_admin_id": actor.id,
+        }
 
         if branding is None:
-            if next_values == {
+            if persisted_values == {
                 **TenantBrandingService._default_branding_values(logo_url=tenant.logo_url),
                 "updated_by_admin_id": actor.id,
             }:
@@ -405,7 +547,7 @@ class TenantBrandingService:
                 branding=TenantBranding(
                     tenant_id=tenant_id,
                     theme_version=1,
-                    **next_values,
+                    **persisted_values,
                 ),
             )
             await db.commit()
@@ -416,18 +558,17 @@ class TenantBrandingService:
                 branding=created_branding,
             )
 
-        current_tokens = TenantBrandingService._ensure_tokens(branding)
         has_changes = any(
             (
-                branding.brand_name != next_values["brand_name"],
-                branding.primary_color != next_values["primary_color"],
-                branding.accent_color != next_values["accent_color"],
-                branding.sidebar_color != next_values["sidebar_color"],
-                branding.theme_mode != next_values["theme_mode"],
-                branding.is_enabled != next_values["is_enabled"],
-                current_tokens != next_values["tokens"],
-                branding.logo_url != next_values["logo_url"],
-                branding.updated_by_admin_id != next_values["updated_by_admin_id"],
+                branding.brand_name != persisted_values["brand_name"],
+                branding.primary_color != persisted_values["primary_color"],
+                branding.accent_color != persisted_values["accent_color"],
+                branding.sidebar_color != persisted_values["sidebar_color"],
+                branding.theme_mode != persisted_values["theme_mode"],
+                branding.is_enabled != persisted_values["is_enabled"],
+                current_tokens != persisted_values["tokens"],
+                branding.logo_url != persisted_values["logo_url"],
+                branding.updated_by_admin_id != persisted_values["updated_by_admin_id"],
             )
         )
 
@@ -442,7 +583,7 @@ class TenantBrandingService:
             db=db,
             branding=branding,
             updates={
-                **next_values,
+                **persisted_values,
                 "theme_version": branding.theme_version + 1,
             },
         )
