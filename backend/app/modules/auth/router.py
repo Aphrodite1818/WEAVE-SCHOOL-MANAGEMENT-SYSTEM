@@ -11,11 +11,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
 
+from app.config.security import hash_refresh_token
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_actor
 from app.core.exceptions import BadRequestException, UnauthorizedException
 from app.core.rate_limits.auth_rate_limits import AuthRateLimitService
+from app.modules.auth.models import AuthRefreshToken, AuthSession
+from app.modules.auth.repository import AuthRefreshTokenRepository, AuthSessionRepository
 from app.modules.auth.schemas import (
     LoginRequest,
     LoginSessionUser,
@@ -38,6 +41,7 @@ from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.platform_control_service import PlatformControlService
+from app.modules.superadmin.security_alert_service import SecurityAlertService
 from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
@@ -116,6 +120,65 @@ def _client_ip(request: Request) -> str | None:
         return forwarded_for.split(",")[0].strip() or None
 
     return request.client.host if request.client else None
+
+
+async def _resolve_refresh_session(
+    db: DbSession,
+    refresh_token: str,
+) -> tuple[AuthRefreshToken | None, AuthSession | None]:
+    """Resolve a refresh token to its session without mutating token state."""
+
+    stored_token = await AuthRefreshTokenRepository.get_by_hash(
+        db,
+        hash_refresh_token(refresh_token),
+        lock=False,
+    )
+    if stored_token is None:
+        return None, None
+
+    session = await AuthSessionRepository.get_session_by_id(
+        db,
+        stored_token.session_id,
+        lock=False,
+    )
+    return stored_token, session
+
+
+async def _enforce_refresh_session_controls(
+    db: DbSession,
+    *,
+    refresh_token: str,
+    ip_address: str | None,
+    background_tasks: BackgroundTasks | None = None,
+) -> None:
+    """Apply IP-block and lockdown controls after resolving refresh-session actor type."""
+
+    stored_token, session = await _resolve_refresh_session(db, refresh_token)
+    if stored_token is None or session is None:
+        return
+
+    if stored_token.used_at is not None or stored_token.revoked_at is not None:
+        if background_tasks is not None:
+            background_tasks.add_task(
+                SecurityAlertService.notify_refresh_token_reuse,
+                actor_type=session.actor_type.value,
+                actor_id=session.actor_id,
+                tenant_id=session.tenant_id,
+                session_jti=session.session_jti,
+                ip_address=session.ip_address,
+                user_agent=session.user_agent,
+            )
+        return
+
+    await SecurityResponseService.enforce_actor_ip_allowed(
+        db,
+        ip_address=ip_address,
+        actor_type=session.actor_type,
+    )
+    await PlatformControlService.enforce_actor_allowed(
+        db,
+        actor_type=session.actor_type,
+    )
 
 
 def _enum_value(value: object | None) -> str | None:
@@ -289,6 +352,7 @@ async def refresh_access_token(
     db: DbSession,
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
 ) -> Token:
     """Rotate the refresh token and issue a new access token."""
@@ -296,11 +360,19 @@ async def refresh_access_token(
     if refresh_token is None:
         raise UnauthorizedException("Invalid session")
 
+    client_ip = _client_ip(request)
+    await _enforce_refresh_session_controls(
+        db,
+        refresh_token=refresh_token,
+        ip_address=client_ip,
+        background_tasks=background_tasks,
+    )
+
     token_pair = await AuthSessionService.rotate_refresh_token(
         db,
         refresh_token=refresh_token,
         user_agent=request.headers.get("user-agent"),
-        ip_address=_client_ip(request),
+        ip_address=client_ip,
     )
 
     _set_refresh_token_cookie(
@@ -315,12 +387,18 @@ async def refresh_access_token(
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
     db: DbSession,
+    request: Request,
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
 ) -> dict[str, str]:
     """Revoke the current refresh-token session and clear the cookie."""
 
     if refresh_token is not None:
+        await _enforce_refresh_session_controls(
+            db,
+            refresh_token=refresh_token,
+            ip_address=_client_ip(request),
+        )
         await AuthSessionService.logout_by_refresh_token(
             db,
             refresh_token=refresh_token,
