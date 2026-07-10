@@ -91,6 +91,7 @@ const formatMetric = (value, suffix = "") => {
 
 function renderChart(chart, charts) {
   const data = chartData(charts, chart.key);
+
   if (chart.kind === "donut") {
     return (
       <AnalyticsDonutChart
@@ -160,11 +161,12 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
 
   const stats = analytics?.stats || {};
   const charts = analytics?.charts || {};
-  const populatedCharts = useMemo(
-    () => copy.charts.filter((chart) => chartData(charts, chart.key).length > 0),
-    [copy.charts, charts],
-  );
-  const visibleCharts = populatedCharts.length > 0 ? populatedCharts : copy.charts;
+  const visibleCharts = useMemo(() => {
+    const populatedCharts = copy.charts.filter((chart) => chartData(charts, chart.key).length > 0);
+    return populatedCharts.length > 0 ? populatedCharts : copy.charts;
+  }, [copy.charts, charts]);
+  const barCharts = visibleCharts.filter((chart) => chart.kind === "bar");
+  const otherCharts = visibleCharts.filter((chart) => chart.kind !== "bar");
 
   if (shouldGateAdmin) {
     return (
@@ -217,15 +219,29 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
             ))}
           </section>
 
-          <section className="space-y-4">
-            <DashboardSectionHeader
-              title="Deep-dive charts"
-              description="Charts live here so the role dashboard can stay clean and fast to understand."
-            />
-            <div className="grid gap-5 xl:grid-cols-2">
-              {visibleCharts.map((chart) => renderChart(chart, charts))}
-            </div>
-          </section>
+          {barCharts.length > 0 ? (
+            <section className="space-y-4">
+              <DashboardSectionHeader
+                title="Bar chart highlights"
+                description="Main comparisons stay visible here, with responsive bars that remain readable on mobile and desktop."
+              />
+              <div className="grid gap-5 xl:grid-cols-2">
+                {barCharts.map((chart) => renderChart(chart, charts))}
+              </div>
+            </section>
+          ) : null}
+
+          {otherCharts.length > 0 ? (
+            <section className="space-y-4">
+              <DashboardSectionHeader
+                title="Trend and distribution charts"
+                description="Line and donut charts stay available below the comparison charts."
+              />
+              <div className="grid gap-5 xl:grid-cols-2">
+                {otherCharts.map((chart) => renderChart(chart, charts))}
+              </div>
+            </section>
+          ) : null}
         </>
       ) : null}
     </DashboardLayout>
