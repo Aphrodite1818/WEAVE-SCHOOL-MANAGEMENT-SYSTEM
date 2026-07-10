@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Respon
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_actor
-from app.core.exceptions import UnauthorizedException
+from app.core.exceptions import BadRequestException, UnauthorizedException
 from app.core.rate_limits.auth_rate_limits import AuthRateLimitService
 from app.modules.auth.schemas import (
     LoginRequest,
@@ -368,8 +368,8 @@ async def verify_otp(
 
     try:
         result = await OTPService.verify_otp(db, payload)
-    except Exception as exc:
-        if getattr(exc, "status_code", None) == 400 and getattr(exc, "detail", None) == "Invalid OTP":
+    except BadRequestException as exc:
+        if exc.detail == "Invalid OTP":
             await AuthRateLimitService.record_failed_otp_verification(
                 email=payload.email,
                 purpose=payload.purpose,
