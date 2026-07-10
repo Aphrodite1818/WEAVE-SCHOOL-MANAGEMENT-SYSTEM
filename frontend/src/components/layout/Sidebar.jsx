@@ -1,13 +1,27 @@
 import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import logoImage from "../../assets/images/favicon.png";
+import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { navGroups, roleLabels } from "./navConfig";
 
+const TENANT_BRAND_EVENT = "learnly:tenant-brand-updated";
+
 function isRouteActive(pathname, itemPath) {
   return pathname === itemPath || (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
+}
+
+function getTenantLogoUrl() {
+  const user = authSession.getUser() || {};
+  return (
+    user.tenant_logo_url ||
+    user.logo_url ||
+    user.tenant?.logo_url ||
+    user.tenant?.tenant_logo_url ||
+    null
+  );
 }
 
 export default function SidebarContent({
@@ -22,6 +36,19 @@ export default function SidebarContent({
   const groups = navGroups[role] || navGroups.admin;
   const navRef = useRef(null);
   const scrollStorageKey = `learnly-sidebar-scroll:${role}:${mobile ? "mobile" : "desktop"}`;
+  const [tenantLogoUrl, setTenantLogoUrl] = useState(() => getTenantLogoUrl());
+  const brandLogo = tenantLogoUrl || logoImage;
+  const brandAlt = tenantLogoUrl ? `${schoolName || "School"} logo` : "Learnly AI";
+
+  useEffect(() => {
+    const handleBrandUpdated = () => setTenantLogoUrl(getTenantLogoUrl());
+    window.addEventListener(TENANT_BRAND_EVENT, handleBrandUpdated);
+    window.addEventListener("storage", handleBrandUpdated);
+    return () => {
+      window.removeEventListener(TENANT_BRAND_EVENT, handleBrandUpdated);
+      window.removeEventListener("storage", handleBrandUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -63,14 +90,18 @@ export default function SidebarContent({
           }}
         >
           <img
-            src={logoImage}
-            alt="Learnly AI"
-            className="h-9 w-9 rounded-xl bg-surface p-1 shadow-sm"
+            src={brandLogo}
+            alt={brandAlt}
+            className="h-9 w-9 rounded-xl bg-surface object-contain p-1 shadow-sm"
           />
           {!collapsed && (
             <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight text-text">Learnly AI</span>
-              <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
+              <span className="block truncate text-[15px] font-bold leading-tight text-text">
+                {tenantLogoUrl ? schoolName || "School workspace" : "Learnly AI"}
+              </span>
+              <span className="block truncate text-[11px] font-medium text-text-muted">
+                {tenantLogoUrl ? "School workspace" : "School Management"}
+              </span>
             </span>
           )}
         </Link>
