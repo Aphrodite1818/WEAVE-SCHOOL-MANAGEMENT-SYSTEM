@@ -95,11 +95,12 @@ def create_app() -> FastAPI:
             r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
         )
 
+    # Add platform lockdown before CORS so CORS remains the outer response wrapper.
+    app.add_middleware(PlatformLockdownMiddleware)
     app.add_middleware(
         CORSMiddleware,
         **middleware_options,
     )
-    app.add_middleware(PlatformLockdownMiddleware)
 
     # ── Exception Handlers ────────────────────────────────────────────────────
     register_exception_handlers(app)
