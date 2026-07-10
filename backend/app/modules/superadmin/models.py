@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -67,3 +67,34 @@ class PlatformControl(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SecurityIPBlock(UUIDMixin, TimestampMixin, Base):
+    """Manual IP containment rule created by a superadmin."""
+
+    __tablename__ = "security_ip_blocks"
+
+    ip_address_hash: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    ip_address_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    blocked_by_superadmin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("public.superadmins.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    blocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    unblocked_by_superadmin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("public.superadmins.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    unblocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    unblock_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_security_ip_blocks_active_hash", "ip_address_hash", "is_active", "expires_at"),
+    )
