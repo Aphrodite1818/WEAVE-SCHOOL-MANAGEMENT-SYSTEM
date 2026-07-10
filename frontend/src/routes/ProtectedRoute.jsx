@@ -1,9 +1,43 @@
+import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+
 import { authSession } from "../services/api";
+import { authService } from "../services/auth.service";
 import { getStoredTokenPayload } from "../utils/auth";
 
 function ProtectedRoute() {
   const location = useLocation();
+  const [bootstrapDone, setBootstrapDone] = useState(() => Boolean(authSession.getToken()));
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      if (authSession.getToken()) {
+        if (!cancelled) {
+          setBootstrapDone(true);
+        }
+        return;
+      }
+
+      await authService.bootstrapSession();
+
+      if (!cancelled) {
+        setBootstrapDone(true);
+      }
+    }
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!bootstrapDone) {
+    return null;
+  }
+
   const payload = getStoredTokenPayload();
 
   if (!payload) {
