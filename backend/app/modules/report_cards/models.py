@@ -98,7 +98,6 @@ class ReportCardSubjectLine(BaseModel):
             "subject_id",
             name="uq_report_card_lines_card_subject",
         ),
-        Index("ix_report_card_lines_tenant_card", "tenant_id", "report_card_id"),
     )
 
     report_card_id: Mapped[uuid.UUID] = mapped_column(
