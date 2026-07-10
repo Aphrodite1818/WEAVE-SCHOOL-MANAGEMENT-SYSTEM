@@ -5,7 +5,6 @@ export default {
     extend: {
       colors: {
         background: "rgb(var(--color-background) / <alpha-value>)",
-        workspace: "rgb(var(--color-workspace-background) / <alpha-value>)",
         surface: {
           DEFAULT: "rgb(var(--color-surface) / <alpha-value>)",
           raised: "rgb(var(--color-surface-raised) / <alpha-value>)",
@@ -30,11 +29,11 @@ export default {
           inverse: "rgb(var(--color-text-inverse) / <alpha-value>)",
         },
         primary: {
-          DEFAULT: "rgb(var(--color-primary) / <alpha-value>)",
-          hover: "rgb(var(--color-primary-hover) / <alpha-value>)",
-          soft: "rgb(var(--color-primary-soft) / <alpha-value>)",
-          subtle: "rgb(var(--color-primary-subtle) / <alpha-value>)",
-          deep: "rgb(var(--color-primary-deep) / <alpha-value>)",
+          DEFAULT: "#2563EB",
+          hover: "#1D4ED8",
+          soft: "#DBEAFE",
+          subtle: "#EFF6FF",
+          deep: "#1E3A8A",
         },
         secondary: {
           DEFAULT: "#1E293B",
@@ -42,21 +41,9 @@ export default {
           soft: "#F1F5F9",
         },
         accent: {
-          DEFAULT: "rgb(var(--color-accent) / <alpha-value>)",
-          hover: "rgb(var(--color-accent-hover) / <alpha-value>)",
-          soft: "rgb(var(--color-accent-soft) / <alpha-value>)",
-        },
-        sidebar: {
-          DEFAULT: "rgb(var(--color-sidebar-background) / <alpha-value>)",
-          text: "rgb(var(--color-sidebar-text) / <alpha-value>)",
-        },
-        header: {
-          DEFAULT: "rgb(var(--color-header-background) / <alpha-value>)",
-          text: "rgb(var(--color-header-text) / <alpha-value>)",
-          muted: "rgb(var(--color-header-text-muted) / <alpha-value>)",
-          surface: "rgb(var(--color-header-surface) / <alpha-value>)",
-          "surface-hover": "rgb(var(--color-header-surface-hover) / <alpha-value>)",
-          border: "rgb(var(--color-header-border) / <alpha-value>)",
+          DEFAULT: "#4F46E5",
+          hover: "#4338CA",
+          soft: "#E0E7FF",
         },
         success: {
           DEFAULT: "#10B981",

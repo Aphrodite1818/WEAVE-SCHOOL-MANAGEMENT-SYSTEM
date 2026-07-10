@@ -1,26 +1,13 @@
 import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import logoImage from "../../assets/images/favicon.png";
-import { TENANT_BRANDING_UPDATED_EVENT } from "../../branding/tenantBranding";
-import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { navGroups, roleLabels } from "./navConfig";
 
 function isRouteActive(pathname, itemPath) {
   return pathname === itemPath || (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
-}
-
-function getTenantLogoUrl() {
-  const user = authSession.getUser() || {};
-  return (
-    user.tenant_logo_url ||
-    user.logo_url ||
-    user.tenant?.logo_url ||
-    user.tenant?.tenant_logo_url ||
-    null
-  );
 }
 
 export default function SidebarContent({
@@ -35,19 +22,6 @@ export default function SidebarContent({
   const groups = navGroups[role] || navGroups.admin;
   const navRef = useRef(null);
   const scrollStorageKey = `learnly-sidebar-scroll:${role}:${mobile ? "mobile" : "desktop"}`;
-  const [tenantLogoUrl, setTenantLogoUrl] = useState(() => getTenantLogoUrl());
-  const brandLogo = tenantLogoUrl || logoImage;
-  const brandAlt = tenantLogoUrl ? `${schoolName || "School"} logo` : "Learnly AI";
-
-  useEffect(() => {
-    const handleBrandUpdated = () => setTenantLogoUrl(getTenantLogoUrl());
-    window.addEventListener(TENANT_BRANDING_UPDATED_EVENT, handleBrandUpdated);
-    window.addEventListener("storage", handleBrandUpdated);
-    return () => {
-      window.removeEventListener(TENANT_BRANDING_UPDATED_EVENT, handleBrandUpdated);
-      window.removeEventListener("storage", handleBrandUpdated);
-    };
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -73,10 +47,10 @@ export default function SidebarContent({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-text">
+    <div className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
-          "relative flex h-[4.5rem] shrink-0 items-center border-b border-white/10 transition-all duration-300",
+          "relative flex h-[4.5rem] shrink-0 items-center border-b border-border/60 transition-all duration-300",
           collapsed ? "justify-center px-2" : "gap-2 px-3"
         )}
       >
@@ -89,18 +63,14 @@ export default function SidebarContent({
           }}
         >
           <img
-            src={brandLogo}
-            alt={brandAlt}
-            className="h-9 w-9 rounded-xl bg-surface object-contain p-1 shadow-sm"
+            src={logoImage}
+            alt="Learnly AI"
+            className="h-9 w-9 rounded-xl bg-surface p-1 shadow-sm"
           />
           {!collapsed && (
             <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight text-sidebar-text">
-                {tenantLogoUrl ? schoolName || "School workspace" : "Learnly AI"}
-              </span>
-              <span className="block truncate text-[11px] font-medium text-sidebar-text/60">
-                {tenantLogoUrl ? "School workspace" : "School Management"}
-              </span>
+              <span className="block truncate text-[15px] font-bold leading-tight text-text">Learnly AI</span>
+              <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
             </span>
           )}
         </Link>
@@ -109,7 +79,7 @@ export default function SidebarContent({
           <button
             type="button"
             className={cn(
-              "inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-sidebar-text/70 shadow-sm transition hover:bg-white/15 hover:text-sidebar-text",
+              "inline-flex h-7 w-7 items-center justify-center rounded-lg bg-surface-muted/60 text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text",
               collapsed ? "absolute -right-3.5 top-1/2 -translate-y-1/2" : "ml-auto"
             )}
             onClick={onToggleCollapsed}
@@ -121,10 +91,10 @@ export default function SidebarContent({
       </div>
 
       {!collapsed && (
-        <div className="mx-3 mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
-          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-text/55">Workspace</p>
-          <p className="mt-1 truncate text-[13px] font-semibold text-sidebar-text">{schoolName || "School workspace"}</p>
-          <span className="mt-2 inline-flex items-center rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-text">
+        <div className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-text-faint">Workspace</p>
+          <p className="mt-1 truncate text-[13px] font-semibold text-text">{schoolName || "School workspace"}</p>
+          <span className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
             {roleLabels[role] || "Workspace"}
           </span>
         </div>
@@ -138,7 +108,7 @@ export default function SidebarContent({
         {groups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-sidebar-text/55">{group.label}</p>
+              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-text-faint">{group.label}</p>
             )}
             <div className="space-y-1">
               {group.items.map((item) => {
@@ -158,7 +128,7 @@ export default function SidebarContent({
                       "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
                       isActive
                         ? "bg-primary text-white shadow-sm"
-                        : "text-sidebar-text/72 hover:bg-white/10 hover:text-sidebar-text",
+                        : "text-text-soft hover:bg-surface-muted hover:text-text",
                       collapsed && "justify-center px-2"
                     )}
                   >
@@ -179,8 +149,8 @@ export default function SidebarContent({
       </nav>
 
       {!collapsed && (
-        <div className="shrink-0 border-t border-white/10 p-2.5">
-          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] text-sidebar-text/65">
+        <div className="shrink-0 border-t border-border/60 p-2.5">
+          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] text-text-muted">
             <HelpCircle className="h-4 w-4" />
             Help & Support
           </div>

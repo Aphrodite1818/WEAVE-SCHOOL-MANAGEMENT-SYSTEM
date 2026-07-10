@@ -18,7 +18,7 @@ import WorkspaceSearch from "./WorkspaceSearch";
 import { announcementPaths, roleLabels, workspaceSearchRoles } from "./navConfig";
 
 const headerIconButtonClass =
-  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-header-border/60 bg-header-surface/90 text-header-muted shadow-[0_10px_24px_rgba(15,23,42,0.12)] transition hover:bg-header-surface-hover hover:text-header-text sm:h-10 sm:w-10";
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface/90 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text sm:h-10 sm:w-10";
 
 function notificationTimestamp(value) {
   if (!value) return "";
@@ -84,7 +84,7 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
   };
 
   return (
-    <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-header-border bg-header/95 pt-[env(safe-area-inset-top)] text-header-text backdrop-blur-md">
+    <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-border bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur-md">
       <div className="mx-auto flex h-[3.75rem] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:gap-2 sm:px-5 md:h-16 lg:px-8">
         <button
           type="button"
@@ -96,8 +96,8 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
         </button>
 
         <div className="min-w-0 flex-1">
-          <p className="hidden truncate text-[10px] font-bold uppercase tracking-[0.12em] text-header-muted sm:block sm:text-xs">Learnly AI</p>
-          <p className="truncate text-xs font-semibold text-header-text sm:text-lg">{schoolName || roleLabels[role] || "Workspace"}</p>
+          <p className="hidden truncate text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted sm:block sm:text-xs">Learnly AI</p>
+          <p className="truncate text-xs font-semibold text-text sm:text-lg">{schoolName || roleLabels[role] || "Workspace"}</p>
         </div>
 
         {canSearchWorkspace && (
@@ -153,13 +153,13 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
             align="right"
             className="w-72 max-w-[calc(100vw-1rem)]"
             trigger={
-              <button type="button" className="flex h-10 items-center gap-2 rounded-full border border-header-border/60 bg-header-surface/90 px-2 py-1 text-header-muted shadow-[0_10px_24px_rgba(15,23,42,0.12)] transition hover:bg-header-surface-hover hover:text-header-text">
+              <button type="button" className="flex h-10 items-center gap-2 rounded-full bg-surface/90 px-2 py-1 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text">
                 <Avatar src={avatarSrc} name={userName} size="sm" />
                 <span className="hidden max-w-[10rem] flex-col items-start leading-tight sm:flex">
-                  <span className="max-w-full truncate text-sm font-semibold text-header-text">{userName}</span>
-                  {showPlanBadge ? <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-header-muted">{formatPlanName(planCode)}</span> : null}
+                  <span className="max-w-full truncate text-sm font-semibold text-text">{userName}</span>
+                  {showPlanBadge ? <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">{formatPlanName(planCode)}</span> : null}
                 </span>
-                <ChevronDown className="h-4 w-4 text-header-muted" />
+                <ChevronDown className="h-4 w-4 text-text-muted" />
               </button>
             }
           >
@@ -184,7 +184,7 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
         </div>
       </div>
       {canSearchWorkspace ? (
-        <div className="border-t border-header-border/70 px-3 py-2 md:hidden">
+        <div className="border-t border-border/60 px-3 py-2 md:hidden">
           <WorkspaceSearch role={role} />
         </div>
       ) : null}

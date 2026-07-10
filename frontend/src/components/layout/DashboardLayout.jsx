@@ -9,14 +9,8 @@ import {
 } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
-import {
-  TENANT_BRANDING_UPDATED_EVENT,
-  applyTenantBranding,
-  resetTenantBranding,
-} from "../../branding/tenantBranding";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { brandingService } from "../../services/brandingService";
 import { authSession } from "../../services/api";
 import { clearDashboardSessionCache } from "../../services/dashboardSessionCache";
 import { cn } from "../../utils/cn";
@@ -72,10 +66,6 @@ function blocksDrawerGesture(target) {
       "button, a, input, select, textarea, [role='button'], [data-mobile-drawer='true'], .chart-interactive-scroll"
     )
   );
-}
-
-function isTenantWorkspaceRole(role) {
-  return role === "admin" || role === "teacher" || role === "student" || role === "parent";
 }
 
 function DashboardShellFrame({
@@ -236,47 +226,8 @@ function DashboardShellFrame({
       ? "Release to refresh"
       : "Pull to refresh";
 
-  useEffect(() => {
-    let mounted = true;
-    const controller = new AbortController();
-    const shouldApplyTenantBranding = isTenantWorkspaceRole(role) && Boolean(user?.tenant_id);
-
-    async function loadTenantBranding() {
-      if (!shouldApplyTenantBranding) {
-        resetTenantBranding();
-        return;
-      }
-
-      try {
-        const response = await brandingService.getEffectiveBranding({
-          signal: controller.signal,
-        });
-        if (!mounted) return;
-        applyTenantBranding(response);
-      } catch {
-        if (!mounted) return;
-        resetTenantBranding();
-      }
-    }
-
-    loadTenantBranding();
-
-    const handleBrandingUpdated = () => {
-      loadTenantBranding();
-    };
-
-    window.addEventListener(TENANT_BRANDING_UPDATED_EVENT, handleBrandingUpdated);
-
-    return () => {
-      mounted = false;
-      controller.abort();
-      window.removeEventListener(TENANT_BRANDING_UPDATED_EVENT, handleBrandingUpdated);
-      resetTenantBranding();
-    };
-  }, [role, user?.tenant_id]);
-
   return (
-    <div className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-workspace text-text">
+    <div className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-background text-text">
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block",
