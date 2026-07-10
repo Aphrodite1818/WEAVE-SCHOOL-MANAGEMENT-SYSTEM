@@ -60,7 +60,6 @@ class ClassRoom(BaseModel):
         ),
         Index("ix_classes_tenant_teacher", "tenant_id", "teacher_id"),
         Index("ix_classes_tenant_active", "tenant_id", "is_active"),
-        Index("ix_classes_tenant_normalized_lookup", "tenant_id", "normalized_name", "normalized_arm"),
     )
 
 
