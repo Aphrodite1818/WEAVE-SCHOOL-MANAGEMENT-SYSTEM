@@ -27,21 +27,25 @@ const normalizeItems = (data, valueKey) =>
 function AnalyticsBarChart({
   data = [],
   title,
+  description,
   emptyMessage = "No chart data available yet.",
   labelKey = "label",
   valueKey = "value",
 }) {
   const items = normalizeItems(data, valueKey);
   const hasVisibleValues = items.some((item) => Number(item?.[valueKey]) > 0);
+  const useHorizontalBars = items.length > 5;
+  const chartHeight = useHorizontalBars ? Math.max(260, items.length * 42) : 260;
 
   return (
-    <div className="dashboard-chart-card">
+    <div className="dashboard-chart-card flex min-h-[22rem] flex-col overflow-hidden p-4 sm:p-5">
       <div>
         <h3 className="text-base font-semibold text-text">{title}</h3>
+        {description ? <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p> : null}
       </div>
 
       {items.length === 0 ? (
-        <div className="dashboard-chart-empty">
+        <div className="dashboard-chart-empty mt-5 flex min-h-[14rem] items-center justify-center rounded-2xl border border-dashed border-border bg-surface-muted/25 px-4 py-5 text-center text-sm text-text-muted">
           {emptyMessage}
         </div>
       ) : !hasVisibleValues ? (
@@ -59,19 +63,50 @@ function AnalyticsBarChart({
           ))}
         </div>
       ) : (
-        <div className="mt-5 min-h-0 flex-1">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={items} margin={{ left: 0, right: 12, top: 8, bottom: 24 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
-              <XAxis dataKey={labelKey} tickLine={false} axisLine={false} tickMargin={10} tickFormatter={formatChartLabel} angle={-30} textAnchor="end" height={84} />
-              <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
-              <Tooltip />
-              <Bar dataKey={valueKey} radius={[10, 10, 0, 0]}>
-                {items.map((item, index) => (
-                  <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
+        <div className="mt-5 min-h-0 flex-1 overflow-hidden rounded-2xl border border-border/50 bg-surface-muted/10 px-1 py-3 sm:px-2">
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            {useHorizontalBars ? (
+              <BarChart data={items} layout="vertical" margin={{ left: 8, right: 18, top: 8, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148, 163, 184, 0.25)" />
+                <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} width={36} />
+                <YAxis
+                  type="category"
+                  dataKey={labelKey}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  width={112}
+                  tickFormatter={formatChartLabel}
+                />
+                <Tooltip labelFormatter={formatChartLabel} />
+                <Bar dataKey={valueKey} radius={[0, 10, 10, 0]} barSize={18}>
+                  {items.map((item, index) => (
+                    <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            ) : (
+              <BarChart data={items} margin={{ left: 0, right: 12, top: 8, bottom: 18 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
+                <XAxis
+                  dataKey={labelKey}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={10}
+                  tickFormatter={formatChartLabel}
+                  interval={0}
+                  minTickGap={0}
+                  height={56}
+                />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
+                <Tooltip labelFormatter={formatChartLabel} />
+                <Bar dataKey={valueKey} radius={[10, 10, 0, 0]} maxBarSize={54}>
+                  {items.map((item, index) => (
+                    <Cell key={`${item?.[labelKey]}-${index}`} fill={CHART_BAR_COLORS[index % CHART_BAR_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
           </ResponsiveContainer>
         </div>
       )}
