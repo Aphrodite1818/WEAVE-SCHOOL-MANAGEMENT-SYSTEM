@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
 import AuthLayout from "../../components/layout/AuthLayout";
@@ -45,6 +45,17 @@ function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!retryAfterSeconds) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setRetryAfterSeconds((currentValue) => Math.max(currentValue - 1, 0));
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [retryAfterSeconds]);
 
   const redirectToVerification = (identifier, notice, purpose = "verification", redirectTo = "/verify-otp") => {
     if (!identifier) return;
@@ -64,6 +75,8 @@ function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (retryAfterSeconds > 0) return;
+
     setIsLoading(true);
     setError(null);
     setFieldErrors({});
@@ -98,11 +111,20 @@ function LoginPage() {
         );
         return;
       }
-      setError(apiError.message);
+
+      const retryAfter = Number(apiError.retryAfter || 0);
+      if (apiError.status === 429 && Number.isFinite(retryAfter) && retryAfter > 0) {
+        setRetryAfterSeconds(Math.ceil(retryAfter));
+        setError(`${apiError.message} Try again in ${Math.ceil(retryAfter)} seconds.`);
+      } else {
+        setError(apiError.message);
+      }
     } finally {
       setIsLoading(false);
     }
   };
+
+  const submitDisabled = isLoading || retryAfterSeconds > 0;
 
   return (
     <AuthLayout
@@ -135,8 +157,8 @@ function LoginPage() {
             Forgot password?
           </Link>
         </div>
-        <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading ? "Logging in..." : "Log in to workspace"}
+        <Button type="submit" className="w-full" disabled={submitDisabled}>
+          {isLoading ? "Logging in..." : retryAfterSeconds > 0 ? `Try again in ${retryAfterSeconds}s` : "Log in to workspace"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>
