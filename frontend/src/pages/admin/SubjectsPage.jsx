@@ -1,34 +1,25 @@
-import { useMemo } from "react";
+import { Link } from "react-router-dom";
+
+import Button from "../../components/ui/Button";
 import ResourceModulePage from "../shared/ResourceModulePage";
-import { subjectResourceConfig } from "../shared/resourceConfigs";
-import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { formatUsageValue } from "../../features/subscriptions/subscriptionConfig";
+import { subjectReadOnlyResourceConfig } from "../shared/resourceConfigs";
 
 function SubjectsPage() {
-  const { getResourceGuard } = useSubscription();
-  const subjectGuard = getResourceGuard("subjects", {
-    featureCode: "academic_setup",
-  });
-  const config = useMemo(
-    () => ({
-      ...subjectResourceConfig,
-      canCreate: subjectResourceConfig.canCreate && subjectGuard.allowed,
-    }),
-    [subjectGuard.allowed]
-  );
-
   return (
     <ResourceModulePage
       role="admin"
       title="Subjects"
-      description="Maintain the subject catalog used by classes, teachers, exams, and results."
-      config={config}
+      description="View the subject catalog. Create or edit subjects from Academic Hub so academic setup stays centralized."
+      config={subjectReadOnlyResourceConfig}
+      actions={
+        <Link to="/admin/academic/setup">
+          <Button>Open Academic Hub</Button>
+        </Link>
+      }
       notice={
-        !subjectGuard.allowed ? (
-          <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
-            {subjectGuard.reason} Current usage: {formatUsageValue(subjectGuard.usage)}.
-          </div>
-        ) : null
+        <div className="rounded-2xl border border-primary/20 bg-primary-soft/60 px-4 py-3 text-sm font-medium text-primary">
+          This page is view-only. Subject creation and editing now live in Academic Hub.
+        </div>
       }
     />
   );
