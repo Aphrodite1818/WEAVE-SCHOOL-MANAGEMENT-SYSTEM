@@ -1,34 +1,27 @@
-import { useMemo } from "react";
+import { Link } from "react-router-dom";
+
 import ResourceModulePage from "../shared/ResourceModulePage";
 import { getClassResourceConfig } from "../shared/resourceConfigs";
-import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { formatUsageValue } from "../../features/subscriptions/subscriptionConfig";
+import Button from "../../components/ui/Button";
 
 function ClassesPage() {
-  const { getResourceGuard } = useSubscription();
-  const classGuard = getResourceGuard("classes", {
-    featureCode: "academic_setup",
-  });
-  const config = useMemo(() => {
-    const baseConfig = getClassResourceConfig({ role: "admin", writable: true });
-    return {
-      ...baseConfig,
-      canCreate: baseConfig.canCreate && classGuard.allowed,
-    };
-  }, [classGuard.allowed]);
+  const config = getClassResourceConfig({ role: "admin", writable: false });
 
   return (
     <ResourceModulePage
       role="admin"
       title="Classes"
-      description="Organize classes, arms, class teachers, and academic groupings."
+      description="View classes and arms. Create or edit classes from Academic Hub so setup stays in one place."
       config={config}
+      actions={
+        <Link to="/admin/academic/class-subjects">
+          <Button>Open Academic Hub</Button>
+        </Link>
+      }
       notice={
-        !classGuard.allowed ? (
-          <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
-            {classGuard.reason} Current usage: {formatUsageValue(classGuard.usage)}.
-          </div>
-        ) : null
+        <div className="rounded-2xl border border-primary/20 bg-primary-soft/60 px-4 py-3 text-sm font-medium text-primary">
+          This page is view-only. Class creation, editing, and subject attachment now live in Academic Hub.
+        </div>
       }
     />
   );
