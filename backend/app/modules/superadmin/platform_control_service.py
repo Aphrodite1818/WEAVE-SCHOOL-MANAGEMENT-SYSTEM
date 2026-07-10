@@ -11,6 +11,7 @@ from app.core.exceptions import BadRequestException, PlatformMaintenanceExceptio
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.superadmin.models import PlatformControl, SuperAdmin
 from app.modules.superadmin.schemas import PlatformLockdownRequest, PlatformUnlockRequest
+from app.modules.superadmin.security_alert_service import SecurityAlertService
 
 
 PLATFORM_LOCKDOWN_CACHE_KEY = "platform:control:lockdown"
@@ -148,6 +149,11 @@ class PlatformControlService:
         await db.commit()
         await db.refresh(control)
         await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
+        await SecurityAlertService.notify_platform_lockdown_change(
+            enabled=True,
+            superadmin_id=current_superadmin.id,
+            reason=payload.reason,
+        )
         return control
 
     @classmethod
@@ -173,4 +179,9 @@ class PlatformControlService:
         await db.commit()
         await db.refresh(control)
         await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
+        await SecurityAlertService.notify_platform_lockdown_change(
+            enabled=False,
+            superadmin_id=current_superadmin.id,
+            reason=control.lockdown_reason,
+        )
         return control
