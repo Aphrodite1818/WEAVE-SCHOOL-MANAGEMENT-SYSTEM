@@ -28,6 +28,9 @@ import useTenantWorkspaceName from "./useTenantWorkspaceName";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
+const DRAWER_EDGE_WIDTH = 28;
+const DRAWER_OPEN_DISTANCE = 72;
+const DRAWER_VERTICAL_TOLERANCE = 70;
 
 function getDefaultPageMeta(role, onboardingModalEnabled = true) {
   return {
@@ -65,9 +68,11 @@ function DashboardShellFrame({
     window.localStorage.getItem("sidebarCollapsed") === "true"
   );
   const [pullDistance, setPullDistance] = useState(0);
+  const [drawerSwipeDistance, setDrawerSwipeDistance] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const mainRef = useRef(null);
   const pullStateRef = useRef({ tracking: false, startY: 0 });
+  const drawerSwipeRef = useRef({ tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
   const schoolName = useTenantWorkspaceName({ user, role });
   const aiAssistantGuard =
     role === "admin" && isTenantAdmin
@@ -92,28 +97,64 @@ function DashboardShellFrame({
     scrollDashboardViewportToTop("auto");
   }, [location.pathname]);
 
-  const handlePullStart = useCallback((event) => {
-    if (!isMobileViewport() || isPullRefreshing) return;
-    if ((mainRef.current?.scrollTop || 0) > 0) return;
+  const handleTouchStart = useCallback((event) => {
+    if (!isMobileViewport()) return;
 
     const touch = event.touches?.[0];
     if (!touch) return;
 
-    pullStateRef.current = { tracking: true, startY: touch.clientY };
-  }, [isPullRefreshing]);
+    if (!mobileNavOpen && touch.clientX <= DRAWER_EDGE_WIDTH) {
+      drawerSwipeRef.current = {
+        tracking: true,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        currentX: touch.clientX,
+        currentY: touch.clientY,
+      };
+      pullStateRef.current = { tracking: false, startY: 0 };
+      setPullDistance(0);
+      return;
+    }
 
-  const handlePullMove = useCallback((event) => {
+    if (isPullRefreshing) return;
+    if ((mainRef.current?.scrollTop || 0) > 0) return;
+
+    pullStateRef.current = { tracking: true, startY: touch.clientY };
+  }, [isPullRefreshing, mobileNavOpen]);
+
+  const handleTouchMove = useCallback((event) => {
+    if (!isMobileViewport()) return;
+
+    const touch = event.touches?.[0];
+    if (!touch) return;
+
+    const drawerState = drawerSwipeRef.current;
+    if (drawerState.tracking) {
+      const deltaX = Math.max(0, touch.clientX - drawerState.startX);
+      const deltaY = touch.clientY - drawerState.startY;
+
+      drawerSwipeRef.current = {
+        ...drawerState,
+        currentX: touch.clientX,
+        currentY: touch.clientY,
+      };
+
+      if (deltaX > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        event.preventDefault();
+        setDrawerSwipeDistance(Math.min(96, Math.round(deltaX * 0.62)));
+      }
+
+      return;
+    }
+
     const state = pullStateRef.current;
-    if (!state.tracking || !isMobileViewport() || isPullRefreshing) return;
+    if (!state.tracking || isPullRefreshing) return;
 
     if ((mainRef.current?.scrollTop || 0) > 0) {
       pullStateRef.current = { tracking: false, startY: 0 };
       setPullDistance(0);
       return;
     }
-
-    const touch = event.touches?.[0];
-    if (!touch) return;
 
     const delta = touch.clientY - state.startY;
     if (delta <= 0) {
@@ -125,7 +166,20 @@ function DashboardShellFrame({
     setPullDistance(Math.min(104, Math.round(delta * 0.46)));
   }, [isPullRefreshing]);
 
-  const handlePullEnd = useCallback(() => {
+  const handleTouchEnd = useCallback(() => {
+    const drawerState = drawerSwipeRef.current;
+    if (drawerState.tracking) {
+      const deltaX = drawerState.currentX - drawerState.startX;
+      const deltaY = drawerState.currentY - drawerState.startY;
+      const shouldOpenDrawer = deltaX >= DRAWER_OPEN_DISTANCE && Math.abs(deltaY) <= DRAWER_VERTICAL_TOLERANCE;
+
+      drawerSwipeRef.current = { tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+      setDrawerSwipeDistance(0);
+
+      if (shouldOpenDrawer) setMobileNavOpen(true);
+      return;
+    }
+
     const shouldRefresh = pullDistance >= PULL_REFRESH_THRESHOLD;
     pullStateRef.current = { tracking: false, startY: 0 };
 
@@ -140,6 +194,13 @@ function DashboardShellFrame({
     window.dispatchEvent(new CustomEvent("learnly:pull-refresh"));
     window.setTimeout(() => window.location.reload(), 220);
   }, [pullDistance]);
+
+  const handleTouchCancel = useCallback(() => {
+    pullStateRef.current = { tracking: false, startY: 0 };
+    drawerSwipeRef.current = { tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+    setPullDistance(0);
+    setDrawerSwipeDistance(0);
+  }, []);
 
   const profileCopy = onboardingModalCopy[role] || onboardingModalCopy.teacher;
   const pullRefreshLabel = isPullRefreshing
@@ -182,14 +243,16 @@ function DashboardShellFrame({
           id="dashboard-scroll-viewport"
           ref={mainRef}
           className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
-          onTouchStart={handlePullStart}
-          onTouchMove={handlePullMove}
-          onTouchEnd={handlePullEnd}
-          onTouchCancel={() => {
-            pullStateRef.current = { tracking: false, startY: 0 };
-            setPullDistance(0);
-          }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchCancel}
         >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-full bg-primary/80 transition-[width,opacity] duration-150 md:hidden"
+            style={{ width: drawerSwipeDistance ? `${Math.max(4, drawerSwipeDistance / 8)}px` : 0, height: drawerSwipeDistance ? "5rem" : 0, opacity: drawerSwipeDistance ? 1 : 0 }}
+          />
           <div
             className="pointer-events-none sticky top-0 z-20 flex justify-center overflow-hidden transition-[height,opacity] duration-150 md:hidden"
             style={{ height: pullDistance ? `${pullDistance}px` : 0, opacity: pullDistance ? 1 : 0 }}
