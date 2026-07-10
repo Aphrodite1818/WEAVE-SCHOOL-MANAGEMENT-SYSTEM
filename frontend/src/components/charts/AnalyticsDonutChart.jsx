@@ -1,6 +1,7 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import InteractiveChartShell from "./InteractiveChartShell";
 import { formatChartLabel } from "../../utils/academicDashboard";
+import { cn } from "../../utils/cn";
 
 const DEFAULT_COLORS = ["#0f766e", "#0ea5e9", "#f59e0b", "#ef4444", "#8b5cf6", "#3452DB"];
 const normalizeItems = (data, valueKey) =>
@@ -33,7 +34,12 @@ function AnalyticsDonutChart({
     const outerRadius = expanded ? 140 : 88;
 
     return (
-      <div className="chart-interactive-scroll mt-5 flex min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-border/50 bg-surface-muted/10 p-3 lg:flex-row lg:items-center">
+      <div
+        className={cn(
+          "chart-interactive-scroll mt-5 flex min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-border/50 bg-surface-muted/10 p-3",
+          expanded ? "xl:flex-row xl:items-center" : "",
+        )}
+      >
         <div className={`mx-auto w-full shrink-0 ${chartBoxSize}`}>
           {total > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
@@ -67,18 +73,23 @@ function AnalyticsDonutChart({
           )}
         </div>
 
-        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+        <div
+          className={cn(
+            "grid min-w-0 flex-1 gap-3",
+            expanded ? "sm:grid-cols-2 xl:min-w-[24rem]" : "sm:grid-cols-2",
+          )}
+        >
           {items.map((item, index) => (
             <div
               key={`${item?.[labelKey]}-${index}`}
               className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-3 py-2.5"
             >
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span
                   className="h-3 w-3 shrink-0 rounded-full"
                   style={{ backgroundColor: DEFAULT_COLORS[index % DEFAULT_COLORS.length] }}
                 />
-                <span className="break-words text-sm font-medium text-text">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-text" title={formatChartLabel(item?.[labelKey])}>
                   {formatChartLabel(item?.[labelKey])}
                 </span>
               </div>
