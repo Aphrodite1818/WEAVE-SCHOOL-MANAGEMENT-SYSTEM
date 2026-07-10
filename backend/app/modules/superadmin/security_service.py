@@ -22,12 +22,24 @@ class SuperadminSecurityService:
         return f"{actor} · {str(actor_id)[:8]}"
 
     @staticmethod
-    def _risk_tone(count: int) -> str:
-        if count <= 0:
-            return "success"
-        if count <= 2:
-            return "warning"
-        return "danger"
+    def _date_key(value: object) -> str:
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        return str(value)[:10]
+
+    @staticmethod
+    def _day_label(value: datetime) -> str:
+        return value.strftime("%a")
+
+    @staticmethod
+    def _risk_level(score: int) -> str:
+        if score >= 75:
+            return "critical"
+        if score >= 50:
+            return "elevated"
+        if score >= 25:
+            return "guarded"
+        return "calm"
 
     @staticmethod
     async def get_overview(db: AsyncSession) -> dict[str, object]:
@@ -37,6 +49,7 @@ class SuperadminSecurityService:
         last_24h = now - timedelta(hours=24)
         last_7d = now - timedelta(days=7)
         last_30d = now - timedelta(days=30)
+        daily_window = [last_7d + timedelta(days=offset) for offset in range(8)]
 
         active_sessions = (
             await db.execute(
@@ -65,6 +78,15 @@ class SuperadminSecurityService:
                 select(func.count()).select_from(AuthSession).where(
                     AuthSession.actor_type == AuthSessionActorType.SUPERADMIN,
                     AuthSession.created_at >= last_24h,
+                )
+            )
+        ).scalar_one()
+
+        distinct_login_ips_7d = (
+            await db.execute(
+                select(func.count(func.distinct(AuthSession.ip_address))).select_from(AuthSession).where(
+                    AuthSession.created_at >= last_7d,
+                    AuthSession.ip_address.is_not(None),
                 )
             )
         ).scalar_one()
@@ -138,7 +160,7 @@ class SuperadminSecurityService:
                 )
                 .group_by(AuthSession.ip_address)
                 .order_by(func.count(AuthSession.id).desc())
-                .limit(8)
+                .limit(10)
             )
         ).all()
 
@@ -159,12 +181,84 @@ class SuperadminSecurityService:
                 .group_by(AuthSession.actor_type, AuthSession.actor_id)
                 .having(distinct_ip_count >= 3)
                 .order_by(distinct_ip_count.desc(), func.count(AuthSession.id).desc())
-                .limit(8)
+                .limit(10)
             )
         ).all()
 
+        session_day_rows = (
+            await db.execute(
+                select(
+                    func.date_trunc("day", AuthSession.created_at).label("period"),
+                    func.count(AuthSession.id).label("value"),
+                )
+                .where(AuthSession.created_at >= last_7d)
+                .group_by(func.date_trunc("day", AuthSession.created_at))
+                .order_by(func.date_trunc("day", AuthSession.created_at))
+            )
+        ).all()
+
+        superadmin_day_rows = (
+            await db.execute(
+                select(
+                    func.date_trunc("day", AuthSession.created_at).label("period"),
+                    func.count(AuthSession.id).label("value"),
+                )
+                .where(
+                    AuthSession.created_at >= last_7d,
+                    AuthSession.actor_type == AuthSessionActorType.SUPERADMIN,
+                )
+                .group_by(func.date_trunc("day", AuthSession.created_at))
+                .order_by(func.date_trunc("day", AuthSession.created_at))
+            )
+        ).all()
+
+        reuse_day_rows = (
+            await db.execute(
+                select(
+                    func.date_trunc("day", AuthRefreshToken.reuse_detected_at).label("period"),
+                    func.count(AuthRefreshToken.id).label("value"),
+                )
+                .where(
+                    AuthRefreshToken.reuse_detected_at.is_not(None),
+                    AuthRefreshToken.reuse_detected_at >= last_7d,
+                )
+                .group_by(func.date_trunc("day", AuthRefreshToken.reuse_detected_at))
+                .order_by(func.date_trunc("day", AuthRefreshToken.reuse_detected_at))
+            )
+        ).all()
+
+        revoked_day_rows = (
+            await db.execute(
+                select(
+                    func.date_trunc("day", AuthSession.revoked_at).label("period"),
+                    func.count(AuthSession.id).label("value"),
+                )
+                .where(
+                    AuthSession.revoked_at.is_not(None),
+                    AuthSession.revoked_at >= last_7d,
+                )
+                .group_by(func.date_trunc("day", AuthSession.revoked_at))
+                .order_by(func.date_trunc("day", AuthSession.revoked_at))
+            )
+        ).all()
+
+        session_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in session_day_rows}
+        superadmin_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in superadmin_day_rows}
+        reuse_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in reuse_day_rows}
+        revoked_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in revoked_day_rows}
+
         unusual_login_signals = len(unusual_rows)
         security_event_count = int(compromised_sessions or 0) + int(refresh_reuse_last_7d or 0) + unusual_login_signals
+        platform_risk_score = min(
+            100,
+            int(compromised_sessions or 0) * 35
+            + int(refresh_reuse_last_7d or 0) * 25
+            + unusual_login_signals * 12
+            + int(inactive_superadmins or 0) * 4
+            + int(stale_superadmins or 0) * 3,
+        )
+        risk_level = SuperadminSecurityService._risk_level(platform_risk_score)
+        session_pressure_score = min(100, int(sessions_last_24h or 0) * 4 + int(distinct_login_ips_7d or 0) * 3)
 
         findings: list[dict[str, object]] = []
         if compromised_sessions:
@@ -180,7 +274,7 @@ class SuperadminSecurityService:
             findings.append(
                 {
                     "title": "Refresh-token reuse detected",
-                    "description": "A reused refresh token can indicate token theft or duplicated sessions.",
+                    "description": "A reused refresh token can indicate token theft, replay, or duplicated session state.",
                     "severity": "danger",
                     "value": int(refresh_reuse_last_7d),
                 }
@@ -197,8 +291,8 @@ class SuperadminSecurityService:
         if never_logged_in_superadmins:
             findings.append(
                 {
-                    "title": "Unused superadmin invites/accounts",
-                    "description": "Superadmin accounts that have never logged in should be reviewed.",
+                    "title": "Unused superadmin accounts",
+                    "description": "Superadmin accounts that have never logged in should be reviewed or revoked.",
                     "severity": "warning",
                     "value": int(never_logged_in_superadmins),
                 }
@@ -219,6 +313,7 @@ class SuperadminSecurityService:
                 "sessions_last_24h": int(sessions_last_24h or 0),
                 "sessions_last_7d": int(sessions_last_7d or 0),
                 "superadmin_sessions_last_24h": int(superadmin_sessions_last_24h or 0),
+                "distinct_login_ips_7d": int(distinct_login_ips_7d or 0),
                 "compromised_sessions": int(compromised_sessions or 0),
                 "refresh_reuse_last_7d": int(refresh_reuse_last_7d or 0),
                 "revoked_sessions_last_7d": int(revoked_sessions_last_7d or 0),
@@ -227,13 +322,55 @@ class SuperadminSecurityService:
                 "never_logged_in_superadmins": int(never_logged_in_superadmins or 0),
                 "stale_superadmins": int(stale_superadmins or 0),
                 "security_event_count": security_event_count,
+                "platform_risk_score": platform_risk_score,
+                "risk_level": risk_level,
+                "session_pressure_score": session_pressure_score,
             },
             "charts": {
+                "session_velocity_7d": [
+                    {
+                        "label": SuperadminSecurityService._day_label(day),
+                        "fullLabel": day.strftime("%Y-%m-%d"),
+                        "value": session_day_map.get(day.date().isoformat(), 0),
+                    }
+                    for day in daily_window
+                ],
+                "superadmin_session_velocity_7d": [
+                    {
+                        "label": SuperadminSecurityService._day_label(day),
+                        "fullLabel": day.strftime("%Y-%m-%d"),
+                        "value": superadmin_day_map.get(day.date().isoformat(), 0),
+                    }
+                    for day in daily_window
+                ],
+                "token_reuse_trend_7d": [
+                    {
+                        "label": SuperadminSecurityService._day_label(day),
+                        "fullLabel": day.strftime("%Y-%m-%d"),
+                        "value": reuse_day_map.get(day.date().isoformat(), 0),
+                    }
+                    for day in daily_window
+                ],
+                "revoked_session_trend_7d": [
+                    {
+                        "label": SuperadminSecurityService._day_label(day),
+                        "fullLabel": day.strftime("%Y-%m-%d"),
+                        "value": revoked_day_map.get(day.date().isoformat(), 0),
+                    }
+                    for day in daily_window
+                ],
                 "security_session_mix": [
                     {"label": "active_sessions", "value": int(active_sessions or 0)},
                     {"label": "revoked_7d", "value": int(revoked_sessions_last_7d or 0)},
                     {"label": "compromised", "value": int(compromised_sessions or 0)},
                     {"label": "token_reuse_7d", "value": int(refresh_reuse_last_7d or 0)},
+                ],
+                "risk_vector": [
+                    {"label": "risk_score", "value": platform_risk_score},
+                    {"label": "session_pressure", "value": session_pressure_score},
+                    {"label": "unusual_login_spread", "value": min(100, unusual_login_signals * 20)},
+                    {"label": "token_reuse_pressure", "value": min(100, int(refresh_reuse_last_7d or 0) * 25)},
+                    {"label": "admin_staleness", "value": min(100, int(stale_superadmins or 0) * 20)},
                 ],
                 "sessions_by_actor_type_7d": [
                     {
