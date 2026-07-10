@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
+    Index,
     String,
     Text,
     UUID,
@@ -90,12 +91,18 @@ class AnnouncementReadStatus(str, PyEnum):
     ACKNOWLEDGED = "acknowledged"
 
 
-
-
-
-
 class Announcement(BaseModel):
     __tablename__ = "announcements"
+
+    __table_args__ = (
+        Index(
+            "ix_announcements_tenant_status_feed",
+            "tenant_id",
+            "status",
+            "is_pinned",
+            "created_at",
+        ),
+    )
 
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
@@ -174,10 +181,6 @@ class Announcement(BaseModel):
     )
 
 
-
-
-
-
 class AnnouncementTarget(BaseModel):
     __tablename__ = "announcement_targets"
 
@@ -249,9 +252,6 @@ class AnnouncementTarget(BaseModel):
     )
 
 
-
-
-
 class AnnouncementRead(BaseModel):
     __tablename__ = "announcement_reads"
 
@@ -262,6 +262,13 @@ class AnnouncementRead(BaseModel):
             "actor_type",
             "actor_id",
             name="uq_announcement_read_actor",
+        ),
+        Index(
+            "ix_announcement_reads_actor_status",
+            "tenant_id",
+            "actor_type",
+            "actor_id",
+            "status",
         ),
     )
 
