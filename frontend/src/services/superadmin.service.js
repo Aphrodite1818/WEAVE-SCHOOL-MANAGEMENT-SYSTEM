@@ -18,6 +18,23 @@ export const superadminService = {
 
   getSecurityOverview: (requestOptions) => api.get("/superadmin/security/overview", requestOptions),
 
+  getSecurityIPBlocks: (includeInactive = false, limit = 50, requestOptions) =>
+    api.get(
+      `/superadmin/security/ip-blocks${buildQuery({
+        include_inactive: includeInactive,
+        limit,
+      })}`,
+      requestOptions
+    ),
+
+  createSecurityIPBlock: (data) => api.post("/superadmin/security/ip-blocks", data),
+
+  unblockSecurityIP: (blockId, data) => api.post(`/superadmin/security/ip-blocks/${blockId}/unblock`, data),
+
+  revokeIPSessions: (data) => api.post("/superadmin/security/revoke-ip-sessions", data),
+
+  revokeActorSessions: (data) => api.post("/superadmin/security/revoke-actor-sessions", data),
+
   getPlatformControl: (requestOptions) => api.get("/superadmin/platform-control", requestOptions),
 
   enablePlatformLockdown: (data) => api.post("/superadmin/platform-control/lockdown", data),
