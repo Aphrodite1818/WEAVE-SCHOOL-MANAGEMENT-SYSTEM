@@ -85,6 +85,41 @@ function SuperadminAnalyticsPage() {
   const distinctIps = metricNumber(stats.distinct_login_ips_7d);
   const tokenReuse = metricNumber(stats.refresh_reuse_last_7d);
   const unusualSignals = metricNumber(stats.unusual_login_signals);
+  const sessionPressure = metricNumber(stats.session_pressure_score);
+  const staleSuperadmins = metricNumber(stats.stale_superadmins);
+
+  const riskIndicators = [
+    {
+      label: "Platform risk",
+      description: `Current posture: ${riskLevel}`,
+      value: riskScore,
+      tone,
+    },
+    {
+      label: "Session pressure",
+      description: `${sessions24h} sessions in the last 24h from ${distinctIps} IPs`,
+      value: sessionPressure,
+      tone: riskTone(sessionPressure),
+    },
+    {
+      label: "Token reuse pressure",
+      description: `${tokenReuse} refresh-token reuse signals in 7 days`,
+      value: Math.min(100, tokenReuse * 25),
+      tone: tokenReuse > 0 ? "critical" : "calm",
+    },
+    {
+      label: "Unusual login spread",
+      description: `${unusualSignals} actors seen from multiple IPs`,
+      value: Math.min(100, unusualSignals * 20),
+      tone: unusualSignals > 0 ? "elevated" : "calm",
+    },
+    {
+      label: "Admin staleness",
+      description: `${staleSuperadmins} stale superadmin accounts`,
+      value: Math.min(100, staleSuperadmins * 20),
+      tone: staleSuperadmins > 0 ? "guarded" : "calm",
+    },
+  ];
 
   if (isLoading && !security && !error) {
     return (
@@ -130,7 +165,7 @@ function SuperadminAnalyticsPage() {
                   Platform threat telemetry, session physics, and access-control posture.
                 </h2>
                 <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-300 sm:text-base">
-                  This page is the superadmin analytics deck: auth-session velocity, token reuse pressure, IP concentration, actor surface area, and operator-account drift.
+                  Critical findings now stay above the fold so compromised sessions, token reuse, and unusual login spread are visible immediately.
                 </p>
               </div>
 
@@ -140,21 +175,15 @@ function SuperadminAnalyticsPage() {
                   <span className="text-6xl font-semibold tracking-tight">{riskScore}</span>
                   <span className="pb-2 text-lg font-semibold text-slate-300">/100</span>
                 </div>
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all",
-                      tone === "critical" && "bg-red-400",
-                      tone === "elevated" && "bg-orange-300",
-                      tone === "guarded" && "bg-amber-300",
-                      tone === "calm" && "bg-emerald-300",
-                    )}
-                    style={{ width: `${Math.min(Math.max(riskScore, 0), 100)}%` }}
-                  />
-                </div>
+                <RiskBar value={riskScore} tone={tone} className="mt-4" />
                 <p className="mt-3 text-sm font-semibold capitalize text-slate-200">Current posture: {riskLevel}</p>
               </div>
             </div>
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(320px,0.82fr)_minmax(0,1fr)]">
+            <ThreatFindingsCard findings={findings} />
+            <RiskIndicatorsCard indicators={riskIndicators} />
           </section>
 
           <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-6">
@@ -229,52 +258,115 @@ function SuperadminAnalyticsPage() {
             />
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+          <section>
             <AnalyticsBarChart
               title="Unusual login spread"
               description="Actors seen from three or more IP addresses within seven days."
               data={chartData(charts, "unusual_login_signals")}
               emptyMessage="No unusual actor/IP spread detected."
             />
-            <Card className="overflow-hidden border-slate-800 bg-slate-950 p-4 text-white sm:p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200">
-                  <LockKeyhole className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold">Threat findings</h2>
-                  <p className="text-sm text-slate-400">Prioritized items from the platform security model.</p>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-3">
-                {findings.map((finding, index) => {
-                  const FindingIcon = severityIcon(finding.severity);
-                  return (
-                    <div key={`${finding.title}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-cyan-100">
-                          <FindingIcon className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-white">{finding.title}</p>
-                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-300">
-                              {finding.severity || "signal"}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-sm leading-6 text-slate-400">{finding.description}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
           </section>
         </>
       ) : null}
     </DashboardLayout>
+  );
+}
+
+function ThreatFindingsCard({ findings }) {
+  return (
+    <Card className="overflow-hidden border-slate-800 bg-slate-950 p-4 text-white sm:p-6">
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-400/15 text-red-100">
+          <LockKeyhole className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold">Threat findings</h2>
+          <p className="text-sm text-slate-400">Highest-priority items from platform security telemetry.</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3">
+        {findings.map((finding, index) => {
+          const FindingIcon = severityIcon(finding.severity);
+          return (
+            <div key={`${finding.title}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-cyan-100">
+                  <FindingIcon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-white">{finding.title}</p>
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-300">
+                      {finding.severity || "signal"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-slate-400">{finding.description}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function RiskIndicatorsCard({ indicators }) {
+  return (
+    <Card className="p-4 sm:p-6">
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+          <Radar className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-text">Risk indicators</h2>
+          <p className="text-sm text-text-muted">Progress-bar style risk view for fast triage.</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4">
+        {indicators.map((indicator) => (
+          <ProgressRiskRow key={indicator.label} {...indicator} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function ProgressRiskRow({ label, description, value, tone }) {
+  const normalizedValue = Math.min(Math.max(metricNumber(value), 0), 100);
+
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-text">{label}</p>
+          <p className="mt-0.5 text-xs leading-5 text-text-muted">{description}</p>
+        </div>
+        <span className="rounded-full border border-border bg-surface-muted/40 px-2.5 py-1 text-xs font-bold text-text-soft">
+          {normalizedValue}/100
+        </span>
+      </div>
+      <RiskBar value={normalizedValue} tone={tone} className="mt-2" />
+    </div>
+  );
+}
+
+function RiskBar({ value, tone, className = "" }) {
+  return (
+    <div className={cn("h-2.5 overflow-hidden rounded-full bg-slate-200/70 dark:bg-white/10", className)}>
+      <div
+        className={cn(
+          "h-full rounded-full transition-all",
+          tone === "critical" && "bg-red-500",
+          tone === "elevated" && "bg-orange-400",
+          tone === "guarded" && "bg-amber-400",
+          tone === "calm" && "bg-emerald-400",
+        )}
+        style={{ width: `${Math.min(Math.max(metricNumber(value), 0), 100)}%` }}
+      />
+    </div>
   );
 }
 
