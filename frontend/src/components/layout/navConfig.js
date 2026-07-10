@@ -170,13 +170,18 @@ export const navGroups = {
   ],
   superadmin: [
     {
+      label: "Command",
+      items: [
+        { label: "Mission Control", to: "/superadmin/dashboard", icon: Home },
+        { label: "Security Analytics", to: "/superadmin/analytics", icon: BarChart3 },
+        { label: "Verification", to: "/superadmin/verification", icon: Shield },
+        { label: "Activity", to: "/superadmin/activity", icon: Activity },
+      ],
+    },
+    {
       label: "Platform",
       items: [
-        { label: "Dashboard", to: "/superadmin/dashboard", icon: Home },
-        { label: "Tenants", to: "/superadmin/dashboard", icon: Library },
         { label: "Announcements", to: "/superadmin/announcements", icon: FileText },
-        { label: "Verification", to: "/superadmin/verification", icon: Shield },
-        { label: "Activity", to: "/superadmin/activity", icon: BarChart3 },
         { label: "Settings", to: "/superadmin/settings", icon: Settings },
       ],
     },
