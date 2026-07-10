@@ -5,12 +5,15 @@ import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
+import MediaImageUploader from "../../components/media/MediaImageUploader";
 import StudentAccessCodeSlipModal from "../../components/students/StudentAccessCodeSlipModal";
 import { classService } from "../../services/academicsService";
 import { parseApiError } from "../../services/api";
+import { mediaService } from "../../services/mediaService";
 import { studentService } from "../../services/studentService";
 import { useToast } from "../../hooks/useToast";
-import { displayName } from "../../utils/user";
+import { cn } from "../../utils/cn";
+import { displayName, getAvatarSrcFromRecord, getUserInitials } from "../../utils/user";
 
 const STUDENT_STATUSES = ["active", "withdrawn", "suspended", "graduated"];
 const GENDER_OPTIONS = ["male", "female"];
@@ -90,6 +93,25 @@ function statusBadge(value, variant = "default") {
   return <Badge variant={variant}>{titleCase(value || "unknown")}</Badge>;
 }
 
+function StudentIdentityCell({ student }) {
+  const avatarSrc = getAvatarSrcFromRecord(student);
+  const label = displayName(student);
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-primary-soft text-sm font-black text-primary",
+          avatarSrc ? "bg-surface" : ""
+        )}
+      >
+        {avatarSrc ? <img src={avatarSrc} alt="" className="h-full w-full object-cover" /> : getUserInitials(student)}
+      </span>
+      <span className="min-w-0 truncate font-semibold text-text">{label}</span>
+    </div>
+  );
+}
+
 function buildResetNotice(student) {
   const accessCode = student?.setup_code || student?.access_code;
   if (!student || !accessCode) return null;
@@ -160,6 +182,30 @@ function StudentDirectoryPage() {
     setEditingStudent(null);
     setFormData(INITIAL_EDIT_FORM);
     setFieldErrors({});
+  };
+
+  const patchStudentPhoto = (studentId, nextPhotoUrl) => {
+    setStudents((current) =>
+      current.map((student) =>
+        student.id === studentId ? { ...student, passport_photo_url: nextPhotoUrl || null } : student
+      )
+    );
+    setEditingStudent((current) =>
+      current?.id === studentId ? { ...current, passport_photo_url: nextPhotoUrl || null } : current
+    );
+  };
+
+  const handleStudentPassportUploaded = (response) => {
+    if (!editingStudent?.id) return;
+    const nextPhotoUrl = mediaService.resolveMediaRenderUrl(response);
+    patchStudentPhoto(editingStudent.id, nextPhotoUrl);
+    showSuccess("Student passport photo updated successfully.");
+  };
+
+  const handleStudentPassportDeleted = () => {
+    if (!editingStudent?.id) return;
+    patchStudentPhoto(editingStudent.id, null);
+    showSuccess("Student passport photo removed successfully.");
   };
 
   const handleFormChange = (event) => {
@@ -285,6 +331,22 @@ function StudentDirectoryPage() {
               Update school-managed student details. New students should be created from the Create User page.
             </p>
 
+            <div className="mt-5">
+              <MediaImageUploader
+                title="Student passport photo"
+                description="Upload a clean student passport image for records and profile previews."
+                variant="avatar"
+                currentImageUrl={getAvatarSrcFromRecord(editingStudent)}
+                fallbackLabel={displayName(editingStudent)}
+                maxSizeBytes={2 * 1024 * 1024}
+                maxSizeLabel="2 MB"
+                onUpload={(file) => mediaService.uploadStudentPassport(editingStudent.id, file)}
+                onDelete={() => mediaService.deleteStudentPassport(editingStudent.id, { deleteObject: false })}
+                onUploaded={handleStudentPassportUploaded}
+                onDeleted={handleStudentPassportDeleted}
+              />
+            </div>
+
             <form onSubmit={handleSubmit} className="mt-5 space-y-4">
               <Input label="First name" name="first_name" value={formData.first_name} onChange={handleFormChange} error={fieldErrors.first_name} required />
               <Input label="Last name" name="last_name" value={formData.last_name} onChange={handleFormChange} error={fieldErrors.last_name} required />
@@ -358,7 +420,7 @@ function StudentDirectoryPage() {
                 ) : (
                   students.map((student) => (
                     <tr key={student.id}>
-                      <td data-label="Full Name"><span>{displayName(student)}</span></td>
+                      <td data-label="Full Name"><StudentIdentityCell student={student} /></td>
                       <td data-label="Admission Number"><span>{optionalValue(student.admission_number, "Pending")}</span></td>
                       <td data-label="Admission Date"><span>{formatDateValue(student.admission_date)}</span></td>
                       <td data-label="Password Reset">
