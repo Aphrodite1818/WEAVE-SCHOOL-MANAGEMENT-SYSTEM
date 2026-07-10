@@ -6,8 +6,15 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import require_superadmin
 from app.core.utils.frontend_urls import resolve_frontend_app_url
-from app.modules.superadmin.models import SuperAdmin
-from app.modules.superadmin.schemas import SuperadminInviteCreate, SuperadminResponse
+from app.modules.superadmin.models import PlatformControl, SuperAdmin
+from app.modules.superadmin.platform_control_service import PlatformControlService
+from app.modules.superadmin.schemas import (
+    PlatformControlResponse,
+    PlatformLockdownRequest,
+    PlatformUnlockRequest,
+    SuperadminInviteCreate,
+    SuperadminResponse,
+)
 from app.modules.superadmin.security_service import SuperadminSecurityService
 from app.modules.superadmin.service import SuperadminService
 from app.tenant_management.models import Tenant
@@ -123,6 +130,46 @@ async def get_superadmin_security_overview(
     """Return security signals for the superadmin dashboard."""
 
     return await SuperadminSecurityService.get_overview(db)
+
+
+@router.get("/platform-control", response_model=PlatformControlResponse, status_code=status.HTTP_200_OK)
+async def get_platform_control(
+    db: DbSession,
+    current_superadmin: SuperadminActor,
+) -> dict[str, object]:
+    """Return the current emergency platform-control state."""
+
+    return await PlatformControlService.get_response(db)
+
+
+@router.post("/platform-control/lockdown", response_model=PlatformControlResponse, status_code=status.HTTP_200_OK)
+async def enable_platform_lockdown(
+    payload: PlatformLockdownRequest,
+    db: DbSession,
+    current_superadmin: SuperadminActor,
+) -> PlatformControl:
+    """Enable emergency platform lockdown for non-superadmin traffic."""
+
+    return await PlatformControlService.enable_lockdown(
+        db,
+        current_superadmin=current_superadmin,
+        payload=payload,
+    )
+
+
+@router.post("/platform-control/unlock", response_model=PlatformControlResponse, status_code=status.HTTP_200_OK)
+async def disable_platform_lockdown(
+    payload: PlatformUnlockRequest,
+    db: DbSession,
+    current_superadmin: SuperadminActor,
+) -> PlatformControl:
+    """Disable emergency platform lockdown."""
+
+    return await PlatformControlService.disable_lockdown(
+        db,
+        current_superadmin=current_superadmin,
+        payload=payload,
+    )
 
 
 @router.post("/superadmins/invite", status_code=status.HTTP_201_CREATED)
