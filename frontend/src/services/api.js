@@ -17,7 +17,9 @@ const REMEMBER_KEY = "auth_remember";
 const AUTH_REFRESH_ENDPOINT = "/auth/refresh";
 const AUTH_LOGOUT_ENDPOINT = "/auth/logout";
 const AUTH_LOGIN_ENDPOINT = "/auth/login";
+const MAINTENANCE_STORAGE_KEY = "learnly_platform_maintenance";
 export const NAVIGATION_ABORT_EVENT = "learnly:navigation-start";
+export const PLATFORM_MAINTENANCE_EVENT = "learnly:platform-maintenance";
 const DEFAULT_USER_SAFE_ERROR =
   "Something went wrong while processing your request. Please try again.";
 const NETWORK_ERROR_MESSAGE =
@@ -130,6 +132,8 @@ const getStatusFallbackMessage = (status, fallback) => {
       return "This request conflicts with existing data.";
     case 429:
       return "Too many requests. Please wait before trying again.";
+    case 503:
+      return "LearnlyAI is temporarily in maintenance mode. Please try again later.";
     default:
       return DEFAULT_USER_SAFE_ERROR;
   }
@@ -192,6 +196,10 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
       : "Please correct the highlighted fields and try again.";
   }
 
+  if (data?.maintenance_mode === true) {
+    return backendMessage || "LearnlyAI is temporarily in maintenance mode. Please try again later.";
+  }
+
   if (status >= 500) {
     return DEFAULT_USER_SAFE_ERROR;
   }
@@ -201,6 +209,42 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
   }
 
   return getStatusFallbackMessage(status, fallback);
+};
+
+const persistMaintenanceState = (data = {}) => {
+  if (data?.maintenance_mode !== true) return;
+
+  const payload = {
+    message:
+      normalizeDetail(data?.detail) ||
+      normalizeDetail(data?.message) ||
+      "LearnlyAI is temporarily in maintenance mode. Please try again later.",
+    reason: data?.maintenance_reason || null,
+    detectedAt: new Date().toISOString(),
+  };
+
+  sessionStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(payload));
+  window.dispatchEvent(new CustomEvent(PLATFORM_MAINTENANCE_EVENT, { detail: payload }));
+
+  if (window.location.pathname !== "/maintenance") {
+    window.location.assign("/maintenance");
+  }
+};
+
+export const getStoredMaintenanceState = () => {
+  const rawValue = sessionStorage.getItem(MAINTENANCE_STORAGE_KEY);
+  if (!rawValue) return null;
+
+  try {
+    return JSON.parse(rawValue);
+  } catch {
+    sessionStorage.removeItem(MAINTENANCE_STORAGE_KEY);
+    return null;
+  }
+};
+
+export const clearStoredMaintenanceState = () => {
+  sessionStorage.removeItem(MAINTENANCE_STORAGE_KEY);
 };
 
 export const authSession = {
@@ -285,6 +329,7 @@ export const parseApiError = (error, fallback) => {
       retryAfter: null,
       isNetworkError: false,
       isAbortError: true,
+      isMaintenanceMode: false,
       technicalMessage: error?.message || null,
     };
   }
@@ -297,6 +342,8 @@ export const parseApiError = (error, fallback) => {
       headers: {},
       retryAfter: null,
       isNetworkError: true,
+      isAbortError: false,
+      isMaintenanceMode: false,
       technicalMessage: error?.message || null,
     };
   }
@@ -314,6 +361,9 @@ export const parseApiError = (error, fallback) => {
     headers: safeHeaders,
     retryAfter: safeHeaders["retry-after"] || safeHeaders["Retry-After"] || null,
     isNetworkError: false,
+    isAbortError: false,
+    isMaintenanceMode: data?.maintenance_mode === true,
+    maintenanceReason: data?.maintenance_reason || null,
     technicalMessage: error?.message || null,
     data,
     ...verificationMetadata,
@@ -357,6 +407,9 @@ const refreshAccessToken = async () => {
         const responseHeaders = Object.fromEntries(response.headers.entries());
 
         if (!response.ok) {
+          if (response.status === 503 && data?.maintenance_mode === true) {
+            persistMaintenanceState(data);
+          }
           throw createApiError(response, data, responseHeaders);
         }
 
@@ -420,6 +473,10 @@ async function request(endpoint, options = {}, hasRetried = false) {
     const responseHeaders = Object.fromEntries(response.headers.entries());
 
     if (!response.ok) {
+      if (response.status === 503 && data?.maintenance_mode === true) {
+        persistMaintenanceState(data);
+      }
+
       const canAttemptRefresh =
         response.status === 401 &&
         auth &&
