@@ -10,9 +10,10 @@ const API_URL =
 
 export const API_BASE_URL = API_URL.replace(/\/$/, "");
 
-const TOKEN_KEY = "token";
+const LEGACY_TOKEN_KEY = "token";
 const USER_KEY = "auth_user";
 const ROLE_KEY = "auth_role";
+const REMEMBER_KEY = "auth_remember";
 const AUTH_REFRESH_ENDPOINT = "/auth/refresh";
 const AUTH_LOGOUT_ENDPOINT = "/auth/logout";
 const AUTH_LOGIN_ENDPOINT = "/auth/login";
@@ -25,6 +26,7 @@ const TECHNICAL_ERROR_PATTERN =
   /traceback|sql|sqlalchemy|asyncpg|psycopg|uuid|pydantic|stack trace|internal server error|syntax error/i;
 
 let refreshPromise = null;
+let memoryAccessToken = null;
 
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
@@ -71,7 +73,20 @@ const removeStoredValue = (key) => {
   sessionStorage.removeItem(key);
 };
 
-const getStoredRememberPreference = () => localStorage.getItem(TOKEN_KEY) !== null;
+// Remove old persisted access tokens from previous builds.
+// The refresh-token cookie is now the durable session source.
+removeStoredValue(LEGACY_TOKEN_KEY);
+
+const getStoredRememberPreference = () =>
+  localStorage.getItem(REMEMBER_KEY) === "true";
+
+const setStoredRememberPreference = (remember) => {
+  if (remember) {
+    localStorage.setItem(REMEMBER_KEY, "true");
+  } else {
+    localStorage.removeItem(REMEMBER_KEY);
+  }
+};
 
 const isRefreshManagedEndpoint = (endpoint) =>
   endpoint === AUTH_REFRESH_ENDPOINT ||
@@ -189,20 +204,26 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
 };
 
 export const authSession = {
-  getToken: () => getStoredValue(TOKEN_KEY),
+  getToken: () => memoryAccessToken,
 
   setToken: (token, { remember = true } = {}) => {
+    removeStoredValue(LEGACY_TOKEN_KEY);
+    setStoredRememberPreference(remember);
+
     if (!token) {
-      removeStoredValue(TOKEN_KEY);
+      memoryAccessToken = null;
       return;
     }
 
-    setStoredValue(TOKEN_KEY, token, { remember });
+    memoryAccessToken = token;
   },
 
   clearToken: () => {
-    removeStoredValue(TOKEN_KEY);
+    memoryAccessToken = null;
+    removeStoredValue(LEGACY_TOKEN_KEY);
   },
+
+  getRememberPreference: getStoredRememberPreference,
 
   getUser: () => {
     const rawValue = getStoredValue(USER_KEY);
