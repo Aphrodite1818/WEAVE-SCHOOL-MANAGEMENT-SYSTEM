@@ -5,32 +5,27 @@
 """Auth routes for login, refresh-token rotation, logout, OTP, and invites."""
 
 from __future__ import annotations
-from typing import Annotated
 
 from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
-from app.core.dependencies.route_guards import get_current_actor
-from app.modules.parents.models import Parent
-from app.modules.students.models import Student
-from app.modules.superadmin.models import SuperAdmin
-from app.modules.teachers.models import Teacher
-from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.repository import TenantRepository
 
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
+from app.core.dependencies.route_guards import get_current_actor
 from app.core.exceptions import UnauthorizedException
+from app.core.rate_limits.auth_rate_limits import AuthRateLimitService
 from app.modules.auth.schemas import (
     LoginRequest,
     LoginSessionUser,
     RequestOTP,
+    SessionBootstrapResponse,
     TenantActivationRequest,
     Token,
     UpdatePassword,
     UserInviteAcceptanceRequest,
     VerifyOTP,
-    SessionBootstrapResponse
 )
 from app.modules.auth.service import (
     AuthService,
@@ -39,12 +34,23 @@ from app.modules.auth.service import (
     TenantActivationService,
     UserInviteService,
 )
+from app.modules.parents.models import Parent
+from app.modules.students.models import Student
+from app.modules.superadmin.models import SuperAdmin
+from app.modules.teachers.models import Teacher
+from app.modules.tenant_admins.models import TenantAdmin
+from app.tenant_management.repository import TenantRepository
 
 
 router = APIRouter()
 
 REFRESH_TOKEN_COOKIE_NAME = "learnly_refresh_token"
 REFRESH_COOKIE_PATH = f"{settings.API_V1_PREFIX}/auth"
+
+CurrentActorDependency = Annotated[
+    SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+    Depends(get_current_actor),
+]
 
 
 def _refresh_cookie_secure() -> bool:
@@ -100,16 +106,6 @@ def _delete_refresh_token_cookie(response: Response) -> None:
     )
 
 
-
-
-
-
-CurrentActorDependency = Annotated[
-    SuperAdmin | TenantAdmin | Teacher | Parent | Student,
-    Depends(get_current_actor),
-]
-
-
 def _client_ip(request: Request) -> str | None:
     """Return the best client IP available behind a proxy/load balancer."""
 
@@ -118,6 +114,16 @@ def _client_ip(request: Request) -> str | None:
         return forwarded_for.split(",")[0].strip() or None
 
     return request.client.host if request.client else None
+
+
+def _enum_value(value: object | None) -> str | None:
+    """Return a stable string value for enum-like values."""
+
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return getattr(value, "value", str(value))
 
 
 def _actor_type_and_role(
@@ -177,12 +183,7 @@ async def _build_session_bootstrap_response(
         account_type=actor_type,
         role=role,
         password_reset_required=getattr(actor, "password_reset_required", None),
-        profile_status=(
-            getattr(getattr(actor, "profile_status", None), "value", None)
-            or str(getattr(actor, "profile_status", ""))
-            if getattr(actor, "profile_status", None) is not None
-            else None
-        ),
+        profile_status=_enum_value(getattr(actor, "profile_status", None)),
     )
 
     return SessionBootstrapResponse(
@@ -220,17 +221,36 @@ async def login(
 ) -> LoginResponse:
     """Authenticate an actor and create a persistent refresh-token session."""
 
-    actor = await AuthService.authenticate_actor(
-        db,
-        payload,
-        background_tasks=background_tasks,
+    client_ip = _client_ip(request)
+
+    await AuthRateLimitService.check_login_allowed(
+        identifier=payload.identifier,
+        ip_address=client_ip,
+    )
+
+    try:
+        actor = await AuthService.authenticate_actor(
+            db,
+            payload,
+            background_tasks=background_tasks,
+        )
+    except UnauthorizedException:
+        await AuthRateLimitService.record_failed_login(
+            identifier=payload.identifier,
+            ip_address=client_ip,
+        )
+        raise
+
+    await AuthRateLimitService.clear_login_failures(
+        identifier=payload.identifier,
+        ip_address=client_ip,
     )
 
     token_pair = await AuthSessionService.create_login_session(
         db,
         actor=actor,
         user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
+        ip_address=client_ip,
         remember_me=payload.remember_me,
     )
 
@@ -267,7 +287,7 @@ async def refresh_access_token(
         db,
         refresh_token=refresh_token,
         user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
+        ip_address=_client_ip(request),
     )
 
     _set_refresh_token_cookie(
@@ -297,10 +317,6 @@ async def logout(
     return {"detail": "Logged out successfully."}
 
 
-
-
-
-
 @router.get("/me/session", response_model=SessionBootstrapResponse)
 async def get_current_session(
     db: DbSession,
@@ -311,17 +327,19 @@ async def get_current_session(
     return await _build_session_bootstrap_response(db, current_actor)
 
 
-
-
-
-
 @router.post("/request-otp")
 async def request_otp(
     payload: RequestOTP,
     db: DbSession,
     background_tasks: BackgroundTasks,
+    request: Request,
 ) -> dict[str, str]:
     """Request an OTP for verification or password reset."""
+
+    await AuthRateLimitService.check_otp_request_ip_allowed(
+        purpose=payload.purpose,
+        ip_address=_client_ip(request),
+    )
 
     await OTPService.generate_otp(
         db,
@@ -333,10 +351,39 @@ async def request_otp(
 
 
 @router.post("/verify-otp")
-async def verify_otp(payload: VerifyOTP, db: DbSession) -> dict[str, str]:
+async def verify_otp(
+    payload: VerifyOTP,
+    db: DbSession,
+    request: Request,
+) -> dict[str, str]:
     """Verify an OTP."""
 
-    return await OTPService.verify_otp(db, payload)
+    client_ip = _client_ip(request)
+
+    await AuthRateLimitService.check_otp_verify_allowed(
+        email=payload.email,
+        purpose=payload.purpose,
+        ip_address=client_ip,
+    )
+
+    try:
+        result = await OTPService.verify_otp(db, payload)
+    except Exception as exc:
+        if getattr(exc, "status_code", None) == 400 and getattr(exc, "detail", None) == "Invalid OTP":
+            await AuthRateLimitService.record_failed_otp_verification(
+                email=payload.email,
+                purpose=payload.purpose,
+                ip_address=client_ip,
+            )
+        raise
+
+    await AuthRateLimitService.clear_otp_verification_failures(
+        email=payload.email,
+        purpose=payload.purpose,
+        ip_address=client_ip,
+    )
+
+    return result
 
 
 @router.post("/reset-password")
