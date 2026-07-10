@@ -4,6 +4,8 @@ import { onboardingService } from "./onboardingService";
 
 const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
 
+let bootstrapPromise = null;
+
 const normalizeAuthResponse = (response = {}) => {
     const role =
         onboardingService.normalizeRole(
@@ -24,6 +26,65 @@ const normalizeAuthResponse = (response = {}) => {
         role,
         user: currentUser,
     };
+};
+
+const restoreSession = async () => {
+    try {
+        const remember = authSession.getRememberPreference?.() ?? true;
+
+        const tokenResponse = await api.post(
+            "/auth/refresh",
+            undefined,
+            {
+                auth: false,
+                clearAuthOnUnauthorized: false,
+                skipAuthRefresh: true,
+            }
+        );
+
+        if (tokenResponse.access_token) {
+            authSession.setToken(tokenResponse.access_token, { remember });
+        }
+
+        const sessionResponse = await api.get("/auth/me/session", {
+            clearAuthOnUnauthorized: false,
+        });
+
+        const normalizedResponse = normalizeAuthResponse(sessionResponse);
+
+        if (
+            normalizedResponse.user.email ||
+            normalizedResponse.user.role ||
+            normalizedResponse.user.actor_type
+        ) {
+            authSession.setUser(normalizedResponse.user, { remember });
+        } else if (normalizedResponse.role) {
+            authSession.setRole(normalizedResponse.role, { remember });
+        }
+
+        return normalizedResponse;
+    } catch (error) {
+        const status = error?.response?.status;
+
+        // A confirmed 401 means the refresh session is no longer valid.
+        // Network failures and temporary backend errors must not erase local auth state.
+        if (status === 401) {
+            authSession.clear();
+            return null;
+        }
+
+        throw error;
+    }
+};
+
+const bootstrapSession = () => {
+    if (!bootstrapPromise) {
+        bootstrapPromise = restoreSession().finally(() => {
+            bootstrapPromise = null;
+        });
+    }
+
+    return bootstrapPromise;
 };
 
 export const authService = {
@@ -55,46 +116,7 @@ export const authService = {
         return normalizedResponse;
     },
 
-    bootstrapSession: async () => {
-        try {
-            const remember = authSession.getRememberPreference?.() ?? true;
-
-            const tokenResponse = await api.post(
-                "/auth/refresh",
-                undefined,
-                {
-                    auth: false,
-                    clearAuthOnUnauthorized: false,
-                    skipAuthRefresh: true,
-                }
-            );
-
-            if (tokenResponse.access_token) {
-                authSession.setToken(tokenResponse.access_token, { remember });
-            }
-
-            const sessionResponse = await api.get("/auth/me/session", {
-                clearAuthOnUnauthorized: false,
-            });
-
-            const normalizedResponse = normalizeAuthResponse(sessionResponse);
-
-            if (
-                normalizedResponse.user.email ||
-                normalizedResponse.user.role ||
-                normalizedResponse.user.actor_type
-            ) {
-                authSession.setUser(normalizedResponse.user, { remember });
-            } else if (normalizedResponse.role) {
-                authSession.setRole(normalizedResponse.role, { remember });
-            }
-
-            return normalizedResponse;
-        } catch {
-            authSession.clear();
-            return null;
-        }
-    },
+    bootstrapSession,
 
     requestOtp: (email, purpose) =>
         api.post("/auth/request-otp", { email, purpose }, { auth: false }),
