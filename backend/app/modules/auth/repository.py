@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import AuthRefreshToken, AuthSession, AuthSessionActorType
+from app.modules.superadmin.security_alert_service import SecurityAlertService
 
 
 class AuthSessionRepository:
@@ -133,6 +134,17 @@ class AuthSessionRepository:
         db.add(session)
         await db.flush()
         await db.refresh(session)
+
+        if reason == "refresh_reuse_detected":
+            await SecurityAlertService.notify_refresh_token_reuse(
+                actor_type=session.actor_type.value,
+                actor_id=session.actor_id,
+                tenant_id=session.tenant_id,
+                session_jti=session.session_jti,
+                ip_address=session.ip_address,
+                user_agent=session.user_agent,
+            )
+
         return session
 
     @staticmethod
