@@ -1,6 +1,8 @@
-#======================================#
-#      core/exception_handlers.py      #
-#======================================#
+# ====================================== #
+#      core/exception_handlers.py        #
+# ====================================== #
+
+"""Application exception handlers."""
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -11,6 +13,8 @@ from app.core.exceptions import (
     ImportParserError,
     ImportTemplateNotFoundError,
 )
+from app.modules.superadmin.security_alert_service import SecurityAlertService
+
 
 logger = get_logger(__name__)
 
@@ -20,7 +24,8 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
-        """Handle application-specific exceptions."""
+        """Return an application error, then run queued security notifications."""
+
         log_fn = logger.warning if exc.status_code < 500 else logger.error
         log_fn(
             "Application error",
@@ -31,14 +36,23 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "detail": exc.detail,
             },
         )
-        headers = getattr(exc, "headers", None)
+
         content = {"detail": exc.detail}
         if getattr(exc, "payload", None):
             content.update(exc.payload)
+
+        # FastAPI automatically runs BackgroundTasks after normal route
+        # responses. Security flows often commit containment changes and then
+        # raise AppException (for example refresh-token reuse). Attach the
+        # queued tasks to this exception response so the client receives the
+        # rejection first and email delivery happens afterward.
+        background_tasks = SecurityAlertService.take_pending_background_tasks()
+
         return JSONResponse(
             status_code=exc.status_code,
             content=content,
-            headers=headers,
+            headers=getattr(exc, "headers", None),
+            background=background_tasks,
         )
 
     @app.exception_handler(ImportParserError)
@@ -84,6 +98,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         """Handle unexpected exceptions."""
+
         logger.exception(
             "Unhandled server error",
             extra={"method": request.method, "path": request.url.path},
