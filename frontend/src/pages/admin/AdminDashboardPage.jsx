@@ -45,10 +45,12 @@ const chartData = (charts, key) => {
 function AdminDashboardPage() {
   const [analytics, setAnalytics] = useState(null);
   const [error, setError] = useState(null);
-  const { getFeatureGuard } = useSubscription();
+  const { getFeatureGuard, planCode } = useSubscription();
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
   const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
+  const bulkImportGuard = getFeatureGuard(FEATURE_CODES.BULK_IMPORT);
+  const canShowBulkImport = bulkImportGuard.allowed && String(planCode || "").toLowerCase() !== "free_trial";
 
   useEffect(() => {
     let mounted = true;
@@ -244,10 +246,12 @@ function AdminDashboardPage() {
               description="Common admin workflows in one clear area."
               actions={[
                 { label: "Create user", description: "Add student, teacher, or parent", to: "/admin/create-user", icon: UserPlus, tone: "primary" },
-                { label: "Bulk import", description: "Upload school records", to: "/admin/imports", icon: UploadCloud, tone: "success" },
+                canShowBulkImport
+                  ? { label: "Bulk import", description: "Upload school records", to: "/admin/imports", icon: UploadCloud, tone: "success" }
+                  : null,
                 { label: "Academic hub", description: "Sessions, subjects, results", to: "/admin/academic", icon: BookOpen, tone: "warning" },
                 { label: "Announcements", description: "Send school updates", to: "/admin/announcements", icon: Bell, tone: "accent" },
-              ]}
+              ].filter(Boolean)}
             />
           </section>
         </>

@@ -21,6 +21,8 @@ import {
   Users,
 } from "lucide-react";
 
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
+
 export const roleLabels = {
   admin: "Administrator",
   teacher: "Teacher",
@@ -89,7 +91,7 @@ export const navGroups = {
         { label: "Students", to: "/admin/students", icon: GraduationCap },
         { label: "Teachers", to: "/admin/teachers", icon: Users },
         { label: "Parents", to: "/admin/parents", icon: Users },
-        { label: "Bulk Imports", to: "/admin/imports", icon: UploadCloud },
+        { label: "Bulk Imports", to: "/admin/imports", icon: UploadCloud, featureCode: FEATURE_CODES.BULK_IMPORT },
         { label: "Classes", to: "/admin/classes", icon: Library },
         { label: "Subjects", to: "/admin/subjects", icon: BookOpen },
         { label: "Timetable", to: "/admin/timetable", icon: CalendarDays },

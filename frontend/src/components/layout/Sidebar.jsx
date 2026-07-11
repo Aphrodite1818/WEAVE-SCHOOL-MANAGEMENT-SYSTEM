@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import defaultLogoImage from "../../assets/images/favicon.png";
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { navGroups, roleLabels } from "./navConfig";
@@ -20,6 +22,19 @@ function resolveWorkspaceLogo(user) {
   );
 }
 
+function shouldHideNavItem(item, subscription) {
+  if (!item.featureCode) return false;
+
+  const featureGuard = subscription.getFeatureGuard(item.featureCode);
+  const planCode = String(subscription.planCode || "").trim().toLowerCase();
+
+  if (item.featureCode === FEATURE_CODES.BULK_IMPORT && planCode === "free_trial") {
+    return true;
+  }
+
+  return featureGuard.allowed === false;
+}
+
 export default function SidebarContent({
   role,
   collapsed,
@@ -29,12 +44,18 @@ export default function SidebarContent({
   schoolName,
 }) {
   const location = useLocation();
+  const subscription = useSubscription();
   const user = authSession.getUser() || {};
   const workspaceLogo = resolveWorkspaceLogo(user);
   const workspaceLogoAlt = user?.tenant_logo_url || user?.tenant?.logo_url
     ? `${schoolName || "School"} logo`
     : "Learnly AI";
-  const groups = navGroups[role] || navGroups.admin;
+  const groups = (navGroups[role] || navGroups.admin)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !shouldHideNavItem(item, subscription)),
+    }))
+    .filter((group) => group.items.length > 0);
   const navRef = useRef(null);
   const scrollStorageKey = `learnly-sidebar-scroll:${role}:${mobile ? "mobile" : "desktop"}`;
 

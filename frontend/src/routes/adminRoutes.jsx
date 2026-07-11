@@ -6,7 +6,6 @@ import AcademicWorkflowPage from "../pages/admin/AcademicWorkflowPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
-import BulkImportPage from "../pages/admin/BulkImportPage";
 import ClassesPage from "../pages/admin/ClassesPage";
 import CreateUserPage from "../pages/admin/CreateUserPage";
 import FeesPage from "../pages/admin/FeesPage";
@@ -21,6 +20,7 @@ import UsagePage from "../pages/admin/UsagePage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
+import BulkImportRouteGuard from "./BulkImportRouteGuard";
 import RoleGuard from "./RoleGuard";
 
 export const adminRoutes = (
@@ -37,7 +37,7 @@ export const adminRoutes = (
       <Route path="/admin/parents" element={<ParentsPage />} />
       <Route path="/admin/classes" element={<ClassesPage />} />
       <Route path="/admin/subjects" element={<SubjectsPage />} />
-      <Route path="/admin/imports" element={<BulkImportPage />} />
+      <Route path="/admin/imports" element={<BulkImportRouteGuard />} />
       <Route path="/admin/attendance" element={<AttendancePage />} />
       <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />
       <Route path="/admin/results" element={<Navigate to="/admin/academic/results" replace />} />
