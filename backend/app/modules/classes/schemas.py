@@ -97,7 +97,7 @@ class ClassRoomBase(InputBase):
 class ClassRoomCreate(ClassRoomBase):
     """Payload for creating a classroom."""
 
-    pass
+    is_active: bool = Field(default=True, description="Whether the class is active")
 
 
 class ClassRoomUpdate(InputBase):

@@ -217,6 +217,13 @@ class StudentResponse(StudentOutputBase):
     access_code_expires_at: datetime | None = None
 
 
+class StudentListResponse(OutputBase):
+    """List response schema for students."""
+
+    items: list[StudentResponse]
+    total: int
+
+
 class StudentAdminAccessCodeResponse(OutputBase):
     """Response returned when an admin generates a student access code."""
 
@@ -249,7 +256,8 @@ class StudentOnboardingStatusResponse(OutputBase):
 
 
 class StudentLinkCodeCreate(InputBase):
-    expires_in_minutes: int = Field(default=30, ge=5, le=1440)
+    student_id: uuid.UUID
+    max_use: int = Field(default=1, ge=1, le=10)
 
 
 class StudentLinkCodeResponse(OutputBase):
@@ -259,29 +267,23 @@ class StudentLinkCodeResponse(OutputBase):
 
 class StudentLinkCodeRedeem(InputBase):
     code: str = Field(..., min_length=1, max_length=255)
-    relationship: ParentRelationship = ParentRelationship.GUARDIAN
-    is_primary: bool = False
-    can_view_results: bool = True
-    can_view_attendance: bool = True
-    can_receive_notifications: bool = True
+    relationship_type: ParentRelationship = ParentRelationship.GUARDIAN
 
 
 class StudentParentLinkCreate(InputBase):
     student_id: uuid.UUID
     parent_id: uuid.UUID
-    relationship: ParentRelationship = ParentRelationship.GUARDIAN
-    is_primary: bool = False
-    can_view_results: bool = True
-    can_view_attendance: bool = True
-    can_receive_notifications: bool = True
+    relationship_type: ParentRelationship = ParentRelationship.GUARDIAN
+    is_primary_contact: bool = False
+    receives_academic_updates: bool = True
+    receives_fee_updates: bool = True
 
 
 class StudentParentLinkUpdate(InputBase):
-    relationship: ParentRelationship | None = None
-    is_primary: bool | None = None
-    can_view_results: bool | None = None
-    can_view_attendance: bool | None = None
-    can_receive_notifications: bool | None = None
+    relationship_type: ParentRelationship | None = None
+    is_primary_contact: bool | None = None
+    receives_academic_updates: bool | None = None
+    receives_fee_updates: bool | None = None
 
 
 class StudentParentLinkResponse(OutputBase):
@@ -289,27 +291,26 @@ class StudentParentLinkResponse(OutputBase):
     tenant_id: uuid.UUID
     student_id: uuid.UUID
     parent_id: uuid.UUID
-    relationship: ParentRelationship
-    is_primary: bool
-    can_view_results: bool
-    can_view_attendance: bool
-    can_receive_notifications: bool
+    relationship_type: ParentRelationship
+    is_primary_contact: bool
+    receives_academic_updates: bool
+    receives_fee_updates: bool
     created_at: datetime
     updated_at: datetime
 
 
+class StudentParentLinkListResponse(OutputBase):
+    items: list[StudentParentLinkResponse]
+    total: int
+
+
 class StudentParentLinkRequestCreate(InputBase):
-    student_id: uuid.UUID
-    message: str | None = Field(default=None, max_length=500)
+    admission_number: str = Field(..., min_length=1, max_length=50)
+    relationship_type: ParentRelationship = ParentRelationship.GUARDIAN
 
 
 class StudentParentLinkRequestRespond(InputBase):
     action: Literal["approve", "reject"]
-    relationship: ParentRelationship = ParentRelationship.GUARDIAN
-    is_primary: bool = False
-    can_view_results: bool = True
-    can_view_attendance: bool = True
-    can_receive_notifications: bool = True
 
 
 class StudentParentLinkRequestResponse(OutputBase):
@@ -318,7 +319,8 @@ class StudentParentLinkRequestResponse(OutputBase):
     student_id: uuid.UUID
     parent_id: uuid.UUID
     status: StudentParentLinkRequestStatus
-    message: str | None = None
+    relationship_type: ParentRelationship
+    admission_number_snapshot: str | None = None
     responded_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

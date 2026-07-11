@@ -177,7 +177,9 @@ async def create_subject(db_session: AsyncSession, *, tenant: Tenant, name: str,
     subject = Subject(
         tenant_id=tenant.id,
         name=name,
+        normalized_name=name.lower(),
         code=code,
+        normalized_code=code.lower(),
         description=name,
         is_active=True,
     )

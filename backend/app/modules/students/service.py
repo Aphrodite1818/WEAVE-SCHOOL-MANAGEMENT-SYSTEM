@@ -291,7 +291,6 @@ class StudentService:
             last_name=payload.last_name,
             date_of_birth=payload.date_of_birth,
             gender=payload.gender,
-            passport_photo_url=payload.passport_photo_url,
             admission_date=StudentService._get_default_admission_date(),
             graduation_date=payload.graduation_date,
             class_id=payload.class_id,

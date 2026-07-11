@@ -79,7 +79,7 @@ class ClassRoomService:
             arm=payload.arm,
             normalized_arm=normalized_class_arm_key(payload.arm),
             teacher_id=payload.teacher_id,
-            is_active=True,
+            is_active=payload.is_active,
         )
 
     @staticmethod

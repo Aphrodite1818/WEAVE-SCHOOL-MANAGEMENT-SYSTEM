@@ -181,7 +181,7 @@ function StudentAccessCodeSlipModal({ notice, onClose, onCopied, onCopyFailed, o
     try {
       await navigator.clipboard.writeText(buildAccessCodeText(notice));
       onCopied?.();
-    } catch (_err) {
+    } catch {
       onCopyFailed?.();
     }
   };
