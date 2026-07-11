@@ -47,7 +47,11 @@ def _clean_optional_string(value: str | None) -> str | None:
 
 
 class StudentInputBase(InputBase):
-    """Base input schema for student actor data."""
+    """Base input schema for student actor data.
+
+    Media URLs are intentionally excluded. Passport photos are managed only by
+    the dedicated media upload endpoints.
+    """
 
     admission_number: str | None = Field(default=None, min_length=1, max_length=50)
     first_name: str | None = Field(default=None, max_length=100)
@@ -63,7 +67,6 @@ class StudentInputBase(InputBase):
     is_active: bool = True
     last_login_at: datetime | None = None
     state_of_origin: str | None = Field(default=None, max_length=100)
-    passport_photo_url: str | None = Field(default=None, max_length=500)
 
     @field_validator(
         "admission_number",
@@ -71,7 +74,6 @@ class StudentInputBase(InputBase):
         "last_name",
         "state_of_origin",
         "arm",
-        "passport_photo_url",
         mode="before",
     )
     @classmethod
@@ -82,7 +84,10 @@ class StudentInputBase(InputBase):
 
 
 class StudentCreate(InputBase):
-    """Schema for creating a student actor."""
+    """Schema for creating a student actor.
+
+    Passport media is uploaded separately after the student exists.
+    """
 
     admission_number: str | None = Field(default=None, min_length=1, max_length=50)
     first_name: str | None = Field(default=None, max_length=100)
@@ -94,7 +99,6 @@ class StudentCreate(InputBase):
     arm: str | None = Field(default=None, max_length=20)
     status: AcademicStatus = AcademicStatus.ACTIVE
     state_of_origin: str | None = Field(default=None, max_length=100)
-    passport_photo_url: str | None = Field(default=None, max_length=500)
 
     @field_validator(
         "admission_number",
@@ -102,7 +106,6 @@ class StudentCreate(InputBase):
         "last_name",
         "state_of_origin",
         "arm",
-        "passport_photo_url",
         mode="before",
     )
     @classmethod
@@ -113,7 +116,10 @@ class StudentCreate(InputBase):
 
 
 class StudentUpdate(InputBase):
-    """Schema for admin updating a student actor."""
+    """Schema for admin updating a student actor.
+
+    Passport media is changed through the media endpoint, not profile updates.
+    """
 
     admission_number: str | None = Field(default=None, min_length=1, max_length=50)
     first_name: str | None = Field(default=None, max_length=100)
@@ -131,7 +137,6 @@ class StudentUpdate(InputBase):
     password_reset_required: bool | None = None
     last_login_at: datetime | None = None
     state_of_origin: str | None = Field(default=None, max_length=100)
-    passport_photo_url: str | None = Field(default=None, max_length=500)
 
     @field_validator(
         "admission_number",
@@ -139,7 +144,6 @@ class StudentUpdate(InputBase):
         "last_name",
         "state_of_origin",
         "arm",
-        "passport_photo_url",
         mode="before",
     )
     @classmethod
