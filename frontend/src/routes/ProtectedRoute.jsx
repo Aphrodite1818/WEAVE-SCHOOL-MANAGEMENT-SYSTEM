@@ -12,6 +12,15 @@ const wait = (milliseconds) =>
     window.setTimeout(resolve, milliseconds);
   });
 
+const isRetryableBootstrapError = (error) => {
+  const status = error?.response?.status ?? error?.status ?? null;
+
+  // Missing status normally means a network/transport failure. Retry gateway,
+  // timeout, and backend failures, but never repeat permanent auth/permission
+  // responses such as 401, 403, or rate-limit responses.
+  return status == null || status === 408 || status >= 500;
+};
+
 function ProtectedRoute() {
   const location = useLocation();
   const [bootstrapDone, setBootstrapDone] = useState(() => Boolean(authSession.getToken()));
@@ -46,12 +55,16 @@ function ProtectedRoute() {
         } catch (error) {
           if (cancelled) return;
 
-          if (attempt < MAX_BOOTSTRAP_ATTEMPTS) {
+          const shouldRetry =
+            attempt < MAX_BOOTSTRAP_ATTEMPTS && isRetryableBootstrapError(error);
+
+          if (shouldRetry) {
             await wait(attempt * 750);
             continue;
           }
 
           setBootstrapError(error);
+          return;
         }
       }
     }
