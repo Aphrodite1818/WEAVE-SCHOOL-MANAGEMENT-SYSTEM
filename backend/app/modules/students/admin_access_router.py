@@ -4,7 +4,6 @@ from typing import Annotated, TypeAlias
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies.db import DbSession
@@ -28,25 +27,20 @@ router = APIRouter()
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 
 
-async def _validate_student_class(
+async def _validate_student_class_assignment(
     *,
     db: AsyncSession,
     actor: TenantAdmin,
     class_id: UUID | None,
 ) -> None:
-    """Ensure an optional class belongs to the current tenant."""
+    """Ensure an optional class assignment belongs to the admin's tenant."""
 
     if class_id is None:
         return
 
-    result = await db.execute(
-        select(ClassRoom.id).where(
-            ClassRoom.id == class_id,
-            ClassRoom.tenant_id == actor.tenant_id,
-        )
-    )
-    if result.scalar_one_or_none() is None:
-        raise BadRequestException(detail="Selected class does not belong to this school")
+    classroom = await db.get(ClassRoom, class_id)
+    if classroom is None or classroom.tenant_id != actor.tenant_id:
+        raise BadRequestException(detail="Selected class does not belong to this tenant")
 
 
 async def _persist_student_creation_admin_fields(
@@ -56,9 +50,9 @@ async def _persist_student_creation_admin_fields(
     payload: StudentCreate,
     student_response: StudentResponse,
 ) -> StudentResponse:
-    """Persist optional admin-only student fields that are returned after create."""
+    """Persist optional admin-only student fields returned after creation."""
 
-    state_of_origin = getattr(payload, "state_of_origin", None)
+    state_of_origin = payload.state_of_origin
     if not state_of_origin:
         return student_response
 
@@ -94,22 +88,31 @@ async def create_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentResponse:
-    """Create a student and return the one-time setup code."""
+    """Create a student and return the one-time initial setup code.
 
-    await _validate_student_class(
-        db=db,
-        actor=current_admin,
-        class_id=payload.class_id,
-    )
+    Passport media is deliberately excluded from this request and is uploaded
+    later through the dedicated media endpoint.
+    """
+
     await SubscriptionFeatureService.ensure_resource_limit_available(
         db=db,
         tenant_id=current_admin.tenant_id,
         resource=ResourceLimitCode.STUDENTS,
     )
+    await _validate_student_class_assignment(
+        db=db,
+        actor=current_admin,
+        class_id=payload.class_id,
+    )
+
+    # StudentService still supports the persisted model attribute internally,
+    # but the public creation schema intentionally rejects media URLs.
+    service_payload = payload.model_copy(update={"passport_photo_url": None})
+
     student = await StudentService.create_student_profile(
         db=db,
         actor=current_admin,
-        payload=payload,
+        payload=service_payload,
     )
     student = await _persist_student_creation_admin_fields(
         db=db,
@@ -133,7 +136,7 @@ async def reset_student_access_code(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentAdminAccessCodeResponse:
-    """Generate a fresh access code and disable the previous student password."""
+    """Invalidate the password and generate a one-time password-reset code."""
 
     StudentService._ensure_tenant_admin(current_admin)
 
@@ -153,6 +156,8 @@ async def reset_student_access_code(
         created_by_admin_id=current_admin.id,
     )
 
+    # A reset initiated by the administrator revokes the old password. The
+    # student must log in with admission number + the newly generated code.
     student.password_hash = None
     student.password_reset_required = True
     updated_student = await StudentRepository.save(db=db, student=student)
