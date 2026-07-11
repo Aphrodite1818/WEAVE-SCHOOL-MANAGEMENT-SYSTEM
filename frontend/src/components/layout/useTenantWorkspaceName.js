@@ -33,7 +33,7 @@ export default function useTenantWorkspaceName({ user, role }) {
         authSession.setUser(
           { ...currentUser, school_name: nextSchoolName, tenant },
           {
-            remember: Boolean(window.localStorage.getItem("auth_user")),
+            remember: authSession.getRememberPreference(),
             notifyChange: false,
           }
         );

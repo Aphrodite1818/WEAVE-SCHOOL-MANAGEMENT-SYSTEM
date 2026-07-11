@@ -72,7 +72,7 @@ DECIMAL_PLACES = Decimal("0.01")
 # fixture (testteacher1@gmail.com etc.) or reference data.
 TEACHER_EMAIL_DOMAIN = "seed.ng"
 PARENT_EMAIL_DOMAIN = "seed.ng"
-STUDENT_ADMISSION_TAG = "FK"
+STUDENT_ADMISSION_TAG = "26"
 
 LEVELS = ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"]
 ARMS = ["A", "B", "C", "D", "E", "F"]

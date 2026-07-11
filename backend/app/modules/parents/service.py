@@ -126,6 +126,7 @@ class ParentService:
             )
 
             await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
             await db.refresh(created_parent)
 
             await UserInviteService.send_invite_email(
@@ -146,6 +147,7 @@ class ParentService:
             return ParentResponse.model_validate(created_parent)
         except IntegrityError as exc:
             await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
             raise BadRequestException(
                 detail="Parent creation failed because of a duplicate or invalid value."
             ) from exc
@@ -375,10 +377,12 @@ class ParentService:
 
             updated_parent = await ParentRepository.save(db=db, parent=parent)
             await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
             await db.refresh(updated_parent)
             return ParentResponse.model_validate(updated_parent)
         except IntegrityError as exc:
             await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
             raise BadRequestException(
                 detail="Parent update failed because of a duplicate or invalid value."
             ) from exc
@@ -408,3 +412,4 @@ class ParentService:
         )
         await ParentRepository.delete_parent(db=db, parent=parent)
         await db.commit()
+        await AuthIdentityService.invalidate_after_commit(db)

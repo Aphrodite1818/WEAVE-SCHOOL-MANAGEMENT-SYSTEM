@@ -14,6 +14,7 @@ from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis
 from app.core.exception_handlers import register_exception_handlers
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
+from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.modules import import_model_modules
 from app.modules.superadmin.router import router as superadmin_router
 from app.modules.auth.router import router as auth_router
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
 
     # Add platform lockdown before CORS so CORS remains the outer response wrapper.
     app.add_middleware(PlatformLockdownMiddleware)
+    app.add_middleware(RequestTimingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         **middleware_options,

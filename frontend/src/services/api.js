@@ -20,6 +20,7 @@ const AUTH_LOGIN_ENDPOINT = "/auth/login";
 const MAINTENANCE_STORAGE_KEY = "learnly_platform_maintenance";
 const SECURITY_BLOCK_STORAGE_KEY = "learnly_security_block";
 export const NAVIGATION_ABORT_EVENT = "learnly:navigation-start";
+export const APP_NAVIGATE_EVENT = "learnly:navigate";
 export const PLATFORM_MAINTENANCE_EVENT = "learnly:platform-maintenance";
 export const SECURITY_BLOCK_EVENT = "learnly:security-block";
 const DEFAULT_USER_SAFE_ERROR =
@@ -233,7 +234,9 @@ const persistMaintenanceState = (data = {}) => {
   window.dispatchEvent(new CustomEvent(PLATFORM_MAINTENANCE_EVENT, { detail: payload }));
 
   if (window.location.pathname !== "/maintenance") {
-    window.location.assign("/maintenance");
+    window.dispatchEvent(
+      new CustomEvent(APP_NAVIGATE_EVENT, { detail: { path: "/maintenance" } }),
+    );
   }
 };
 
@@ -255,7 +258,9 @@ const persistSecurityBlockState = (data = {}) => {
   window.dispatchEvent(new CustomEvent(SECURITY_BLOCK_EVENT, { detail: payload }));
 
   if (window.location.pathname !== "/network-blocked") {
-    window.location.assign("/network-blocked");
+    window.dispatchEvent(
+      new CustomEvent(APP_NAVIGATE_EVENT, { detail: { path: "/network-blocked" } }),
+    );
   }
 };
 
@@ -430,6 +435,23 @@ export const getErrorMessage = (error, fallback = "An error occurred") => {
   return parseApiError(error, fallback).message;
 };
 
+const logUnexpectedApiError = (endpoint, error) => {
+  if (isAbortError(error)) return;
+
+  const status = error?.response?.status;
+  if (status && (status < 500 || status === 503)) {
+    if (import.meta.env.DEV && status !== 401 && status !== 403) {
+      console.debug(`Handled API response on ${endpoint}: ${status}`);
+    }
+    return;
+  }
+
+  console.error(`API request failed: ${endpoint}`, {
+    status: status || "network",
+    message: status ? getErrorMessage(error) : NETWORK_ERROR_MESSAGE,
+  });
+};
+
 const createApiError = (response, data, headers) => {
   const errorPayload = {
     response: {
@@ -499,12 +521,13 @@ async function request(endpoint, options = {}, hasRetried = false) {
   } = options;
   const token = auth ? authSession.getToken() : null;
   const hasBody = restOptions.body !== undefined && restOptions.body !== null;
+  const isFormData = typeof FormData !== "undefined" && restOptions.body instanceof FormData;
   const method = restOptions.method || "GET";
   const autoAbortController = !providedSignal && method === "GET" ? new AbortController() : null;
   const requestSignal = providedSignal || autoAbortController?.signal;
 
   const headers = {
-    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(hasBody && !isFormData ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...optionHeaders,
   };
@@ -564,7 +587,7 @@ async function request(endpoint, options = {}, hasRetried = false) {
       throw error;
     }
 
-    console.error(`API Error on ${endpoint}:`, error);
+    logUnexpectedApiError(endpoint, error);
     throw error;
   } finally {
     if (autoAbortController) {
@@ -580,6 +603,13 @@ export const api = {
     request(endpoint, {
       method: "POST",
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...options,
+    }),
+
+  postForm: (endpoint, formData, options) =>
+    request(endpoint, {
+      method: "POST",
+      body: formData,
       ...options,
     }),
 

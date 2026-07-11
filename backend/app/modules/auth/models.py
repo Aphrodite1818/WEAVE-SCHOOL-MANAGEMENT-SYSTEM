@@ -320,3 +320,31 @@ class AuthRefreshToken(UUIDMixin, TimestampMixin, Base):
         """Return whether this refresh token can still be exchanged."""
 
         return not self.is_used and not self.is_revoked and not self.is_expired
+
+
+class AuthRefreshTokenReuseEvent(UUIDMixin, Base):
+    """Append-only audit record for one rejected refresh-token reuse attempt."""
+
+    __tablename__ = "auth_refresh_token_reuse_events"
+
+    refresh_token_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("auth_refresh_tokens.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("auth_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )
+
+    __table_args__ = (
+        Index("ix_auth_refresh_token_reuse_events_window", "detected_at", "id"),
+    )

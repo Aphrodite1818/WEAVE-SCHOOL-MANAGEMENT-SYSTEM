@@ -328,6 +328,7 @@ class StudentService:
             )
 
             await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
             await db.refresh(created_student)
 
 
@@ -341,6 +342,7 @@ class StudentService:
             )
         except IntegrityError as exc:
             await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
             raise BadRequestException(
                 detail="Student creation failed because of a duplicate or invalid value."
             ) from exc
@@ -767,10 +769,12 @@ class StudentService:
             student.profile_status = StudentService._resolve_profile_status(student)
             updated_student = await StudentRepository.save(db=db, student=student)
             await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
             await db.refresh(updated_student)
             return StudentResponse.model_validate(updated_student)
         except IntegrityError as exc:
             await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
             raise BadRequestException(
                 detail="Student update failed because of a duplicate or invalid value."
             ) from exc
@@ -839,6 +843,7 @@ class StudentService:
         )
         await StudentRepository.delete_student(db=db, student=student)
         await db.commit()
+        await AuthIdentityService.invalidate_after_commit(db)
 
 
 class StudentParentLinkRequestService:

@@ -6,7 +6,7 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth_identity.models import (
@@ -28,7 +28,6 @@ class AuthIdentityRepository:
 
         db.add(record)
         await db.flush()
-        await db.refresh(record)
         return record
 
     @staticmethod
@@ -103,16 +102,16 @@ class AuthIdentityRepository:
     ) -> bool:
         """Return True if a login identifier already exists."""
 
-        query = select(AuthIdentity.id).where(
+        conditions = [
             AuthIdentity.identifier == identifier,
             AuthIdentity.identifier_type == identifier_type,
-        )
+        ]
 
         if exclude_identity_id is not None:
-            query = query.where(AuthIdentity.id != exclude_identity_id)
+            conditions.append(AuthIdentity.id != exclude_identity_id)
 
-        result = await db.execute(query)
-        return result.scalar_one_or_none() is not None
+        result = await db.execute(select(exists().where(*conditions)))
+        return bool(result.scalar())
 
     @staticmethod
     async def save(
@@ -121,9 +120,7 @@ class AuthIdentityRepository:
     ) -> AuthIdentity:
         """Persist changes to an existing identity record."""
 
-        db.add(record)
         await db.flush()
-        await db.refresh(record)
         return record
 
     @staticmethod
@@ -134,7 +131,5 @@ class AuthIdentityRepository:
         """Deactivate an identity record."""
 
         record.is_active = False
-        db.add(record)
         await db.flush()
-        await db.refresh(record)
         return record

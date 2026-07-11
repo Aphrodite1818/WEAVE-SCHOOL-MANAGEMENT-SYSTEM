@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import SubscriptionProvider from "../features/subscriptions/SubscriptionProvider";
-import { NAVIGATION_ABORT_EVENT } from "../services/api";
+import { APP_NAVIGATE_EVENT, NAVIGATION_ABORT_EVENT } from "../services/api";
 import ProtectedRoute from "./ProtectedRoute";
 import { adminRoutes } from "./adminRoutes";
 import { parentRoutes } from "./parentRoutes";
@@ -15,6 +15,7 @@ import ProfileSettingsPage from "../pages/shared/ProfileSettingsPage";
 
 function RouteChangeAbortBridge() {
   const location = useLocation();
+  const navigate = useNavigate();
   const previousLocationKeyRef = useRef(location.key || `${location.pathname}${location.search}`);
 
   useEffect(() => {
@@ -25,6 +26,18 @@ function RouteChangeAbortBridge() {
       previousLocationKeyRef.current = nextLocationKey;
     }
   }, [location.key, location.pathname, location.search]);
+
+  useEffect(() => {
+    const handleAppNavigation = (event) => {
+      const path = event.detail?.path;
+      if (typeof path === "string" && path && path !== location.pathname) {
+        navigate(path, { replace: true });
+      }
+    };
+
+    window.addEventListener(APP_NAVIGATE_EVENT, handleAppNavigation);
+    return () => window.removeEventListener(APP_NAVIGATE_EVENT, handleAppNavigation);
+  }, [location.pathname, navigate]);
 
   return null;
 }

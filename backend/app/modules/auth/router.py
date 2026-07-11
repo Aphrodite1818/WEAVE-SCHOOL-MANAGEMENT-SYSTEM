@@ -10,15 +10,11 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
-
-from app.config.security import hash_refresh_token
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_actor
 from app.core.exceptions import BadRequestException, UnauthorizedException
 from app.core.rate_limits.auth_rate_limits import AuthRateLimitService
-from app.modules.auth.models import AuthRefreshToken, AuthSession
-from app.modules.auth.repository import AuthRefreshTokenRepository, AuthSessionRepository
 from app.modules.auth.schemas import (
     LoginRequest,
     LoginSessionUser,
@@ -47,6 +43,12 @@ from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
+
+#DIAGNOSTIC
+from time import perf_counter
+import logging 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -122,63 +124,6 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-async def _resolve_refresh_session(
-    db: DbSession,
-    refresh_token: str,
-) -> tuple[AuthRefreshToken | None, AuthSession | None]:
-    """Resolve a refresh token to its session without mutating token state."""
-
-    stored_token = await AuthRefreshTokenRepository.get_by_hash(
-        db,
-        hash_refresh_token(refresh_token),
-        lock=False,
-    )
-    if stored_token is None:
-        return None, None
-
-    session = await AuthSessionRepository.get_session_by_id(
-        db,
-        stored_token.session_id,
-        lock=False,
-    )
-    return stored_token, session
-
-
-async def _enforce_refresh_session_controls(
-    db: DbSession,
-    *,
-    refresh_token: str,
-    ip_address: str | None,
-    background_tasks: BackgroundTasks | None = None,
-) -> None:
-    """Apply IP-block and lockdown controls after resolving refresh-session actor type."""
-
-    stored_token, session = await _resolve_refresh_session(db, refresh_token)
-    if stored_token is None or session is None:
-        return
-
-    if stored_token.used_at is not None or stored_token.revoked_at is not None:
-        if background_tasks is not None:
-            background_tasks.add_task(
-                SecurityAlertService.notify_refresh_token_reuse,
-                actor_type=session.actor_type.value,
-                actor_id=session.actor_id,
-                tenant_id=session.tenant_id,
-                session_jti=session.session_jti,
-                ip_address=session.ip_address,
-                user_agent=session.user_agent,
-            )
-        return
-
-    await SecurityResponseService.enforce_actor_ip_allowed(
-        db,
-        ip_address=ip_address,
-        actor_type=session.actor_type,
-    )
-    await PlatformControlService.enforce_actor_allowed(
-        db,
-        actor_type=session.actor_type,
-    )
 
 
 def _enum_value(value: object | None) -> str | None:
@@ -275,7 +220,6 @@ class LoginResponse(Token):
     password_reset_required: bool | None = None
     user: LoginSessionUser | None = None
 
-
 @router.post("/login", response_model=LoginResponse)
 async def login(
     payload: LoginRequest,
@@ -286,13 +230,17 @@ async def login(
 ) -> LoginResponse:
     """Authenticate an actor and create a persistent refresh-token session."""
 
+    request_started = perf_counter()
     client_ip = _client_ip(request)
 
+    stage_started = perf_counter()
     await AuthRateLimitService.check_login_allowed(
         identifier=payload.identifier,
         ip_address=client_ip,
     )
+    rate_limit_check_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     try:
         actor = await AuthService.authenticate_actor(
             db,
@@ -300,28 +248,59 @@ async def login(
             background_tasks=background_tasks,
         )
     except UnauthorizedException:
+        auth_failure_ms = (perf_counter() - stage_started) * 1000
+
+        failure_stage_started = perf_counter()
         await AuthRateLimitService.record_failed_login(
             identifier=payload.identifier,
             ip_address=client_ip,
         )
+        failed_login_record_ms = (
+            perf_counter() - failure_stage_started
+        ) * 1000
+
+        logger.info(
+            "login_failed",
+            extra={
+                "rate_limit_check_ms": round(rate_limit_check_ms, 2),
+                "authentication_ms": round(auth_failure_ms, 2),
+                "failed_login_record_ms": round(
+                    failed_login_record_ms,
+                    2,
+                ),
+                "total_ms": round(
+                    (perf_counter() - request_started) * 1000,
+                    2,
+                ),
+            },
+        )
         raise
 
+    authentication_ms = (perf_counter() - stage_started) * 1000
+
+    stage_started = perf_counter()
     await SecurityResponseService.enforce_actor_ip_allowed(
         db,
         ip_address=client_ip,
         actor_type=actor.actor_type,
     )
+    ip_security_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     await PlatformControlService.enforce_actor_allowed(
         db,
         actor_type=actor.actor_type,
     )
+    platform_control_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     await AuthRateLimitService.clear_login_failures(
         identifier=payload.identifier,
         ip_address=client_ip,
     )
+    rate_limit_clear_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     token_pair = await AuthSessionService.create_login_session(
         db,
         actor=actor,
@@ -329,11 +308,28 @@ async def login(
         ip_address=client_ip,
         remember_me=payload.remember_me,
     )
+    session_creation_ms = (perf_counter() - stage_started) * 1000
 
     _set_refresh_token_cookie(
         response,
         refresh_token=token_pair.refresh_token,
         expires_at=token_pair.refresh_token_expires_at,
+    )
+
+    total_ms = (perf_counter() - request_started) * 1000
+
+    logger.info(
+        "login_timing",
+        extra={
+            "actor_type": actor.actor_type,
+            "rate_limit_check_ms": round(rate_limit_check_ms, 2),
+            "authentication_ms": round(authentication_ms, 2),
+            "ip_security_ms": round(ip_security_ms, 2),
+            "platform_control_ms": round(platform_control_ms, 2),
+            "rate_limit_clear_ms": round(rate_limit_clear_ms, 2),
+            "session_creation_ms": round(session_creation_ms, 2),
+            "total_ms": round(total_ms, 2),
+        },
     )
 
     return LoginResponse(
@@ -347,13 +343,17 @@ async def login(
     )
 
 
+
 @router.post("/refresh", response_model=Token)
 async def refresh_access_token(
     db: DbSession,
     request: Request,
     response: Response,
     background_tasks: BackgroundTasks,
-    refresh_token: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
+    refresh_token: str | None = Cookie(
+        default=None,
+        alias=REFRESH_TOKEN_COOKIE_NAME,
+    ),
 ) -> Token:
     """Rotate the refresh token and issue a new access token."""
 
@@ -361,12 +361,6 @@ async def refresh_access_token(
         raise UnauthorizedException("Invalid session")
 
     client_ip = _client_ip(request)
-    await _enforce_refresh_session_controls(
-        db,
-        refresh_token=refresh_token,
-        ip_address=client_ip,
-        background_tasks=background_tasks,
-    )
 
     token_pair = await AuthSessionService.rotate_refresh_token(
         db,

@@ -32,7 +32,6 @@ const ROLE_FORM_CONFIG = {
         { name: "timezone", label: "Timezone" },
         { name: "language", label: "Language" },
         { name: "school_bot_whatssap_number", label: "School WhatsApp bot number", placeholder: "+2348012345678" },
-        { name: "logo_url", label: "Logo URL", type: "url", placeholder: "https://example.com/logo.png" },
       ],
     },
   ],
@@ -86,7 +85,6 @@ const ROLE_FORM_CONFIG = {
             { value: "female", label: "Female" },
           ],
         },
-        { name: "passport_photo_url", label: "Passport photo URL", type: "url" },
       ],
     },
   ],
@@ -221,6 +219,7 @@ function ProfileCompletionForm({
   onSaved,
   onProfileStateResolved,
   initialStatusData = null,
+  showMediaPreview = true,
 }) {
   const normalizedRole = onboardingService.normalizeRole(role);
   const callbacksRef = useRef({ onSaved, onProfileStateResolved });
@@ -368,13 +367,13 @@ function ProfileCompletionForm({
         </div>
       )}
 
-      <PassportPhotoPreview
+      {showMediaPreview ? <PassportPhotoPreview
         role={normalizedRole}
         data={{
           ...(statusData?.current_values || {}),
           ...formData,
         }}
-      />
+      /> : null}
 
       {sections.map((section) => (
         <div key={section.key} className="space-y-4 rounded-2xl border border-border bg-surface-muted/40 p-4">

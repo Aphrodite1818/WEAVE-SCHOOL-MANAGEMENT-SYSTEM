@@ -152,6 +152,7 @@ class TeacherService:
             )
 
             await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
 
             await UserInviteService.send_invite_email(
                 email=normalized_email,
@@ -181,6 +182,7 @@ class TeacherService:
 
         except IntegrityError as exc:
             await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
             raise BadRequestException(
                 detail="Teacher creation failed because of a duplicate or invalid value."
             ) from exc
@@ -449,6 +451,7 @@ class TeacherService:
                 )
 
             await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
 
             updated_teacher = await TeacherRepository.get_teacher_by_id(
                 db=db,
@@ -463,6 +466,7 @@ class TeacherService:
 
         except IntegrityError as exc:
             await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
             raise BadRequestException(
                 detail="Teacher update failed because of a duplicate or invalid value."
             ) from exc
@@ -504,3 +508,4 @@ class TeacherService:
         )
 
         await db.commit()
+        await AuthIdentityService.invalidate_after_commit(db)

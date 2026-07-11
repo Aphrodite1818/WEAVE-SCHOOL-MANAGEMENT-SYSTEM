@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import BackgroundTasks
-from sqlalchemy import select, func
+from sqlalchemy import and_, func, or_, select
 
 from app.config.database import AsyncSessionLocal
 from app.config.logging import get_logger
@@ -13,7 +13,7 @@ from app.config.settings import settings
 from app.core.utils.email import send_email
 from app.core.utils.email_templates import get_security_alert_email_html
 from app.modules.superadmin.models import SuperAdmin
-from app.modules.auth.models import AuthRefreshToken
+from app.modules.auth.models import AuthRefreshTokenReuseEvent
 
 
 logger = get_logger(__name__)
@@ -32,6 +32,7 @@ class SecurityAlertService:
         title: str,
         rows: dict[str, Any],
         throttle_refresh_reuse: bool = False,
+        reuse_event_id: object | None = None,
     ) -> None:
         """Background task to fetch superadmins and send emails."""
         if not cls._enabled():
@@ -40,14 +41,26 @@ class SecurityAlertService:
         try:
             async with AsyncSessionLocal() as db:
                 if throttle_refresh_reuse:
-                    # Throttle token reuse alerts (e.g. only alert if hitting multiples of 5 within 24h)
-                    window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+                    event = await db.get(AuthRefreshTokenReuseEvent, reuse_event_id)
+                    if event is None:
+                        logger.warning("Refresh-token reuse event was not found", extra={"event_id": str(reuse_event_id)})
+                        return
+
+                    # Rank this exact event in its rolling 24-hour window. The ID
+                    # tie-breaker ensures concurrent events cannot all claim fifth place.
+                    window_start = event.detected_at - timedelta(hours=24)
                     reuse_count = (
                         await db.execute(
-                            select(func.count(AuthRefreshToken.id))
+                            select(func.count(AuthRefreshTokenReuseEvent.id))
                             .where(
-                                AuthRefreshToken.reuse_detected_at.is_not(None),
-                                AuthRefreshToken.reuse_detected_at >= window_start,
+                                AuthRefreshTokenReuseEvent.detected_at >= window_start,
+                                or_(
+                                    AuthRefreshTokenReuseEvent.detected_at < event.detected_at,
+                                    and_(
+                                        AuthRefreshTokenReuseEvent.detected_at == event.detected_at,
+                                        AuthRefreshTokenReuseEvent.id <= event.id,
+                                    ),
+                                ),
                             )
                         )
                     ).scalar_one()
@@ -97,6 +110,7 @@ class SecurityAlertService:
         title: str,
         rows: dict[str, Any],
         throttle_refresh_reuse: bool = False,
+        reuse_event_id: object | None = None,
     ) -> None:
         """Queue a security alert email to be sent in the background."""
         if not cls._enabled():
@@ -108,24 +122,28 @@ class SecurityAlertService:
             title=title,
             rows=rows,
             throttle_refresh_reuse=throttle_refresh_reuse,
+            reuse_event_id=reuse_event_id,
         )
 
     @classmethod
-    def notify_refresh_token_reuse(
+    async def notify_refresh_token_reuse(
         cls,
         *,
-        background_tasks: BackgroundTasks,
         actor_type: str,
         actor_id: object,
         tenant_id: object | None,
         session_jti: str,
         ip_address: str | None,
         user_agent: str | None,
+        reuse_event_id: object | None,
     ) -> None:
         """Alert when refresh-token reuse marks a session compromised."""
 
-        cls.send_security_alert(
-            background_tasks=background_tasks,
+        if not cls._enabled():
+            logger.info("Refresh-token reuse alert skipped because security alerts are disabled")
+            return
+
+        await cls._execute_alert(
             title="Refresh-token reuse detected",
             rows={
                 "Actor type": actor_type,
@@ -137,6 +155,7 @@ class SecurityAlertService:
                 "Recommended action": "Review security analytics, block the IP if suspicious, and revoke affected sessions.",
             },
             throttle_refresh_reuse=True,
+            reuse_event_id=reuse_event_id,
         )
 
     @classmethod
