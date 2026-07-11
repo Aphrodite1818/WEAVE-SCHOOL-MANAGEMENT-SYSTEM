@@ -9,6 +9,11 @@ import { authSession } from "../../services/api";
 import { authService } from "../../services/auth.service";
 import { cn } from "../../utils/cn";
 import {
+  applyAccessibilityPreferences,
+  getSavedAccessibilityPreferences,
+  saveAccessibilityPreferences,
+} from "../../utils/accessibilityPreferences";
+import {
   displayName as resolveDisplayName,
   getUserAvatarSrc,
 } from "../../utils/user";
@@ -71,6 +76,15 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
     };
   }, [role]);
 
+  useEffect(() => {
+    const syncThemeHint = () => {
+      setThemeHint(document.documentElement.dataset.theme || "light");
+    };
+
+    window.addEventListener("learnly:accessibility-preferences-changed", syncThemeHint);
+    return () => window.removeEventListener("learnly:accessibility-preferences-changed", syncThemeHint);
+  }, []);
+
   const handleLogout = async () => {
     await authService.logout();
     navigate("/login", { replace: true });
@@ -78,8 +92,9 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
 
   const toggleTheme = () => {
     const nextTheme = themeHint === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = nextTheme;
-    window.localStorage.setItem("theme", nextTheme);
+    const preferences = { ...getSavedAccessibilityPreferences(), theme: nextTheme };
+    applyAccessibilityPreferences(preferences);
+    saveAccessibilityPreferences(preferences);
     setThemeHint(nextTheme);
   };
 

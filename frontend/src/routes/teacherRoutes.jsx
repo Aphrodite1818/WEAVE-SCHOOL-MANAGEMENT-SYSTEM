@@ -9,6 +9,7 @@ import TeacherStudentsPage from "../pages/teacher/StudentsPage";
 import TeacherSubjectsPage from "../pages/teacher/SubjectsPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
+import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import RoleGuard from "./RoleGuard";
 
@@ -28,6 +29,7 @@ export const teacherRoutes = (
       <Route path="/teacher/timetable" element={<StaticModulePage role="teacher" title="Timetable" description="Daily teaching schedule and class periods." type="timetable" />} />
       <Route path="/teacher/notices" element={<AnnouncementsWorkspacePage mode="teacher" variant="received-notices" />} />
       <Route path="/teacher/announcements" element={<AnnouncementsWorkspacePage mode="teacher" />} />
+      <Route path="/teacher/settings" element={<RoleSettingsPage role="teacher" />} />
     </Route>
   </Route>
 );

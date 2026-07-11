@@ -164,9 +164,11 @@ function AdminDashboardPage() {
       {!error ? (
         <>
           <DashboardWelcomePanel
+            variant="blue"
             eyebrow="Admin dashboard"
             title={`Welcome back, ${firstName}`}
             description="A simpler control room: key school signals first, deep charts moved to analytics."
+            profileCompletion={user?.onboarding_completed}
             chips={[
               { label: "Session", value: cleanText(stats.active_academic_session, "Not set"), tone: stats.active_academic_session ? "success" : "warning" },
               { label: "Term", value: cleanText(stats.active_academic_term, "Not set"), tone: stats.active_academic_term ? "primary" : "warning" },

@@ -4,6 +4,7 @@ import { DashboardShell } from "../components/layout/DashboardLayout";
 import AcademicHubOverviewPage from "../pages/admin/AcademicHubOverviewPage";
 import AcademicWorkflowPage from "../pages/admin/AcademicWorkflowPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
+import AdminSearchDetailPage from "../pages/admin/AdminSearchDetailPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
 import ClassesPage from "../pages/admin/ClassesPage";
@@ -19,6 +20,7 @@ import TeachersPage from "../pages/admin/TeachersPage";
 import UsagePage from "../pages/admin/UsagePage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
+import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import BulkImportRouteGuard from "./BulkImportRouteGuard";
 import RoleGuard from "./RoleGuard";
@@ -30,6 +32,7 @@ export const adminRoutes = (
 
     <Route element={<DashboardShell role="admin" />}>
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+      <Route path="/admin/search/:resultKey" element={<AdminSearchDetailPage />} />
       <Route path="/admin/analytics" element={<RoleAnalyticsPage role="admin" />} />
       <Route path="/admin/create-user" element={<CreateUserPage />} />
       <Route path="/admin/teachers" element={<TeachersPage />} />
@@ -52,7 +55,7 @@ export const adminRoutes = (
       <Route path="/admin/announcements" element={<AnnouncementsWorkspacePage mode="tenant-admin" />} />
       <Route path="/admin/messages" element={<AnnouncementsWorkspacePage mode="tenant-admin" variant="messages" />} />
       <Route path="/admin/reports" element={<StaticModulePage role="admin" title="Reports" description="Operational reports will appear here when backend reporting endpoints are available." type="settings" />} />
-      <Route path="/admin/settings" element={<StaticModulePage role="admin" title="Settings" description="School profile, security, users, and account configuration." type="settings" />} />
+      <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
     </Route>
   </Route>
 );

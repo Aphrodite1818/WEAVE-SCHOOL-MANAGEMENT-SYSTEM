@@ -6,6 +6,7 @@ import ParentResultsPage from "../pages/parent/ParentResultsPage";
 import ParentStudentLinkingPage from "../pages/parent/ParentStudentLinkingPage";
 import ParentReportCardsPage from "../pages/parent/ParentReportCardsPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import RoleGuard from "./RoleGuard";
 
@@ -19,6 +20,7 @@ export const parentRoutes = (
       <Route path="/parent/results" element={<ParentResultsPage />} />
       <Route path="/parent/notices" element={<AnnouncementsWorkspacePage mode="parent" />} />
       <Route path="/parent/fees" element={<StaticModulePage role="parent" title="Fees" description="Fee statements, payment status, and due dates." />} />
+      <Route path="/parent/settings" element={<RoleSettingsPage role="parent" />} />
     </Route>
   </Route>
 );

@@ -47,7 +47,6 @@ import {
   hasValue,
   isPublishedResult,
   scoreDisplayValue,
-  statusVariant,
 } from "./studentPageUtils";
 
 const PROGRESS_COLORS = ["#3452DB", "#16A34A", "#F59E0B", "#7C3AED", "#0EA5E9"];
@@ -253,14 +252,15 @@ function StudentDashboardPage() {
       {!loadError && student ? (
         <>
           <DashboardWelcomePanel
+            variant="student"
             eyebrow="Student dashboard"
             title={`Welcome back, ${displayName(student) || firstName}`}
             description={cleanText(
               dashboardData.context.classLabel,
               student.class_id ? "Class assigned" : "No class assigned yet",
             )}
+            profileCompletion={student.profile_status}
             chips={[
-              { label: cleanText(student.profile_status, "profile pending"), tone: statusVariant(student.profile_status) === "success" ? "success" : "warning" },
               { label: cleanText(dashboardData.context.sessionLabel, "No session"), value: cleanText(dashboardData.context.termLabel, "No term"), tone: "primary" },
             ]}
           />
