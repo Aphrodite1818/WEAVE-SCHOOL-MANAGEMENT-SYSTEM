@@ -239,9 +239,13 @@ class StudentChangePasswordRequest(InputBase):
 class StudentOnboardingStatusResponse(OutputBase):
     """Student onboarding state returned to the frontend."""
 
-    password_reset_required: bool
+    actor_type: Literal["student"]
+    student_id: uuid.UUID
+    onboarding_required: bool
     profile_status: StudentProfileStatus
-    onboarding_complete: bool
+    completion_target: Literal["student"]
+    required_fields: list[str]
+    current_values: dict[str, Any]
 
 
 class StudentLinkCodeCreate(InputBase):
