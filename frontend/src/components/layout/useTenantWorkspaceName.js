@@ -1,53 +1,86 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { authSession } from "../../services/api";
 import { tenantService } from "../../services/tenant.service";
 import { schoolName as resolveSchoolName } from "../../utils/user";
 import { tenantNameFallbackRoles } from "./navConfig";
 
-export default function useTenantWorkspaceName({ user, role }) {
+function resolveTenantLogo(record) {
+  return (
+    record?.tenant_logo_url ||
+    record?.logo_url ||
+    record?.tenant?.logo_url ||
+    ""
+  );
+}
+
+export function useTenantWorkspaceBranding({ user, role }) {
   const storedSchoolName = resolveSchoolName(user);
+  const storedLogoUrl = resolveTenantLogo(user);
   const tenantId = user?.tenant_id;
-  const [tenantSchoolName, setTenantSchoolName] = useState("");
+  const [tenantRecord, setTenantRecord] = useState(() => user?.tenant || null);
 
   useEffect(() => {
     let mounted = true;
-    setTenantSchoolName("");
 
-    if (storedSchoolName !== "School workspace" || !tenantId || !tenantNameFallbackRoles.has(role)) {
+    if (!tenantId || !tenantNameFallbackRoles.has(role)) {
       return () => {
         mounted = false;
       };
     }
 
-    async function loadTenantName() {
+    async function loadTenantBranding() {
       try {
         const tenant = await tenantService.getTenant(tenantId);
-        if (!mounted) return;
+        if (!mounted || !tenant) return;
 
-        const nextSchoolName = resolveSchoolName(tenant);
-        if (nextSchoolName === "School workspace") return;
+        setTenantRecord(tenant);
 
         const currentUser = authSession.getUser() || {};
-        setTenantSchoolName(nextSchoolName);
+        const nextSchoolName = resolveSchoolName(tenant);
+        const nextLogoUrl = resolveTenantLogo(tenant);
+
         authSession.setUser(
-          { ...currentUser, school_name: nextSchoolName, tenant },
+          {
+            ...currentUser,
+            school_name:
+              nextSchoolName === "School workspace"
+                ? currentUser.school_name
+                : nextSchoolName,
+            tenant_logo_url: nextLogoUrl || currentUser.tenant_logo_url || null,
+            tenant,
+          },
           {
             remember: Boolean(window.localStorage.getItem("auth_user")),
             notifyChange: false,
           }
         );
       } catch {
-        if (mounted) setTenantSchoolName("");
+        if (mounted) setTenantRecord(user?.tenant || null);
       }
     }
 
-    loadTenantName();
+    loadTenantBranding();
 
     return () => {
       mounted = false;
     };
-  }, [role, storedSchoolName, tenantId]);
+  }, [role, tenantId, user?.tenant]);
 
-  return tenantSchoolName || storedSchoolName;
+  return useMemo(() => {
+    const tenantSchoolName = resolveSchoolName(tenantRecord);
+    const schoolName =
+      tenantSchoolName !== "School workspace"
+        ? tenantSchoolName
+        : storedSchoolName;
+
+    return {
+      schoolName,
+      logoUrl: resolveTenantLogo(tenantRecord) || storedLogoUrl || "",
+    };
+  }, [storedLogoUrl, storedSchoolName, tenantRecord]);
+}
+
+export default function useTenantWorkspaceName({ user, role }) {
+  return useTenantWorkspaceBranding({ user, role }).schoolName;
 }
