@@ -11,7 +11,7 @@ from app.modules.students.models import (
     StudentAccountStatus,
     StudentParentLinkRequestStatus,
     StudentProfileStatus,
-    StudentAccessCodePurpose
+    StudentAccessCodePurpose,
 )
 
 
@@ -63,6 +63,7 @@ class StudentInputBase(InputBase):
     is_active: bool = True
     last_login_at: datetime | None = None
     state_of_origin: str | None = Field(default=None, max_length=100)
+    passport_photo_url: str | None = Field(default=None, max_length=500)
 
     @field_validator(
         "admission_number",
@@ -70,6 +71,7 @@ class StudentInputBase(InputBase):
         "last_name",
         "state_of_origin",
         "arm",
+        "passport_photo_url",
         mode="before",
     )
     @classmethod
@@ -92,6 +94,7 @@ class StudentCreate(InputBase):
     arm: str | None = Field(default=None, max_length=20)
     status: AcademicStatus = AcademicStatus.ACTIVE
     state_of_origin: str | None = Field(default=None, max_length=100)
+    passport_photo_url: str | None = Field(default=None, max_length=500)
 
     @field_validator(
         "admission_number",
@@ -99,6 +102,7 @@ class StudentCreate(InputBase):
         "last_name",
         "state_of_origin",
         "arm",
+        "passport_photo_url",
         mode="before",
     )
     @classmethod
@@ -106,7 +110,6 @@ class StudentCreate(InputBase):
         """Normalize optional student creation fields."""
 
         return _clean_optional_string(value)
-
 
 
 class StudentUpdate(InputBase):
@@ -128,6 +131,7 @@ class StudentUpdate(InputBase):
     password_reset_required: bool | None = None
     last_login_at: datetime | None = None
     state_of_origin: str | None = Field(default=None, max_length=100)
+    passport_photo_url: str | None = Field(default=None, max_length=500)
 
     @field_validator(
         "admission_number",
@@ -135,6 +139,7 @@ class StudentUpdate(InputBase):
         "last_name",
         "state_of_origin",
         "arm",
+        "passport_photo_url",
         mode="before",
     )
     @classmethod
@@ -204,235 +209,113 @@ class StudentOutputBase(OutputBase):
 class StudentResponse(StudentOutputBase):
     """Schema returned for student profile data."""
 
-    setup_code : str | None = None
-    access_code_expires_at : datetime | None = None
-
+    setup_code: str | None = None
+    access_code_expires_at: datetime | None = None
 
 
 class StudentAdminAccessCodeResponse(OutputBase):
-    """Response returned when an admin generates a  student access code"""
-    
-    student_id : uuid.UUID
-    admission_number : str
-    full_name : str | None = None
+    """Response returned when an admin generates a student access code."""
+
+    student_id: uuid.UUID
+    admission_number: str
+    full_name: str | None = None
     purpose: StudentAccessCodePurpose
-    access_code : str
-    expires_at : datetime 
-
-
-
-
-class StudentLoginProfile(OutputBase):
-    """Compact student profile used after authentication."""
-
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    admission_number: str
-    first_name: str | None = None
-    last_name: str | None = None
-    account_status: StudentAccountStatus
-    is_verified: bool
-    is_active: bool
-    password_reset_required: bool
-    passport_photo_url : str | None = None
-
-
-class StudentListResponse(OutputBase):
-    """Paginated-style response container for student lists."""
-
-    items: list[StudentResponse]
-    total: int
-
-
-class StudentParentLinkInputBase(InputBase):
-    """Base input schema for linking a student to a parent."""
-
-    student_id: uuid.UUID
-    parent_id: uuid.UUID
-    relationship_type: ParentRelationship = ParentRelationship.GUARDIAN
-    is_primary_contact: bool = False
-    receives_academic_updates: bool = True
-    receives_fee_updates: bool = True
-
-
-class StudentParentLinkCreate(StudentParentLinkInputBase):
-    """Schema for creating a student-parent link."""
-
-
-class StudentParentLinkUpdate(InputBase):
-    """Schema for updating a student-parent link."""
-
-    relationship_type: ParentRelationship | None = None
-    is_primary_contact: bool | None = None
-    receives_academic_updates: bool | None = None
-    receives_fee_updates: bool | None = None
-
-
-class StudentParentLinkParentSummary(OutputBase):
-    """Compact parent summary attached to student-parent links."""
-
-    id: uuid.UUID
-    email: str
-    first_name: str | None = None
-    last_name: str | None = None
-
-
-class StudentParentLinkOutputBase(OutputBase):
-    """Base output schema for a student-parent relationship."""
-
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    student_id: uuid.UUID
-    parent_id: uuid.UUID
-    relationship_type: ParentRelationship
-    is_primary_contact: bool
-    receives_academic_updates: bool
-    receives_fee_updates: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-class StudentParentLinkResponse(StudentParentLinkOutputBase):
-    """Schema returned for a student-parent relationship."""
-
-    parent: StudentParentLinkParentSummary | None = None
-
-
-class StudentParentLinkListResponse(OutputBase):
-    """Paginated-style response container for student-parent links."""
-
-    items: list[StudentParentLinkResponse]
-    total: int
-
-
-class ParentLinkRequestParentSummary(OutputBase):
-    """Compact parent summary attached to student link requests."""
-
-    id: uuid.UUID
-    email: str
-    first_name: str | None = None
-    last_name: str | None = None
-
-
-class ParentLinkRequestStudentSummary(OutputBase):
-    """Compact student summary attached to parent link requests."""
-
-    id: uuid.UUID
-    admission_number: str
-    first_name: str | None = None
-    last_name: str | None = None
-
-
-class StudentParentLinkRequestCreate(InputBase):
-    """Parent request payload for linking a student by admission number."""
-
-    admission_number: str = Field(..., min_length=1, max_length=50)
-    relationship_type: ParentRelationship = ParentRelationship.GUARDIAN
-
-    @field_validator("admission_number", mode="before")
-    @classmethod
-    def clean_admission_number(cls, value: str) -> str:
-        """Normalize an admission number before lookup."""
-
-        if not isinstance(value, str):
-            return value
-        return value.strip().upper()
-
-
-class StudentParentLinkRequestRespond(InputBase):
-    """Student response payload for a pending parent link request."""
-
-    action: Literal["approve", "reject"]
-
-
-class StudentParentLinkRequestResponse(OutputBase):
-    """Pending or completed parent-student link request."""
-
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    student_id: uuid.UUID
-    parent_id: uuid.UUID
-    admission_number_snapshot: str
-    relationship_type: ParentRelationship
-    status: StudentParentLinkRequestStatus
-    requested_at: datetime
-    responded_at: datetime | None = None
-    parent: ParentLinkRequestParentSummary | None = None
-    student: ParentLinkRequestStudentSummary | None = None
-
-
-class StudentParentLinkRequestListResponse(OutputBase):
-    """Paginated-style response container for parent link requests."""
-
-    items: list[StudentParentLinkRequestResponse]
-    total: int
-
-
-class StudentLinkCodeInputBase(InputBase):
-    """Base input schema for creating a student link code."""
-
-    student_id: uuid.UUID
-    max_use: int = Field(default=1, ge=1, le=5)
-
-
-class StudentLinkCodeCreate(StudentLinkCodeInputBase):
-    """Schema for generating a student link code."""
-
-
-class StudentLinkCodeRedeem(InputBase):
-    """Schema for a parent linking themselves to a student with a code."""
-
-    code: str = Field(min_length=4, max_length=80)
-    relationship_type: ParentRelationship = ParentRelationship.GUARDIAN
-    is_primary_contact: bool = False
-    receives_academic_updates: bool = True
-    receives_fee_updates: bool = True
-
-    @field_validator("code", mode="before")
-    @classmethod
-    def clean_code(cls, value: str) -> str:
-        """Normalize a pairing code before lookup."""
-
-        if not isinstance(value, str):
-            return value
-        return value.strip().upper()
-
-
-class StudentLinkCodeOutputBase(OutputBase):
-    """Base output schema for student link code data."""
-
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    student_id: uuid.UUID
-    code: str
+    access_code: str
     expires_at: datetime
-    used_at: datetime | None = None
-    max_use: int
-    use_count: int
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-class StudentLinkCodeResponse(StudentLinkCodeOutputBase):
-    """Schema returned after generating a student link code."""
-
-
-class StudentOnboardingStatusResponse(OutputBase):
-    """Student onboarding status response."""
-
-    actor_type: Literal["student"]
-    student_id: uuid.UUID
-    onboarding_required: bool
-    profile_status: StudentProfileStatus
-    completion_target: Literal["student"]
-    required_fields: list[str]
-    current_values: dict[str, Any]
 
 
 class StudentChangePasswordRequest(InputBase):
-    """Student password change payload."""
+    """Student first-login/password-reset password change payload."""
 
-    access_code : str = Field(..., min_length=1, max_length=64)
-    new_password: str = Field(..., min_length=8, max_length=64)
-    confirm_password: str = Field(..., min_length=8, max_length=64)
+    access_code: str = Field(..., min_length=1, max_length=32)
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: str = Field(..., min_length=8, max_length=128)
+
+
+class StudentOnboardingStatusResponse(OutputBase):
+    """Student onboarding state returned to the frontend."""
+
+    password_reset_required: bool
+    profile_status: StudentProfileStatus
+    onboarding_complete: bool
+
+
+class StudentLinkCodeCreate(InputBase):
+    expires_in_minutes: int = Field(default=30, ge=5, le=1440)
+
+
+class StudentLinkCodeResponse(OutputBase):
+    code: str
+    expires_at: datetime
+
+
+class StudentLinkCodeRedeem(InputBase):
+    code: str = Field(..., min_length=1, max_length=255)
+    relationship: ParentRelationship = ParentRelationship.GUARDIAN
+    is_primary: bool = False
+    can_view_results: bool = True
+    can_view_attendance: bool = True
+    can_receive_notifications: bool = True
+
+
+class StudentParentLinkCreate(InputBase):
+    student_id: uuid.UUID
+    parent_id: uuid.UUID
+    relationship: ParentRelationship = ParentRelationship.GUARDIAN
+    is_primary: bool = False
+    can_view_results: bool = True
+    can_view_attendance: bool = True
+    can_receive_notifications: bool = True
+
+
+class StudentParentLinkUpdate(InputBase):
+    relationship: ParentRelationship | None = None
+    is_primary: bool | None = None
+    can_view_results: bool | None = None
+    can_view_attendance: bool | None = None
+    can_receive_notifications: bool | None = None
+
+
+class StudentParentLinkResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    student_id: uuid.UUID
+    parent_id: uuid.UUID
+    relationship: ParentRelationship
+    is_primary: bool
+    can_view_results: bool
+    can_view_attendance: bool
+    can_receive_notifications: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class StudentParentLinkRequestCreate(InputBase):
+    student_id: uuid.UUID
+    message: str | None = Field(default=None, max_length=500)
+
+
+class StudentParentLinkRequestRespond(InputBase):
+    action: Literal["approve", "reject"]
+    relationship: ParentRelationship = ParentRelationship.GUARDIAN
+    is_primary: bool = False
+    can_view_results: bool = True
+    can_view_attendance: bool = True
+    can_receive_notifications: bool = True
+
+
+class StudentParentLinkRequestResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    student_id: uuid.UUID
+    parent_id: uuid.UUID
+    status: StudentParentLinkRequestStatus
+    message: str | None = None
+    responded_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class StudentParentLinkRequestListResponse(OutputBase):
+    items: list[StudentParentLinkRequestResponse]
+    total: int
