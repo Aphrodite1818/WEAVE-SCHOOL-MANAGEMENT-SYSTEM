@@ -12,6 +12,7 @@ registered table, constraint, enum, and model-defined index is included.
 from __future__ import annotations
 
 from alembic import op
+from sqlalchemy.orm import configure_mappers
 
 from app.modules import import_model_modules
 from app.shared.base_model import Base
@@ -23,17 +24,22 @@ branch_labels = None
 depends_on = None
 
 
+def _load_schema_metadata() -> None:
+    """Import every model and fail before DDL if ORM mappings are incomplete."""
+
+    import_model_modules()
+    configure_mappers()
+
+
 def upgrade() -> None:
     """Create all tables, constraints, enums, and model-defined indexes."""
 
-    import_model_modules()
-    bind = op.get_bind()
-    Base.metadata.create_all(bind=bind, checkfirst=False)
+    _load_schema_metadata()
+    Base.metadata.create_all(bind=op.get_bind(), checkfirst=False)
 
 
 def downgrade() -> None:
     """Drop all application tables represented by the baseline metadata."""
 
-    import_model_modules()
-    bind = op.get_bind()
-    Base.metadata.drop_all(bind=bind, checkfirst=True)
+    _load_schema_metadata()
+    Base.metadata.drop_all(bind=op.get_bind(), checkfirst=True)
