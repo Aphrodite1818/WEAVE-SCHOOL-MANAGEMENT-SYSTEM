@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
+
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_actor
@@ -33,22 +36,18 @@ from app.modules.auth.service import (
     TenantActivationService,
     UserInviteService,
 )
+from app.modules.auth.student_authentication import authenticate_student_actor
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.platform_control_service import PlatformControlService
-from app.modules.superadmin.security_alert_service import SecurityAlertService
 from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
-#DIAGNOSTIC
-from time import perf_counter
-import logging 
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 REFRESH_TOKEN_COOKIE_NAME = "learnly_refresh_token"
@@ -123,8 +122,6 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-
-
 def _enum_value(value: object | None) -> str | None:
     """Return a stable string value for enum-like values."""
 
@@ -142,16 +139,12 @@ def _actor_type_and_role(
 
     if isinstance(actor, SuperAdmin):
         return "superadmin", "superadmin"
-
     if isinstance(actor, TenantAdmin):
         return "tenant_admin", "admin"
-
     if isinstance(actor, Teacher):
         return "teacher", "teacher"
-
     if isinstance(actor, Parent):
         return "parent", "parent"
-
     if isinstance(actor, Student):
         return "student", "student"
 
@@ -165,8 +158,8 @@ async def _build_session_bootstrap_response(
     """Build a safe current-session response for frontend bootstrapping."""
 
     actor_type, role = _actor_type_and_role(actor)
-
     tenant_id = getattr(actor, "tenant_id", None)
+    tenant = None
     school_name = None
 
     if tenant_id is not None:
@@ -194,7 +187,7 @@ async def _build_session_bootstrap_response(
         password_reset_required=getattr(actor, "password_reset_required", None),
         profile_status=_enum_value(getattr(actor, "profile_status", None)),
         passport_photo_url=getattr(actor, "passport_photo_url", None),
-        tenant_logo_url=getattr(tenant, "logo_url", None) if 'tenant' in locals() and tenant else None,
+        tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
     )
 
     return SessionBootstrapResponse(
@@ -221,6 +214,7 @@ class LoginResponse(Token):
     password_reset_required: bool | None = None
     user: LoginSessionUser | None = None
 
+
 @router.post("/login", response_model=LoginResponse)
 async def login(
     payload: LoginRequest,
@@ -243,11 +237,18 @@ async def login(
 
     stage_started = perf_counter()
     try:
-        actor = await AuthService.authenticate_actor(
-            db,
-            payload,
-            background_tasks=background_tasks,
-        )
+        if "@" in payload.identifier:
+            actor = await AuthService.authenticate_actor(
+                db,
+                payload,
+                background_tasks=background_tasks,
+            )
+        else:
+            actor = await authenticate_student_actor(
+                db,
+                admission_number=payload.identifier,
+                credential=payload.password,
+            )
     except UnauthorizedException:
         auth_failure_ms = (perf_counter() - stage_started) * 1000
 
@@ -256,23 +257,15 @@ async def login(
             identifier=payload.identifier,
             ip_address=client_ip,
         )
-        failed_login_record_ms = (
-            perf_counter() - failure_stage_started
-        ) * 1000
+        failed_login_record_ms = (perf_counter() - failure_stage_started) * 1000
 
         logger.info(
             "login_failed",
             extra={
                 "rate_limit_check_ms": round(rate_limit_check_ms, 2),
                 "authentication_ms": round(auth_failure_ms, 2),
-                "failed_login_record_ms": round(
-                    failed_login_record_ms,
-                    2,
-                ),
-                "total_ms": round(
-                    (perf_counter() - request_started) * 1000,
-                    2,
-                ),
+                "failed_login_record_ms": round(failed_login_record_ms, 2),
+                "total_ms": round((perf_counter() - request_started) * 1000, 2),
             },
         )
         raise
@@ -318,7 +311,6 @@ async def login(
     )
 
     total_ms = (perf_counter() - request_started) * 1000
-
     logger.info(
         "login_timing",
         extra={
@@ -344,7 +336,6 @@ async def login(
     )
 
 
-
 @router.post("/refresh", response_model=Token)
 async def refresh_access_token(
     db: DbSession,
@@ -362,7 +353,6 @@ async def refresh_access_token(
         raise UnauthorizedException("Invalid session")
 
     client_ip = _client_ip(request)
-
     token_pair = await AuthSessionService.rotate_refresh_token(
         db,
         background_tasks=background_tasks,
@@ -441,7 +431,6 @@ async def verify_otp(
     """Verify an OTP."""
 
     client_ip = _client_ip(request)
-
     await AuthRateLimitService.check_otp_verify_allowed(
         email=payload.email,
         purpose=payload.purpose,
@@ -464,13 +453,12 @@ async def verify_otp(
         purpose=payload.purpose,
         ip_address=client_ip,
     )
-
     return result
 
 
 @router.post("/reset-password")
 async def reset_password(payload: UpdatePassword, db: DbSession) -> dict[str, str]:
-    """Reset an account password."""
+    """Reset an email-based account password."""
 
     await AuthService.reset_password(db, payload)
     return {"detail": "Password has been successfully reset. You may now log in."}
