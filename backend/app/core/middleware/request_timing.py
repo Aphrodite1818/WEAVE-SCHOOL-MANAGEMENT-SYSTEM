@@ -13,9 +13,13 @@ from app.config.logging import get_logger
 
 logger = get_logger(__name__)
 
+_IGNORED_PATHS = frozenset({"/health", "/healthz", "/favicon.ico"})
+_SLOW_REQUEST_MS = 750
+_VERY_SLOW_REQUEST_MS = 2000
+
 
 class RequestTimingMiddleware:
-    """Log request duration without logging credentials or request bodies."""
+    """Attach request IDs and log only noteworthy request durations."""
 
     def __init__(self, app: Callable) -> None:
         self.app = app
@@ -43,14 +47,26 @@ class RequestTimingMiddleware:
             await self.app(scope, receive, send_with_status)
         finally:
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
-            log = logger.warning if duration_ms >= 500 else logger.info
+            path = request.url.path
+
+            # Health checks and browser preflight traffic are intentionally quiet.
+            if path in _IGNORED_PATHS or request.method == "OPTIONS":
+                return
+
+            if status_code >= 500 or duration_ms >= _VERY_SLOW_REQUEST_MS:
+                log = logger.warning
+            elif status_code >= 400 or duration_ms >= _SLOW_REQUEST_MS:
+                log = logger.info
+            else:
+                log = logger.debug
+
             actor = getattr(request.state, "actor", None)
             log(
                 "request.completed",
                 extra={
                     "request_id": request_id,
                     "method": request.method,
-                    "route": request.url.path,
+                    "route": path,
                     "status_code": status_code,
                     "duration_ms": duration_ms,
                     "actor_type": getattr(actor, "actor_type", None),
