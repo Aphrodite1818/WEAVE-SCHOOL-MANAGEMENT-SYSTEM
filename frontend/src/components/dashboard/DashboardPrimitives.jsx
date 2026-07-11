@@ -44,23 +44,57 @@ export function DashboardSectionHeader({ title, description, action, className =
   );
 }
 
-export function DashboardWelcomePanel({ eyebrow, title, description, chips = [], children, className = "" }) {
+const isProfileIncomplete = (completion) => {
+  if (completion === undefined || completion === null || completion === "") return false;
+  if (typeof completion === "boolean") return !completion;
+
+  const normalized = String(completion).trim().toLowerCase();
+  return !["complete", "completed", "true"].includes(normalized);
+};
+
+export function DashboardWelcomePanel({
+  eyebrow,
+  title,
+  description,
+  chips = [],
+  children,
+  className = "",
+  profileCompletion,
+  variant = "default",
+}) {
+  const isBlueHero = variant === "student" || variant === "blue";
+  const visibleChips = [
+    isProfileIncomplete(profileCompletion)
+      ? { label: "Profile incomplete", tone: "warning" }
+      : null,
+    ...chips,
+  ].filter(Boolean);
+
   return (
-    <Card className={cn("overflow-hidden p-4 sm:p-6", className)}>
+    <Card
+      className={cn(
+        "overflow-hidden p-4 sm:p-6",
+        isBlueHero && "dashboard-welcome-blue border-0 px-4 py-5 sm:px-7 sm:py-7 lg:px-8",
+        className,
+      )}
+    >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          {eyebrow ? <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs">{eyebrow}</p> : null}
-          <h2 className="mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl">{title}</h2>
-          {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">{description}</p> : null}
-          {chips.length > 0 ? (
+          {eyebrow ? <p className={cn("text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs", isBlueHero && "text-white/75")}>{eyebrow}</p> : null}
+          <h2 className={cn("mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl", isBlueHero && "text-white")}>{title}</h2>
+          {description ? <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/80")}>{description}</p> : null}
+          {visibleChips.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              {chips.filter(Boolean).map((chip) => {
+              {visibleChips.map((chip) => {
                 const chipTone = chip.tone || "neutral";
                 const chipToneStyle = toneStyles[chipTone] || toneStyles.neutral;
                 return (
                   <span
                     key={`${chip.label}-${chip.value || ""}`}
-                    className={cn("inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold sm:text-xs", chipToneStyle.badge)}
+                    className={cn(
+                      "inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold sm:text-xs",
+                      isBlueHero ? "border border-white/20 bg-white/15 text-white" : chipToneStyle.badge,
+                    )}
                   >
                     <span className="truncate">{chip.label}</span>
                     {chip.value ? <span className="truncate opacity-80">{chip.value}</span> : null}

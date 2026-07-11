@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, Menu, BookOpen, FileText, BarChart3, ClipboardList } from "lucide-react";
+import { Home, Menu, BookOpen, FileText, BarChart3, ClipboardList, Settings } from "lucide-react";
 import { NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
@@ -31,21 +31,25 @@ const bottomNavConfig = {
     { label: "Home", to: "/admin/dashboard", icon: Home },
     { label: "Academic", to: "/admin/academic", icon: ClipboardList },
     { label: "Analytics", to: "/admin/analytics", icon: BarChart3 },
+    { label: "Settings", to: "/admin/settings", icon: Settings },
   ],
   teacher: [
     { label: "Home", to: "/teacher/dashboard", icon: Home },
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
     { label: "Scores", to: "/teacher/score-entry", icon: FileText },
+    { label: "Settings", to: "/teacher/settings", icon: Settings },
   ],
   student: [
     { label: "Home", to: "/student/dashboard", icon: Home },
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
     { label: "Progress", to: "/student/analytics", icon: BarChart3 },
+    { label: "Settings", to: "/student/settings", icon: Settings },
   ],
   parent: [
     { label: "Home", to: "/parent/dashboard", icon: Home },
     { label: "Results", to: "/parent/results", icon: BookOpen },
     { label: "Reports", to: "/parent/report-cards", icon: FileText },
+    { label: "Settings", to: "/parent/settings", icon: Settings },
   ],
   superadmin: [
     { label: "Home", to: "/superadmin/dashboard", icon: Home },

@@ -186,11 +186,12 @@ function TeacherDashboardPage() {
       {!loadError ? (
         <>
           <DashboardWelcomePanel
+            variant="blue"
             eyebrow="Teacher dashboard"
             title={`Good day, ${teacher?.first_name || firstName}`}
             description="Your workspace now starts with teaching actions first, then deeper analytics only when needed."
+            profileCompletion={teacher?.profile_completed}
             chips={[
-              { label: teacher?.profile_completed ? "Profile complete" : "Profile needs attention", tone: teacher?.profile_completed ? "success" : "warning" },
               { label: teacher?.is_verified ? "Verified" : "Pending verification", tone: teacher?.is_verified ? "success" : "warning" },
               { label: cleanText(teacher?.specialization, "Specialization not provided"), tone: "primary" },
             ]}

@@ -55,6 +55,12 @@
     --color-text-inverse: 255 255 255;
   }
 
+  :root:not([data-theme="dark"]) [data-dashboard-role="admin"],
+  :root:not([data-theme="dark"]) [data-dashboard-role="parent"],
+  :root:not([data-theme="dark"]) [data-dashboard-role="superadmin"] {
+    --color-background: 247 244 238;
+  }
+
   html {
     @apply overflow-x-hidden bg-background;
     -webkit-text-size-adjust: 100%;
@@ -120,6 +126,18 @@
 @layer components {
   .card-base {
     @apply w-full min-w-0 rounded-[1.25rem] border border-border/70 bg-surface shadow-sm sm:rounded-[1.35rem] sm:shadow-premium;
+  }
+
+  .dashboard-welcome-blue,
+  .dashboard-welcome-student {
+    background-color: #1769f5;
+    box-shadow: 0 18px 40px rgb(23 105 245 / 0.18);
+  }
+
+  :root[data-theme="dark"] .dashboard-welcome-blue,
+  :root[data-theme="dark"] .dashboard-welcome-student {
+    background-color: #172554;
+    box-shadow: 0 18px 42px rgb(2 6 23 / 0.42);
   }
 
   .btn-base {
@@ -475,6 +493,27 @@
       transform: translateY(0);
     }
   }
+}
+
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.001ms !important;
+}
+
+html[data-contrast="high"] {
+  --color-border: 100 116 139;
+  --color-border-strong: 71 85 105;
+  --color-text-muted: 71 85 105;
+}
+
+html[data-theme="dark"][data-contrast="high"] {
+  --color-border: 148 163 184;
+  --color-border-strong: 203 213 225;
+  --color-text-muted: 203 213 225;
 }
 
 @media (prefers-reduced-motion: reduce) {

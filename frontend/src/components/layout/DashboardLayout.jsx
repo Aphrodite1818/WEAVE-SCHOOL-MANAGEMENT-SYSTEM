@@ -227,7 +227,10 @@ function DashboardShellFrame({
       : "Pull to refresh";
 
   return (
-    <div className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-background text-text">
+    <div
+      data-dashboard-role={role}
+      className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-background text-text"
+    >
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block",

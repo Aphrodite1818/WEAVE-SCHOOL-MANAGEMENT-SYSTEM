@@ -191,9 +191,11 @@ function ParentDashboardPage() {
       {!loadError ? (
         <>
           <DashboardWelcomePanel
+            variant="blue"
             eyebrow="Parent dashboard"
             title={`Welcome, ${firstName}`}
             description="A calm summary of your child’s progress, school updates, and next actions."
+            profileCompletion={user?.profile_completed}
             chips={[
               { label: "Viewing", value: selectedChildName, tone: selectedChildRecord ? "primary" : "warning" },
               { label: selectedChildAcademicLabel, tone: selectedChildAcademicLabel !== "-" ? "success" : "neutral" },

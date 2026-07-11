@@ -5,10 +5,9 @@ import './styles/mobileOverrides.css'
 import './styles/brandAssets.css'
 import './styles/notificationDropdown.css'
 import App from './App.jsx'
+import { applyAccessibilityPreferences, getSavedAccessibilityPreferences } from './utils/accessibilityPreferences'
 
-const savedTheme = localStorage.getItem("theme");
-const systemTheme = window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-document.documentElement.dataset.theme = savedTheme || systemTheme;
+applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 const updateStandaloneDisplayMode = () => {

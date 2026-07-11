@@ -9,6 +9,7 @@ import StudentSubjectDetailsPage from "../pages/student/StudentSubjectDetailsPag
 import StudentSubjectsPage from "../pages/student/StudentSubjectsPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
+import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import RoleGuard from "./RoleGuard";
 
@@ -28,6 +29,7 @@ export const studentRoutes = (
       <Route path="/student/assignments" element={<StaticModulePage role="student" title="Assignments" description="Track assigned work and due dates." />} />
       <Route path="/student/results" element={<StaticModulePage role="student" title="Results" description="Review academic performance and report summaries." />} />
       <Route path="/student/notices" element={<AnnouncementsWorkspacePage mode="student" />} />
+      <Route path="/student/settings" element={<RoleSettingsPage role="student" />} />
     </Route>
   </Route>
 );

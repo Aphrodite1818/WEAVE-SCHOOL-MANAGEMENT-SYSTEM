@@ -63,8 +63,8 @@ function UploadDropzone({ label, inputRef, onFile, disabled, compact = false }) 
   return (
     <div
       className={`flex flex-col items-center justify-center rounded-2xl border border-dashed px-5 text-center transition ${
-        compact ? "min-h-40" : "min-h-60"
-      } ${dragging ? "border-primary bg-primary-subtle" : "border-primary/55 bg-surface"}`}
+        compact ? "min-h-36" : "min-h-48"
+      } ${dragging ? "border-primary bg-primary-subtle" : "border-primary/55 bg-surface-muted/25 hover:bg-primary-subtle/30"}`}
       onDragEnter={(event) => {
         event.preventDefault();
         setDragging(true);
@@ -81,8 +81,8 @@ function UploadDropzone({ label, inputRef, onFile, disabled, compact = false }) 
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
         <UploadCloud className="h-6 w-6" aria-hidden="true" />
       </span>
-      <p className="mt-4 text-sm font-semibold text-text">Drop an image here</p>
-      <p className="mt-1 text-xs text-text-muted">or</p>
+      <p className="mt-4 text-sm font-semibold text-text">Drag and drop your photo here</p>
+      <p className="mt-1 text-xs text-text-muted">or tap to browse</p>
       <Button
         type="button"
         variant="outline"
@@ -90,7 +90,7 @@ function UploadDropzone({ label, inputRef, onFile, disabled, compact = false }) 
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
       >
-        Browse files
+        Choose image
       </Button>
       <span className="sr-only">{label}</span>
     </div>
@@ -119,7 +119,7 @@ function AssetStatus({ label, imageUrl, onRemove, busy }) {
 
 function ProfileMediaManager({ role, user: initialUser }) {
   const normalizedRole = String(role || "").toLowerCase();
-  const supportsPassport = ["admin", "teacher", "student"].includes(normalizedRole);
+  const supportsPassport = ["admin", "teacher", "student", "parent"].includes(normalizedRole);
   const supportsLogo = normalizedRole === "admin";
   const [user, setUser] = useState(initialUser);
   const [photoFile, setPhotoFile] = useState(null);
@@ -233,16 +233,16 @@ function ProfileMediaManager({ role, user: initialUser }) {
 
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm" aria-labelledby="media-heading">
-      <div className="border-b border-border px-4 py-5 sm:px-6 lg:px-8">
+      <div className="border-b border-border bg-surface-muted/35 px-4 py-5 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary">Profile setup</p>
-            <h2 id="media-heading" className="mt-1 text-xl font-semibold sm:text-2xl">Photos &amp; logo</h2>
-            <p className="mt-1 max-w-2xl text-sm text-text-muted">Add clear, recognizable images that represent you and your school across the workspace.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-primary">Profile media</p>
+            <h2 id="media-heading" className="mt-1 text-xl font-semibold sm:text-2xl">Passport photo</h2>
+            <p className="mt-1 max-w-2xl text-sm text-text-muted">Upload a clean, centered photo for profile cards, records, and workspace identity.</p>
           </div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-success">
+          <div className="flex items-center gap-2 rounded-full bg-success-soft px-3 py-1.5 text-xs font-semibold text-success">
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            Secure image upload
+            Secure upload
           </div>
         </div>
       </div>
@@ -254,30 +254,32 @@ function ProfileMediaManager({ role, user: initialUser }) {
           <div className="p-4 sm:p-6 lg:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-base font-semibold">Personal photo</h3>
-                <p className="mt-1 text-sm text-text-muted">Use a clear passport-style image with your face centered.</p>
+                <h3 className="text-base font-semibold">Upload photo</h3>
+                <p className="mt-1 text-sm text-text-muted">JPG, PNG, or WebP. Max size 2 MB. A square image works best.</p>
               </div>
               {savedPhoto ? <span className="rounded-full bg-success-soft px-3 py-1 text-xs font-semibold text-success-hover">Uploaded</span> : null}
             </div>
 
-            <div className="mt-5 grid gap-5 md:grid-cols-[14rem_minmax(0,1fr)]">
-              <div>
+            <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,0.75fr)]">
+              <div className="rounded-2xl border border-border/70 bg-surface px-4 py-4 sm:px-5">
                 <input ref={photoInputRef} className="sr-only" type="file" accept={ACCEPTED_TYPES.join(",")} onChange={(event) => event.target.files?.[0] && choosePhoto(event.target.files[0])} />
                 <UploadDropzone label="Personal photo" inputRef={photoInputRef} onFile={choosePhoto} disabled={Boolean(busy)} />
-                <p className="mt-2 text-center text-xs text-text-muted">PNG, JPG or WebP · Max 2 MB</p>
+                <p className="mt-2 text-center text-xs text-text-muted">Accepted formats: PNG, JPG, WebP - Max 2 MB</p>
               </div>
 
-              <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl bg-surface-muted/60 p-5">
-                <div className="relative h-44 w-44 overflow-hidden rounded-full border-4 border-surface bg-surface shadow-sm ring-1 ring-border">
+              <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl border border-border/70 bg-surface-muted/35 p-5 text-center">
+                <p className="text-sm font-semibold text-text">Live preview</p>
+                <p className="mt-1 text-xs text-text-muted">This is how your passport photo will appear.</p>
+                <div className="relative mt-5 h-44 w-44 overflow-hidden rounded-full border-4 border-surface bg-surface shadow-sm ring-2 ring-primary/25">
                   {photoPreview ? <img src={photoPreview} alt="Selected profile preview" className="h-full w-full object-cover" style={{ transform: `scale(${zoom / 100})` }} /> : <Avatar user={user} name={displayName} className="h-full w-full text-4xl ring-0" />}
                 </div>
                 {photoPreview ? (
                   <div className="mt-5 w-full max-w-xs">
-                    <div className="flex items-center justify-between text-xs font-semibold text-text-soft"><span>Adjust crop</span><span>{zoom}%</span></div>
+                    <div className="flex items-center justify-between text-xs font-semibold text-text-soft"><span>Crop zoom</span><span>{zoom}%</span></div>
                     <input aria-label="Photo zoom" className="mt-2 w-full accent-primary" type="range" min="100" max="160" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                       <Button type="button" variant="outline" className="flex-1" onClick={() => { setPhotoFile(null); setPhotoPreview(null); setZoom(100); }} disabled={Boolean(busy)}><RotateCcw className="h-4 w-4" />Reset</Button>
-                      <Button type="button" className="flex-1 bg-primary" onClick={() => handleUpload("photo")} disabled={Boolean(busy)}>{busy === "photo" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}Upload photo</Button>
+                      <Button type="button" className="flex-1 bg-primary" onClick={() => handleUpload("photo")} disabled={Boolean(busy)}>{busy === "photo" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}Save photo</Button>
                     </div>
                   </div>
                 ) : <p className="mt-4 text-sm text-text-muted">{savedPhoto ? "Current profile photo" : "Your preview will appear here"}</p>}
@@ -297,7 +299,7 @@ function ProfileMediaManager({ role, user: initialUser }) {
             <div className="mt-4">
               <input ref={logoInputRef} className="sr-only" type="file" accept={ACCEPTED_TYPES.join(",")} onChange={(event) => event.target.files?.[0] && chooseLogo(event.target.files[0])} />
               <UploadDropzone compact label="School logo" inputRef={logoInputRef} onFile={chooseLogo} disabled={Boolean(busy)} />
-              <p className="mt-2 text-center text-xs text-text-muted">PNG, JPG or WebP · Max 1 MB</p>
+              <p className="mt-2 text-center text-xs text-text-muted">PNG, JPG or WebP - Max 1 MB</p>
             </div>
             {logoFile ? <Button type="button" className="mt-4 w-full bg-primary" onClick={() => handleUpload("logo")} disabled={Boolean(busy)}>{busy === "logo" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}Upload school logo</Button> : null}
             <AssetStatus label="School logo" imageUrl={savedLogo} onRemove={() => handleRemove("logo")} busy={Boolean(busy)} />

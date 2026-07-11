@@ -5,6 +5,8 @@ import { authSession } from "../../services/api";
 import { searchService } from "../../services/searchService";
 import { cn } from "../../utils/cn";
 
+const ADMIN_SEARCH_STORAGE_PREFIX = "learnly:admin-search:";
+
 const placeholderByRole = {
   admin: "Search students, teachers, parents, classes...",
   teacher: "Search my students, classes, subjects, results...",
@@ -83,9 +85,19 @@ function WorkspaceSearch({ role }) {
     setError("");
   };
 
-  const handleSelect = (href) => {
+  const handleSelect = (item) => {
     clearSearch();
-    navigate(href);
+    if (searchRole === "admin") {
+      const resultKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      window.sessionStorage.setItem(
+        `${ADMIN_SEARCH_STORAGE_PREFIX}${resultKey}`,
+        JSON.stringify({ item, query: query.trim() }),
+      );
+      navigate(`/admin/search/${resultKey}`, { state: { item, query: query.trim() } });
+      return;
+    }
+
+    navigate(item.href);
   };
 
   const handleQueryChange = (event) => {
@@ -109,7 +121,7 @@ function WorkspaceSearch({ role }) {
 
     if (event.key === "Enter" && items.length > 0) {
       event.preventDefault();
-      handleSelect(items[0].href);
+      handleSelect(items[0]);
     }
   };
 
@@ -158,7 +170,7 @@ function WorkspaceSearch({ role }) {
                 <button
                   key={`${item.role}-${item.href}-${item.label}`}
                   type="button"
-                  onClick={() => handleSelect(item.href)}
+                  onClick={() => handleSelect(item)}
                   className={cn(
                     "flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-surface-muted/70",
                     "focus:bg-surface-muted/70 focus:outline-none"
