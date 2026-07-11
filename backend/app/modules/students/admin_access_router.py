@@ -4,11 +4,13 @@ from typing import Annotated, TypeAlias
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import BadRequestException, NotFoundException
+from app.modules.classes.models import ClassRoom
 from app.modules.students.models import StudentAccessCodePurpose
 from app.modules.students.repository import StudentRepository
 from app.modules.students.schemas import (
@@ -24,6 +26,27 @@ from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter()
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+
+
+async def _validate_student_class(
+    *,
+    db: AsyncSession,
+    actor: TenantAdmin,
+    class_id: UUID | None,
+) -> None:
+    """Ensure an optional class belongs to the current tenant."""
+
+    if class_id is None:
+        return
+
+    result = await db.execute(
+        select(ClassRoom.id).where(
+            ClassRoom.id == class_id,
+            ClassRoom.tenant_id == actor.tenant_id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise BadRequestException(detail="Selected class does not belong to this school")
 
 
 async def _persist_student_creation_admin_fields(
@@ -73,6 +96,11 @@ async def create_student(
 ) -> StudentResponse:
     """Create a student and return the one-time setup code."""
 
+    await _validate_student_class(
+        db=db,
+        actor=current_admin,
+        class_id=payload.class_id,
+    )
     await SubscriptionFeatureService.ensure_resource_limit_available(
         db=db,
         tenant_id=current_admin.tenant_id,
