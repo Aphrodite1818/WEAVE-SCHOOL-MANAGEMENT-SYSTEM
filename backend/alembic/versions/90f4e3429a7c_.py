@@ -25,9 +25,21 @@ PUBLIC_SCHEMA = "public"
 def upgrade() -> None:
     """Upgrade schema."""
 
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if insp.has_table("media_assets", schema=PUBLIC_SCHEMA):
+        return
+
     # -------------------------------------------------------------------------
     # Media assets
     # -------------------------------------------------------------------------
+
+    op.execute("CREATE TYPE public.media_owner_type AS ENUM ('tenant', 'student', 'teacher', 'tenant_admin')")
+    op.execute("CREATE TYPE public.media_purpose AS ENUM ('school_logo', 'student_passport', 'teacher_passport', 'tenant_admin_passport')")
+    op.execute("CREATE TYPE public.media_visibility AS ENUM ('public', 'private')")
+    op.execute("CREATE TYPE public.media_status AS ENUM ('active', 'replaced', 'deleted')")
+    op.execute("CREATE TYPE public.media_storage_provider AS ENUM ('local', 'r2')")
+    op.execute("CREATE TYPE public.media_uploaded_by_actor_type AS ENUM ('tenant_admin', 'teacher', 'student', 'parent', 'superadmin')")
 
     op.create_table(
         "media_assets",
@@ -40,6 +52,7 @@ def upgrade() -> None:
                 "tenant_admin",
                 name="media_owner_type",
                 schema=PUBLIC_SCHEMA,
+                create_type=False,
             ),
             nullable=False,
         ),
@@ -61,6 +74,7 @@ def upgrade() -> None:
                 "tenant_admin_passport",
                 name="media_purpose",
                 schema=PUBLIC_SCHEMA,
+                create_type=False,
             ),
             nullable=False,
         ),
@@ -71,6 +85,7 @@ def upgrade() -> None:
                 "private",
                 name="media_visibility",
                 schema=PUBLIC_SCHEMA,
+                create_type=False,
             ),
             server_default="private",
             nullable=False,
@@ -83,6 +98,7 @@ def upgrade() -> None:
                 "deleted",
                 name="media_status",
                 schema=PUBLIC_SCHEMA,
+                create_type=False,
             ),
             server_default="active",
             nullable=False,
@@ -94,6 +110,7 @@ def upgrade() -> None:
                 "r2",
                 name="media_storage_provider",
                 schema=PUBLIC_SCHEMA,
+                create_type=False,
             ),
             server_default="local",
             nullable=False,
@@ -181,6 +198,7 @@ def upgrade() -> None:
                 "superadmin",
                 name="media_uploaded_by_actor_type",
                 schema=PUBLIC_SCHEMA,
+                create_type=False,
             ),
             nullable=True,
         ),

@@ -43,7 +43,6 @@ from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
-
 #DIAGNOSTIC
 from time import perf_counter
 import logging 
@@ -194,6 +193,8 @@ async def _build_session_bootstrap_response(
         role=role,
         password_reset_required=getattr(actor, "password_reset_required", None),
         profile_status=_enum_value(getattr(actor, "profile_status", None)),
+        passport_photo_url=getattr(actor, "passport_photo_url", None),
+        tenant_logo_url=getattr(tenant, "logo_url", None) if 'tenant' in locals() and tenant else None,
     )
 
     return SessionBootstrapResponse(
@@ -389,11 +390,6 @@ async def logout(
     """Revoke the current refresh-token session and clear the cookie."""
 
     if refresh_token is not None:
-        await _enforce_refresh_session_controls(
-            db,
-            refresh_token=refresh_token,
-            ip_address=_client_ip(request),
-        )
         await AuthSessionService.logout_by_refresh_token(
             db,
             refresh_token=refresh_token,

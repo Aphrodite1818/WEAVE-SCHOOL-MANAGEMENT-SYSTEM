@@ -19,6 +19,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if insp.has_table("platform_controls", schema="public"):
+        return
     op.create_table(
         "platform_controls",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),

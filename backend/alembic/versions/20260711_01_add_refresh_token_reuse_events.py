@@ -18,6 +18,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if insp.has_table("auth_refresh_token_reuse_events", schema="public"):
+        return
     op.create_table(
         "auth_refresh_token_reuse_events",
         sa.Column("refresh_token_id", postgresql.UUID(as_uuid=True), nullable=True),

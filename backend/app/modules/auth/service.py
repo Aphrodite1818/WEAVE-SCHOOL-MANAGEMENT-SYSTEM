@@ -333,6 +333,8 @@ async def _authenticate_tenant_actor(
                 actor_type=ActorType.TENANT_ADMIN.value,
                 account_type=ActorType.TENANT_ADMIN.value,
                 role="admin",
+                passport_photo_url=getattr(tenant_admin, "passport_photo_url", None),
+                tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
             ),
         )
 
@@ -381,6 +383,8 @@ async def _authenticate_tenant_actor(
                 actor_type=ActorType.TEACHER.value,
                 account_type=ActorType.TEACHER.value,
                 role="teacher",
+                passport_photo_url=getattr(teacher, "passport_photo_url", None),
+                tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
             ),
         )
 
@@ -414,6 +418,8 @@ async def _authenticate_tenant_actor(
                 actor_type=ActorType.PARENT.value,
                 account_type=ActorType.PARENT.value,
                 role="parent",
+                passport_photo_url=getattr(parent, "passport_photo_url", None),
+                tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
             ),
         )
 
@@ -451,32 +457,6 @@ async def _authenticate_tenant_actor(
         ):
             raise UnauthorizedException("Account is not active")
         await _update_last_login_if_due(db, student)
-        return AuthenticatedActor(
-            actor_type=ActorType.STUDENT.value,
-            account_type=ActorType.STUDENT.value,
-            actor_id=student.id,
-            email=student.admission_number,
-            role="student",
-            tenant_id=student.tenant_id,
-            password_reset_required=student.password_reset_required,
-            user=LoginSessionUser(
-                id=str(student.id),
-                tenant_id=str(student.tenant_id),
-                school_name=tenant.school_name,
-                email=student.admission_number,
-                admission_number=student.admission_number,
-                first_name=student.first_name,
-                last_name=student.last_name,
-                actor_type=ActorType.STUDENT.value,
-                account_type=ActorType.STUDENT.value,
-                role="student",
-                password_reset_required=student.password_reset_required,
-                profile_status=_enum_value(student.profile_status),
-            ),
-        )
-
-    return None
-
 
 async def _get_email_actor_with_tenant(
     db: AsyncSession,
@@ -1131,6 +1111,7 @@ class AuthService:
                         actor_type=AuthSessionActorType.SUPERADMIN.value,
                         account_type=AuthSessionActorType.SUPERADMIN.value,
                         role="superadmin",
+                        passport_photo_url=getattr(superadmin, "passport_photo_url", None),
                     ),
                 )
 
