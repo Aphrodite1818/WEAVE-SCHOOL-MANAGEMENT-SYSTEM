@@ -1,26 +1,32 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import BackgroundTasks
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from app.config.database import AsyncSessionLocal
 from app.config.logging import get_logger
 from app.config.settings import settings
 from app.core.utils.email import send_email
 from app.core.utils.email_templates import get_security_alert_email_html
-from app.modules.superadmin.models import SuperAdmin
 from app.modules.auth.models import AuthRefreshToken
+from app.modules.superadmin.models import SuperAdmin
 
 
 logger = get_logger(__name__)
 
+_pending_security_background_tasks: ContextVar[BackgroundTasks | None] = ContextVar(
+    "pending_security_background_tasks",
+    default=None,
+)
+
 
 class SecurityAlertService:
-    """Send high-signal security alerts to the platform owner/developer and superadmins."""
+    """Queue high-signal security alerts for post-response delivery."""
 
     @staticmethod
     def _enabled() -> bool:
@@ -33,19 +39,18 @@ class SecurityAlertService:
         rows: dict[str, Any],
         throttle_refresh_reuse: bool = False,
     ) -> None:
-        """Background task to fetch superadmins and send emails."""
+        """Fetch recipients and send a security alert after the response is sent."""
+
         if not cls._enabled():
             return
 
         try:
             async with AsyncSessionLocal() as db:
                 if throttle_refresh_reuse:
-                    # Throttle token reuse alerts (e.g. only alert if hitting multiples of 5 within 24h)
                     window_start = datetime.now(timezone.utc) - timedelta(hours=24)
                     reuse_count = (
                         await db.execute(
-                            select(func.count(AuthRefreshToken.id))
-                            .where(
+                            select(func.count(AuthRefreshToken.id)).where(
                                 AuthRefreshToken.reuse_detected_at.is_not(None),
                                 AuthRefreshToken.reuse_detected_at >= window_start,
                             )
@@ -53,18 +58,23 @@ class SecurityAlertService:
                     ).scalar_one()
 
                     if reuse_count == 0 or reuse_count % 5 != 0:
-                        logger.info("Security alert throttled", extra={"reuse_count": reuse_count})
+                        logger.info(
+                            "Security alert throttled",
+                            extra={"reuse_count": reuse_count},
+                        )
                         return
-                    
+
                     rows["Reuses in last 24h"] = reuse_count
 
-                # Fetch active superadmins
                 superadmins = await db.execute(
                     select(SuperAdmin.email).where(SuperAdmin.is_active.is_(True))
                 )
                 recipients = {str(settings.SECURITY_ALERT_EMAIL)}
-                for sa_email in superadmins.scalars().all():
-                    recipients.add(sa_email)
+                recipients.update(
+                    email
+                    for email in superadmins.scalars().all()
+                    if isinstance(email, str) and email.strip()
+                )
 
                 html_body = get_security_alert_email_html(
                     title,
@@ -74,20 +84,35 @@ class SecurityAlertService:
                     },
                 )
 
-                # Send to all recipients concurrently
-                tasks = [
-                    send_email(
-                        to_email=email,
-                        subject=f"[LearnlyAI Security] {title}",
-                        body=html_body,
-                        is_html=True,
+                results = await asyncio.gather(
+                    *(
+                        send_email(
+                            to_email=email,
+                            subject=f"[LearnlyAI Security] {title}",
+                            body=html_body,
+                            is_html=True,
+                        )
+                        for email in recipients
+                    ),
+                    return_exceptions=True,
+                )
+
+                failures = [result for result in results if isinstance(result, Exception)]
+                if failures:
+                    logger.error(
+                        "One or more security alert emails failed",
+                        extra={
+                            "title": title,
+                            "recipient_count": len(recipients),
+                            "failure_count": len(failures),
+                        },
                     )
-                    for email in recipients
-                ]
-                await asyncio.gather(*tasks, return_exceptions=True)
 
         except Exception as exc:
-            logger.exception("Failed to execute security alert background task", extra={"error": str(exc), "title": title})
+            logger.exception(
+                "Failed to execute security alert background task",
+                extra={"error": str(exc), "title": title},
+            )
 
     @classmethod
     def send_security_alert(
@@ -98,23 +123,39 @@ class SecurityAlertService:
         rows: dict[str, Any],
         throttle_refresh_reuse: bool = False,
     ) -> None:
-        """Queue a security alert email to be sent in the background."""
+        """Queue an alert and expose it to exception responses when necessary."""
+
         if not cls._enabled():
-            logger.info("Security alert skipped because SECURITY_ALERT_EMAIL is not configured or alerts are disabled")
+            logger.info(
+                "Security alert skipped because alerts are disabled or no recipient is configured"
+            )
             return
 
         background_tasks.add_task(
             cls._execute_alert,
             title=title,
-            rows=rows,
+            rows=dict(rows),
             throttle_refresh_reuse=throttle_refresh_reuse,
         )
+
+        # FastAPI normally attaches BackgroundTasks to successful route responses.
+        # Security detections often raise AppException instead, so the global
+        # exception handler needs access to the same task collection.
+        _pending_security_background_tasks.set(background_tasks)
+
+    @staticmethod
+    def take_pending_background_tasks() -> BackgroundTasks | None:
+        """Return and clear security tasks queued by the current request context."""
+
+        pending = _pending_security_background_tasks.get()
+        _pending_security_background_tasks.set(None)
+        return pending
 
     @classmethod
     def notify_refresh_token_reuse(
         cls,
         *,
-        background_tasks: BackgroundTasks,
+        background_tasks: BackgroundTasks | None = None,
         actor_type: str,
         actor_id: object,
         tenant_id: object | None,
@@ -123,6 +164,13 @@ class SecurityAlertService:
         user_agent: str | None,
     ) -> None:
         """Alert when refresh-token reuse marks a session compromised."""
+
+        # Compatibility guard for the legacy router path that scheduled this
+        # method itself as a background task without passing BackgroundTasks.
+        # The authoritative alert is queued by mark_session_compromised().
+        if background_tasks is None:
+            logger.debug("Skipped duplicate refresh-reuse alert scheduling")
+            return
 
         cls.send_security_alert(
             background_tasks=background_tasks,
@@ -134,7 +182,10 @@ class SecurityAlertService:
                 "Session JTI": session_jti,
                 "IP address": ip_address or "unknown",
                 "User agent": user_agent or "unknown",
-                "Recommended action": "Review security analytics, block the IP if suspicious, and revoke affected sessions.",
+                "Recommended action": (
+                    "Review security analytics, block the IP if suspicious, "
+                    "and revoke affected sessions."
+                ),
             },
             throttle_refresh_reuse=True,
         )
