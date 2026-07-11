@@ -2,6 +2,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Avatar from "../../components/ui/Avatar";
 import ProfileCompletionForm from "../../components/shared/ProfileCompletionForm";
+import ProfileMediaManager from "../../components/shared/ProfileMediaManager";
 import { authSession } from "../../services/api";
 import { getUserDisplayName } from "../../utils/user";
 
@@ -13,10 +14,13 @@ function ProfileSettingsPage() {
   return (
     <DashboardLayout
       role={role}
-      title="Profile Settings"
-      description="Manage the same account details used during onboarding."
+      title="Complete your profile"
+      description="Keep your profile details, personal photo, and school identity up to date."
     >
-      <Card className="mx-auto max-w-3xl overflow-hidden">
+      <div className="mx-auto w-full max-w-6xl space-y-5 sm:space-y-6">
+        <ProfileMediaManager role={role} user={user} />
+
+      <Card className="overflow-hidden">
         <div className="border-b border-border bg-surface-muted/50 p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <Avatar
@@ -39,9 +43,11 @@ function ProfileSettingsPage() {
           <ProfileCompletionForm
             role={role}
             submitLabel="Save changes"
+            showMediaPreview={false}
           />
         </div>
       </Card>
+      </div>
     </DashboardLayout>
   );
 }

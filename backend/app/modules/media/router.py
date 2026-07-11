@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_tenant_admin
+from app.core.dependencies.route_guards import get_current_tenant_admin, get_current_tenant_member
 from app.modules.media.models import (
     MediaOwnerType,
     MediaPurpose,
@@ -28,6 +28,8 @@ from app.modules.media.schemas import (
 )
 from app.modules.media.service import MediaService
 from app.modules.tenant_admins.models import TenantAdmin
+from app.modules.students.models import Student
+from app.modules.teachers.models import Teacher
 
 
 router = APIRouter(
@@ -36,6 +38,10 @@ router = APIRouter(
 )
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentProfileMediaActor: TypeAlias = Annotated[
+    TenantAdmin | Teacher | Student,
+    Depends(get_current_tenant_member),
+]
 
 
 @router.post(
@@ -164,12 +170,12 @@ async def delete_teacher_passport_photo(
 )
 async def upload_tenant_admin_passport_photo(
     db: DbSession,
-    current_user: CurrentTenantAdmin,
+    current_user: CurrentProfileMediaActor,
     file: UploadFile = File(...),
 ) -> MediaUploadResponse:
-    """Upload or replace the current tenant admin's passport photo."""
+    """Upload or replace the authenticated actor's passport photo."""
 
-    return await MediaService.upload_tenant_admin_passport(
+    return await MediaService.upload_profile_passport(
         db=db,
         actor=current_user,
         file=file,
@@ -182,12 +188,12 @@ async def upload_tenant_admin_passport_photo(
 )
 async def delete_tenant_admin_passport_photo(
     db: DbSession,
-    current_user: CurrentTenantAdmin,
+    current_user: CurrentProfileMediaActor,
     delete_object: bool = Query(default=False),
 ) -> MediaDeleteResponse:
-    """Delete/detach the current tenant admin's passport photo."""
+    """Delete/detach the authenticated actor's passport photo."""
 
-    return await MediaService.delete_current_tenant_admin_passport(
+    return await MediaService.delete_current_profile_passport(
         db=db,
         actor=current_user,
         delete_object=delete_object,

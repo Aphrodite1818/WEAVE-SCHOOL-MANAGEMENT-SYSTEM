@@ -1,22 +1,37 @@
 # Backend — Academic Model Notes
 
-## Phase 1: Assignment consolidation
+## Assignment model
 
-**Subjects belong to classes.** Each class offers subjects via `class_subjects` (managed on the Classes screen and `/classes/:id/subjects`).
+**Subjects belong to classes.** Each class offers subjects via `class_subjects`, managed through the Academic Hub and class-subject APIs.
 
-**Teachers are assigned to class-subject pairs in one place (Academic Hub).** Operational assignments live in `teacher_assignments`, linked to `class_subjects`. Use `/tenant-admin/academic/teacher-assignments`.
+**Teachers are assigned to class-subject pairs in one place.** Operational assignments live in `teacher_assignments`, linked to `class_subjects`.
 
-**Class teacher stays on the class record.** Homeroom/form tutor is `classes.teacher_id` only — do not duplicate this on the teacher model.
+**Class teacher stays on the class record.** Homeroom/form tutor remains `classes.teacher_id`; do not duplicate it on the teacher model.
 
-**Report cards are admin-generated snapshots, never live-computed.** Scores use `draft | submitted` only; `published` applies to `report_cards` exclusively. Generate via `/tenant-admin/academic/report-cards/generate`.
+**Report cards are admin-generated snapshots.** Scores use `draft | submitted`; `published` applies to generated report cards.
 
-### Legacy tables (compatibility only)
+## Fresh database migration baseline
 
-- `teacher_subjects` — catalog qualification only; no new UI writes
-- `class_subject_teachers` — deprecated; kept only for backward-compatible reads and result backfill during migration
+The development migration history was reset after the database was dropped. The repository now uses one initial Alembic revision:
 
-### Migration
+```text
+20260711_initial_schema
+```
 
-1. Run Alembic: `alembic upgrade head`
-2. Backfill: `python -m scripts.backfill_academic_assignments [--dry-run]`
-3. Review `migration_report.json` and `unmatched_teacher_subjects.csv` before production
+For a new, empty PostgreSQL database:
+
+```bash
+cd backend
+alembic upgrade head
+```
+
+Then verify Alembic reports one head:
+
+```bash
+alembic heads
+alembic current
+```
+
+Do not run the old academic backfill scripts against a fresh database. They were intended for upgrading legacy data, not for initializing an empty schema.
+
+Before deploying this migration to any environment that still contains data, take a backup and create a forward migration instead of applying this reset baseline.

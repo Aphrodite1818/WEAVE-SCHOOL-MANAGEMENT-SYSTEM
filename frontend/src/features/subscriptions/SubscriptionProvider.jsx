@@ -160,11 +160,18 @@ export function SubscriptionProvider({ children }) {
           },
     [errors, isTenantAdmin]
   );
+  const tenantSnapshot = user?.tenant?.tenant || user?.tenant || {};
   const planCode =
-    visibleEntitlements?.plan || visibleCurrentSubscription?.plan_code || null;
+    visibleEntitlements?.plan ||
+    visibleCurrentSubscription?.plan_code ||
+    tenantSnapshot?.plan ||
+    user?.plan ||
+    null;
   const statusCode =
     visibleEntitlements?.subscription_status ||
     visibleCurrentSubscription?.status ||
+    tenantSnapshot?.subscription_status ||
+    user?.subscription_status ||
     null;
   const statusMeta = getSubscriptionStatusMeta(statusCode);
 

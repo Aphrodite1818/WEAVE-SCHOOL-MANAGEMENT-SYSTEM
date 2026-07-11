@@ -20,6 +20,7 @@ class ReportCardGenerateRequest(InputBase):
     class_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
+    generate_for_class: bool | None = None
 
     @model_validator(mode="after")
     def validate_target(self):

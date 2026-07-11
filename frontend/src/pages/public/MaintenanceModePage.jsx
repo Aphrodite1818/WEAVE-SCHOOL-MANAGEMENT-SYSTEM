@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { RefreshCw, Wrench, ArrowLeft } from "lucide-react";
 
 import Button from "../../components/ui/Button";
+import { useNavigate } from "react-router-dom";
 import { clearStoredMaintenanceState, getStoredMaintenanceState, PLATFORM_MAINTENANCE_EVENT } from "../../services/api";
 
 const DEFAULT_MESSAGE = "The platform is temporarily down for maintenance. We are working to restore access as quickly as possible.";
 
 function MaintenanceModePage() {
+  const navigate = useNavigate();
   const [state, setState] = useState(() => getStoredMaintenanceState());
 
   useEffect(() => {
@@ -23,7 +25,7 @@ function MaintenanceModePage() {
 
   const handleRetry = () => {
     clearStoredMaintenanceState();
-    window.location.assign("/login");
+    navigate("/login", { replace: true });
   };
 
   const handleGoBack = () => {

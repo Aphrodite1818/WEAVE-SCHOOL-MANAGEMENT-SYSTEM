@@ -71,6 +71,9 @@ from app.modules.parents.models import Parent, ParentAccountStatus
 from app.modules.parents.repository import ParentRepository
 from app.modules.students.models import Student, StudentAccountStatus
 from app.modules.students.repository import StudentAccessCodeRepository, StudentRepository
+from app.modules.superadmin.platform_control_service import PlatformControlService
+from app.modules.superadmin.security_alert_service import SecurityAlertService
+from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
 from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
@@ -79,6 +82,9 @@ from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import Tenant, TenantStatus, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
+
+
+
 
 
 EmailActor = TenantAdmin | Teacher | Parent
@@ -162,7 +168,6 @@ async def _authenticate_superadmin(
     password: str,
 ) -> SuperAdmin | None:
     """Authenticate a superadmin by email/password."""
-
     superadmin = await SuperAdminRepository.get_by_email(db, email)
     if superadmin is None:
         return None
@@ -218,25 +223,17 @@ async def _authenticate_tenant_admin(
 
     if tenant.verification_status == TenantVerificationStatus.PENDING_VERIFICATION:
         await AuthService._raise_verification_required(
-            db,
-            email=normalized_email,
-            background_tasks=background_tasks,
+            db, email=normalized_email, background_tasks=background_tasks
         )
-
     if tenant.verification_status == TenantVerificationStatus.REJECTED:
         raise UnauthorizedException("Account has been rejected. Please contact support.")
-
     if not _tenant_allows_login(tenant):
         raise UnauthorizedException("Account is not active")
-
     if not admin.is_active or admin.account_status != TenantAdminStatus.ACTIVE:
         raise UnauthorizedException("Account is not active")
-
     if not admin.is_verified:
         await AuthService._raise_verification_required(
-            db,
-            email=normalized_email,
-            background_tasks=background_tasks,
+            db, email=normalized_email, background_tasks=background_tasks
         )
 
     await _update_last_login_if_due(db, admin)
@@ -297,7 +294,6 @@ async def _authenticate_tenant_actor(
     background_tasks: BackgroundTasks | None = None,
 ) -> "AuthenticatedActor | None":
     """Authenticate a non-superadmin actor via AuthIdentity."""
-
     try:
         resolution = await AuthIdentityService.resolve_identifier(
             db=db,
@@ -337,6 +333,8 @@ async def _authenticate_tenant_actor(
                 actor_type=ActorType.TENANT_ADMIN.value,
                 account_type=ActorType.TENANT_ADMIN.value,
                 role="admin",
+                passport_photo_url=getattr(tenant_admin, "passport_photo_url", None),
+                tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
             ),
         )
 
@@ -347,14 +345,10 @@ async def _authenticate_tenant_actor(
             )
         if identifier_type == IdentifierType.EMAIL:
             await AuthService._raise_verification_required(
-                db,
-                email=identifier,
-                background_tasks=background_tasks,
+                db, email=identifier, background_tasks=background_tasks
             )
-
     if tenant.verification_status == TenantVerificationStatus.REJECTED:
         raise UnauthorizedException("Account has been rejected. Please contact support.")
-
     if not _tenant_allows_login(tenant):
         raise UnauthorizedException("Account is not active")
 
@@ -371,7 +365,6 @@ async def _authenticate_tenant_actor(
             or teacher.status != TeacherStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-
         await _update_last_login_if_due(db, teacher)
         return AuthenticatedActor(
             actor_type=ActorType.TEACHER.value,
@@ -390,6 +383,8 @@ async def _authenticate_tenant_actor(
                 actor_type=ActorType.TEACHER.value,
                 account_type=ActorType.TEACHER.value,
                 role="teacher",
+                passport_photo_url=getattr(teacher, "passport_photo_url", None),
+                tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
             ),
         )
 
@@ -405,7 +400,6 @@ async def _authenticate_tenant_actor(
             or parent.account_status != ParentAccountStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-
         await _update_last_login_if_due(db, parent)
         return AuthenticatedActor(
             actor_type=ActorType.PARENT.value,
@@ -424,6 +418,8 @@ async def _authenticate_tenant_actor(
                 actor_type=ActorType.PARENT.value,
                 account_type=ActorType.PARENT.value,
                 role="parent",
+                passport_photo_url=getattr(parent, "passport_photo_url", None),
+                tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
             ),
         )
 
@@ -460,34 +456,7 @@ async def _authenticate_tenant_actor(
             or student.account_status != StudentAccountStatus.ACTIVE
         ):
             raise UnauthorizedException("Account is not active")
-
         await _update_last_login_if_due(db, student)
-        return AuthenticatedActor(
-            actor_type=ActorType.STUDENT.value,
-            account_type=ActorType.STUDENT.value,
-            actor_id=student.id,
-            email=student.admission_number,
-            role="student",
-            tenant_id=student.tenant_id,
-            password_reset_required=student.password_reset_required,
-            user=LoginSessionUser(
-                id=str(student.id),
-                tenant_id=str(student.tenant_id),
-                school_name=tenant.school_name,
-                email=student.admission_number,
-                admission_number=student.admission_number,
-                first_name=student.first_name,
-                last_name=student.last_name,
-                actor_type=ActorType.STUDENT.value,
-                account_type=ActorType.STUDENT.value,
-                role="student",
-                password_reset_required=student.password_reset_required,
-                profile_status=_enum_value(student.profile_status),
-            ),
-        )
-
-    return None
-
 
 async def _get_email_actor_with_tenant(
     db: AsyncSession,
@@ -807,7 +776,35 @@ class AuthSessionService:
             session_jti=session.session_jti,
             refresh_token_expires_at=session_expires_at,
         )
+    
 
+    @staticmethod
+    async def _enforce_refresh_session_controls(
+        db : AsyncSession,
+        *,
+        session : AuthSession ,
+        ip_address : str | None
+    ):
+        """
+        Enforce network and platform controls for a locked refresh session 
+
+        The caller must resolve and lock the refresh token and session before 
+        invoking this method. This prevents duplicate database lookups and esure the controls are evaluated against the 
+        same session state used for rotation 
+        """
+
+        await SecurityResponseService.enforce_actor_ip_allowed(
+            db = db ,
+            ip_address=ip_address,
+            actor_type = session.actor_type
+        )
+
+        await PlatformControlService.enforce_actor_allowed(
+            db = db ,
+            actor_type = session.actor_type
+        )
+        
+    
     @staticmethod
     async def rotate_refresh_token(
         db: AsyncSession,
@@ -820,6 +817,10 @@ class AuthSessionService:
         """Rotate a refresh token and return a new access/refresh pair."""
 
         now = datetime.now(timezone.utc)
+        token_hash = hash_refresh_token(refresh_token)
+
+
+        
         stored_token = await AuthRefreshTokenRepository.get_by_hash(
             db,
             hash_refresh_token(refresh_token),
@@ -837,7 +838,7 @@ class AuthSessionService:
             raise UnauthorizedException("Invalid session")
 
         if stored_token.used_at is not None or stored_token.revoked_at is not None:
-            await AuthRefreshTokenRepository.mark_reuse_detected(
+            reuse_event = await AuthRefreshTokenRepository.mark_reuse_detected(
                 db,
                 stored_token,
                 detected_at=now,
@@ -856,6 +857,15 @@ class AuthSessionService:
                 reason="refresh_reuse_detected",
             )
             await db.commit()
+            await SecurityAlertService.notify_refresh_token_reuse(
+                actor_type=session.actor_type.value,
+                actor_id=session.actor_id,
+                tenant_id=session.tenant_id,
+                session_jti=session.session_jti,
+                ip_address=session.ip_address,
+                user_agent=session.user_agent,
+                reuse_event_id=reuse_event.id,
+            )
             raise UnauthorizedException("Session expired. Please log in again.")
 
         if (
@@ -879,6 +889,15 @@ class AuthSessionService:
 
         if session.revoked_at is not None or session.compromised_at is not None:
             raise UnauthorizedException("Session expired. Please log in again.")
+
+
+
+        await AuthSessionService._enforce_refresh_session_controls(
+            db,
+            session = session ,
+            ip_address = ip_address
+        )
+
 
         raw_new_refresh_token = generate_refresh_token()
         new_refresh_token = AuthRefreshToken(
@@ -1061,6 +1080,18 @@ class AuthService:
             else raw_identifier
         )
 
+        tenant_actor = await _authenticate_tenant_actor(
+            db,
+            identifier=normalized_identifier,
+            password=payload.password,
+            identifier_type=identifier_type,
+            background_tasks=background_tasks,
+        )
+        if tenant_actor is not None:
+            return tenant_actor
+
+        # Superadmins intentionally live outside AuthIdentity. Only probe the
+        # superadmin store after tenant identity resolution reports no match.
         if identifier_type == IdentifierType.EMAIL:
             superadmin = await _authenticate_superadmin(
                 db,
@@ -1080,18 +1111,9 @@ class AuthService:
                         actor_type=AuthSessionActorType.SUPERADMIN.value,
                         account_type=AuthSessionActorType.SUPERADMIN.value,
                         role="superadmin",
+                        passport_photo_url=getattr(superadmin, "passport_photo_url", None),
                     ),
                 )
-
-        tenant_actor = await _authenticate_tenant_actor(
-            db,
-            identifier=normalized_identifier,
-            password=payload.password,
-            identifier_type=identifier_type,
-            background_tasks=background_tasks,
-        )
-        if tenant_actor is not None:
-            return tenant_actor
 
         raise UnauthorizedException("Invalid email or password")
 

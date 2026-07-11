@@ -1174,6 +1174,7 @@ class BulkImportService:
             await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
 
         await db.commit()
+        await AuthIdentityService.invalidate_after_commit(db)
 
         if successful_rows > 0 and import_job.resource_type in {ImportResourceType.TEACHERS, ImportResourceType.PARENTS}:
             try:

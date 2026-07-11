@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, CalendarDays, MessageSquare, Menu, BookOpen, FileText, BarChart3, ClipboardList } from "lucide-react";
+import { Home, Menu, BookOpen, FileText, BarChart3, ClipboardList } from "lucide-react";
 import { NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";

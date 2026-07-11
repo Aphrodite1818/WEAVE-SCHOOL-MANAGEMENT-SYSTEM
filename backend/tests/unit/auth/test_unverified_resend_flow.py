@@ -38,7 +38,7 @@ async def test_verification_required_sends_otp_before_raising(monkeypatch):
             "db": calls[0]["db"],
             "email": "admin@example.com",
             "purpose": AuthPurpose.VERIFICATION.value,
-            "background_tasks": None,
+            "background_tasks": route_background_tasks,
             "commit": True,
         }
     ]

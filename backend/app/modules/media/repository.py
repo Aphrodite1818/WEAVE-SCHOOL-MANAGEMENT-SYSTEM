@@ -1,26 +1,13 @@
-#==========================#
-#     media.repository     #
-#==========================#
-"""Data access layer for the media module.
-
-This file will contain the persistence operations for media records so
-services do not need to talk to the database directly.
-"""
-
-
-
-
-
-
 # ============================ #
 #     media/repository.py      #
 # ============================ #
 
+"""Data access layer for media asset metadata."""
 
-
-from  __future__  import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -36,12 +23,75 @@ from app.modules.media.models import (
 from app.modules.media.schemas import MediaAssetFilter, MediaCreateData
 
 
+_PENDING_MEDIA_REPLACEMENTS_KEY = "media_pending_replacements"
+
+
 class MediaAssetRepository:
     """Database operations for media asset metadata.
 
-    This repository only manages database rows. It does not upload to R2,
-    delete R2 objects, generate signed URLs, or validate files.
+    This repository only manages database rows. It does not upload objects,
+    delete storage objects, generate signed URLs, or validate files.
     """
+
+    @staticmethod
+    def _queue_pending_replacement(
+        db: AsyncSession,
+        *,
+        replacement_id: UUID,
+        tenant_id: UUID,
+        owner_type: MediaOwnerType,
+        owner_id: UUID,
+        purpose: MediaPurpose,
+    ) -> None:
+        """Queue a replacement link until the replacement row has been flushed."""
+
+        pending: dict[str, dict[str, Any]] = db.info.setdefault(
+            _PENDING_MEDIA_REPLACEMENTS_KEY,
+            {},
+        )
+        pending[str(replacement_id)] = {
+            "tenant_id": tenant_id,
+            "owner_type": owner_type,
+            "owner_id": owner_id,
+            "purpose": purpose,
+        }
+
+    @staticmethod
+    async def _apply_pending_replacement(
+        db: AsyncSession,
+        *,
+        replacement_asset: MediaAsset,
+    ) -> None:
+        """Link replaced rows after the replacement asset exists in PostgreSQL."""
+
+        pending: dict[str, dict[str, Any]] | None = db.info.get(
+            _PENDING_MEDIA_REPLACEMENTS_KEY
+        )
+        if not pending:
+            return
+
+        context = pending.pop(str(replacement_asset.id), None)
+        if context is None:
+            return
+
+        await db.execute(
+            update(MediaAsset)
+            .where(
+                MediaAsset.tenant_id == context["tenant_id"],
+                MediaAsset.owner_type == context["owner_type"],
+                MediaAsset.owner_id == context["owner_id"],
+                MediaAsset.purpose == context["purpose"],
+                MediaAsset.status == MediaStatus.REPLACED,
+                MediaAsset.is_current.is_(False),
+                MediaAsset.replaced_by_media_asset_id.is_(None),
+                MediaAsset.id != replacement_asset.id,
+            )
+            .values(replaced_by_media_asset_id=replacement_asset.id)
+        )
+        await db.flush()
+
+        if not pending:
+            db.info.pop(_PENDING_MEDIA_REPLACEMENTS_KEY, None)
 
     @staticmethod
     async def create_asset(
@@ -49,7 +99,7 @@ class MediaAssetRepository:
         *,
         asset_data: MediaCreateData,
     ) -> MediaAsset:
-        """Create a new media asset metadata row."""
+        """Create and flush a media asset metadata row."""
 
         create_data = asset_data.model_dump(exclude_unset=True)
 
@@ -57,9 +107,16 @@ class MediaAssetRepository:
         create_data.pop("signed_url", None)
 
         media_asset = MediaAsset(**create_data)
-
         db.add(media_asset)
         await db.flush()
+
+        # The service may mark the previous asset as replaced before this row is
+        # inserted. Apply the self-referential FK only now, after this row exists.
+        await MediaAssetRepository._apply_pending_replacement(
+            db,
+            replacement_asset=media_asset,
+        )
+
         await db.refresh(media_asset)
         return media_asset
 
@@ -146,19 +203,14 @@ class MediaAssetRepository:
         if filters is not None:
             if filters.owner_type is not None:
                 conditions.append(MediaAsset.owner_type == filters.owner_type)
-
             if filters.owner_id is not None:
                 conditions.append(MediaAsset.owner_id == filters.owner_id)
-
             if filters.purpose is not None:
                 conditions.append(MediaAsset.purpose == filters.purpose)
-
             if filters.visibility is not None:
                 conditions.append(MediaAsset.visibility == filters.visibility)
-
             if filters.status is not None:
                 conditions.append(MediaAsset.status == filters.status)
-
             if filters.current_only:
                 conditions.append(MediaAsset.is_current.is_(True))
 
@@ -186,7 +238,7 @@ class MediaAssetRepository:
         object_key: str,
         include_deleted: bool = False,
     ) -> MediaAsset | None:
-        """Get a media asset by its R2 object key within a tenant."""
+        """Get a media asset by its storage object key within a tenant."""
 
         conditions = [
             MediaAsset.tenant_id == tenant_id,
@@ -210,10 +262,12 @@ class MediaAssetRepository:
         purpose: MediaPurpose,
         replaced_by_media_asset_id: UUID | None = None,
     ) -> int:
-        """Mark current active media assets for an owner/purpose as replaced.
+        """Mark current active media assets as replaced.
 
-        Use this before or after creating a new current asset, depending on
-        the service flow. This keeps historical records without deleting rows.
+        If the replacement row already exists, the self-referential foreign key
+        is written immediately. If it does not exist yet, the relationship is
+        queued and applied by ``create_asset`` after the replacement row has
+        been inserted and flushed in the same session.
         """
 
         values: dict[str, object] = {
@@ -222,7 +276,24 @@ class MediaAssetRepository:
         }
 
         if replaced_by_media_asset_id is not None:
-            values["replaced_by_media_asset_id"] = replaced_by_media_asset_id
+            replacement_exists = await db.scalar(
+                select(MediaAsset.id).where(
+                    MediaAsset.id == replaced_by_media_asset_id,
+                    MediaAsset.tenant_id == tenant_id,
+                )
+            )
+
+            if replacement_exists is not None:
+                values["replaced_by_media_asset_id"] = replaced_by_media_asset_id
+            else:
+                MediaAssetRepository._queue_pending_replacement(
+                    db,
+                    replacement_id=replaced_by_media_asset_id,
+                    tenant_id=tenant_id,
+                    owner_type=owner_type,
+                    owner_id=owner_id,
+                    purpose=purpose,
+                )
 
         result = await db.execute(
             update(MediaAsset)
@@ -253,7 +324,6 @@ class MediaAssetRepository:
         media_asset.is_current = True
         media_asset.deleted_at = None
 
-        db.add(media_asset)
         await db.flush()
         await db.refresh(media_asset)
         return media_asset
@@ -264,48 +334,15 @@ class MediaAssetRepository:
         *,
         media_asset: MediaAsset,
     ) -> MediaAsset:
-        """Soft-delete a media asset metadata row."""
+        """Soft-delete a media asset row."""
 
         media_asset.status = MediaStatus.DELETED
         media_asset.is_current = False
         media_asset.deleted_at = datetime.now(timezone.utc)
 
-        db.add(media_asset)
         await db.flush()
         await db.refresh(media_asset)
         return media_asset
-
-    @staticmethod
-    async def soft_delete_current_for_owner(
-        db: AsyncSession,
-        *,
-        tenant_id: UUID,
-        owner_type: MediaOwnerType,
-        owner_id: UUID,
-        purpose: MediaPurpose,
-    ) -> int:
-        """Soft-delete the current media asset for an owner and purpose."""
-
-        result = await db.execute(
-            update(MediaAsset)
-            .where(
-                MediaAsset.tenant_id == tenant_id,
-                MediaAsset.owner_type == owner_type,
-                MediaAsset.owner_id == owner_id,
-                MediaAsset.purpose == purpose,
-                MediaAsset.status == MediaStatus.ACTIVE,
-                MediaAsset.is_current.is_(True),
-                MediaAsset.deleted_at.is_(None),
-            )
-            .values(
-                status=MediaStatus.DELETED,
-                is_current=False,
-                deleted_at=datetime.now(timezone.utc),
-            )
-        )
-
-        await db.flush()
-        return int(result.rowcount or 0)
 
     @staticmethod
     async def save(
@@ -313,24 +350,8 @@ class MediaAssetRepository:
         *,
         media_asset: MediaAsset,
     ) -> MediaAsset:
-        """Persist changes to a media asset."""
+        """Flush changes to an existing media asset."""
 
-        db.add(media_asset)
         await db.flush()
         await db.refresh(media_asset)
         return media_asset
-
-    @staticmethod
-    async def hard_delete_asset(
-        db: AsyncSession,
-        *,
-        media_asset: MediaAsset,
-    ) -> None:
-        """Hard-delete a media asset metadata row.
-
-        Use rarely. Prefer soft_delete_asset so audit/history is preserved.
-        This does not delete the physical R2 object.
-        """
-
-        await db.delete(media_asset)
-        await db.flush()

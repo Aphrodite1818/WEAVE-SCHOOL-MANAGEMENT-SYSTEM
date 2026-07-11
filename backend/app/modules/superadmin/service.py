@@ -188,9 +188,11 @@ class SuperadminService:
             )
 
             await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
             await db.refresh(tenant)
         except Exception:
             await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
             logger.exception("Superadmin tenant creation failed", extra={"email": normalized_email})
             raise
 

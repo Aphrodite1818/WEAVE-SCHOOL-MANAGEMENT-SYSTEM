@@ -64,6 +64,20 @@ class MediaService:
             raise ForbiddenException(detail="Tenant admin is not attached to a tenant")
 
     @staticmethod
+    def _get_uploader_type(
+        actor: TenantAdmin | Teacher | Student,
+    ) -> MediaUploadedByActorType:
+        """Map a supported authenticated media actor to its audit enum."""
+
+        if isinstance(actor, TenantAdmin):
+            return MediaUploadedByActorType.TENANT_ADMIN
+        if isinstance(actor, Teacher):
+            return MediaUploadedByActorType.TEACHER
+        if isinstance(actor, Student):
+            return MediaUploadedByActorType.STUDENT
+        raise ForbiddenException(detail="This account cannot manage passport photos")
+
+    @staticmethod
     def _get_storage_provider() -> MediaStorageProvider:
         """Resolve configured storage provider into the model enum."""
 
@@ -382,7 +396,7 @@ class MediaService:
     async def _create_and_attach_media(
         db: AsyncSession,
         *,
-        actor: TenantAdmin,
+        actor: TenantAdmin | Teacher | Student,
         owner_type: MediaOwnerType,
         owner_id: UUID,
         purpose: MediaPurpose,
@@ -390,7 +404,8 @@ class MediaService:
     ) -> MediaUploadResponse:
         """Validate, upload, persist, and attach a media asset to its owner."""
 
-        MediaService._ensure_tenant_admin(actor)
+        if actor is None or actor.tenant_id is None:
+            raise ForbiddenException(detail="Actor is not attached to a tenant")
         MediaService._validate_owner_purpose_pair(owner_type=owner_type, purpose=purpose)
 
         tenant_id = actor.tenant_id
@@ -464,7 +479,7 @@ class MediaService:
                     width_px=validated_file.width_px,
                     height_px=validated_file.height_px,
                     metadata_json={"storage": uploaded_object.metadata or {}},
-                    uploaded_by_actor_type=MediaUploadedByActorType.TENANT_ADMIN,
+                    uploaded_by_actor_type=MediaService._get_uploader_type(actor),
                     uploaded_by_actor_id=actor.id,
                     is_current=True,
                 ),
@@ -590,10 +605,40 @@ class MediaService:
         )
 
     @staticmethod
+    async def upload_profile_passport(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin | Teacher | Student,
+        file: UploadFile,
+    ) -> MediaUploadResponse:
+        """Upload the authenticated actor's own supported passport photo."""
+
+        if isinstance(actor, TenantAdmin):
+            owner_type = MediaOwnerType.TENANT_ADMIN
+            purpose = MediaPurpose.TENANT_ADMIN_PASSPORT
+        elif isinstance(actor, Teacher):
+            owner_type = MediaOwnerType.TEACHER
+            purpose = MediaPurpose.TEACHER_PASSPORT
+        elif isinstance(actor, Student):
+            owner_type = MediaOwnerType.STUDENT
+            purpose = MediaPurpose.STUDENT_PASSPORT
+        else:
+            raise ForbiddenException(detail="This account does not support passport photos")
+
+        return await MediaService._create_and_attach_media(
+            db=db,
+            actor=actor,
+            owner_type=owner_type,
+            owner_id=actor.id,
+            purpose=purpose,
+            file=file,
+        )
+
+    @staticmethod
     async def _delete_current_media(
         db: AsyncSession,
         *,
-        actor: TenantAdmin,
+        actor: TenantAdmin | Teacher | Student,
         owner_type: MediaOwnerType,
         owner_id: UUID,
         purpose: MediaPurpose,
@@ -601,7 +646,8 @@ class MediaService:
     ) -> MediaDeleteResponse:
         """Soft-delete current media and optionally delete the physical object."""
 
-        MediaService._ensure_tenant_admin(actor)
+        if actor is None or actor.tenant_id is None:
+            raise ForbiddenException(detail="Actor is not attached to a tenant")
         MediaService._validate_owner_purpose_pair(owner_type=owner_type, purpose=purpose)
 
         media_asset = await MediaAssetRepository.get_current_for_owner(
@@ -728,6 +774,36 @@ class MediaService:
             owner_type=MediaOwnerType.TENANT_ADMIN,
             owner_id=actor.id,
             purpose=MediaPurpose.TENANT_ADMIN_PASSPORT,
+            delete_object=delete_object,
+        )
+
+    @staticmethod
+    async def delete_current_profile_passport(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin | Teacher | Student,
+        delete_object: bool = False,
+    ) -> MediaDeleteResponse:
+        """Delete the authenticated actor's own supported passport photo."""
+
+        if isinstance(actor, TenantAdmin):
+            owner_type = MediaOwnerType.TENANT_ADMIN
+            purpose = MediaPurpose.TENANT_ADMIN_PASSPORT
+        elif isinstance(actor, Teacher):
+            owner_type = MediaOwnerType.TEACHER
+            purpose = MediaPurpose.TEACHER_PASSPORT
+        elif isinstance(actor, Student):
+            owner_type = MediaOwnerType.STUDENT
+            purpose = MediaPurpose.STUDENT_PASSPORT
+        else:
+            raise ForbiddenException(detail="This account does not support passport photos")
+
+        return await MediaService._delete_current_media(
+            db=db,
+            actor=actor,
+            owner_type=owner_type,
+            owner_id=actor.id,
+            purpose=purpose,
             delete_object=delete_object,
         )
 

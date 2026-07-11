@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi import BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,14 +12,14 @@ from app.core.exceptions import BadRequestException, PlatformMaintenanceExceptio
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.superadmin.models import PlatformControl, SuperAdmin
 from app.modules.superadmin.schemas import PlatformLockdownRequest, PlatformUnlockRequest
-from app.modules.superadmin.schemas import PlatformLockdownRequest, PlatformUnlockRequest
 from app.modules.superadmin.security_alert_service import SecurityAlertService
-from fastapi import BackgroundTasks
 
 
 PLATFORM_LOCKDOWN_CACHE_KEY = "platform:control:lockdown"
 PLATFORM_LOCKDOWN_CACHE_TTL_SECONDS = 15
-DEFAULT_MAINTENANCE_MESSAGE = "LearnlyAI is temporarily in maintenance mode. Please try again later."
+DEFAULT_MAINTENANCE_MESSAGE = (
+    "LearnlyAI is temporarily in maintenance mode. Please try again later."
+)
 
 
 class PlatformControlService:
@@ -44,16 +45,34 @@ class PlatformControlService:
             "lockdown_enabled": bool(control.lockdown_enabled),
             "lockdown_reason": control.lockdown_reason,
             "lockdown_message": control.lockdown_message or DEFAULT_MAINTENANCE_MESSAGE,
-            "enabled_by_superadmin_id": str(control.enabled_by_superadmin_id) if control.enabled_by_superadmin_id else None,
+            "enabled_by_superadmin_id": (
+                str(control.enabled_by_superadmin_id)
+                if control.enabled_by_superadmin_id
+                else None
+            ),
             "enabled_at": control.enabled_at.isoformat() if control.enabled_at else None,
-            "disabled_by_superadmin_id": str(control.disabled_by_superadmin_id) if control.disabled_by_superadmin_id else None,
-            "disabled_at": control.disabled_at.isoformat() if control.disabled_at else None,
+            "disabled_by_superadmin_id": (
+                str(control.disabled_by_superadmin_id)
+                if control.disabled_by_superadmin_id
+                else None
+            ),
+            "disabled_at": (
+                control.disabled_at.isoformat() if control.disabled_at else None
+            ),
             "updated_at": control.updated_at.isoformat() if control.updated_at else None,
         }
 
     @staticmethod
-    async def _get_control(db: AsyncSession, *, lock: bool = False) -> PlatformControl | None:
-        statement = select(PlatformControl).order_by(PlatformControl.created_at.asc()).limit(1)
+    async def _get_control(
+        db: AsyncSession,
+        *,
+        lock: bool = False,
+    ) -> PlatformControl | None:
+        statement = (
+            select(PlatformControl)
+            .order_by(PlatformControl.created_at.asc())
+            .limit(1)
+        )
         if lock:
             statement = statement.with_for_update()
 
@@ -72,7 +91,12 @@ class PlatformControlService:
         return control
 
     @classmethod
-    async def get_state(cls, db: AsyncSession, *, use_cache: bool = True) -> dict[str, Any]:
+    async def get_state(
+        cls,
+        db: AsyncSession,
+        *,
+        use_cache: bool = True,
+    ) -> dict[str, Any]:
         """Return the current platform-control state."""
 
         if use_cache:
@@ -120,8 +144,12 @@ class PlatformControlService:
             return
 
         raise PlatformMaintenanceException(
-            detail=str(state.get("lockdown_message") or DEFAULT_MAINTENANCE_MESSAGE),
-            reason=str(state.get("lockdown_reason") or "Platform lockdown is active."),
+            detail=str(
+                state.get("lockdown_message") or DEFAULT_MAINTENANCE_MESSAGE
+            ),
+            reason=str(
+                state.get("lockdown_reason") or "Platform lockdown is active."
+            ),
         )
 
     @classmethod
@@ -148,11 +176,10 @@ class PlatformControlService:
         control.disabled_by_superadmin_id = None
         control.disabled_at = None
 
-        db.add(control)
         await db.commit()
         await db.refresh(control)
         await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
-        await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
+
         SecurityAlertService.notify_platform_lockdown_change(
             background_tasks=background_tasks,
             enabled=True,
@@ -175,17 +202,15 @@ class PlatformControlService:
         if payload.confirmation != "UNLOCK":
             raise BadRequestException("Type UNLOCK to confirm platform unlock.")
 
-        now = datetime.now(timezone.utc)
         control = await cls._get_or_create_control(db)
         control.lockdown_enabled = False
         control.disabled_by_superadmin_id = current_superadmin.id
-        control.disabled_at = now
+        control.disabled_at = datetime.now(timezone.utc)
 
-        db.add(control)
         await db.commit()
         await db.refresh(control)
         await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
-        await CacheManager.delete(PLATFORM_LOCKDOWN_CACHE_KEY)
+
         SecurityAlertService.notify_platform_lockdown_change(
             background_tasks=background_tasks,
             enabled=False,

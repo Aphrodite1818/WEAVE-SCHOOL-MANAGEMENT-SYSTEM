@@ -160,11 +160,6 @@ const ROLE_PROFILE_CONFIG = {
             required: true,
             options: STUDENT_GENDER_OPTIONS,
           },
-          {
-            source: "roleProfile",
-            name: "passport_photo_url",
-            label: "Passport photo URL",
-          },
         ],
       },
     ],

@@ -60,7 +60,7 @@ async def create_tenant(
         admission_number_prefix=f"{prefix}{normalized_suffix}"[:20],
         email=f"school-{suffix.lower()}@example.com",
         country="Nigeria",
-        plan=SubscriptionPlan.FREE,
+        plan=SubscriptionPlan.FREE_TRIAL,
         status=status,
         verification_status=verification_status,
         onboarding_completed=True,
@@ -609,7 +609,9 @@ async def test_analytics_endpoints_return_real_counts(
         Subject(
             tenant_id=active_tenant.id,
             name="Mathematics",
+            normalized_name="mathematics",
             code="MTH",
+            normalized_code="mth",
             is_active=True,
         )
     )

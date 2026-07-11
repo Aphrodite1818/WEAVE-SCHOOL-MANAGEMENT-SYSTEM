@@ -21,6 +21,7 @@ from app.core.exceptions import (
 )
 from app.core.utils.validators import generate_slug
 from app.modules.auth.models import AuthPurpose
+from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth.schemas import RequestOTP
 from app.modules.auth.service import OTPService
@@ -317,6 +318,9 @@ class TenantService:
                         "actor_type": "tenant_admin",
                     },
                 )
+
+        # The surrounding db.begin() block has committed successfully here.
+        await AuthIdentityService.invalidate_after_commit(db)
 
         if tenant is None:
             raise ConflictException("Tenant registration could not be completed")

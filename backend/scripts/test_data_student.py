@@ -11,7 +11,7 @@ from faker import Faker
 from openpyxl import load_workbook
 
 
-FILE_PATH = Path(r"C:\Users\taiwo\Downloads\students_import_template.xlsx")
+FILE_PATH = Path(r"C:\Users\taiwo\Downloads\students_import_template (1).xlsx")
 
 ROW_COUNT = 1500
 

@@ -27,7 +27,6 @@ from app.modules.superadmin.service import SuperadminService
 from app.tenant_management.models import Tenant
 from app.tenant_management.schemas import TenantManagementResponse, TenantCreate, TenantStatusUpdate
 
-
 router = APIRouter(prefix="/superadmin", tags=["Superadmin"])
 SuperadminActor: TypeAlias = Annotated[SuperAdmin, Depends(require_superadmin)]
 

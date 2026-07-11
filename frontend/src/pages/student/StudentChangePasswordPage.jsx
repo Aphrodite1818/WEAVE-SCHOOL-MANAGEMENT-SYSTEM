@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
@@ -38,10 +39,11 @@ function StudentChangePasswordPage() {
 
     try {
       const updatedStudent = await studentService.changeMyPassword({
-        access_code: formData.access_code,
+        access_code: formData.access_code.trim(),
         new_password: formData.new_password,
         confirm_password: formData.confirm_password,
       });
+
       authSession.setUser({
         ...(currentUser || {}),
         ...updatedStudent,
@@ -49,9 +51,10 @@ function StudentChangePasswordPage() {
         actor_type: currentUser?.actor_type || "student",
         password_reset_required: false,
       });
+
       navigate("/student/dashboard", { replace: true });
     } catch (err) {
-      const apiError = parseApiError(err, "Failed to update your password.");
+      const apiError = parseApiError(err, "Failed to create your password.");
       setFieldErrors(apiError.fieldErrors || {});
       setError(apiError.message);
     } finally {
@@ -75,7 +78,7 @@ function StudentChangePasswordPage() {
             <div>
               <h2 className="text-lg font-semibold text-text">Password setup required</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Enter the access code from your school, then create your password.
+                Enter the same access code you used to log in, then create your private password.
               </p>
             </div>
           </div>
@@ -90,15 +93,19 @@ function StudentChangePasswordPage() {
             <Input
               label="Access code"
               type="password"
+              inputMode="numeric"
+              autoComplete="one-time-code"
               name="access_code"
               value={formData.access_code}
               onChange={handleChange}
               error={fieldErrors.access_code}
+              hint="Use the current code issued by your school administrator."
               required
             />
             <Input
               label="New password"
               type="password"
+              autoComplete="new-password"
               name="new_password"
               value={formData.new_password}
               onChange={handleChange}
@@ -109,6 +116,7 @@ function StudentChangePasswordPage() {
             <Input
               label="Confirm new password"
               type="password"
+              autoComplete="new-password"
               name="confirm_password"
               value={formData.confirm_password}
               onChange={handleChange}
@@ -116,7 +124,7 @@ function StudentChangePasswordPage() {
               required
             />
             <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-              {isSubmitting ? "Updating password..." : "Save new password"}
+              {isSubmitting ? "Creating password..." : "Save new password"}
             </Button>
           </form>
         </Card>

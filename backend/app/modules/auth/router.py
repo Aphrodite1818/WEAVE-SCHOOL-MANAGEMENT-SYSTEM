@@ -6,19 +6,18 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
 
-from app.config.security import hash_refresh_token
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_actor
 from app.core.exceptions import BadRequestException, UnauthorizedException
 from app.core.rate_limits.auth_rate_limits import AuthRateLimitService
-from app.modules.auth.models import AuthRefreshToken, AuthSession
-from app.modules.auth.repository import AuthRefreshTokenRepository, AuthSessionRepository
 from app.modules.auth.schemas import (
     LoginRequest,
     LoginSessionUser,
@@ -37,17 +36,18 @@ from app.modules.auth.service import (
     TenantActivationService,
     UserInviteService,
 )
+from app.modules.auth.student_authentication import authenticate_student_actor
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.platform_control_service import PlatformControlService
-from app.modules.superadmin.security_alert_service import SecurityAlertService
 from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 REFRESH_TOKEN_COOKIE_NAME = "learnly_refresh_token"
@@ -122,65 +122,6 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-async def _resolve_refresh_session(
-    db: DbSession,
-    refresh_token: str,
-) -> tuple[AuthRefreshToken | None, AuthSession | None]:
-    """Resolve a refresh token to its session without mutating token state."""
-
-    stored_token = await AuthRefreshTokenRepository.get_by_hash(
-        db,
-        hash_refresh_token(refresh_token),
-        lock=False,
-    )
-    if stored_token is None:
-        return None, None
-
-    session = await AuthSessionRepository.get_session_by_id(
-        db,
-        stored_token.session_id,
-        lock=False,
-    )
-    return stored_token, session
-
-
-async def _enforce_refresh_session_controls(
-    db: DbSession,
-    *,
-    refresh_token: str,
-    ip_address: str | None,
-    background_tasks: BackgroundTasks | None = None,
-) -> None:
-    """Apply IP-block and lockdown controls after resolving refresh-session actor type."""
-
-    stored_token, session = await _resolve_refresh_session(db, refresh_token)
-    if stored_token is None or session is None:
-        return
-
-    if stored_token.used_at is not None or stored_token.revoked_at is not None:
-        if background_tasks is not None:
-            background_tasks.add_task(
-                SecurityAlertService.notify_refresh_token_reuse,
-                actor_type=session.actor_type.value,
-                actor_id=session.actor_id,
-                tenant_id=session.tenant_id,
-                session_jti=session.session_jti,
-                ip_address=session.ip_address,
-                user_agent=session.user_agent,
-            )
-        return
-
-    await SecurityResponseService.enforce_actor_ip_allowed(
-        db,
-        ip_address=ip_address,
-        actor_type=session.actor_type,
-    )
-    await PlatformControlService.enforce_actor_allowed(
-        db,
-        actor_type=session.actor_type,
-    )
-
-
 def _enum_value(value: object | None) -> str | None:
     """Return a stable string value for enum-like values."""
 
@@ -198,16 +139,12 @@ def _actor_type_and_role(
 
     if isinstance(actor, SuperAdmin):
         return "superadmin", "superadmin"
-
     if isinstance(actor, TenantAdmin):
         return "tenant_admin", "admin"
-
     if isinstance(actor, Teacher):
         return "teacher", "teacher"
-
     if isinstance(actor, Parent):
         return "parent", "parent"
-
     if isinstance(actor, Student):
         return "student", "student"
 
@@ -221,8 +158,8 @@ async def _build_session_bootstrap_response(
     """Build a safe current-session response for frontend bootstrapping."""
 
     actor_type, role = _actor_type_and_role(actor)
-
     tenant_id = getattr(actor, "tenant_id", None)
+    tenant = None
     school_name = None
 
     if tenant_id is not None:
@@ -249,6 +186,8 @@ async def _build_session_bootstrap_response(
         role=role,
         password_reset_required=getattr(actor, "password_reset_required", None),
         profile_status=_enum_value(getattr(actor, "profile_status", None)),
+        passport_photo_url=getattr(actor, "passport_photo_url", None),
+        tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
     )
 
     return SessionBootstrapResponse(
@@ -286,42 +225,76 @@ async def login(
 ) -> LoginResponse:
     """Authenticate an actor and create a persistent refresh-token session."""
 
+    request_started = perf_counter()
     client_ip = _client_ip(request)
 
+    stage_started = perf_counter()
     await AuthRateLimitService.check_login_allowed(
         identifier=payload.identifier,
         ip_address=client_ip,
     )
+    rate_limit_check_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     try:
-        actor = await AuthService.authenticate_actor(
-            db,
-            payload,
-            background_tasks=background_tasks,
-        )
+        if "@" in payload.identifier:
+            actor = await AuthService.authenticate_actor(
+                db,
+                payload,
+                background_tasks=background_tasks,
+            )
+        else:
+            actor = await authenticate_student_actor(
+                db,
+                admission_number=payload.identifier,
+                credential=payload.password,
+            )
     except UnauthorizedException:
+        auth_failure_ms = (perf_counter() - stage_started) * 1000
+
+        failure_stage_started = perf_counter()
         await AuthRateLimitService.record_failed_login(
             identifier=payload.identifier,
             ip_address=client_ip,
         )
+        failed_login_record_ms = (perf_counter() - failure_stage_started) * 1000
+
+        logger.info(
+            "login_failed",
+            extra={
+                "rate_limit_check_ms": round(rate_limit_check_ms, 2),
+                "authentication_ms": round(auth_failure_ms, 2),
+                "failed_login_record_ms": round(failed_login_record_ms, 2),
+                "total_ms": round((perf_counter() - request_started) * 1000, 2),
+            },
+        )
         raise
 
+    authentication_ms = (perf_counter() - stage_started) * 1000
+
+    stage_started = perf_counter()
     await SecurityResponseService.enforce_actor_ip_allowed(
         db,
         ip_address=client_ip,
         actor_type=actor.actor_type,
     )
+    ip_security_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     await PlatformControlService.enforce_actor_allowed(
         db,
         actor_type=actor.actor_type,
     )
+    platform_control_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     await AuthRateLimitService.clear_login_failures(
         identifier=payload.identifier,
         ip_address=client_ip,
     )
+    rate_limit_clear_ms = (perf_counter() - stage_started) * 1000
 
+    stage_started = perf_counter()
     token_pair = await AuthSessionService.create_login_session(
         db,
         actor=actor,
@@ -329,11 +302,27 @@ async def login(
         ip_address=client_ip,
         remember_me=payload.remember_me,
     )
+    session_creation_ms = (perf_counter() - stage_started) * 1000
 
     _set_refresh_token_cookie(
         response,
         refresh_token=token_pair.refresh_token,
         expires_at=token_pair.refresh_token_expires_at,
+    )
+
+    total_ms = (perf_counter() - request_started) * 1000
+    logger.info(
+        "login_timing",
+        extra={
+            "actor_type": actor.actor_type,
+            "rate_limit_check_ms": round(rate_limit_check_ms, 2),
+            "authentication_ms": round(authentication_ms, 2),
+            "ip_security_ms": round(ip_security_ms, 2),
+            "platform_control_ms": round(platform_control_ms, 2),
+            "rate_limit_clear_ms": round(rate_limit_clear_ms, 2),
+            "session_creation_ms": round(session_creation_ms, 2),
+            "total_ms": round(total_ms, 2),
+        },
     )
 
     return LoginResponse(
@@ -353,7 +342,10 @@ async def refresh_access_token(
     request: Request,
     response: Response,
     background_tasks: BackgroundTasks,
-    refresh_token: str | None = Cookie(default=None, alias=REFRESH_TOKEN_COOKIE_NAME),
+    refresh_token: str | None = Cookie(
+        default=None,
+        alias=REFRESH_TOKEN_COOKIE_NAME,
+    ),
 ) -> Token:
     """Rotate the refresh token and issue a new access token."""
 
@@ -361,13 +353,6 @@ async def refresh_access_token(
         raise UnauthorizedException("Invalid session")
 
     client_ip = _client_ip(request)
-    await _enforce_refresh_session_controls(
-        db,
-        refresh_token=refresh_token,
-        ip_address=client_ip,
-        background_tasks=background_tasks,
-    )
-
     token_pair = await AuthSessionService.rotate_refresh_token(
         db,
         background_tasks=background_tasks,
@@ -395,11 +380,6 @@ async def logout(
     """Revoke the current refresh-token session and clear the cookie."""
 
     if refresh_token is not None:
-        await _enforce_refresh_session_controls(
-            db,
-            refresh_token=refresh_token,
-            ip_address=_client_ip(request),
-        )
         await AuthSessionService.logout_by_refresh_token(
             db,
             refresh_token=refresh_token,
@@ -451,7 +431,6 @@ async def verify_otp(
     """Verify an OTP."""
 
     client_ip = _client_ip(request)
-
     await AuthRateLimitService.check_otp_verify_allowed(
         email=payload.email,
         purpose=payload.purpose,
@@ -474,13 +453,12 @@ async def verify_otp(
         purpose=payload.purpose,
         ip_address=client_ip,
     )
-
     return result
 
 
 @router.post("/reset-password")
 async def reset_password(payload: UpdatePassword, db: DbSession) -> dict[str, str]:
-    """Reset an account password."""
+    """Reset an email-based account password."""
 
     await AuthService.reset_password(db, payload)
     return {"detail": "Password has been successfully reset. You may now log in."}

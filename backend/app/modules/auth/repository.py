@@ -12,8 +12,12 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.auth.models import AuthRefreshToken, AuthSession, AuthSessionActorType
-from app.modules.superadmin.security_alert_service import SecurityAlertService
+from app.modules.auth.models import (
+    AuthRefreshToken,
+    AuthRefreshTokenReuseEvent,
+    AuthSession,
+    AuthSessionActorType,
+)
 from fastapi import BackgroundTasks
 
 
@@ -29,7 +33,6 @@ class AuthSessionRepository:
 
         db.add(session)
         await db.flush()
-        await db.refresh(session)
         return session
 
     @staticmethod
@@ -97,9 +100,7 @@ class AuthSessionRepository:
         """Update the session last-used timestamp."""
 
         session.last_used_at = last_used_at
-        db.add(session)
         await db.flush()
-        await db.refresh(session)
         return session
 
     @staticmethod
@@ -114,9 +115,7 @@ class AuthSessionRepository:
 
         session.revoked_at = revoked_at
         session.revoked_reason = reason
-        db.add(session)
         await db.flush()
-        await db.refresh(session)
         return session
 
     @staticmethod
@@ -133,20 +132,7 @@ class AuthSessionRepository:
         session.compromised_at = compromised_at
         session.revoked_at = compromised_at
         session.revoked_reason = reason
-        db.add(session)
         await db.flush()
-        await db.refresh(session)
-
-        if reason == "refresh_reuse_detected":
-            SecurityAlertService.notify_refresh_token_reuse(
-                background_tasks=background_tasks,
-                actor_type=session.actor_type.value,
-                actor_id=session.actor_id,
-                tenant_id=session.tenant_id,
-                session_jti=session.session_jti,
-                ip_address=session.ip_address,
-                user_agent=session.user_agent,
-            )
 
         return session
 
@@ -194,7 +180,6 @@ class AuthRefreshTokenRepository:
 
         db.add(refresh_token)
         await db.flush()
-        await db.refresh(refresh_token)
         return refresh_token
 
     @staticmethod
@@ -241,9 +226,7 @@ class AuthRefreshTokenRepository:
 
         refresh_token.used_at = used_at
         refresh_token.replaced_by_token_id = replaced_by_token_id
-        db.add(refresh_token)
         await db.flush()
-        await db.refresh(refresh_token)
         return refresh_token
 
     @staticmethod
@@ -258,9 +241,7 @@ class AuthRefreshTokenRepository:
 
         refresh_token.revoked_at = revoked_at
         refresh_token.revoked_reason = reason
-        db.add(refresh_token)
         await db.flush()
-        await db.refresh(refresh_token)
         return refresh_token
 
     @staticmethod
@@ -269,14 +250,18 @@ class AuthRefreshTokenRepository:
         refresh_token: AuthRefreshToken,
         *,
         detected_at: datetime,
-    ) -> AuthRefreshToken:
-        """Mark a refresh token as reused."""
+    ) -> AuthRefreshTokenReuseEvent:
+        """Mark a token reused and append one audit event for this attempt."""
 
         refresh_token.reuse_detected_at = detected_at
-        db.add(refresh_token)
+        event = AuthRefreshTokenReuseEvent(
+            refresh_token_id=refresh_token.id,
+            session_id=refresh_token.session_id,
+            detected_at=detected_at,
+        )
+        db.add(event)
         await db.flush()
-        await db.refresh(refresh_token)
-        return refresh_token
+        return event
 
     @staticmethod
     async def revoke_tokens_for_session(

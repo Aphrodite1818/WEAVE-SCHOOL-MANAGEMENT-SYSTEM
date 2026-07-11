@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Ban, RefreshCw, ShieldAlert } from "lucide-react";
 
 import Button from "../../components/ui/Button";
+import { useNavigate } from "react-router-dom";
 import {
   clearStoredSecurityBlockState,
   getStoredSecurityBlockState,
@@ -11,6 +12,7 @@ import {
 const DEFAULT_MESSAGE = "Access from this network has been temporarily blocked for security reasons.";
 
 function NetworkBlockedPage() {
+  const navigate = useNavigate();
   const [state, setState] = useState(() => getStoredSecurityBlockState());
 
   useEffect(() => {
@@ -29,7 +31,7 @@ function NetworkBlockedPage() {
 
   const handleRetry = () => {
     clearStoredSecurityBlockState();
-    window.location.assign("/login");
+    navigate("/login", { replace: true });
   };
 
   return (

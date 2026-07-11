@@ -2,12 +2,37 @@ import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import logoImage from "../../assets/images/favicon.png";
+import defaultLogoImage from "../../assets/images/favicon.png";
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { navGroups, roleLabels } from "./navConfig";
 
 function isRouteActive(pathname, itemPath) {
   return pathname === itemPath || (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
+}
+
+function resolveWorkspaceLogo(user) {
+  return (
+    user?.tenant_logo_url ||
+    user?.tenant?.logo_url ||
+    user?.logo_url ||
+    defaultLogoImage
+  );
+}
+
+function shouldHideNavItem(item, subscription) {
+  if (!item.featureCode) return false;
+
+  const featureGuard = subscription.getFeatureGuard(item.featureCode);
+  const planCode = String(subscription.planCode || "").trim().toLowerCase();
+
+  if (item.featureCode === FEATURE_CODES.BULK_IMPORT && planCode === "free_trial") {
+    return true;
+  }
+
+  return featureGuard.allowed === false;
 }
 
 export default function SidebarContent({
@@ -19,7 +44,18 @@ export default function SidebarContent({
   schoolName,
 }) {
   const location = useLocation();
-  const groups = navGroups[role] || navGroups.admin;
+  const subscription = useSubscription();
+  const user = authSession.getUser() || {};
+  const workspaceLogo = resolveWorkspaceLogo(user);
+  const workspaceLogoAlt = user?.tenant_logo_url || user?.tenant?.logo_url
+    ? `${schoolName || "School"} logo`
+    : "Learnly AI";
+  const groups = (navGroups[role] || navGroups.admin)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !shouldHideNavItem(item, subscription)),
+    }))
+    .filter((group) => group.items.length > 0);
   const navRef = useRef(null);
   const scrollStorageKey = `learnly-sidebar-scroll:${role}:${mobile ? "mobile" : "desktop"}`;
 
@@ -63,13 +99,20 @@ export default function SidebarContent({
           }}
         >
           <img
-            src={logoImage}
-            alt="Learnly AI"
-            className="h-9 w-9 rounded-xl bg-surface p-1 shadow-sm"
+            src={workspaceLogo}
+            alt={workspaceLogoAlt}
+            className="h-9 w-9 rounded-xl bg-surface object-contain p-1 shadow-sm"
+            onError={(event) => {
+              if (event.currentTarget.src !== defaultLogoImage) {
+                event.currentTarget.src = defaultLogoImage;
+              }
+            }}
           />
           {!collapsed && (
             <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight text-text">Learnly AI</span>
+              <span className="block truncate text-[15px] font-bold leading-tight text-text">
+                {schoolName || "Learnly AI"}
+              </span>
               <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
             </span>
           )}
