@@ -24,6 +24,7 @@ from app.modules.superadmin.schemas import (
 from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.superadmin.security_service import SuperadminSecurityService
 from app.modules.superadmin.service import SuperadminService
+from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.tenant_management.models import Tenant
 from app.tenant_management.schemas import TenantManagementResponse, TenantCreate, TenantStatusUpdate
 
@@ -74,6 +75,32 @@ async def get_tenant(
 ) -> Tenant:
     """Return tenant."""
     return await SuperadminService.get_tenant(db, tenant_id, include_deleted=include_deleted)
+
+
+@router.get("/tenants/{tenant_id}/usage", status_code=status.HTTP_200_OK)
+async def get_tenant_usage(
+    tenant_id: uuid.UUID,
+    db: DbSession,
+    current_superadmin: SuperadminActor,
+) -> dict[str, object]:
+    """Return subscription entitlements and resource usage for one tenant."""
+
+    tenant = await SuperadminService.get_tenant(db, tenant_id, include_deleted=True)
+    entitlements = await SubscriptionFeatureService.get_tenant_entitlements(
+        db=db,
+        tenant_id=tenant.id,
+        use_cache=False,
+    )
+    subscription = await SubscriptionFeatureService.get_current_subscription(
+        db=db,
+        tenant_id=tenant.id,
+    )
+
+    return {
+        "tenant": TenantManagementResponse.model_validate(tenant).model_dump(mode="json"),
+        "entitlements": entitlements.model_dump(mode="json"),
+        "subscription": subscription.model_dump(mode="json") if subscription else None,
+    }
 
 
 @router.patch("/tenants/{tenant_id}/status", response_model=TenantManagementResponse, status_code=status.HTTP_200_OK)

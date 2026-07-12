@@ -59,7 +59,6 @@ async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
 async def _create_test_tables(test_engine: AsyncEngine) -> AsyncGenerator[None, None]:
     """Create all ORM tables once for the test session."""
     async with test_engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
     yield
 

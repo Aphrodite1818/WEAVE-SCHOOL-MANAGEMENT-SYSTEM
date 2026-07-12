@@ -4,8 +4,10 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
+from jose import JWTError, jwt
 
 from app.config.database import AsyncSessionLocal
+from app.config.settings import settings
 
 from app.config.logging import get_logger
 from app.modules.superadmin.platform_control_service import (
@@ -22,6 +24,7 @@ _ALLOWED_EXACT_PATHS = {
     "/api/v1/auth/login",
     "/api/v1/auth/refresh",
     "/api/v1/auth/logout",
+    "/api/v1/auth/me",
     "/api/v1/auth/me/session",
 }
 _ALLOWED_PREFIXES = (
@@ -50,6 +53,28 @@ class PlatformLockdownMiddleware:
         if path in _ALLOWED_EXACT_PATHS:
             return True
         return any(path.startswith(prefix) for prefix in _ALLOWED_PREFIXES)
+
+    @staticmethod
+    def _is_superadmin_request(request: Request) -> bool:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return False
+
+        token = auth_header.split(" ", 1)[1]
+        try:
+            payload = jwt.decode(
+                token,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM],
+                options={"verify_exp": False},
+            )
+            return (
+                payload.get("account_type") == "superadmin"
+                or payload.get("actor_type") == "superadmin"
+                or payload.get("role") == "superadmin"
+            )
+        except JWTError:
+            return False
 
     @staticmethod
     def _maintenance_response(state: dict[str, object]) -> JSONResponse:
@@ -89,6 +114,10 @@ class PlatformLockdownMiddleware:
 
         request = Request(scope, receive=receive)
         if request.method == "OPTIONS" or self._is_allowed_path(request.url.path):
+            await self.app(scope, receive, send)
+            return
+
+        if self._is_superadmin_request(request):
             await self.app(scope, receive, send)
             return
 

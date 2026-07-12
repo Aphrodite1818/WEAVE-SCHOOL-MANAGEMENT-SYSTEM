@@ -139,7 +139,7 @@ class PlatformControlService:
         if not state.get("lockdown_enabled"):
             return
 
-        actor_type_value = getattr(actor_type, "value", actor_type)
+        actor_type_value = str(getattr(actor_type, "value", actor_type) or "").strip().lower()
         if actor_type_value == AuthSessionActorType.SUPERADMIN.value:
             return
 
