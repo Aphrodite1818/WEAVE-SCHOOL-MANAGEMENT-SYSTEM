@@ -146,11 +146,15 @@ function UsagePage() {
   return (
     <DashboardLayout>
       <div className="w-full">
-        <div className="mb-6 rounded-[1.5rem] border border-border/70 bg-surface p-6 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-6 rounded-[1.5rem] border border-border/70 bg-surface p-5 sm:p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-text">Usage</h1>
-              <p className="mt-2 text-sm text-text-muted">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <Badge variant="default">{formatPlanName(planCode)}</Badge>
+                <Badge variant="primary">Usage tracking</Badge>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-semibold text-text">Usage Limits</h1>
+              <p className="mt-1 text-sm text-text-muted">
                 Track actual resource usage against your current plan limits.
               </p>
             </div>
@@ -163,23 +167,6 @@ function UsagePage() {
               {errors.entitlements}
             </div>
           ) : null}
-
-          <Card className="p-5 sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="default">{formatPlanName(planCode)}</Badge>
-                  <Badge variant="primary">Usage tracking</Badge>
-                </div>
-                <h2 className="mt-4 text-xl font-semibold text-text">
-                  Plan limits versus actual usage
-                </h2>
-              </div>
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-                <Database className="h-5 w-5" />
-              </span>
-            </div>
-          </Card>
 
           {usageItems.length === 0 ? (
             <EmptyState

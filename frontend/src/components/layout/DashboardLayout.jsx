@@ -229,7 +229,7 @@ function DashboardShellFrame({
   return (
     <div
       data-dashboard-role={role}
-      className="flex h-screen h-[100dvh] flex-col overflow-hidden bg-background text-text"
+      className="fixed inset-0 flex flex-col overflow-hidden bg-background text-text"
     >
       <aside
         className={cn(

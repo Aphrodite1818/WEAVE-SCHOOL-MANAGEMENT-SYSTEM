@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronRight, Filter, X } from "lucide-react";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -117,6 +118,7 @@ function StudentDirectoryPage() {
   const [accessCodeNotice, setAccessCodeNotice] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -248,8 +250,9 @@ function StudentDirectoryPage() {
   };
 
   const applyFilters = async (event) => {
-    event.preventDefault();
+    event?.preventDefault();
     await loadPage(filters);
+    setIsFilterSheetOpen(false);
   };
 
   const clearFilters = () => {
@@ -321,7 +324,17 @@ function StudentDirectoryPage() {
             </Button>
           </div>
 
-          <form onSubmit={applyFilters} className="resource-page-filters mt-5 grid gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid-cols-3 2xl:grid-cols-4">
+          <div className="mt-5 flex items-end gap-2 md:hidden">
+            <Input name="search" placeholder="Search students" value={filters.search} onChange={handleFilterChange} />
+            <Button type="button" variant="outline" size="icon" onClick={() => setIsFilterSheetOpen(true)} aria-label="Open filters" className="shrink-0">
+              <Filter className="h-4 w-4" />
+            </Button>
+            <Button type="button" size="icon" onClick={() => applyFilters()} aria-label="Apply search" className="shrink-0">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <form onSubmit={applyFilters} className="resource-page-filters mt-5 hidden gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid md:grid-cols-3 2xl:grid-cols-4">
             <Input label="Search" name="search" placeholder="Name or admission no." value={filters.search} onChange={handleFilterChange} />
             <SelectControl label="Class" name="classId" value={filters.classId} options={classOptions} placeholder="All classes" onChange={handleFilterChange} />
             <SelectControl label="Status" name="status" value={filters.status} options={enumOptions(STUDENT_STATUSES)} placeholder="All statuses" onChange={handleFilterChange} />
@@ -335,7 +348,35 @@ function StudentDirectoryPage() {
             </div>
           </form>
 
-          <div className="mt-5 table-wrap">
+          <div className="mt-5 grid gap-2 md:hidden">
+            {students.length === 0 ? (
+              <EmptyState title="No students found" description="Create students from the Create User page or adjust your filters." />
+            ) : (
+              students.map((student) => (
+                <button
+                  key={student.id}
+                  type="button"
+                  onClick={() => handleEdit(student)}
+                  className="w-full rounded-xl border border-border bg-surface px-3 py-3 text-left shadow-sm transition hover:bg-surface-muted/40"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-text">{displayName(student)}</p>
+                      <p className="mt-1 truncate text-xs text-text-muted">
+                        {optionalValue(student.admission_number, "Pending")} · {titleCase(student.status || "student")}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {statusBadge(student.profile_status, student.profile_status === "incomplete" ? "warning" : "success")}
+                      <ChevronRight className="h-4 w-4 text-text-muted" />
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="table-wrap mt-5 hidden md:block">
             <table className="data-table">
               <thead>
                 <tr>
@@ -391,6 +432,37 @@ function StudentDirectoryPage() {
           </div>
         </Card>
       </div>
+
+      {isFilterSheetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-slate-950/35 px-3 pb-3 pt-16 backdrop-blur-sm md:hidden"
+          onClick={() => setIsFilterSheetOpen(false)}
+        >
+          <div
+            className="w-full rounded-2xl border border-border bg-surface p-4 shadow-premium"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">Filters</h2>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setIsFilterSheetOpen(false)} aria-label="Close filters">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-3">
+              <SelectControl label="Class" name="classId" value={filters.classId} options={classOptions} placeholder="All classes" onChange={handleFilterChange} />
+              <SelectControl label="Status" name="status" value={filters.status} options={enumOptions(STUDENT_STATUSES)} placeholder="All statuses" onChange={handleFilterChange} />
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button type="button" variant="outline" onClick={clearFilters}>
+                  Clear
+                </Button>
+                <Button type="button" onClick={() => applyFilters()}>
+                  Apply
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

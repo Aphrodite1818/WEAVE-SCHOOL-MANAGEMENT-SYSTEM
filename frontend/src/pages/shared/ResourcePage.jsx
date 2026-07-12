@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, Filter, X } from "lucide-react";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
@@ -124,6 +125,7 @@ function ResourcePage({ config }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [isUnavailable, setIsUnavailable] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const contextRef = useRef(context);
   const filtersRef = useRef(filters);
@@ -375,6 +377,15 @@ function ResourcePage({ config }) {
     setFilters(resolveConfig(config.initialFilters, context) || {});
   };
 
+  const applyFilters = async () => {
+    await loadItems(filters);
+    setIsFilterSheetOpen(false);
+  };
+
+  const searchableField = filterFields.find((field) => field.name === "search");
+  const sheetFilterFields = filterFields.filter((field) => field.name !== "search");
+  const hasNonSearchFilters = sheetFilterFields.length > 0;
+
   const showForm =
     !isUnavailable && (config.canCreate || (config.canUpdate && editingItem));
   const unavailableMessage =
@@ -453,35 +464,125 @@ function ResourcePage({ config }) {
               />
             </div>
           ) : filterFields.length > 0 && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                loadItems(filters);
-              }}
-              className="resource-page-filters mt-5 grid gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid-cols-3 2xl:grid-cols-4"
-            >
-              {filterFields.map((field) => (
-                <FormControl
-                  key={field.name}
-                  field={field}
-                  value={filters[field.name]}
-                  onChange={handleFilterChange}
-                  onValueChange={() => {}}
-                />
-              ))}
-              <div className="grid gap-2 sm:flex sm:items-end">
-                <Button type="submit" size="small" className="w-full sm:w-auto">
-                  Apply
-                </Button>
-                <Button type="button" variant="outline" size="small" onClick={clearFilters} className="w-full sm:w-auto">
-                  Clear
+            <>
+              <div className="mt-5 flex items-end gap-2 md:hidden">
+                {searchableField ? (
+                  <FormControl
+                    field={{ ...searchableField, label: "" }}
+                    value={filters[searchableField.name]}
+                    onChange={handleFilterChange}
+                    onValueChange={() => {}}
+                  />
+                ) : null}
+                {hasNonSearchFilters ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsFilterSheetOpen(true)}
+                    aria-label="Open filters"
+                    className="shrink-0"
+                  >
+                    <Filter className="h-4 w-4" />
+                  </Button>
+                ) : null}
+                <Button type="button" size="icon" onClick={applyFilters} aria-label="Apply search" className="shrink-0">
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-            </form>
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  loadItems(filters);
+                }}
+                className="resource-page-filters mt-5 hidden gap-3 rounded-2xl border border-border bg-surface-muted/40 p-4 md:grid md:grid-cols-3 2xl:grid-cols-4"
+              >
+                {filterFields.map((field) => (
+                  <FormControl
+                    key={field.name}
+                    field={field}
+                    value={filters[field.name]}
+                    onChange={handleFilterChange}
+                    onValueChange={() => {}}
+                  />
+                ))}
+                <div className="grid gap-2 sm:flex sm:items-end">
+                  <Button type="submit" size="small" className="w-full sm:w-auto">
+                    Apply
+                  </Button>
+                  <Button type="button" variant="outline" size="small" onClick={clearFilters} className="w-full sm:w-auto">
+                    Clear
+                  </Button>
+                </div>
+              </form>
+            </>
           )}
 
           {!isUnavailable && (
-            <div className="mt-5 table-wrap">
+            <>
+            <div className="mt-5 grid gap-2 md:hidden">
+              {items.length === 0 ? (
+                <div className="rounded-xl border border-border bg-surface-muted/30 px-4 py-5 text-sm text-text-muted">
+                  No records found.
+                </div>
+              ) : (
+                items.map((item) => {
+                  const primaryColumn = columns[0];
+                  const secondaryColumns = columns.slice(1, 3);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => (config.canUpdate ? handleEdit(item) : undefined)}
+                      className="w-full rounded-xl border border-border bg-surface px-3 py-3 text-left shadow-sm transition hover:bg-surface-muted/40"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-text">
+                            {primaryColumn?.render ? primaryColumn.render(item, context) : item[primaryColumn?.key] || "-"}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+                            {secondaryColumns.map((column) => (
+                              <span key={column.key} className="max-w-full truncate">
+                                {column.render ? column.render(item, context) : item[column.key] || "-"}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        {(config.canUpdate || config.canDelete) && <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />}
+                      </div>
+                      {(config.canUpdate || config.canDelete) && (
+                        <div className="mt-3 flex gap-2">
+                          {config.canUpdate && (
+                            <span className="rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-text-soft">
+                              Tap to edit
+                            </span>
+                          )}
+                          {config.canDelete && (
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="xs"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDelete(item);
+                              }}
+                              disabled={busyId === item.id}
+                              className="ml-auto"
+                            >
+                              {busyId === item.id ? "Deleting..." : "Delete"}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="table-wrap mt-5 hidden md:block">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -549,9 +650,48 @@ function ResourcePage({ config }) {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </Card>
       </div>
+
+      {isFilterSheetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-slate-950/35 px-3 pb-3 pt-16 backdrop-blur-sm md:hidden"
+          onClick={() => setIsFilterSheetOpen(false)}
+        >
+          <div
+            className="w-full rounded-2xl border border-border bg-surface p-4 shadow-premium"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">Filters</h2>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setIsFilterSheetOpen(false)} aria-label="Close filters">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-3">
+              {sheetFilterFields.map((field) => (
+                <FormControl
+                  key={field.name}
+                  field={field}
+                  value={filters[field.name]}
+                  onChange={handleFilterChange}
+                  onValueChange={() => {}}
+                />
+              ))}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button type="button" variant="outline" onClick={clearFilters}>
+                  Clear
+                </Button>
+                <Button type="button" onClick={applyFilters}>
+                  Apply
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

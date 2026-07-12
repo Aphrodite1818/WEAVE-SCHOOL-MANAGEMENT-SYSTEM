@@ -7,6 +7,7 @@ import {
   CheckSquare,
   ClipboardList,
   CreditCard,
+  Database,
   FileText,
   GraduationCap,
   Home,
@@ -31,7 +32,7 @@ export const roleLabels = {
   superadmin: "Platform admin",
 };
 
-export const workspaceSearchRoles = new Set(["admin", "teacher", "superadmin"]);
+export const workspaceSearchRoles = new Set(["admin", "teacher", "student"]);
 export const tenantNameFallbackRoles = new Set(["admin", "teacher"]);
 
 export const announcementPaths = {
@@ -177,10 +178,11 @@ export const navGroups = {
     {
       label: "Command",
       items: [
-        { label: "Mission Control", to: "/superadmin/dashboard", icon: Home },
+        { label: "Dashboard", to: "/superadmin/dashboard", icon: Home },
         { label: "Security Analytics", to: "/superadmin/analytics", icon: BarChart3 },
-        { label: "Verification", to: "/superadmin/verification", icon: Shield },
-        { label: "Activity", to: "/superadmin/activity", icon: Activity },
+        { label: "Control Center", to: "/superadmin/control-center", icon: Shield },
+        { label: "Tenant Usage", to: "/superadmin/usage", icon: Database },
+        { label: "Traffic Monitor", to: "/superadmin/traffic", icon: Activity },
       ],
     },
     {

@@ -121,6 +121,15 @@ export default function Topbar({ role, onOpenMobileNav, schoolName }) {
           </div>
         )}
 
+        {role === "superadmin" && (
+          <div className="hidden w-full max-w-md items-center justify-center md:flex">
+             <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary shadow-sm">
+                <div className="h-2 w-2 animate-pulse rounded-full bg-primary"></div>
+                Platform Operations
+             </div>
+          </div>
+        )}
+
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           <Dropdown
             align="right"

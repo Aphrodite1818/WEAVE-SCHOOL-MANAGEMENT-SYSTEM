@@ -60,6 +60,9 @@ export const superadminService = {
       })}`
     ),
 
+  getTenantUsage: (tenantId, requestOptions) =>
+    api.get(`/superadmin/tenants/${tenantId}/usage`, requestOptions),
+
   updateTenantStatus: (tenantId, statusData) =>
     api.patch(`/superadmin/tenants/${tenantId}/status`, statusData),
 

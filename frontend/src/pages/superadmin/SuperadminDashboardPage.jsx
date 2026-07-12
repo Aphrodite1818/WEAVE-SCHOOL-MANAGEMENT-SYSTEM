@@ -12,6 +12,9 @@ import {
   Users,
 } from "lucide-react";
 
+import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
+import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
+import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import {
   DashboardFocusCard,
   DashboardListCard,
@@ -22,6 +25,8 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
+
 import { getErrorMessage } from "../../services/api";
 import { superadminService } from "../../services/superadmin.service";
 
@@ -44,11 +49,19 @@ const findingIcon = (severity) => {
   return Shield;
 };
 
+const chartData = (charts, key) => {
+  const value = charts?.[key];
+  return Array.isArray(value) ? value : [];
+};
+
+
+
 function SuperadminDashboardPage() {
   const [analytics, setAnalytics] = useState(null);
   const [security, setSecurity] = useState(null);
   const [platformControl, setPlatformControl] = useState(null);
   const [tenants, setTenants] = useState([]);
+
   const [superadmins, setSuperadmins] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -70,6 +83,7 @@ function SuperadminDashboardPage() {
       setSecurity(securityResult);
       setPlatformControl(platformControlResult);
       setTenants(Array.isArray(tenantResult) ? tenantResult : []);
+
       setSuperadmins(Array.isArray(superadminResult) ? superadminResult : []);
     } catch (err) {
       setError(getErrorMessage(err, "Failed to load dashboard data."));
@@ -78,12 +92,17 @@ function SuperadminDashboardPage() {
     }
   }, []);
 
+
+
   useEffect(() => {
     const timeoutId = window.setTimeout(loadDashboardData, 0);
     return () => window.clearTimeout(timeoutId);
   }, [loadDashboardData]);
 
+
+
   const stats = analytics?.stats || {};
+  const charts = analytics?.charts || {};
   const securityStats = security?.stats || {};
   const lockdownEnabled = Boolean(platformControl?.lockdown_enabled);
   const totalTenants = metricNumber(stats.total_tenants, tenants.length);
@@ -96,6 +115,7 @@ function SuperadminDashboardPage() {
   const tokenReuse = metricNumber(securityStats.refresh_reuse_last_7d);
   const unusualSignals = metricNumber(securityStats.unusual_login_signals);
   const distinctIps = metricNumber(securityStats.distinct_login_ips_7d);
+
 
   const securityFindings = useMemo(() => {
     const findings = Array.isArray(security?.findings) ? security.findings : [];
@@ -138,9 +158,10 @@ function SuperadminDashboardPage() {
       {!error ? (
         <>
           <DashboardWelcomePanel
+            variant="blue"
             eyebrow="Superadmin Overview"
-            title="Platform Status & Security Posture"
-            description="Monitor key security metrics and manage active schools across the platform."
+            title="Platform Dashboard"
+            description="Monitor tenant growth, resource usage, security posture, and emergency controls from one operator surface."
             chips={[
               { label: "Status", value: lockdownEnabled ? "Lockdown active" : "Normal", tone: lockdownEnabled ? "danger" : "success" },
               { label: "Risk Score", value: `${riskScore}/100 · ${riskLevel}`, tone: riskScore >= 50 ? "danger" : riskScore > 0 ? "warning" : "success" },
@@ -155,7 +176,7 @@ function SuperadminDashboardPage() {
               description={lockdownEnabled ? "Only superadmin traffic is allowed" : "All authorized traffic is allowed"}
               icon={LockKeyhole}
               tone={lockdownEnabled ? "danger" : "success"}
-              to="/superadmin/settings"
+              to="/superadmin/control-center"
             />
             <DashboardMetricCard
               label="Platform risk score"
@@ -183,6 +204,32 @@ function SuperadminDashboardPage() {
             />
           </section>
 
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <AnalyticsLineChart
+              title="Tenant growth"
+              description="Monthly tenant creation trend across the platform."
+              data={chartData(charts, "tenant_growth")}
+              emptyMessage="No tenant growth data available yet."
+            />
+            <AnalyticsDonutChart
+              title="Tenant verification mix"
+              description="Active, pending, and rejected tenant verification states."
+              data={chartData(charts, "verification_breakdown")}
+              emptyMessage="No tenant verification data available yet."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+
+
+            <AnalyticsBarChart
+              title="Tenant status breakdown"
+              description="Operational tenant states from backend tenant records."
+              data={chartData(charts, "status_breakdown")}
+              emptyMessage="No tenant status data available yet."
+            />
+          </section>
+
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
             <DashboardListCard
               title="Recent security findings"
@@ -201,7 +248,7 @@ function SuperadminDashboardPage() {
               }
               icon={Shield}
               tone={lockdownEnabled ? "danger" : "success"}
-              primaryAction={{ to: "/superadmin/settings", label: lockdownEnabled ? "Manage Lockdown" : "Platform Settings", icon: KeyRound }}
+              primaryAction={{ to: "/superadmin/control-center", label: lockdownEnabled ? "Manage Lockdown" : "Control Center", icon: KeyRound }}
               secondaryAction={{ to: "/superadmin/analytics", label: "Security analytics", icon: BarChart3 }}
             >
               <div className="grid grid-cols-2 gap-3">
@@ -233,7 +280,7 @@ function SuperadminDashboardPage() {
               description="Access commonly used platform management tools."
               actions={[
                 { label: "Security Analytics", description: "View detailed security metrics", to: "/superadmin/analytics", icon: BarChart3, tone: "danger" },
-                { label: "Platform Settings", description: "Lockdown and platform configuration", to: "/superadmin/settings", icon: KeyRound, tone: lockdownEnabled ? "danger" : "neutral" },
+                { label: "Control Center", description: "Lockdown and IP containment", to: "/superadmin/control-center", icon: KeyRound, tone: lockdownEnabled ? "danger" : "neutral" },
                 { label: "School Verification", description: "Review and approve school registrations", to: "/superadmin/verification", icon: Shield, tone: "primary" },
                 { label: "Audit Logs", description: "View recent platform activity", to: "/superadmin/activity", icon: Activity, tone: "accent" },
               ]}
@@ -257,5 +304,7 @@ function InfoTile({ label, value }) {
     </div>
   );
 }
+
+
 
 export default SuperadminDashboardPage;

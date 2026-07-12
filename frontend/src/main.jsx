@@ -5,9 +5,10 @@ import './styles/mobileOverrides.css'
 import './styles/brandAssets.css'
 import './styles/notificationDropdown.css'
 import App from './App.jsx'
-import { applyAccessibilityPreferences, getSavedAccessibilityPreferences } from './utils/accessibilityPreferences'
+import { applyAccessibilityPreferences, getSavedAccessibilityPreferences, syncSystemThemePreference } from './utils/accessibilityPreferences'
 
 applyAccessibilityPreferences(getSavedAccessibilityPreferences());
+syncSystemThemePreference();
 
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 const updateStandaloneDisplayMode = () => {

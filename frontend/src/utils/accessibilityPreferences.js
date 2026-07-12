@@ -61,3 +61,30 @@ export const saveAccessibilityPreferences = (preferences) => {
   window.localStorage.setItem(ACCESSIBILITY_STORAGE_KEYS.language, preferences.language || "en-US");
   window.dispatchEvent(new CustomEvent("learnly:accessibility-preferences-changed", { detail: preferences }));
 };
+
+export const syncSystemThemePreference = () => {
+  if (typeof window === "undefined") return undefined;
+
+  const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+  if (!mediaQuery) return undefined;
+
+  const handleSystemThemeChange = () => {
+    const preferences = getSavedAccessibilityPreferences();
+    if (preferences.theme !== "system") return;
+
+    applyAccessibilityPreferences(preferences);
+    window.dispatchEvent(
+      new CustomEvent("learnly:accessibility-preferences-changed", {
+        detail: preferences,
+      }),
+    );
+  };
+
+  mediaQuery.addEventListener?.("change", handleSystemThemeChange);
+  mediaQuery.addListener?.(handleSystemThemeChange);
+
+  return () => {
+    mediaQuery.removeEventListener?.("change", handleSystemThemeChange);
+    mediaQuery.removeListener?.(handleSystemThemeChange);
+  };
+};
