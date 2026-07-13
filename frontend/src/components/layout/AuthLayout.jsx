@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
+import { useEffect } from "react";
 import { CheckCircle2, ShieldCheck } from "lucide-react";
 import WeaveIcon from "../brand/WeaveIcon";
 import Card from "../ui/Card";
+
+const AUTH_BACKGROUND =
+  "radial-gradient(circle at top left, rgba(37,99,235,0.16), transparent 26%), linear-gradient(180deg, #0b1220, #0f172a)";
 
 function AuthLayout({
   title,
@@ -11,8 +15,31 @@ function AuthLayout({
   stepLabel = "",
   iconPosition = "header",
 }) {
+  useEffect(() => {
+    const previousHtmlBackground = document.documentElement.style.background;
+    const previousHtmlBackgroundColor = document.documentElement.style.backgroundColor;
+    const previousBodyBackground = document.body.style.background;
+    const previousBodyBackgroundColor = document.body.style.backgroundColor;
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const previousThemeColor = themeColorMeta?.getAttribute("content");
+
+    document.documentElement.style.background = AUTH_BACKGROUND;
+    document.documentElement.style.backgroundColor = "#0f172a";
+    document.body.style.background = AUTH_BACKGROUND;
+    document.body.style.backgroundColor = "#0f172a";
+    themeColorMeta?.setAttribute("content", "#0f172a");
+
+    return () => {
+      document.documentElement.style.background = previousHtmlBackground;
+      document.documentElement.style.backgroundColor = previousHtmlBackgroundColor;
+      document.body.style.background = previousBodyBackground;
+      document.body.style.backgroundColor = previousBodyBackgroundColor;
+      if (previousThemeColor) themeColorMeta?.setAttribute("content", previousThemeColor);
+    };
+  }, []);
+
   return (
-    <div className="flex min-h-[100svh] flex-col bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_26%),linear-gradient(180deg,#0b1220,#0f172a)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-text sm:px-6 lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(440px,0.68fr)] lg:px-0 lg:py-0">
+    <div className="flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_26%),linear-gradient(180deg,#0b1220,#0f172a)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-text sm:px-6 lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(440px,0.68fr)] lg:px-0 lg:py-0">
       <section className="hidden border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.92))] lg:flex lg:flex-col lg:justify-between lg:px-12 lg:py-10">
         <Link to="/" className="flex items-center gap-3">
           <WeaveIcon className="h-12 w-12 shrink-0" />

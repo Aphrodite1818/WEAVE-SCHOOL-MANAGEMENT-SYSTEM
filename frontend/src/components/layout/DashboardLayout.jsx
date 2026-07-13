@@ -136,7 +136,7 @@ function DashboardShellFrame({
       const shellStyles = getComputedStyle(shellElement);
       const surfaceRgb = shellStyles.getPropertyValue("--color-surface").trim();
       const backgroundRgb = shellStyles.getPropertyValue("--color-background").trim();
-      const themeColor = surfaceRgb ? `rgb(${surfaceRgb})` : backgroundRgb ? `rgb(${backgroundRgb})` : undefined;
+      const themeColor = backgroundRgb ? `rgb(${backgroundRgb})` : surfaceRgb ? `rgb(${surfaceRgb})` : undefined;
       const themeColorMeta = document.querySelector('meta[name="theme-color"]');
       const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
 
@@ -342,7 +342,7 @@ function DashboardShellFrame({
     <div
       ref={shellRef}
       data-dashboard-role={role}
-      className="fixed inset-0 flex flex-col overflow-hidden bg-background text-text"
+      className="fixed inset-0 flex min-h-[100dvh] flex-col overflow-hidden bg-background text-text"
     >
       <div
         aria-hidden="true"

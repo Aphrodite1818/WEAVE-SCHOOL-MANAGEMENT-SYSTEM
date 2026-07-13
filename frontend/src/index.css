@@ -72,7 +72,7 @@
 
   html:has([data-dashboard-role]),
   body:has([data-dashboard-role]) {
-    background-color: rgb(var(--color-surface));
+    background-color: rgb(var(--color-background));
   }
 
   * {
