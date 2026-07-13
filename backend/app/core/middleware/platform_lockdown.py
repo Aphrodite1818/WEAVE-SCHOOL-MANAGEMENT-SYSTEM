@@ -4,10 +4,8 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
-from jose import JWTError, jwt
 
 from app.config.database import AsyncSessionLocal
-from app.config.settings import settings
 
 from app.config.logging import get_logger
 from app.modules.superadmin.platform_control_service import (
@@ -45,6 +43,8 @@ def _client_ip(request: Request) -> str | None:
 class PlatformLockdownMiddleware:
     """Block non-superadmin platform traffic during emergency controls."""
 
+    _last_known_lockdown_state: dict[str, object] | None = None
+
     def __init__(self, app: Callable[[Request], Awaitable[Response]]) -> None:
         self.app = app
 
@@ -53,28 +53,6 @@ class PlatformLockdownMiddleware:
         if path in _ALLOWED_EXACT_PATHS:
             return True
         return any(path.startswith(prefix) for prefix in _ALLOWED_PREFIXES)
-
-    @staticmethod
-    def _is_superadmin_request(request: Request) -> bool:
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            return False
-
-        token = auth_header.split(" ", 1)[1]
-        try:
-            payload = jwt.decode(
-                token,
-                settings.SECRET_KEY,
-                algorithms=[settings.ALGORITHM],
-                options={"verify_exp": False},
-            )
-            return (
-                payload.get("account_type") == "superadmin"
-                or payload.get("actor_type") == "superadmin"
-                or payload.get("role") == "superadmin"
-            )
-        except JWTError:
-            return False
 
     @staticmethod
     def _maintenance_response(state: dict[str, object]) -> JSONResponse:
@@ -117,10 +95,6 @@ class PlatformLockdownMiddleware:
             await self.app(scope, receive, send)
             return
 
-        if self._is_superadmin_request(request):
-            await self.app(scope, receive, send)
-            return
-
         try:
             async with AsyncSessionLocal() as db:
                 ip_state = await SecurityResponseService.is_ip_blocked(db, _client_ip(request))
@@ -130,11 +104,33 @@ class PlatformLockdownMiddleware:
                     return
 
                 lockdown_state = await PlatformControlService.get_state(db)
+                self.__class__._last_known_lockdown_state = lockdown_state
         except Exception as exc:
-            logger.exception(
-                "Failed to read emergency control state; allowing request to avoid self-lockout",
-                extra={"path": request.url.path, "error": str(exc)},
+            last_known_state = self.__class__._last_known_lockdown_state
+            logger.critical(
+                "Failed to read emergency control state",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "client_ip": _client_ip(request),
+                    "has_last_known_state": last_known_state is not None,
+                    "last_known_lockdown_enabled": (
+                        bool(last_known_state.get("lockdown_enabled"))
+                        if last_known_state is not None
+                        else None
+                    ),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
             )
+            # Preserve availability when there is no prior signal, but keep a
+            # known active lockdown enforced during temporary control-store
+            # failures so the emergency control does not silently fail open.
+            if last_known_state is not None and last_known_state.get("lockdown_enabled"):
+                response = self._maintenance_response(last_known_state)
+                await response(scope, receive, send)
+                return
+
             await self.app(scope, receive, send)
             return
 

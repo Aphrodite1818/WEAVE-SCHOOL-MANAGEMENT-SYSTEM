@@ -656,8 +656,6 @@ class ReportCardService:
     <style>
         body {{ margin: 0; background: #e2e8f0; color: #0f172a; font-family: Arial, sans-serif; line-height: 1.45; }}
         .page {{ width: min(100%, 960px); margin: 24px auto; background: white; border: 1px solid #cbd5e1; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14); }}
-        .toolbar {{ display: flex; justify-content: flex-end; padding: 16px 18px 0; }}
-        button {{ border: 0; border-radius: 10px; background: #1a237e; color: white; cursor: pointer; font-weight: 700; padding: 10px 16px; }}
         .sheet {{ padding: 28px; }}
         .brand {{ background: #1a237e; color: white; border-radius: 18px; margin-bottom: 24px; padding: 18px 20px; }}
         h1 {{ margin: 0; font-size: 30px; }}
@@ -684,12 +682,11 @@ class ReportCardService:
             table {{ font-size: 12px; min-width: 600px; }}
             th, td {{ padding: 8px; }}
         }}
-        @media print {{ body {{ background: white; }} button, .toolbar {{ display: none; }} .page {{ margin: 0; width: 100%; border: 0; box-shadow: none; }} }}
+        @media print {{ body {{ background: white; }} .page {{ margin: 0; width: 100%; border: 0; box-shadow: none; }} }}
     </style>
 </head>
 <body>
     <main class="page">
-        <div class="toolbar"><button onclick="window.print()">Print report card</button></div>
         <section class="sheet">
             <section class="brand"><h1>{school_name}</h1><p>Termly academic report</p></section>
             <h1>Report Card</h1>

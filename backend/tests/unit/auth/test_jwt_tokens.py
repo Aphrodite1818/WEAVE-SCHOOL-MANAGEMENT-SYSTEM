@@ -1,8 +1,17 @@
+from importlib.metadata import packages_distributions
+
 from jose import JWTError, jwt
 import pytest
 
 from app.config.security import create_access_token
 from app.config.settings import settings
+
+
+def test_jose_namespace_is_provided_by_python_jose() -> None:
+    owners = packages_distributions().get("jose", [])
+
+    assert "python-jose" in owners
+    assert "jose" not in owners
 
 
 def test_create_access_token() -> None:
