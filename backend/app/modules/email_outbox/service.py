@@ -12,6 +12,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.queue.context import get_current_bulk_import_job_id
 from app.core.utils.email import send_email
 from app.core.utils.email_templates import get_user_invite_email_html
 from app.modules.email_outbox.models import EmailOutbox
@@ -55,6 +56,18 @@ def build_user_invite_body(*, context: dict[str, Any]) -> str:
     )
 
 
+def resolve_outbox_metadata(metadata_json: dict[str, Any] | None) -> dict[str, Any]:
+    """Attach the active import ID to bulk-import outbox rows."""
+
+    metadata = dict(metadata_json or {})
+    import_job_id = get_current_bulk_import_job_id()
+
+    if metadata.get("source") == "bulk_import" and import_job_id:
+        metadata.setdefault("import_job_id", import_job_id)
+
+    return metadata
+
+
 class EmailOutboxService:
     """Business logic for queueing and sending email outbox rows."""
 
@@ -86,7 +99,7 @@ class EmailOutboxService:
                 subject=build_user_invite_subject(school_name=school_name),
                 template_name=USER_INVITE_TEMPLATE,
                 template_context=context,
-                metadata_json=metadata_json,
+                metadata_json=resolve_outbox_metadata(metadata_json),
             ),
         )
 
