@@ -2,29 +2,47 @@
 #   email_outbox_worker.py    #
 # =========================== #
 
-"""ARQ worker functions for email outbox delivery."""
+"""ARQ job functions for email-outbox delivery."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from app.config.database import AsyncSessionLocal
+from app.core.queue.arq import (
+    DEFAULT_EMAIL_OUTBOX_BATCH_SIZE,
+    EMAIL_QUEUE_NAME,
+)
 from app.modules.email_outbox.service import EmailOutboxService
 
 
 async def process_email_outbox_batch(
     ctx: dict[str, Any],
-    batch_size: int = 50,
+    batch_size: int = DEFAULT_EMAIL_OUTBOX_BATCH_SIZE,
 ) -> dict[str, int]:
-    """Process one batch of queued emails and enqueue another batch if needed."""
+    """Claim and send one bounded batch of pending outbox emails."""
+
+    safe_batch_size = max(
+        1,
+        min(int(batch_size), DEFAULT_EMAIL_OUTBOX_BATCH_SIZE),
+    )
 
     async with AsyncSessionLocal() as db:
         result = await EmailOutboxService.process_pending_batch(
             db=db,
-            batch_size=batch_size,
+            batch_size=safe_batch_size,
         )
 
-    if result["remaining"] > 0 and "redis" in ctx:
-        await ctx["redis"].enqueue_job("process_email_outbox_batch", batch_size)
+    remaining = int(result.get("remaining") or 0)
+    redis = ctx.get("redis")
+
+    # Continue draining the email queue without involving the import worker.
+    if remaining > 0 and redis is not None:
+        await redis.enqueue_job(
+            "process_email_outbox_batch",
+            safe_batch_size,
+            _queue_name=EMAIL_QUEUE_NAME,
+            _defer_by=1,
+        )
 
     return result
