@@ -1,4 +1,4 @@
-import { Activity, Database, RefreshCw } from "lucide-react";
+import { Activity, RefreshCw } from "lucide-react";
 import {
   Bar,
   BarChart,
