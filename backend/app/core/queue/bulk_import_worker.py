@@ -20,6 +20,10 @@ from app.core.queue.arq import (  # noqa: E402
     BULK_IMPORT_QUEUE_NAME,
     get_arq_redis_settings,
 )
+from app.core.queue.context import (  # noqa: E402
+    reset_current_bulk_import_job_id,
+    set_current_bulk_import_job_id,
+)
 from app.modules.bulk_imports.live_service import BulkImportLiveService  # noqa: E402
 
 
@@ -33,15 +37,19 @@ async def process_bulk_import_job(
     """Process one confirmed bulk-import job."""
 
     _ = ctx
+    context_token = set_current_bulk_import_job_id(job_id)
 
-    async with AsyncSessionLocal() as db:
-        return await BulkImportLiveService.process_confirmed_import_job(
-            db=db,
-            tenant_id=UUID(tenant_id),
-            actor_id=UUID(actor_id),
-            job_id=UUID(job_id),
-            notify_on_completion=notify_on_completion,
-        )
+    try:
+        async with AsyncSessionLocal() as db:
+            return await BulkImportLiveService.process_confirmed_import_job(
+                db=db,
+                tenant_id=UUID(tenant_id),
+                actor_id=UUID(actor_id),
+                job_id=UUID(job_id),
+                notify_on_completion=notify_on_completion,
+            )
+    finally:
+        reset_current_bulk_import_job_id(context_token)
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
