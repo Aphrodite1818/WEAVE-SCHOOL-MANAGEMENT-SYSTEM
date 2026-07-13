@@ -7,6 +7,7 @@ import Button from "../../components/ui/Button";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import ReportCardLinesTable from "../../components/shared/ReportCardLinesTable";
+import ReportCardPrintSheet from "../../components/shared/ReportCardPrintSheet";
 import { getErrorMessage } from "../../services/api";
 import { reportCardService } from "../../services/reportCardService";
 import { cleanText } from "../../utils/academicDashboard";
@@ -19,6 +20,7 @@ function StudentReportCardsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [printId, setPrintId] = useState(null);
+  const [printCard, setPrintCard] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -50,12 +52,17 @@ function StudentReportCardsPage() {
     setLoadError(null);
 
     try {
-      await reportCardService.printStudentReportCard(card.id);
+      const printableCard = await reportCardService.getMyReportCard(card.id);
+      setPrintCard(printableCard);
     } catch (error) {
       setLoadError(getErrorMessage(error, "Could not open report card."));
-    } finally {
       setPrintId(null);
     }
+  };
+
+  const clearPrintCard = () => {
+    setPrintCard(null);
+    setPrintId(null);
   };
 
   if (isLoading) {
@@ -72,6 +79,8 @@ function StudentReportCardsPage() {
       title="Report Cards"
       description="Published term reports arranged for reading first, with print and download still available."
     >
+      <ReportCardPrintSheet card={printCard} onAfterPrint={clearPrintCard} />
+
       {loadError && (
         <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {loadError}
