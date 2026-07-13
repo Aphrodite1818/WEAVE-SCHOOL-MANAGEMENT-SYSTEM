@@ -15,6 +15,7 @@ from app.core.cache.redis import close_redis, connect_redis
 from app.core.exception_handlers import register_exception_handlers
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
+from app.core.middleware.security_headers import SecurityHeadersMiddleware
 from app.modules import import_model_modules
 from app.modules.superadmin.router import router as superadmin_router
 from app.modules.auth.router import router as auth_router
@@ -59,9 +60,9 @@ logger = get_logger(__name__)
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [None, Any, None]
-    """Perform lifespan."""
-    logger.info("Starting up — school-ai-assistant API")
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage API startup and shutdown resources."""
+    logger.info("Starting up - Weave API")
     await connect_redis()
     try:
         yield
@@ -74,11 +75,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [N
 # ── App factory ───────────────────────────────────────────────────────────────
 
 def create_app() -> FastAPI:
-    """Create app."""
+    """Create and configure the FastAPI application."""
     import_model_modules()
 
     app = FastAPI(
-        title="LearnlyAI Assistant",
+        title="Weave Assistant",
         description="WhatsApp-powered school management assistant API",
         version="0.1.0",
         lifespan=lifespan,
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     # Add platform lockdown before CORS so CORS remains the outer response wrapper.
     app.add_middleware(PlatformLockdownMiddleware)
     app.add_middleware(RequestTimingMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(
         CORSMiddleware,
         **middleware_options,
@@ -149,7 +151,7 @@ def create_app() -> FastAPI:
     # ── Health check ──────────────────────────────────────────────────────────
     @app.get("/health", tags=["Health"])
     async def health() -> dict[str, str]:
-        """Perform health."""
+        """Return a lightweight process health response."""
         return {"status": "ok"}
 
     return app

@@ -6,7 +6,7 @@ from datetime import datetime
 from html import escape
 
 
-BRAND_NAME = "Learnly AI"
+BRAND_NAME = "Weave"
 BRAND_SUBTITLE = "School Management"
 
 
@@ -16,7 +16,7 @@ def _html(value: object) -> str:
 
 
 def _email_shell(title: str, eyebrow: str, body: str) -> str:
-    """Return the shared Learnly AI branded email shell."""
+    """Return the shared Weave branded email shell."""
     year = datetime.now().year
     return f"""
 <!DOCTYPE html>
@@ -162,7 +162,7 @@ def get_security_alert_email_html(title: str, rows: dict[str, object]) -> str:
     )
     body = f"""
             <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; color: #334155;">
-                A high-signal LearnlyAI security event was detected. Please review the details below.
+                A high-signal Weave security event was detected. Please review the details below.
             </p>
             <table style="width:100%;border-collapse:collapse;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;background-color:#F8FAFC">
                 <tbody>

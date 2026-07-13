@@ -1,12 +1,12 @@
-import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { HelpCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import defaultLogoImage from "../../assets/images/favicon.png";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
+import WeaveIcon from "../brand/WeaveIcon";
 import { navGroups, roleLabels } from "./navConfig";
 
 function isRouteActive(pathname, itemPath) {
@@ -18,7 +18,7 @@ function resolveWorkspaceLogo(user) {
     user?.tenant_logo_url ||
     user?.tenant?.logo_url ||
     user?.logo_url ||
-    defaultLogoImage
+    null
   );
 }
 
@@ -38,7 +38,6 @@ function shouldHideNavItem(item, subscription) {
 export default function SidebarContent({
   role,
   collapsed,
-  onToggleCollapsed,
   onNavigate,
   mobile = false,
   schoolName,
@@ -47,9 +46,9 @@ export default function SidebarContent({
   const subscription = useSubscription();
   const user = authSession.getUser() || {};
   const workspaceLogo = resolveWorkspaceLogo(user);
-  const workspaceLogoAlt = user?.tenant_logo_url || user?.tenant?.logo_url
-    ? `${schoolName || "School"} logo`
-    : "Learnly AI";
+  const [failedWorkspaceLogo, setFailedWorkspaceLogo] = useState(null);
+  const hasCustomWorkspaceLogo = Boolean(workspaceLogo) && failedWorkspaceLogo !== workspaceLogo;
+  const workspaceLogoAlt = `${schoolName || "School"} logo`;
   const groups = (navGroups[role] || navGroups.admin)
     .map((group) => ({
       ...group,
@@ -57,7 +56,7 @@ export default function SidebarContent({
     }))
     .filter((group) => group.items.length > 0);
   const navRef = useRef(null);
-  const scrollStorageKey = `learnly-sidebar-scroll:${role}:${mobile ? "mobile" : "desktop"}`;
+  const scrollStorageKey = `weave-sidebar-scroll:${role}:${mobile ? "mobile" : "desktop"}`;
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -87,7 +86,8 @@ export default function SidebarContent({
       <div
         className={cn(
           "relative flex h-[4.5rem] shrink-0 items-center border-b border-border/60 transition-all duration-300",
-          collapsed ? "justify-center px-2" : "gap-2 px-3"
+          mobile && "h-[5rem]",
+          collapsed ? "justify-center px-2" : mobile ? "gap-2 px-4" : "gap-2 px-3"
         )}
       >
         <Link
@@ -98,39 +98,28 @@ export default function SidebarContent({
             onNavigate?.();
           }}
         >
-          <img
-            src={workspaceLogo}
-            alt={workspaceLogoAlt}
-            className="h-9 w-9 rounded-xl bg-surface object-contain p-1 shadow-sm"
-            onError={(event) => {
-              if (event.currentTarget.src !== defaultLogoImage) {
-                event.currentTarget.src = defaultLogoImage;
-              }
-            }}
-          />
+          {hasCustomWorkspaceLogo ? (
+            <img
+              src={workspaceLogo}
+              alt={workspaceLogoAlt}
+              className={cn(
+                "h-10 w-10 shrink-0 rounded-xl border border-border/70 bg-surface object-contain p-1 shadow-sm",
+                collapsed && "h-11 w-11"
+              )}
+              onError={() => setFailedWorkspaceLogo(workspaceLogo)}
+            />
+          ) : (
+            <WeaveIcon className={cn("h-11 w-11 shrink-0", collapsed && "h-12 w-12")} />
+          )}
           {!collapsed && (
             <span className="min-w-0">
               <span className="block truncate text-[15px] font-bold leading-tight text-text">
-                {schoolName || "Learnly AI"}
+                {schoolName || "Weave"}
               </span>
               <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
             </span>
           )}
         </Link>
-
-        {!mobile && (
-          <button
-            type="button"
-            className={cn(
-              "inline-flex h-7 w-7 items-center justify-center rounded-lg bg-surface-muted/60 text-text-muted shadow-sm transition hover:bg-surface-muted hover:text-text",
-              collapsed ? "absolute -right-3.5 top-1/2 -translate-y-1/2" : "ml-auto"
-            )}
-            onClick={onToggleCollapsed}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {collapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
-          </button>
-        )}
       </div>
 
       {!collapsed && (

@@ -283,11 +283,14 @@ function BottomNav({ role, onOpenMenu }) {
 
       <nav
         data-mobile-bottom-nav="true"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/95 px-2 pt-1.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
-        style={{ paddingBottom: "max(0.45rem, env(safe-area-inset-bottom))" }}
+        className="fixed inset-x-0 z-40 border-t border-border/70 bg-background/95 px-2 pt-0.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
+        style={{
+          bottom: "calc(-0.45 * env(safe-area-inset-bottom))",
+          paddingBottom: "max(0.12rem, calc(env(safe-area-inset-bottom) * 0.45))",
+        }}
         aria-label="Primary installed app navigation"
       >
-        <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2rem] bg-surface/95 p-2 shadow-sm">
+        <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface/95 p-1.5 shadow-sm">
           <span
             aria-hidden="true"
             className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary/10"
@@ -308,19 +311,12 @@ function BottomNav({ role, onOpenMenu }) {
                 aria-current={isActive ? "page" : undefined}
                 aria-label={item.label}
                 className={cn(
-                  "relative z-10 flex min-h-[3.65rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.65rem] px-1.5 py-2 text-center transition-colors duration-150 ease-out",
-                  item.isHome && "-mt-5 min-h-[4.25rem]",
+                  "relative z-10 flex min-h-[3.45rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.75rem] px-1.5 py-1.5 text-center transition-colors duration-150 ease-out",
                   isActive ? "text-primary" : "text-text-muted hover:text-text"
                 )}
               >
-                <span
-                  className={cn(
-                    item.isHome &&
-                      "flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-[0_12px_28px_rgba(37,99,235,0.3)]",
-                    item.isHome && isActive && "ring-4 ring-primary/15"
-                  )}
-                >
-                  <Icon className={cn("h-[1.35rem] w-[1.35rem] shrink-0 transition-transform duration-150", item.isHome && "h-5 w-5", isActive && !item.isHome && "scale-110")} />
+                <span className="flex h-6 w-6 items-center justify-center">
+                  <Icon className={cn("h-[1.35rem] w-[1.35rem] shrink-0 transition-transform duration-150", isActive && "scale-110")} />
                 </span>
                 <span className={cn("max-w-full truncate text-[10.5px] font-semibold leading-none transition-colors duration-150", isActive ? "text-primary" : "text-text-muted")}>
                   {item.label}
@@ -332,7 +328,7 @@ function BottomNav({ role, onOpenMenu }) {
           <button
             type="button"
             onClick={onOpenMenu}
-            className="relative z-10 flex min-h-[3.65rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.65rem] px-1.5 py-2 text-text-muted transition-colors duration-150 ease-out hover:text-text"
+            className="relative z-10 flex min-h-[3.45rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.75rem] px-1.5 py-1.5 text-text-muted transition-colors duration-150 ease-out hover:text-text"
             aria-label="Open full navigation menu"
           >
             <Menu className="h-[1.35rem] w-[1.35rem] shrink-0" />

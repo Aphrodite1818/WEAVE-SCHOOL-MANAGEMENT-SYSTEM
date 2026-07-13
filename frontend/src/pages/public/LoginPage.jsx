@@ -215,7 +215,7 @@ function LoginPage() {
       {error && <Notice type="error">{error}</Notice>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <Input label="Email or admission number" type="text" name="identifier" value={formData.identifier} onChange={handleChange} placeholder="name@school.edu or NHS-2026-12345" required error={fieldErrors.identifier || fieldErrors.email} />
+        <Input label="Email or admission number" type="text" name="identifier" value={formData.identifier} onChange={handleChange} placeholder="name@school.edu or WVS-2026-12345" required error={fieldErrors.identifier || fieldErrors.email} />
         <Input label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Enter your password" required error={fieldErrors.password} />
         <div className="flex items-center justify-between gap-4 text-sm">
           <label className="flex items-center gap-2">

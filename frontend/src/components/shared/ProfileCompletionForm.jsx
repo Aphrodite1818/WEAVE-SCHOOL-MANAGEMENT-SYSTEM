@@ -23,7 +23,7 @@ const ROLE_FORM_CONFIG = {
       title: "School profile",
       description: "Complete the school profile fields required for onboarding and student admission setup.",
       fields: [
-        { name: "admission_number_prefix", label: "Admission prefix", required: true, placeholder: "NHS" },
+        { name: "admission_number_prefix", label: "Admission prefix", required: true, placeholder: "WVS" },
         { name: "phone", label: "School phone", placeholder: "+2348012345678" },
         { name: "address", label: "Address", type: "textarea", required: true },
         { name: "city", label: "City", required: true },

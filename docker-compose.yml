@@ -3,7 +3,7 @@ version: '3.8'
 services:
   redis:
     image: redis:7-alpine
-    container_name: nhs_redis
+    container_name: weave_redis
     ports:
       - "6379:6379"
     restart: unless-stopped
@@ -12,7 +12,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: nhs_backend
+    container_name: weave_backend
     ports:
       - "8080:8080"
     env_file:

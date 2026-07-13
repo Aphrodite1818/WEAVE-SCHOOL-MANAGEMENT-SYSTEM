@@ -32,6 +32,7 @@ const DRAWER_OPEN_DISTANCE = 72;
 const DRAWER_VERTICAL_TOLERANCE = 70;
 const DRAWER_CENTER_START_MIN = 0.28;
 const DRAWER_CENTER_START_MAX = 0.72;
+const GESTURE_ACTIVATION_DISTANCE = 12;
 
 function getDefaultPageMeta(role, onboardingModalEnabled = true) {
   return {
@@ -87,9 +88,17 @@ function DashboardShellFrame({
   const [pullDistance, setPullDistance] = useState(0);
   const [drawerSwipeDistance, setDrawerSwipeDistance] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const shellRef = useRef(null);
   const mainRef = useRef(null);
-  const pullStateRef = useRef({ tracking: false, startY: 0 });
-  const drawerSwipeRef = useRef({ tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
+  const pullStateRef = useRef({ tracking: false, active: false, startX: 0, startY: 0 });
+  const drawerSwipeRef = useRef({
+    tracking: false,
+    active: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+  });
   const schoolName = useTenantWorkspaceName({ user, role });
   const aiAssistantGuard =
     role === "admin" && isTenantAdmin
@@ -114,29 +123,88 @@ function DashboardShellFrame({
     scrollDashboardViewportToTop("auto");
   }, [location.pathname]);
 
+  useEffect(() => {
+    const shellElement = shellRef.current;
+    if (!shellElement || typeof window === "undefined") return undefined;
+
+    const previousThemeColor = document.querySelector('meta[name="theme-color"]')?.getAttribute("content");
+    const previousStatusBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute("content");
+    const previousHtmlBackground = document.documentElement.style.backgroundColor;
+    const previousBodyBackground = document.body.style.backgroundColor;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const shellStyles = getComputedStyle(shellElement);
+      const surfaceRgb = shellStyles.getPropertyValue("--color-surface").trim();
+      const backgroundRgb = shellStyles.getPropertyValue("--color-background").trim();
+      const themeColor = backgroundRgb ? `rgb(${backgroundRgb})` : surfaceRgb ? `rgb(${surfaceRgb})` : undefined;
+      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+      const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+
+      if (themeColorMeta && themeColor) themeColorMeta.setAttribute("content", themeColor);
+      if (themeColor) {
+        document.documentElement.style.backgroundColor = themeColor;
+        document.body.style.backgroundColor = themeColor;
+      }
+      if (appleStatusBarMeta) {
+        appleStatusBarMeta.setAttribute("content", "black-translucent");
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+
+      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+      const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      if (themeColorMeta && previousThemeColor) themeColorMeta.setAttribute("content", previousThemeColor);
+      if (appleStatusBarMeta && previousStatusBar) appleStatusBarMeta.setAttribute("content", previousStatusBar);
+      document.documentElement.style.backgroundColor = previousHtmlBackground;
+      document.body.style.backgroundColor = previousBodyBackground;
+    };
+  }, [role]);
+
   const handleTouchStart = useCallback((event) => {
     if (!isMobileViewport()) return;
 
     const touch = event.touches?.[0];
     if (!touch) return;
 
-    if (!mobileNavOpen && isCenterDrawerGestureStart(touch.clientX) && !blocksDrawerGesture(event.target)) {
+    drawerSwipeRef.current = {
+      tracking: false,
+      active: false,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0,
+    };
+    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+
+    const canOpenDrawer =
+      !mobileNavOpen &&
+      isCenterDrawerGestureStart(touch.clientX) &&
+      !blocksDrawerGesture(event.target);
+    const canPullRefresh =
+      !isPullRefreshing && (mainRef.current?.scrollTop || 0) <= 0;
+
+    if (canOpenDrawer) {
       drawerSwipeRef.current = {
         tracking: true,
+        active: false,
         startX: touch.clientX,
         startY: touch.clientY,
         currentX: touch.clientX,
         currentY: touch.clientY,
       };
-      pullStateRef.current = { tracking: false, startY: 0 };
       setPullDistance(0);
-      return;
     }
 
-    if (isPullRefreshing) return;
-    if ((mainRef.current?.scrollTop || 0) > 0) return;
-
-    pullStateRef.current = { tracking: true, startY: touch.clientY };
+    if (canPullRefresh) {
+      pullStateRef.current = {
+        tracking: true,
+        active: false,
+        startX: touch.clientX,
+        startY: touch.clientY,
+      };
+    }
   }, [isPullRefreshing, mobileNavOpen]);
 
   const handleTouchMove = useCallback((event) => {
@@ -147,21 +215,39 @@ function DashboardShellFrame({
 
     const drawerState = drawerSwipeRef.current;
     if (drawerState.tracking) {
-      const deltaX = Math.max(0, touch.clientX - drawerState.startX);
+      const rawDeltaX = touch.clientX - drawerState.startX;
+      const deltaX = Math.abs(rawDeltaX);
       const deltaY = touch.clientY - drawerState.startY;
+      const absDeltaY = Math.abs(deltaY);
+      const shouldActivateDrawer =
+        drawerState.active ||
+        (deltaX >= GESTURE_ACTIVATION_DISTANCE &&
+          deltaX > absDeltaY + 4);
 
       drawerSwipeRef.current = {
         ...drawerState,
+        active: shouldActivateDrawer,
         currentX: touch.clientX,
         currentY: touch.clientY,
       };
 
-      if (deltaX > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (shouldActivateDrawer) {
         event.preventDefault();
         setDrawerSwipeDistance(Math.min(96, Math.round(deltaX * 0.62)));
+        pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+        return;
       }
 
-      return;
+      if (absDeltaY >= GESTURE_ACTIVATION_DISTANCE && absDeltaY > deltaX + 4) {
+        drawerSwipeRef.current = {
+          tracking: false,
+          active: false,
+          startX: 0,
+          startY: 0,
+          currentX: 0,
+          currentY: 0,
+        };
+      }
     }
 
     const state = pullStateRef.current;
@@ -173,24 +259,43 @@ function DashboardShellFrame({
       return;
     }
 
-    const delta = touch.clientY - state.startY;
-    if (delta <= 0) {
+    const deltaX = Math.abs(touch.clientX - state.startX);
+    const deltaY = touch.clientY - state.startY;
+    if (deltaY <= 0) {
       setPullDistance(0);
       return;
     }
 
-    if (delta > 8) event.preventDefault();
-    setPullDistance(Math.min(104, Math.round(delta * 0.46)));
+    const shouldActivatePull =
+      state.active ||
+      (deltaY >= GESTURE_ACTIVATION_DISTANCE &&
+        deltaY > deltaX + 4);
+
+    if (!shouldActivatePull) return;
+
+    pullStateRef.current = { ...state, active: true };
+    if (deltaY > 8) event.preventDefault();
+    setPullDistance(Math.min(104, Math.round(deltaY * 0.46)));
   }, [isPullRefreshing]);
 
   const handleTouchEnd = useCallback(() => {
     const drawerState = drawerSwipeRef.current;
     if (drawerState.tracking) {
-      const deltaX = drawerState.currentX - drawerState.startX;
+      const deltaX = Math.abs(drawerState.currentX - drawerState.startX);
       const deltaY = drawerState.currentY - drawerState.startY;
-      const shouldOpenDrawer = deltaX >= DRAWER_OPEN_DISTANCE && Math.abs(deltaY) <= DRAWER_VERTICAL_TOLERANCE;
+      const shouldOpenDrawer =
+        drawerState.active &&
+        deltaX >= DRAWER_OPEN_DISTANCE &&
+        Math.abs(deltaY) <= DRAWER_VERTICAL_TOLERANCE;
 
-      drawerSwipeRef.current = { tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+      drawerSwipeRef.current = {
+        tracking: false,
+        active: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        currentY: 0,
+      };
       setDrawerSwipeDistance(0);
 
       if (shouldOpenDrawer) setMobileNavOpen(true);
@@ -198,7 +303,7 @@ function DashboardShellFrame({
     }
 
     const shouldRefresh = pullDistance >= PULL_REFRESH_THRESHOLD;
-    pullStateRef.current = { tracking: false, startY: 0 };
+    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
 
     if (!shouldRefresh) {
       setPullDistance(0);
@@ -208,13 +313,20 @@ function DashboardShellFrame({
     setIsPullRefreshing(true);
     setPullDistance(PULL_REFRESH_THRESHOLD);
     clearDashboardSessionCache();
-    window.dispatchEvent(new CustomEvent("learnly:pull-refresh"));
+    window.dispatchEvent(new CustomEvent("weave:pull-refresh"));
     window.setTimeout(() => window.location.reload(), 220);
   }, [pullDistance]);
 
   const handleTouchCancel = useCallback(() => {
-    pullStateRef.current = { tracking: false, startY: 0 };
-    drawerSwipeRef.current = { tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+    drawerSwipeRef.current = {
+      tracking: false,
+      active: false,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0,
+    };
     setPullDistance(0);
     setDrawerSwipeDistance(0);
   }, []);
@@ -228,9 +340,16 @@ function DashboardShellFrame({
 
   return (
     <div
+      ref={shellRef}
       data-dashboard-role={role}
-      className="fixed inset-0 flex flex-col overflow-hidden bg-background text-text"
+      className="fixed inset-0 flex min-h-[100dvh] flex-col overflow-hidden bg-background text-text"
     >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 z-[70] hidden bg-surface md:hidden"
+        data-pwa-status-fill="true"
+        style={{ height: "env(safe-area-inset-top)" }}
+      />
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block",
@@ -240,7 +359,6 @@ function DashboardShellFrame({
         <SidebarContent
           role={role}
           collapsed={sidebarCollapsed}
-          onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
           schoolName={schoolName}
         />
       </aside>
@@ -258,7 +376,13 @@ function DashboardShellFrame({
           sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[15rem]"
         )}
       >
-        <Topbar role={role} onOpenMobileNav={() => setMobileNavOpen(true)} schoolName={schoolName} />
+        <Topbar
+          role={role}
+          onOpenMobileNav={() => setMobileNavOpen(true)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+          schoolName={schoolName}
+        />
         <div
           id="dashboard-scroll-viewport"
           ref={mainRef}

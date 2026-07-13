@@ -189,7 +189,7 @@ function TeacherDashboardPage() {
             variant="blue"
             eyebrow="Teacher dashboard"
             title={`Good day, ${teacher?.first_name || firstName}`}
-            description="Your workspace now starts with teaching actions first, then deeper analytics only when needed."
+            description="Teaching actions, score status, and class work."
             profileCompletion={teacher?.profile_completed}
             chips={[
               { label: teacher?.is_verified ? "Verified" : "Pending verification", tone: teacher?.is_verified ? "success" : "warning" },
@@ -234,8 +234,8 @@ function TeacherDashboardPage() {
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <DashboardFocusCard
-              title="Today’s teaching focus"
-              description="Fast paths for the work teachers usually need to do first."
+              title="Today's teaching focus"
+              description="Fast paths for class and score work."
               icon={BookOpen}
               tone="primary"
               primaryAction={{ to: "/teacher/score-entry", label: "Enter scores", icon: Send, disabled: !hasSubjectTeacherDuties }}
@@ -251,7 +251,7 @@ function TeacherDashboardPage() {
 
             <DashboardListCard
               title="Needs attention"
-              description="Only urgent teaching signals stay on the dashboard."
+              description="Teaching items that need follow-up."
               items={attentionItems}
               emptyTitle="No urgent teaching task"
               emptyDescription="Score entry, profile, and class assignment signals are clear right now."
@@ -261,7 +261,7 @@ function TeacherDashboardPage() {
           <section className="space-y-4">
             <DashboardSectionHeader
               title="Teaching snapshot"
-              description="A compact preview of your class load. Full charts live on the analytics page."
+              description="A compact preview of your class load."
               action={
                 <Link to="/teacher/analytics">
                   <Button variant="outline" size="sm">Open analytics</Button>
@@ -277,7 +277,7 @@ function TeacherDashboardPage() {
               />
               <Card className="p-4 sm:p-6">
                 <h3 className="section-title">Assigned work</h3>
-                <p className="mt-1 text-sm text-text-muted">Visible assignments stay short here. Open rosters for the full workflow.</p>
+                <p className="mt-1 text-sm text-text-muted">Current subject assignments.</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {assignedSubjectLabels.length > 0 ? (
                     assignedSubjectLabels.slice(0, 10).map((label) => (
@@ -295,7 +295,7 @@ function TeacherDashboardPage() {
 
           <DashboardQuickActions
             title="Quick actions"
-            description="Common teacher workflows without a crowded control panel."
+            description="Common teacher workflows."
             actions={[
               { label: "Score entry", description: "Record or submit scores", to: "/teacher/score-entry", icon: Send, tone: "primary" },
               { label: "Rosters", description: "View teaching students", to: "/teacher/students", icon: Users, tone: "success" },

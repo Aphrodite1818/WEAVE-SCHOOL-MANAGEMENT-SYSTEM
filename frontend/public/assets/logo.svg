@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 120" role="img" aria-labelledby="title desc">
+  <title id="title">Weave</title>
+  <desc id="desc">Weave logo lockup with interlaced thread mark.</desc>
+  <defs>
+    <linearGradient id="blue" x1="20" y1="24" x2="118" y2="96" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60a5fa" />
+      <stop offset="0.48" stop-color="#1d4ed8" />
+      <stop offset="1" stop-color="#1e3a8a" />
+    </linearGradient>
+    <linearGradient id="gold" x1="118" y1="24" x2="20" y2="96" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fde68a" />
+      <stop offset="0.48" stop-color="#f59e0b" />
+      <stop offset="1" stop-color="#b45309" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#f8fafc" />
+  <path d="M28 42c20 0 21 36 48 36s28-36 48-36" fill="none" stroke="url(#blue)" stroke-width="14" stroke-linecap="round" />
+  <path d="M28 78c20 0 21-36 48-36s28 36 48 36" fill="none" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" />
+  <path d="M55 60h42" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.9" />
+  <text x="142" y="77" font-family="Inter, Arial, sans-serif" font-size="54" font-weight="800" letter-spacing="0" fill="#0f172a">Weave</text>
+</svg>

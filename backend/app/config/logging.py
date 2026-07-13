@@ -29,7 +29,7 @@ except Exception:
 LOG_DIR = BASE_DIR / "logs"
 LOG_FILE = LOG_DIR / "app.log"
 
-_CONFIGURED_ATTR = "_learnlyai_logging_configured"
+_CONFIGURED_ATTR = "_weave_logging_configured"
 _STANDARD_RECORD_ATTRS = frozenset(
     logging.LogRecord("", 0, "", 0, "", (), None).__dict__
 ) | frozenset({"message", "asctime", "source"})

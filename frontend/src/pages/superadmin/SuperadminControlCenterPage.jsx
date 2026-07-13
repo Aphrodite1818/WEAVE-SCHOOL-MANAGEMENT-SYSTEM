@@ -5,8 +5,6 @@ import {
   LockKeyhole,
   RefreshCw,
   ShieldAlert,
-  Trash2,
-  Unlock,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -19,7 +17,7 @@ import { getErrorMessage } from "../../services/api";
 import { superadminService } from "../../services/superadmin.service";
 import { cn } from "../../utils/cn";
 
-const DEFAULT_MESSAGE = "LearnlyAI is temporarily in maintenance mode. Please try again later.";
+const DEFAULT_MESSAGE = "Weave is temporarily in maintenance mode. Please try again later.";
 
 function SuperadminControlCenterPage() {
   const [platformControl, setPlatformControl] = useState(null);

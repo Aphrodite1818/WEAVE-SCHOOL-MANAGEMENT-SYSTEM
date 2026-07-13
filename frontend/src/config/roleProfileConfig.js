@@ -22,6 +22,8 @@ const COMMON_USER_FIELDS = [
   },
 ];
 
+const STUDENT_USER_FIELDS = COMMON_USER_FIELDS.filter((field) => field.name !== "email");
+
 const hasRequiredValues = (fields, sourceData) =>
   fields
     .filter((field) => field.required)
@@ -63,9 +65,9 @@ const ROLE_PROFILE_CONFIG = {
             name: "admission_number_prefix",
             label: "Admission prefix",
             required: true,
-            placeholder: "NHS",
+            placeholder: "WVS",
             helperText:
-              "This prefix will be used to generate student admission numbers, e.g. NHS-2026-48291.",
+              "This prefix will be used to generate student admission numbers, e.g. WVS-2026-48291.",
           },
           { source: "tenant", name: "address", label: "Address", type: "textarea" },
           { source: "tenant", name: "city", label: "City" },
@@ -115,8 +117,8 @@ const ROLE_PROFILE_CONFIG = {
       {
         key: "user",
         title: "Personal details",
-        description: "These fields belong to the core user account.",
-        fields: COMMON_USER_FIELDS,
+        description: "Student identity is tied to the admission number.",
+        fields: STUDENT_USER_FIELDS,
       },
       {
         key: "roleProfile",

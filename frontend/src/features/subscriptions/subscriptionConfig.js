@@ -77,7 +77,7 @@ export const LANDING_PRICING_PLANS = [
   {
     planCode: "free_trial",
     name: "Free Trial",
-    bestFor: "Best for testing LearnlyAI",
+    bestFor: "Best for testing Weave",
     description: "Try the core school workflow for 30 days before moving into monthly billing.",
     priceMonthly: 0,
     priceLabel: "₦0",
@@ -164,7 +164,7 @@ export const LANDING_PRICING_PLANS = [
   },
 ];
 
-const SUBSCRIPTION_SELECTION_STORAGE_KEY = "learnly_subscription_selection";
+const SUBSCRIPTION_SELECTION_STORAGE_KEY = "weave_subscription_selection";
 
 const ATTENTION_STATUSES = new Set([
   "past_due",

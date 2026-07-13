@@ -1,21 +1,21 @@
 {
-  "name": "Learnly AI",
-  "short_name": "Learnly",
-  "description": "School Management System",
+  "name": "Weave",
+  "short_name": "Weave",
+  "description": "Weave school management workspace.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#2563EB",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.svg?v=learnly-shield-1",
+      "src": "/favicon.svg?v=weave-mark-1",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icons/learnly-maskable.svg?v=learnly-shield-1",
+      "src": "/icons/weave-maskable.svg?v=weave-mark-1",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"

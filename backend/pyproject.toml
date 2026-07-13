@@ -1,7 +1,7 @@
 [project]
 name = "student-ai-support"
 version = "0.1.0"
-description = "Add your description here"
+description = "FastAPI backend for the Weave school management SaaS"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -107,4 +107,37 @@ dependencies = [
     "wcwidth==0.7.0",
     "websockets==16.0",
     "yarl==1.24.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [
+    ".venv",
+    ".uv-cache",
+    ".pytest_cache",
+    "alembic/versions",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+include = ["app", "tests"]
+exclude = [
+    ".venv",
+    ".uv-cache",
+    ".pytest_cache",
+    "alembic/versions",
 ]

@@ -65,10 +65,10 @@ function AnalyticsLineChart({
               <Line
                 type="monotone"
                 dataKey={valueKey}
-                stroke="#2563eb"
+                stroke="#1d4ed8"
                 strokeWidth={expanded ? 4 : 3}
-                dot={{ r: expanded ? 5 : 4, fill: "#2563eb", strokeWidth: 0 }}
-                activeDot={{ r: expanded ? 8 : 6, fill: "#1d4ed8", strokeWidth: 0 }}
+                dot={{ r: expanded ? 5 : 4, fill: "#1d4ed8", strokeWidth: 0 }}
+                activeDot={{ r: expanded ? 8 : 6, fill: "#1e40af", strokeWidth: 0 }}
               />
             </LineChart>
           </ResponsiveContainer>

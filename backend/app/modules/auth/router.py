@@ -50,7 +50,7 @@ from app.tenant_management.repository import TenantRepository
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-REFRESH_TOKEN_COOKIE_NAME = "learnly_refresh_token"
+REFRESH_TOKEN_COOKIE_NAME = "weave_refresh_token"
 REFRESH_COOKIE_PATH = f"{settings.API_V1_PREFIX}/auth"
 
 CurrentActorDependency = Annotated[

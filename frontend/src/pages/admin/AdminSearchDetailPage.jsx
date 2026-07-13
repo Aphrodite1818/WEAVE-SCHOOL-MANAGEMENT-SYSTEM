@@ -13,7 +13,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 
-const SEARCH_STORAGE_PREFIX = "learnly:admin-search:";
+const SEARCH_STORAGE_PREFIX = "weave:admin-search:";
 
 const getStoredSearchResult = (resultKey) => {
   if (typeof window === "undefined" || !resultKey) return null;

@@ -194,7 +194,7 @@ function ParentDashboardPage() {
             variant="blue"
             eyebrow="Parent dashboard"
             title={`Welcome, ${firstName}`}
-            description="A calm summary of your child’s progress, school updates, and next actions."
+            description="Your child's progress, school updates, and next actions."
             profileCompletion={user?.profile_completed}
             chips={[
               { label: "Viewing", value: selectedChildName, tone: selectedChildRecord ? "primary" : "warning" },
@@ -247,7 +247,7 @@ function ParentDashboardPage() {
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <DashboardFocusCard
               title="Your child this week"
-              description="A quick parent-friendly view of the selected child’s academic picture."
+              description="A quick view of the selected child's academics."
               icon={GraduationCap}
               tone="primary"
               primaryAction={{ to: "/parent/results", label: "View results", icon: BarChart3, disabled: !selectedChildId }}
@@ -263,7 +263,7 @@ function ParentDashboardPage() {
 
             <DashboardListCard
               title="Needs attention"
-              description="Only parent tasks or updates that need a quick look."
+              description="Parent tasks or updates that need a quick look."
               items={attentionItems}
               emptyTitle="Everything looks calm"
               emptyDescription="No unread notices, linking issues, or report-card actions need attention right now."
@@ -272,7 +272,7 @@ function ParentDashboardPage() {
 
           <DashboardQuickActions
             title="Family actions"
-            description="The most common parent workflows remain easy to reach."
+            description="Common parent workflows."
             actions={[
               { label: "Student linking", description: "Request or manage child access", to: "/parent/student-linking", icon: Link2, tone: "primary" },
               { label: "Results", description: "View academic scores", to: "/parent/results", icon: BarChart3, tone: "success" },

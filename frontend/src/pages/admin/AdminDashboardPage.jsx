@@ -167,7 +167,7 @@ function AdminDashboardPage() {
             variant="blue"
             eyebrow="Admin dashboard"
             title={`Welcome back, ${firstName}`}
-            description="A simpler control room: key school signals first, deep charts moved to analytics."
+            description="Key school signals and daily actions."
             profileCompletion={user?.onboarding_completed}
             chips={[
               { label: "Session", value: cleanText(stats.active_academic_session, "Not set"), tone: stats.active_academic_session ? "success" : "warning" },
@@ -213,7 +213,7 @@ function AdminDashboardPage() {
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <DashboardFocusCard
               title="School overview"
-              description="The admin dashboard now shows what needs action, not every possible chart."
+              description="Session, term, and report status at a glance."
               icon={BookOpen}
               tone="primary"
               primaryAction={{ to: "/admin/academic", label: "Open academic hub", icon: BookOpen }}
@@ -229,7 +229,7 @@ function AdminDashboardPage() {
 
             <DashboardListCard
               title="Needs attention"
-              description="Operational items that may need admin follow-up."
+              description="Items that may need admin follow-up."
               items={schoolOverviewItems}
               emptyTitle="School setup looks calm"
               emptyDescription="No pending account or publishing issue is showing on the dashboard."
@@ -239,13 +239,13 @@ function AdminDashboardPage() {
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <AnalyticsBarChart
               title="Teacher submission progress"
-              description="A light preview. Open analytics for the full chart set."
+              description="Submission progress by teacher."
               data={chartData(charts, "teacher_submission_progress")}
               emptyMessage="No teacher submission data available yet."
             />
             <DashboardQuickActions
               title="Quick actions"
-              description="Common admin workflows in one clear area."
+              description="Common admin workflows."
               actions={[
                 { label: "Create user", description: "Add student, teacher, or parent", to: "/admin/create-user", icon: UserPlus, tone: "primary" },
                 canShowBulkImport

@@ -34,7 +34,7 @@ class PlatformLockdownRequest(InputBase):
 
     reason: str = Field(min_length=3, max_length=255)
     message: str = Field(
-        default="LearnlyAI is temporarily in maintenance mode. Please try again later.",
+        default="Weave is temporarily in maintenance mode. Please try again later.",
         min_length=10,
         max_length=500,
     )

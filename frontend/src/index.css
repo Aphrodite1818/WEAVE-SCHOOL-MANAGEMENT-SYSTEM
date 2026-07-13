@@ -70,6 +70,11 @@
     @apply m-0 overflow-x-hidden bg-background font-sans text-base leading-relaxed text-text antialiased;
   }
 
+  html:has([data-dashboard-role]),
+  body:has([data-dashboard-role]) {
+    background-color: rgb(var(--color-background));
+  }
+
   * {
     @apply min-w-0 border-border;
   }
@@ -130,8 +135,8 @@
 
   .dashboard-welcome-blue,
   .dashboard-welcome-student {
-    background-color: #1769f5;
-    box-shadow: 0 18px 40px rgb(23 105 245 / 0.18);
+    background-color: #1d4ed8;
+    box-shadow: 0 18px 40px rgb(29 78 216 / 0.18);
   }
 
   :root[data-theme="dark"] .dashboard-welcome-blue,
@@ -493,6 +498,7 @@
       transform: translateY(0);
     }
   }
+
 }
 
 html[data-reduced-motion="true"] *,

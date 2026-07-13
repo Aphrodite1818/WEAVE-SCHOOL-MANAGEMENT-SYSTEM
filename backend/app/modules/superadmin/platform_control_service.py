@@ -18,7 +18,7 @@ from app.modules.superadmin.security_alert_service import SecurityAlertService
 PLATFORM_LOCKDOWN_CACHE_KEY = "platform:control:lockdown"
 PLATFORM_LOCKDOWN_CACHE_TTL_SECONDS = 15
 DEFAULT_MAINTENANCE_MESSAGE = (
-    "LearnlyAI is temporarily in maintenance mode. Please try again later."
+    "Weave is temporarily in maintenance mode. Please try again later."
 )
 
 

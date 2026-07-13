@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Database, RefreshCw } from "lucide-react";
+import { Activity, RefreshCw } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -263,7 +263,7 @@ function SuperadminTenantUsagePage() {
                         width={42}
                       />
                       <Tooltip />
-                      <Bar dataKey="used" name="Used" fill="#2563EB" radius={[10, 10, 0, 0]} />
+                      <Bar dataKey="used" name="Used" fill="#1D4ED8" radius={[10, 10, 0, 0]} />
                       <Bar dataKey="limit" name="Limit" fill="#94A3B8" radius={[10, 10, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

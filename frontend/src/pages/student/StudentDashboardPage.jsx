@@ -303,7 +303,7 @@ function StudentDashboardPage() {
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <DashboardFocusCard
               title="Focus for today"
-              description="Start with the most useful next step instead of scanning every metric."
+              description="Your next useful academic step."
               icon={GraduationCap}
               tone="primary"
               primaryAction={{ to: "/student/subjects", label: "Open subjects", icon: BookOpen }}
@@ -319,7 +319,7 @@ function StudentDashboardPage() {
 
             <DashboardListCard
               title="Needs attention"
-              description="Only the items that need a quick decision or follow-up."
+              description="Items that need a quick look."
               items={attentionItems}
               emptyTitle="You are all caught up"
               emptyDescription="No pending parent link, report, or school notice needs attention right now."
@@ -330,7 +330,7 @@ function StudentDashboardPage() {
             <SubjectProgressPreview data={dashboardData.subjectChart} />
             <DashboardQuickActions
               title="Quick actions"
-              description="Common student workflows stay one tap away."
+              description="Common student workflows."
               actions={[
                 { label: "Subjects", description: "View scores and components", to: "/student/subjects", icon: BookOpen, tone: "primary" },
                 { label: "Performance", description: "Open full analytics", to: "/student/analytics", icon: BarChart3, tone: "success" },
@@ -344,7 +344,7 @@ function StudentDashboardPage() {
             <section className="space-y-4">
               <DashboardSectionHeader
                 title="Subjects snapshot"
-                description="A short preview. Open subjects for the full academic breakdown."
+                description="A short preview of class subjects."
                 action={
                   <Link to="/student/subjects">
                     <Button variant="outline" size="sm">Open all subjects</Button>
@@ -398,7 +398,7 @@ function SubjectProgressPreview({ data = [] }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="section-title">Subject progress</h3>
-          <p className="mt-1 text-sm text-text-muted">A readable score snapshot without the heavy chart wall.</p>
+          <p className="mt-1 text-sm text-text-muted">Latest published scores.</p>
         </div>
         <Link to="/student/analytics" className="shrink-0 text-xs font-semibold text-primary hover:underline">
           View all

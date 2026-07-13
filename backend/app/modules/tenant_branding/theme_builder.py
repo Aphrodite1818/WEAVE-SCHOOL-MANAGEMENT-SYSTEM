@@ -9,7 +9,7 @@ from typing import Final
 from app.modules.tenant_branding.models import TenantBrandingThemeMode
 
 
-DEFAULT_BRAND_NAME: Final[str] = "Learnly AI"
+DEFAULT_BRAND_NAME: Final[str] = "Weave"
 DEFAULT_PRIMARY_COLOR: Final[str] = "#2563EB"
 DEFAULT_ACCENT_COLOR: Final[str] = "#4F46E5"
 DEFAULT_SIDEBAR_COLOR: Final[str] = "#0F172A"
@@ -289,7 +289,7 @@ def build_theme_tokens(
 
 
 def build_default_theme_tokens() -> dict[str, str]:
-    """Return the default Learnly tenant theme tokens."""
+    """Return the default Weave tenant theme tokens."""
 
     return dict(DEFAULT_THEME_TOKENS)
 

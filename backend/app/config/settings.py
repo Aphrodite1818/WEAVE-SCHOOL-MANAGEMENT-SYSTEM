@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = Field(..., min_length=32)
     ALGORITHM: str = Field(default="HS256", description="JWT signing algorithm")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 5
     DEFAULT_SESSION_DAYS: int = Field(
         default=7,
         gt=0,
@@ -240,7 +240,7 @@ class Settings(BaseSettings):
     R2_ACCESS_KEY_ID: str | None = None
     R2_SECRET_ACCESS_KEY: str | None = None
     R2_ENDPOINT_URL: str | None = None  # https://<account_id>.r2.cloudflarestorage.com
-    R2_BUCKET_NAME: str = "learnly-public-media"
+    R2_BUCKET_NAME: str = "weave-public-media"
     R2_PUBLIC_URL: str | None = None  # custom domain or r2.dev public URL, if bucket is public
 
     MEDIA_PUBLIC_BASE_URL : str | None = None

@@ -10,6 +10,7 @@ const API_URL =
 
 export const API_BASE_URL = API_URL.replace(/\/$/, "");
 
+const ACCESS_TOKEN_KEY = "access_token";
 const LEGACY_TOKEN_KEY = "token";
 const USER_KEY = "auth_user";
 const ROLE_KEY = "auth_role";
@@ -17,21 +18,22 @@ const REMEMBER_KEY = "auth_remember";
 const AUTH_REFRESH_ENDPOINT = "/auth/refresh";
 const AUTH_LOGOUT_ENDPOINT = "/auth/logout";
 const AUTH_LOGIN_ENDPOINT = "/auth/login";
-const MAINTENANCE_STORAGE_KEY = "learnly_platform_maintenance";
-const SECURITY_BLOCK_STORAGE_KEY = "learnly_security_block";
-export const NAVIGATION_ABORT_EVENT = "learnly:navigation-start";
-export const APP_NAVIGATE_EVENT = "learnly:navigate";
-export const PLATFORM_MAINTENANCE_EVENT = "learnly:platform-maintenance";
-export const SECURITY_BLOCK_EVENT = "learnly:security-block";
+const MAINTENANCE_STORAGE_KEY = "weave_platform_maintenance";
+const SECURITY_BLOCK_STORAGE_KEY = "weave_security_block";
+export const NAVIGATION_ABORT_EVENT = "weave:navigation-start";
+export const APP_NAVIGATE_EVENT = "weave:navigate";
+export const PLATFORM_MAINTENANCE_EVENT = "weave:platform-maintenance";
+export const SECURITY_BLOCK_EVENT = "weave:security-block";
 const DEFAULT_USER_SAFE_ERROR =
   "Something went wrong while processing your request. Please try again.";
 const NETWORK_ERROR_MESSAGE =
   "We could not reach the server. Check your connection and try again.";
 const TECHNICAL_ERROR_PATTERN =
   /traceback|sql|sqlalchemy|asyncpg|psycopg|uuid|pydantic|stack trace|internal server error|syntax error/i;
+const REFRESH_BEFORE_EXPIRY_MS = 75 * 1000;
 
 let refreshPromise = null;
-let memoryAccessToken = null;
+let refreshTimerId = null;
 
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
@@ -82,6 +84,17 @@ const removeStoredValue = (key) => {
 // The refresh-token cookie is now the durable session source.
 removeStoredValue(LEGACY_TOKEN_KEY);
 
+const decodeTokenPayload = (token) => {
+  try {
+    const payload = token.split(".")[1];
+    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padding = "=".repeat((4 - (normalizedPayload.length % 4)) % 4);
+    return JSON.parse(atob(`${normalizedPayload}${padding}`));
+  } catch {
+    return null;
+  }
+};
+
 const getStoredRememberPreference = () =>
   localStorage.getItem(REMEMBER_KEY) === "true";
 
@@ -97,6 +110,41 @@ const isRefreshManagedEndpoint = (endpoint) =>
   endpoint === AUTH_REFRESH_ENDPOINT ||
   endpoint === AUTH_LOGOUT_ENDPOINT ||
   endpoint === AUTH_LOGIN_ENDPOINT;
+
+const clearRefreshTimer = () => {
+  if (refreshTimerId !== null) {
+    window.clearTimeout(refreshTimerId);
+    refreshTimerId = null;
+  }
+};
+
+const redirectToLogin = () => {
+  if (window.location.pathname === "/login") return;
+
+  window.dispatchEvent(
+    new CustomEvent(APP_NAVIGATE_EVENT, { detail: { path: "/login" } }),
+  );
+};
+
+const handleRefreshFailure = () => {
+  authSession.clear();
+  redirectToLogin();
+};
+
+const scheduleAccessTokenRefresh = (token) => {
+  clearRefreshTimer();
+
+  const payload = decodeTokenPayload(token);
+  const expiresAt = payload?.exp ? payload.exp * 1000 : null;
+
+  if (!expiresAt) return;
+
+  const refreshInMs = Math.max(expiresAt - Date.now() - REFRESH_BEFORE_EXPIRY_MS, 0);
+
+  refreshTimerId = window.setTimeout(() => {
+    refreshAccessToken().catch(handleRefreshFailure);
+  }, refreshInMs);
+};
 
 const buildFieldErrors = (detail) => {
   if (!Array.isArray(detail)) return {};
@@ -136,7 +184,7 @@ const getStatusFallbackMessage = (status, fallback) => {
     case 429:
       return "Too many requests. Please wait before trying again.";
     case 503:
-      return "LearnlyAI is temporarily in maintenance mode. Please try again later.";
+      return "Weave is temporarily in maintenance mode. Please try again later.";
     default:
       return DEFAULT_USER_SAFE_ERROR;
   }
@@ -204,7 +252,7 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
   }
 
   if (data?.maintenance_mode === true) {
-    return backendMessage || "LearnlyAI is temporarily in maintenance mode. Please try again later.";
+    return backendMessage || "Weave is temporarily in maintenance mode. Please try again later.";
   }
 
   if (status >= 500) {
@@ -225,7 +273,7 @@ const persistMaintenanceState = (data = {}) => {
     message:
       normalizeDetail(data?.detail) ||
       normalizeDetail(data?.message) ||
-      "LearnlyAI is temporarily in maintenance mode. Please try again later.",
+      "Weave is temporarily in maintenance mode. Please try again later.",
     reason: data?.maintenance_reason || null,
     detectedAt: new Date().toISOString(),
   };
@@ -297,22 +345,25 @@ export const clearStoredSecurityBlockState = () => {
 };
 
 export const authSession = {
-  getToken: () => memoryAccessToken,
+  getToken: () => sessionStorage.getItem(ACCESS_TOKEN_KEY),
 
   setToken: (token, { remember = true } = {}) => {
     removeStoredValue(LEGACY_TOKEN_KEY);
     setStoredRememberPreference(remember);
+    clearRefreshTimer();
 
     if (!token) {
-      memoryAccessToken = null;
+      sessionStorage.removeItem(ACCESS_TOKEN_KEY);
       return;
     }
 
-    memoryAccessToken = token;
+    sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+    scheduleAccessTokenRefresh(token);
   },
 
   clearToken: () => {
-    memoryAccessToken = null;
+    clearRefreshTimer();
+    sessionStorage.removeItem(ACCESS_TOKEN_KEY);
     removeStoredValue(LEGACY_TOKEN_KEY);
   },
 
@@ -568,7 +619,7 @@ async function request(endpoint, options = {}, hasRetried = false) {
           await refreshAccessToken();
           return request(endpoint, options, true);
         } catch (refreshError) {
-          authSession.clear();
+          handleRefreshFailure();
           throw refreshError;
         }
       }

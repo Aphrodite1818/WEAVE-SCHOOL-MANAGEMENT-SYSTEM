@@ -493,7 +493,7 @@ async def seed(tenant_id_arg: str | None) -> None:
             last_name="Parent",
         )
 
-        prefix = tenant.admission_number_prefix or "NHS"
+        prefix = tenant.admission_number_prefix or "WVS"
         await ensure_student(
             session,
             tenant_id=tenant.id,

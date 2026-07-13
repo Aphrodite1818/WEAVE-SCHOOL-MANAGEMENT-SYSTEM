@@ -73,6 +73,15 @@ function getPaymentRows(subscription) {
   return candidates.find(Array.isArray) || [];
 }
 
+function getDaysUntil(dateValue) {
+  if (!dateValue) return null;
+  const timestamp = new Date(dateValue).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+
+  const days = Math.ceil((timestamp - Date.now()) / 86400000);
+  return Math.max(days, 0);
+}
+
 function DetailValue({ fieldKey, subscription, statusMeta }) {
   if (fieldKey === "status") return statusMeta.label;
   if (fieldKey === "plan_code") return formatPlanName(subscription?.plan_code);
@@ -84,23 +93,16 @@ function DetailValue({ fieldKey, subscription, statusMeta }) {
   return subscription?.[fieldKey] || "--";
 }
 
-function BillingSnapshotCard({ icon: Icon, label, value, hint }) {
+function BillingSignal({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-[1.2rem] border border-white/10 bg-white/5 px-4 py-4 backdrop-blur-sm">
-      <div className="flex items-center gap-2 text-white/70">
+    <div className="flex min-h-16 items-center gap-3 rounded-2xl border border-white/20 bg-white/[0.12] px-4 py-3 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-white">
         <Icon className="h-4 w-4" />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em]">
-          {label}
-        </p>
+      </span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/65">{label}</p>
+        <p className="mt-1 truncate text-sm font-semibold text-white">{value || "--"}</p>
       </div>
-      <p className="mt-3 text-base font-semibold text-white">
-        {value || "--"}
-      </p>
-      {hint ? (
-        <p className="mt-1 text-xs text-white/60">
-          {hint}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -122,6 +124,12 @@ function BillingPage() {
   const renewalDate =
     currentSubscription?.current_period_end || entitlements?.current_period_end;
   const provider = currentSubscription?.provider || entitlements?.provider || "Paystack";
+  const daysUntilRenewal = getDaysUntil(renewalDate);
+  const renewalLabel = daysUntilRenewal === null
+    ? "Renewal date pending"
+    : daysUntilRenewal === 0
+      ? "Renews today"
+      : `${daysUntilRenewal} day${daysUntilRenewal === 1 ? "" : "s"} left`;
 
   const refreshAction = (
     <Button
@@ -179,49 +187,75 @@ function BillingPage() {
         ) : null}
 
         <section className="dashboard-grid xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-          <Card className="relative overflow-hidden border-border/70 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.2),transparent_45%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))] p-5 sm:p-6">
+          <Card className="dashboard-welcome-blue relative overflow-hidden border-0 p-5 shadow-premium sm:p-7 lg:p-8">
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 right-0 w-40 bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.14),transparent_70%)]"
+              className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.12)_48%,transparent_49%,transparent_100%)]"
             />
-            <div className="relative flex flex-col gap-5">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
-                  <Badge variant="default">{formatPlanName(planCode)}</Badge>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-white/25"
+            />
+            <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-stretch">
+              <div className="flex min-w-0 flex-col justify-between gap-6">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-primary shadow-sm">
+                      {statusMeta.label}
+                    </span>
+                    <span className="rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-bold text-white">
+                      {formatBillingInterval(currentSubscription?.billing_interval)}
+                    </span>
+                  </div>
+                  <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.16em] text-white/70">
+                    Active subscription
+                  </p>
+                  <h2 className="mt-2 max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
+                    {formatPlanName(planCode)}
+                  </h2>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/80">
+                    Billing is active for this workspace. Review renewal timing,
+                    provider status, and payments before the next cycle.
+                  </p>
                 </div>
-                <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary/80">
-                  Billing overview
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold text-white sm:text-[2rem]">
-                  Subscription command center
-                </h2>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                  Track plan status, renewal timing, payment provider activity,
-                  and transaction history from one place without leaving the
-                  admin workspace.
-                </p>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <BillingSignal icon={CalendarClock} label="Lifecycle" value={renewalLabel} />
+                  <BillingSignal icon={CreditCard} label="Provider" value={provider || "--"} />
+                  <BillingSignal icon={ShieldCheck} label="Status" value={statusMeta.label} />
+                </div>
               </div>
 
-              <div className="dashboard-kpi-grid mt-1 lg:grid-cols-3">
-                <BillingSnapshotCard
-                  icon={ShieldCheck}
-                  label="Current plan"
-                  value={formatPlanName(planCode)}
-                  hint="Active workspace tier"
-                />
-                <BillingSnapshotCard
-                  icon={CalendarClock}
-                  label="Renews or expires"
-                  value={formatDateTime(renewalDate)}
-                  hint="Next lifecycle date"
-                />
-                <BillingSnapshotCard
-                  icon={CreditCard}
-                  label="Payment provider"
-                  value={provider || "--"}
-                  hint="Billing infrastructure"
-                />
+              <div className="rounded-[1.5rem] border border-white/25 bg-white px-5 py-5 text-primary shadow-[0_22px_55px_rgba(15,23,42,0.18)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary/60">Plan card</p>
+                    <p className="mt-2 text-2xl font-semibold text-primary">{formatPlanName(planCode)}</p>
+                  </div>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white">
+                    <CreditCard className="h-5 w-5" />
+                  </span>
+                </div>
+
+                <div className="mt-8 grid gap-3">
+                  <div className="flex items-center justify-between gap-4 border-b border-primary/10 pb-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-primary/60">Next billing</span>
+                    <span className="text-sm font-semibold text-primary">{formatDateTime(renewalDate)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 border-b border-primary/10 pb-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-primary/60">Processor</span>
+                    <span className="text-sm font-semibold capitalize text-primary">{provider || "--"}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-primary/60">Workspace</span>
+                    <span className="text-sm font-semibold text-primary">Admin billing</span>
+                  </div>
+                </div>
+
+                <div className="mt-7 rounded-2xl bg-primary-subtle px-4 py-3">
+                  <p className="text-xs font-semibold text-primary/70">Renewal window</p>
+                  <p className="mt-1 text-lg font-semibold text-primary">{renewalLabel}</p>
+                </div>
               </div>
             </div>
           </Card>

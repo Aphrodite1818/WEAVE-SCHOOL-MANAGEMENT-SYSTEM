@@ -45,6 +45,16 @@ export const applyAccessibilityPreferences = (preferences = {}) => {
   document.documentElement.dataset.contrast = preferences.highContrast ? "high" : "normal";
   document.documentElement.dataset.language = preferences.language || "en-US";
   document.documentElement.style.fontSize = `${boundedFontScale}%`;
+
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) {
+    themeColorMeta.setAttribute("content", resolvedTheme === "dark" ? "#0F172A" : "#FFFFFF");
+  }
+
+  const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  if (appleStatusBarMeta) {
+    appleStatusBarMeta.setAttribute("content", "black-translucent");
+  }
 };
 
 export const saveAccessibilityPreferences = (preferences) => {
@@ -59,7 +69,7 @@ export const saveAccessibilityPreferences = (preferences) => {
   window.localStorage.setItem(ACCESSIBILITY_STORAGE_KEYS.reducedMotion, String(Boolean(preferences.reducedMotion)));
   window.localStorage.setItem(ACCESSIBILITY_STORAGE_KEYS.highContrast, String(Boolean(preferences.highContrast)));
   window.localStorage.setItem(ACCESSIBILITY_STORAGE_KEYS.language, preferences.language || "en-US");
-  window.dispatchEvent(new CustomEvent("learnly:accessibility-preferences-changed", { detail: preferences }));
+  window.dispatchEvent(new CustomEvent("weave:accessibility-preferences-changed", { detail: preferences }));
 };
 
 export const syncSystemThemePreference = () => {
@@ -74,7 +84,7 @@ export const syncSystemThemePreference = () => {
 
     applyAccessibilityPreferences(preferences);
     window.dispatchEvent(
-      new CustomEvent("learnly:accessibility-preferences-changed", {
+      new CustomEvent("weave:accessibility-preferences-changed", {
         detail: preferences,
       }),
     );
