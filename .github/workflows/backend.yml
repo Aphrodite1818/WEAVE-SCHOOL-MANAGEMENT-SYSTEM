@@ -1,0 +1,67 @@
+name: Backend
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+      - "docker-compose.yml"
+  push:
+    branches:
+      - staging
+      - master
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+      - "docker-compose.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint
+        run: uv run --with ruff ruff check .
+
+      - name: Format check
+        run: uv run --with ruff ruff format --check .
+        continue-on-error: true
+
+      - name: Type check
+        run: uv run --with pyright pyright
+        continue-on-error: true
+
+      - name: Unit tests
+        run: uv run pytest tests/unit
+
+      - name: Alembic heads
+        run: uv run alembic heads
+
+      - name: Alembic history
+        run: uv run alembic history
+
+      - name: Alembic check
+        run: uv run alembic check
+
+      - name: Application import check
+        run: uv run python -c "from app.main import app; print(app.title)"
