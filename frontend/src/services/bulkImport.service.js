@@ -1,6 +1,8 @@
 import { API_BASE_URL, api, authSession } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
 
+const ACTIVE_IMPORT_JOB_STORAGE_KEY = "weave:active-import-job";
+
 const getAuthHeaders = () => {
   const token = authSession.getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -104,9 +106,11 @@ export const bulkImportService = {
   },
 
   getEmailSummary: ({ importJobId, source = "bulk_import" } = {}, requestOptions = {}) => {
+    const resolvedImportJobId =
+      importJobId || window.sessionStorage.getItem(ACTIVE_IMPORT_JOB_STORAGE_KEY);
     const params = new URLSearchParams();
     if (source) params.set("source", source);
-    if (importJobId) params.set("import_job_id", importJobId);
+    if (resolvedImportJobId) params.set("import_job_id", resolvedImportJobId);
     const suffix = params.toString() ? `?${params.toString()}` : "";
     return api.get(`/tenant-admin/email-outbox/summary${suffix}`, requestOptions);
   },
