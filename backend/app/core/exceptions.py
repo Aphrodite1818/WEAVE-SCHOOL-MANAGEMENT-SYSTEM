@@ -101,7 +101,7 @@ class PlatformMaintenanceException(AppException):
 
     def __init__(
         self,
-        detail: str = "LearnlyAI is temporarily in maintenance mode. Please try again later.",
+        detail: str = "Weave is temporarily in maintenance mode. Please try again later.",
         *,
         reason: str | None = None,
     ) -> None:

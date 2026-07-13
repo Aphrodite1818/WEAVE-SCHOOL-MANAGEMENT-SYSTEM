@@ -29,8 +29,8 @@ export default {
           inverse: "rgb(var(--color-text-inverse) / <alpha-value>)",
         },
         primary: {
-          DEFAULT: "#2563EB",
-          hover: "#1D4ED8",
+          DEFAULT: "#1D4ED8",
+          hover: "#1E40AF",
           soft: "#DBEAFE",
           subtle: "#EFF6FF",
           deep: "#1E3A8A",

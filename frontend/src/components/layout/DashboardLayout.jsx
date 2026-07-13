@@ -87,6 +87,7 @@ function DashboardShellFrame({
   const [pullDistance, setPullDistance] = useState(0);
   const [drawerSwipeDistance, setDrawerSwipeDistance] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const shellRef = useRef(null);
   const mainRef = useRef(null);
   const pullStateRef = useRef({ tracking: false, startY: 0 });
   const drawerSwipeRef = useRef({ tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
@@ -113,6 +114,45 @@ function DashboardShellFrame({
   useEffect(() => {
     scrollDashboardViewportToTop("auto");
   }, [location.pathname]);
+
+  useEffect(() => {
+    const shellElement = shellRef.current;
+    if (!shellElement || typeof window === "undefined") return undefined;
+
+    const previousThemeColor = document.querySelector('meta[name="theme-color"]')?.getAttribute("content");
+    const previousStatusBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute("content");
+    const previousHtmlBackground = document.documentElement.style.backgroundColor;
+    const previousBodyBackground = document.body.style.backgroundColor;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const shellStyles = getComputedStyle(shellElement);
+      const surfaceRgb = shellStyles.getPropertyValue("--color-surface").trim();
+      const backgroundRgb = shellStyles.getPropertyValue("--color-background").trim();
+      const themeColor = surfaceRgb ? `rgb(${surfaceRgb})` : backgroundRgb ? `rgb(${backgroundRgb})` : undefined;
+      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+      const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+
+      if (themeColorMeta && themeColor) themeColorMeta.setAttribute("content", themeColor);
+      if (themeColor) {
+        document.documentElement.style.backgroundColor = themeColor;
+        document.body.style.backgroundColor = themeColor;
+      }
+      if (appleStatusBarMeta) {
+        appleStatusBarMeta.setAttribute("content", "black-translucent");
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+
+      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+      const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      if (themeColorMeta && previousThemeColor) themeColorMeta.setAttribute("content", previousThemeColor);
+      if (appleStatusBarMeta && previousStatusBar) appleStatusBarMeta.setAttribute("content", previousStatusBar);
+      document.documentElement.style.backgroundColor = previousHtmlBackground;
+      document.body.style.backgroundColor = previousBodyBackground;
+    };
+  }, [role]);
 
   const handleTouchStart = useCallback((event) => {
     if (!isMobileViewport()) return;
@@ -208,7 +248,7 @@ function DashboardShellFrame({
     setIsPullRefreshing(true);
     setPullDistance(PULL_REFRESH_THRESHOLD);
     clearDashboardSessionCache();
-    window.dispatchEvent(new CustomEvent("learnly:pull-refresh"));
+    window.dispatchEvent(new CustomEvent("weave:pull-refresh"));
     window.setTimeout(() => window.location.reload(), 220);
   }, [pullDistance]);
 
@@ -228,9 +268,16 @@ function DashboardShellFrame({
 
   return (
     <div
+      ref={shellRef}
       data-dashboard-role={role}
       className="fixed inset-0 flex flex-col overflow-hidden bg-background text-text"
     >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 z-[70] hidden bg-surface md:hidden"
+        data-pwa-status-fill="true"
+        style={{ height: "env(safe-area-inset-top)" }}
+      />
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block",
@@ -240,7 +287,6 @@ function DashboardShellFrame({
         <SidebarContent
           role={role}
           collapsed={sidebarCollapsed}
-          onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
           schoolName={schoolName}
         />
       </aside>
@@ -258,7 +304,13 @@ function DashboardShellFrame({
           sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[15rem]"
         )}
       >
-        <Topbar role={role} onOpenMobileNav={() => setMobileNavOpen(true)} schoolName={schoolName} />
+        <Topbar
+          role={role}
+          onOpenMobileNav={() => setMobileNavOpen(true)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+          schoolName={schoolName}
+        />
         <div
           id="dashboard-scroll-viewport"
           ref={mainRef}

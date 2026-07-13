@@ -1,5 +1,15 @@
-/* Keep every visible Learnly brand image aligned with the active app icon. */
-img[alt="Learnly AI"] {
-  content: url("/favicon.svg?v=learnly-shield-1");
-  object-fit: contain;
+:root {
+  --weave-icon-primary: #1d4ed8;
+  --weave-icon-accent: #f59e0b;
+  --weave-wordmark: #1e40af;
+}
+
+:root[data-theme="dark"] {
+  --weave-icon-primary: #7c8cff;
+  --weave-icon-accent: #fbbf24;
+  --weave-wordmark: #93c5fd;
+}
+
+.brand-wordmark {
+  color: var(--weave-wordmark);
 }

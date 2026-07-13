@@ -5,7 +5,7 @@ import { authSession } from "../../services/api";
 import { searchService } from "../../services/searchService";
 import { cn } from "../../utils/cn";
 
-const ADMIN_SEARCH_STORAGE_PREFIX = "learnly:admin-search:";
+const ADMIN_SEARCH_STORAGE_PREFIX = "weave:admin-search:";
 
 const placeholderByRole = {
   admin: "Search students, teachers, parents, classes...",

@@ -95,11 +95,11 @@ Prefix used when generating student admission numbers.
 Example:
 
 ```text
-NHS00001
-NHS00002
+WVS00001
+WVS00002
 ```
 
-Where `NHS` is the prefix.
+Where `WVS` is the prefix.
 
 * Nullable: Yes
 * If not set, student and teacher creation should be blocked.

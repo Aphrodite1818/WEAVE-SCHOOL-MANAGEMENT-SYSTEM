@@ -2,19 +2,36 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=learnly-shield-1" />
-    <link rel="shortcut icon" href="/favicon.svg?v=learnly-shield-1" />
-    <link rel="apple-touch-icon" href="/favicon.svg?v=learnly-shield-1" />
-    <link rel="mask-icon" href="/favicon.svg?v=learnly-shield-1" color="#2563EB" />
-    <link rel="manifest" href="/manifest.json?v=learnly-shield-1" />
-    <meta name="theme-color" content="#2563EB" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=weave-mark-1" />
+    <link rel="shortcut icon" href="/favicon.svg?v=weave-mark-1" />
+    <link rel="apple-touch-icon" href="/favicon.svg?v=weave-mark-1" />
+    <link rel="mask-icon" href="/favicon.svg?v=weave-mark-1" color="#1D4ED8" />
+    <link rel="manifest" href="/manifest.json?v=weave-mark-1" />
+    <meta name="theme-color" content="#FFFFFF" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Learnly AI" />
-    <meta name="application-name" content="Learnly AI" />
-    <title>Learnly AI</title>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Weave" />
+    <meta name="application-name" content="Weave" />
+    <title>Weave</title>
+    <script>
+      (() => {
+        try {
+          const savedTheme = window.localStorage.getItem("theme");
+          const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+          const resolvedTheme = savedTheme || (prefersDark ? "dark" : "light");
+          document.documentElement.dataset.theme = resolvedTheme;
+          document.documentElement.dataset.themePreference = savedTheme || "system";
+
+          const themeColor = resolvedTheme === "dark" ? "#0F172A" : "#FFFFFF";
+          document.querySelector('meta[name="theme-color"]')?.setAttribute("content", themeColor);
+        } catch {
+          document.documentElement.dataset.theme = "light";
+          document.documentElement.dataset.themePreference = "system";
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

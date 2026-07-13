@@ -50,8 +50,8 @@ class PlatformControl(UUIDMixin, TimestampMixin, Base):
     lockdown_message: Mapped[str] = mapped_column(
         Text,
         nullable=False,
-        default="LearnlyAI is temporarily in maintenance mode. Please try again later.",
-        server_default="LearnlyAI is temporarily in maintenance mode. Please try again later.",
+        default="Weave is temporarily in maintenance mode. Please try again later.",
+        server_default="Weave is temporarily in maintenance mode. Please try again later.",
     )
     enabled_by_superadmin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

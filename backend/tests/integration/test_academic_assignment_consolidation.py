@@ -95,7 +95,7 @@ async def create_tenant(db_session: AsyncSession, *, suffix: str) -> Tenant:
     tenant = Tenant(
         school_name=f"Test School {suffix}",
         slug=f"test-school-{suffix}",
-        admission_number_prefix=f"NHS{suffix.upper()[:6]}",
+        admission_number_prefix=f"WVS{suffix.upper()[:6]}",
         email=f"school-{suffix}@example.com",
         country="Nigeria",
         plan=SubscriptionPlan.FREE,

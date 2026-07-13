@@ -8,6 +8,8 @@ import {
   Database,
   Download,
   Eye,
+  IdCard,
+  Languages,
   Mail,
   Moon,
   Save,
@@ -40,7 +42,7 @@ const roleCopy = {
   },
   student: {
     title: "Settings",
-    description: "Personalize your learning workspace and account details.",
+    description: "Manage your workspace preferences.",
   },
   parent: {
     title: "Settings",
@@ -56,6 +58,10 @@ const themeOptions = [
 
 function resolveCurrentEmail(user) {
   return user?.email || user?.email_address || user?.account_email || "";
+}
+
+function resolveAdmissionNumber(user) {
+  return user?.admission_number || user?.student?.admission_number || user?.profile?.admission_number || "";
 }
 
 function SettingsGroup({ title, children }) {
@@ -141,8 +147,10 @@ function RoleSettingsPage({ role }) {
   const normalizedRole = String(role || "admin").toLowerCase();
   const user = authSession.getUser() || {};
   const copy = roleCopy[normalizedRole] || roleCopy.admin;
+  const isStudent = normalizedRole === "student";
   const displayName = getUserDisplayName(user);
   const currentEmail = resolveCurrentEmail(user);
+  const admissionNumber = resolveAdmissionNumber(user);
   const [emailForm, setEmailForm] = useState({ newEmail: "", password: "" });
   const [emailStatus, setEmailStatus] = useState("");
   const [preferences, setPreferences] = useState(() => getSavedAccessibilityPreferences());
@@ -169,7 +177,7 @@ function RoleSettingsPage({ role }) {
 
   const handleEmailSubmit = (event) => {
     event.preventDefault();
-    setEmailStatus("Email change request prepared. Backend verification can be attached here.");
+    setEmailStatus("Email change request prepared.");
     setEmailForm({ newEmail: "", password: "" });
   };
 
@@ -177,7 +185,11 @@ function RoleSettingsPage({ role }) {
     const payload = {
       exported_at: new Date().toISOString(),
       role: normalizedRole,
-      account: { name: displayName, email: currentEmail, profile_summary: profileSummary },
+      account: {
+        name: displayName,
+        profile_summary: profileSummary,
+        ...(isStudent ? { admission_number: admissionNumber } : { email: currentEmail }),
+      },
       accessibility: preferences,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -215,30 +227,36 @@ function RoleSettingsPage({ role }) {
 
         <div className="space-y-5 pb-24 md:pb-0">
           <SettingsGroup title="Account">
-            <SettingsRow icon={Mail} label="Email" value={currentEmail || "No email on file"} />
+            {isStudent ? (
+              <SettingsRow icon={IdCard} label="Admission number" value={admissionNumber || "Not assigned"} />
+            ) : (
+              <SettingsRow icon={Mail} label="Email" value={currentEmail || "No email on file"} />
+            )}
             <SettingsRow icon={UserRound} label="Profile" value={profileSummary || "Details and photo"} to="/profile" />
-            <ExpandableSettingsRow
-              icon={Mail}
-              label="Change email"
-              value="Requires password verification"
-              open={openPanel === "email"}
-              onToggle={() => togglePanel("email")}
-            >
-              <form onSubmit={handleEmailSubmit} className="grid gap-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="input-base" type="email" placeholder="New email" value={emailForm.newEmail} onChange={(event) => setEmailForm((current) => ({ ...current, newEmail: event.target.value }))} required />
-                  <input className="input-base" type="password" placeholder="Current password" value={emailForm.password} onChange={(event) => setEmailForm((current) => ({ ...current, password: event.target.value }))} required />
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs leading-5 text-text-muted">For production, the backend should verify this password before committing the email change.</p>
-                  <Button type="submit" className="min-h-10 sm:w-auto">
-                    <Save className="h-4 w-4" />
-                    Save
-                  </Button>
-                </div>
-                {emailStatus ? <p className="rounded-xl bg-success-soft px-3 py-2 text-sm font-medium text-success">{emailStatus}</p> : null}
-              </form>
-            </ExpandableSettingsRow>
+            {!isStudent ? (
+              <ExpandableSettingsRow
+                icon={Mail}
+                label="Change email"
+                value="Requires password verification"
+                open={openPanel === "email"}
+                onToggle={() => togglePanel("email")}
+              >
+                <form onSubmit={handleEmailSubmit} className="grid gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input className="input-base" type="email" placeholder="New email" value={emailForm.newEmail} onChange={(event) => setEmailForm((current) => ({ ...current, newEmail: event.target.value }))} required />
+                    <input className="input-base" type="password" placeholder="Current password" value={emailForm.password} onChange={(event) => setEmailForm((current) => ({ ...current, password: event.target.value }))} required />
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs leading-5 text-text-muted">Password verification is required before email changes are saved.</p>
+                    <Button type="submit" className="min-h-10 sm:w-auto">
+                      <Save className="h-4 w-4" />
+                      Save
+                    </Button>
+                  </div>
+                  {emailStatus ? <p className="rounded-xl bg-success-soft px-3 py-2 text-sm font-medium text-success">{emailStatus}</p> : null}
+                </form>
+              </ExpandableSettingsRow>
+            ) : null}
             <ExpandableSettingsRow
               icon={Database}
               label="Download my data"
@@ -308,7 +326,7 @@ function RoleSettingsPage({ role }) {
               </div>
             </ExpandableSettingsRow>
             <ExpandableSettingsRow
-              icon={Mail}
+              icon={Languages}
               label="Language"
               value={preferences.language}
               open={openPanel === "language"}

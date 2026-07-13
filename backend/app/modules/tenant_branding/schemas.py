@@ -133,7 +133,7 @@ class TenantBrandingEffectiveResponse(OutputBase):
 
 
 class TenantBrandingResetResponse(OutputBase):
-    """Response returned after branding is reset to Learnly defaults."""
+    """Response returned after branding is reset to Weave defaults."""
 
     branding: TenantBrandingResponse
-    message: str = "Tenant branding reset to Learnly defaults."
+    message: str = "Tenant branding reset to Weave defaults."

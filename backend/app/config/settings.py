@@ -240,7 +240,7 @@ class Settings(BaseSettings):
     R2_ACCESS_KEY_ID: str | None = None
     R2_SECRET_ACCESS_KEY: str | None = None
     R2_ENDPOINT_URL: str | None = None  # https://<account_id>.r2.cloudflarestorage.com
-    R2_BUCKET_NAME: str = "learnly-public-media"
+    R2_BUCKET_NAME: str = "weave-public-media"
     R2_PUBLIC_URL: str | None = None  # custom domain or r2.dev public URL, if bucket is public
 
     MEDIA_PUBLIC_BASE_URL : str | None = None

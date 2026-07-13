@@ -224,7 +224,7 @@ function UsagePage() {
                           <Bar
                             dataKey="used"
                             name="Used"
-                            fill="#2563EB"
+                            fill="#1D4ED8"
                             radius={[10, 10, 0, 0]}
                           />
                           <Bar

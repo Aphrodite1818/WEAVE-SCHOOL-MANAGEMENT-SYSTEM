@@ -62,7 +62,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [None, Any, None]
     """Perform lifespan."""
-    logger.info("Starting up — school-ai-assistant API")
+    logger.info("Starting up - Weave API")
     await connect_redis()
     try:
         yield
@@ -79,7 +79,7 @@ def create_app() -> FastAPI:
     import_model_modules()
 
     app = FastAPI(
-        title="LearnlyAI Assistant",
+        title="Weave Assistant",
         description="WhatsApp-powered school management assistant API",
         version="0.1.0",
         lifespan=lifespan,

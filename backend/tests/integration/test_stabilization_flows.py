@@ -51,7 +51,7 @@ async def create_tenant(
     suffix: str,
     status: TenantStatus = TenantStatus.ACTIVE,
     verification_status: TenantVerificationStatus = TenantVerificationStatus.ACTIVE,
-    prefix: str = "NHS",
+    prefix: str = "WVS",
 ) -> Tenant:
     normalized_suffix = "".join(ch for ch in suffix.upper() if ch.isalnum()) or "TENANT"
     tenant = Tenant(
@@ -461,13 +461,13 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
     student = await create_student(
         db_session,
         tenant=tenant_one,
-        admission_number="NHS-T1-00001",
+        admission_number="WVS-T1-00001",
         password_reset_required=False,
     )
     other_student = await create_student(
         db_session,
         tenant=tenant_two,
-        admission_number="NHS-T2-00001",
+        admission_number="WVS-T2-00001",
         password_reset_required=False,
     )
     await db_session.commit()
@@ -592,7 +592,7 @@ async def test_analytics_endpoints_return_real_counts(
     student = await create_student(
         db_session,
         tenant=active_tenant,
-        admission_number="NHS-AN-00001",
+        admission_number="WVS-AN-00001",
         password_reset_required=False,
     )
     student.profile_status = StudentProfileStatus.INCOMPLETE

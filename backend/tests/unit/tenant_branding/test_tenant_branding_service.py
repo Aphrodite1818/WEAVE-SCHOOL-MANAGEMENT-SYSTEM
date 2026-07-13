@@ -48,7 +48,7 @@ def _build_admin(tenant_id: uuid.UUID) -> TenantAdmin:
 @pytest.mark.asyncio
 async def test_update_tenant_branding_rejects_external_logo_urls() -> None:
     tenant_id = uuid.uuid4()
-    tenant = _build_tenant(tenant_id, logo_url="https://cdn.learnly.test/logo.png")
+    tenant = _build_tenant(tenant_id, logo_url="https://cdn.weave.test/logo.png")
     actor = _build_admin(tenant_id)
     db = AsyncMock()
 
@@ -78,7 +78,7 @@ async def test_update_tenant_branding_rejects_external_logo_urls() -> None:
 @pytest.mark.asyncio
 async def test_update_tenant_branding_allows_current_uploaded_logo_reference() -> None:
     tenant_id = uuid.uuid4()
-    tenant_logo_url = "https://cdn.learnly.test/logo.png"
+    tenant_logo_url = "https://cdn.weave.test/logo.png"
     tenant = _build_tenant(tenant_id, logo_url=tenant_logo_url)
     actor = _build_admin(tenant_id)
     db = AsyncMock()

@@ -152,7 +152,7 @@ function ParentStudentLinkingPage() {
             <input
               value={admissionNumber}
               onChange={(event) => setAdmissionNumber(event.target.value)}
-              placeholder="NHS-2026-12345"
+              placeholder="WVS-2026-12345"
               className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium text-text outline-none transition placeholder:text-text-faint focus:border-primary focus:ring-4 focus:ring-primary/10"
             />
           </label>

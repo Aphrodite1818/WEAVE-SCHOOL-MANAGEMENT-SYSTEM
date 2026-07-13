@@ -22,7 +22,7 @@ async def test_access_code_login_returns_forced_reset_actor(monkeypatch) -> None
     student = SimpleNamespace(
         id=student_id,
         tenant_id=tenant_id,
-        admission_number="NHS-2026-0001",
+        admission_number="WVS-2026-0001",
         password_hash=None,
         first_name="Taiwo",
         last_name="Ayimora",
@@ -74,13 +74,13 @@ async def test_access_code_login_returns_forced_reset_actor(monkeypatch) -> None
 
     actor = await authenticate_student_actor(
         db,
-        admission_number=" nhs-2026-0001 ",
+        admission_number=" wvs-2026-0001 ",
         credential="12345678",
     )
 
     assert actor.actor_type == "student"
-    assert actor.email == "NHS-2026-0001"
+    assert actor.email == "WVS-2026-0001"
     assert actor.password_reset_required is True
     assert actor.user is not None
-    assert actor.user.admission_number == "NHS-2026-0001"
+    assert actor.user.admission_number == "WVS-2026-0001"
     assert actor.user.password_reset_required is True

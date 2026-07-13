@@ -229,7 +229,7 @@ class TenantBrandingService:
         logo_url: str | None,
         theme_version: int = 0,
     ) -> TenantBrandingEffectiveResponse:
-        """Build the default Learnly effective-branding response."""
+        """Build the default Weave effective-branding response."""
 
         return TenantBrandingEffectiveResponse(
             tenant_id=tenant_id,
@@ -601,7 +601,7 @@ class TenantBrandingService:
         *,
         actor: TenantAdmin,
     ) -> TenantBrandingResetResponse:
-        """Reset tenant branding back to default Learnly values and disable it."""
+        """Reset tenant branding back to default Weave values and disable it."""
 
         tenant_id = TenantBrandingService._ensure_tenant_admin(actor)
         tenant = await TenantBrandingService._get_tenant_or_raise(

@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -23,59 +24,154 @@ import Badge from "../../components/ui/Badge";
 import previewImage from "../../assets/images/academic-workspace-preview.png";
 
 const features = [
-  { title: "Student Management", description: "Centralized student profiles, guardians, class history, and academic status.", icon: GraduationCap },
-  { title: "Teacher Management", description: "Profiles, qualifications, subjects, schedules, and assignment visibility.", icon: Users },
-  { title: "Attendance", description: "Daily attendance marking with summaries for staff and parents.", icon: ClipboardCheck },
-  { title: "Grades", description: "Score entry, performance tracking, report-card-ready academic records.", icon: BookOpen },
-  { title: "Timetable", description: "Structured class schedules that make the school day easier to operate.", icon: CalendarDays },
-  { title: "Analytics", description: "Operational dashboards for attendance, enrollment, notices, and AI activity.", icon: BarChart3 },
+  { title: "Student Management", description: "Create student records, assign classes, link guardians, and keep academic status visible.", icon: GraduationCap },
+  { title: "Teacher Management", description: "Manage teacher profiles, subjects, class assignments, and verification status.", icon: Users },
+  { title: "Attendance", description: "Mark daily attendance and keep summaries available for admins, teachers, and parents.", icon: ClipboardCheck },
+  { title: "Grades", description: "Record scores, track drafts and submissions, and prepare report cards.", icon: BookOpen },
+  { title: "Timetable", description: "Organize class schedules and keep teaching assignments clear.", icon: CalendarDays },
+  { title: "Analytics", description: "Track enrollment, attendance, results, usage, and billing signals without digging through tables.", icon: BarChart3 },
 ];
 
 const benefits = [
-  "Role-specific workspaces for admins, teachers, students, parents, and platform admins.",
-  "Clean service boundaries so frontend pages do not own backend API logic.",
-  "Mobile-friendly screens that stack naturally while staying optimized for desktop use.",
+  "Separate dashboards for admins, teachers, students, parents, and platform operators.",
+  "Routes, services, and API calls stay separated so the frontend remains maintainable.",
+  "Mobile layouts keep the common tasks usable on phones, not just desktop.",
 ];
 
-const testimonials = [
+const operationalNotes = [
   {
-    quote: "The dashboard gives our admin team the daily picture without forcing them into giant tables.",
-    name: "Anita Sharma",
-    role: "School Administrator",
+    title: "Admins see the school state",
+    description: "Enrollment, staff, classes, results, billing, and notices stay reachable from one workspace.",
   },
   {
-    quote: "Attendance, notices, and class context finally live in one place that teachers can scan quickly.",
-    name: "David Mensah",
-    role: "Academic Lead",
+    title: "Teachers stay focused",
+    description: "Attendance, class context, score entry, and announcements sit close to the daily teaching flow.",
   },
   {
-    quote: "It feels calm and professional, which matters when parents and staff use the system every day.",
-    name: "Ada Okafor",
-    role: "Parent Liaison",
+    title: "Parents get the right context",
+    description: "Portal views keep student updates, attendance, and school notices clear without exposing admin tools.",
   },
 ];
 
-const pricingHighlights = [
-  "Start free before billing",
-  "Upgrade only when limits matter",
-  "Bulk imports on paid plans",
-  "Tenant-safe capacity controls",
-];
+function PlanLimit({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-text-muted">{label}</span>
+      <span className="font-semibold text-text">{value}</span>
+    </div>
+  );
+}
+
+function formatLandingPrice(plan) {
+  if (plan.planCode === "enterprise") return "From \u20a680,000/mo";
+  if (!plan.priceMonthly) return "\u20a60";
+  return `\u20a6${Number(plan.priceMonthly).toLocaleString()}/mo`;
+}
+
+function LandingPricingCard({ plan, activePlanCode, onSelect }) {
+  const isFree = plan.planCode === "free_trial";
+  const isSelected = plan.planCode === activePlanCode;
+  const isCurrent = plan.planCode === "professional";
+
+  return (
+    <article
+      id={`landing-plan-${plan.planCode}`}
+      className={`flex min-h-[34rem] scroll-mt-28 flex-col rounded-[1.6rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
+        isSelected
+          ? "border-primary/60 ring-4 ring-primary/10"
+          : plan.highlighted
+            ? "border-border/80"
+            : "border-border/70"
+      }`}
+    >
+      <div className="flex min-h-8 flex-wrap items-center gap-2">
+        {isFree ? <Badge variant="success">Free</Badge> : null}
+        {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
+        {isCurrent ? <Badge variant="success">Current plan</Badge> : null}
+      </div>
+
+      <h3 className="mt-4 text-2xl font-semibold text-text">{plan.name}</h3>
+      <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
+      <p className="mt-4 min-h-[4.5rem] text-sm leading-6 text-text-muted">{plan.description}</p>
+
+      <div className="mt-5">
+        <p className="text-2xl font-bold text-text">{formatLandingPrice(plan)}</p>
+        <p className="mt-1 text-xs font-medium text-text-muted">Monthly billing</p>
+      </div>
+
+      <ul className="mt-5 space-y-3 text-sm text-text-soft">
+        {plan.features.map((feature) => (
+          <li key={feature} className="flex gap-3">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+            <span>{feature}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-5 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm">
+        <PlanLimit label="Students" value={formatLimitValue(plan.limits.students)} />
+        <PlanLimit label="Teachers" value={formatLimitValue(plan.limits.teachers)} />
+        <PlanLimit label="Classes" value={formatLimitValue(plan.limits.classes)} />
+      </div>
+
+      <div className="flex flex-1 items-center justify-center pt-6">
+        <div className="w-full max-w-[19rem] text-center">
+          <Link
+            to={buildRegistrationHref(plan.planCode)}
+            onClick={() => onSelect(plan.planCode)}
+          >
+            <Button className="w-full">
+              Get started
+            </Button>
+          </Link>
+          <div className="mt-3 flex justify-center">
+            <span
+              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                isSelected ? "bg-primary/10 text-primary" : "bg-surface-muted text-text-muted"
+              }`}
+            >
+              {isSelected ? "Selected" : `Choose ${plan.name}`}
+            </span>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 function LandingPage() {
+  const location = useLocation();
+  const [activePricingPlan, setActivePricingPlan] = useState("plus");
+
   const handlePlanSelection = (planCode, billingInterval = "monthly") => {
     saveSelectedSubscriptionPlan({ planCode, billingInterval });
   };
+  const handlePricingTabClick = (planCode) => {
+    setActivePricingPlan(planCode);
+  };
+  const freePlan = LANDING_PRICING_PLANS.find((plan) => plan.planCode === "free_trial");
+  const paidLandingPlans = LANDING_PRICING_PLANS.filter((plan) => plan.planCode !== "free_trial");
+
+  useEffect(() => {
+    if (!location.hash) return;
+
+    const target = document.getElementById(location.hash.slice(1));
+    if (!target) return;
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [location.hash]);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-text">
       <Navbar />
 
       <main>
-        <section className="relative overflow-hidden border-b border-border bg-slate-950 text-white">
+        <section id="home" className="relative scroll-mt-24 overflow-hidden border-b border-border bg-slate-950 text-white">
           <img
             src={previewImage}
-            alt="Learnly AI dashboard preview"
+            alt="Weave dashboard preview"
             className="absolute inset-0 h-full w-full object-cover opacity-35"
           />
           <div className="absolute inset-0 bg-slate-950/70" />
@@ -83,10 +179,10 @@ function LandingPage() {
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
               <div className="max-w-3xl">
                 <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
-                  School operations, academics, and communication in one calm workspace.
+                  Run school records, results, attendance, and notices from one workspace.
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8">
-                  Learnly AI gives tenant admins, teachers, students, and parents a cleaner way to run daily school work without breaking the backend model already driving the platform.
+                  Weave gives admins, teachers, students, and parents the screens they need for daily school work: enrollment, class setup, attendance, score entry, report cards, announcements, and billing.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <Link to={buildRegistrationHref("free_trial")}>
@@ -107,8 +203,8 @@ function LandingPage() {
                 <div className="mt-8 grid gap-3 sm:grid-cols-3">
                   {[
                     ["Multi-role", "Admin, teacher, student, and parent workspaces"],
-                    ["Tenant-aware", "Built around school-level boundaries and onboarding"],
-                    ["Billing-ready", "Live subscription checkout and verification flow"],
+                    ["Tenant-aware", "School-level boundaries and onboarding"],
+                    ["Billing-ready", "Checkout and subscription verification"],
                   ].map(([title, copy]) => (
                     <div
                       key={title}
@@ -123,9 +219,9 @@ function LandingPage() {
 
               <div className="rounded-[1.75rem] border border-white/10 bg-white/10 p-4 backdrop-blur-xl sm:p-5">
                 <div className="rounded-[1.45rem] border border-white/10 bg-slate-950/35 p-4">
-                  <p className="text-sm font-semibold text-white">Why tenant admins start here</p>
+                  <p className="text-sm font-semibold text-white">What schools get first</p>
                   <p className="mt-2 text-sm leading-6 text-slate-300">
-                    Free Trial gets the school online quickly. Paid plans unlock larger limits, advanced analytics, bulk imports, and AI support as the school grows.
+                    Set up the school, create users, assign classes, publish notices, and start recording academic work.
                   </p>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -159,14 +255,14 @@ function LandingPage() {
           </div>
         </section>
 
-        <section id="features" className="section-container py-20">
+        <section id="features" className="section-container scroll-mt-24 py-20">
           <div className="max-w-3xl">
             <p className="text-sm font-bold uppercase tracking-wide text-primary">Features</p>
             <h2 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
-              Built around the workflows schools repeat every day.
+              The daily school work is already mapped.
             </h2>
             <p className="mt-4 text-base leading-7 text-text-muted">
-              The platform keeps operational visibility high without burying teams in old-style admin templates.
+              Each role gets a focused workspace for the tasks they repeat most.
             </p>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -185,15 +281,15 @@ function LandingPage() {
           </div>
         </section>
 
-        <section id="benefits" className="border-y border-border bg-surface">
+        <section id="benefits" className="scroll-mt-24 border-y border-border bg-surface">
           <div className="section-container grid gap-10 py-20 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
               <p className="text-sm font-bold uppercase tracking-wide text-primary">Benefits</p>
               <h2 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
-                Calm software for busy school teams.
+                Built for daily use, not demos.
               </h2>
               <p className="mt-4 text-base leading-7 text-text-muted">
-                Learnly AI is designed for repeated daily use: scanning, acting, reviewing, and moving on.
+                The interface favors quick scans, clear actions, and records that stay tied to the right tenant.
               </p>
             </div>
             <div className="grid gap-3">
@@ -209,106 +305,99 @@ function LandingPage() {
 
         <section className="section-container py-20">
           <div className="grid gap-6 lg:grid-cols-3">
-            {testimonials.map((testimonial) => (
-              <article key={testimonial.name} className="rounded-2xl border border-border bg-surface p-6 shadow-soft-card">
-                <p className="text-base leading-7 text-text-soft">&quot;{testimonial.quote}&quot;</p>
-                <div className="mt-6 flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-soft font-bold text-primary">
-                    {testimonial.name.split(" ").map((part) => part[0]).join("")}
-                  </span>
-                  <div>
-                    <p className="font-semibold">{testimonial.name}</p>
-                    <p className="text-sm text-text-muted">{testimonial.role}</p>
-                  </div>
-                </div>
+            {operationalNotes.map((note) => (
+              <article key={note.title} className="rounded-2xl border border-border bg-surface p-6 shadow-soft-card">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-soft text-primary">
+                  <CheckCircle2 className="h-5 w-5" />
+                </span>
+                <h3 className="mt-5 text-lg font-semibold">{note.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-text-muted">{note.description}</p>
               </article>
             ))}
           </div>
         </section>
 
-        <section id="pricing" className="relative overflow-hidden border-y border-border bg-slate-950 text-white">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.22),transparent_34%),radial-gradient(circle_at_top_right,rgba(168,85,247,0.16),transparent_28%),linear-gradient(180deg,rgba(15,23,42,1),rgba(15,23,42,0.98))]" />
-          <div className="section-container relative py-20">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-end">
-              <div>
-                <Badge variant="primary">Pricing</Badge>
-                <h2 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                  Pay for the school capacity you actually need.
-                </h2>
-                <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-                  Start with a free workspace, then upgrade when you need larger limits, bulk import, advanced analytics, and AI-assisted operations.
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {pricingHighlights.map((item) => (
-                  <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-slate-100 backdrop-blur-xl">
-                    {item}
-                  </div>
-                ))}
-              </div>
+        <section id="pricing" className="relative scroll-mt-24 overflow-hidden border-y border-border bg-background">
+          <div className="section-container relative py-16 sm:py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <Badge variant="primary">Pricing</Badge>
+              <h2 className="mt-5 text-4xl font-semibold tracking-tight text-text sm:text-5xl">
+                Simple capacity-based plans.
+              </h2>
+              <p className="mt-4 text-base leading-7 text-text-muted">
+                Start free. Upgrade when student, teacher, class, import, or analytics limits become real.
+              </p>
             </div>
 
-            <div className="mt-10 rounded-[2rem] border border-white/10 bg-white/[0.06] p-4 shadow-premium backdrop-blur-xl sm:p-5">
-              <div className="grid gap-4 lg:grid-cols-4">
+            <div className="mx-auto mt-8 flex max-w-full justify-center overflow-x-auto px-1 pb-1">
+              <div className="inline-grid min-w-[34rem] grid-cols-4 gap-1 rounded-full border border-border/70 bg-surface-muted/60 p-1 shadow-soft-card sm:min-w-[42rem]">
                 {LANDING_PRICING_PLANS.map((plan) => (
-                  <article
-                    key={plan.planCode}
-                    className={`flex min-h-[24rem] flex-col rounded-[1.5rem] border p-5 transition hover:-translate-y-0.5 ${
-                      plan.highlighted
-                        ? "border-primary/50 bg-primary/15 ring-2 ring-primary/10"
-                        : "border-white/10 bg-slate-950/40"
+                  <a
+                    key={`landing-plan-tab-${plan.planCode}`}
+                    href={`#landing-plan-${plan.planCode}`}
+                    onClick={() => handlePricingTabClick(plan.planCode)}
+                    aria-current={activePricingPlan === plan.planCode ? "true" : undefined}
+                    className={`rounded-full px-3 py-2.5 text-center text-sm font-semibold transition ${
+                      activePricingPlan === plan.planCode
+                        ? "bg-surface text-primary shadow-[0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-border/60"
+                        : "text-text-muted hover:text-text"
                     }`}
                   >
-                    <div className="flex min-h-8 flex-wrap items-center gap-2">
-                      {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
-                      {plan.planCode === "free_trial" ? <Badge variant="success">Start here</Badge> : null}
-                    </div>
-                    <h3 className="mt-4 text-xl font-semibold text-white">{plan.name}</h3>
-                    <p className="mt-2 text-sm font-semibold text-primary-soft">{plan.bestFor}</p>
-                    <p className="mt-4 text-3xl font-bold text-white">{plan.priceLabel}</p>
-                    <p className="mt-1 text-xs text-slate-400">Monthly billing</p>
-
-                    <div className="mt-5 grid gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm">
-                      <div className="flex justify-between gap-3"><span className="text-slate-400">Students</span><span>{formatLimitValue(plan.limits.students)}</span></div>
-                      <div className="flex justify-between gap-3"><span className="text-slate-400">Teachers</span><span>{formatLimitValue(plan.limits.teachers)}</span></div>
-                      <div className="flex justify-between gap-3"><span className="text-slate-400">Parents</span><span>{formatLimitValue(plan.limits.parents)}</span></div>
-                    </div>
-
-                    <ul className="mt-5 space-y-3 text-sm text-slate-200">
-                      {plan.features.slice(0, 3).map((feature) => (
-                        <li key={feature} className="flex gap-3">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div className="mt-auto pt-6">
-                      <Link
-                        to={buildRegistrationHref(plan.planCode)}
-                        onClick={() => handlePlanSelection(plan.planCode)}
-                      >
-                        <Button
-                          variant={plan.highlighted ? "primary" : "outline"}
-                          className={`w-full ${plan.highlighted ? "" : "border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.1]"}`}
-                        >
-                          {plan.ctaLabel}
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </article>
+                    {plan.planCode === "free_trial" ? "Free" : plan.name}
+                  </a>
                 ))}
               </div>
             </div>
 
-            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.06] px-5 py-5 text-center backdrop-blur-xl sm:flex-row sm:text-left">
+            <div className="mt-10">
+              {freePlan ? (
+                <div
+                  id="landing-plan-free_trial"
+                  className={`mb-5 flex scroll-mt-28 flex-col gap-4 rounded-[1.5rem] border px-5 py-5 shadow-soft-card sm:flex-row sm:items-center sm:justify-between ${
+                    activePricingPlan === "free_trial"
+                      ? "border-primary/60 bg-surface ring-4 ring-primary/10"
+                      : "border-primary/25 bg-primary/5"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="success">Free</Badge>
+                      <span className="text-xs font-bold uppercase tracking-wide text-primary">Start here</span>
+                    </div>
+                    <h3 className="mt-3 text-xl font-semibold text-text">{freePlan.name}</h3>
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">{freePlan.description}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2 sm:min-w-56">
+                    <p className="text-2xl font-bold text-text">{formatLandingPrice(freePlan)}</p>
+                    <Link
+                      to={buildRegistrationHref(freePlan.planCode)}
+                      onClick={() => handlePlanSelection(freePlan.planCode)}
+                    >
+                      <Button className="w-full">Get started</Button>
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid items-stretch gap-5 lg:grid-cols-3">
+                {paidLandingPlans.map((plan) => (
+                  <LandingPricingCard
+                    key={plan.planCode}
+                    plan={plan}
+                    activePlanCode={activePricingPlan}
+                    onSelect={handlePlanSelection}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[1.5rem] border border-border/70 bg-surface px-5 py-5 text-center shadow-soft-card sm:flex-row sm:text-left">
               <div>
                 <div className="flex items-center justify-center gap-2 sm:justify-start">
-                  <Sparkles className="h-4 w-4 text-primary-soft" />
-                  <p className="text-sm font-semibold text-white">Need the full comparison?</p>
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold text-text">Need the full comparison?</p>
                 </div>
-                <p className="mt-1 text-sm leading-6 text-slate-300">Open the dedicated pricing page for the full plan matrix and FAQs.</p>
+                <p className="mt-1 text-sm leading-6 text-text-muted">Open the dedicated pricing page for the full plan matrix and FAQs.</p>
               </div>
               <Link to="/pricing" className="w-full sm:w-auto">
                 <Button className="w-full sm:w-auto">
@@ -324,10 +413,10 @@ function LandingPage() {
           <div className="rounded-2xl border border-border bg-slate-950 px-6 py-12 text-center text-white shadow-premium sm:px-10">
             <ShieldCheck className="mx-auto h-10 w-10 text-primary-soft" />
             <h2 className="mt-5 text-4xl font-semibold tracking-tight text-white">
-              Modernize school operations without losing control.
+              Set up a school workspace.
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-300">
-              Give every role a cleaner workspace while preserving your backend model, tenant boundaries, and authentication flows.
+              Create the tenant, invite users, and start with the core academic flow before upgrading.
             </p>
             <Link to={buildRegistrationHref("free_trial")} className="mt-8 inline-flex">
               <Button size="large">Create workspace</Button>
@@ -339,7 +428,7 @@ function LandingPage() {
       <footer className="border-t border-border bg-surface">
         <div className="section-container flex flex-col gap-4 py-8 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-bold">Learnly AI</p>
+            <p className="font-bold">Weave</p>
             <p className="mt-1 text-sm text-text-muted">School management workspace.</p>
           </div>
           <div className="flex flex-wrap gap-4 text-sm font-semibold text-text-muted">
@@ -355,3 +444,4 @@ function LandingPage() {
 }
 
 export default LandingPage;
+

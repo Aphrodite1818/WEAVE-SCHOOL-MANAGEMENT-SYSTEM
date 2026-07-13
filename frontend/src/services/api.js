@@ -18,12 +18,12 @@ const REMEMBER_KEY = "auth_remember";
 const AUTH_REFRESH_ENDPOINT = "/auth/refresh";
 const AUTH_LOGOUT_ENDPOINT = "/auth/logout";
 const AUTH_LOGIN_ENDPOINT = "/auth/login";
-const MAINTENANCE_STORAGE_KEY = "learnly_platform_maintenance";
-const SECURITY_BLOCK_STORAGE_KEY = "learnly_security_block";
-export const NAVIGATION_ABORT_EVENT = "learnly:navigation-start";
-export const APP_NAVIGATE_EVENT = "learnly:navigate";
-export const PLATFORM_MAINTENANCE_EVENT = "learnly:platform-maintenance";
-export const SECURITY_BLOCK_EVENT = "learnly:security-block";
+const MAINTENANCE_STORAGE_KEY = "weave_platform_maintenance";
+const SECURITY_BLOCK_STORAGE_KEY = "weave_security_block";
+export const NAVIGATION_ABORT_EVENT = "weave:navigation-start";
+export const APP_NAVIGATE_EVENT = "weave:navigate";
+export const PLATFORM_MAINTENANCE_EVENT = "weave:platform-maintenance";
+export const SECURITY_BLOCK_EVENT = "weave:security-block";
 const DEFAULT_USER_SAFE_ERROR =
   "Something went wrong while processing your request. Please try again.";
 const NETWORK_ERROR_MESSAGE =
@@ -184,7 +184,7 @@ const getStatusFallbackMessage = (status, fallback) => {
     case 429:
       return "Too many requests. Please wait before trying again.";
     case 503:
-      return "LearnlyAI is temporarily in maintenance mode. Please try again later.";
+      return "Weave is temporarily in maintenance mode. Please try again later.";
     default:
       return DEFAULT_USER_SAFE_ERROR;
   }
@@ -252,7 +252,7 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
   }
 
   if (data?.maintenance_mode === true) {
-    return backendMessage || "LearnlyAI is temporarily in maintenance mode. Please try again later.";
+    return backendMessage || "Weave is temporarily in maintenance mode. Please try again later.";
   }
 
   if (status >= 500) {
@@ -273,7 +273,7 @@ const persistMaintenanceState = (data = {}) => {
     message:
       normalizeDetail(data?.detail) ||
       normalizeDetail(data?.message) ||
-      "LearnlyAI is temporarily in maintenance mode. Please try again later.",
+      "Weave is temporarily in maintenance mode. Please try again later.",
     reason: data?.maintenance_reason || null,
     detectedAt: new Date().toISOString(),
   };

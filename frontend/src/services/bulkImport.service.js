@@ -80,7 +80,7 @@ export const bulkImportService = {
   confirm: async (jobId, requestOptions = {}) => {
     const result = await api.post(`/tenant-admin/imports/${jobId}/confirm`, undefined, requestOptions);
     clearDashboardMetricsCache();
-    window.dispatchEvent(new Event("learnly:dashboard-cache-clear"));
+    window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
     return result;
   },
 

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CheckCircle2, ChevronRight, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 
 import Navbar from "../../components/layout/Navbar";
 import Button from "../../components/ui/Button";
@@ -7,9 +7,7 @@ import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
 import {
   LANDING_PRICING_PLANS,
-  buildRegistrationHref,
   formatLimitValue,
-  saveSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
 
 const comparisonRows = [
@@ -32,49 +30,6 @@ const faqs = [
   ["Are limits tenant-scoped?", "Yes. Limits are evaluated per school tenant so one school cannot leak into another school's capacity."],
 ];
 
-function PricingPlanCard({ plan }) {
-  return (
-    <Card className={`flex h-full flex-col overflow-hidden rounded-[1.75rem] p-5 sm:p-6 ${plan.highlighted ? "border-primary/50 bg-primary-soft/20 ring-2 ring-primary/10" : ""}`}>
-      <div className="flex min-h-8 flex-wrap gap-2">
-        {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
-        {plan.planCode === "free_trial" ? <Badge variant="success">Trial</Badge> : null}
-      </div>
-      <h3 className="mt-4 text-2xl font-semibold text-text">{plan.name}</h3>
-      <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
-      <p className="mt-4 min-h-[4.5rem] text-sm leading-6 text-text-muted">{plan.description}</p>
-      <p className="mt-5 text-3xl font-bold text-text">{plan.priceLabel}</p>
-      <p className="mt-1 text-xs text-text-muted">Monthly billing</p>
-
-      <div className="mt-5 grid gap-2 rounded-2xl border border-border bg-surface-muted/20 p-4 text-sm">
-        <div className="flex justify-between gap-3"><span className="text-text-muted">Students</span><span className="font-semibold">{formatLimitValue(plan.limits.students)}</span></div>
-        <div className="flex justify-between gap-3"><span className="text-text-muted">Teachers</span><span className="font-semibold">{formatLimitValue(plan.limits.teachers)}</span></div>
-        <div className="flex justify-between gap-3"><span className="text-text-muted">Parents</span><span className="font-semibold">{formatLimitValue(plan.limits.parents)}</span></div>
-      </div>
-
-      <ul className="mt-5 space-y-3 text-sm text-text-soft">
-        {plan.features.map((feature) => (
-          <li key={feature} className="flex gap-3">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-            <span>{feature}</span>
-          </li>
-        ))}
-      </ul>
-
-      <div className="mt-auto pt-6">
-        <Link
-          to={buildRegistrationHref(plan.planCode)}
-          onClick={() => saveSelectedSubscriptionPlan({ planCode: plan.planCode, billingInterval: "monthly" })}
-        >
-          <Button variant={plan.highlighted ? "primary" : "outline"} className="w-full">
-            {plan.ctaLabel}
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </Link>
-      </div>
-    </Card>
-  );
-}
-
 function PricingPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-text">
@@ -86,24 +41,24 @@ function PricingPage() {
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)] lg:items-center">
               <div>
                 <Badge variant="primary">Pricing</Badge>
-                <h1 className="mt-5 max-w-4xl text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
+                <h1 className="mt-5 max-w-4xl text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl">
                   Choose the plan that matches your school growth.
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
                   Start small, validate the workflow, then move into higher limits, bulk imports, analytics, and AI support as your school expands.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <Link to={buildRegistrationHref("free_trial")}>
-                    <Button size="large" className="w-full sm:w-auto">Start Free Trial</Button>
-                  </Link>
                   <a href="#compare" className="w-full sm:w-auto">
-                    <Button variant="outline" size="large" className="w-full border-white/15 bg-white/10 text-white hover:bg-white/15">Compare features</Button>
+                    <Button size="large" className="w-full sm:w-auto">Compare features</Button>
                   </a>
+                  <Link to="/#pricing" className="w-full sm:w-auto">
+                    <Button variant="outline" size="large" className="w-full border-white/15 bg-white/10 text-white hover:bg-white/15">View plans</Button>
+                  </Link>
                 </div>
               </div>
               <Card className="border-white/10 bg-white/10 p-5 text-white backdrop-blur-xl">
                 <Sparkles className="h-8 w-8 text-primary-soft" />
-                <h2 className="mt-4 text-xl font-semibold">Pay for the capacity you need.</h2>
+                <h2 className="mt-4 text-xl font-semibold text-white">Pay for the capacity you need.</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-300">
                   Free Trial proves the product. Paid plans unlock higher limits and operational features like bulk import and advanced analytics.
                 </p>
@@ -116,12 +71,6 @@ function PricingPage() {
                 </div>
               </Card>
             </div>
-          </div>
-        </section>
-
-        <section className="section-container py-12 sm:py-16">
-          <div className="grid items-stretch gap-5 md:grid-cols-2 2xl:grid-cols-4">
-            {LANDING_PRICING_PLANS.map((plan) => <PricingPlanCard key={plan.planCode} plan={plan} />)}
           </div>
         </section>
 
@@ -177,8 +126,8 @@ function PricingPage() {
             <ShieldCheck className="mx-auto h-10 w-10 text-primary-soft" />
             <h2 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-4xl">Start with a safe workspace.</h2>
             <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-300">Create a tenant, test the core school flow, and upgrade only when the school needs more capacity.</p>
-            <Link to={buildRegistrationHref("free_trial")} className="mt-8 inline-flex">
-              <Button size="large">Create workspace</Button>
+            <Link to="/#pricing" className="mt-8 inline-flex">
+              <Button size="large">View plans</Button>
             </Link>
           </div>
         </section>

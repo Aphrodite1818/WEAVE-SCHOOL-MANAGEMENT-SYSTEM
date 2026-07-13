@@ -309,18 +309,11 @@ function BottomNav({ role, onOpenMenu }) {
                 aria-label={item.label}
                 className={cn(
                   "relative z-10 flex min-h-[3.65rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.65rem] px-1.5 py-2 text-center transition-colors duration-150 ease-out",
-                  item.isHome && "-mt-5 min-h-[4.25rem]",
                   isActive ? "text-primary" : "text-text-muted hover:text-text"
                 )}
               >
-                <span
-                  className={cn(
-                    item.isHome &&
-                      "flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-[0_12px_28px_rgba(37,99,235,0.3)]",
-                    item.isHome && isActive && "ring-4 ring-primary/15"
-                  )}
-                >
-                  <Icon className={cn("h-[1.35rem] w-[1.35rem] shrink-0 transition-transform duration-150", item.isHome && "h-5 w-5", isActive && !item.isHome && "scale-110")} />
+                <span className="flex h-6 w-6 items-center justify-center">
+                  <Icon className={cn("h-[1.35rem] w-[1.35rem] shrink-0 transition-transform duration-150", isActive && "scale-110")} />
                 </span>
                 <span className={cn("max-w-full truncate text-[10.5px] font-semibold leading-none transition-colors duration-150", isActive ? "text-primary" : "text-text-muted")}>
                   {item.label}

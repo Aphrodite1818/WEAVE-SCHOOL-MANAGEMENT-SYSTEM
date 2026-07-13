@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
+import Spinner from "../components/ui/Spinner";
 import { authSession } from "../services/api";
 import { authService } from "../services/auth.service";
 import { getValidTokenPayload } from "../utils/auth";
 
 const MAX_BOOTSTRAP_ATTEMPTS = 3;
+const MIN_RESTORE_SCREEN_MS = 450;
 
 const wait = (milliseconds) =>
   new Promise((resolve) => {
@@ -21,9 +23,21 @@ const isRetryableBootstrapError = (error) => {
   return status == null || status === 408 || status >= 500;
 };
 
+function RestoringSessionScreen() {
+  return (
+    <main className="flex min-h-[100dvh] items-center justify-center bg-background px-6">
+      <section className="flex w-full max-w-sm flex-col items-center rounded-2xl border border-border bg-surface px-6 py-8 text-center shadow-premium">
+        <Spinner className="h-12 w-12" />
+        <h1 className="mt-5 text-base font-semibold text-text">Restoring session</h1>
+        <p className="mt-1 text-sm text-text-muted">Getting your workspace ready...</p>
+      </section>
+    </main>
+  );
+}
+
 function ProtectedRoute() {
   const location = useLocation();
-  const [bootstrapDone, setBootstrapDone] = useState(() => Boolean(getValidTokenPayload()));
+  const [bootstrapDone, setBootstrapDone] = useState(false);
   const [bootstrapError, setBootstrapError] = useState(null);
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
 
@@ -31,11 +45,21 @@ function ProtectedRoute() {
     let cancelled = false;
 
     async function bootstrap() {
-      if (getValidTokenPayload()) {
+      const restoreStartedAt = Date.now();
+      const completeBootstrap = async () => {
+        const elapsed = Date.now() - restoreStartedAt;
+        if (elapsed < MIN_RESTORE_SCREEN_MS) {
+          await wait(MIN_RESTORE_SCREEN_MS - elapsed);
+        }
+
         if (!cancelled) {
           setBootstrapError(null);
           setBootstrapDone(true);
         }
+      };
+
+      if (getValidTokenPayload()) {
+        await completeBootstrap();
         return;
       }
 
@@ -48,9 +72,7 @@ function ProtectedRoute() {
         try {
           await authService.bootstrapSession();
 
-          if (!cancelled) {
-            setBootstrapDone(true);
-          }
+          await completeBootstrap();
           return;
         } catch (error) {
           if (cancelled) return;
@@ -97,13 +119,7 @@ function ProtectedRoute() {
   }
 
   if (!bootstrapDone) {
-    return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-background px-6">
-        <p className="text-sm font-medium text-text-soft" role="status">
-          Restoring your session...
-        </p>
-      </main>
-    );
+    return <RestoringSessionScreen />;
   }
 
   const payload = getValidTokenPayload();

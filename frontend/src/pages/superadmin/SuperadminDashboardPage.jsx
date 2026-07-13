@@ -25,7 +25,6 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
-import Card from "../../components/ui/Card";
 
 import { getErrorMessage } from "../../services/api";
 import { superadminService } from "../../services/superadmin.service";
@@ -161,10 +160,10 @@ function SuperadminDashboardPage() {
             variant="blue"
             eyebrow="Superadmin Overview"
             title="Platform Dashboard"
-            description="Monitor tenant growth, resource usage, security posture, and emergency controls from one operator surface."
+            description="Tenant growth, security posture, and platform controls."
             chips={[
               { label: "Status", value: lockdownEnabled ? "Lockdown active" : "Normal", tone: lockdownEnabled ? "danger" : "success" },
-              { label: "Risk Score", value: `${riskScore}/100 · ${riskLevel}`, tone: riskScore >= 50 ? "danger" : riskScore > 0 ? "warning" : "success" },
+              { label: "Risk Score", value: `${riskScore}/100 - ${riskLevel}`, tone: riskScore >= 50 ? "danger" : riskScore > 0 ? "warning" : "success" },
               { label: "Total Schools", value: totalTenants, tone: "neutral" },
             ]}
           />
@@ -189,7 +188,7 @@ function SuperadminDashboardPage() {
             <DashboardMetricCard
               label="Security alerts"
               value={securityEvents}
-              description="Critical security events in the last 7 days"
+              description="Last 7 days"
               icon={LockKeyhole}
               tone={securityEvents > 0 ? "danger" : "success"}
               to="/superadmin/analytics"
@@ -207,13 +206,13 @@ function SuperadminDashboardPage() {
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
             <AnalyticsLineChart
               title="Tenant growth"
-              description="Monthly tenant creation trend across the platform."
+              description="Monthly tenant creation trend."
               data={chartData(charts, "tenant_growth")}
               emptyMessage="No tenant growth data available yet."
             />
             <AnalyticsDonutChart
               title="Tenant verification mix"
-              description="Active, pending, and rejected tenant verification states."
+              description="Tenant verification states."
               data={chartData(charts, "verification_breakdown")}
               emptyMessage="No tenant verification data available yet."
             />
@@ -224,7 +223,7 @@ function SuperadminDashboardPage() {
 
             <AnalyticsBarChart
               title="Tenant status breakdown"
-              description="Operational tenant states from backend tenant records."
+              description="Operational tenant states."
               data={chartData(charts, "status_breakdown")}
               emptyMessage="No tenant status data available yet."
             />
@@ -233,7 +232,7 @@ function SuperadminDashboardPage() {
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
             <DashboardListCard
               title="Recent security findings"
-              description="Highest priority alerts from the platform security monitoring."
+              description="Highest priority platform alerts."
               items={securityFindings}
               emptyTitle="No security issues detected"
               emptyDescription="There are no active security alerts or compromised sessions to review."
@@ -244,7 +243,7 @@ function SuperadminDashboardPage() {
               description={
                 lockdownEnabled
                   ? "Non-admin access is currently blocked. Users will see a maintenance message."
-                  : "Manage platform lockdown and emergency settings."
+                  : "Manage lockdown and emergency settings."
               }
               icon={Shield}
               tone={lockdownEnabled ? "danger" : "success"}
@@ -263,7 +262,7 @@ function SuperadminDashboardPage() {
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(320px,1fr)]">
             <DashboardFocusCard
               title="School Management"
-              description="Quick overview of active schools and platform administrators."
+              description="Schools and platform administrators."
               icon={GaugeIcon}
               tone="primary"
             >
@@ -277,7 +276,7 @@ function SuperadminDashboardPage() {
 
             <DashboardQuickActions
               title="Quick Actions"
-              description="Access commonly used platform management tools."
+              description="Common platform tools."
               actions={[
                 { label: "Security Analytics", description: "View detailed security metrics", to: "/superadmin/analytics", icon: BarChart3, tone: "danger" },
                 { label: "Control Center", description: "Lockdown and IP containment", to: "/superadmin/control-center", icon: KeyRound, tone: lockdownEnabled ? "danger" : "neutral" },

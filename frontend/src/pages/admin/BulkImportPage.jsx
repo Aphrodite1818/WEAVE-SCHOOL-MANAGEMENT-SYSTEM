@@ -24,7 +24,7 @@ import { useToast } from "../../hooks/useToast";
 import { bulkImportService } from "../../services/bulkImport.service";
 import { getErrorMessage } from "../../services/api";
 
-const ACTIVE_IMPORT_JOB_STORAGE_KEY = "learnly:active-import-job";
+const ACTIVE_IMPORT_JOB_STORAGE_KEY = "weave:active-import-job";
 const ACTIVE_JOB_STATUSES = new Set(["pending", "processing"]);
 const FINISHED_JOB_STATUSES = new Set(["completed", "partially_completed", "failed", "cancelled"]);
 
@@ -201,7 +201,7 @@ const createStudentSlipDocument = (job) => {
         --muted: #6b7280;
         --line: #d1d5db;
         --soft: #f3f4f6;
-        --brand: #2563eb;
+        --brand: #1d4ed8;
         --brand-soft: #eff6ff;
       }
       * { box-sizing: border-box; }

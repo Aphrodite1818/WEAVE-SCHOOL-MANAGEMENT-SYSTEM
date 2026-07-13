@@ -10,7 +10,7 @@ function AiChatPanel({ open, onClose }) {
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-text">AI Assistant</p>
-            <p className="mt-1 text-xs text-text-muted">Placeholder panel for future assistant workflows.</p>
+            <p className="mt-1 text-xs text-text-muted">Assistant tools will appear here when enabled.</p>
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Close AI assistant">
             <X className="h-4 w-4" />
@@ -21,10 +21,10 @@ function AiChatPanel({ open, onClose }) {
           <div className="rounded-2xl border border-primary/15 bg-primary-subtle px-4 py-4 text-sm text-text-soft">
             <div className="flex items-center gap-2 font-semibold text-primary">
               <Sparkles className="h-4 w-4" />
-              AI assistant coming soon.
+              Assistant unavailable
             </div>
             <p className="mt-2 text-sm text-text-soft">
-              This launcher is wired so we can connect a real assistant API later without changing every dashboard.
+              Your school has not enabled this workspace tool yet.
             </p>
           </div>
         </div>

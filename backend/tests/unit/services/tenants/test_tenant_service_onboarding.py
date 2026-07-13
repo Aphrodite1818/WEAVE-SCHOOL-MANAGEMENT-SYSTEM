@@ -13,7 +13,7 @@ async def test_update_tenant_profile_marks_onboarding_complete_when_prefix_exist
     tenant = SimpleNamespace(
         id=uuid4(),
         school_name="New Horizon School",
-        email="admin@nhs.example",
+        email="admin@wvs.example",
         admission_number_prefix=None,
         onboarding_completed=False,
         phone=None,
@@ -42,14 +42,14 @@ async def test_update_tenant_profile_marks_onboarding_complete_when_prefix_exist
             db=db,
             tenant_id=tenant.id,
             payload=TenantUpdate(
-                admission_number_prefix="nhs",
+                admission_number_prefix="wvs",
                 address="1 School Road",
                 city="Lagos",
                 state="Lagos",
             ),
         )
 
-    assert updated.admission_number_prefix == "NHS"
+    assert updated.admission_number_prefix == "WVS"
     assert updated.onboarding_completed is True
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once_with(updated)
@@ -60,8 +60,8 @@ async def test_update_tenant_profile_marks_onboarding_incomplete_when_prefix_rem
     tenant = SimpleNamespace(
         id=uuid4(),
         school_name="New Horizon School",
-        email="admin@nhs.example",
-        admission_number_prefix="NHS",
+        email="admin@wvs.example",
+        admission_number_prefix="WVS",
         onboarding_completed=True,
         phone=None,
         address="1 School Road",

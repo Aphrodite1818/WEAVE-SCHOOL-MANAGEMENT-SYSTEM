@@ -1,7 +1,7 @@
 import { authSession } from "./api";
 
 const DEFAULT_DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_BUNDLE_CACHE_PREFIX = "learnly:dashboard-session";
+const DASHBOARD_BUNDLE_CACHE_PREFIX = "weave:dashboard-session";
 
 const dashboardBundleCache = new Map();
 let invalidationBound = false;
@@ -35,7 +35,7 @@ const bindCacheInvalidation = () => {
   invalidationBound = true;
 
   window.addEventListener("beforeunload", clearCache);
-  window.addEventListener("learnly:dashboard-cache-clear", clearCache);
+  window.addEventListener("weave:dashboard-cache-clear", clearCache);
 };
 
 const resolveCacheKey = (key) => {

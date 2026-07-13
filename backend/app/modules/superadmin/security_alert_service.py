@@ -88,7 +88,7 @@ class SecurityAlertService:
                     *(
                         send_email(
                             to_email=email,
-                            subject=f"[LearnlyAI Security] {title}",
+                            subject=f"[Weave Security] {title}",
                             body=html_body,
                             is_html=True,
                         )

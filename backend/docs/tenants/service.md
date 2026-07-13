@@ -122,7 +122,7 @@ Strips leading and trailing whitespace from the school name.
 Strips whitespace, uppercases the prefix, and returns `None` if the result is empty.
 
 ```
-" nhs " → "NHS"
+" wvs " → "WVS"
 ```
 
 ---

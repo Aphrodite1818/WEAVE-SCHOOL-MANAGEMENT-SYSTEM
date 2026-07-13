@@ -1,4 +1,4 @@
-"""Create the complete Learnly database schema from the current model registry.
+"""Create the complete Weave database schema from the current model registry.
 
 Revision ID: 20260711_initial_schema
 Revises: None

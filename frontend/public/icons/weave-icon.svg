@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Weave</title>
+  <desc id="desc">Weave interlaced thread app icon.</desc>
+  <defs>
+    <linearGradient id="bg" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" />
+      <stop offset="0.58" stop-color="#f8fafc" />
+      <stop offset="1" stop-color="#e2e8f0" />
+    </linearGradient>
+    <linearGradient id="blue" x1="82" y1="126" x2="430" y2="388" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60a5fa" />
+      <stop offset="0.45" stop-color="#1d4ed8" />
+      <stop offset="1" stop-color="#1e3a8a" />
+    </linearGradient>
+    <linearGradient id="gold" x1="430" y1="124" x2="82" y2="388" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fde68a" />
+      <stop offset="0.46" stop-color="#f59e0b" />
+      <stop offset="1" stop-color="#b45309" />
+    </linearGradient>
+    <filter id="shadow" x="-18%" y="-18%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.18" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <g filter="url(#shadow)" fill="none" stroke-linecap="round">
+    <path d="M84 176c72 0 76 160 172 160s100-160 172-160" stroke="#bfdbfe" stroke-width="78" opacity="0.72" />
+    <path d="M84 176c72 0 76 160 172 160s100-160 172-160" stroke="url(#blue)" stroke-width="54" />
+    <path d="M84 336c72 0 76-160 172-160s100 160 172 160" stroke="#fef3c7" stroke-width="78" opacity="0.75" />
+    <path d="M84 336c72 0 76-160 172-160s100 160 172 160" stroke="url(#gold)" stroke-width="54" />
+    <path d="M189 256h134" stroke="#ffffff" stroke-width="18" opacity="0.85" />
+    <path d="M208 236c16-34 30-60 48-60s32 26 48 60" stroke="#0f172a" stroke-width="7" opacity="0.2" />
+  </g>
+</svg>

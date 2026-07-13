@@ -14,7 +14,7 @@ from pathlib import Path
 
 from sqlalchemy import Select, delete, select
 
-# Expected location: backend/scripts/learnly_full_school_seed_with_scores.py
+# Expected location: backend/scripts/weave_full_school_seed_with_scores.py
 # If you place it somewhere else, adjust BACKEND_DIR accordingly.
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
