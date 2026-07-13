@@ -32,6 +32,7 @@ const DRAWER_OPEN_DISTANCE = 72;
 const DRAWER_VERTICAL_TOLERANCE = 70;
 const DRAWER_CENTER_START_MIN = 0.28;
 const DRAWER_CENTER_START_MAX = 0.72;
+const GESTURE_ACTIVATION_DISTANCE = 12;
 
 function getDefaultPageMeta(role, onboardingModalEnabled = true) {
   return {
@@ -89,8 +90,15 @@ function DashboardShellFrame({
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const shellRef = useRef(null);
   const mainRef = useRef(null);
-  const pullStateRef = useRef({ tracking: false, startY: 0 });
-  const drawerSwipeRef = useRef({ tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
+  const pullStateRef = useRef({ tracking: false, active: false, startX: 0, startY: 0 });
+  const drawerSwipeRef = useRef({
+    tracking: false,
+    active: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+  });
   const schoolName = useTenantWorkspaceName({ user, role });
   const aiAssistantGuard =
     role === "admin" && isTenantAdmin
@@ -160,23 +168,43 @@ function DashboardShellFrame({
     const touch = event.touches?.[0];
     if (!touch) return;
 
-    if (!mobileNavOpen && isCenterDrawerGestureStart(touch.clientX) && !blocksDrawerGesture(event.target)) {
+    drawerSwipeRef.current = {
+      tracking: false,
+      active: false,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0,
+    };
+    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+
+    const canOpenDrawer =
+      !mobileNavOpen &&
+      isCenterDrawerGestureStart(touch.clientX) &&
+      !blocksDrawerGesture(event.target);
+    const canPullRefresh =
+      !isPullRefreshing && (mainRef.current?.scrollTop || 0) <= 0;
+
+    if (canOpenDrawer) {
       drawerSwipeRef.current = {
         tracking: true,
+        active: false,
         startX: touch.clientX,
         startY: touch.clientY,
         currentX: touch.clientX,
         currentY: touch.clientY,
       };
-      pullStateRef.current = { tracking: false, startY: 0 };
       setPullDistance(0);
-      return;
     }
 
-    if (isPullRefreshing) return;
-    if ((mainRef.current?.scrollTop || 0) > 0) return;
-
-    pullStateRef.current = { tracking: true, startY: touch.clientY };
+    if (canPullRefresh) {
+      pullStateRef.current = {
+        tracking: true,
+        active: false,
+        startX: touch.clientX,
+        startY: touch.clientY,
+      };
+    }
   }, [isPullRefreshing, mobileNavOpen]);
 
   const handleTouchMove = useCallback((event) => {
@@ -187,21 +215,39 @@ function DashboardShellFrame({
 
     const drawerState = drawerSwipeRef.current;
     if (drawerState.tracking) {
-      const deltaX = Math.max(0, touch.clientX - drawerState.startX);
+      const rawDeltaX = touch.clientX - drawerState.startX;
+      const deltaX = Math.abs(rawDeltaX);
       const deltaY = touch.clientY - drawerState.startY;
+      const absDeltaY = Math.abs(deltaY);
+      const shouldActivateDrawer =
+        drawerState.active ||
+        (deltaX >= GESTURE_ACTIVATION_DISTANCE &&
+          deltaX > absDeltaY + 4);
 
       drawerSwipeRef.current = {
         ...drawerState,
+        active: shouldActivateDrawer,
         currentX: touch.clientX,
         currentY: touch.clientY,
       };
 
-      if (deltaX > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (shouldActivateDrawer) {
         event.preventDefault();
         setDrawerSwipeDistance(Math.min(96, Math.round(deltaX * 0.62)));
+        pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+        return;
       }
 
-      return;
+      if (absDeltaY >= GESTURE_ACTIVATION_DISTANCE && absDeltaY > deltaX + 4) {
+        drawerSwipeRef.current = {
+          tracking: false,
+          active: false,
+          startX: 0,
+          startY: 0,
+          currentX: 0,
+          currentY: 0,
+        };
+      }
     }
 
     const state = pullStateRef.current;
@@ -213,24 +259,43 @@ function DashboardShellFrame({
       return;
     }
 
-    const delta = touch.clientY - state.startY;
-    if (delta <= 0) {
+    const deltaX = Math.abs(touch.clientX - state.startX);
+    const deltaY = touch.clientY - state.startY;
+    if (deltaY <= 0) {
       setPullDistance(0);
       return;
     }
 
-    if (delta > 8) event.preventDefault();
-    setPullDistance(Math.min(104, Math.round(delta * 0.46)));
+    const shouldActivatePull =
+      state.active ||
+      (deltaY >= GESTURE_ACTIVATION_DISTANCE &&
+        deltaY > deltaX + 4);
+
+    if (!shouldActivatePull) return;
+
+    pullStateRef.current = { ...state, active: true };
+    if (deltaY > 8) event.preventDefault();
+    setPullDistance(Math.min(104, Math.round(deltaY * 0.46)));
   }, [isPullRefreshing]);
 
   const handleTouchEnd = useCallback(() => {
     const drawerState = drawerSwipeRef.current;
     if (drawerState.tracking) {
-      const deltaX = drawerState.currentX - drawerState.startX;
+      const deltaX = Math.abs(drawerState.currentX - drawerState.startX);
       const deltaY = drawerState.currentY - drawerState.startY;
-      const shouldOpenDrawer = deltaX >= DRAWER_OPEN_DISTANCE && Math.abs(deltaY) <= DRAWER_VERTICAL_TOLERANCE;
+      const shouldOpenDrawer =
+        drawerState.active &&
+        deltaX >= DRAWER_OPEN_DISTANCE &&
+        Math.abs(deltaY) <= DRAWER_VERTICAL_TOLERANCE;
 
-      drawerSwipeRef.current = { tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+      drawerSwipeRef.current = {
+        tracking: false,
+        active: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        currentY: 0,
+      };
       setDrawerSwipeDistance(0);
 
       if (shouldOpenDrawer) setMobileNavOpen(true);
@@ -238,7 +303,7 @@ function DashboardShellFrame({
     }
 
     const shouldRefresh = pullDistance >= PULL_REFRESH_THRESHOLD;
-    pullStateRef.current = { tracking: false, startY: 0 };
+    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
 
     if (!shouldRefresh) {
       setPullDistance(0);
@@ -253,8 +318,15 @@ function DashboardShellFrame({
   }, [pullDistance]);
 
   const handleTouchCancel = useCallback(() => {
-    pullStateRef.current = { tracking: false, startY: 0 };
-    drawerSwipeRef.current = { tracking: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+    drawerSwipeRef.current = {
+      tracking: false,
+      active: false,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0,
+    };
     setPullDistance(0);
     setDrawerSwipeDistance(0);
   }, []);

@@ -86,7 +86,8 @@ export default function SidebarContent({
       <div
         className={cn(
           "relative flex h-[4.5rem] shrink-0 items-center border-b border-border/60 transition-all duration-300",
-          collapsed ? "justify-center px-2" : "gap-2 px-3"
+          mobile && "h-[5rem]",
+          collapsed ? "justify-center px-2" : mobile ? "gap-2 px-4" : "gap-2 px-3"
         )}
       >
         <Link

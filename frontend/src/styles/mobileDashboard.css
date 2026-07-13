@@ -409,13 +409,12 @@
 
   aside:has(button[aria-label="Close navigation"]) {
     width: min(84vw, 19.5rem) !important;
-    padding-top: max(0.75rem, env(safe-area-inset-top)) !important;
     border-top-right-radius: 1.35rem;
     border-bottom-right-radius: 1.35rem;
   }
 
   aside:has(button[aria-label="Close navigation"]) > div:first-child {
-    height: 3.35rem !important;
+    height: 3rem !important;
     padding-inline: 1rem !important;
   }
 
