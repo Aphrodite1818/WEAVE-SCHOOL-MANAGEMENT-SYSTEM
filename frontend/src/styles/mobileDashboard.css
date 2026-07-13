@@ -188,7 +188,7 @@
   }
 
   #dashboard-content > div > div:first-child {
-    border-radius: 1.35rem;
+    border-radius: 1.65rem;
     padding: 0.9rem;
   }
 
@@ -237,13 +237,13 @@
   #dashboard-content .dashboard-kpi-grid > * {
     min-width: 0;
     overflow: visible;
-    border-radius: 1.1rem;
+    border-radius: 1.55rem !important;
   }
 
   #dashboard-content .card-base,
   #dashboard-content .surface-panel,
   #dashboard-content .subtle-panel {
-    border-radius: 1.15rem;
+    border-radius: 1.45rem;
   }
 
   #dashboard-content .card-base {
@@ -258,7 +258,7 @@
   #dashboard-content .dashboard-chart-card {
     min-height: 20rem;
     height: auto;
-    border-radius: 1.15rem;
+    border-radius: 1.45rem;
     padding: 0.9rem;
     overflow: hidden;
   }
@@ -422,14 +422,14 @@
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
     max-width: 30rem !important;
     gap: 0.35rem !important;
-    border-radius: 2.1rem !important;
-    padding: 0.6rem !important;
+    border-radius: 2.15rem !important;
+    padding: 0.4rem !important;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] a,
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] button {
-    min-height: 3.7rem !important;
-    border-radius: 1.75rem !important;
+    min-height: 3.45rem !important;
+    border-radius: 1.8rem !important;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] svg {
