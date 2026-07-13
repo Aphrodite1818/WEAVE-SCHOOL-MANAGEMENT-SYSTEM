@@ -2,6 +2,7 @@ import { api, authSession } from "./api";
 import { clearDashboardSessionCache } from "./dashboardSessionCache";
 import { onboardingService } from "./onboardingService";
 import { tenantService } from "./tenant.service";
+import { getValidTokenPayload } from "../utils/auth";
 
 const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
 
@@ -130,15 +131,22 @@ const persistAuthenticatedUser = (normalizedResponse, remember) => {
 const restoreSession = async () => {
   try {
     const remember = authSession.getRememberPreference?.() ?? true;
+    const existingToken = authSession.getToken();
 
-    const tokenResponse = await api.post("/auth/refresh", undefined, {
-      auth: false,
-      clearAuthOnUnauthorized: false,
-      skipAuthRefresh: true,
-    });
+    if (existingToken && getValidTokenPayload()) {
+      authSession.setToken(existingToken, { remember });
+    } else {
+      authSession.clearToken();
 
-    if (tokenResponse.access_token) {
-      authSession.setToken(tokenResponse.access_token, { remember });
+      const tokenResponse = await api.post("/auth/refresh", undefined, {
+        auth: false,
+        clearAuthOnUnauthorized: false,
+        skipAuthRefresh: true,
+      });
+
+      if (tokenResponse.access_token) {
+        authSession.setToken(tokenResponse.access_token, { remember });
+      }
     }
 
     const sessionResponse = await api.get("/auth/me/session", {
@@ -240,13 +248,16 @@ export const authService = {
   bootstrapSession,
 
   logout: async () => {
+    clearDashboardSessionCache();
+    authSession.clear();
+
     try {
       await api.post("/auth/logout", undefined, {
+        auth: false,
         clearAuthOnUnauthorized: false,
         skipAuthRefresh: true,
       });
     } finally {
-      clearDashboardSessionCache();
       authSession.clear();
     }
   },

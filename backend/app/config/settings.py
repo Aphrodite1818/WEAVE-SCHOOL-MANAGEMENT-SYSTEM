@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = Field(..., min_length=32)
     ALGORITHM: str = Field(default="HS256", description="JWT signing algorithm")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 5
     DEFAULT_SESSION_DAYS: int = Field(
         default=7,
         gt=0,

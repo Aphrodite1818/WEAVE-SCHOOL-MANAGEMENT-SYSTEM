@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { authSession } from "../services/api";
 import { authService } from "../services/auth.service";
-import { getStoredTokenPayload } from "../utils/auth";
+import { getValidTokenPayload } from "../utils/auth";
 
 const MAX_BOOTSTRAP_ATTEMPTS = 3;
 
@@ -23,7 +23,7 @@ const isRetryableBootstrapError = (error) => {
 
 function ProtectedRoute() {
   const location = useLocation();
-  const [bootstrapDone, setBootstrapDone] = useState(() => Boolean(authSession.getToken()));
+  const [bootstrapDone, setBootstrapDone] = useState(() => Boolean(getValidTokenPayload()));
   const [bootstrapError, setBootstrapError] = useState(null);
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
 
@@ -31,7 +31,7 @@ function ProtectedRoute() {
     let cancelled = false;
 
     async function bootstrap() {
-      if (authSession.getToken()) {
+      if (getValidTokenPayload()) {
         if (!cancelled) {
           setBootstrapError(null);
           setBootstrapDone(true);
@@ -106,7 +106,7 @@ function ProtectedRoute() {
     );
   }
 
-  const payload = getStoredTokenPayload();
+  const payload = getValidTokenPayload();
 
   if (!payload) {
     return <Navigate to="/login" replace state={{ from: location }} />;
