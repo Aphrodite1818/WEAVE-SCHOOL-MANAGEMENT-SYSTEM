@@ -7,6 +7,7 @@ import Button from "../../components/ui/Button";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import ReportCardLinesTable from "../../components/shared/ReportCardLinesTable";
+import ReportCardPrintSheet from "../../components/shared/ReportCardPrintSheet";
 import { getErrorMessage } from "../../services/api";
 import { reportCardService } from "../../services/reportCardService";
 import { cleanText } from "../../utils/academicDashboard";
@@ -40,6 +41,7 @@ function ParentReportCardsPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [printId, setPrintId] = useState(null);
+  const [printCard, setPrintCard] = useState(null);
 
   const selectedChildAcademicLabel = useMemo(() => {
     const latestCard = reportCards[0];
@@ -86,12 +88,17 @@ function ParentReportCardsPage() {
     setLoadError(null);
 
     try {
-      await reportCardService.printParentReportCard(selectedChildId, card.id);
+      const printableCard = await reportCardService.getChildReportCard(selectedChildId, card.id);
+      setPrintCard(printableCard);
     } catch (error) {
       setLoadError(getErrorMessage(error, "Could not open report card."));
-    } finally {
       setPrintId(null);
     }
+  };
+
+  const clearPrintCard = () => {
+    setPrintCard(null);
+    setPrintId(null);
   };
 
   if (isLoading) {
@@ -108,6 +115,8 @@ function ParentReportCardsPage() {
       title="Report Cards"
       description="Published term reports for the selected child, with print and download available."
     >
+      <ReportCardPrintSheet card={printCard} onAfterPrint={clearPrintCard} />
+
       {loadError && (
         <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {loadError}

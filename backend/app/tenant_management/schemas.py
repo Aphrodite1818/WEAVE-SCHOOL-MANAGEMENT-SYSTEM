@@ -258,7 +258,6 @@ class TenantUpdate(InputBase):
         pattern=PHONE_PATTERN,
         description="The WhatsApp number the school bot listens on",
     )
-    onboarding_completed: bool | None = None
 
     @field_validator(
         "school_name",

@@ -1,7 +1,7 @@
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import HTMLResponse
 
 from app.core.dependencies.db import DbSession
@@ -24,6 +24,23 @@ from app.modules.students.models import Student
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.models import TenantAdmin
+
+REPORT_CARD_HTML_HEADERS = {
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+}
+REPORT_CARD_DATA_HEADERS = {
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+def _prevent_report_card_cache(response: Response) -> None:
+    for key, value in REPORT_CARD_DATA_HEADERS.items():
+        response.headers[key] = value
 
 
 tenant_admin_router = APIRouter(
@@ -82,10 +99,12 @@ async def report_card_class_overview(
 async def list_report_cards(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
+    response: Response,
     student_id: UUID | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> ReportCardListResponse:
+    _prevent_report_card_cache(response)
     items, total = await ReportCardService.list_cards(
         db,
         current_admin,
@@ -101,7 +120,9 @@ async def get_report_card(
     report_card_id: UUID,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
+    response: Response,
 ) -> ReportCardResponse:
+    _prevent_report_card_cache(response)
     return await ReportCardService.get(db, current_admin, report_card_id)
 
 
@@ -144,7 +165,10 @@ async def print_report_card(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> HTMLResponse:
-    return HTMLResponse(await ReportCardService.render_html(db, current_admin, report_card_id))
+    return HTMLResponse(
+        await ReportCardService.render_html(db, current_admin, report_card_id),
+        headers=REPORT_CARD_HTML_HEADERS,
+    )
 
 
 @tenant_admin_router.get("/{report_card_id}/download", response_class=HTMLResponse)
@@ -153,7 +177,10 @@ async def download_report_card(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> HTMLResponse:
-    return HTMLResponse(await ReportCardService.render_html(db, current_admin, report_card_id))
+    return HTMLResponse(
+        await ReportCardService.render_html(db, current_admin, report_card_id),
+        headers=REPORT_CARD_HTML_HEADERS,
+    )
 
 
 @parent_router.get("", response_model=ReportCardListResponse)
@@ -161,7 +188,9 @@ async def list_child_report_cards(
     student_id: UUID,
     db: DbSession,
     current_parent: CurrentParent,
+    response: Response,
 ) -> ReportCardListResponse:
+    _prevent_report_card_cache(response)
     items, total = await ReportCardService.list_cards(
         db,
         current_parent,
@@ -174,7 +203,9 @@ async def list_child_report_cards(
 async def list_my_report_cards(
     db: DbSession,
     current_student: CurrentStudent,
+    response: Response,
 ) -> ReportCardListResponse:
+    _prevent_report_card_cache(response)
     items, total = await ReportCardService.list_cards(db, current_student)
     return ReportCardListResponse(items=items, total=total)
 
@@ -184,7 +215,9 @@ async def get_my_report_card(
     report_card_id: UUID,
     db: DbSession,
     current_student: CurrentStudent,
+    response: Response,
 ) -> ReportCardResponse:
+    _prevent_report_card_cache(response)
     return await ReportCardService.get(db, current_student, report_card_id)
 
 
@@ -194,7 +227,10 @@ async def print_my_report_card(
     db: DbSession,
     current_student: CurrentStudent,
 ) -> HTMLResponse:
-    return HTMLResponse(await ReportCardService.render_html(db, current_student, report_card_id))
+    return HTMLResponse(
+        await ReportCardService.render_html(db, current_student, report_card_id),
+        headers=REPORT_CARD_HTML_HEADERS,
+    )
 
 
 @parent_router.get("/{report_card_id}", response_model=ReportCardResponse)
@@ -203,7 +239,9 @@ async def get_child_report_card(
     report_card_id: UUID,
     db: DbSession,
     current_parent: CurrentParent,
+    response: Response,
 ) -> ReportCardResponse:
+    _prevent_report_card_cache(response)
     card = await ReportCardService.get(db, current_parent, report_card_id)
     if card.student_id != student_id:
         from app.core.exceptions import ForbiddenException
@@ -218,4 +256,7 @@ async def print_child_report_card(
     db: DbSession,
     current_parent: CurrentParent,
 ) -> HTMLResponse:
-    return HTMLResponse(await ReportCardService.render_html(db, current_parent, report_card_id))
+    return HTMLResponse(
+        await ReportCardService.render_html(db, current_parent, report_card_id),
+        headers=REPORT_CARD_HTML_HEADERS,
+    )
