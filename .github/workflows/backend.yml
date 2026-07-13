@@ -83,13 +83,13 @@ jobs:
         run: uv run pytest tests/unit
 
       - name: Alembic heads
-        run: uv run alembic heads
+        run: uv run --with alembic alembic heads
 
       - name: Alembic history
-        run: uv run alembic history
+        run: uv run --with alembic alembic history
 
       - name: Alembic check
-        run: uv run alembic check
+        run: uv run --with alembic alembic check
         continue-on-error: true
 
       - name: Application import check
