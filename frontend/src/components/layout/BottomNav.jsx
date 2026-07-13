@@ -283,8 +283,8 @@ function BottomNav({ role, onOpenMenu }) {
 
       <nav
         data-mobile-bottom-nav="true"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/95 px-2 pt-1.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
-        style={{ paddingBottom: "max(0.45rem, env(safe-area-inset-bottom))" }}
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/95 px-2 pt-1 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
+        style={{ paddingBottom: "max(0.2rem, env(safe-area-inset-bottom))" }}
         aria-label="Primary installed app navigation"
       >
         <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2rem] bg-surface/95 p-2 shadow-sm">

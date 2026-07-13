@@ -39,8 +39,8 @@ function Navbar() {
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background/92 shadow-sm backdrop-blur-xl">
-        <div className="section-container flex min-h-20 items-center justify-between gap-4">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background/92 pt-[max(0.35rem,env(safe-area-inset-top))] shadow-sm backdrop-blur-xl md:pt-0">
+        <div className="section-container flex min-h-16 items-center justify-between gap-4 md:min-h-20">
           <Link to="/#home" className="flex items-center gap-2.5">
             <WeaveIcon className="-ml-1 h-14 w-14 shrink-0" />
             <div>
@@ -86,7 +86,7 @@ function Navbar() {
           </div>
         )}
       </header>
-      <div className="h-20" aria-hidden="true" />
+      <div className="h-[calc(4rem+max(0.35rem,env(safe-area-inset-top)))] md:h-20" aria-hidden="true" />
     </>
   );
 }
