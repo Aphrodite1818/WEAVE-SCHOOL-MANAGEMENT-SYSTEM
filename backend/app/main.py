@@ -60,8 +60,8 @@ logger = get_logger(__name__)
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [None, Any, None]
-    """Perform lifespan."""
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage API startup and shutdown resources."""
     logger.info("Starting up - Weave API")
     await connect_redis()
     try:
@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # fixed: was [N
 # ── App factory ───────────────────────────────────────────────────────────────
 
 def create_app() -> FastAPI:
-    """Create app."""
+    """Create and configure the FastAPI application."""
     import_model_modules()
 
     app = FastAPI(
@@ -151,7 +151,7 @@ def create_app() -> FastAPI:
     # ── Health check ──────────────────────────────────────────────────────────
     @app.get("/health", tags=["Health"])
     async def health() -> dict[str, str]:
-        """Perform health."""
+        """Return a lightweight process health response."""
         return {"status": "ok"}
 
     return app

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, RefreshCw, Server, Shield, Users } from "lucide-react";
+import { Activity, RefreshCw, Server, Shield } from "lucide-react";
 
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
 import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";

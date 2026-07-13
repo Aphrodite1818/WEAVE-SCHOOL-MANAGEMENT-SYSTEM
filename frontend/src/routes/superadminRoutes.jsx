@@ -8,7 +8,6 @@ import SuperadminSettingsPage from "../pages/superadmin/SuperadminSettingsPage";
 import SuperadminTenantUsagePage from "../pages/superadmin/SuperadminTenantUsagePage";
 import SuperadminTrafficMonitorPage from "../pages/superadmin/SuperadminTrafficMonitorPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
-import StaticModulePage from "../pages/shared/StaticModulePage";
 import RoleGuard from "./RoleGuard";
 
 export const superadminRoutes = (

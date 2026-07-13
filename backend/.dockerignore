@@ -11,3 +11,6 @@ venv.bak/
 .pytest_cache/
 .coverage
 htmlcov/
+logs/
+migration_report.json
+unmatched_teacher_subjects.csv

@@ -5,8 +5,6 @@ import {
   LockKeyhole,
   RefreshCw,
   ShieldAlert,
-  Trash2,
-  Unlock,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
