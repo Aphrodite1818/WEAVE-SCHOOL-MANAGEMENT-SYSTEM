@@ -75,7 +75,6 @@ class ClassRoomService:
             tenant_id=tenant_id,
             name=payload.name,
             normalized_name=normalized_name,
-            level=payload.level,
             arm=payload.arm,
             normalized_arm=normalized_class_arm_key(payload.arm),
             teacher_id=payload.teacher_id,

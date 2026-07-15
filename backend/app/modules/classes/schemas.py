@@ -8,9 +8,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.utils.normalization import (
-    clean_string,
     normalize_class_arm,
-    normalize_class_level,
     normalize_class_name,
 )
 
@@ -44,12 +42,6 @@ class ClassRoomBase(InputBase):
         description="Class name e.g JSS1, JSS 1, Primary 4",
     )
 
-    level: str | None = Field(
-        default=None,
-        max_length=100,
-        description="Academic level e.g Junior Secondary School 1, Senior Secondary School 2",
-    )
-
     arm: str | None = Field(
         default=None,
         max_length=20,
@@ -78,21 +70,6 @@ class ClassRoomBase(InputBase):
 
         return normalize_class_arm(value)
 
-    @field_validator("level", mode="before")
-    @classmethod
-    def normalize_level(cls, value: str | None) -> str | None:
-        """Validate and normalize optional class level text."""
-
-        if value is None or clean_string(value) is None:
-            return None
-
-        normalized = normalize_class_level(value)
-        if normalized is None:
-            raise ValueError(
-                "class level can only contain letters, numbers, spaces, hyphens, slashes, ampersands, or parentheses"
-            )
-        return normalized
-
 
 class ClassRoomCreate(ClassRoomBase):
     """Payload for creating a classroom."""
@@ -106,11 +83,6 @@ class ClassRoomUpdate(InputBase):
     name: str | None = Field(
         default=None,
         min_length=1,
-        max_length=100,
-    )
-
-    level: str | None = Field(
-        default=None,
         max_length=100,
     )
 
@@ -142,21 +114,6 @@ class ClassRoomUpdate(InputBase):
 
         return normalize_class_arm(value)
 
-    @field_validator("level", mode="before")
-    @classmethod
-    def normalize_level(cls, value: str | None) -> str | None:
-        """Validate and normalize optional class level text."""
-
-        if value is None or clean_string(value) is None:
-            return None
-
-        normalized = normalize_class_level(value)
-        if normalized is None:
-            raise ValueError(
-                "class level can only contain letters, numbers, spaces, hyphens, slashes, ampersands, or parentheses"
-            )
-        return normalized
-
 
 class ClassRoomResponse(OutputBase):
     """Classroom response schema."""
@@ -165,7 +122,6 @@ class ClassRoomResponse(OutputBase):
     tenant_id: uuid.UUID
 
     name: str
-    level: str | None
     arm: str | None
 
     teacher_id: uuid.UUID | None

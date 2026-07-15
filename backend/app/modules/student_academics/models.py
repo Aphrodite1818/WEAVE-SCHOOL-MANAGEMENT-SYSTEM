@@ -1,11 +1,17 @@
+
+#==========================#
+# student_academic_model.py#
+#==========================#
 import uuid
-from datetime import date
+from datetime import date , datetime
 from decimal import Decimal
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
+    DateTime,
     Enum as SQLEnum,
     ForeignKey,
     Index,
@@ -32,26 +38,78 @@ class AcademicResultStatus(str, PyEnum):
     SUBMITTED = "submitted"
 
 
+class AcademicSessionStatus(str , PyEnum):
+    """Controlled lifecycle for an academic session"""
+
+    DRAFT = "draft"
+    OPEN = "open"
+    CLOSED = "closed"
+    CLOSING = "closing"
+
+
+
+class StudentProgressionRunStatus(str , PyEnum):
+    """Internal session-progression execution state"""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+
+class StudentProgressionItemStatus(str , PyEnum):
+    """Outcome of processing one student during progression"""
+
+    PROMOTED = "promoted"
+    GRADUATED = "graduated"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+
+class StudentProgressionItemAction(str , PyEnum):
+    """Academic action selected for one student"""
+
+    PROMOTE = "promote"
+    GRADUATE = "graduate"
+    SKIP = "skip"
+
+
+
 class AcademicSession(BaseModel):
+    """Tenant academic session with an explicit close lifecycle."""
+
     __tablename__ = "academic_sessions"
 
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "name",
-            name="uq_academic_session_tenant_name",
-        ),
-        Index(
-            "uq_academic_sessions_current_per_tenant",
-            "tenant_id",
-            unique=True,
-            postgresql_where=text("is_current = true AND is_active = true"),
-        ),
+    name: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
     )
 
-    name: Mapped[str] = mapped_column(String(30), nullable=False)
-    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    end_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    status: Mapped[AcademicSessionStatus] = mapped_column(
+        SQLEnum(
+            AcademicSessionStatus,
+            name="academic_session_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [
+                item.value for item in enum_cls
+            ],
+        ),
+        nullable=False,
+        default=AcademicSessionStatus.DRAFT,
+        server_default=AcademicSessionStatus.DRAFT.value,
+    )
 
     is_current: Mapped[bool] = mapped_column(
         Boolean,
@@ -65,6 +123,101 @@ class AcademicSession(BaseModel):
         default=True,
         server_default="true",
         nullable=False,
+    )
+
+    closing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    closed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey(
+            "tenant_admins.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    next_academic_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey(
+            "academic_sessions.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "name",
+            name="uq_academic_session_tenant_name",
+        ),
+        Index(
+            "uq_academic_sessions_current_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text(
+                "is_current = true "
+                "AND is_active = true "
+                "AND status = 'open'"
+            ),
+        ),
+        Index(
+            "ix_academic_sessions_tenant_status",
+            "tenant_id",
+            "status",
+        ),
+        Index(
+            "ix_academic_sessions_tenant_next",
+            "tenant_id",
+            "next_academic_session_id",
+        ),
+        CheckConstraint(
+            "next_academic_session_id IS NULL OR next_academic_session_id <> id",
+            name="ck_academic_session_next_not_self",
+        ),
+        CheckConstraint(
+            """
+            (
+                status = 'draft'
+                AND closing_started_at IS NULL
+                AND closed_at IS NULL
+            )
+            OR
+            (
+                status = 'open'
+                AND closing_started_at IS NULL
+                AND closed_at IS NULL
+            )
+            OR
+            (
+                status = 'closing'
+                AND closing_started_at IS NOT NULL
+                AND closed_at IS NULL
+            )
+            OR
+            (
+                status = 'closed'
+                AND closing_started_at IS NOT NULL
+                AND closed_at IS NOT NULL
+            )
+            """,
+            name="ck_academic_session_status_timestamps",
+        ),
+        CheckConstraint(
+            """
+            status <> 'closed'
+            OR is_current = false
+            """,
+            name="ck_closed_academic_session_not_current",
+        ),
     )
 
 
@@ -98,6 +251,7 @@ class AcademicTerm(BaseModel):
             AcademicTermName,
             name="academic_term_name",
             schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
         nullable=False,
     )
@@ -227,7 +381,306 @@ class TeacherAssignment(BaseModel):
 
     effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+class StudentProgressionRun(BaseModel):
+    """
+    Internal audit for one academic-session close operation.
 
+    This is not a user-facing bulk-import or bulk-promotion job.
+    """
+
+    __tablename__ = "student_progression_runs"
+
+    academic_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey(
+            "academic_sessions.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    next_academic_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey(
+            "academic_sessions.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    idempotency_key: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+    )
+
+    status: Mapped[StudentProgressionRunStatus] = mapped_column(
+        SQLEnum(
+            StudentProgressionRunStatus,
+            name="student_progression_run_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [
+                item.value for item in enum_cls
+            ],
+        ),
+        nullable=False,
+        default=StudentProgressionRunStatus.PENDING,
+        server_default=StudentProgressionRunStatus.PENDING.value,
+    )
+
+    total_students: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    promoted_students: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    graduated_students: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    skipped_students: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    failed_students: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    initiated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey(
+            "tenant_admins.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+
+    failure_reason: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_student_progression_run_tenant_idempotency",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "academic_session_id",
+            name="uq_student_progression_run_tenant_session",
+        ),
+        Index(
+            "ix_student_progression_runs_tenant_status",
+            "tenant_id",
+            "status",
+        ),
+        Index(
+            "ix_student_progression_runs_tenant_session",
+            "tenant_id",
+            "academic_session_id",
+        ),
+        CheckConstraint(
+            """
+            total_students >= 0
+            AND promoted_students >= 0
+            AND graduated_students >= 0
+            AND skipped_students >= 0
+            AND failed_students >= 0
+            """,
+            name="ck_progression_run_nonnegative_counts",
+        ),
+        CheckConstraint(
+            """
+            promoted_students
+            + graduated_students
+            + skipped_students
+            + failed_students
+            <= total_students
+            """,
+            name="ck_progression_run_count_total",
+        ),
+        CheckConstraint(
+            """
+            (
+                status IN ('pending', 'processing')
+                AND completed_at IS NULL
+            )
+            OR
+            (
+                status IN ('completed', 'failed')
+                AND completed_at IS NOT NULL
+            )
+            """,
+            name="ck_progression_run_completion_consistency",
+        ),
+    )
+
+
+class StudentProgressionItem(BaseModel):
+    """Audit outcome for one student in one progression run."""
+
+    __tablename__ = "student_progression_items"
+
+    progression_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey(
+            "student_progression_runs.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey(
+            "students.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    from_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey(
+            "student_enrollments.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+
+    to_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey(
+            "student_enrollments.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+
+    from_class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey(
+            "classes.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    to_class_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey(
+            "classes.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+
+    action: Mapped[StudentProgressionItemAction] = mapped_column(
+        SQLEnum(
+            StudentProgressionItemAction,
+            name="student_progression_item_action",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [
+                item.value for item in enum_cls
+            ],
+        ),
+        nullable=False,
+    )
+
+    status: Mapped[StudentProgressionItemStatus] = mapped_column(
+        SQLEnum(
+            StudentProgressionItemStatus,
+            name="student_progression_item_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [
+                item.value for item in enum_cls
+            ],
+        ),
+        nullable=False,
+    )
+
+    reason: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+    )
+
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "progression_run_id",
+            "student_id",
+            name="uq_progression_item_run_student",
+        ),
+        Index(
+            "ix_progression_items_tenant_run",
+            "tenant_id",
+            "progression_run_id",
+        ),
+        Index(
+            "ix_progression_items_tenant_student",
+            "tenant_id",
+            "student_id",
+        ),
+        Index(
+            "ix_progression_items_tenant_status",
+            "tenant_id",
+            "status",
+        ),
+        CheckConstraint(
+            """
+            action <> 'promote'
+            OR to_class_id IS NOT NULL
+            """,
+            name="ck_progression_item_promotion_has_target",
+        ),
+        CheckConstraint(
+            """
+            action <> 'graduate'
+            OR to_class_id IS NULL
+            """,
+            name="ck_progression_item_graduation_no_target",
+        ),
+    )
+
+
+
+
+
+
+
+    
 class ClassSubjectTeacher(BaseModel):
     __tablename__ = "class_subject_teachers"
 

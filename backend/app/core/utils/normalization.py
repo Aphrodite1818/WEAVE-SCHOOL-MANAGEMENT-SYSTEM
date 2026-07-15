@@ -28,7 +28,6 @@ _CLASS_PREFIX_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 _NO_ARM_SENTINELS = {"-", "NOARM", "NO_ARM", "NO ARM", "NONE", "N/A", "NA"}
-_CLASS_LEVEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\s\-/&()]*$")
 
 
 def clean_string(value: Any) -> str | None:
@@ -154,25 +153,6 @@ def normalized_class_name_key(value: Any) -> str | None:
     """Normalize a classroom name for uniqueness and lookup keys."""
 
     return _canonical_class_name(value)
-
-
-def normalize_class_level(value: Any) -> str | None:
-    """Normalize a classroom level for display.
-
-    Examples:
-    - junior secondary school 1 -> Junior Secondary School 1
-    - SENIOR SECONDARY SCHOOL 2 -> Senior Secondary School 2
-    - primary 4 -> Primary 4
-    """
-
-    cleaned = clean_string(value)
-    if cleaned is None:
-        return None
-
-    if not _CLASS_LEVEL_PATTERN.fullmatch(cleaned):
-        return None
-
-    return cleaned.lower().title()
 
 
 def normalize_class_arm(value: Any) -> str | None:

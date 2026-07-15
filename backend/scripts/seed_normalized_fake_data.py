@@ -180,7 +180,6 @@ async def ensure_classroom(
     tenant_id: uuid.UUID,
     name: str,
     arm: str | None,
-    level: str,
     teacher_id: uuid.UUID | None = None,
 ) -> ClassRoom:
     display_name = normalize_class_name(name)
@@ -205,7 +204,6 @@ async def ensure_classroom(
             tenant_id=tenant_id,
             name=display_name,
             normalized_name=normalized_name,
-            level=level,
             arm=display_arm,
             normalized_arm=normalized_arm,
             teacher_id=teacher_id,
@@ -217,7 +215,6 @@ async def ensure_classroom(
 
     classroom.name = display_name
     classroom.normalized_name = normalized_name
-    classroom.level = level
     classroom.arm = display_arm
     classroom.normalized_arm = normalized_arm
     classroom.teacher_id = teacher_id
@@ -444,7 +441,6 @@ async def seed(tenant_id_arg: str | None) -> None:
             tenant_id=tenant.id,
             name="jss 1",
             arm=None,
-            level="Junior Secondary",
             teacher_id=teacher.id,
         )
         class_a = await ensure_classroom(
@@ -452,7 +448,6 @@ async def seed(tenant_id_arg: str | None) -> None:
             tenant_id=tenant.id,
             name="JSS-1",
             arm="a",
-            level="Junior Secondary",
             teacher_id=teacher.id,
         )
         class_b = await ensure_classroom(
@@ -460,7 +455,6 @@ async def seed(tenant_id_arg: str | None) -> None:
             tenant_id=tenant.id,
             name="Jss1",
             arm=" B ",
-            level="Junior Secondary",
             teacher_id=teacher.id,
         )
 

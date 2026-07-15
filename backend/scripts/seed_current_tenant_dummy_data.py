@@ -153,7 +153,6 @@ class ParentSeed:
 class ClassSeed:
     key: str
     name: str
-    level: str
     arm: str
     homeroom_teacher_email: str
     offered_subject_codes: list[str]
@@ -303,7 +302,6 @@ def generate_classes(teachers: list[TeacherSeed], arms: list[str]) -> list[Class
                 ClassSeed(
                     key=key,
                     name=f"Bulk {name}",
-                    level=level,
                     arm=arm,
                     homeroom_teacher_email=teacher.email,
                     offered_subject_codes=subject_codes_for_class(name, arm),
@@ -763,7 +761,6 @@ async def seed_full_school(
             classroom = ClassRoom(
                 tenant_id=tenant.id,
                 name=payload.name,
-                level=payload.level,
                 arm=payload.arm,
                 teacher_id=homeroom_teacher.id,
                 is_active=True,

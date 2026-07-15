@@ -168,7 +168,7 @@ class TenantSearchService:
             await db.execute(
                 select(ClassRoom).where(
                     ClassRoom.tenant_id == tenant_id,
-                    or_(ClassRoom.name.ilike(term), ClassRoom.arm.ilike(term), ClassRoom.level.ilike(term)),
+                    or_(ClassRoom.name.ilike(term), ClassRoom.arm.ilike(term)),
                 ).limit(per_type_limit)
             )
         ).scalars().all()
@@ -178,7 +178,7 @@ class TenantSearchService:
                 TenantSearchResult(
                     label=label,
                     role="class",
-                    metadata=classroom.level,
+                    metadata=classroom.arm,
                     class_name=label,
                     href=f"/admin/classes?class={classroom.name}&arm={classroom.arm}",
                 )
@@ -247,12 +247,12 @@ class TenantSearchService:
 
         for classroom in class_rows:
             label = TenantSearchService._name(classroom.name, classroom.arm)
-            if TenantSearchService._matches(query, label, classroom.level):
+            if TenantSearchService._matches(query, label):
                 items.append(
                     TenantSearchService._result(
                         label=label,
                         role="class",
-                        metadata=classroom.level,
+                        metadata=classroom.arm,
                         class_name=label,
                         href="/teacher/classes",
                     )

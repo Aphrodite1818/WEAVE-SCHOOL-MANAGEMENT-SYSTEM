@@ -164,7 +164,6 @@ async def create_classroom(db_session: AsyncSession, *, tenant: Tenant, name: st
         tenant_id=tenant.id,
         name=name,
         arm=arm,
-        level="JSS",
         is_active=True,
     )
     db_session.add(classroom)
