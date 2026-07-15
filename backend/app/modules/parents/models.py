@@ -320,6 +320,7 @@ class ParentMembership(BaseModel):
             OR
             (
                 status = 'inactive'
+                AND ended_at IS NOT NULL
             )
             """,
             name="ck_parent_membership_status_end_consistency",
