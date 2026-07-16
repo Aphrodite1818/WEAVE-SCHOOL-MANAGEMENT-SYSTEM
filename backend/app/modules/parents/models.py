@@ -1,18 +1,13 @@
-#==========================#
-#     parents.models.py    #
-#==========================#
-
-"""Global parent identity model supports cross-tenant relationship"""
-
+"""Parent account, tenant membership, and invitation models."""
 
 from __future__ import annotations
 
-import uuid 
-from datetime import datetime , timezone
+import uuid
+from datetime import datetime
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import(
+from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
@@ -21,264 +16,154 @@ from sqlalchemy import(
     Index,
     String,
     UniqueConstraint,
-    text
+    text,
 )
-
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped , mapped_column , relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.shared.mixins import TimestampMixin , UUIDMixin
-from app.shared.base_model import PUBLIC_SCHEMA, Base , BaseModel
 from app.modules.students.models import ParentRelationship
-
-
+from app.shared.base_model import Base, BaseModel, PUBLIC_SCHEMA
+from app.shared.mixins import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from app.modules.students.models import StudentParentLink
+    from app.modules.students.models import (
+        StudentParentLink,
+        StudentParentLinkRequest,
+    )
 
 
-def enum_values(enum_cls : type[PyEnum]) -> list[Any]:
-    """Persist enum values rather than python enum member names"""
-
+def enum_values(enum_cls: type[PyEnum]) -> list[Any]:
     return [item.value for item in enum_cls]
 
 
-
-class ParentAccountStatus(str , PyEnum):
-    """Global parent login-account status"""
-
-
+class ParentAccountStatus(str, PyEnum):
     PENDING = "pending"
     ACTIVE = "active"
     INACTIVE = "inactive"
     LOCKED = "locked"
 
 
-class ParentMembershipStatus(str , PyEnum):
-    """parent's relationship with a particular tenant"""
-
+class ParentMembershipStatus(str, PyEnum):
     ACTIVE = "active"
     READ_ONLY = "read_only"
     INACTIVE = "inactive"
 
 
-
-class ParentInvitationStatus(str , PyEnum):
-    """Lifecycle of an invitation sent by a school"""
-
-
+class ParentInvitationStatus(str, PyEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     EXPIRED = "expired"
     REVOKED = "revoked"
 
 
-
-class ParentAccount(UUIDMixin , TimestampMixin  , Base):
-    """
-    Global parent login identity
-
-    This model is intentionally not tenant-scoped . One human parent owns one 
-    account and may hold memberships in several tenants
-    """
+class ParentAccount(UUIDMixin, TimestampMixin, Base):
+    """Global parent login identity shared across tenants."""
 
     __tablename__ = "parent_accounts"
 
-    email : Mapped[str] = mapped_column(
-        String(300),
-        nullable = False
+    email: Mapped[str] = mapped_column(String(300), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(300), nullable=False)
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    occupation: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    emergency_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    account_status: Mapped[ParentAccountStatus] = mapped_column(
+        SQLEnum(
+            ParentAccountStatus,
+            name="parent_account_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+        default=ParentAccountStatus.PENDING,
+        server_default=ParentAccountStatus.PENDING.value,
     )
-
-
-    password_hash : Mapped[str] = mapped_column(
-        String(300),
-        nullable = False
-    )
-
-
-    first_name : Mapped[str | None] = mapped_column(
-        String(100),
-        nullable = True
-    )
-
-
-    last_name : Mapped[str | None] = mapped_column(
-        String(100),
-        nullable = True
-    )
-
-
-    phone_number : Mapped[str | None] = mapped_column(
-        String(30),
-        nullable=True
-    )
-
-
-    occupation : Mapped[str | None] = mapped_column(
-        String(150),
-        nullable = True
-    )
-
-
-
-    address : Mapped[str | None] = mapped_column(
-        String(500),
-        nullable  = True
-    )
-
-
-    emergency_phone : Mapped[str | None] = mapped_column(
-        String(30),
-        nullable = True
-    )
-
-
-    account_status : Mapped[ParentAccountStatus] = mapped_column(
-        SQLEnum(ParentAccountStatus , 
-                name = "parent_account_status",
-                schema = PUBLIC_SCHEMA,
-                values_callable = enum_values
-                ),
-        nullable = False ,
-        default = ParentAccountStatus.PENDING,
-        server_default=ParentAccountStatus.PENDING.value
-    )
-
-
-    is_verified : Mapped[bool] = mapped_column(
+    is_verified: Mapped[bool] = mapped_column(
         Boolean,
-        nullable = False ,
-        default = False,
-        server_default = "false"
+        nullable=False,
+        default=False,
+        server_default="false",
     )
-
-    is_active : Mapped[bool] = mapped_column(
-        Boolean ,
-        nullable = False,
-        default = True,
-        server_default="true"
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
     )
-
-    last_login_at : Mapped[datetime | None] = mapped_column(
+    last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        nullable = True 
+        nullable=True,
     )
 
     memberships: Mapped[list["ParentMembership"]] = relationship(
-    "ParentMembership",
-    back_populates="parent_account",
-    # Auto-save new/updated memberships when the parent is saved, but
-    # deliberately excludes "delete"/"delete-orphan" — deleting a
-    # ParentAccount must NEVER cascade-delete ParentMembership rows.
-    # Schools own their membership records; they must survive even if
-    # the parent's global account is removed.
-    cascade="save-update, merge",
-    # Don't load/manage child memberships in Python when a parent is
-    # deleted — trust the DB's own ON DELETE rule on the FK instead
-    # (must be set explicitly in the migration, e.g. RESTRICT or SET NULL).
-    passive_deletes=True
+        "ParentMembership",
+        back_populates="parent_account",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
 
-
-
     __table_args__ = (
-        UniqueConstraint(
-            "email",
-            name = "uq_parent_accounts_email"
-        ),
-
-        Index(
-            "ix_parent_account_email",
-            "email"
-        ),
-
-        Index(
-            "ix_parent_accounts_account_status",
-            "account_status"
-        ),
-
+        UniqueConstraint("email", name="uq_parent_accounts_email"),
+        Index("ix_parent_accounts_email", "email"),
+        Index("ix_parent_accounts_account_status", "account_status"),
         Index(
             "ix_parent_accounts_active_verified",
             "is_active",
-            "is_verified"
-        )
+            "is_verified",
+        ),
     )
-
 
     @property
     def profile_completed(self) -> bool:
-        """Return whether required parent profile fields are present"""
-
         return bool(
             self.first_name
             and self.first_name.strip()
             and self.last_name
             and self.last_name.strip()
         )
-    
-
-
-
-
 
 
 class ParentMembership(BaseModel):
-    """
-    Tenant-scoped relationship between a parent account and a school 
-    A membership identifies the parent inside one tenant but does not grant access to any student by itself
-    """
+    """Tenant-scoped authorization context for a global parent account."""
 
     __tablename__ = "parent_memberships"
 
-    parent_account_id : Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid = True),
+    parent_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey(
             f"{PUBLIC_SCHEMA}.parent_accounts.id",
-            ondelete = "RESTRICT"
+            ondelete="RESTRICT",
         ),
-        nullable=False
+        nullable=False,
     )
-
-
-    status : Mapped[ParentMembershipStatus] = mapped_column(
+    status: Mapped[ParentMembershipStatus] = mapped_column(
         SQLEnum(
             ParentMembershipStatus,
-            name = "parent_membership_status",
-            values_callable = enum_values,
-            schema = PUBLIC_SCHEMA
+            name="parent_membership_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
         ),
-
-        nullable = False,
-        default = ParentMembershipStatus.ACTIVE,
-        server_default = ParentMembershipStatus.ACTIVE.value
+        nullable=False,
+        default=ParentMembershipStatus.ACTIVE,
+        server_default=ParentMembershipStatus.ACTIVE.value,
     )
-
-
-    joined_at : Mapped[datetime | None] = mapped_column(
-        DateTime(timezone = True),
-        nullable = True
+    joined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
-
-
-    ended_at : Mapped[datetime | None] = mapped_column(
-        DateTime(timezone = True),
-        nullable = True
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
-
-    end_reason : Mapped[str | None] = mapped_column(
-        String(500),
-        nullable = True
+    end_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    receive_email_notifications: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
     )
-
-
-    receive_email_notifications : Mapped[bool] = mapped_column(
-        Boolean ,
-        nullable = False,
-        default = True ,
-        server_default="true"
-    )
-
-
     receive_push_notifications: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -286,18 +171,16 @@ class ParentMembership(BaseModel):
         server_default="true",
     )
 
-    parent_account: Mapped["ParentAccount"] = relationship(
+    parent_account: Mapped[ParentAccount] = relationship(
         "ParentAccount",
         back_populates="memberships",
     )
-
     student_links: Mapped[list["StudentParentLink"]] = relationship(
         "StudentParentLink",
         back_populates="parent_membership",
         cascade="save-update, merge",
         passive_deletes=True,
     )
-
     student_link_requests: Mapped[list["StudentParentLinkRequest"]] = relationship(
         "StudentParentLinkRequest",
         back_populates="parent_membership",
@@ -342,36 +225,73 @@ class ParentMembership(BaseModel):
         ),
     )
 
+    @property
+    def email(self) -> str:
+        return self.parent_account.email
 
+    @property
+    def first_name(self) -> str | None:
+        return self.parent_account.first_name
 
+    @property
+    def last_name(self) -> str | None:
+        return self.parent_account.last_name
 
+    @property
+    def phone_number(self) -> str | None:
+        return self.parent_account.phone_number
+
+    @property
+    def occupation(self) -> str | None:
+        return self.parent_account.occupation
+
+    @property
+    def address(self) -> str | None:
+        return self.parent_account.address
+
+    @property
+    def emergency_phone(self) -> str | None:
+        return self.parent_account.emergency_phone
+
+    @property
+    def account_status(self) -> ParentAccountStatus:
+        return self.parent_account.account_status
+
+    @property
+    def is_verified(self) -> bool:
+        return self.parent_account.is_verified
+
+    @property
+    def is_active(self) -> bool:
+        return (
+            self.parent_account.is_active
+            and self.status != ParentMembershipStatus.INACTIVE
+        )
+
+    @property
+    def profile_completed(self) -> bool:
+        return self.parent_account.profile_completed
+
+    @property
+    def last_login_at(self) -> datetime | None:
+        return self.parent_account.last_login_at
 
 
 class ParentInvitation(BaseModel):
-    """
-    Tenant-scoped invitation for a specific student and parent email
-
-    Creating an invitation does not create a global ParentAccount or a 
-    ParentMembership
-    """
+    """Invitation for one parent email to link to one student in a tenant."""
 
     __tablename__ = "parent_invitations"
 
-    student_id : Mapped[uuid.UUID]  = mapped_column(
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey(
             f"{PUBLIC_SCHEMA}.students.id",
-            ondelete = "RESTRICT"
+            ondelete="RESTRICT",
         ),
-        nullable = False
+        nullable=False,
     )
-
-    invited_email : Mapped[str] = mapped_column(
-        String(300),
-        nullable = False
-    )
-
-
-    relationship_type : Mapped[ParentRelationship] = mapped_column(
+    invited_email: Mapped[str] = mapped_column(String(300), nullable=False)
+    relationship_type: Mapped[ParentRelationship] = mapped_column(
         SQLEnum(
             ParentRelationship,
             name="parentrelationship",
@@ -382,62 +302,42 @@ class ParentInvitation(BaseModel):
         default=ParentRelationship.GUARDIAN,
         server_default=ParentRelationship.GUARDIAN.value,
     )
-
-
-    admission_number_snapshot : Mapped[str] = mapped_column(
+    admission_number_snapshot: Mapped[str] = mapped_column(
         String(100),
-        nullable = False
+        nullable=False,
     )
-
-
-    token_digest: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False
-    )
-
-
-    status : Mapped[ParentInvitationStatus] = mapped_column(
+    token_digest: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[ParentInvitationStatus] = mapped_column(
         SQLEnum(
             ParentInvitationStatus,
-            name = "parent_invitation_status",
-            schema = PUBLIC_SCHEMA,
-            values_callable = enum_values
+            name="parent_invitation_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
         ),
-        nullable = False,
-        default = ParentInvitationStatus.PENDING,
-        server_default=ParentInvitationStatus.PENDING.value
+        nullable=False,
+        default=ParentInvitationStatus.PENDING,
+        server_default=ParentInvitationStatus.PENDING.value,
     )
-
-
-
-    expires_at : Mapped[datetime] = mapped_column(
-        DateTime(timezone = True),
-        nullable = False
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
     )
-
-
-    accepted_at : Mapped[datetime | None] = mapped_column(
-        DateTime(timezone = True),
-        nullable = True
+    accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
-
-    revoked_at : Mapped[datetime | None] = mapped_column(
-        DateTime(timezone = True),
-        nullable = True
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
-
-
-
-    created_by_admin_id : Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid = True),
+    created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey(
-             f"{PUBLIC_SCHEMA}.tenant_admins.id",
+            f"{PUBLIC_SCHEMA}.tenant_admins.id",
             ondelete="SET NULL",
         ),
         nullable=True,
     )
-
-
     accepted_by_parent_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(
@@ -459,10 +359,7 @@ class ParentInvitation(BaseModel):
                 AND accepted_at IS NOT NULL
                 AND accepted_by_parent_account_id IS NOT NULL
             )
-            OR
-            (
-                status <> 'accepted'
-            )
+            OR status <> 'accepted'
             """,
             name="ck_parent_invitation_acceptance_consistency",
         ),
@@ -472,10 +369,7 @@ class ParentInvitation(BaseModel):
                 status = 'revoked'
                 AND revoked_at IS NOT NULL
             )
-            OR
-            (
-                status <> 'revoked'
-            )
+            OR status <> 'revoked'
             """,
             name="ck_parent_invitation_revocation_consistency",
         ),
@@ -490,10 +384,7 @@ class ParentInvitation(BaseModel):
             "invited_email",
             "status",
         ),
-        Index(
-            "ix_parent_invitations_expires_at",
-            "expires_at",
-        ),
+        Index("ix_parent_invitations_expires_at", "expires_at"),
         Index(
             "uq_parent_invitations_pending_student_email",
             "tenant_id",
@@ -505,6 +396,6 @@ class ParentInvitation(BaseModel):
     )
 
 
-# Compatibility alias for legacy tenant-scoped imports while the global parent
-# account flow is being tested. New account code should import ParentAccount.
-Parent = ParentAccount
+# Tenant-facing code uses Parent as the membership actor. Global login code uses
+# ParentAccount explicitly.
+Parent = ParentMembership
