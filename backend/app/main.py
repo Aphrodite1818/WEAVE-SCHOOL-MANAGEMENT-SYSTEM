@@ -21,11 +21,10 @@ from app.modules.announcements.router import (
     teacher_router as teacher_announcement_router,
     tenant_admin_router as tenant_admin_announcement_router,
 )
+from app.modules.auth.membership_router import router as auth_membership_router
 from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
-from app.modules.classes.class_subjects_router import (
-    router as class_subjects_router,
-)
+from app.modules.classes.class_subjects_router import router as class_subjects_router
 from app.modules.classes.router import router as class_router
 from app.modules.email_outbox.router import router as email_outbox_router
 from app.modules.media.router import router as media_router
@@ -80,9 +79,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         docs_url="/docs" if settings.is_development else None,
         redoc_url="/redoc" if settings.is_development else None,
-        openapi_url=(
-            "/openapi.json" if settings.is_development else None
-        ),
+        openapi_url="/openapi.json" if settings.is_development else None,
     )
 
     middleware_options = {
@@ -103,6 +100,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+    app.include_router(auth_membership_router, prefix="/api/v1/auth")
     app.include_router(superadmin_router, prefix="/api/v1")
     app.include_router(
         tenant_admin_router,
@@ -110,18 +108,9 @@ def create_app() -> FastAPI:
         tags=["Tenant Admin"],
     )
     app.include_router(media_router, prefix="/api/v1/tenant-admin")
-    app.include_router(
-        tenant_branding_router,
-        prefix="/api/v1/tenant-admin",
-    )
-    app.include_router(
-        bulk_import_router,
-        prefix="/api/v1/tenant-admin",
-    )
-    app.include_router(
-        email_outbox_router,
-        prefix="/api/v1/tenant-admin",
-    )
+    app.include_router(tenant_branding_router, prefix="/api/v1/tenant-admin")
+    app.include_router(bulk_import_router, prefix="/api/v1/tenant-admin")
+    app.include_router(email_outbox_router, prefix="/api/v1/tenant-admin")
     app.include_router(
         tenant_router,
         prefix="/api/v1/tenants",
@@ -176,15 +165,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import logging
-
     import uvicorn
 
-    from app.config.logging import is_development, resolve_log_level
-
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=is_development(),
-        log_level=logging.getLevelName(resolve_log_level()).lower(),
-    )
+    logging.basicConfig(level=logging.INFO)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
