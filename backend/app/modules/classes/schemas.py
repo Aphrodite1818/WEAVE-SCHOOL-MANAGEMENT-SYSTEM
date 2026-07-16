@@ -5,6 +5,7 @@
 import uuid
 from datetime import datetime
 from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.utils.normalization import (
@@ -20,6 +21,7 @@ class InputBase(BaseModel):
         extra="forbid",
         str_strip_whitespace=True,
         str_to_lower=False,
+        use_enum_values=False,
     )
 
 
@@ -41,13 +43,11 @@ class ClassRoomBase(InputBase):
         max_length=100,
         description="Class name e.g JSS1, JSS 1, Primary 4",
     )
-
     arm: str | None = Field(
         default=None,
         max_length=20,
         description="Optional class arm e.g A, B, Science",
     )
-
     teacher_id: uuid.UUID | None = Field(
         default=None,
         description="Optional class teacher ID",
@@ -78,21 +78,11 @@ class ClassRoomCreate(ClassRoomBase):
 
 
 class ClassRoomUpdate(InputBase):
-    """Payload for updating a classroom."""
+    """Payload for updating ordinary classroom fields."""
 
-    name: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=100,
-    )
-
-    arm: str | None = Field(
-        default=None,
-        max_length=20,
-    )
-
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    arm: str | None = Field(default=None, max_length=20)
     teacher_id: uuid.UUID | None = Field(default=None)
-
     is_active: bool | None = Field(default=None)
 
     @field_validator("name", mode="before")
@@ -120,61 +110,39 @@ class ClassRoomResponse(OutputBase):
 
     id: uuid.UUID
     tenant_id: uuid.UUID
-
     name: str
     arm: str | None
     next_class_id: uuid.UUID | None
     is_terminal: bool
-
     teacher_id: uuid.UUID | None
     is_active: bool
-
     created_at: datetime
     updated_at: datetime
-
-
-
-
-
 
 
 class ClassProgressionConfigureRequest(InputBase):
     """
     Configure explicit progression for one class.
 
-    The service must validate tenant ownership, active state, self-reference,
-    and circular progression.
+    A non-terminal class may temporarily have no next class while the tenant is
+    still configuring its progression chain. Session closure validation must
+    reject that state when the class contains eligible students.
     """
 
     next_class_id: uuid.UUID | None = None
     is_terminal: bool = False
 
     @model_validator(mode="after")
-    def validate_terminal_configuration(
-        self,
-    ) -> "ClassProgressionConfigureRequest":
+    def validate_terminal_configuration(self) -> "ClassProgressionConfigureRequest":
         """A terminal class cannot have a next class."""
 
         if self.is_terminal and self.next_class_id is not None:
-            raise ValueError(
-                "a terminal class cannot have next_class_id"
-            )
-
-        if not self.is_terminal and self.next_class_id is None:
-            raise ValueError(
-                "a non-terminal class requires next_class_id"
-            )
-
+            raise ValueError("a terminal class cannot have next_class_id")
         return self
 
 
 class ClassProgressionClearRequest(InputBase):
-    """
-    Clear progression configuration.
-
-    This should only be permitted where the class has no students or is being
-    replaced within the same transaction.
-    """
+    """Clear progression configuration through an explicit operation."""
 
     confirmation: Literal["CLEAR_CLASS_PROGRESSION"]
 
