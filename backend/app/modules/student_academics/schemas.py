@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
+
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -26,7 +27,7 @@ class InputBase(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         str_strip_whitespace=True,
-        use_enum_values=True,
+        use_enum_values=False,
     )
 
 
@@ -37,13 +38,11 @@ class OutputBase(BaseModel):
         populate_by_name=True,
     )
 
+
 class AcademicSessionCreate(InputBase):
     """Create an academic session in DRAFT state."""
 
-    name: str = Field(
-        min_length=9,
-        max_length=9,
-    )
+    name: str = Field(min_length=9, max_length=9)
     start_date: date | None = None
     end_date: date | None = None
     next_academic_session_id: uuid.UUID | None = None
@@ -51,37 +50,23 @@ class AcademicSessionCreate(InputBase):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        """Validate the canonical academic-session name."""
-
         return validate_academic_session_name(value)
 
     @model_validator(mode="after")
     def validate_date_range(self) -> "AcademicSessionCreate":
-        """Validate optional academic-session dates."""
-
         if (
             self.start_date is not None
             and self.end_date is not None
             and self.end_date <= self.start_date
         ):
             raise ValueError("end_date must be after start_date")
-
         return self
 
 
 class AcademicSessionUpdate(InputBase):
-    """
-    Update non-lifecycle academic-session configuration.
+    """Update non-lifecycle academic-session configuration."""
 
-    Status, is_current, is_active, closing timestamps, and closed_by_admin_id
-    are managed exclusively by academic-session lifecycle services.
-    """
-
-    name: str | None = Field(
-        default=None,
-        min_length=9,
-        max_length=9,
-    )
+    name: str | None = Field(default=None, min_length=9, max_length=9)
     start_date: date | None = None
     end_date: date | None = None
     next_academic_session_id: uuid.UUID | None = None
@@ -89,36 +74,25 @@ class AcademicSessionUpdate(InputBase):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str | None) -> str | None:
-        """Validate an optional session name."""
-
         if value is None:
             return None
-
         return validate_academic_session_name(value)
 
     @model_validator(mode="after")
     def validate_update(self) -> "AcademicSessionUpdate":
-        """Validate non-empty updates and complete supplied date ranges."""
-
         if not self.model_fields_set:
             raise ValueError("at least one session field must be provided")
-
         if (
             self.start_date is not None
             and self.end_date is not None
             and self.end_date <= self.start_date
         ):
             raise ValueError("end_date must be after start_date")
-
         return self
 
 
 class AcademicSessionOpenRequest(InputBase):
-    """
-    Explicitly open a draft academic session.
-
-    The service must ensure there is no other current open session.
-    """
+    """Explicitly open a draft academic session."""
 
     confirmation: Literal["OPEN_ACADEMIC_SESSION"]
 
@@ -127,20 +101,15 @@ class AcademicSessionCloseRequest(InputBase):
     """
     Close the current academic session and run progression.
 
-    The idempotency key must be stable across client retries.
+    The service follows the current session's stored next_academic_session_id.
+    The request cannot substitute a different next session during closure.
     """
 
-    next_academic_session_id: uuid.UUID
-    idempotency_key: str = Field(
-        min_length=8,
-        max_length=150,
-    )
+    idempotency_key: str = Field(min_length=8, max_length=150)
     confirmation: Literal["CLOSE_AND_PROGRESS"]
 
 
 class AcademicSessionResponse(OutputBase):
-    """Academic session response."""
-
     id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
@@ -155,6 +124,7 @@ class AcademicSessionResponse(OutputBase):
     next_academic_session_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
+
 
 class AcademicTermCreate(InputBase):
     academic_session_id: uuid.UUID
@@ -300,13 +270,26 @@ class StudentSubjectResultUpsert(InputBase):
     @model_validator(mode="after")
     def validate_score_total(self):
         total = sum(
-            (score for score in (self.test_score, self.assessment_score, self.exam_score) if score is not None),
+            (
+                score
+                for score in (
+                    self.test_score,
+                    self.assessment_score,
+                    self.exam_score,
+                )
+                if score is not None
+            ),
             Decimal("0"),
         )
         if total > 100:
             raise ValueError("The combined score cannot exceed 100.")
-        if str(self.status) == AcademicResultStatus.SUBMITTED.value and any(
-            score is None for score in (self.test_score, self.assessment_score, self.exam_score)
+        if self.status == AcademicResultStatus.SUBMITTED and any(
+            score is None
+            for score in (
+                self.test_score,
+                self.assessment_score,
+                self.exam_score,
+            )
         ):
             raise ValueError("All three scores are required before submitting a result.")
         return self
@@ -472,12 +455,7 @@ class TeacherAssignmentListResponse(OutputBase):
     total: int
 
 
-
-
-
 class StudentProgressionItemResponse(OutputBase):
-    """One student outcome from a progression run."""
-
     id: uuid.UUID
     tenant_id: uuid.UUID
     progression_run_id: uuid.UUID
@@ -494,11 +472,7 @@ class StudentProgressionItemResponse(OutputBase):
     updated_at: datetime
 
 
-class StudentProgressionItemDetailResponse(
-    StudentProgressionItemResponse
-):
-    """Progression item with display labels."""
-
+class StudentProgressionItemDetailResponse(StudentProgressionItemResponse):
     student_name: str | None = None
     admission_number: str | None = None
     from_class_name: str | None = None
@@ -508,8 +482,6 @@ class StudentProgressionItemDetailResponse(
 
 
 class StudentProgressionRunResponse(OutputBase):
-    """Academic-session progression run response."""
-
     id: uuid.UUID
     tenant_id: uuid.UUID
     academic_session_id: uuid.UUID
@@ -529,26 +501,18 @@ class StudentProgressionRunResponse(OutputBase):
     updated_at: datetime
 
 
-class StudentProgressionRunDetailResponse(
-    StudentProgressionRunResponse
-):
-    """Progression run containing all student outcomes."""
-
+class StudentProgressionRunDetailResponse(StudentProgressionRunResponse):
     academic_session_name: str | None = None
     next_academic_session_name: str | None = None
     items: list[StudentProgressionItemDetailResponse]
 
 
 class StudentProgressionRunListResponse(OutputBase):
-    """Progression audit run list."""
-
     items: list[StudentProgressionRunResponse]
     total: int = Field(ge=0)
 
 
 class AcademicSessionCloseResponse(OutputBase):
-    """Successful session-close and progression result."""
-
     closed_session: AcademicSessionResponse
     opened_session: AcademicSessionResponse
     progression_run: StudentProgressionRunDetailResponse
