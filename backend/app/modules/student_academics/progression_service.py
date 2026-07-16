@@ -32,13 +32,14 @@ from app.modules.student_academics.schemas import (
     AcademicSessionResponse,
     StudentProgressionItemResponse,
     StudentProgressionRunDetailResponse,
+    StudentProgressionRunResponse,
 )
 from app.modules.students.models import (
     AcademicStatus,
+    StudentAccountStatus,
     StudentEnrollment,
     StudentEnrollmentOutcome,
     StudentParentLinkStatus,
-    StudentAccountStatus,
 )
 from app.modules.students.repository import (
     StudentEnrollmentRepository,
@@ -74,6 +75,7 @@ class AcademicProgressionService:
                 raise NotFoundException("Academic session not found.")
             if session.status != AcademicSessionStatus.DRAFT:
                 raise ConflictException("Only draft sessions can be opened.")
+
             current = await AcademicSessionLifecycleRepository.get_current_open(
                 db,
                 actor.tenant_id,
@@ -83,6 +85,7 @@ class AcademicProgressionService:
                 raise ConflictException(
                     "Close the current academic session before opening another."
                 )
+
             session.status = AcademicSessionStatus.OPEN
             session.is_current = True
             session.is_active = True
@@ -90,6 +93,7 @@ class AcademicProgressionService:
             session.closed_at = None
             session.closed_by_admin_id = None
             await AcademicSessionLifecycleRepository.save(db, session)
+
         await db.refresh(session)
         return AcademicSessionResponse.model_validate(session)
 
@@ -121,9 +125,8 @@ class AcademicProgressionService:
         tenant_id: uuid.UUID,
         enrollments: list[StudentEnrollment],
     ) -> dict[uuid.UUID, ClassRoom]:
-        class_ids = {row.class_id for row in enrollments}
         graph: dict[uuid.UUID, ClassRoom] = {}
-        for class_id in class_ids:
+        for class_id in {row.class_id for row in enrollments}:
             classroom = await ClassRoomRepository.get_by_id(
                 db,
                 tenant_id,
@@ -134,6 +137,7 @@ class AcademicProgressionService:
                 raise ConflictException(
                     f"Enrollment references missing class {class_id}."
                 )
+
             if classroom.is_terminal:
                 if classroom.next_class_id is not None:
                     raise ConflictException(
@@ -155,7 +159,9 @@ class AcademicProgressionService:
                         f"The next class configured for {classroom.name} is unavailable."
                     )
                 graph[next_class.id] = next_class
+
             graph[classroom.id] = classroom
+
         return graph
 
     @staticmethod
@@ -164,7 +170,7 @@ class AcademicProgressionService:
         *,
         tenant_id: uuid.UUID,
         student_id: uuid.UUID,
-    ) -> int:
+    ) -> None:
         links = await StudentParentLinkRepository.list_for_student(
             db,
             tenant_id,
@@ -182,6 +188,7 @@ class AcademicProgressionService:
             link.end_reason = None
             await StudentParentLinkRepository.save(db, link)
             membership_ids.add(link.parent_membership_id)
+
         for membership_id in membership_ids:
             membership = await ParentMembershipRepository.get_by_id(
                 db,
@@ -194,10 +201,9 @@ class AcademicProgressionService:
                     db,
                     membership,
                 )
-        return len(links)
 
     @staticmethod
-    async def _promote_student(
+    async def _progress_student(
         db: AsyncSession,
         *,
         actor: TenantAdmin,
@@ -219,6 +225,7 @@ class AcademicProgressionService:
             raise ConflictException(
                 f"Enrollment {enrollment.id} references a missing student."
             )
+
         if (
             student.is_archived
             or student.promotion_hold
@@ -235,19 +242,18 @@ class AcademicProgressionService:
                     to_class_id=None,
                     action=StudentProgressionItemAction.SKIP,
                     status=StudentProgressionItemStatus.SKIPPED,
-                    reason=(
-                        "Student is archived, on promotion hold, or not active."
-                    ),
+                    reason="Student is archived, on promotion hold, or not active.",
                     processed_at=_utc_now(),
                 ),
             )
 
+        enrollment.is_current = False
+        enrollment.ended_on = effective_date
+        enrollment.changed_by_admin_id = actor.id
+
         if classroom.is_terminal:
-            enrollment.is_current = False
-            enrollment.ended_on = effective_date
             enrollment.outcome = StudentEnrollmentOutcome.GRADUATED
             enrollment.reason = "Automatic terminal-class graduation"
-            enrollment.changed_by_admin_id = actor.id
             await StudentEnrollmentRepository.save(db, enrollment)
 
             student.status = AcademicStatus.GRADUATED
@@ -273,6 +279,7 @@ class AcademicProgressionService:
                 tenant_id=actor.tenant_id,
                 student_id=student.id,
             )
+
             return await StudentProgressionRepository.add_item(
                 db,
                 StudentProgressionItem(
@@ -290,11 +297,8 @@ class AcademicProgressionService:
             )
 
         target_class = graph[classroom.next_class_id]
-        enrollment.is_current = False
-        enrollment.ended_on = effective_date
         enrollment.outcome = StudentEnrollmentOutcome.PROMOTED
         enrollment.reason = "Automatic academic-session progression"
-        enrollment.changed_by_admin_id = actor.id
         await StudentEnrollmentRepository.save(db, enrollment)
 
         next_enrollment = await StudentEnrollmentRepository.add(
@@ -314,6 +318,7 @@ class AcademicProgressionService:
         student.class_id = target_class.id
         student.arm = target_class.arm
         await StudentRepository.save(db, student)
+
         return await StudentProgressionRepository.add_item(
             db,
             StudentProgressionItem(
@@ -340,6 +345,7 @@ class AcademicProgressionService:
         idempotency_key: str,
     ) -> AcademicSessionCloseResponse:
         completed_run_id: uuid.UUID | None = None
+
         try:
             async with db.begin():
                 session = await AcademicSessionLifecycleRepository.get_by_id(
@@ -351,11 +357,13 @@ class AcademicProgressionService:
                 if session is None:
                     raise NotFoundException("Academic session not found.")
 
-                existing = await StudentProgressionRepository.get_run_by_idempotency_key(
-                    db,
-                    actor.tenant_id,
-                    idempotency_key,
-                    lock=True,
+                existing = (
+                    await StudentProgressionRepository.get_run_by_idempotency_key(
+                        db,
+                        actor.tenant_id,
+                        idempotency_key,
+                        lock=True,
+                    )
                 )
                 if existing is None:
                     existing = await StudentProgressionRepository.get_run_by_session(
@@ -364,10 +372,17 @@ class AcademicProgressionService:
                         session.id,
                         lock=True,
                     )
-                if existing is not None and existing.status == StudentProgressionRunStatus.COMPLETED:
+
+                if (
+                    existing is not None
+                    and existing.status == StudentProgressionRunStatus.COMPLETED
+                ):
                     completed_run_id = existing.id
                 else:
-                    if session.status != AcademicSessionStatus.OPEN or not session.is_current:
+                    if (
+                        session.status != AcademicSessionStatus.OPEN
+                        or not session.is_current
+                    ):
                         raise ConflictException(
                             "Only the current open session can be closed."
                         )
@@ -375,6 +390,7 @@ class AcademicProgressionService:
                         raise BadRequestException(
                             "Configure next_academic_session_id before closure."
                         )
+
                     next_session = await AcademicSessionLifecycleRepository.get_by_id(
                         db,
                         actor.tenant_id,
@@ -387,21 +403,27 @@ class AcademicProgressionService:
                         raise ConflictException(
                             "The next academic session must still be draft."
                         )
-                    if existing is not None and existing.idempotency_key != idempotency_key:
+                    if (
+                        existing is not None
+                        and existing.idempotency_key != idempotency_key
+                    ):
                         raise ConflictException(
                             "This academic session already has a progression run."
                         )
 
-                    enrollments = await AcademicProgressionService._load_progression_enrollments(
-                        db,
-                        tenant_id=actor.tenant_id,
-                        academic_session_id=session.id,
+                    enrollments = (
+                        await AcademicProgressionService._load_progression_enrollments(
+                            db,
+                            tenant_id=actor.tenant_id,
+                            academic_session_id=session.id,
+                        )
                     )
                     graph = await AcademicProgressionService._validate_class_graph(
                         db,
                         tenant_id=actor.tenant_id,
                         enrollments=enrollments,
                     )
+
                     if existing is None:
                         run = await StudentProgressionRepository.add_run(
                             db,
@@ -442,7 +464,7 @@ class AcademicProgressionService:
                     effective_date = session.end_date or date.today()
                     for enrollment in enrollments:
                         classroom = graph[enrollment.class_id]
-                        item = await AcademicProgressionService._promote_student(
+                        item = await AcademicProgressionService._progress_student(
                             db,
                             actor=actor,
                             run=run,
@@ -478,16 +500,19 @@ class AcademicProgressionService:
                     run.completed_at = now
                     await StudentProgressionRepository.save_run(db, run)
                     completed_run_id = run.id
+
         except (BadRequestException, ConflictException, NotFoundException):
             raise
         except Exception as exc:
             await db.rollback()
             async with db.begin():
-                failed = await StudentProgressionRepository.get_run_by_idempotency_key(
-                    db,
-                    actor.tenant_id,
-                    idempotency_key,
-                    lock=True,
+                failed = (
+                    await StudentProgressionRepository.get_run_by_idempotency_key(
+                        db,
+                        actor.tenant_id,
+                        idempotency_key,
+                        lock=True,
+                    )
                 )
                 if failed is None:
                     session = await AcademicSessionLifecycleRepository.get_by_id(
@@ -495,13 +520,18 @@ class AcademicProgressionService:
                         actor.tenant_id,
                         session_id,
                     )
-                    if session is not None and session.next_academic_session_id is not None:
-                        failed = await StudentProgressionRepository.add_run(
+                    if (
+                        session is not None
+                        and session.next_academic_session_id is not None
+                    ):
+                        await StudentProgressionRepository.add_run(
                             db,
                             StudentProgressionRun(
                                 tenant_id=actor.tenant_id,
                                 academic_session_id=session.id,
-                                next_academic_session_id=session.next_academic_session_id,
+                                next_academic_session_id=(
+                                    session.next_academic_session_id
+                                ),
                                 idempotency_key=idempotency_key,
                                 status=StudentProgressionRunStatus.FAILED,
                                 total_students=0,
@@ -523,6 +553,7 @@ class AcademicProgressionService:
         await AuthIdentityService.invalidate_after_commit(db)
         if completed_run_id is None:
             raise ConflictException("Progression run did not complete.")
+
         return await AcademicProgressionService.get_close_response(
             db,
             tenant_id=actor.tenant_id,
@@ -543,6 +574,7 @@ class AcademicProgressionService:
         )
         if run is None:
             raise NotFoundException("Progression run not found.")
+
         items = await StudentProgressionRepository.list_items_for_run(
             db,
             tenant_id,
@@ -560,15 +592,16 @@ class AcademicProgressionService:
         )
         if closed_session is None or opened_session is None:
             raise ConflictException("Progression session records are incomplete.")
+
+        run_summary = StudentProgressionRunResponse.model_validate(run)
         run_payload = StudentProgressionRunDetailResponse(
-            **StudentProgressionRunDetailResponse.model_validate(run).model_dump(
-                exclude={"items"}
-            ),
+            **run_summary.model_dump(),
             items=[
                 StudentProgressionItemResponse.model_validate(item)
                 for item in items
             ],
         )
+
         return AcademicSessionCloseResponse(
             closed_session=AcademicSessionResponse.model_validate(closed_session),
             opened_session=AcademicSessionResponse.model_validate(opened_session),
