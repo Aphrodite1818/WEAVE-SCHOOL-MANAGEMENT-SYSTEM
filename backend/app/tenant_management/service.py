@@ -9,6 +9,7 @@ import uuid
 from enum import StrEnum
 
 from fastapi import BackgroundTasks
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.security import hash_password
@@ -21,6 +22,8 @@ from app.core.exceptions import (
 )
 from app.core.utils.validators import generate_slug
 from app.modules.auth.models import AuthPurpose
+from app.modules.auth_identity.models import ActorType, IdentifierType
+from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth.schemas import RequestOTP
@@ -170,6 +173,76 @@ class TenantService:
         return slug
 
     @staticmethod
+    async def _ensure_tenant_admin_identity(
+        db: AsyncSession,
+        *,
+        admin: TenantAdmin,
+    ) -> None:
+        """Create or repair the tenant admin auth identity for registration retries."""
+
+        await AuthIdentityService.ensure_for_actor(
+            db=db,
+            tenant_id=admin.tenant_id,
+            payload=AuthIdentityCreate(
+                identifier=admin.email,
+                identifier_type=IdentifierType.EMAIL,
+                actor_type=ActorType.TENANT_ADMIN,
+                actor_id=admin.id,
+                is_active=True,
+            ),
+        )
+
+    @staticmethod
+    async def _recover_concurrent_registration(
+        *,
+        db: AsyncSession,
+        normalized_email: str,
+        password: str,
+    ) -> tuple[Tenant, TenantAdmin]:
+        """
+        Recover when concurrent tenant registrations race on unique constraints.
+
+        The winning request creates the pending tenant/admin. The losing request
+        reloads those rows under lock and treats the result as a resumable
+        pending registration.
+        """
+
+        async with db.begin():
+            tenant = await TenantRepository.get_by_email_including_deleted(
+                db,
+                normalized_email,
+                lock=True,
+            )
+            admin = await TenantAdminRepository.get_by_email(
+                db,
+                normalized_email,
+                lock=True,
+            )
+
+            if tenant is None or admin is None:
+                raise ConflictException(
+                    "Tenant registration could not be recovered. Please try again."
+                )
+
+            state = TenantService.get_email_registration_state(
+                admin=admin,
+                tenant=tenant,
+            )
+
+            if state != EmailRegistrationState.PENDING:
+                raise ConflictException("This email is already registered. Please log in.")
+
+            admin.password_hash = hash_password(password)
+            admin.account_status = TenantAdminStatus.PENDING
+            admin.is_verified = False
+            admin.is_active = True
+
+            await TenantAdminRepository.save(db, admin)
+            await TenantService._ensure_tenant_admin_identity(db=db, admin=admin)
+
+            return tenant, admin
+
+    @staticmethod
     async def _unique_slug_for_tenant(
         db: AsyncSession,
         school_name: str,
@@ -206,118 +279,148 @@ class TenantService:
         tenant: Tenant | None = None
         reused_pending_account = False
 
-        async with db.begin():
-            await AccountEmailGuard.ensure_not_superadmin_email(
-                db = db ,
-                email = normalized_email
-            )
-            existing_tenant_by_name = await TenantRepository.get_by_school_name(
-                db,
-                school_name,
-            )
-            existing_admin = await TenantAdminRepository.get_by_email(
-                db,
-                normalized_email,
-            )
-
-            existing_tenant_by_email = (
-                await TenantRepository.get_by_email_including_deleted(
+        try:
+            async with db.begin():
+                await AccountEmailGuard.ensure_not_superadmin_email(
+                    db = db ,
+                    email = normalized_email
+                )
+                existing_tenant_by_name = await TenantRepository.get_by_school_name(
+                    db,
+                    school_name,
+                    lock=True,
+                )
+                existing_admin = await TenantAdminRepository.get_by_email(
                     db,
                     normalized_email,
+                    lock=True,
                 )
-            )
-            email_state = TenantService.get_email_registration_state(
-                admin=existing_admin,
-                tenant=existing_tenant_by_email,
-            )
 
-            if admission_number_prefix is not None:
-                existing_tenant_by_prefix = await TenantRepository.get_by_admission_number_prefix(
-                    db,
-                    admission_number_prefix,
-                )
-                if (
-                    existing_tenant_by_prefix is not None
-                    and (
-                        existing_tenant_by_email is None
-                        or existing_tenant_by_prefix.id != existing_tenant_by_email.id
+                existing_tenant_by_email = (
+                    await TenantRepository.get_by_email_including_deleted(
+                        db,
+                        normalized_email,
+                        lock=True,
                     )
-                ):
-                    raise ConflictException("Prefix not available")
-
-            if existing_tenant_by_name is not None:
-                if existing_tenant_by_email is None:
-                    raise ConflictException("This school name is already registered.")
-
-                if existing_tenant_by_name.id != existing_tenant_by_email.id:
-                    raise ConflictException("This school name is already registered.")
-
-            email_state = TenantService.get_email_registration_state(
-                existing_admin,
-                existing_tenant_by_email,
-            )
-
-            if email_state == EmailRegistrationState.DELETED:
-                raise ConflictException("This email is already registered. Please log in.")
-
-            if email_state == EmailRegistrationState.ACTIVE:
-                raise ConflictException("This email is already registered. Please log in.")
-
-            if email_state == EmailRegistrationState.REJECTED:
-                raise ConflictException(
-                    "This registration was rejected. Please contact support."
+                )
+                email_state = TenantService.get_email_registration_state(
+                    admin=existing_admin,
+                    tenant=existing_tenant_by_email,
                 )
 
-            if email_state == EmailRegistrationState.PENDING:
-                if existing_admin is None or existing_tenant_by_email is None:
-                    raise ConflictException(
-                        "This email is already registered. Please contact support."
+                if admission_number_prefix is not None:
+                    existing_tenant_by_prefix = await TenantRepository.get_by_admission_number_prefix(
+                        db,
+                        admission_number_prefix,
+                        lock=True,
                     )
+                    if (
+                        existing_tenant_by_prefix is not None
+                        and (
+                            existing_tenant_by_email is None
+                            or existing_tenant_by_prefix.id != existing_tenant_by_email.id
+                        )
+                    ):
+                        raise ConflictException("Prefix not available")
 
-                tenant = existing_tenant_by_email
-                reused_pending_account = True
-                existing_admin.password_hash = hash_password(payload.password)
-                await TenantAdminRepository.save(
-                    db,
+                if existing_tenant_by_name is not None:
+                    if existing_tenant_by_email is None:
+                        raise ConflictException("This school name is already registered.")
+
+                    if existing_tenant_by_name.id != existing_tenant_by_email.id:
+                        raise ConflictException("This school name is already registered.")
+
+                email_state = TenantService.get_email_registration_state(
                     existing_admin,
+                    existing_tenant_by_email,
                 )
 
-                logger.info(
-                    "Tenant registration reused existing pending account",
-                    extra={"email": normalized_email},
-                )
+                if email_state == EmailRegistrationState.DELETED:
+                    raise ConflictException("This email is already registered. Please log in.")
 
-            else:
-                slug = await TenantService._unique_slug(db, school_name)
+                if email_state == EmailRegistrationState.ACTIVE:
+                    raise ConflictException("This email is already registered. Please log in.")
 
-                tenant = Tenant(
-                    school_name=school_name,
-                    slug=slug,
-                    email=normalized_email,
-                    admission_number_prefix=admission_number_prefix,
-                    verification_status=TenantVerificationStatus.PENDING_VERIFICATION,
-                )
+                if email_state == EmailRegistrationState.REJECTED:
+                    raise ConflictException(
+                        "This registration was rejected. Please contact support."
+                    )
 
-                await TenantRepository.create(db, tenant)
-                await db.flush()
+                if email_state == EmailRegistrationState.PENDING:
+                    if existing_admin is None or existing_tenant_by_email is None:
+                        raise ConflictException(
+                            "This email is already registered. Please contact support."
+                        )
 
-                await TenantAdminService.create_tenant_admin(
-                    db=db,
-                    tenant_id=tenant.id,
-                    payload=TenantAdminCreate(
+                    tenant = existing_tenant_by_email
+                    reused_pending_account = True
+                    existing_admin.password_hash = hash_password(payload.password)
+                    existing_admin.account_status = TenantAdminStatus.PENDING
+                    existing_admin.is_verified = False
+                    existing_admin.is_active = True
+                    await TenantAdminRepository.save(
+                        db,
+                        existing_admin,
+                    )
+                    await TenantService._ensure_tenant_admin_identity(
+                        db=db,
+                        admin=existing_admin,
+                    )
+
+                    logger.info(
+                        "Tenant registration reused existing pending account",
+                        extra={"email": normalized_email},
+                    )
+
+                else:
+                    slug = await TenantService._unique_slug(db, school_name)
+
+                    tenant = Tenant(
+                        school_name=school_name,
+                        slug=slug,
                         email=normalized_email,
-                        password=payload.password,
-                    ),
-                )
+                        admission_number_prefix=admission_number_prefix,
+                        verification_status=TenantVerificationStatus.PENDING_VERIFICATION,
+                    )
 
-                logger.info(
-                    "Tenant and tenant admin created during registration",
-                    extra={
-                        "tenant_id": str(tenant.id),
-                        "email": normalized_email,
-                        "actor_type": "tenant_admin",
-                    },
-                )
+                    await TenantRepository.create(db, tenant)
+                    await db.flush()
+
+                    await TenantAdminService.create_tenant_admin(
+                        db=db,
+                        tenant_id=tenant.id,
+                        payload=TenantAdminCreate(
+                            email=normalized_email,
+                            password=payload.password,
+                        ),
+                    )
+
+                    logger.info(
+                        "Tenant and tenant admin created during registration",
+                        extra={
+                            "tenant_id": str(tenant.id),
+                            "email": normalized_email,
+                            "actor_type": "tenant_admin",
+                        },
+                    )
+        except IntegrityError:
+            await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
+
+            tenant, _admin = await TenantService._recover_concurrent_registration(
+                db=db,
+                normalized_email=normalized_email,
+                password=payload.password,
+            )
+            reused_pending_account = True
+
+            logger.info(
+                "Recovered concurrent tenant registration",
+                extra={
+                    "tenant_id": str(tenant.id),
+                    "email": normalized_email,
+                },
+            )
 
         # The surrounding db.begin() block has committed successfully here.
         await AuthIdentityService.invalidate_after_commit(db)
