@@ -4,8 +4,8 @@
 
 import uuid
 from datetime import datetime
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.utils.normalization import (
     normalize_class_arm,
@@ -123,9 +123,94 @@ class ClassRoomResponse(OutputBase):
 
     name: str
     arm: str | None
+    next_class_id: uuid.UUID | None
+    is_terminal: bool
 
     teacher_id: uuid.UUID | None
     is_active: bool
 
     created_at: datetime
     updated_at: datetime
+
+
+
+
+
+
+
+class ClassProgressionConfigureRequest(InputBase):
+    """
+    Configure explicit progression for one class.
+
+    The service must validate tenant ownership, active state, self-reference,
+    and circular progression.
+    """
+
+    next_class_id: uuid.UUID | None = None
+    is_terminal: bool = False
+
+    @model_validator(mode="after")
+    def validate_terminal_configuration(
+        self,
+    ) -> "ClassProgressionConfigureRequest":
+        """A terminal class cannot have a next class."""
+
+        if self.is_terminal and self.next_class_id is not None:
+            raise ValueError(
+                "a terminal class cannot have next_class_id"
+            )
+
+        if not self.is_terminal and self.next_class_id is None:
+            raise ValueError(
+                "a non-terminal class requires next_class_id"
+            )
+
+        return self
+
+
+class ClassProgressionClearRequest(InputBase):
+    """
+    Clear progression configuration.
+
+    This should only be permitted where the class has no students or is being
+    replaced within the same transaction.
+    """
+
+    confirmation: Literal["CLEAR_CLASS_PROGRESSION"]
+
+
+class ClassProgressionResponse(OutputBase):
+    """Configured progression for one class."""
+
+    class_id: uuid.UUID
+    class_name: str
+    class_arm: str | None = None
+    next_class_id: uuid.UUID | None = None
+    next_class_name: str | None = None
+    next_class_arm: str | None = None
+    is_terminal: bool
+    is_active: bool
+
+
+class ClassProgressionValidationIssue(OutputBase):
+    """One class-progression configuration issue."""
+
+    class_id: uuid.UUID
+    class_name: str
+    code: Literal[
+        "missing_next_class",
+        "next_class_not_found",
+        "next_class_inactive",
+        "cross_tenant_target",
+        "self_reference",
+        "circular_chain",
+        "terminal_has_next_class",
+    ]
+    message: str
+
+
+class ClassProgressionValidationResponse(OutputBase):
+    """Tenant class-progression validation result."""
+
+    valid: bool
+    issues: list[ClassProgressionValidationIssue]
