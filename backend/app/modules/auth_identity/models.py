@@ -7,11 +7,12 @@
 import uuid
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, Enum as SqlEnum, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, Enum as SqlEnum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
+from app.shared.base_model import Base, PUBLIC_SCHEMA
+from app.shared.mixins import TimestampMixin, UUIDMixin
 
 
 class IdentifierType(str, PyEnum):
@@ -31,10 +32,21 @@ class ActorType(str, PyEnum):
     STUDENT = "student"
 
 
-class AuthIdentity(BaseModel):
+class AuthIdentity(UUIDMixin, TimestampMixin, Base):
     """Lookup table that maps a login identifier to its owning actor."""
 
     __tablename__ = "auth_identities"
+
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenants.id"),
+        nullable=True,
+        index=True,
+        doc=(
+            "Tenant scope for tenant-bound actors. NULL for global accounts "
+            "such as parent_accounts and teacher_accounts."
+        ),
+    )
 
     identifier: Mapped[str] = mapped_column(
         String(255),

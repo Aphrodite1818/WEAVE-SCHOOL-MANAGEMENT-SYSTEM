@@ -50,7 +50,7 @@ class AuthIdentityUpdate(InputBase):
 class AuthIdentityResponse(OutputBase):
     """Used when returning identity records from service/repository."""
 
-    tenant_id: uuid.UUID
+    tenant_id: uuid.UUID | None = None
     id: uuid.UUID
     identifier: str
     identifier_type: IdentifierType
@@ -66,4 +66,5 @@ class IdentityResolution(OutputBase):
 
     actor_type: ActorType
     actor_id: uuid.UUID
-    tenant_id: uuid.UUID
+    tenant_id: uuid.UUID | None = None
+    lookup_table: str

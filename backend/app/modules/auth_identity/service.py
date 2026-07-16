@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 class AuthIdentityService:
     """Business logic for creating and resolving login identities."""
 
+    ACTOR_LOOKUP_TABLES: dict[ActorType, str] = {
+        ActorType.TENANT_ADMIN: "tenant_admins",
+        ActorType.TEACHER: "teacher_accounts",
+        ActorType.STAFF: "staff_accounts",
+        ActorType.PARENT: "parent_accounts",
+        ActorType.STUDENT: "students",
+    }
+
     @staticmethod
     def _normalize_identifier(
         identifier: str,
@@ -82,7 +90,8 @@ class AuthIdentityService:
             AUTH_IDENTITY_FOUND_FIELD: True,
             "actor_type": ActorType(resolution.actor_type).value,
             "actor_id": str(resolution.actor_id),
-            "tenant_id": str(resolution.tenant_id),
+            "tenant_id": str(resolution.tenant_id) if resolution.tenant_id else None,
+            "lookup_table": resolution.lookup_table,
         }
 
     @staticmethod
@@ -104,20 +113,36 @@ class AuthIdentityService:
         actor_type = payload.get("actor_type")
         actor_id = payload.get("actor_id")
         tenant_id = payload.get("tenant_id")
+        lookup_table = payload.get("lookup_table")
 
-        if not all(
-            isinstance(value, str) for value in (actor_type, actor_id, tenant_id)
-        ):
+        if not isinstance(actor_type, str) or not isinstance(actor_id, str):
+            return None
+
+        if tenant_id is not None and not isinstance(tenant_id, str):
+            return None
+
+        if lookup_table is not None and not isinstance(lookup_table, str):
             return None
 
         try:
+            parsed_actor_type = ActorType(actor_type)
             return IdentityResolution(
-                actor_type=ActorType(actor_type),
+                actor_type=parsed_actor_type,
                 actor_id=uuid.UUID(actor_id),
-                tenant_id=uuid.UUID(tenant_id),
+                tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
+                lookup_table=(
+                    lookup_table
+                    or AuthIdentityService.lookup_table_for_actor_type(parsed_actor_type)
+                ),
             )
         except (ValueError, TypeError):
             return None
+
+    @staticmethod
+    def lookup_table_for_actor_type(actor_type: ActorType) -> str:
+        """Return the table that stores the resolved actor/account."""
+
+        return AuthIdentityService.ACTOR_LOOKUP_TABLES[ActorType(actor_type)]
 
     @staticmethod
     def _identifier_cache_key(
@@ -198,7 +223,7 @@ class AuthIdentityService:
     async def create_for_actor(
         db: AsyncSession,
         *,
-        tenant_id: uuid.UUID,
+        tenant_id: uuid.UUID | None = None,
         payload: AuthIdentityCreate,
     ) -> AuthIdentityResponse:
         """Create a login identity for an actor."""
@@ -246,6 +271,50 @@ class AuthIdentityService:
         )
 
         return AuthIdentityResponse.model_validate(created_identity)
+
+    @staticmethod
+    async def ensure_for_actor(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID | None = None,
+        payload: AuthIdentityCreate,
+    ) -> AuthIdentityResponse:
+        """
+        Create an identity if the actor does not already have one.
+
+        Registration retries should be idempotent for the same actor while still
+        rejecting cases where another actor owns the identifier.
+        """
+
+        existing_actor_identity = await AuthIdentityRepository.get_by_actor(
+            db=db,
+            actor_type=payload.actor_type,
+            actor_id=payload.actor_id,
+        )
+
+        if existing_actor_identity is not None:
+            normalized_identifier = AuthIdentityService._normalize_identifier(
+                identifier=payload.identifier,
+                identifier_type=payload.identifier_type,
+            )
+
+            if (
+                existing_actor_identity.identifier != normalized_identifier
+                or existing_actor_identity.identifier_type != payload.identifier_type
+            ):
+                raise ConflictException("This actor already has a different login identity.")
+
+            if not existing_actor_identity.is_active and payload.is_active:
+                existing_actor_identity.is_active = True
+                await AuthIdentityRepository.save(db=db, record=existing_actor_identity)
+
+            return AuthIdentityResponse.model_validate(existing_actor_identity)
+
+        return await AuthIdentityService.create_for_actor(
+            db=db,
+            tenant_id=tenant_id,
+            payload=payload,
+        )
 
     @staticmethod
     async def resolve_identifier(
@@ -315,6 +384,9 @@ class AuthIdentityService:
             actor_type=identity.actor_type,
             actor_id=identity.actor_id,
             tenant_id=identity.tenant_id,
+            lookup_table=AuthIdentityService.lookup_table_for_actor_type(
+                identity.actor_type
+            ),
         )
 
         await CacheManager.set_json(

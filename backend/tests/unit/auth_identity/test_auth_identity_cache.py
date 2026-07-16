@@ -68,6 +68,7 @@ async def test_resolve_identifier_caches_positive_database_result() -> None:
         "actor_type": ActorType.TEACHER.value,
         "actor_id": str(ACTOR_ID),
         "tenant_id": str(TENANT_ID),
+        "lookup_table": "teacher_accounts",
     }
     assert set_json.await_args.kwargs["ttl"] == AUTH_IDENTITY_CACHE_TTL_SECONDS
 
@@ -79,6 +80,7 @@ async def test_resolve_identifier_returns_valid_cached_result_without_database()
         "actor_type": ActorType.TEACHER.value,
         "actor_id": str(ACTOR_ID),
         "tenant_id": str(TENANT_ID),
+        "lookup_table": "teacher_accounts",
     }
 
     with (
@@ -97,6 +99,7 @@ async def test_resolve_identifier_returns_valid_cached_result_without_database()
 
     assert result.actor_id == ACTOR_ID
     assert result.tenant_id == TENANT_ID
+    assert result.lookup_table == "teacher_accounts"
     lookup.assert_not_awaited()
 
 
