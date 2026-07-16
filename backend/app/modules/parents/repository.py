@@ -1,187 +1,266 @@
+"""Repositories for global parent accounts and tenant parent relationships."""
+
+from __future__ import annotations
+
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
 
-from app.modules.parents.models import Parent
+from app.modules.parents.models import (
+    ParentAccount,
+    ParentInvitation,
+    ParentInvitationStatus,
+    ParentMembership,
+    ParentMembershipStatus,
+)
+from app.modules.students.models import StudentParentLink, StudentParentLinkStatus
 
 
-class ParentRepository:
-    """Database operations for parent actors."""
-
+class ParentAccountRepository:
     @staticmethod
-    async def create_parent(
-        db: AsyncSession,
-        parent: Parent,
-    ) -> Parent:
-        """Create a parent record."""
-
-        db.add(parent)
+    async def add(db: AsyncSession, account: ParentAccount) -> ParentAccount:
+        db.add(account)
         await db.flush()
-        await db.refresh(parent)
-        return parent
+        return account
 
     @staticmethod
-    async def get_parent_by_id(
-        db: AsyncSession,
-        tenant_id: UUID,
-        parent_id: UUID,
-    ) -> Parent | None:
-        """Get parent by ID within a tenant."""
-
-        result = await db.execute(
-            select(Parent).where(
-                Parent.id == parent_id,
-                Parent.tenant_id == tenant_id,
-            )
-        )
+    async def get_by_id(db: AsyncSession, account_id: UUID, *, lock: bool = False) -> ParentAccount | None:
+        query = select(ParentAccount).where(ParentAccount.id == account_id)
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_email(db: AsyncSession, normalized_email: str, *, lock: bool = False) -> ParentAccount | None:
+        query = select(ParentAccount).where(ParentAccount.email == normalized_email)
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def email_exists(db: AsyncSession, normalized_email: str) -> bool:
+        result = await db.execute(select(ParentAccount.id).where(ParentAccount.email == normalized_email))
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def list_memberships(db: AsyncSession, account_id: UUID) -> list[ParentMembership]:
+        result = await db.execute(
+            select(ParentMembership)
+            .where(ParentMembership.parent_account_id == account_id)
+            .order_by(ParentMembership.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def save(db: AsyncSession, account: ParentAccount) -> ParentAccount:
+        db.add(account)
+        await db.flush()
+        return account
+
+
+class ParentMembershipRepository:
+    @staticmethod
+    async def add(db: AsyncSession, membership: ParentMembership) -> ParentMembership:
+        db.add(membership)
+        await db.flush()
+        return membership
 
     @staticmethod
     async def get_by_id(
         db: AsyncSession,
-        parent_id: UUID,
+        tenant_id: UUID,
+        membership_id: UUID,
         *,
         lock: bool = False,
-    ) -> Parent | None:
-        """Get parent by global ID."""
-
-        query = select(Parent).where(Parent.id == parent_id)
-
+        load_account: bool = False,
+    ) -> ParentMembership | None:
+        query = select(ParentMembership).where(
+            ParentMembership.tenant_id == tenant_id,
+            ParentMembership.id == membership_id,
+        )
+        if load_account:
+            query = query.options(joinedload(ParentMembership.parent_account))
         if lock:
             query = query.with_for_update()
-
         result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_active_by_id(
+    async def get_by_account_and_tenant(
         db: AsyncSession,
-        parent_id: UUID,
-    ) -> Parent | None:
-        """Get active parent by global ID."""
-
-        result = await db.execute(
-            select(Parent).where(
-                Parent.id == parent_id,
-                Parent.is_active.is_(True),
-            )
+        account_id: UUID,
+        tenant_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> ParentMembership | None:
+        query = select(ParentMembership).where(
+            ParentMembership.parent_account_id == account_id,
+            ParentMembership.tenant_id == tenant_id,
         )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def get_by_email(
-        db: AsyncSession,
-        email: str,
-    ) -> Parent | None:
-        """Get parent by globally unique email."""
-
-        result = await db.execute(
-            select(Parent).where(
-                func.lower(Parent.email) == email.strip().lower(),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def get_active_by_email(
-        db: AsyncSession,
-        email: str,
-    ) -> Parent | None:
-        """Get active parent by globally unique email."""
-
-        result = await db.execute(
-            select(Parent).where(
-                func.lower(Parent.email) == email.strip().lower(),
-                Parent.is_active.is_(True),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def email_exists(
-        db: AsyncSession,
-        email: str,
-        exclude_parent_id: UUID | None = None,
-    ) -> bool:
-        """Return True if a parent email already exists."""
-
-        query = select(Parent.id).where(
-            func.lower(Parent.email) == email.strip().lower(),
-        )
-
-        if exclude_parent_id is not None:
-            query = query.where(Parent.id != exclude_parent_id)
-
+        if lock:
+            query = query.with_for_update()
         result = await db.execute(query)
-        return result.scalar_one_or_none() is not None
+        return result.scalar_one_or_none()
 
     @staticmethod
-    async def list_all_parents(
+    async def list_for_tenant(
         db: AsyncSession,
         tenant_id: UUID,
         *,
-        skip: int = 0,
-        limit: int = 50,
+        status: ParentMembershipStatus | None = None,
         search: str | None = None,
-    ) -> tuple[list[Parent], int]:
-        """List parents within a tenant."""
-
-        filters = [Parent.tenant_id == tenant_id]
-
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[ParentMembership], int]:
+        filters = [ParentMembership.tenant_id == tenant_id]
+        if status is not None:
+            filters.append(ParentMembership.status == status)
         if search:
-            search_pattern = f"%{search.strip()}%"
+            pattern = f"%{search.strip()}%"
             filters.append(
-                or_(
-                    Parent.email.ilike(search_pattern),
-                    Parent.first_name.ilike(search_pattern),
-                    Parent.last_name.ilike(search_pattern),
-                    Parent.phone_number.ilike(search_pattern),
-                    Parent.occupation.ilike(search_pattern),
+                ParentMembership.parent_account.has(
+                    or_(
+                        ParentAccount.email.ilike(pattern),
+                        ParentAccount.first_name.ilike(pattern),
+                        ParentAccount.last_name.ilike(pattern),
+                        ParentAccount.phone_number.ilike(pattern),
+                    )
                 )
             )
-
-        total_result = await db.execute(
-            select(func.count()).select_from(Parent).where(*filters)
-        )
-        total = total_result.scalar_one()
-
+        count_result = await db.execute(select(func.count()).select_from(ParentMembership).where(*filters))
         result = await db.execute(
-            select(Parent)
+            select(ParentMembership)
+            .options(joinedload(ParentMembership.parent_account))
             .where(*filters)
-            .order_by(Parent.created_at.desc())
-            .offset(skip)
+            .order_by(ParentMembership.created_at.desc())
+            .offset(offset)
             .limit(limit)
         )
-        return list(result.scalars().all()), total
+        return list(result.scalars().unique().all()), count_result.scalar_one()
 
     @staticmethod
-    async def save(
-        db: AsyncSession,
-        parent: Parent,
-    ) -> Parent:
-        """Persist parent changes."""
+    async def list_usable_for_account(db: AsyncSession, account_id: UUID) -> list[ParentMembership]:
+        result = await db.execute(
+            select(ParentMembership)
+            .where(
+                ParentMembership.parent_account_id == account_id,
+                ParentMembership.status.in_([
+                    ParentMembershipStatus.ACTIVE,
+                    ParentMembershipStatus.READ_ONLY,
+                ]),
+            )
+            .order_by(ParentMembership.created_at.asc())
+        )
+        return list(result.scalars().all())
 
-        db.add(parent)
+    @staticmethod
+    async def count_active_for_tenant(db: AsyncSession, tenant_id: UUID) -> int:
+        result = await db.execute(
+            select(func.count()).select_from(ParentMembership).where(
+                ParentMembership.tenant_id == tenant_id,
+                ParentMembership.status == ParentMembershipStatus.ACTIVE,
+            )
+        )
+        return result.scalar_one()
+
+    @staticmethod
+    async def get_link_status_counts(
+        db: AsyncSession,
+        tenant_id: UUID,
+        membership_id: UUID,
+    ) -> dict[StudentParentLinkStatus, int]:
+        result = await db.execute(
+            select(StudentParentLink.status, func.count(StudentParentLink.id))
+            .where(
+                StudentParentLink.tenant_id == tenant_id,
+                StudentParentLink.parent_membership_id == membership_id,
+            )
+            .group_by(StudentParentLink.status)
+        )
+        return {status: count for status, count in result.all()}
+
+    @staticmethod
+    async def save(db: AsyncSession, membership: ParentMembership) -> ParentMembership:
+        db.add(membership)
         await db.flush()
-        await db.refresh(parent)
-        return parent
+        return membership
 
+
+class ParentInvitationRepository:
     @staticmethod
-    async def update_parent(
-        db: AsyncSession,
-        parent: Parent,
-    ) -> Parent:
-        """Compatibility wrapper for persisting parent changes."""
-
-        return await ParentRepository.save(db=db, parent=parent)
-
-    @staticmethod
-    async def delete_parent(
-        db: AsyncSession,
-        parent: Parent,
-    ) -> None:
-        """Delete a parent profile."""
-
-        await db.delete(parent)
+    async def add(db: AsyncSession, invitation: ParentInvitation) -> ParentInvitation:
+        db.add(invitation)
         await db.flush()
+        return invitation
+
+    @staticmethod
+    async def get_by_id(db: AsyncSession, tenant_id: UUID, invitation_id: UUID, *, lock: bool = False) -> ParentInvitation | None:
+        query = select(ParentInvitation).where(
+            ParentInvitation.tenant_id == tenant_id,
+            ParentInvitation.id == invitation_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_token_digest(db: AsyncSession, token_digest: str, *, lock: bool = False) -> ParentInvitation | None:
+        query = select(ParentInvitation).where(ParentInvitation.token_digest == token_digest)
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_pending_for_student_email(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        normalized_email: str,
+        *,
+        lock: bool = False,
+    ) -> ParentInvitation | None:
+        query = select(ParentInvitation).where(
+            ParentInvitation.tenant_id == tenant_id,
+            ParentInvitation.student_id == student_id,
+            ParentInvitation.invited_email == normalized_email,
+            ParentInvitation.status == ParentInvitationStatus.PENDING,
+        )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_tenant(
+        db: AsyncSession,
+        tenant_id: UUID,
+        *,
+        status: ParentInvitationStatus | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[ParentInvitation], int]:
+        filters = [ParentInvitation.tenant_id == tenant_id]
+        if status is not None:
+            filters.append(ParentInvitation.status == status)
+        count_result = await db.execute(select(func.count()).select_from(ParentInvitation).where(*filters))
+        result = await db.execute(
+            select(ParentInvitation)
+            .where(*filters)
+            .order_by(ParentInvitation.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all()), count_result.scalar_one()
+
+    @staticmethod
+    async def save(db: AsyncSession, invitation: ParentInvitation) -> ParentInvitation:
+        db.add(invitation)
+        await db.flush()
+        return invitation
