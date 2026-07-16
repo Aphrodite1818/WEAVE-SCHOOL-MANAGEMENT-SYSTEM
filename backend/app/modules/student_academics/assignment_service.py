@@ -5,11 +5,12 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.modules.classes.repository import ClassRoomRepository
-from app.modules.student_academics.models import TeacherAssignment
+from app.modules.student_academics.models import ClassSubject, TeacherAssignment
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
     TeacherAssignmentCreate,
@@ -76,7 +77,7 @@ class TeacherAssignmentService:
             assignment.tenant_id,
             class_subject.class_id,
         )
-        subject = await SubjectRepository.get_by_id(
+        subject = await SubjectRepository.get_subject_by_id(
             db,
             assignment.tenant_id,
             class_subject.subject_id,
@@ -158,6 +159,59 @@ class TeacherAssignmentService:
         )
         await db.commit()
         return await TeacherAssignmentService._response(db, assignment)
+
+    @staticmethod
+    async def list(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        teacher_membership_id: UUID | None = None,
+        class_id: UUID | None = None,
+        active_only: bool = False,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[TeacherAssignmentResponse], int]:
+        filters = [TeacherAssignment.tenant_id == tenant_id]
+        query = select(TeacherAssignment)
+        count_query = select(func.count()).select_from(TeacherAssignment)
+        if teacher_membership_id is not None:
+            filters.append(
+                TeacherAssignment.teacher_membership_id == teacher_membership_id
+            )
+        if active_only:
+            filters.append(TeacherAssignment.is_active.is_(True))
+        if class_id is not None:
+            query = query.join(
+                ClassSubject,
+                ClassSubject.id == TeacherAssignment.class_subject_id,
+            )
+            count_query = count_query.join(
+                ClassSubject,
+                ClassSubject.id == TeacherAssignment.class_subject_id,
+            )
+            filters.extend(
+                [
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.class_id == class_id,
+                ]
+            )
+        total = int((await db.execute(count_query.where(*filters))).scalar_one() or 0)
+        rows = list(
+            (
+                await db.execute(
+                    query.where(*filters)
+                    .order_by(
+                        TeacherAssignment.is_active.desc(),
+                        TeacherAssignment.created_at.desc(),
+                    )
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).scalars().all()
+        )
+        return [
+            await TeacherAssignmentService._response(db, item) for item in rows
+        ], total
 
     @staticmethod
     async def deactivate(
