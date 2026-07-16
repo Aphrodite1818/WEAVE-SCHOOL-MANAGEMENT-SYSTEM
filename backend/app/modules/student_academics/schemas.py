@@ -1,4 +1,4 @@
-"""Academic session, assignment, result, and progression schemas."""
+"""Academic session, assignment, result, card, and progression schemas."""
 
 from __future__ import annotations
 
@@ -22,11 +22,19 @@ from app.modules.student_academics.models import (
 
 
 class InputBase(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, use_enum_values=False)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        use_enum_values=False,
+    )
 
 
 class OutputBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True,
+        populate_by_name=True,
+    )
 
 
 class AcademicSessionCreate(InputBase):
@@ -42,7 +50,11 @@ class AcademicSessionCreate(InputBase):
 
     @model_validator(mode="after")
     def validate_dates(self):
-        if self.start_date is not None and self.end_date is not None and self.end_date <= self.start_date:
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date <= self.start_date
+        ):
             raise ValueError("end_date must be after start_date")
         return self
 
@@ -62,7 +74,11 @@ class AcademicSessionUpdate(InputBase):
     def validate_update(self):
         if not self.model_fields_set:
             raise ValueError("at least one session field must be provided")
-        if self.start_date is not None and self.end_date is not None and self.end_date <= self.start_date:
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date <= self.start_date
+        ):
             raise ValueError("end_date must be after start_date")
         return self
 
@@ -150,6 +166,16 @@ class GradingScaleUpdate(InputBase):
     remark: str | None = Field(default=None, max_length=100)
     is_active: bool | None = None
 
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_grade(value)
+        if normalized is None:
+            raise ValueError("grade cannot be empty")
+        return normalized
+
 
 class GradingScaleResponse(OutputBase):
     id: uuid.UUID
@@ -223,6 +249,12 @@ class ClassSubjectTeacherUpdate(InputBase):
     sort_order: int | None = None
     is_active: bool | None = None
 
+    @model_validator(mode="after")
+    def require_change(self):
+        if not self.model_fields_set:
+            raise ValueError("at least one assignment field is required")
+        return self
+
 
 class ClassSubjectTeacherResponse(OutputBase):
     id: uuid.UUID
@@ -250,11 +282,27 @@ class StudentSubjectResultUpsert(InputBase):
     def validate_result(self):
         if self.teacher_assignment_id is None and self.class_subject_teacher_id is None:
             raise ValueError("an assignment reference is required")
-        total = sum((score for score in (self.test_score, self.assessment_score, self.exam_score) if score is not None), Decimal("0"))
+        total = sum(
+            (
+                score
+                for score in (
+                    self.test_score,
+                    self.assessment_score,
+                    self.exam_score,
+                )
+                if score is not None
+            ),
+            Decimal("0"),
+        )
         if total > 100:
             raise ValueError("combined score cannot exceed 100")
         if self.status == AcademicResultStatus.SUBMITTED and any(
-            score is None for score in (self.test_score, self.assessment_score, self.exam_score)
+            score is None
+            for score in (
+                self.test_score,
+                self.assessment_score,
+                self.exam_score,
+            )
         ):
             raise ValueError("all scores are required before submission")
         return self
@@ -295,6 +343,47 @@ class StudentSubjectResultResponse(OutputBase):
     recorded_by_actor_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+
+class StudentSubjectCardResponse(OutputBase):
+    id: uuid.UUID
+    result_id: uuid.UUID | None = None
+    class_id: uuid.UUID
+    class_name: str | None = None
+    class_arm: str | None = None
+    subject_id: uuid.UUID
+    subject_name: str | None = None
+    subject_code: str | None = None
+    teacher_membership_id: uuid.UUID | None = None
+    teacher_name: str | None = None
+    academic_session_id: uuid.UUID | None = None
+    academic_session_name: str | None = None
+    academic_term_id: uuid.UUID | None = None
+    academic_term_name: str | None = None
+    test_score: Decimal | None = None
+    assessment_score: Decimal | None = None
+    exam_score: Decimal | None = None
+    total_score: Decimal | None = None
+    grade: str | None = None
+    remark: str | None = None
+    status: str = "pending"
+    is_complete: bool = False
+
+
+class StudentSubjectCardContextResponse(OutputBase):
+    class_id: uuid.UUID | None = None
+    class_name: str | None = None
+    class_arm: str | None = None
+    academic_session_id: uuid.UUID | None = None
+    academic_session_name: str | None = None
+    academic_term_id: uuid.UUID | None = None
+    academic_term_name: str | None = None
+
+
+class StudentSubjectCardListResponse(OutputBase):
+    items: list[StudentSubjectCardResponse]
+    total: int
+    context: StudentSubjectCardContextResponse
 
 
 class StudentProgressionItemResponse(OutputBase):
