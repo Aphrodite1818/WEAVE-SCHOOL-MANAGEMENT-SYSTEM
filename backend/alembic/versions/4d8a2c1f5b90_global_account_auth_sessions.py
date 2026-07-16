@@ -17,9 +17,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE public.auth_session_actor_type ADD VALUE IF NOT EXISTS 'teacher_account'")
-    op.execute("ALTER TYPE public.auth_session_actor_type ADD VALUE IF NOT EXISTS 'parent_account'")
-    op.execute("COMMIT")
+    with op.get_context().autocommit_block():
+        op.execute(
+            "ALTER TYPE public.auth_session_actor_type "
+            "ADD VALUE IF NOT EXISTS 'teacher_account'"
+        )
+        op.execute(
+            "ALTER TYPE public.auth_session_actor_type "
+            "ADD VALUE IF NOT EXISTS 'parent_account'"
+        )
+
     op.drop_constraint(
         "ck_auth_sessions_tenant_scope",
         "auth_sessions",
