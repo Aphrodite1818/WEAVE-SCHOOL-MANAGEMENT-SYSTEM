@@ -2,12 +2,12 @@ from datetime import datetime, timezone
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_teacher
+from app.core.dependencies.route_guards import get_current_teacher, get_current_teacher_account
 from app.core.exceptions import NotFoundException
 from app.modules.announcements.models import (
     Announcement,
@@ -26,18 +26,100 @@ from app.modules.announcements.schemas import (
     AnnouncementReadResponse,
 )
 from app.modules.subjects.schemas import SubjectListResponse, SubjectResponse
-from app.modules.teachers.models import Teacher
+from app.modules.teachers.models import Teacher, TeacherAccount
 from app.modules.teachers.schemas import (
+    TeacherAccountOnboardingRequest,
+    TeacherAccountProfileUpdateRequest,
+    TeacherAccountRegisterRequest,
+    TeacherAccountResponse,
     TeacherOnboardingStatusResponse,
     TeacherOnboardingUpdate,
     TeacherResponse,
 )
-from app.modules.teachers.service import TeacherService
+from app.modules.teachers.service import TeacherAccountService
+from app.modules.teachers.tenant_service import TeacherService
 
 
 router = APIRouter(tags=["Teachers"])
 
 CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
+CurrentTeacherAccount: TypeAlias = Annotated[
+    TeacherAccount,
+    Depends(get_current_teacher_account),
+]
+
+
+@router.post(
+    "/accounts/register",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a global teacher account",
+)
+async def register_teacher_account(
+    payload: TeacherAccountRegisterRequest,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Register a global teacher login account."""
+
+    return await TeacherAccountService.register_account(
+        db=db,
+        payload=payload,
+        background_tasks=background_tasks,
+    )
+
+
+@router.get(
+    "/accounts/me/onboarding-status",
+    summary="Get my global teacher account onboarding status",
+)
+async def get_my_teacher_account_onboarding_status(
+    db: DbSession,
+    current_account: CurrentTeacherAccount,
+) -> dict:
+    """Return onboarding state for the logged-in global teacher account."""
+
+    return await TeacherAccountService.get_onboarding_status(
+        db=db,
+        account_id=current_account.id,
+    )
+
+
+@router.post(
+    "/accounts/me/onboarding",
+    response_model=TeacherAccountResponse,
+    summary="Complete my global teacher account onboarding",
+)
+async def complete_my_teacher_account_onboarding(
+    payload: TeacherAccountOnboardingRequest,
+    db: DbSession,
+    current_account: CurrentTeacherAccount,
+) -> TeacherAccountResponse:
+    """Complete required global teacher account profile fields."""
+
+    return await TeacherAccountService.complete_onboarding(
+        db=db,
+        account_id=current_account.id,
+        payload=payload,
+    )
+
+
+@router.patch(
+    "/accounts/me/profile",
+    response_model=TeacherAccountResponse,
+    summary="Update my global teacher account profile",
+)
+async def update_my_teacher_account_profile(
+    payload: TeacherAccountProfileUpdateRequest,
+    db: DbSession,
+    current_account: CurrentTeacherAccount,
+) -> TeacherAccountResponse:
+    """Update teacher-controlled global account profile fields."""
+
+    return await TeacherAccountService.update_profile(
+        db=db,
+        account_id=current_account.id,
+        payload=payload,
+    )
 
 
 def _teacher_direct_message_query(current_user: Teacher):

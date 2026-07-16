@@ -264,3 +264,8 @@ class ParentInvitationRepository:
         db.add(invitation)
         await db.flush()
         return invitation
+
+
+# Compatibility alias for legacy tenant-scoped imports. New account code should
+# use ParentAccountRepository directly.
+ParentRepository = ParentAccountRepository

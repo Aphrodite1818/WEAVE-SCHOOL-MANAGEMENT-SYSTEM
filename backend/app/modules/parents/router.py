@@ -1,11 +1,15 @@
 from typing import Annotated, TypeAlias
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_parent
-from app.modules.parents.models import Parent
+from app.core.dependencies.route_guards import get_current_parent, get_current_parent_account
+from app.modules.parents.models import Parent, ParentAccount
 from app.modules.parents.schemas import (
+    ParentAccountOnboardingRequest,
+    ParentAccountProfileUpdateRequest,
+    ParentAccountRegisterRequest,
+    ParentAccountResponse,
     ParentLinkedStudentListResponse,
     ParentOnboardingStatusResponse,
     ParentOnboardingUpdate,
@@ -17,7 +21,8 @@ from app.modules.students.schemas import (
     StudentParentLinkRequestResponse,
 )
 from app.modules.students.service import StudentParentLinkRequestService
-from app.modules.parents.service import ParentService
+from app.modules.parents.service import ParentAccountService
+from app.modules.parents.tenant_service import ParentService
 
 
 router = APIRouter(
@@ -25,6 +30,83 @@ router = APIRouter(
     tags=["Parents"],
 )
 CurrentParent: TypeAlias = Annotated[Parent, Depends(get_current_parent)]
+CurrentParentAccount: TypeAlias = Annotated[
+    ParentAccount,
+    Depends(get_current_parent_account),
+]
+
+
+@router.post(
+    "/accounts/register",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a global parent account",
+)
+async def register_parent_account(
+    payload: ParentAccountRegisterRequest,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Register a global parent login account."""
+
+    return await ParentAccountService.register_account(
+        db=db,
+        payload=payload,
+        background_tasks=background_tasks,
+    )
+
+
+@router.get(
+    "/accounts/me/onboarding-status",
+    summary="Get my global parent account onboarding status",
+)
+async def get_my_parent_account_onboarding_status(
+    db: DbSession,
+    current_account: CurrentParentAccount,
+) -> dict:
+    """Return onboarding state for the logged-in global parent account."""
+
+    return await ParentAccountService.get_onboarding_status(
+        db=db,
+        account_id=current_account.id,
+    )
+
+
+@router.post(
+    "/accounts/me/onboarding",
+    response_model=ParentAccountResponse,
+    summary="Complete my global parent account onboarding",
+)
+async def complete_my_parent_account_onboarding(
+    payload: ParentAccountOnboardingRequest,
+    db: DbSession,
+    current_account: CurrentParentAccount,
+) -> ParentAccountResponse:
+    """Complete required global parent account profile fields."""
+
+    return await ParentAccountService.complete_onboarding(
+        db=db,
+        account_id=current_account.id,
+        payload=payload,
+    )
+
+
+@router.patch(
+    "/accounts/me/profile",
+    response_model=ParentAccountResponse,
+    summary="Update my global parent account profile",
+)
+async def update_my_parent_account_profile(
+    payload: ParentAccountProfileUpdateRequest,
+    db: DbSession,
+    current_account: CurrentParentAccount,
+) -> ParentAccountResponse:
+    """Update parent-controlled global account profile fields."""
+
+    return await ParentAccountService.update_profile(
+        db=db,
+        account_id=current_account.id,
+        payload=payload,
+    )
 
 
 

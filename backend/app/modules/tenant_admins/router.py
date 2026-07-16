@@ -13,7 +13,7 @@ from app.modules.parents.schemas import (
     ParentResponse,
     ParentUpdate,
 )
-from app.modules.parents.service import ParentService
+from app.modules.parents.tenant_service import ParentService
 from app.modules.students.models import AcademicStatus
 from app.modules.students.schemas import (
     StudentCreate,
@@ -38,7 +38,7 @@ from app.modules.teachers.schemas import (
     TeacherResponse,
     TeacherUpdate,
 )
-from app.modules.teachers.service import TeacherService
+from app.modules.teachers.tenant_service import TeacherService
 from app.modules.student_academics.schemas import TeacherAssignmentListResponse
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.subscriptions.service import SubscriptionFeatureService

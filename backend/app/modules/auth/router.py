@@ -37,12 +37,12 @@ from app.modules.auth.service import (
     UserInviteService,
 )
 from app.modules.auth.student_authentication import authenticate_student_actor
-from app.modules.parents.models import Parent
+from app.modules.parents.models import Parent, ParentAccount
 from app.modules.students.models import Student
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.platform_control_service import PlatformControlService
 from app.modules.superadmin.security_response_service import SecurityResponseService
-from app.modules.teachers.models import Teacher
+from app.modules.teachers.models import Teacher, TeacherAccount
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
@@ -54,7 +54,7 @@ REFRESH_TOKEN_COOKIE_NAME = "weave_refresh_token"
 REFRESH_COOKIE_PATH = f"{settings.API_V1_PREFIX}/auth"
 
 CurrentActorDependency = Annotated[
-    SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+    SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount,
     Depends(get_current_actor),
 ]
 
@@ -133,7 +133,7 @@ def _enum_value(value: object | None) -> str | None:
 
 
 def _actor_type_and_role(
-    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount,
 ) -> tuple[str, str]:
     """Return normalized actor_type and frontend role."""
 
@@ -143,8 +143,12 @@ def _actor_type_and_role(
         return "tenant_admin", "admin"
     if isinstance(actor, Teacher):
         return "teacher", "teacher"
+    if isinstance(actor, TeacherAccount):
+        return "teacher_account", "teacher"
     if isinstance(actor, Parent):
         return "parent", "parent"
+    if isinstance(actor, ParentAccount):
+        return "parent_account", "parent"
     if isinstance(actor, Student):
         return "student", "student"
 
@@ -153,7 +157,7 @@ def _actor_type_and_role(
 
 async def _build_session_bootstrap_response(
     db: DbSession,
-    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount,
 ) -> SessionBootstrapResponse:
     """Build a safe current-session response for frontend bootstrapping."""
 
@@ -182,10 +186,18 @@ async def _build_session_bootstrap_response(
         first_name=getattr(actor, "first_name", None),
         last_name=getattr(actor, "last_name", None),
         actor_type=actor_type,
-        account_type=actor_type,
+        account_type="teacher" if isinstance(actor, TeacherAccount) else "parent" if isinstance(actor, ParentAccount) else actor_type,
         role=role,
         password_reset_required=getattr(actor, "password_reset_required", None),
         profile_status=_enum_value(getattr(actor, "profile_status", None)),
+        meta=(
+            {
+                "profile_completed": actor.profile_completed,
+                "onboarding_required": not actor.profile_completed,
+            }
+            if isinstance(actor, (TeacherAccount, ParentAccount))
+            else None
+        ),
         passport_photo_url=getattr(actor, "passport_photo_url", None),
         tenant_logo_url=getattr(tenant, "logo_url", None) if tenant else None,
     )
@@ -193,7 +205,7 @@ async def _build_session_bootstrap_response(
     return SessionBootstrapResponse(
         authenticated=True,
         actor_type=actor_type,
-        account_type=actor_type,
+        account_type="teacher" if isinstance(actor, TeacherAccount) else "parent" if isinstance(actor, ParentAccount) else actor_type,
         role=role,
         tenant_id=str(tenant_id) if tenant_id else None,
         email=email,

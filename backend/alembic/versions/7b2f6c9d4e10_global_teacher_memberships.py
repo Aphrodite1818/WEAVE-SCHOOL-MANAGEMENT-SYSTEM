@@ -262,7 +262,10 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         )
 
-    op.drop_table("legacy_teachers", schema=PUBLIC_SCHEMA)
+    # Keep the renamed legacy table because older optional modules may still
+    # hold foreign keys to it in development databases. Dropping it with CASCADE
+    # would remove those constraints and make unrelated surfaces harder to
+    # reason about while the global teacher-account flow is being tested.
 
 
 def downgrade() -> None:

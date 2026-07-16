@@ -5,7 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.modules.subjects.models import Subject
-from app.modules.teachers.models import TeacherSubject
+from app.modules.teachers.models import TeacherMembership, TeacherSubject
+
+
+def _subject_teacher_load_options() -> tuple:
+    """Eager-load teacher account data through the membership-subject link."""
+
+    return (
+        selectinload(Subject.teacher_links)
+        .selectinload(TeacherSubject.teacher_membership)
+        .selectinload(TeacherMembership.teacher_account),
+    )
 
 
 class SubjectRepository:
@@ -86,10 +96,7 @@ class SubjectRepository:
 
         result = await db.execute(
             select(Subject)
-            .options(
-                selectinload(Subject.teachers),
-                selectinload(Subject.teacher_links).selectinload(TeacherSubject.teacher),
-            )
+            .options(*_subject_teacher_load_options())
             .where(
                 Subject.tenant_id == tenant_id,
                 Subject.id == subject_id,
@@ -208,10 +215,7 @@ class SubjectRepository:
 
         result = await db.execute(
             select(Subject)
-            .options(
-                selectinload(Subject.teachers),
-                selectinload(Subject.teacher_links).selectinload(TeacherSubject.teacher),
-            )
+            .options(*_subject_teacher_load_options())
             .where(*filters)
             .order_by(Subject.name.asc())
             .offset(skip)
@@ -256,10 +260,7 @@ class SubjectRepository:
         result = await db.execute(
             select(Subject)
             .join(TeacherSubject, TeacherSubject.subject_id == Subject.id)
-            .options(
-                selectinload(Subject.teachers),
-                selectinload(Subject.teacher_links).selectinload(TeacherSubject.teacher),
-            )
+            .options(*_subject_teacher_load_options())
             .where(*filters)
             .order_by(Subject.name.asc())
             .offset(skip)

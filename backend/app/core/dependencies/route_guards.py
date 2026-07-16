@@ -19,14 +19,14 @@ from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.repository import AuthSessionRepository
 from app.modules.auth_identity.models import ActorType
-from app.modules.parents.models import Parent, ParentAccountStatus
-from app.modules.parents.repository import ParentRepository
+from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus
+from app.modules.parents.repository import ParentAccountRepository, ParentRepository
 from app.modules.students.models import Student, StudentAccountStatus
 from app.modules.students.repository import StudentRepository
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
-from app.modules.teachers.models import Teacher, TeacherAccountStatus
-from app.modules.teachers.repository import TeacherRepository
+from app.modules.teachers.models import Teacher, TeacherAccount, TeacherAccountStatus
+from app.modules.teachers.repository import TeacherAccountRepository, TeacherRepository
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import TenantStatus, TenantVerificationStatus
@@ -38,7 +38,8 @@ TokenDependency: TypeAlias = Annotated[str, Depends(oauth2_scheme)]
 DbDependency: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
 
 TenantActor: TypeAlias = TenantAdmin | Teacher | Parent | Student
-CurrentActor: TypeAlias = TenantActor | SuperAdmin
+GlobalAccountActor: TypeAlias = TeacherAccount | ParentAccount
+CurrentActor: TypeAlias = TenantActor | GlobalAccountActor | SuperAdmin
 
 
 def _ensure_timezone_aware(value: datetime) -> datetime:
@@ -105,6 +106,14 @@ async def _ensure_active_session(
         raise UnauthorizedException("Could not validate credentials")
 
     if expected_actor_type == AuthSessionActorType.SUPERADMIN:
+        if session.tenant_id is not None or tenant_id is not None:
+            raise UnauthorizedException("Could not validate credentials")
+        return expected_actor_type
+
+    if expected_actor_type in {
+        AuthSessionActorType.TEACHER_ACCOUNT,
+        AuthSessionActorType.PARENT_ACCOUNT,
+    }:
         if session.tenant_id is not None or tenant_id is not None:
             raise UnauthorizedException("Could not validate credentials")
         return expected_actor_type
@@ -188,10 +197,22 @@ async def get_current_actor(
             raise UnauthorizedException("Teacher not found")
         return actor
 
+    if session_actor_type == AuthSessionActorType.TEACHER_ACCOUNT:
+        actor = await TeacherAccountRepository.get_by_id(db, actor_id)
+        if actor is None:
+            raise UnauthorizedException("Teacher account not found")
+        return actor
+
     if session_actor_type == AuthSessionActorType.PARENT:
         actor = await ParentRepository.get_by_id(db, actor_id)
         if actor is None:
             raise UnauthorizedException("Parent not found")
+        return actor
+
+    if session_actor_type == AuthSessionActorType.PARENT_ACCOUNT:
+        actor = await ParentAccountRepository.get_by_id(db, actor_id)
+        if actor is None:
+            raise UnauthorizedException("Parent account not found")
         return actor
 
     if session_actor_type == AuthSessionActorType.STUDENT:
@@ -259,6 +280,34 @@ async def get_current_parent(
         raise ForbiddenException("Inactive account")
 
     await _ensure_active_tenant(db, actor.tenant_id)
+    return actor
+
+
+async def get_current_teacher_account(
+    actor: Annotated[CurrentActor, Depends(get_current_actor)],
+) -> TeacherAccount:
+    """Return the current global teacher account."""
+
+    if not isinstance(actor, TeacherAccount):
+        raise ForbiddenException("Teacher account credentials are required for this operation")
+    if not actor.is_active or not actor.is_verified:
+        raise ForbiddenException("Inactive account")
+    if actor.account_status != TeacherAccountStatus.ACTIVE:
+        raise ForbiddenException("Inactive account")
+    return actor
+
+
+async def get_current_parent_account(
+    actor: Annotated[CurrentActor, Depends(get_current_actor)],
+) -> ParentAccount:
+    """Return the current global parent account."""
+
+    if not isinstance(actor, ParentAccount):
+        raise ForbiddenException("Parent account credentials are required for this operation")
+    if not actor.is_active or not actor.is_verified:
+        raise ForbiddenException("Inactive account")
+    if actor.account_status != ParentAccountStatus.ACTIVE:
+        raise ForbiddenException("Inactive account")
     return actor
 
 

@@ -67,8 +67,8 @@ from app.modules.auth.schemas import (
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import IdentityResolution
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.parents.models import Parent, ParentAccountStatus
-from app.modules.parents.repository import ParentRepository
+from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus
+from app.modules.parents.repository import ParentAccountRepository, ParentRepository
 from app.modules.students.models import Student, StudentAccountStatus
 from app.modules.students.repository import StudentAccessCodeRepository, StudentRepository
 from app.modules.superadmin.platform_control_service import PlatformControlService
@@ -76,8 +76,8 @@ from app.modules.superadmin.security_alert_service import SecurityAlertService
 from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
-from app.modules.teachers.repository import TeacherRepository
+from app.modules.teachers.models import Teacher, TeacherAccount, TeacherAccountStatus, TeacherStatus
+from app.modules.teachers.repository import TeacherAccountRepository, TeacherRepository
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import Tenant, TenantStatus, TenantVerificationStatus
@@ -87,7 +87,8 @@ from app.tenant_management.repository import TenantRepository
 
 
 
-EmailActor = TenantAdmin | Teacher | Parent
+EmailActor = TenantAdmin | Teacher | Parent | TeacherAccount | ParentAccount
+VerificationTarget = TenantAdmin | TeacherAccount | ParentAccount
 LAST_LOGIN_UPDATE_INTERVAL = timedelta(minutes=10)
 
 
@@ -125,7 +126,7 @@ def _last_login_is_due(last_login_at: datetime | None, now: datetime) -> bool:
 
 async def _update_last_login_if_due(
     db: AsyncSession,
-    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student,
+    actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount,
     now: datetime | None = None,
 ) -> bool:
     """Update last_login_at only when it meaningfully changes."""
@@ -301,6 +302,78 @@ async def _authenticate_tenant_actor(
             identifier_type=identifier_type,
         )
     except NotFoundException:
+        return None
+
+    if resolution.tenant_id is None:
+        if resolution.actor_type == ActorType.TEACHER:
+            account = await TeacherAccountRepository.get_by_id(db, resolution.actor_id)
+            if account is None:
+                raise UnauthorizedException("Account not found")
+            if not verify_password(password, account.password_hash):
+                raise UnauthorizedException("Invalid credentials")
+            if (
+                not account.is_active
+                or not account.is_verified
+                or account.account_status != TeacherAccountStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+            await _update_last_login_if_due(db, account)
+            return AuthenticatedActor(
+                actor_type=AuthSessionActorType.TEACHER_ACCOUNT.value,
+                account_type=ActorType.TEACHER.value,
+                actor_id=account.id,
+                email=account.email,
+                role="teacher",
+                user=LoginSessionUser(
+                    id=str(account.id),
+                    email=account.email,
+                    first_name=account.first_name,
+                    last_name=account.last_name,
+                    actor_type=AuthSessionActorType.TEACHER_ACCOUNT.value,
+                    account_type=ActorType.TEACHER.value,
+                    role="teacher",
+                    passport_photo_url=getattr(account, "passport_photo_url", None),
+                    meta={
+                        "profile_completed": account.profile_completed,
+                        "onboarding_required": not account.profile_completed,
+                    },
+                ),
+            )
+
+        if resolution.actor_type == ActorType.PARENT:
+            account = await ParentAccountRepository.get_by_id(db, resolution.actor_id)
+            if account is None:
+                raise UnauthorizedException("Account not found")
+            if not verify_password(password, account.password_hash):
+                raise UnauthorizedException("Invalid credentials")
+            if (
+                not account.is_active
+                or not account.is_verified
+                or account.account_status != ParentAccountStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+            await _update_last_login_if_due(db, account)
+            return AuthenticatedActor(
+                actor_type=AuthSessionActorType.PARENT_ACCOUNT.value,
+                account_type=ActorType.PARENT.value,
+                actor_id=account.id,
+                email=account.email,
+                role="parent",
+                user=LoginSessionUser(
+                    id=str(account.id),
+                    email=account.email,
+                    first_name=account.first_name,
+                    last_name=account.last_name,
+                    actor_type=AuthSessionActorType.PARENT_ACCOUNT.value,
+                    account_type=ActorType.PARENT.value,
+                    role="parent",
+                    meta={
+                        "profile_completed": account.profile_completed,
+                        "onboarding_required": not account.profile_completed,
+                    },
+                ),
+            )
+
         return None
 
     tenant = await TenantRepository.get_by_id(db, resolution.tenant_id)
@@ -631,6 +704,40 @@ class AuthSessionService:
                 "actor_type": AuthSessionActorType.SUPERADMIN.value,
                 "role": "superadmin",
                 "account_type": AuthSessionActorType.SUPERADMIN.value,
+            }
+
+        if session.actor_type == AuthSessionActorType.TEACHER_ACCOUNT:
+            account = await TeacherAccountRepository.get_by_id(db, session.actor_id)
+            if (
+                account is None
+                or not account.is_active
+                or not account.is_verified
+                or account.account_status != TeacherAccountStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+            return {
+                "sub": str(account.id),
+                "email": account.email,
+                "actor_type": AuthSessionActorType.TEACHER_ACCOUNT.value,
+                "role": "teacher",
+                "account_type": ActorType.TEACHER.value,
+            }
+
+        if session.actor_type == AuthSessionActorType.PARENT_ACCOUNT:
+            account = await ParentAccountRepository.get_by_id(db, session.actor_id)
+            if (
+                account is None
+                or not account.is_active
+                or not account.is_verified
+                or account.account_status != ParentAccountStatus.ACTIVE
+            ):
+                raise UnauthorizedException("Account is not active")
+            return {
+                "sub": str(account.id),
+                "email": account.email,
+                "actor_type": AuthSessionActorType.PARENT_ACCOUNT.value,
+                "role": "parent",
+                "account_type": ActorType.PARENT.value,
             }
 
         if session.tenant_id is None:
@@ -1618,13 +1725,64 @@ class OTPService:
     """Business logic for OTP verification and password reset."""
 
     @staticmethod
+    def _is_global_account_resolution(resolution: IdentityResolution) -> bool:
+        return (
+            resolution.tenant_id is None
+            and resolution.actor_type in (ActorType.TEACHER, ActorType.PARENT)
+        )
+
+    @staticmethod
+    async def _get_global_verification_target(
+        db: AsyncSession,
+        resolution: IdentityResolution,
+        *,
+        lock: bool = False,
+    ) -> TeacherAccount | ParentAccount:
+        """Resolve a tenantless parent/teacher signup identity to its account."""
+
+        if resolution.actor_type == ActorType.TEACHER:
+            account = await TeacherAccountRepository.get_by_id(
+                db,
+                resolution.actor_id,
+                lock=lock,
+            )
+        elif resolution.actor_type == ActorType.PARENT:
+            account = await ParentAccountRepository.get_by_id(
+                db,
+                resolution.actor_id,
+                lock=lock,
+            )
+        else:
+            raise BadRequestException("OTP verification is not available for this account.")
+
+        if account is None:
+            raise NotFoundException("Verification account not found.")
+
+        return account
+
+    @staticmethod
+    def _ensure_global_verification_target_allowed(
+        account: TeacherAccount | ParentAccount,
+    ) -> None:
+        """Validate whether a global parent/teacher account can verify by OTP."""
+
+        if not account.is_active:
+            raise BadRequestException("Verification is not available for this account.")
+        if isinstance(account, TeacherAccount):
+            if account.account_status != TeacherAccountStatus.PENDING or account.is_verified:
+                raise BadRequestException("Verification is not available for this account.")
+            return
+        if account.account_status != ParentAccountStatus.PENDING or account.is_verified:
+            raise BadRequestException("Verification is not available for this account.")
+
+    @staticmethod
     async def _get_verification_target(
         db: AsyncSession,
         email: str,
         *,
         lock: bool = False,
-    ) -> tuple[TenantAdmin, Tenant]:
-        """Resolve a verification email to its tenant admin and tenant."""
+    ) -> tuple[TenantAdmin, Tenant] | tuple[TeacherAccount | ParentAccount, None]:
+        """Resolve a verification email to a signup target."""
 
         normalized_email = _normalize_email(email)
         try:
@@ -1634,11 +1792,19 @@ class OTPService:
                 identifier_type=IdentifierType.EMAIL,
             )
         except NotFoundException as exc:
-            raise NotFoundException("Tenant admin with this email not found.") from exc
+            raise NotFoundException("Account with this email not found.") from exc
+
+        if OTPService._is_global_account_resolution(resolution):
+            account = await OTPService._get_global_verification_target(
+                db,
+                resolution,
+                lock=lock,
+            )
+            return account, None
 
         if resolution.actor_type != ActorType.TENANT_ADMIN:
             raise BadRequestException(
-                "OTP verification is only available for tenant admin signup accounts."
+                "OTP verification is only available for signup accounts."
             )
 
         admin = await TenantAdminRepository.get_by_id(
@@ -1664,12 +1830,18 @@ class OTPService:
 
     @staticmethod
     def _ensure_verification_target_allowed(
-        admin: TenantAdmin,
-        tenant: Tenant,
+        target: VerificationTarget,
+        tenant: Tenant | None,
     ) -> None:
-        """Validate whether a tenant admin can complete OTP verification."""
+        """Validate whether a signup target can complete OTP verification."""
 
-        if admin.account_status != TenantAdminStatus.PENDING or admin.is_verified:
+        if isinstance(target, (TeacherAccount, ParentAccount)):
+            OTPService._ensure_global_verification_target_allowed(target)
+            return
+
+        if tenant is None:
+            raise BadRequestException("OTP verification is not available for this account.")
+        if target.account_status != TenantAdminStatus.PENDING or target.is_verified:
             raise BadRequestException("OTP verification is not available for this account.")
         if tenant.verification_status == TenantVerificationStatus.REJECTED:
             raise BadRequestException("Tenant verification has been rejected.")
@@ -1689,13 +1861,14 @@ class OTPService:
         purpose = _enum_value(payload.purpose)
 
         if purpose == AuthPurpose.VERIFICATION.value:
-            admin, _tenant = await OTPService._get_verification_target(
+            target, tenant = await OTPService._get_verification_target(
                 db,
                 normalized_email,
                 lock=True,
             )
-            record_email = admin.email
-            tenant_id = admin.tenant_id
+            OTPService._ensure_verification_target_allowed(target, tenant)
+            record_email = target.email
+            tenant_id = target.tenant_id if isinstance(target, TenantAdmin) else None
         elif purpose == AuthPurpose.PASSWORD_RESET.value:
             actor, _tenant, _actor_type = await _get_email_actor_with_tenant(
                 db,
@@ -1738,8 +1911,8 @@ class OTPService:
         purpose = _enum_value(payload.purpose)
 
         if purpose == AuthPurpose.VERIFICATION.value:
-            admin, tenant = await OTPService._get_verification_target(db, normalized_email)
-            OTPService._ensure_verification_target_allowed(admin, tenant)
+            target, tenant = await OTPService._get_verification_target(db, normalized_email)
+            OTPService._ensure_verification_target_allowed(target, tenant)
         elif purpose == AuthPurpose.PASSWORD_RESET.value:
             actor, tenant, _actor_type = await _get_email_actor_with_tenant(db, normalized_email)
             if not _email_actor_can_reset_password(actor, tenant):
@@ -1819,15 +1992,66 @@ class OTPService:
         response_data = {"detail": "OTP verified successfully"}
 
         if purpose == AuthPurpose.VERIFICATION.value:
-            admin, tenant = await OTPService._get_verification_target(
+            try:
+                resolution = await AuthIdentityService.resolve_identifier(
+                    db=db,
+                    identifier=normalized_email,
+                    identifier_type=IdentifierType.EMAIL,
+                )
+            except NotFoundException:
+                resolution = None
+
+            if (
+                resolution is not None
+                and resolution.tenant_id is None
+                and resolution.actor_type == ActorType.TEACHER
+            ):
+                account = await TeacherAccountRepository.get_by_id(
+                    db,
+                    resolution.actor_id,
+                    lock=True,
+                )
+                if account is None:
+                    raise BadRequestException("Verification target not found.")
+                if not account.is_active or account.account_status == TeacherAccountStatus.LOCKED:
+                    raise BadRequestException("Verification is not available for this account.")
+                account.is_verified = True
+                account.account_status = TeacherAccountStatus.ACTIVE
+                otp_record.is_used = True
+                await db.commit()
+                return response_data
+
+            if (
+                resolution is not None
+                and resolution.tenant_id is None
+                and resolution.actor_type == ActorType.PARENT
+            ):
+                account = await ParentAccountRepository.get_by_id(
+                    db,
+                    resolution.actor_id,
+                    lock=True,
+                )
+                if account is None:
+                    raise BadRequestException("Verification target not found.")
+                if not account.is_active or account.account_status == ParentAccountStatus.LOCKED:
+                    raise BadRequestException("Verification is not available for this account.")
+                account.is_verified = True
+                account.account_status = ParentAccountStatus.ACTIVE
+                otp_record.is_used = True
+                await db.commit()
+                return response_data
+
+            target, tenant = await OTPService._get_verification_target(
                 db,
                 normalized_email,
                 lock=True,
             )
-            OTPService._ensure_verification_target_allowed(admin, tenant)
+            OTPService._ensure_verification_target_allowed(target, tenant)
+            if not isinstance(target, TenantAdmin) or tenant is None:
+                raise BadRequestException("OTP verification is not available for this account.")
 
-            admin.account_status = TenantAdminStatus.ACTIVE
-            admin.is_verified = True
+            target.account_status = TenantAdminStatus.ACTIVE
+            target.is_verified = True
             tenant.verification_status = TenantVerificationStatus.ACTIVE
             if tenant.status == TenantStatus.INACTIVE:
                 tenant.status = TenantStatus.TRIAL

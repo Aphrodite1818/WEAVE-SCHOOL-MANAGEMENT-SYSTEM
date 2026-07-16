@@ -18,7 +18,34 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def _exec(sql: str) -> None:
-    op.execute(sa.text(sql))
+    statements: list[str] = []
+    current: list[str] = []
+    in_dollar_quote = False
+    index = 0
+
+    while index < len(sql):
+        if sql.startswith("$$", index):
+            in_dollar_quote = not in_dollar_quote
+            current.append("$$")
+            index += 2
+            continue
+
+        char = sql[index]
+        if char == ";" and not in_dollar_quote:
+            statement = "".join(current).strip()
+            if statement:
+                statements.append(statement)
+            current = []
+        else:
+            current.append(char)
+        index += 1
+
+    statement = "".join(current).strip()
+    if statement:
+        statements.append(statement)
+
+    for statement in statements:
+        op.execute(sa.text(statement))
 
 
 def _create_enum(name: str, values: Sequence[str]) -> None:
@@ -639,8 +666,8 @@ def upgrade() -> None:
             ) THEN
                 UPDATE public.student_parent_link_requests spr
                 SET
-                    parent_membership_id = COALESCE(parent_membership_id, spr.parent_id),
-                    parent_account_id = COALESCE(parent_account_id, pm.parent_account_id)
+                    parent_membership_id = COALESCE(spr.parent_membership_id, spr.parent_id),
+                    parent_account_id = COALESCE(spr.parent_account_id, pm.parent_account_id)
                 FROM public.parent_memberships pm
                 WHERE spr.parent_id = pm.id
                     AND spr.parent_account_id IS NULL;
@@ -668,15 +695,15 @@ def upgrade() -> None:
         )
         SELECT
             (
-                substr(md5(spr.id::text || ':parent_invitation'), 1, 8)
+                substr(md5(spr.id::text || 'parent_invitation'), 1, 8)
                 || '-'
-                || substr(md5(spr.id::text || ':parent_invitation'), 9, 4)
+                || substr(md5(spr.id::text || 'parent_invitation'), 9, 4)
                 || '-'
-                || substr(md5(spr.id::text || ':parent_invitation'), 13, 4)
+                || substr(md5(spr.id::text || 'parent_invitation'), 13, 4)
                 || '-'
-                || substr(md5(spr.id::text || ':parent_invitation'), 17, 4)
+                || substr(md5(spr.id::text || 'parent_invitation'), 17, 4)
                 || '-'
-                || substr(md5(spr.id::text || ':parent_invitation'), 21, 12)
+                || substr(md5(spr.id::text || 'parent_invitation'), 21, 12)
             )::uuid,
             spr.tenant_id,
             spr.student_id,

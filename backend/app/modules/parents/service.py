@@ -1,415 +1,616 @@
-import secrets
+#==========================#
+#     parent.service.py    #
+#==========================#
+
+
+"""service layer for global parent account registration"""
+
+
+from __future__ import annotations
+from enum import Enum as PyEnum
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import BackgroundTasks
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.logging import get_logger
 from app.config.security import hash_password
-from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    ConflictException,
+    ForbiddenException,
+    NotFoundException,
+    TooManyRequestsException
+)
+
+from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth_identity.models import ActorType, IdentifierType
+from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.auth.service import UserInviteService
-from app.modules.parents.models import Parent, ParentAccountStatus
-from app.modules.parents.repository import ParentRepository
-from app.modules.parents.schemas import (
-    ParentCreate,
-    ParentLinkedStudentResponse,
-    ParentOnboardingStatusResponse,
-    ParentOnboardingUpdate,
-    ParentResponse,
-    ParentSelfUpdate,
-    ParentUpdate,
+from app.modules.auth.models import AuthPurpose
+from app.modules.auth.schemas import RequestOTP
+from app.modules.auth.service import OTPService
+from app.modules.parents.models import(
+    ParentAccount,
+    ParentAccountStatus
 )
-from app.modules.students.repository import StudentParentLinkRepository
-from app.modules.students.schemas import StudentParentLinkResponse, StudentResponse
-from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.repository import TenantRepository
-from app.modules.auth.account_email_guard import AccountEmailGuard
+from app.modules.parents.repository import ParentAccountRepository
+from app.modules.parents.schemas import ParentAccountRegisterRequest
+from app.modules.parents.schemas import (
+    ParentAccountOnboardingRequest,
+    ParentAccountProfileUpdateRequest,
+    ParentAccountResponse,
+)
+ 
+logger = get_logger(__name__)
+
+class ParentRegistrationState(str , PyEnum):
+    """Possible registration states for a global parent account"""
+
+    AVAILABLE = "AVAILABLE"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
+    ACTIVE = "ACTIVE"
+    LOCKED = "LOCKED"
+    INACTIVE = "INACTIVE"
 
 
-class ParentService:
-    """Business logic for parent actors."""
+class ParentAccountService:
+    """Business logic for global parent accounts"""
+
 
     @staticmethod
-    def _normalize_email(email: str) -> str:
-        """Normalize a parent email address."""
+    def get_registration_state(
+        account : ParentAccount | None
+    ) -> Literal[ParentRegistrationState.AVAILABLE] | Literal[ParentRegistrationState.LOCKED] | Literal[ParentRegistrationState.INACTIVE] | Literal[ParentRegistrationState.PENDING_VERIFICATION] | Literal[ParentRegistrationState.ACTIVE]:
+        """
+        Determine how registration should treat a parent email
 
-        return email.strip().lower()
+        AVAILABLE:
+            no parent account owns the email
+
+
+        PENDING_VERIFICATION:
+            Registration was started but email verification was not completed
+
+
+        ACTIVE:
+            The global parent account has already been verified and activated
+
+
+        LOCKED:
+            The global account was locked for security or administrative 
+            reasons
+
+
+        INACTIVE:
+            the global account has been deactivated and must not be
+            silently restored through registration
+        """
+
+
+        if account is None:
+            return ParentRegistrationState.AVAILABLE
+        
+
+        if account.account_status == ParentAccountStatus.LOCKED:
+            return ParentRegistrationState.LOCKED
+        
+        if(
+            account.account_status == ParentAccountStatus.INACTIVE
+            or not account.is_active
+        ):
+            return ParentRegistrationState.INACTIVE
+        
+
+        if(
+            account.account_status == ParentAccountStatus.PENDING
+            or not account.is_verified
+        ):
+            return ParentRegistrationState.PENDING_VERIFICATION
+        
+
+        return ParentRegistrationState.ACTIVE
+    
+
 
     @staticmethod
-    def _ensure_tenant_admin(actor: TenantAdmin) -> None:
-        """Ensure the actor is a tenant admin."""
+    def _build_registration_response(
+        *,
+        account : ParentAccount,
+        created: bool,
+        message : str,
+        resend_otp_available : bool
+    ) -> dict[str, Any]:
+        """Build the frontend registration and verification response"""
 
-        if not actor.tenant_id:
-            raise ForbiddenException(detail="Tenant admin is not attached to a tenant")
+        return{
+            "created": created,
+            "email":account.email,
+            "verification_required": True,
+            "purpose":AuthPurpose.VERIFICATION.value,
+            "redirect_to" :"/verify-otp",
+            "resend_otp_available" : resend_otp_available,
+            "detail" : message,
+            "message":message
+
+        }
 
     @staticmethod
-    def _ensure_parent_actor(actor: Parent) -> None:
-        """Ensure the actor is a parent attached to a tenant."""
+    def _require_account(account: ParentAccount | None) -> ParentAccount:
+        """Return the loaded global parent account or raise a stable error."""
 
-        if not actor.tenant_id:
-            raise ForbiddenException(detail="Parent is not attached to a tenant")
+        if account is None:
+            raise NotFoundException("Parent account not found")
+        return account
 
     @staticmethod
-    async def create_parent(
+    def _require_onboarding_access(account: ParentAccount) -> None:
+        """Ensure the account is allowed to update its global profile."""
+
+        if not account.is_active:
+            raise ForbiddenException("Parent account is inactive")
+
+        if account.account_status == ParentAccountStatus.LOCKED:
+            raise ForbiddenException("Parent account is locked")
+
+        if account.account_status == ParentAccountStatus.INACTIVE:
+            raise ForbiddenException("Parent account is inactive")
+
+    @staticmethod
+    async def _load_registration_account(
+        *,
         db: AsyncSession,
-        actor: TenantAdmin,
-        payload: ParentCreate,
-        background_tasks: BackgroundTasks | None = None,
-    ) -> ParentResponse:
-        """Create a parent actor and attach an AuthIdentity."""
+        normalized_email: str,
+    ) -> ParentAccount | None:
+        """
+        Load the parent account allowed to use this email.
 
-        ParentService._ensure_tenant_admin(actor)
+        AuthIdentity is the login ownership table, so it must be checked before
+        creating or resuming a role-specific account. A matching parent-account
+        identity can resume through the parent account row; any other identity
+        means this email already belongs to another authenticatable actor.
+        """
 
-        normalized_email = ParentService._normalize_email(payload.email)
-
-        normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
-            db = db ,
-            email = normalized_email
-        )
-
-        await AuthIdentityService.ensure_identifier_available(
-            db=db,
+        identity = await AuthIdentityRepository.get_by_identifier(
+            db,
             identifier=normalized_email,
             identifier_type=IdentifierType.EMAIL,
         )
 
-        if await ParentRepository.email_exists(db=db, email=normalized_email):
-            raise ConflictException(detail="A parent with this email already exists")
+        if identity is None:
+            return await ParentAccountRepository.get_by_email(
+                db,
+                normalized_email,
+                lock=True,
+            )
 
-        tenant = await TenantRepository.get_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-        )
-        if tenant is None:
-            raise NotFoundException(detail="Tenant not found")
+        if identity.actor_type != ActorType.PARENT:
+            raise ConflictException("This email is already registered. Please log in")
 
-        temporary_password = secrets.token_urlsafe(32)
-
-        parent = Parent(
-            tenant_id=actor.tenant_id,
-            email=normalized_email,
-            password_hash=hash_password(temporary_password),
-            first_name=payload.first_name,
-            last_name=payload.last_name,
-            phone_number=payload.phone_number,
-            occupation=payload.occupation,
-            address=payload.address,
-            emergency_phone=payload.emergency_phone,
-            account_status=ParentAccountStatus.PENDING,
-            is_verified=False,
-            is_active=True,
-            last_login_at=None,
+        account = await ParentAccountRepository.get_by_id(
+            db,
+            identity.actor_id,
+            lock=True,
         )
 
-        try:
-            created_parent = await ParentRepository.create_parent(db=db, parent=parent)
+        if account is None or account.email != normalized_email:
+            raise ConflictException("This email is already registered. Please log in")
 
-            await AuthIdentityService.create_for_actor(
+        return account
+    
+
+
+
+    @staticmethod
+    async def _recover_concurrent_registration(
+        *,
+        db : AsyncSession,
+        normalized_email : str ,
+        password : str 
+    ) -> ParentAccount:
+        """
+        Recover when two regisration requests create the same email at once
+
+        The unique email constraints allow only on insert. The request
+        that loses the race reloads the newly creatd account and treates it
+        as a resumable pending registration
+        """
+
+        async with db.begin():
+            account = await ParentAccountRepository.get_by_email(
+                db,
+                normalized_email,
+                lock = True
+            )
+            state = ParentAccountService.get_registration_state(account)
+
+
+            if(
+                account is None
+                or state != ParentRegistrationState.PENDING_VERIFICATION
+            ):
+                raise ConflictException(
+                    "This email is already registered. Please log in"
+                )
+            
+
+            account.password_hash = hash_password(password)
+            account.account_status = ParentAccountStatus.PENDING
+            account.is_verified = False
+            account.is_active = True
+
+            await ParentAccountRepository.save(
+                db,
+                account
+            )
+
+            await AuthIdentityService.ensure_for_actor(
                 db=db,
-                tenant_id=actor.tenant_id,
                 payload=AuthIdentityCreate(
                     identifier=normalized_email,
                     identifier_type=IdentifierType.EMAIL,
                     actor_type=ActorType.PARENT,
-                    actor_id=created_parent.id,
+                    actor_id=account.id,
                     is_active=True,
                 ),
             )
 
-            invite_link = await UserInviteService.create_invite_record(
-                db=db,
-                email=normalized_email,
-                tenant_id=actor.tenant_id,
+            return account
+        
+
+
+
+    @staticmethod
+    async def register_account(
+        db : AsyncSession,
+        payload : ParentAccountRegisterRequest,
+        background_tasks : BackgroundTasks | None = None
+    ) -> dict[str, Any]:
+        """
+        Register or resume registration for a global parent account
+
+        New registration:
+         creates a pending parent account and sends an email - verification OTP
+
+         partial registration
+            reuses the existing pending account, replaces its password with 
+            the newly supplied password and sends or reuses an OTP
+
+        Active account:
+            Registration is rejected and the user is directed to log in
+
+
+        Locked or inactive account:
+            Registration cannot reactivate the account 
+        """
+
+
+        normalized_email = payload.email.strip().casefold()
+        account : ParentAccount | None = None
+        reused_pending_account = False
+
+        try:
+            async with db.begin():
+                normalized_email = (
+                    await AccountEmailGuard.ensure_not_superadmin_email(
+                        db = db ,
+                        email = normalized_email,
+                        message = "This email cannot be used for parent registration"
+                    )
+                )
+
+
+                account = await ParentAccountService._load_registration_account(
+                    db=db,
+                    normalized_email=normalized_email,
+                )
+
+
+                registration_state = (
+                    ParentAccountService.get_registration_state(account)
+                )
+
+                if registration_state == ParentRegistrationState.ACTIVE:
+                    raise ConflictException(
+                        "This email is already registered. Please log in"
+                    )
+                
+
+                if registration_state == ParentRegistrationState.LOCKED:
+                    raise ConflictException(
+                        "This parent account is locked , Please contact support"
+                    )
+                
+
+
+                if registration_state == ParentRegistrationState.INACTIVE:
+                    raise ConflictException(
+                        "This parent account is inactive"
+                        "Please contact support or use account recovery"
+                    )
+                
+
+                password_hash = hash_password(payload.password)
+
+
+
+                if(
+                    registration_state
+                    == ParentRegistrationState.PENDING_VERIFICATION
+                ):
+                    if account is None:
+                        raise ConflictException(
+                            "The existing parent registration could not be loaded"
+                        )
+                    
+
+                    reused_pending_account = True
+
+
+                    account.password_hash = password_hash
+                    account.account_status = ParentAccountStatus.PENDING
+                    account.is_verified = False
+                    account.is_active = True
+
+
+                    await ParentAccountRepository.save(
+                        db,
+                        account
+                    )
+
+                    await AuthIdentityService.ensure_for_actor(
+                        db=db,
+                        payload=AuthIdentityCreate(
+                            identifier=normalized_email,
+                            identifier_type=IdentifierType.EMAIL,
+                            actor_type=ActorType.PARENT,
+                            actor_id=account.id,
+                            is_active=True,
+                        ),
+                    )
+
+
+                    logger.info(
+                        "Parent registration reused pending account",
+                        extra = {
+                            "parent_account_id": str(account.id),
+                            "email" : normalized_email
+                        }
+                    )
+
+                else:
+                    account = ParentAccount(
+                        email = normalized_email,
+                        password_hash = password_hash,
+                        account_status = ParentAccountStatus.PENDING,
+                        is_verified = False ,
+                        is_active = True
+                    )
+
+
+                    await ParentAccountRepository.add(
+                        db ,
+                        account
+                    )
+
+                    await AuthIdentityService.create_for_actor(
+                        db=db,
+                        payload=AuthIdentityCreate(
+                            identifier=normalized_email,
+                            identifier_type=IdentifierType.EMAIL,
+                            actor_type=ActorType.PARENT,
+                            actor_id=account.id,
+                            is_active=True,
+                        ),
+                    )
+
+
+                    logger.info(
+                        "Created pending global parent account",
+                        extra={
+                            "parent_account_id": str(account.id),
+                            "email": normalized_email
+                        }
+                    )
+
+
+        except IntegrityError:
+            await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
+
+            account = await ParentAccountService._recover_concurrent_registration(
+                db = db ,
+                normalized_email = normalized_email,
+                password = payload.password
             )
 
-            await db.commit()
-            await AuthIdentityService.invalidate_after_commit(db)
-            await db.refresh(created_parent)
+            reused_pending_account = True
 
-            await UserInviteService.send_invite_email(
-                email=normalized_email,
-                user_name=(
-                    " ".join(
-                        part
-                        for part in [created_parent.first_name, created_parent.last_name]
-                        if part
-                    ).strip()
-                    or normalized_email
+
+            logger.info(
+                "Recovered concurrent parent registration",
+
+                extra = {
+                    "parent_account_id": str(account.id),
+                    "email" : normalized_email
+                }
+            )
+
+
+        if account is None:
+            raise ConflictException(
+                "Parent registration could not be completed."
+            )
+
+        await AuthIdentityService.invalidate_after_commit(db)
+
+        message = (
+            "Registration successful. "
+            "Please check your email for the verification code."
+        )
+        resend_otp_available = True
+
+        try:
+            await OTPService.generate_otp(
+                db,
+                RequestOTP(
+                    email=normalized_email,
+                    purpose=AuthPurpose.VERIFICATION.value,
                 ),
-                school_name=tenant.school_name,
-                invite_link=invite_link,
                 background_tasks=background_tasks,
             )
 
-            return ParentResponse.model_validate(created_parent)
-        except IntegrityError as exc:
-            await db.rollback()
-            AuthIdentityService.discard_pending_invalidations(db)
-            raise BadRequestException(
-                detail="Parent creation failed because of a duplicate or invalid value."
-            ) from exc
+        except TooManyRequestsException:
+            if not reused_pending_account:
+                # A brand-new registration should not claim a verification OTP
+                # was sent when the first dispatch was rate-limited or failed.
+                raise
 
-    @staticmethod
-    async def get_parent_profile(
-        db: AsyncSession,
-        actor: TenantAdmin | Parent,
-        parent_id: UUID,
-    ) -> ParentResponse:
-        """Get a parent profile by ID within the current tenant."""
+            resend_otp_available = False
+            message = (
+                "Your registration already exists but needs verification. "
+                "A verification code was sent recently. Please use the latest "
+                "code or wait before requesting another one."
+            )
 
-        tenant_id = actor.tenant_id
-        if not tenant_id:
-            raise ForbiddenException(detail="Actor is not attached to a tenant")
+        if reused_pending_account:
+            if resend_otp_available:
+                message = (
+                    "Your registration already exists but needs verification. "
+                    "We sent you a new verification code."
+                )
 
-        parent = await ParentRepository.get_parent_by_id(
-            db=db,
-            tenant_id=tenant_id,
-            parent_id=parent_id,
-        )
-        if parent is None:
-            raise NotFoundException(detail="Parent profile not found")
+            logger.info(
+                "Resumed pending parent registration",
+                extra={
+                    "parent_account_id": str(account.id),
+                    "email": normalized_email,
+                    "resend_otp_available": resend_otp_available,
+                },
+            )
 
-        if isinstance(actor, Parent) and parent.id != actor.id:
-            raise ForbiddenException(detail="You are not allowed to view this parent profile")
+            return ParentAccountService._build_registration_response(
+                account=account,
+                created=False,
+                message=message,
+                resend_otp_available=resend_otp_available,
+            )
 
-        return ParentResponse.model_validate(parent)
-
-    @staticmethod
-    async def get_my_parent_profile(
-        db: AsyncSession,
-        actor: Parent,
-    ) -> ParentResponse:
-        """Get the current parent profile."""
-
-        ParentService._ensure_parent_actor(actor)
-        parent = await ParentRepository.get_parent_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            parent_id=actor.id,
-        )
-        if parent is None:
-            raise NotFoundException(detail="Parent profile not found")
-        return ParentResponse.model_validate(parent)
-
-    @staticmethod
-    async def update_my_parent_profile(
-        db: AsyncSession,
-        actor: Parent,
-        payload: ParentOnboardingUpdate,
-    ) -> ParentResponse:
-        """Allow a parent to update their own profile."""
-
-        ParentService._ensure_parent_actor(actor)
-
-        parent = await ParentRepository.get_parent_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            parent_id=actor.id,
-        )
-        if parent is None:
-            raise NotFoundException(detail="Parent profile not found")
-
-        update_data = payload.model_dump(exclude_unset=True)
-        if not update_data:
-            raise BadRequestException(detail="No update data provided")
-
-        for field, value in update_data.items():
-            setattr(parent, field, value)
-
-        updated_parent = await ParentRepository.save(db=db, parent=parent)
-        await db.commit()
-        await db.refresh(updated_parent)
-        return ParentResponse.model_validate(updated_parent)
-
-    @staticmethod
-    async def get_my_onboarding_status(
-        db: AsyncSession,
-        actor: Parent,
-    ) -> ParentOnboardingStatusResponse:
-        """Return the current parent onboarding status."""
-
-        parent = await ParentService.get_my_parent_profile(
-            db=db,
-            actor=actor,
-        )
-
-        return ParentOnboardingStatusResponse(
-            actor_type="parent",
-            parent_id=parent.id,
-            onboarding_required=not parent.profile_completed,
-            profile_completed=parent.profile_completed,
-            completion_target="parent",
-            required_fields=["first_name", "last_name"],
-            current_values={
-                "email": parent.email,
-                "first_name": parent.first_name,
-                "last_name": parent.last_name,
-                "phone_number": parent.phone_number,
-                "occupation": parent.occupation,
-                "address": parent.address,
-                "emergency_phone": parent.emergency_phone,
+        logger.info(
+            "Parent registration created and verification requested",
+            extra={
+                "parent_account_id": str(account.id),
+                "email": normalized_email,
             },
         )
 
-    @staticmethod
-    async def get_all_parents(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        skip: int = 0,
-        limit: int = 100,
-        search: str | None = None,
-    ) -> tuple[list[ParentResponse], int]:
-        """Get a paginated list of parents for a tenant."""
-
-        ParentService._ensure_tenant_admin(actor)
-        parents, total = await ParentRepository.list_all_parents(
-            db=db,
-            tenant_id=actor.tenant_id,
-            skip=skip,
-            limit=min(limit, 100),
-            search=search,
-        )
-        return [ParentResponse.model_validate(parent) for parent in parents], total
-
-    @staticmethod
-    async def get_my_linked_students(
-        db: AsyncSession,
-        actor: Parent,
-    ) -> tuple[list[ParentLinkedStudentResponse], int]:
-        """Get students linked to the logged-in parent."""
-
-        ParentService._ensure_parent_actor(actor)
-
-        links = await StudentParentLinkRepository.get_by_parent_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            parent_id=actor.id,
+        return ParentAccountService._build_registration_response(
+            account=account,
+            created=True,
+            message=message,
+            resend_otp_available=resend_otp_available,
         )
 
-        linked_students = [
-            ParentLinkedStudentResponse(
-                student=StudentResponse.model_validate(link.student),
-                link=StudentParentLinkResponse.model_validate(link),
+    @staticmethod
+    def _parent_onboarding_status(account: ParentAccount) -> dict[str, Any]:
+        """Build a compact onboarding status payload for the frontend."""
+
+        return {
+            "actor_type": "parent",
+            "parent_account_id": account.id,
+            "onboarding_required": not account.profile_completed,
+            "profile_completed": account.profile_completed,
+            "completion_target": "parent_account",
+            "required_fields": ["first_name", "last_name"],
+            "current_values": {
+                "email": account.email,
+                "first_name": account.first_name,
+                "last_name": account.last_name,
+                "phone_number": account.phone_number,
+                "occupation": account.occupation,
+                "address": account.address,
+                "emergency_phone": account.emergency_phone,
+            },
+        }
+
+    @staticmethod
+    async def get_onboarding_status(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+    ) -> dict[str, Any]:
+        """Return onboarding state for a global parent account."""
+
+        account = await ParentAccountRepository.get_by_id(db, account_id)
+        account = ParentAccountService._require_account(account)
+        ParentAccountService._require_onboarding_access(account)
+        return ParentAccountService._parent_onboarding_status(account)
+
+    @staticmethod
+    async def complete_onboarding(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+        payload: ParentAccountOnboardingRequest,
+    ) -> ParentAccountResponse:
+        """
+        Complete the global parent profile after lightweight registration.
+
+        This intentionally updates only ParentAccount fields. Tenant
+        memberships and student links remain invitation/admin-owned workflows.
+        """
+
+        account = await ParentAccountRepository.get_by_id(
+            db,
+            account_id,
+            lock=True,
+        )
+        account = ParentAccountService._require_account(account)
+        ParentAccountService._require_onboarding_access(account)
+
+        if account.profile_completed:
+            raise ConflictException(
+                "Parent account onboarding has already been completed"
             )
-            for link in links
-            if link.student is not None
-        ]
 
-        return linked_students, len(linked_students)
+        update_data = payload.model_dump()
+        for field, value in update_data.items():
+            setattr(account, field, value)
+
+        updated_account = await ParentAccountRepository.save(db, account)
+
+        await db.refresh(updated_account)
+        return ParentAccountResponse.model_validate(updated_account)
 
     @staticmethod
-    async def update_parent_profile(
+    async def update_profile(
         db: AsyncSession,
-        actor: TenantAdmin,
-        parent_id: UUID,
-        payload: ParentUpdate,
-    ) -> ParentResponse:
-        """Update a parent profile as tenant admin."""
+        *,
+        account_id: UUID,
+        payload: ParentAccountProfileUpdateRequest,
+    ) -> ParentAccountResponse:
+        """
+        Update parent-controlled global profile fields.
 
-        ParentService._ensure_tenant_admin(actor)
+        Email and password are intentionally excluded from this flow because
+        they need dedicated verification and credential-change workflows.
+        """
 
-        parent = await ParentRepository.get_parent_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            parent_id=parent_id,
+        account = await ParentAccountRepository.get_by_id(
+            db,
+            account_id,
+            lock=True,
         )
-        if parent is None:
-            raise NotFoundException(detail="Parent profile not found")
+        account = ParentAccountService._require_account(account)
+        ParentAccountService._require_onboarding_access(account)
 
         update_data = payload.model_dump(exclude_unset=True)
-        if not update_data:
-            raise BadRequestException(detail="No update data provided")
+        for field, value in update_data.items():
+            setattr(account, field, value)
 
-        if "email" in update_data and update_data["email"] is not None:
-            normalized_email = ParentService._normalize_email(update_data["email"])
-            normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
-                db = db ,
-                email = normalized_email
-            )
-            if normalized_email != parent.email:
-                await AuthIdentityService.ensure_identifier_available(
-                    db=db,
-                    identifier=normalized_email,
-                    identifier_type=IdentifierType.EMAIL,
-                )
-                if await ParentRepository.email_exists(
-                    db=db,
-                    email=normalized_email,
-                    exclude_parent_id=parent.id,
-                ):
-                    raise ConflictException(detail="A parent with this email already exists")
+        updated_account = await ParentAccountRepository.save(db, account)
 
-                await AuthIdentityService.update_identifier(
-                    db=db,
-                    actor_type=ActorType.PARENT,
-                    actor_id=parent.id,
-                    new_identifier=normalized_email,
-                    identifier_type=IdentifierType.EMAIL,
-                )
-                update_data["email"] = normalized_email
-
-        if "password" in update_data and update_data["password"] is not None:
-            update_data["password_hash"] = hash_password(update_data.pop("password"))
-
-        if "is_active" in update_data and update_data["is_active"] is False:
-            await AuthIdentityService.deactivate_for_actor(
-                db=db,
-                actor_type=ActorType.PARENT,
-                actor_id=parent.id,
-            )
-
-        if (
-            "account_status" in update_data
-            and update_data["account_status"] == ParentAccountStatus.INACTIVE
-        ):
-            await AuthIdentityService.deactivate_for_actor(
-                db=db,
-                actor_type=ActorType.PARENT,
-                actor_id=parent.id,
-            )
-
-        try:
-            for field, value in update_data.items():
-                setattr(parent, field, value)
-
-            updated_parent = await ParentRepository.save(db=db, parent=parent)
-            await db.commit()
-            await AuthIdentityService.invalidate_after_commit(db)
-            await db.refresh(updated_parent)
-            return ParentResponse.model_validate(updated_parent)
-        except IntegrityError as exc:
-            await db.rollback()
-            AuthIdentityService.discard_pending_invalidations(db)
-            raise BadRequestException(
-                detail="Parent update failed because of a duplicate or invalid value."
-            ) from exc
-
-    @staticmethod
-    async def delete_parent_profile(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        parent_id: UUID,
-    ) -> None:
-        """Delete a parent profile."""
-
-        ParentService._ensure_tenant_admin(actor)
-
-        parent = await ParentRepository.get_parent_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            parent_id=parent_id,
-        )
-        if parent is None:
-            raise NotFoundException(detail="Parent profile not found")
-
-        await AuthIdentityService.deactivate_for_actor(
-            db=db,
-            actor_type=ActorType.PARENT,
-            actor_id=parent.id,
-        )
-        await ParentRepository.delete_parent(db=db, parent=parent)
-        await db.commit()
-        await AuthIdentityService.invalidate_after_commit(db)
+        await db.refresh(updated_account)
+        return ParentAccountResponse.model_validate(updated_account)

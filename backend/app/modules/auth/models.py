@@ -24,7 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.shared.base_model import Base, BaseModel, PUBLIC_SCHEMA
+from app.shared.base_model import Base, PUBLIC_SCHEMA
 from app.shared.mixins import TimestampMixin, UUIDMixin
 
 
@@ -37,7 +37,7 @@ class AuthPurpose(str, PyEnum):
     USER_INVITE = "user_invite"
 
 
-class AuthRecord(BaseModel):
+class AuthRecord(UUIDMixin, TimestampMixin, Base):
     """Stores OTP, password-reset, activation, and invite secrets."""
 
     __tablename__ = "auth"
@@ -53,6 +53,11 @@ class AuthRecord(BaseModel):
         ),
     )
 
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenants.id"),
+        nullable=True,
+    )
     email: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     hashed_value: Mapped[str] = mapped_column(String(255), nullable=False)
     purpose: Mapped[AuthPurpose] = mapped_column(
@@ -78,8 +83,10 @@ class AuthSessionActorType(str, PyEnum):
 
     SUPERADMIN = "superadmin"
     TENANT_ADMIN = "tenant_admin"
+    TEACHER_ACCOUNT = "teacher_account"
     TEACHER = "teacher"
     STAFF = "staff"
+    PARENT_ACCOUNT = "parent_account"
     PARENT = "parent"
     STUDENT = "student"
 
@@ -162,7 +169,12 @@ class AuthSession(UUIDMixin, TimestampMixin, Base):
             )
             OR
             (
-                actor_type <> 'superadmin'
+                actor_type IN ('teacher_account', 'parent_account')
+                AND tenant_id IS NULL
+            )
+            OR
+            (
+                actor_type NOT IN ('superadmin', 'teacher_account', 'parent_account')
                 AND tenant_id IS NOT NULL
             )
             """,

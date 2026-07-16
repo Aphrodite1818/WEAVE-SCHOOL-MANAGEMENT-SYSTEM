@@ -531,3 +531,50 @@ class ParentInvitationDispatchResponse(OutputBase):
 
     success: Literal[True] = True
     message: str = "Invitation processing started."
+
+
+# ---------------------------------------------------------------------------
+# Legacy tenant-parent compatibility schemas
+# ---------------------------------------------------------------------------
+
+
+class ParentCreate(ParentAccountOnboardingRequest):
+    """Compatibility request for legacy tenant-parent creation imports."""
+
+    email: EmailStr
+
+
+class ParentUpdate(ParentAccountProfileUpdateRequest):
+    """Compatibility request for legacy tenant-parent update imports."""
+
+    email: EmailStr | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    account_status: ParentAccountStatus | None = None
+    is_active: bool | None = None
+
+
+ParentSelfUpdate = ParentAccountProfileUpdateRequest
+ParentOnboardingUpdate = ParentAccountProfileUpdateRequest
+ParentResponse = ParentAccountResponse
+ParentLinkedStudentResponse = OutputBase
+
+
+class ParentListResponse(OutputBase):
+    items: list[ParentResponse]
+    total: int = Field(ge=0)
+
+
+class ParentLinkedStudentListResponse(OutputBase):
+    items: list[dict] = Field(default_factory=list)
+    total: int = Field(ge=0)
+
+
+class ParentOnboardingStatusResponse(OutputBase):
+    actor_type: str
+    parent_id: uuid.UUID | None = None
+    parent_account_id: uuid.UUID | None = None
+    onboarding_required: bool
+    profile_completed: bool
+    completion_target: str
+    required_fields: list[str] = Field(default_factory=list)
+    current_values: dict = Field(default_factory=dict)

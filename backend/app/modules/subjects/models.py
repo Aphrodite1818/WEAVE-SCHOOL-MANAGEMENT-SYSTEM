@@ -10,7 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.shared.base_model import BaseModel
 
 if TYPE_CHECKING:
-    from app.modules.teachers.models import Teacher, TeacherSubject
+    from app.modules.teachers.models import TeacherMembership
+    from app.modules.teachers.models import TeacherMembershipSubject
 
 
 class Subject(BaseModel):
@@ -25,19 +26,15 @@ class Subject(BaseModel):
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    teacher_links: Mapped[list["TeacherSubject"]] = relationship(
-        "TeacherSubject",
+    teacher_links: Mapped[list["TeacherMembershipSubject"]] = relationship(
+        "TeacherMembershipSubject",
         back_populates="subject",
         cascade="all, delete-orphan",
-        overlaps="teachers,subjects",
     )
 
-    teachers: Mapped[list["Teacher"]] = relationship(
-        secondary="public.teacher_subjects",
-        back_populates="subjects",
-        overlaps="teacher_links,subject_links,teacher,subject",
-        lazy="selectin",
-    )
+    @property
+    def teachers(self) -> list["TeacherMembership"]:
+        return [link.teacher_membership for link in self.teacher_links]
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_subject_tenant_name"),

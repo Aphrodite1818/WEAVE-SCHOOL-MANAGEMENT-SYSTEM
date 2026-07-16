@@ -1,511 +1,495 @@
-# ====================================== #
-#              service.py                #
-# ====================================== #
+"""Service layer for global teacher account registration."""
 
-"""Teacher service layer."""
+from __future__ import annotations
 
-from locale import normalize
-import secrets
-from fastapi import BackgroundTasks
+from enum import Enum as PyEnum
+from typing import Any, Literal
 from uuid import UUID
 
+from fastapi import BackgroundTasks
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.logging import get_logger
 from app.config.security import hash_password
-from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
-from app.core.utils.normalization import normalize_staff_id
+from app.core.exceptions import (
+    ConflictException,
+    ForbiddenException,
+    NotFoundException,
+    TooManyRequestsException,
+)
+from app.modules.auth.account_email_guard import AccountEmailGuard
+from app.modules.auth.models import AuthPurpose
+from app.modules.auth.schemas import RequestOTP
+from app.modules.auth.service import OTPService
 from app.modules.auth_identity.models import ActorType, IdentifierType
+from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.auth.account_email_guard import AccountEmailGuard
-from app.modules.subjects.models import Subject
-from app.modules.subjects.repository import SubjectRepository
-from app.modules.auth.service import UserInviteService
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
-from app.modules.teachers.repository import TeacherRepository
+from app.modules.teachers.models import TeacherAccount, TeacherAccountStatus
+from app.modules.teachers.repository import TeacherAccountRepository
 from app.modules.teachers.schemas import (
-    TeacherCreate,
-    TeacherOnboardingStatusResponse,
-    TeacherOnboardingUpdate,
-    TeacherSelfUpdate,
-    TeacherUpdate,
+    TeacherAccountOnboardingRequest,
+    TeacherAccountProfileUpdateRequest,
+    TeacherAccountRegisterRequest,
+    TeacherAccountResponse,
 )
-from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.repository import TenantRepository
 
 
-class TeacherService:
-    """Business logic for teacher actors."""
+logger = get_logger(__name__)
 
-    @staticmethod
-    def _normalize_email(email: str) -> str:
-        """Normalize teacher email."""
 
-        return email.strip().lower()
+class TeacherRegistrationState(str, PyEnum):
+    """Possible registration states for a global teacher account."""
 
-    @staticmethod
-    def _ensure_tenant_admin(actor: TenantAdmin) -> None:
-        """Ensure actor is a tenant admin attached to a tenant."""
+    AVAILABLE = "AVAILABLE"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
+    ACTIVE = "ACTIVE"
+    LOCKED = "LOCKED"
+    INACTIVE = "INACTIVE"
 
-        if not actor.tenant_id:
-            raise ForbiddenException(detail="Tenant admin is not attached to a tenant")
+
+class TeacherAccountService:
+    """Business logic for global teacher accounts."""
 
     @staticmethod
-    def _ensure_teacher_actor(actor: Teacher) -> None:
-        """Ensure actor is a teacher attached to a tenant."""
+    def get_registration_state(
+        account: TeacherAccount | None,
+    ) -> (
+        Literal[TeacherRegistrationState.AVAILABLE]
+        | Literal[TeacherRegistrationState.LOCKED]
+        | Literal[TeacherRegistrationState.INACTIVE]
+        | Literal[TeacherRegistrationState.PENDING_VERIFICATION]
+        | Literal[TeacherRegistrationState.ACTIVE]
+    ):
+        """Determine how registration should treat a teacher email."""
 
-        if not actor.tenant_id:
-            raise ForbiddenException(detail="Teacher is not attached to a tenant")
+        if account is None:
+            return TeacherRegistrationState.AVAILABLE
+
+        if account.account_status == TeacherAccountStatus.LOCKED:
+            return TeacherRegistrationState.LOCKED
+
+        if account.account_status == TeacherAccountStatus.INACTIVE or not account.is_active:
+            return TeacherRegistrationState.INACTIVE
+
+        if account.account_status == TeacherAccountStatus.PENDING or not account.is_verified:
+            return TeacherRegistrationState.PENDING_VERIFICATION
+
+        return TeacherRegistrationState.ACTIVE
 
     @staticmethod
-    async def create_teacher(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        teacher_data: TeacherCreate,
-        background_tasks: BackgroundTasks | None = None,
-    ) -> Teacher:
-        """Create a teacher actor and attach an AuthIdentity."""
-
-        TeacherService._ensure_tenant_admin(actor)
-
-        normalized_email = TeacherService._normalize_email(teacher_data.email)
-
-        normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
-            db = db ,
-            email = normalized_email,
+    def _identity_payload(account: TeacherAccount) -> AuthIdentityCreate:
+        return AuthIdentityCreate(
+            identifier=account.email,
+            identifier_type=IdentifierType.EMAIL,
+            actor_type=ActorType.TEACHER,
+            actor_id=account.id,
+            is_active=True,
         )
 
-        normalized_staff_id = normalize_staff_id(teacher_data.staff_id)
+    @staticmethod
+    def _build_registration_response(
+        *,
+        account: TeacherAccount,
+        created: bool,
+        message: str,
+        resend_otp_available: bool,
+    ) -> dict[str, Any]:
+        """Build the frontend registration and verification response."""
 
-        await AuthIdentityService.ensure_identifier_available(
-            db=db,
+        return {
+            "created": created,
+            "email": account.email,
+            "verification_required": True,
+            "purpose": AuthPurpose.VERIFICATION.value,
+            "redirect_to": "/verify-otp",
+            "resend_otp_available": resend_otp_available,
+            "detail": message,
+            "message": message,
+        }
+
+    @staticmethod
+    def _require_account(account: TeacherAccount | None) -> TeacherAccount:
+        """Return the loaded global teacher account or raise a stable error."""
+
+        if account is None:
+            raise NotFoundException("Teacher account not found")
+        return account
+
+    @staticmethod
+    def _require_onboarding_access(account: TeacherAccount) -> None:
+        """Ensure the account is allowed to update its global profile."""
+
+        if not account.is_active:
+            raise ForbiddenException("Teacher account is inactive")
+
+        if account.account_status == TeacherAccountStatus.LOCKED:
+            raise ForbiddenException("Teacher account is locked")
+
+        if account.account_status == TeacherAccountStatus.INACTIVE:
+            raise ForbiddenException("Teacher account is inactive")
+
+    @staticmethod
+    async def _load_registration_account(
+        *,
+        db: AsyncSession,
+        normalized_email: str,
+    ) -> TeacherAccount | None:
+        """
+        Load the teacher account allowed to use this email.
+
+        AuthIdentity is the canonical login owner. A matching teacher-account
+        identity may resume registration; any other actor type means the email
+        is already owned by a different authenticatable actor.
+        """
+
+        identity = await AuthIdentityRepository.get_by_identifier(
+            db,
             identifier=normalized_email,
             identifier_type=IdentifierType.EMAIL,
         )
 
-        existing_teacher_email = await TeacherRepository.get_by_email(
-            db=db,
-            email=normalized_email,
-        )
-        if existing_teacher_email is not None:
-            raise ConflictException(detail="A teacher with this email already exists")
-
-        if normalized_staff_id is not None:
-            staff_id_exists = await TeacherRepository.staff_id_exists(
-                db=db,
-                tenant_id=actor.tenant_id,
-                staff_id=normalized_staff_id,
+        if identity is None:
+            return await TeacherAccountRepository.get_by_email(
+                db,
+                normalized_email,
+                lock=True,
             )
-            if staff_id_exists:
-                raise ConflictException(detail="A teacher with this staff ID already exists")
 
-        subject_ids = []
-        unique_subject_ids = []
+        if identity.actor_type != ActorType.TEACHER:
+            raise ConflictException("This email is already registered. Please log in")
 
-        tenant = await TenantRepository.get_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
+        account = await TeacherAccountRepository.get_by_id(
+            db,
+            identity.actor_id,
+            lock=True,
         )
-        if tenant is None:
-            raise NotFoundException(detail="Tenant not found")
 
-        temporary_password = secrets.token_urlsafe(32)
+        if account is None or account.email != normalized_email:
+            raise ConflictException("This email is already registered. Please log in")
 
-        teacher = Teacher(
-            tenant_id=actor.tenant_id,
-            email=normalized_email,
-            password_hash=hash_password(temporary_password),
-            first_name=teacher_data.first_name,
-            last_name=teacher_data.last_name,
-            staff_id=normalized_staff_id,
-            qualification=teacher_data.qualification,
-            specialization=teacher_data.specialization,
-            account_status=TeacherAccountStatus.PENDING,
-            status=TeacherStatus.ACTIVE,
-            is_verified=False,
-            is_active=True,
-        )
+        return account
+
+    @staticmethod
+    async def _recover_concurrent_registration(
+        *,
+        db: AsyncSession,
+        normalized_email: str,
+        password: str,
+    ) -> TeacherAccount:
+        """
+        Recover when two registration requests create the same email at once.
+
+        The request that loses the unique-email race reloads the pending account,
+        refreshes its password, and ensures the global auth identity exists.
+        """
+
+        async with db.begin():
+            account = await TeacherAccountRepository.get_by_email(
+                db,
+                normalized_email,
+                lock=True,
+            )
+            state = TeacherAccountService.get_registration_state(account)
+
+            if account is None or state != TeacherRegistrationState.PENDING_VERIFICATION:
+                raise ConflictException("This email is already registered. Please log in")
+
+            account.password_hash = hash_password(password)
+            account.account_status = TeacherAccountStatus.PENDING
+            account.is_verified = False
+            account.is_active = True
+
+            await TeacherAccountRepository.save(db, account)
+            await AuthIdentityService.ensure_for_actor(
+                db=db,
+                payload=TeacherAccountService._identity_payload(account),
+            )
+
+            return account
+
+    @staticmethod
+    async def register_account(
+        db: AsyncSession,
+        payload: TeacherAccountRegisterRequest,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> dict[str, Any]:
+        """
+        Register or resume registration for a global teacher account.
+
+        This creates login credentials only. School access is still controlled by
+        teacher memberships and invitation acceptance.
+        """
+
+        normalized_email = payload.email.strip().casefold()
+        account: TeacherAccount | None = None
+        reused_pending_account = False
 
         try:
-            created_teacher = await TeacherRepository.create_teacher(
-                db=db,
-                teacher=teacher,
-            )
-
-            await AuthIdentityService.create_for_actor(
-                db=db,
-                tenant_id=actor.tenant_id,
-                payload=AuthIdentityCreate(
-                    identifier=normalized_email,
-                    identifier_type=IdentifierType.EMAIL,
-                    actor_type=ActorType.TEACHER,
-                    actor_id=created_teacher.id,
-                    is_active=True,
-                ),
-            )
-
-            invite_link = await UserInviteService.create_invite_record(
-                db=db,
-                email=normalized_email,
-                tenant_id=actor.tenant_id,
-            )
-
-            await db.commit()
-            await AuthIdentityService.invalidate_after_commit(db)
-
-            await UserInviteService.send_invite_email(
-                email=normalized_email,
-                user_name=(
-                    " ".join(
-                        part
-                        for part in [teacher.first_name, teacher.last_name]
-                        if part
-                    ).strip()
-                    or normalized_email
-                ),
-                school_name=tenant.school_name,
-                invite_link=invite_link,
-                background_tasks=background_tasks,
-            )
-
-            refreshed_teacher = await TeacherRepository.get_teacher_by_id(
-                db=db,
-                tenant_id=actor.tenant_id,
-                teacher_id=created_teacher.id,
-            )
-
-            if not refreshed_teacher:
-                raise NotFoundException(detail="Teacher not found after creation.")
-
-            return refreshed_teacher
-
-        except IntegrityError as exc:
-            await db.rollback()
-            AuthIdentityService.discard_pending_invalidations(db)
-            raise BadRequestException(
-                detail="Teacher creation failed because of a duplicate or invalid value."
-            ) from exc
-
-    @staticmethod
-    async def get_teacher(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        teacher_id: UUID,
-    ) -> Teacher:
-        """Return a teacher within the tenant admin's tenant."""
-
-        TeacherService._ensure_tenant_admin(actor)
-
-        teacher = await TeacherRepository.get_teacher_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            teacher_id=teacher_id,
-        )
-
-        if not teacher:
-            raise NotFoundException(detail="Teacher not found")
-
-        return teacher
-
-    @staticmethod
-    async def get_my_subjects(
-        db: AsyncSession,
-        actor: Teacher,
-        *,
-        skip: int = 0,
-        limit: int = 100,
-        is_active: bool | None = None,
-        search: str | None = None,
-    ) -> tuple[list[Subject], int]:
-        """Return only the subjects assigned to the current teacher."""
-
-        TeacherService._ensure_teacher_actor(actor)
-
-        teacher = await TeacherRepository.get_teacher_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            teacher_id=actor.id,
-        )
-
-        if not teacher:
-            raise NotFoundException(detail="Teacher profile not found.")
-
-        return await SubjectRepository.list_subjects_for_teacher(
-            db=db,
-            tenant_id=actor.tenant_id,
-            teacher_id=teacher.id,
-            skip=skip,
-            limit=min(limit, 100),
-            is_active=is_active,
-            search=search,
-        )
-
-    @staticmethod
-    async def get_my_teacher_profile(
-        db: AsyncSession,
-        actor: Teacher,
-    ) -> Teacher:
-        """Return the current teacher profile."""
-
-        TeacherService._ensure_teacher_actor(actor)
-
-        teacher = await TeacherRepository.get_teacher_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            teacher_id=actor.id,
-        )
-
-        if not teacher:
-            raise NotFoundException(detail="Teacher profile not found.")
-
-        return teacher
-
-    @staticmethod
-    async def update_my_teacher_profile(
-        db: AsyncSession,
-        actor: Teacher,
-        teacher_data: TeacherOnboardingUpdate,
-    ) -> Teacher:
-        """Allow a teacher to update their own profile fields."""
-
-        teacher = await TeacherService.get_my_teacher_profile(
-            db=db,
-            actor=actor,
-        )
-
-        update_data = teacher_data.model_dump(exclude_unset=True)
-        if not update_data:
-            raise BadRequestException(detail="No update data provided")
-
-        if "staff_id" in update_data:
-            normalized_staff_id = normalize_staff_id(update_data["staff_id"])
-            update_data["staff_id"] = normalized_staff_id
-
-            if normalized_staff_id is not None and normalized_staff_id != teacher.staff_id:
-                staff_id_exists = await TeacherRepository.staff_id_exists(
+            async with db.begin():
+                normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
                     db=db,
-                    tenant_id=actor.tenant_id,
-                    staff_id=normalized_staff_id,
-                    exclude_teacher_id=teacher.id,
+                    email=normalized_email,
+                    message="This email cannot be used for teacher registration",
                 )
 
-                if staff_id_exists:
-                    raise ConflictException(detail="A teacher with this staff ID already exists")
+                account = await TeacherAccountService._load_registration_account(
+                    db=db,
+                    normalized_email=normalized_email,
+                )
 
-        for field, value in update_data.items():
-            setattr(teacher, field, value)
+                registration_state = TeacherAccountService.get_registration_state(account)
 
-        updated_teacher = await TeacherRepository.save(
-            db=db,
-            teacher=teacher,
+                if registration_state == TeacherRegistrationState.ACTIVE:
+                    raise ConflictException("This email is already registered. Please log in")
+
+                if registration_state == TeacherRegistrationState.LOCKED:
+                    raise ConflictException(
+                        "This teacher account is locked. Please contact support"
+                    )
+
+                if registration_state == TeacherRegistrationState.INACTIVE:
+                    raise ConflictException(
+                        "This teacher account is inactive. "
+                        "Please contact support or use account recovery"
+                    )
+
+                password_hash = hash_password(payload.password)
+
+                if registration_state == TeacherRegistrationState.PENDING_VERIFICATION:
+                    if account is None:
+                        raise ConflictException(
+                            "The existing teacher registration could not be loaded"
+                        )
+
+                    reused_pending_account = True
+                    account.password_hash = password_hash
+                    account.account_status = TeacherAccountStatus.PENDING
+                    account.is_verified = False
+                    account.is_active = True
+
+                    await TeacherAccountRepository.save(db, account)
+                    await AuthIdentityService.ensure_for_actor(
+                        db=db,
+                        payload=TeacherAccountService._identity_payload(account),
+                    )
+
+                    logger.info(
+                        "Teacher registration reused pending account",
+                        extra={
+                            "teacher_account_id": str(account.id),
+                            "email": normalized_email,
+                        },
+                    )
+                else:
+                    account = TeacherAccount(
+                        email=normalized_email,
+                        password_hash=password_hash,
+                        account_status=TeacherAccountStatus.PENDING,
+                        is_verified=False,
+                        is_active=True,
+                    )
+
+                    await TeacherAccountRepository.add(db, account)
+                    await AuthIdentityService.create_for_actor(
+                        db=db,
+                        payload=TeacherAccountService._identity_payload(account),
+                    )
+
+                    logger.info(
+                        "Created pending global teacher account",
+                        extra={
+                            "teacher_account_id": str(account.id),
+                            "email": normalized_email,
+                        },
+                    )
+        except IntegrityError:
+            await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
+
+            account = await TeacherAccountService._recover_concurrent_registration(
+                db=db,
+                normalized_email=normalized_email,
+                password=payload.password,
+            )
+            reused_pending_account = True
+
+            logger.info(
+                "Recovered concurrent teacher registration",
+                extra={
+                    "teacher_account_id": str(account.id),
+                    "email": normalized_email,
+                },
+            )
+
+        if account is None:
+            raise ConflictException("Teacher registration could not be completed.")
+
+        await AuthIdentityService.invalidate_after_commit(db)
+
+        message = (
+            "Registration successful. "
+            "Please check your email for the verification code."
         )
+        resend_otp_available = True
 
-        await db.commit()
-        await db.refresh(updated_teacher)
+        try:
+            await OTPService.generate_otp(
+                db,
+                RequestOTP(
+                    email=normalized_email,
+                    purpose=AuthPurpose.VERIFICATION.value,
+                ),
+                background_tasks=background_tasks,
+            )
+        except TooManyRequestsException:
+            if not reused_pending_account:
+                raise
 
-        return updated_teacher
+            resend_otp_available = False
+            message = (
+                "Your registration already exists but needs verification. "
+                "A verification code was sent recently. Please use the latest "
+                "code or wait before requesting another one."
+            )
 
-    @staticmethod
-    async def get_my_onboarding_status(
-        db: AsyncSession,
-        actor: Teacher,
-    ) -> TeacherOnboardingStatusResponse:
-        """Return the current teacher onboarding state."""
+        if reused_pending_account:
+            if resend_otp_available:
+                message = (
+                    "Your registration already exists but needs verification. "
+                    "We sent you a new verification code."
+                )
 
-        teacher = await TeacherService.get_my_teacher_profile(
-            db=db,
-            actor=actor,
-        )
+            logger.info(
+                "Resumed pending teacher registration",
+                extra={
+                    "teacher_account_id": str(account.id),
+                    "email": normalized_email,
+                    "resend_otp_available": resend_otp_available,
+                },
+            )
 
-        return TeacherOnboardingStatusResponse(
-            actor_type="teacher",
-            teacher_id=teacher.id,
-            onboarding_required=not teacher.profile_completed,
-            profile_completed=teacher.profile_completed,
-            completion_target="teacher",
-            required_fields=["first_name", "last_name"],
-            current_values={
-                "email": teacher.email,
-                "first_name": teacher.first_name,
-                "last_name": teacher.last_name,
-                "qualification": teacher.qualification,
-                "specialization": teacher.specialization,
+            return TeacherAccountService._build_registration_response(
+                account=account,
+                created=False,
+                message=message,
+                resend_otp_available=resend_otp_available,
+            )
+
+        logger.info(
+            "Teacher registration created and verification requested",
+            extra={
+                "teacher_account_id": str(account.id),
+                "email": normalized_email,
             },
         )
 
-    @staticmethod
-    async def list_teachers(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        skip: int = 0,
-        limit: int = 50,
-        search: str | None = None,
-    ) -> tuple[list[Teacher], int]:
-        """List teachers for a tenant."""
-
-        TeacherService._ensure_tenant_admin(actor)
-        limit = min(limit, 100)
-
-        return await TeacherRepository.list_all_teachers(
-            db=db,
-            tenant_id=actor.tenant_id,
-            skip=skip,
-            limit=limit,
-            search=search,
+        return TeacherAccountService._build_registration_response(
+            account=account,
+            created=True,
+            message=message,
+            resend_otp_available=resend_otp_available,
         )
 
     @staticmethod
-    async def update_teacher(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        teacher_id: UUID,
-        teacher_data: TeacherUpdate,
-    ) -> Teacher:
-        """Update teacher as tenant admin."""
+    def _teacher_onboarding_status(account: TeacherAccount) -> dict[str, Any]:
+        """Build a compact onboarding status payload for the frontend."""
 
-        TeacherService._ensure_tenant_admin(actor)
-
-        teacher = await TeacherRepository.get_teacher_by_id(
-            db=db,
-            teacher_id=teacher_id,
-            tenant_id=actor.tenant_id,
-        )
-
-        if not teacher:
-            raise NotFoundException(detail="Teacher not found")
-
-        update_data = teacher_data.model_dump(exclude_unset=True)
-
-        if not update_data:
-            raise BadRequestException(detail="No update data provided")
-
-        if "email" in update_data and update_data["email"] is not None:
-            normalized_email = TeacherService._normalize_email(update_data["email"])
-
-            normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
-                db = db ,
-                email = normalized_email
-            )
-
-            if normalized_email != teacher.email:
-                await AuthIdentityService.ensure_identifier_available(
-                    db=db,
-                    identifier=normalized_email,
-                    identifier_type=IdentifierType.EMAIL,
-                )
-
-                existing_teacher = await TeacherRepository.get_by_email(
-                    db=db,
-                    email=normalized_email,
-                )
-
-                if existing_teacher is not None and existing_teacher.id != teacher.id:
-                    raise ConflictException(
-                        detail="A teacher with this email already exists"
-                    )
-
-                await AuthIdentityService.update_identifier(
-                    db=db,
-                    actor_type=ActorType.TEACHER,
-                    actor_id=teacher.id,
-                    new_identifier=normalized_email,
-                    identifier_type=IdentifierType.EMAIL,
-                )
-
-                update_data["email"] = normalized_email
-
-        if "staff_id" in update_data:
-            normalized_staff_id = normalize_staff_id(update_data["staff_id"])
-            update_data["staff_id"] = normalized_staff_id
-
-            if normalized_staff_id is not None and normalized_staff_id != teacher.staff_id:
-                staff_id_exists = await TeacherRepository.staff_id_exists(
-                    db=db,
-                    tenant_id=actor.tenant_id,
-                    staff_id=normalized_staff_id,
-                    exclude_teacher_id=teacher.id,
-                )
-
-                if staff_id_exists:
-                    raise ConflictException(detail="A teacher with this staff ID already exists")
-
-        if "password" in update_data and update_data["password"] is not None:
-            update_data["password_hash"] = hash_password(update_data.pop("password"))
-
-        if "is_active" in update_data and update_data["is_active"] is False:
-            await AuthIdentityService.deactivate_for_actor(
-                db=db,
-                actor_type=ActorType.TEACHER,
-                actor_id=teacher.id,
-            )
-
-        try:
-            if update_data:
-                for field, value in update_data.items():
-                    setattr(teacher, field, value)
-
-                teacher = await TeacherRepository.save(
-                    db=db,
-                    teacher=teacher,
-                )
-
-            await db.commit()
-            await AuthIdentityService.invalidate_after_commit(db)
-
-            updated_teacher = await TeacherRepository.get_teacher_by_id(
-                db=db,
-                tenant_id=actor.tenant_id,
-                teacher_id=teacher.id,
-            )
-
-            if not updated_teacher:
-                raise NotFoundException(detail="Teacher not found after update.")
-
-            return updated_teacher
-
-        except IntegrityError as exc:
-            await db.rollback()
-            AuthIdentityService.discard_pending_invalidations(db)
-            raise BadRequestException(
-                detail="Teacher update failed because of a duplicate or invalid value."
-            ) from exc
+        return {
+            "actor_type": "teacher",
+            "teacher_account_id": account.id,
+            "onboarding_required": not account.profile_completed,
+            "profile_completed": account.profile_completed,
+            "completion_target": "teacher_account",
+            "required_fields": ["first_name", "last_name"],
+            "current_values": {
+                "email": account.email,
+                "first_name": account.first_name,
+                "last_name": account.last_name,
+                "phone_number": account.phone_number,
+                "qualification": account.qualification,
+                "specialization": account.specialization,
+                "passport_photo_url": account.passport_photo_url,
+            },
+        }
 
     @staticmethod
-    async def delete_teacher(
+    async def get_onboarding_status(
         db: AsyncSession,
-        actor: TenantAdmin,
-        teacher_id: UUID,
-    ) -> None:
-        """Archive teacher and remove subject links."""
+        *,
+        account_id: UUID,
+    ) -> dict[str, Any]:
+        """Return onboarding state for a global teacher account."""
 
-        TeacherService._ensure_tenant_admin(actor)
+        account = await TeacherAccountRepository.get_by_id(db, account_id)
+        account = TeacherAccountService._require_account(account)
+        TeacherAccountService._require_onboarding_access(account)
+        return TeacherAccountService._teacher_onboarding_status(account)
 
-        teacher = await TeacherRepository.get_teacher_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            teacher_id=teacher_id,
+    @staticmethod
+    async def complete_onboarding(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+        payload: TeacherAccountOnboardingRequest,
+    ) -> TeacherAccountResponse:
+        """
+        Complete the global teacher profile after lightweight registration.
+
+        This intentionally updates only TeacherAccount fields. Tenant
+        memberships, staff IDs, and class/subject access stay school-owned.
+        """
+
+        account = await TeacherAccountRepository.get_by_id(
+            db,
+            account_id,
+            lock=True,
         )
+        account = TeacherAccountService._require_account(account)
+        TeacherAccountService._require_onboarding_access(account)
 
-        if not teacher:
-            raise NotFoundException(detail="Teacher not found")
+        if account.profile_completed:
+            raise ConflictException(
+                "Teacher account onboarding has already been completed"
+            )
 
-        teacher.status = TeacherStatus.ARCHIVED
-        teacher.is_active = False
+        update_data = payload.model_dump()
+        for field, value in update_data.items():
+            setattr(account, field, value)
 
-        await AuthIdentityService.deactivate_for_actor(
-            db=db,
-            actor_type=ActorType.TEACHER,
-            actor_id=teacher.id,
+        updated_account = await TeacherAccountRepository.save(db, account)
+
+        await db.refresh(updated_account)
+        return TeacherAccountResponse.model_validate(updated_account)
+
+    @staticmethod
+    async def update_profile(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+        payload: TeacherAccountProfileUpdateRequest,
+    ) -> TeacherAccountResponse:
+        """
+        Update teacher-controlled global profile fields.
+
+        Tenant-owned employment details such as staff ID and department remain
+        on TeacherMembership and should not be modified by this account flow.
+        """
+
+        account = await TeacherAccountRepository.get_by_id(
+            db,
+            account_id,
+            lock=True,
         )
+        account = TeacherAccountService._require_account(account)
+        TeacherAccountService._require_onboarding_access(account)
 
-        await TeacherRepository.save(db=db, teacher=teacher)
+        update_data = payload.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(account, field, value)
 
-        await TeacherRepository.delete_all_teacher_subject_links(
-            db=db,
-            tenant_id=actor.tenant_id,
-            teacher_id=teacher.id,
-        )
+        updated_account = await TeacherAccountRepository.save(db, account)
 
-        await db.commit()
-        await AuthIdentityService.invalidate_after_commit(db)
+        await db.refresh(updated_account)
+        return TeacherAccountResponse.model_validate(updated_account)

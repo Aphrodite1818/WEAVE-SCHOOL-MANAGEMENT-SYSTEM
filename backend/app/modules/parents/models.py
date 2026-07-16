@@ -503,3 +503,8 @@ class ParentInvitation(BaseModel):
             postgresql_where=text("status = 'pending'"),
         ),
     )
+
+
+# Compatibility alias for legacy tenant-scoped imports while the global parent
+# account flow is being tested. New account code should import ParentAccount.
+Parent = ParentAccount

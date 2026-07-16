@@ -39,6 +39,12 @@ class TeacherAccountStatus(str, PyEnum):
     INACTIVE = "inactive"
 
 
+class TeacherStatus(str, PyEnum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ARCHIVED = "archived"
+
+
 class TeacherMembershipStatus(str, PyEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
@@ -160,6 +166,18 @@ class TeacherMembership(BaseModel):
         Index("ix_teacher_memberships_account_status", "teacher_account_id", "status"),
     )
 
+    @property
+    def email(self) -> str:
+        return self.teacher_account.email
+
+    @property
+    def first_name(self) -> str | None:
+        return self.teacher_account.first_name
+
+    @property
+    def last_name(self) -> str | None:
+        return self.teacher_account.last_name
+
 
 class TeacherInvitation(BaseModel):
     """Single-use invitation for a teacher to join one tenant."""
@@ -231,6 +249,7 @@ class TeacherMembershipSubject(BaseModel):
         ForeignKey(f"{PUBLIC_SCHEMA}.teacher_memberships.id", ondelete="RESTRICT"),
         nullable=False,
     )
+
     subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(f"{PUBLIC_SCHEMA}.subjects.id", ondelete="RESTRICT"),
@@ -242,7 +261,7 @@ class TeacherMembershipSubject(BaseModel):
         "TeacherMembership",
         back_populates="subject_links",
     )
-    subject: Mapped["Subject"] = relationship("Subject")
+    subject: Mapped["Subject"] = relationship("Subject", back_populates="teacher_links")
 
     __table_args__ = (
         UniqueConstraint(
@@ -254,3 +273,10 @@ class TeacherMembershipSubject(BaseModel):
         Index("ix_teacher_membership_subjects_membership", "tenant_id", "teacher_membership_id"),
         Index("ix_teacher_membership_subjects_subject", "tenant_id", "subject_id"),
     )
+
+
+# Compatibility aliases for legacy tenant-scoped imports while the global
+# teacher account flow is being tested. New account code should import
+# TeacherAccount and TeacherMembershipSubject directly.
+Teacher = TeacherAccount
+TeacherSubject = TeacherMembershipSubject

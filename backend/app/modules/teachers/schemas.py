@@ -246,3 +246,45 @@ class TeacherInvitationResponse(OutputBase):
 class TeacherInvitationDispatchResponse(OutputBase):
     success: Literal[True] = True
     message: str = "Invitation processing started."
+
+
+# ---------------------------------------------------------------------------
+# Legacy tenant-teacher compatibility schemas
+# ---------------------------------------------------------------------------
+
+
+class TeacherCreate(TeacherAccountOnboardingRequest):
+    """Compatibility request for legacy tenant-teacher creation imports."""
+
+    email: EmailStr
+    staff_id: str | None = Field(default=None, max_length=50)
+
+
+class TeacherUpdate(TeacherAccountProfileUpdateRequest):
+    """Compatibility request for legacy tenant-teacher update imports."""
+
+    email: EmailStr | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    account_status: TeacherAccountStatus | None = None
+    is_active: bool | None = None
+
+
+TeacherSelfUpdate = TeacherAccountProfileUpdateRequest
+TeacherOnboardingUpdate = TeacherAccountProfileUpdateRequest
+TeacherResponse = TeacherAccountResponse
+
+
+class TeacherListResponse(OutputBase):
+    items: list[TeacherResponse]
+    total: int = Field(ge=0)
+
+
+class TeacherOnboardingStatusResponse(OutputBase):
+    actor_type: str
+    teacher_id: uuid.UUID | None = None
+    teacher_account_id: uuid.UUID | None = None
+    onboarding_required: bool
+    profile_completed: bool
+    completion_target: str
+    required_fields: list[str] = Field(default_factory=list)
+    current_values: dict = Field(default_factory=dict)

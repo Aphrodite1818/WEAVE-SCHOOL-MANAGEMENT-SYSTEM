@@ -340,3 +340,8 @@ class TeacherMembershipSubjectRepository:
         db.add(link)
         await db.flush()
         return link
+
+
+# Compatibility alias for legacy tenant-scoped imports. New account code should
+# use TeacherAccountRepository directly.
+TeacherRepository = TeacherAccountRepository
