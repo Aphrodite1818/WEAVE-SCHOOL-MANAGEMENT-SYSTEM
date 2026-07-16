@@ -1,403 +1,220 @@
-"""Service layer for global teacher account registration."""
+"""Global teacher account, membership, invitation, and capability services."""
 
 from __future__ import annotations
 
-from enum import Enum as PyEnum
-from typing import Any, Literal
+import secrets
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import BackgroundTasks
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.logging import get_logger
-from app.config.security import hash_password
+from app.config.security import hash_auth_secret, hash_password, verify_password
+from app.config.settings import settings
 from app.core.exceptions import (
+    BadRequestException,
     ConflictException,
     ForbiddenException,
     NotFoundException,
-    TooManyRequestsException,
 )
+from app.core.utils.email import send_email
+from app.core.utils.normalization import normalize_staff_id
 from app.modules.auth.account_email_guard import AccountEmailGuard
-from app.modules.auth.models import AuthPurpose
+from app.modules.auth.models import AuthPurpose, AuthSession, AuthSessionActorType
 from app.modules.auth.schemas import RequestOTP
 from app.modules.auth.service import OTPService
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.teachers.models import TeacherAccount, TeacherAccountStatus
-from app.modules.teachers.repository import TeacherAccountRepository
+from app.modules.subjects.repository import SubjectRepository
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import ResourceLimitCode
+from app.modules.teachers.models import (
+    TeacherAccount,
+    TeacherAccountStatus,
+    TeacherInvitation,
+    TeacherInvitationStatus,
+    TeacherMembership,
+    TeacherMembershipStatus,
+)
+from app.modules.teachers.repository import (
+    TeacherAccountRepository,
+    TeacherInvitationRepository,
+    TeacherMembershipRepository,
+    TeacherMembershipSubjectRepository,
+)
 from app.modules.teachers.schemas import (
     TeacherAccountOnboardingRequest,
     TeacherAccountProfileUpdateRequest,
     TeacherAccountRegisterRequest,
     TeacherAccountResponse,
+    TeacherInvitationAcceptanceRequest,
+    TeacherInvitationCreateRequest,
+    TeacherInvitationResponse,
+    TeacherMembershipEndRequest,
+    TeacherMembershipListResponse,
+    TeacherMembershipReactivateRequest,
+    TeacherMembershipResponse,
+    TeacherMembershipSubjectUpdateRequest,
+    TeacherMembershipSuspendRequest,
+    TeacherMembershipUpdateRequest,
+    TeacherMembershipWithAccountResponse,
+    TeacherPasswordChangeRequest,
 )
+from app.modules.tenant_admins.models import TenantAdmin
+from app.tenant_management.repository import TenantRepository
 
 
-logger = get_logger(__name__)
-
-
-class TeacherRegistrationState(str, PyEnum):
-    """Possible registration states for a global teacher account."""
-
-    AVAILABLE = "AVAILABLE"
-    PENDING_VERIFICATION = "PENDING_VERIFICATION"
-    ACTIVE = "ACTIVE"
-    LOCKED = "LOCKED"
-    INACTIVE = "INACTIVE"
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class TeacherAccountService:
-    """Business logic for global teacher accounts."""
-
-    @staticmethod
-    def get_registration_state(
-        account: TeacherAccount | None,
-    ) -> (
-        Literal[TeacherRegistrationState.AVAILABLE]
-        | Literal[TeacherRegistrationState.LOCKED]
-        | Literal[TeacherRegistrationState.INACTIVE]
-        | Literal[TeacherRegistrationState.PENDING_VERIFICATION]
-        | Literal[TeacherRegistrationState.ACTIVE]
-    ):
-        """Determine how registration should treat a teacher email."""
-
-        if account is None:
-            return TeacherRegistrationState.AVAILABLE
-
-        if account.account_status == TeacherAccountStatus.LOCKED:
-            return TeacherRegistrationState.LOCKED
-
-        if account.account_status == TeacherAccountStatus.INACTIVE or not account.is_active:
-            return TeacherRegistrationState.INACTIVE
-
-        if account.account_status == TeacherAccountStatus.PENDING or not account.is_verified:
-            return TeacherRegistrationState.PENDING_VERIFICATION
-
-        return TeacherRegistrationState.ACTIVE
-
-    @staticmethod
-    def _identity_payload(account: TeacherAccount) -> AuthIdentityCreate:
-        return AuthIdentityCreate(
-            identifier=account.email,
-            identifier_type=IdentifierType.EMAIL,
-            actor_type=ActorType.TEACHER,
-            actor_id=account.id,
-            is_active=True,
-        )
-
-    @staticmethod
-    def _build_registration_response(
-        *,
-        account: TeacherAccount,
-        created: bool,
-        message: str,
-        resend_otp_available: bool,
-    ) -> dict[str, Any]:
-        """Build the frontend registration and verification response."""
-
-        return {
-            "created": created,
-            "email": account.email,
-            "verification_required": True,
-            "purpose": AuthPurpose.VERIFICATION.value,
-            "redirect_to": "/verify-otp",
-            "resend_otp_available": resend_otp_available,
-            "detail": message,
-            "message": message,
-        }
+    """Global teacher credential and profile lifecycle."""
 
     @staticmethod
     def _require_account(account: TeacherAccount | None) -> TeacherAccount:
-        """Return the loaded global teacher account or raise a stable error."""
-
         if account is None:
-            raise NotFoundException("Teacher account not found")
+            raise NotFoundException("Teacher account not found.")
         return account
 
     @staticmethod
-    def _require_onboarding_access(account: TeacherAccount) -> None:
-        """Ensure the account is allowed to update its global profile."""
-
-        if not account.is_active:
-            raise ForbiddenException("Teacher account is inactive")
-
-        if account.account_status == TeacherAccountStatus.LOCKED:
-            raise ForbiddenException("Teacher account is locked")
-
-        if account.account_status == TeacherAccountStatus.INACTIVE:
-            raise ForbiddenException("Teacher account is inactive")
-
-    @staticmethod
-    async def _load_registration_account(
-        *,
-        db: AsyncSession,
-        normalized_email: str,
-    ) -> TeacherAccount | None:
-        """
-        Load the teacher account allowed to use this email.
-
-        AuthIdentity is the canonical login owner. A matching teacher-account
-        identity may resume registration; any other actor type means the email
-        is already owned by a different authenticatable actor.
-        """
-
-        identity = await AuthIdentityRepository.get_by_identifier(
-            db,
-            identifier=normalized_email,
-            identifier_type=IdentifierType.EMAIL,
-        )
-
-        if identity is None:
-            return await TeacherAccountRepository.get_by_email(
-                db,
-                normalized_email,
-                lock=True,
-            )
-
-        if identity.actor_type != ActorType.TEACHER:
-            raise ConflictException("This email is already registered. Please log in")
-
-        account = await TeacherAccountRepository.get_by_id(
-            db,
-            identity.actor_id,
-            lock=True,
-        )
-
-        if account is None or account.email != normalized_email:
-            raise ConflictException("This email is already registered. Please log in")
-
-        return account
-
-    @staticmethod
-    async def _recover_concurrent_registration(
-        *,
-        db: AsyncSession,
-        normalized_email: str,
-        password: str,
-    ) -> TeacherAccount:
-        """
-        Recover when two registration requests create the same email at once.
-
-        The request that loses the unique-email race reloads the pending account,
-        refreshes its password, and ensures the global auth identity exists.
-        """
-
-        async with db.begin():
-            account = await TeacherAccountRepository.get_by_email(
-                db,
-                normalized_email,
-                lock=True,
-            )
-            state = TeacherAccountService.get_registration_state(account)
-
-            if account is None or state != TeacherRegistrationState.PENDING_VERIFICATION:
-                raise ConflictException("This email is already registered. Please log in")
-
-            account.password_hash = hash_password(password)
-            account.account_status = TeacherAccountStatus.PENDING
-            account.is_verified = False
-            account.is_active = True
-
-            await TeacherAccountRepository.save(db, account)
-            await AuthIdentityService.ensure_for_actor(
-                db=db,
-                payload=TeacherAccountService._identity_payload(account),
-            )
-
-            return account
+    def _require_active_account(account: TeacherAccount) -> None:
+        if (
+            not account.is_active
+            or not account.is_verified
+            or account.account_status != TeacherAccountStatus.ACTIVE
+        ):
+            raise ForbiddenException("Teacher account is not active.")
 
     @staticmethod
     async def register_account(
         db: AsyncSession,
         payload: TeacherAccountRegisterRequest,
         background_tasks: BackgroundTasks | None = None,
-    ) -> dict[str, Any]:
-        """
-        Register or resume registration for a global teacher account.
-
-        This creates login credentials only. School access is still controlled by
-        teacher memberships and invitation acceptance.
-        """
-
+    ) -> dict[str, object]:
         normalized_email = payload.email.strip().casefold()
+        normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
+            db=db,
+            email=normalized_email,
+            message="This email cannot be used for teacher registration.",
+        )
+        identity = await AuthIdentityRepository.get_by_identifier(
+            db,
+            normalized_email,
+            IdentifierType.EMAIL,
+        )
         account: TeacherAccount | None = None
-        reused_pending_account = False
+        created = False
 
-        try:
-            async with db.begin():
-                normalized_email = await AccountEmailGuard.ensure_not_superadmin_email(
-                    db=db,
-                    email=normalized_email,
-                    message="This email cannot be used for teacher registration",
+        if identity is not None:
+            if identity.actor_type not in {
+                ActorType.TEACHER_ACCOUNT,
+                ActorType.TEACHER,
+            }:
+                raise ConflictException(
+                    "This email is already registered to another account."
                 )
-
-                account = await TeacherAccountService._load_registration_account(
-                    db=db,
-                    normalized_email=normalized_email,
-                )
-
-                registration_state = TeacherAccountService.get_registration_state(account)
-
-                if registration_state == TeacherRegistrationState.ACTIVE:
-                    raise ConflictException("This email is already registered. Please log in")
-
-                if registration_state == TeacherRegistrationState.LOCKED:
-                    raise ConflictException(
-                        "This teacher account is locked. Please contact support"
-                    )
-
-                if registration_state == TeacherRegistrationState.INACTIVE:
-                    raise ConflictException(
-                        "This teacher account is inactive. "
-                        "Please contact support or use account recovery"
-                    )
-
-                password_hash = hash_password(payload.password)
-
-                if registration_state == TeacherRegistrationState.PENDING_VERIFICATION:
-                    if account is None:
-                        raise ConflictException(
-                            "The existing teacher registration could not be loaded"
-                        )
-
-                    reused_pending_account = True
-                    account.password_hash = password_hash
-                    account.account_status = TeacherAccountStatus.PENDING
-                    account.is_verified = False
-                    account.is_active = True
-
-                    await TeacherAccountRepository.save(db, account)
-                    await AuthIdentityService.ensure_for_actor(
-                        db=db,
-                        payload=TeacherAccountService._identity_payload(account),
-                    )
-
-                    logger.info(
-                        "Teacher registration reused pending account",
-                        extra={
-                            "teacher_account_id": str(account.id),
-                            "email": normalized_email,
-                        },
-                    )
-                else:
-                    account = TeacherAccount(
-                        email=normalized_email,
-                        password_hash=password_hash,
-                        account_status=TeacherAccountStatus.PENDING,
-                        is_verified=False,
-                        is_active=True,
-                    )
-
-                    await TeacherAccountRepository.add(db, account)
-                    await AuthIdentityService.create_for_actor(
-                        db=db,
-                        payload=TeacherAccountService._identity_payload(account),
-                    )
-
-                    logger.info(
-                        "Created pending global teacher account",
-                        extra={
-                            "teacher_account_id": str(account.id),
-                            "email": normalized_email,
-                        },
-                    )
-        except IntegrityError:
-            await db.rollback()
-            AuthIdentityService.discard_pending_invalidations(db)
-
-            account = await TeacherAccountService._recover_concurrent_registration(
-                db=db,
-                normalized_email=normalized_email,
-                password=payload.password,
-            )
-            reused_pending_account = True
-
-            logger.info(
-                "Recovered concurrent teacher registration",
-                extra={
-                    "teacher_account_id": str(account.id),
-                    "email": normalized_email,
-                },
-            )
-
-        if account is None:
-            raise ConflictException("Teacher registration could not be completed.")
-
-        await AuthIdentityService.invalidate_after_commit(db)
-
-        message = (
-            "Registration successful. "
-            "Please check your email for the verification code."
-        )
-        resend_otp_available = True
-
-        try:
-            await OTPService.generate_otp(
+            account = await TeacherAccountRepository.get_by_id(
                 db,
-                RequestOTP(
-                    email=normalized_email,
-                    purpose=AuthPurpose.VERIFICATION.value,
-                ),
-                background_tasks=background_tasks,
+                identity.actor_id,
+                lock=True,
             )
-        except TooManyRequestsException:
-            if not reused_pending_account:
-                raise
-
-            resend_otp_available = False
-            message = (
-                "Your registration already exists but needs verification. "
-                "A verification code was sent recently. Please use the latest "
-                "code or wait before requesting another one."
-            )
-
-        if reused_pending_account:
-            if resend_otp_available:
-                message = (
-                    "Your registration already exists but needs verification. "
-                    "We sent you a new verification code."
+            if account is None:
+                raise ConflictException(
+                    "The existing teacher identity is invalid."
                 )
-
-            logger.info(
-                "Resumed pending teacher registration",
-                extra={
-                    "teacher_account_id": str(account.id),
-                    "email": normalized_email,
-                    "resend_otp_available": resend_otp_available,
-                },
+            if (
+                account.account_status == TeacherAccountStatus.ACTIVE
+                and account.is_verified
+                and account.is_active
+            ):
+                raise ConflictException(
+                    "This teacher account already exists. Please log in."
+                )
+            if (
+                account.account_status == TeacherAccountStatus.LOCKED
+                or not account.is_active
+            ):
+                raise ForbiddenException(
+                    "This teacher account cannot be registered again."
+                )
+            account.password_hash = hash_password(payload.password)
+            account.account_status = TeacherAccountStatus.PENDING
+            account.is_verified = False
+            account.is_active = True
+            await TeacherAccountRepository.save(db, account)
+            if identity.actor_type != ActorType.TEACHER_ACCOUNT:
+                identity.actor_type = ActorType.TEACHER_ACCOUNT
+                identity.tenant_id = None
+                identity.is_active = True
+                await AuthIdentityRepository.save(db, identity)
+        else:
+            account = TeacherAccount(
+                email=normalized_email,
+                password_hash=hash_password(payload.password),
+                account_status=TeacherAccountStatus.PENDING,
+                is_verified=False,
+                is_active=True,
             )
-
-            return TeacherAccountService._build_registration_response(
-                account=account,
-                created=False,
-                message=message,
-                resend_otp_available=resend_otp_available,
+            account = await TeacherAccountRepository.add(db, account)
+            await AuthIdentityService.create_for_actor(
+                db,
+                payload=AuthIdentityCreate(
+                    identifier=normalized_email,
+                    identifier_type=IdentifierType.EMAIL,
+                    actor_type=ActorType.TEACHER_ACCOUNT,
+                    actor_id=account.id,
+                    is_active=True,
+                ),
             )
+            created = True
 
-        logger.info(
-            "Teacher registration created and verification requested",
-            extra={
-                "teacher_account_id": str(account.id),
-                "email": normalized_email,
-            },
+        await db.commit()
+        await AuthIdentityService.invalidate_after_commit(db)
+        await OTPService.generate_otp(
+            db,
+            RequestOTP(
+                email=normalized_email,
+                purpose=AuthPurpose.VERIFICATION.value,
+            ),
+            background_tasks=background_tasks,
         )
-
-        return TeacherAccountService._build_registration_response(
-            account=account,
-            created=True,
-            message=message,
-            resend_otp_available=resend_otp_available,
-        )
+        return {
+            "created": created,
+            "email": normalized_email,
+            "verification_required": True,
+            "purpose": AuthPurpose.VERIFICATION.value,
+            "redirect_to": "/verify-otp",
+            "resend_otp_available": True,
+            "detail": "Check your email for the verification code.",
+            "message": "Check your email for the verification code.",
+        }
 
     @staticmethod
-    def _teacher_onboarding_status(account: TeacherAccount) -> dict[str, Any]:
-        """Build a compact onboarding status payload for the frontend."""
+    async def get_account(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+    ) -> TeacherAccountResponse:
+        account = TeacherAccountService._require_account(
+            await TeacherAccountRepository.get_by_id(db, account_id)
+        )
+        return TeacherAccountResponse.model_validate(account)
 
+    @staticmethod
+    async def get_onboarding_status(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+    ) -> dict[str, object]:
+        account = TeacherAccountService._require_account(
+            await TeacherAccountRepository.get_by_id(db, account_id)
+        )
         return {
-            "actor_type": "teacher",
+            "actor_type": "teacher_account",
             "teacher_account_id": account.id,
             "onboarding_required": not account.profile_completed,
             "profile_completed": account.profile_completed,
@@ -410,22 +227,8 @@ class TeacherAccountService:
                 "phone_number": account.phone_number,
                 "qualification": account.qualification,
                 "specialization": account.specialization,
-                "passport_photo_url": account.passport_photo_url,
             },
         }
-
-    @staticmethod
-    async def get_onboarding_status(
-        db: AsyncSession,
-        *,
-        account_id: UUID,
-    ) -> dict[str, Any]:
-        """Return onboarding state for a global teacher account."""
-
-        account = await TeacherAccountRepository.get_by_id(db, account_id)
-        account = TeacherAccountService._require_account(account)
-        TeacherAccountService._require_onboarding_access(account)
-        return TeacherAccountService._teacher_onboarding_status(account)
 
     @staticmethod
     async def complete_onboarding(
@@ -434,34 +237,20 @@ class TeacherAccountService:
         account_id: UUID,
         payload: TeacherAccountOnboardingRequest,
     ) -> TeacherAccountResponse:
-        """
-        Complete the global teacher profile after lightweight registration.
-
-        This intentionally updates only TeacherAccount fields. Tenant
-        memberships, staff IDs, and class/subject access stay school-owned.
-        """
-
-        account = await TeacherAccountRepository.get_by_id(
-            db,
-            account_id,
-            lock=True,
-        )
-        account = TeacherAccountService._require_account(account)
-        TeacherAccountService._require_onboarding_access(account)
-
-        if account.profile_completed:
-            raise ConflictException(
-                "Teacher account onboarding has already been completed"
+        account = TeacherAccountService._require_account(
+            await TeacherAccountRepository.get_by_id(
+                db,
+                account_id,
+                lock=True,
             )
-
-        update_data = payload.model_dump()
-        for field, value in update_data.items():
+        )
+        TeacherAccountService._require_active_account(account)
+        for field, value in payload.model_dump().items():
             setattr(account, field, value)
-
-        updated_account = await TeacherAccountRepository.save(db, account)
-
-        await db.refresh(updated_account)
-        return TeacherAccountResponse.model_validate(updated_account)
+        await TeacherAccountRepository.save(db, account)
+        await db.commit()
+        await db.refresh(account)
+        return TeacherAccountResponse.model_validate(account)
 
     @staticmethod
     async def update_profile(
@@ -470,26 +259,624 @@ class TeacherAccountService:
         account_id: UUID,
         payload: TeacherAccountProfileUpdateRequest,
     ) -> TeacherAccountResponse:
-        """
-        Update teacher-controlled global profile fields.
+        account = TeacherAccountService._require_account(
+            await TeacherAccountRepository.get_by_id(
+                db,
+                account_id,
+                lock=True,
+            )
+        )
+        TeacherAccountService._require_active_account(account)
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            setattr(account, field, value)
+        await TeacherAccountRepository.save(db, account)
+        await db.commit()
+        await db.refresh(account)
+        return TeacherAccountResponse.model_validate(account)
 
-        Tenant-owned employment details such as staff ID and department remain
-        on TeacherMembership and should not be modified by this account flow.
-        """
+    @staticmethod
+    async def change_password(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+        payload: TeacherPasswordChangeRequest,
+    ) -> None:
+        account = TeacherAccountService._require_account(
+            await TeacherAccountRepository.get_by_id(
+                db,
+                account_id,
+                lock=True,
+            )
+        )
+        TeacherAccountService._require_active_account(account)
+        if not verify_password(
+            payload.current_password,
+            account.password_hash,
+        ):
+            raise BadRequestException("Current password is incorrect.")
+        if verify_password(payload.new_password, account.password_hash):
+            raise BadRequestException(
+                "New password must differ from the current password."
+            )
 
-        account = await TeacherAccountRepository.get_by_id(
+        account.password_hash = hash_password(payload.new_password)
+        await TeacherAccountRepository.save(db, account)
+        memberships = await TeacherAccountRepository.list_memberships(
             db,
-            account_id,
+            account.id,
+        )
+        membership_ids = [membership.id for membership in memberships]
+        session_filters = [
+            (
+                AuthSession.actor_type
+                == AuthSessionActorType.TEACHER_ACCOUNT
+            )
+            & (AuthSession.actor_id == account.id)
+        ]
+        if membership_ids:
+            session_filters.append(
+                (
+                    AuthSession.actor_type
+                    == AuthSessionActorType.TEACHER
+                )
+                & AuthSession.actor_id.in_(membership_ids)
+            )
+        await db.execute(
+            update(AuthSession)
+            .where(
+                or_(*session_filters),
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(
+                revoked_at=_utc_now(),
+                revoked_reason="password_changed",
+            )
+        )
+        await db.commit()
+
+    @staticmethod
+    async def list_memberships(
+        db: AsyncSession,
+        *,
+        account_id: UUID,
+    ) -> TeacherMembershipListResponse:
+        account = TeacherAccountService._require_account(
+            await TeacherAccountRepository.get_by_id(db, account_id)
+        )
+        memberships = await TeacherAccountRepository.list_memberships(
+            db,
+            account.id,
+        )
+        return TeacherMembershipListResponse(
+            items=[
+                TeacherMembershipWithAccountResponse.model_validate(
+                    membership
+                )
+                for membership in memberships
+            ],
+            total=len(memberships),
+        )
+
+
+class TeacherMembershipService:
+    """Tenant employment, authorization, and capability lifecycle."""
+
+    @staticmethod
+    async def _lock_tenant_and_enforce_limit(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+    ) -> None:
+        tenant = await TenantRepository.get_by_id(
+            db,
+            tenant_id,
             lock=True,
         )
-        account = TeacherAccountService._require_account(account)
-        TeacherAccountService._require_onboarding_access(account)
+        if tenant is None:
+            raise NotFoundException("Tenant not found.")
+        await SubscriptionFeatureService.ensure_resource_limit_available(
+            db,
+            tenant_id,
+            ResourceLimitCode.TEACHERS,
+        )
+
+    @staticmethod
+    async def get_membership(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        membership_id: UUID,
+    ) -> TeacherMembershipWithAccountResponse:
+        membership = await TeacherMembershipRepository.get_by_id(
+            db,
+            membership_id,
+            tenant_id=tenant_id,
+            load_account=True,
+            load_subjects=True,
+        )
+        if membership is None:
+            raise NotFoundException("Teacher membership not found.")
+        return TeacherMembershipWithAccountResponse.model_validate(
+            membership
+        )
+
+    @staticmethod
+    async def list_for_tenant(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        skip: int = 0,
+        limit: int = 50,
+        search: str | None = None,
+        status: TeacherMembershipStatus | None = None,
+    ) -> TeacherMembershipListResponse:
+        rows, total = await TeacherMembershipRepository.list_for_tenant(
+            db,
+            tenant_id,
+            status=status,
+            search=search,
+            offset=skip,
+            limit=min(limit, 100),
+        )
+        return TeacherMembershipListResponse(
+            items=[
+                TeacherMembershipWithAccountResponse.model_validate(row)
+                for row in rows
+            ],
+            total=total,
+        )
+
+    @staticmethod
+    async def update_membership(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin | TeacherMembership,
+        membership_id: UUID,
+        payload: TeacherMembershipUpdateRequest,
+    ) -> TeacherMembershipResponse:
+        membership = await TeacherMembershipRepository.get_by_id(
+            db,
+            membership_id,
+            tenant_id=actor.tenant_id,
+            lock=True,
+            load_account=True,
+        )
+        if membership is None:
+            raise NotFoundException("Teacher membership not found.")
+        if isinstance(actor, TeacherMembership):
+            if actor.id != membership.id:
+                raise ForbiddenException(
+                    "Teachers can update only their own membership preferences."
+                )
+            allowed = {
+                "receive_email_notifications",
+                "receive_push_notifications",
+            }
+            if not set(payload.model_fields_set).issubset(allowed):
+                raise ForbiddenException(
+                    "Employment fields are controlled by the school."
+                )
 
         update_data = payload.model_dump(exclude_unset=True)
+        if "staff_id" in update_data:
+            normalized_staff_id = normalize_staff_id(
+                update_data["staff_id"]
+            )
+            if (
+                normalized_staff_id
+                and await TeacherMembershipRepository.staff_id_exists(
+                    db,
+                    actor.tenant_id,
+                    normalized_staff_id,
+                    exclude_membership_id=membership.id,
+                )
+            ):
+                raise ConflictException(
+                    "This staff ID is already assigned."
+                )
+            update_data["staff_id"] = normalized_staff_id
+
         for field, value in update_data.items():
-            setattr(account, field, value)
+            setattr(membership, field, value)
+        await TeacherMembershipRepository.save(db, membership)
+        await db.commit()
+        await db.refresh(membership)
+        return TeacherMembershipResponse.model_validate(membership)
 
-        updated_account = await TeacherAccountRepository.save(db, account)
+    @staticmethod
+    async def _revoke_membership_sessions(
+        db: AsyncSession,
+        *,
+        membership: TeacherMembership,
+        reason: str,
+    ) -> None:
+        await db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.actor_type == AuthSessionActorType.TEACHER,
+                AuthSession.actor_id == membership.id,
+                AuthSession.tenant_id == membership.tenant_id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(
+                revoked_at=_utc_now(),
+                revoked_reason=reason[:100],
+            )
+        )
 
-        await db.refresh(updated_account)
-        return TeacherAccountResponse.model_validate(updated_account)
+    @staticmethod
+    async def suspend_membership(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        membership_id: UUID,
+        payload: TeacherMembershipSuspendRequest,
+    ) -> TeacherMembershipResponse:
+        membership = await TeacherMembershipRepository.get_by_id(
+            db,
+            membership_id,
+            tenant_id=actor.tenant_id,
+            lock=True,
+            load_account=True,
+        )
+        if membership is None:
+            raise NotFoundException("Teacher membership not found.")
+        if membership.status != TeacherMembershipStatus.ACTIVE:
+            raise ConflictException(
+                "Only active teacher memberships can be suspended."
+            )
+        membership.status = TeacherMembershipStatus.SUSPENDED
+        membership.end_reason = payload.reason
+        await TeacherMembershipRepository.save(db, membership)
+        await TeacherMembershipService._revoke_membership_sessions(
+            db,
+            membership=membership,
+            reason="membership_suspended",
+        )
+        await db.commit()
+        return TeacherMembershipResponse.model_validate(membership)
+
+    @staticmethod
+    async def end_membership(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        membership_id: UUID,
+        payload: TeacherMembershipEndRequest,
+    ) -> TeacherMembershipResponse:
+        membership = await TeacherMembershipRepository.get_by_id(
+            db,
+            membership_id,
+            tenant_id=actor.tenant_id,
+            lock=True,
+            load_account=True,
+        )
+        if membership is None:
+            raise NotFoundException("Teacher membership not found.")
+        if membership.status == TeacherMembershipStatus.INACTIVE:
+            raise ConflictException("Teacher membership is already inactive.")
+
+        membership.status = TeacherMembershipStatus.INACTIVE
+        membership.ended_at = _utc_now()
+        membership.end_reason = payload.reason
+        await TeacherMembershipRepository.save(db, membership)
+        await TeacherMembershipService._revoke_membership_sessions(
+            db,
+            membership=membership,
+            reason="membership_ended",
+        )
+        await db.commit()
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            actor.tenant_id
+        )
+        return TeacherMembershipResponse.model_validate(membership)
+
+    @staticmethod
+    async def reactivate_membership(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        membership_id: UUID,
+        payload: TeacherMembershipReactivateRequest,
+    ) -> TeacherMembershipResponse:
+        membership = await TeacherMembershipRepository.get_by_id(
+            db,
+            membership_id,
+            tenant_id=actor.tenant_id,
+            lock=True,
+            load_account=True,
+        )
+        if membership is None:
+            raise NotFoundException("Teacher membership not found.")
+        if membership.status == TeacherMembershipStatus.ACTIVE:
+            raise ConflictException("Teacher membership is already active.")
+        if membership.status == TeacherMembershipStatus.INACTIVE:
+            await TeacherMembershipService._lock_tenant_and_enforce_limit(
+                db,
+                tenant_id=actor.tenant_id,
+            )
+
+        membership.status = TeacherMembershipStatus.ACTIVE
+        membership.ended_at = None
+        membership.end_reason = None
+        await TeacherMembershipRepository.save(db, membership)
+        await db.commit()
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            actor.tenant_id
+        )
+        return TeacherMembershipResponse.model_validate(membership)
+
+    @staticmethod
+    async def replace_subject_capabilities(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        membership_id: UUID,
+        payload: TeacherMembershipSubjectUpdateRequest,
+    ) -> TeacherMembershipResponse:
+        membership = await TeacherMembershipRepository.get_by_id(
+            db,
+            membership_id,
+            tenant_id=actor.tenant_id,
+            lock=True,
+            load_account=True,
+            load_subjects=True,
+        )
+        if membership is None:
+            raise NotFoundException("Teacher membership not found.")
+
+        for subject_id in payload.subject_ids:
+            subject = await SubjectRepository.get_subject_by_id(
+                db,
+                actor.tenant_id,
+                subject_id,
+            )
+            if subject is None or not subject.is_active:
+                raise NotFoundException(
+                    f"Subject {subject_id} was not found or is inactive."
+                )
+
+        existing = {
+            link.subject_id: link
+            for link in await TeacherMembershipSubjectRepository.list_for_membership(
+                db,
+                actor.tenant_id,
+                membership.id,
+            )
+        }
+        requested = set(payload.subject_ids)
+        for subject_id, link in existing.items():
+            link.is_active = subject_id in requested
+            await TeacherMembershipSubjectRepository.save(db, link)
+
+        missing = [
+            subject_id
+            for subject_id in requested
+            if subject_id not in existing
+        ]
+        if missing:
+            await TeacherMembershipSubjectRepository.add_many(
+                db,
+                actor.tenant_id,
+                membership.id,
+                missing,
+            )
+        await db.commit()
+        return TeacherMembershipResponse.model_validate(membership)
+
+
+class TeacherInvitationService:
+    """School invitation and teacher membership acceptance workflow."""
+
+    INVITATION_DAYS = 7
+
+    @staticmethod
+    async def create_invitation(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        payload: TeacherInvitationCreateRequest,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> TeacherInvitationResponse:
+        normalized_email = str(payload.email).casefold()
+        pending = await TeacherInvitationRepository.get_pending_for_email(
+            db,
+            actor.tenant_id,
+            normalized_email,
+            lock=True,
+        )
+        if pending is not None:
+            raise ConflictException(
+                "A pending invitation already exists for this teacher."
+            )
+
+        normalized_staff_id = normalize_staff_id(payload.staff_id)
+        if (
+            normalized_staff_id
+            and await TeacherMembershipRepository.staff_id_exists(
+                db,
+                actor.tenant_id,
+                normalized_staff_id,
+            )
+        ):
+            raise ConflictException("This staff ID is already assigned.")
+
+        raw_token = secrets.token_urlsafe(48)
+        invitation = TeacherInvitation(
+            tenant_id=actor.tenant_id,
+            invited_email=normalized_email,
+            token_digest=hash_auth_secret(raw_token),
+            staff_id=normalized_staff_id,
+            job_title=payload.job_title,
+            department=payload.department,
+            employment_type=payload.employment_type,
+            status=TeacherInvitationStatus.PENDING,
+            expires_at=_utc_now()
+            + timedelta(days=TeacherInvitationService.INVITATION_DAYS),
+            created_by_admin_id=actor.id,
+        )
+        invitation = await TeacherInvitationRepository.add(db, invitation)
+        tenant = await TenantRepository.get_by_id(db, actor.tenant_id)
+        await db.commit()
+
+        invite_url = (
+            f"{settings.FRONTEND_APP_URL.rstrip('/')}"
+            f"/teacher-invitations/{raw_token}"
+        )
+        if background_tasks is not None:
+            background_tasks.add_task(
+                send_email,
+                normalized_email,
+                f"Join {tenant.school_name if tenant else 'your school'} on Weave",
+                (
+                    "<p>You were invited to join a school on Weave.</p>"
+                    f"<p><a href=\"{invite_url}\">Review invitation</a></p>"
+                ),
+                True,
+            )
+        return TeacherInvitationResponse.model_validate(invitation)
+
+    @staticmethod
+    async def accept_invitation(
+        db: AsyncSession,
+        *,
+        account: TeacherAccount,
+        payload: TeacherInvitationAcceptanceRequest,
+    ) -> TeacherMembershipWithAccountResponse:
+        TeacherAccountService._require_active_account(account)
+        invitation = await TeacherInvitationRepository.get_by_token_digest(
+            db,
+            hash_auth_secret(payload.invitation_token),
+            lock=True,
+        )
+        if invitation is None:
+            raise NotFoundException("Invitation not found.")
+        if invitation.status != TeacherInvitationStatus.PENDING:
+            raise ConflictException("Invitation is no longer pending.")
+        if invitation.expires_at <= _utc_now():
+            invitation.status = TeacherInvitationStatus.EXPIRED
+            await TeacherInvitationRepository.save(db, invitation)
+            await db.commit()
+            raise BadRequestException("Invitation has expired.")
+        if account.email.casefold() != invitation.invited_email.casefold():
+            raise ForbiddenException(
+                "This invitation belongs to another email address."
+            )
+
+        membership = await TeacherMembershipRepository.get_by_account_and_tenant(
+            db,
+            account.id,
+            invitation.tenant_id,
+            lock=True,
+        )
+        if membership is None:
+            await TeacherMembershipService._lock_tenant_and_enforce_limit(
+                db,
+                tenant_id=invitation.tenant_id,
+            )
+            if (
+                invitation.staff_id
+                and await TeacherMembershipRepository.staff_id_exists(
+                    db,
+                    invitation.tenant_id,
+                    invitation.staff_id,
+                )
+            ):
+                raise ConflictException(
+                    "The invitation staff ID is already assigned."
+                )
+            membership = await TeacherMembershipRepository.add(
+                db,
+                TeacherMembership(
+                    tenant_id=invitation.tenant_id,
+                    teacher_account_id=account.id,
+                    staff_id=invitation.staff_id,
+                    job_title=invitation.job_title,
+                    department=invitation.department,
+                    employment_type=invitation.employment_type,
+                    status=TeacherMembershipStatus.ACTIVE,
+                    joined_at=_utc_now(),
+                ),
+            )
+        elif membership.status == TeacherMembershipStatus.INACTIVE:
+            await TeacherMembershipService._lock_tenant_and_enforce_limit(
+                db,
+                tenant_id=invitation.tenant_id,
+            )
+            membership.status = TeacherMembershipStatus.ACTIVE
+            membership.joined_at = membership.joined_at or _utc_now()
+            membership.ended_at = None
+            membership.end_reason = None
+            membership.staff_id = invitation.staff_id or membership.staff_id
+            membership.job_title = invitation.job_title or membership.job_title
+            membership.department = invitation.department or membership.department
+            membership.employment_type = (
+                invitation.employment_type or membership.employment_type
+            )
+            await TeacherMembershipRepository.save(db, membership)
+        else:
+            raise ConflictException(
+                "This teacher already has a usable membership in the school."
+            )
+
+        invitation.status = TeacherInvitationStatus.ACCEPTED
+        invitation.accepted_at = _utc_now()
+        invitation.accepted_by_teacher_account_id = account.id
+        await TeacherInvitationRepository.save(db, invitation)
+        await db.commit()
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            invitation.tenant_id
+        )
+        membership = await TeacherMembershipRepository.get_by_id(
+            db,
+            membership.id,
+            tenant_id=invitation.tenant_id,
+            load_account=True,
+            load_subjects=True,
+        )
+        return TeacherMembershipWithAccountResponse.model_validate(membership)
+
+    @staticmethod
+    async def list_for_tenant(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        skip: int = 0,
+        limit: int = 50,
+        status: TeacherInvitationStatus | None = None,
+    ) -> tuple[list[TeacherInvitationResponse], int]:
+        rows, total = await TeacherInvitationRepository.list_for_tenant(
+            db,
+            tenant_id,
+            status=status,
+            offset=skip,
+            limit=min(limit, 100),
+        )
+        return [
+            TeacherInvitationResponse.model_validate(row) for row in rows
+        ], total
+
+    @staticmethod
+    async def revoke_invitation(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        invitation_id: UUID,
+    ) -> TeacherInvitationResponse:
+        invitation = await TeacherInvitationRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            invitation_id,
+            lock=True,
+        )
+        if invitation is None:
+            raise NotFoundException("Invitation not found.")
+        if invitation.status != TeacherInvitationStatus.PENDING:
+            raise ConflictException(
+                "Only pending invitations can be revoked."
+            )
+        invitation.status = TeacherInvitationStatus.REVOKED
+        invitation.revoked_at = _utc_now()
+        await TeacherInvitationRepository.save(db, invitation)
+        await db.commit()
+        return TeacherInvitationResponse.model_validate(invitation)
