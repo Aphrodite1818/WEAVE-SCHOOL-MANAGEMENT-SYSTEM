@@ -56,7 +56,10 @@ class AcademicSessionLifecycleRepository:
         result = await db.execute(
             select(AcademicSession)
             .where(AcademicSession.tenant_id == tenant_id)
-            .order_by(AcademicSession.start_date.asc().nulls_last(), AcademicSession.created_at.asc())
+            .order_by(
+                AcademicSession.start_date.asc().nulls_last(),
+                AcademicSession.created_at.asc(),
+            )
         )
         return list(result.scalars().all())
 
@@ -162,7 +165,10 @@ class StudentProgressionItemRepository:
         return item
 
     @staticmethod
-    async def add_many(db: AsyncSession, items: list[StudentProgressionItem]) -> list[StudentProgressionItem]:
+    async def add_many(
+        db: AsyncSession,
+        items: list[StudentProgressionItem],
+    ) -> list[StudentProgressionItem]:
         if not items:
             return []
         db.add_all(items)
@@ -187,7 +193,11 @@ class StudentProgressionItemRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def list_for_run(db: AsyncSession, tenant_id: UUID, run_id: UUID) -> list[StudentProgressionItem]:
+    async def list_for_run(
+        db: AsyncSession,
+        tenant_id: UUID,
+        run_id: UUID,
+    ) -> list[StudentProgressionItem]:
         result = await db.execute(
             select(StudentProgressionItem)
             .where(
@@ -203,3 +213,24 @@ class StudentProgressionItemRepository:
         db.add(item)
         await db.flush()
         return item
+
+
+class StudentProgressionRepository:
+    """Canonical facade used by the progression service.
+
+    Run and item persistence remain separated internally, while the service gets
+    one stable contract and does not depend on implementation class names.
+    """
+
+    add_run = StudentProgressionRunRepository.add
+    save_run = StudentProgressionRunRepository.save
+    get_run_by_id = StudentProgressionRunRepository.get_by_id
+    get_run_by_session = StudentProgressionRunRepository.get_by_session
+    get_run_by_idempotency_key = StudentProgressionRunRepository.get_by_idempotency_key
+    list_runs_for_tenant = StudentProgressionRunRepository.list_for_tenant
+
+    add_item = StudentProgressionItemRepository.add
+    add_items = StudentProgressionItemRepository.add_many
+    get_item_by_run_and_student = StudentProgressionItemRepository.get_by_run_and_student
+    list_items_for_run = StudentProgressionItemRepository.list_for_run
+    save_item = StudentProgressionItemRepository.save
