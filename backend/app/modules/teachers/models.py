@@ -1,4 +1,4 @@
-"""Global teacher identity and tenant membership models."""
+"""Teacher account, tenant membership, invitation, and capability models."""
 
 from __future__ import annotations
 
@@ -40,9 +40,11 @@ class TeacherAccountStatus(str, PyEnum):
 
 
 class TeacherStatus(str, PyEnum):
+    """Compatibility enum for tenant-facing status comparisons."""
+
     ACTIVE = "active"
+    SUSPENDED = "suspended"
     INACTIVE = "inactive"
-    ARCHIVED = "archived"
 
 
 class TeacherMembershipStatus(str, PyEnum):
@@ -59,7 +61,7 @@ class TeacherInvitationStatus(str, PyEnum):
 
 
 class TeacherAccount(UUIDMixin, TimestampMixin, Base):
-    """Global teacher login identity shared across schools."""
+    """Global teacher login identity shared across tenants."""
 
     __tablename__ = "teacher_accounts"
 
@@ -71,7 +73,6 @@ class TeacherAccount(UUIDMixin, TimestampMixin, Base):
     qualification: Mapped[str | None] = mapped_column(String(100), nullable=True)
     specialization: Mapped[str | None] = mapped_column(String(150), nullable=True)
     passport_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-
     account_status: Mapped[TeacherAccountStatus] = mapped_column(
         SQLEnum(
             TeacherAccountStatus,
@@ -83,9 +84,22 @@ class TeacherAccount(UUIDMixin, TimestampMixin, Base):
         default=TeacherAccountStatus.PENDING,
         server_default=TeacherAccountStatus.PENDING.value,
     )
-    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     memberships: Mapped[list["TeacherMembership"]] = relationship(
         "TeacherMembership",
@@ -97,7 +111,11 @@ class TeacherAccount(UUIDMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("email", name="uq_teacher_accounts_email"),
         Index("ix_teacher_accounts_email", "email"),
-        Index("ix_teacher_accounts_status_active", "account_status", "is_active"),
+        Index(
+            "ix_teacher_accounts_status_active",
+            "account_status",
+            "is_active",
+        ),
     )
 
     @property
@@ -111,13 +129,16 @@ class TeacherAccount(UUIDMixin, TimestampMixin, Base):
 
 
 class TeacherMembership(BaseModel):
-    """Teacher's tenant-specific employment and authorization context."""
+    """Tenant-scoped employment and authorization context."""
 
     __tablename__ = "teacher_memberships"
 
     teacher_account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.teacher_accounts.id", ondelete="RESTRICT"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.teacher_accounts.id",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
     )
     staff_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -135,13 +156,29 @@ class TeacherMembership(BaseModel):
         default=TeacherMembershipStatus.ACTIVE,
         server_default=TeacherMembershipStatus.ACTIVE.value,
     )
-    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     end_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    receive_email_notifications: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
-    receive_push_notifications: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    receive_email_notifications: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    receive_push_notifications: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
 
-    teacher_account: Mapped["TeacherAccount"] = relationship(
+    teacher_account: Mapped[TeacherAccount] = relationship(
         "TeacherAccount",
         back_populates="memberships",
     )
@@ -153,8 +190,16 @@ class TeacherMembership(BaseModel):
     )
 
     __table_args__ = (
-        UniqueConstraint("teacher_account_id", "tenant_id", name="uq_teacher_memberships_account_tenant"),
-        UniqueConstraint("tenant_id", "staff_id", name="uq_teacher_memberships_tenant_staff_id"),
+        UniqueConstraint(
+            "teacher_account_id",
+            "tenant_id",
+            name="uq_teacher_memberships_account_tenant",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "staff_id",
+            name="uq_teacher_memberships_tenant_staff_id",
+        ),
         CheckConstraint(
             """
             (status IN ('active', 'suspended') AND ended_at IS NULL)
@@ -162,13 +207,25 @@ class TeacherMembership(BaseModel):
             """,
             name="ck_teacher_membership_status_end_consistency",
         ),
-        Index("ix_teacher_memberships_tenant_status", "tenant_id", "status"),
-        Index("ix_teacher_memberships_account_status", "teacher_account_id", "status"),
+        Index(
+            "ix_teacher_memberships_tenant_status",
+            "tenant_id",
+            "status",
+        ),
+        Index(
+            "ix_teacher_memberships_account_status",
+            "teacher_account_id",
+            "status",
+        ),
     )
 
     @property
     def email(self) -> str:
         return self.teacher_account.email
+
+    @property
+    def password_hash(self) -> str:
+        return self.teacher_account.password_hash
 
     @property
     def first_name(self) -> str | None:
@@ -177,6 +234,45 @@ class TeacherMembership(BaseModel):
     @property
     def last_name(self) -> str | None:
         return self.teacher_account.last_name
+
+    @property
+    def phone_number(self) -> str | None:
+        return self.teacher_account.phone_number
+
+    @property
+    def qualification(self) -> str | None:
+        return self.teacher_account.qualification
+
+    @property
+    def specialization(self) -> str | None:
+        return self.teacher_account.specialization
+
+    @property
+    def passport_photo_url(self) -> str | None:
+        return self.teacher_account.passport_photo_url
+
+    @property
+    def account_status(self) -> TeacherAccountStatus:
+        return self.teacher_account.account_status
+
+    @property
+    def is_verified(self) -> bool:
+        return self.teacher_account.is_verified
+
+    @property
+    def is_active(self) -> bool:
+        return (
+            self.teacher_account.is_active
+            and self.status != TeacherMembershipStatus.INACTIVE
+        )
+
+    @property
+    def profile_completed(self) -> bool:
+        return self.teacher_account.profile_completed
+
+    @property
+    def last_login_at(self) -> datetime | None:
+        return self.teacher_account.last_login_at
 
 
 class TeacherInvitation(BaseModel):
@@ -201,34 +297,64 @@ class TeacherInvitation(BaseModel):
         default=TeacherInvitationStatus.PENDING,
         server_default=TeacherInvitationStatus.PENDING.value,
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.tenant_admins.id",
+            ondelete="SET NULL",
+        ),
         nullable=True,
     )
     accepted_by_teacher_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.teacher_accounts.id", ondelete="SET NULL"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.teacher_accounts.id",
+            ondelete="SET NULL",
+        ),
         nullable=True,
     )
 
     __table_args__ = (
-        UniqueConstraint("token_digest", name="uq_teacher_invitations_token_digest"),
+        UniqueConstraint(
+            "token_digest",
+            name="uq_teacher_invitations_token_digest",
+        ),
         CheckConstraint(
             """
-            (status = 'accepted' AND accepted_at IS NOT NULL AND accepted_by_teacher_account_id IS NOT NULL)
+            (
+                status = 'accepted'
+                AND accepted_at IS NOT NULL
+                AND accepted_by_teacher_account_id IS NOT NULL
+            )
             OR status <> 'accepted'
             """,
             name="ck_teacher_invitation_acceptance_consistency",
         ),
         CheckConstraint(
-            "(status = 'revoked' AND revoked_at IS NOT NULL) OR status <> 'revoked'",
+            """
+            (status = 'revoked' AND revoked_at IS NOT NULL)
+            OR status <> 'revoked'
+            """,
             name="ck_teacher_invitation_revocation_consistency",
         ),
-        Index("ix_teacher_invitations_tenant_email_status", "tenant_id", "invited_email", "status"),
+        Index(
+            "ix_teacher_invitations_tenant_email_status",
+            "tenant_id",
+            "invited_email",
+            "status",
+        ),
         Index(
             "uq_teacher_invitations_pending_email",
             "tenant_id",
@@ -246,37 +372,60 @@ class TeacherMembershipSubject(BaseModel):
 
     teacher_membership_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.teacher_memberships.id", ondelete="RESTRICT"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.teacher_memberships.id",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
     )
-
     subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.subjects.id", ondelete="RESTRICT"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.subjects.id",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
 
-    teacher_membership: Mapped["TeacherMembership"] = relationship(
+    teacher_membership: Mapped[TeacherMembership] = relationship(
         "TeacherMembership",
         back_populates="subject_links",
     )
-    subject: Mapped["Subject"] = relationship("Subject", back_populates="teacher_links")
+    subject: Mapped["Subject"] = relationship(
+        "Subject",
+        back_populates="teacher_links",
+    )
 
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
             "teacher_membership_id",
             "subject_id",
-            name="uq_teacher_membership_subjects_tenant_membership_subject",
+            name=(
+                "uq_teacher_membership_subjects_"
+                "tenant_membership_subject"
+            ),
         ),
-        Index("ix_teacher_membership_subjects_membership", "tenant_id", "teacher_membership_id"),
-        Index("ix_teacher_membership_subjects_subject", "tenant_id", "subject_id"),
+        Index(
+            "ix_teacher_membership_subjects_membership",
+            "tenant_id",
+            "teacher_membership_id",
+        ),
+        Index(
+            "ix_teacher_membership_subjects_subject",
+            "tenant_id",
+            "subject_id",
+        ),
     )
 
 
-# Compatibility aliases for legacy tenant-scoped imports while the global
-# teacher account flow is being tested. New account code should import
-# TeacherAccount and TeacherMembershipSubject directly.
-Teacher = TeacherAccount
+# Tenant-facing code uses Teacher as the membership actor. Global login code uses
+# TeacherAccount explicitly.
+Teacher = TeacherMembership
 TeacherSubject = TeacherMembershipSubject
