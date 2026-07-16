@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from alembic import op
+from sqlalchemy.orm import configure_mappers
 
 from app.modules import import_model_modules
 from app.shared.base_model import Base
@@ -24,17 +25,22 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _load_schema_metadata() -> None:
+    """Import all models and validate ORM mappings before running DDL."""
+
+    import_model_modules()
+    configure_mappers()
+
+
 def upgrade() -> None:
     """Create every table, enum, constraint, and index in dependency order."""
 
-    import_model_modules()
-    bind = op.get_bind()
-    Base.metadata.create_all(bind=bind, checkfirst=False)
+    _load_schema_metadata()
+    Base.metadata.create_all(bind=op.get_bind(), checkfirst=False)
 
 
 def downgrade() -> None:
-    """Drop the complete schema represented by the current ORM metadata."""
+    """Drop every application table represented by the current ORM metadata."""
 
-    import_model_modules()
-    bind = op.get_bind()
-    Base.metadata.drop_all(bind=bind, checkfirst=False)
+    _load_schema_metadata()
+    Base.metadata.drop_all(bind=op.get_bind(), checkfirst=True)
