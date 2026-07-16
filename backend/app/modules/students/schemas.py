@@ -1,10 +1,4 @@
-#==========================#
-#    student.schema.py     #
-#==========================#
-
-
 from __future__ import annotations
-
 
 import uuid
 from datetime import date, datetime
@@ -16,11 +10,12 @@ from pydantic import (
     EmailStr,
     Field,
     field_validator,
-    model_validator
+    model_validator,
 )
 
+from app.core.utils.validators import validate_password_strength
 from app.modules.parents.models import ParentMembershipStatus
-from app.modules.students.models import(
+from app.modules.students.models import (
     AcademicStatus,
     Gender,
     ParentLinkVerifiedByType,
@@ -28,13 +23,15 @@ from app.modules.students.models import(
     StudentAccessCodePurpose,
     StudentAccountStatus,
     StudentEnrollmentOutcome,
-    StudentParentLinkStatus,
     StudentParentLinkRequestStatus,
-    StudentProfileStatus
+    StudentParentLinkStatus,
+    StudentProfileStatus,
 )
 
 
 class InputBase(BaseModel):
+    """Base configuration for student request schemas."""
+
     model_config = ConfigDict(
         extra="forbid",
         str_strip_whitespace=True,
@@ -44,13 +41,13 @@ class InputBase(BaseModel):
 
 
 class OutputBase(BaseModel):
+    """Base configuration for student response schemas."""
+
     model_config = ConfigDict(
-        use_enum_values=True,
         from_attributes=True,
+        use_enum_values=True,
         populate_by_name=True,
     )
-
-
 
 
 def clean_optional_string(value: str | None) -> str | None:
@@ -67,10 +64,8 @@ def clean_required_string(value: str) -> str:
     """Trim required strings and reject blank content."""
 
     cleaned = value.strip()
-
     if not cleaned:
         raise ValueError("value cannot be empty")
-
     return cleaned
 
 
@@ -80,44 +75,40 @@ def normalize_email(value: str) -> str:
     return value.strip().casefold()
 
 
+def validate_date_before_today(
+    value: date | None,
+    *,
+    field_name: str,
+) -> date | None:
+    """Reject today and future dates where a historical date is required."""
+
+    if value is not None and value >= date.today():
+        raise ValueError(f"{field_name} must be before today")
+    return value
+
+
 def validate_date_not_future(
     value: date | None,
     *,
     field_name: str,
 ) -> date | None:
-    """Reject a future historical date."""
+    """Reject future dates while permitting today."""
 
     if value is not None and value > date.today():
         raise ValueError(f"{field_name} cannot be in the future")
-
     return value
 
 
+# ---------------------------------------------------------------------------
+# Student creation and safe profile updates
+# ---------------------------------------------------------------------------
 
-def ensure_dateofbirth_not_current(
-        value: date | None,
-) -> None | date:
-    """Reject date of birth set to today or anywhere in the current year"""
-
-    if value is not None:
-        today = date.today()
-        if value == today:
-            raise ValueError("date of birth cannot be today's date")
-        if value.year == today.year:
-            raise ValueError("date of birth cannot be in the current year")
-
-    return value
-
-
-#==========================#
-#    Student creation      #
-#==========================#
 
 class StudentParentInvitationInput(InputBase):
-    """Optional parent invitation supplied during student creation"""
+    """Optional parent invitation supplied during student creation."""
 
-    email : EmailStr
-    relationship_type : ParentRelationship
+    email: EmailStr
+    relationship_type: ParentRelationship
 
     @field_validator("email", mode="after")
     @classmethod
@@ -127,29 +118,28 @@ class StudentParentInvitationInput(InputBase):
         return normalize_email(str(value))
 
 
-
 class StudentCreate(InputBase):
     """
-    Create a new student
+    Create a student using backend-generated admission credentials.
+
+    Admission numbers are generated internally and are never accepted from a
+    client. Creation also requires a class so the service can atomically create
+    the student's current enrolment.
     """
 
-    admission_number: str | None = Field(default=None, min_length=1, max_length=50)
-    first_name: str = Field(min_length=3, max_length=100)
-    last_name: str = Field(min_length=3, max_length=100)
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
     date_of_birth: date
-    class_id: uuid.UUID | None = None
+    class_id: uuid.UUID
     gender: Gender | None = None
     arm: str | None = Field(default=None, max_length=20)
     state_of_origin: str | None = Field(default=None, max_length=100)
-    parents: list[StudentParentInvitationInput] = Field(default_factory=list, max_length=2)
-
-
-    @field_validator(
-        "admission_number",
-        "arm",
-        "state_of_origin",
-        mode="before",
+    parents: list[StudentParentInvitationInput] = Field(
+        default_factory=list,
+        max_length=2,
     )
+
+    @field_validator("arm", "state_of_origin", mode="before")
     @classmethod
     def clean_optional_fields(cls, value: str | None) -> str | None:
         """Clean optional student fields."""
@@ -166,19 +156,13 @@ class StudentCreate(InputBase):
     @field_validator("date_of_birth")
     @classmethod
     def validate_birth_date(cls, value: date) -> date:
-        """Reject future dates of birth."""
+        """Require a date of birth before today."""
 
-        validated = validate_date_not_future(
+        validated = validate_date_before_today(
             value,
             field_name="date_of_birth",
         )
-
-        validated = ensure_dateofbirth_not_current(
-            validated
-        )
-
-        if validated is None:
-            raise ValueError("date_of_birth is required")
+        assert validated is not None
         return validated
 
     @model_validator(mode="after")
@@ -186,88 +170,65 @@ class StudentCreate(InputBase):
         """Reject duplicate parent invitation emails."""
 
         emails = [parent.email for parent in self.parents]
-
         if len(emails) != len(set(emails)):
             raise ValueError("parent invitation emails must be unique")
-
         return self
-    
-
 
 
 class StudentAdminProfileUpdate(InputBase):
     """
-    Safe tenant-admin profile update
+    Safe tenant-admin profile update.
 
-    Lifecycle state, current class , authentication state , archival fields , and 
-    graduation fields are intentionally excluded
+    Admission number, lifecycle state, current class, authentication state,
+    archival fields, and graduation fields are intentionally excluded.
     """
 
-    first_name : str | None = Field(default = None , min_length = 3 , max_length = 100)
-    last_name : str | None = Field(default = None , min_length = 3 , max_length = 100)
-    date_of_birth : date | None = None 
-    gender : Gender | None = None 
-    arm : str | None = Field(default = None , max_length = 20)
-    state_of_origin : str | None = Field(default = None , max_length=100)
-
+    first_name: str | None = Field(default=None, min_length=1, max_length=100)
+    last_name: str | None = Field(default=None, min_length=1, max_length=100)
+    date_of_birth: date | None = None
+    gender: Gender | None = None
+    arm: str | None = Field(default=None, max_length=20)
+    state_of_origin: str | None = Field(default=None, max_length=100)
 
     @field_validator(
         "first_name",
         "last_name",
         "arm",
         "state_of_origin",
-        mode = "before"
+        mode="before",
     )
     @classmethod
-    def clean_fields(cls , value : str |None ) -> EmailStr | None:
-        """Clean profile fields"""
+    def clean_fields(cls, value: str | None) -> str | None:
+        """Clean profile fields."""
 
         return clean_optional_string(value)
-    
-    @field_validator("date_of_birth")
-    def validate_birth_date(cls , value : date | None) -> None | date:
-        """Reject future and current date of birth"""
 
-        validated =  validate_date_not_future(
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_birth_date(cls, value: date | None) -> date | None:
+        """Require any supplied date of birth to be before today."""
+
+        return validate_date_before_today(
             value,
-            field_name = "date_of_birth"
+            field_name="date_of_birth",
         )
 
-        validated = ensure_dateofbirth_not_current(validated)
-        return validated
-    
-
-    @model_validator(mode = "after")
-    def require_at_least_one_change(
-        self
-    ):
-        """Reject empty profile updates"""
+    @model_validator(mode="after")
+    def require_at_least_one_change(self) -> "StudentAdminProfileUpdate":
+        """Reject empty profile updates."""
 
         if not self.model_fields_set:
             raise ValueError("at least one student field must be provided")
-        
         return self
-    
 
 
 class StudentSelfUpdate(InputBase):
-    """Student-controlled profile update"""
+    """Student-controlled profile update."""
 
-    first_name : str | None = Field(
-        default = None ,
-        min_length = 3 ,
-        max_length = 100
-    )
+    first_name: str | None = Field(default=None, min_length=1, max_length=100)
+    last_name: str | None = Field(default=None, min_length=1, max_length=100)
+    gender: Gender | None = None
 
-
-    
-    last_name : str | None = Field(
-        default = None ,
-        min_length = 3 ,
-        max_length = 100
-    )
-
-    gender : Gender | None = None
     @field_validator("first_name", "last_name", mode="before")
     @classmethod
     def clean_names(cls, value: str | None) -> str | None:
@@ -281,18 +242,15 @@ class StudentSelfUpdate(InputBase):
 
         if not self.model_fields_set:
             raise ValueError("at least one profile field must be provided")
-
         return self
-    
-
 
 
 class StudentOnboardingUpdate(InputBase):
-    """Complete the required student profile fields"""
+    """Complete required student profile fields."""
 
-    first_name : str = Field(min_length=3 , max_length = 100)
-    last_name : str = Field(min_length=3 , max_length = 100)
-    gender : Gender
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    gender: Gender
 
     @field_validator("first_name", "last_name", mode="before")
     @classmethod
@@ -300,19 +258,17 @@ class StudentOnboardingUpdate(InputBase):
         """Clean required onboarding names."""
 
         return clean_required_string(value)
-    
 
 
+# ---------------------------------------------------------------------------
+# Student lifecycle requests
+# ---------------------------------------------------------------------------
 
-#==============================#
-# Student lifecycle requests   #
-#==============================#
 
-class StudentLifeCycleReasonRequest(InputBase):
-    """Base lifecycle request requiring a recorded reason"""
+class StudentLifecycleReasonRequest(InputBase):
+    """Base lifecycle request requiring a recorded reason."""
 
-    reason : str = Field(min_length = 30 , max_length=500)
-
+    reason: str = Field(min_length=3, max_length=500)
 
     @field_validator("reason", mode="before")
     @classmethod
@@ -320,112 +276,72 @@ class StudentLifeCycleReasonRequest(InputBase):
         """Clean lifecycle reason."""
 
         return clean_required_string(value)
-    
 
 
-class StudentSuspendRequest(StudentLifeCycleReasonRequest):
-    """Suspend a student without closing current enrolment"""
+class StudentSuspendRequest(StudentLifecycleReasonRequest):
+    """Suspend a student without closing current enrolment."""
 
-    promotion_hold : bool = False
-
-
-
-class StudentReinstateRequest(StudentLifeCycleReasonRequest):
-    """
-    Reinstate a suspended student
-
-    Reinstatement from EXPELLED must use the privileged expelled-reinstatement
-    request instead
-    """
+    promotion_hold: bool = False
 
 
-class StudentWithdrawRequest(StudentLifeCycleReasonRequest):
-    """Withdraw a student and close their current enrolment"""
+class StudentReinstateRequest(StudentLifecycleReasonRequest):
+    """Reinstate a suspended student."""
 
-    effective_date : date = Field(default_factory=date.today)
 
+class StudentWithdrawRequest(StudentLifecycleReasonRequest):
+    """Withdraw a student and close their current enrolment."""
+
+    effective_date: date = Field(default_factory=date.today)
 
     @field_validator("effective_date")
     @classmethod
     def validate_effective_date(cls, value: date) -> date:
-        """Withdrawal cannot be recorded in the future."""
+        """Withdrawal cannot be future-dated."""
 
-        validated = validate_date_not_future(
-            value,
-            field_name="effective_date",
-        )
-
+        validated = validate_date_not_future(value, field_name="effective_date")
         assert validated is not None
         return validated
-    
 
 
-class StudentExpelRequest(StudentLifeCycleReasonRequest):
-    """Expel a student and immediately end parent access"""
+class StudentExpelRequest(StudentLifecycleReasonRequest):
+    """Expel a student and immediately end parent access."""
 
-    effective_date : date = Field(default_factory=date.today)
-
-
+    effective_date: date = Field(default_factory=date.today)
 
     @field_validator("effective_date")
     @classmethod
     def validate_effective_date(cls, value: date) -> date:
-        """Expulsion cannot be recorded in the future."""
+        """Expulsion cannot be future-dated."""
 
-        validated = validate_date_not_future(
-            value,
-            field_name="effective_date",
-        )
-
+        validated = validate_date_not_future(value, field_name="effective_date")
         assert validated is not None
         return validated
-    
 
 
+class StudentGraduateRequest(StudentLifecycleReasonRequest):
+    """Privileged single-student graduation correction request."""
 
-class StudentGraduatedRequest(StudentLifeCycleReasonRequest):
-    """
-    Explicit privileged single-student graduation request
+    graduation_date: date = Field(default_factory=date.today)
 
-    Normal graduation occurs during academic-session closure
-    """
-
-
-    graduation_date : date = Field(default_factory=date.today)
     @field_validator("graduation_date")
     @classmethod
     def validate_graduation_date(cls, value: date) -> date:
-        """Graduation cannot be recorded in the future."""
+        """Graduation cannot be future-dated."""
 
-        validated = validate_date_not_future(
-            value,
-            field_name="graduation_date",
-        )
-
+        validated = validate_date_not_future(value, field_name="graduation_date")
         assert validated is not None
         return validated
 
 
-
-
-
-class StudentArchiveRequest(StudentLifeCycleReasonRequest):
+class StudentArchiveRequest(StudentLifecycleReasonRequest):
     """Archive a student without destroying historical records."""
 
 
+class StudentRestoreFromArchiveRequest(StudentLifecycleReasonRequest):
+    """Restore an archived record to operational visibility."""
 
 
-class StudentRestoreFromArchiveRequest(StudentLifeCycleReasonRequest):
-    """
-    Restore an archived record to operational visibility.
-
-    This request does not reactivate old parent links or automatically assign a
-    class. Those are explicit separate actions.
-    """
-
-
-
-class StudentExpelledReinstatementRequest(StudentLifeCycleReasonRequest):
+class StudentExpelledReinstatementRequest(StudentLifecycleReasonRequest):
     """Privileged reinstatement of an expelled student."""
 
     target_class_id: uuid.UUID
@@ -437,23 +353,16 @@ class StudentExpelledReinstatementRequest(StudentLifeCycleReasonRequest):
     def validate_effective_date(cls, value: date) -> date:
         """Reinstatement cannot start in the future."""
 
-        validated = validate_date_not_future(
-            value,
-            field_name="effective_date",
-        )
-
+        validated = validate_date_not_future(value, field_name="effective_date")
         assert validated is not None
         return validated
-    
-
 
 
 class StudentPromotionHoldUpdateRequest(InputBase):
-    """Set or remove an individual academic progression hold"""
+    """Set or remove an individual progression hold."""
 
-    promotion_hold : bool
-    reason : str = Field(min_length = 3 , max_length=500)
-
+    promotion_hold: bool
+    reason: str = Field(min_length=3, max_length=500)
 
     @field_validator("reason", mode="before")
     @classmethod
@@ -463,56 +372,40 @@ class StudentPromotionHoldUpdateRequest(InputBase):
         return clean_required_string(value)
 
 
-
-
 class StudentHardDeleteRequest(InputBase):
-    """
-    Explicit hard-delete request
+    """Explicit hard-delete request for an accidental unused record."""
 
+    confirmation: Literal["DELETE_UNUSED_STUDENT"]
+    reason: str = Field(min_length=3, max_length=500)
 
-    """
-    confirmation : Literal["CONFIRMED"]
-    reason : str = Field(min_length=3 , max_length = 500)
     @field_validator("reason", mode="before")
     @classmethod
     def clean_reason(cls, value: str) -> str:
         """Clean the hard-delete reason."""
 
         return clean_required_string(value)
-    
 
 
+# ---------------------------------------------------------------------------
+# Student enrolment and class changes
+# ---------------------------------------------------------------------------
 
-#======================================#
-#  student enrolment and class changes #
-#======================================#
 
 class StudentClassChangeRequest(InputBase):
-    """
-    Dedicated class-change request
-
-    Generic profile updates cannot modify student class
-    """
+    """Dedicated class-change request."""
 
     target_class_id: uuid.UUID
     academic_session_id: uuid.UUID
     effective_date: date = Field(default_factory=date.today)
     outcome: Literal["reclassified", "repeated"] = "reclassified"
-    reason: str = Field(
-        min_length=3,
-        max_length=500,
-    )
+    reason: str = Field(min_length=3, max_length=500)
 
     @field_validator("effective_date")
     @classmethod
     def validate_effective_date(cls, value: date) -> date:
         """Class changes cannot be future-dated in this phase."""
 
-        validated = validate_date_not_future(
-            value,
-            field_name="effective_date",
-        )
-
+        validated = validate_date_not_future(value, field_name="effective_date")
         assert validated is not None
         return validated
 
@@ -522,8 +415,6 @@ class StudentClassChangeRequest(InputBase):
         """Clean class-change reason."""
 
         return clean_required_string(value)
-    
-
 
 
 class StudentEnrollmentResponse(OutputBase):
@@ -559,71 +450,62 @@ class StudentEnrollmentListResponse(OutputBase):
     total: int = Field(ge=0)
 
 
-
-
-
-
-#================================#
-# Student access-code requests   #
-#================================#
+# ---------------------------------------------------------------------------
+# Student access-code requests
+# ---------------------------------------------------------------------------
 
 
 class StudentAccessCodeGenerateRequest(InputBase):
-    """Generate a new student access code"""
+    """Generate a new student access code."""
 
-    purpose : StudentAccessCodePurpose
+    purpose: StudentAccessCodePurpose
 
 
 class StudentAdminAccessCodeResponse(OutputBase):
-    """One time access-code response returned to an administrator"""
+    """One-time access-code response returned to an administrator."""
 
-    student_id : uuid.UUID
-    admission_number : str 
-    full_name : str | None = None
-    purpose : StudentAccessCodePurpose
-    access_code : str 
-    expires_at : datetime
-
+    student_id: uuid.UUID
+    admission_number: str
+    full_name: str | None = None
+    purpose: StudentAccessCodePurpose
+    access_code: str
+    expires_at: datetime
 
 
 class StudentChangePasswordRequest(InputBase):
-    """Student access-code password setup/reset request"""
+    """Student access-code password setup/reset request."""
 
-    access_code : str = Field(min_length = 1 , max_length = 32)
-    new_password : str = Field(min_length = 8 , max_length = 128)
-    confirm_password : str = Field(min_length=8 , max_length = 128)
+    access_code: str = Field(min_length=1, max_length=32)
+    new_password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
 
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password_strength(cls, value: str) -> str:
+        """Enforce the shared backend password baseline."""
 
+        validate_password_strength(value)
+        return value
 
     @model_validator(mode="after")
-    def validate_password_confirmation(
-        self,
-    ) -> "StudentChangePasswordRequest":
+    def validate_password_confirmation(self) -> "StudentChangePasswordRequest":
         """Require matching password values."""
 
         if self.new_password != self.confirm_password:
             raise ValueError("new_password and confirm_password must match")
-
         return self
-    
 
 
-
-
-#==================================#
-# parent-child linking and approval#
-#==================================#
+# ---------------------------------------------------------------------------
+# Parent-child linking and approval
+# ---------------------------------------------------------------------------
 
 
 class StudentParentLinkRequestCreate(InputBase):
-    """
-    Create an approval request from a valid invitation
+    """Create an approval request from a valid invitation."""
 
-    Admission number is accepted only with an invitation token
-    """
-
-    invitation_token : str = Field(min_length = 20 , max_length = 500)
-    admission_number : str = Field(min_length=6, max_length = 20)
+    invitation_token: str = Field(min_length=20, max_length=500)
+    admission_number: str = Field(min_length=1, max_length=50)
 
     @field_validator("admission_number", mode="before")
     @classmethod
@@ -633,14 +515,11 @@ class StudentParentLinkRequestCreate(InputBase):
         return clean_required_string(value)
 
 
-
 class StudentParentLinkRequestDecision(InputBase):
-    """Approve or reject one parent-child link requests"""
+    """Approve or reject one parent-child link request."""
 
-    action : Literal["approve", "reject"]
-    reason : str | None  = Field(default = None , max_length = 500)
-
-
+    action: Literal["approve", "reject"]
+    reason: str | None = Field(default=None, max_length=500)
 
     @field_validator("reason", mode="before")
     @classmethod
@@ -650,25 +529,16 @@ class StudentParentLinkRequestDecision(InputBase):
         return clean_optional_string(value)
 
     @model_validator(mode="after")
-    def validate_decision_reason(
-        self,
-    ) -> "StudentParentLinkRequestDecision":
+    def validate_decision_reason(self) -> "StudentParentLinkRequestDecision":
         """Require a reason for rejection."""
 
         if self.action == "reject" and not self.reason:
             raise ValueError("reason is required when rejecting a request")
-
         return self
-    
 
 
 class StudentParentLinkUpdateRequest(InputBase):
-    """
-    Update non-lifecycle link preferences.
-
-    Link status is intentionally excluded. Status transitions use dedicated
-    lifecycle services.
-    """
+    """Update non-lifecycle link preferences."""
 
     relationship_type: ParentRelationship | None = None
     is_primary_contact: bool | None = None
@@ -676,27 +546,18 @@ class StudentParentLinkUpdateRequest(InputBase):
     receives_fee_updates: bool | None = None
 
     @model_validator(mode="after")
-    def require_at_least_one_change(
-        self,
-    ) -> "StudentParentLinkUpdateRequest":
+    def require_at_least_one_change(self) -> "StudentParentLinkUpdateRequest":
         """Reject empty link preference updates."""
 
         if not self.model_fields_set:
             raise ValueError("at least one link field must be provided")
-
         return self
-    
-
-
 
 
 class StudentParentLinkEndRequest(InputBase):
     """Explicitly end one parent-child relationship."""
 
-    reason: str = Field(
-        min_length=3,
-        max_length=500,
-    )
+    reason: str = Field(min_length=3, max_length=500)
 
     @field_validator("reason", mode="before")
     @classmethod
@@ -704,22 +565,12 @@ class StudentParentLinkEndRequest(InputBase):
         """Clean the ending reason."""
 
         return clean_required_string(value)
-    
-
-
 
 
 class StudentParentLinkReactivateRequest(InputBase):
-    """
-    Explicitly reactivate a previously ended parent link.
+    """Explicitly reactivate a previously ended parent link."""
 
-    Student restoration alone must never reactivate old links automatically.
-    """
-
-    reason: str = Field(
-        min_length=3,
-        max_length=500,
-    )
+    reason: str = Field(min_length=3, max_length=500)
     is_primary_contact: bool = False
     receives_academic_updates: bool = True
     receives_fee_updates: bool = True
@@ -730,8 +581,6 @@ class StudentParentLinkReactivateRequest(InputBase):
         """Clean reactivation reason."""
 
         return clean_required_string(value)
-    
-
 
 
 class StudentParentLinkResponse(OutputBase):
@@ -793,9 +642,7 @@ class StudentParentLinkRequestResponse(OutputBase):
     updated_at: datetime
 
 
-class StudentParentLinkRequestDetailResponse(
-    StudentParentLinkRequestResponse
-):
+class StudentParentLinkRequestDetailResponse(StudentParentLinkRequestResponse):
     """Link request with safe parent and student display values."""
 
     parent_email: EmailStr
