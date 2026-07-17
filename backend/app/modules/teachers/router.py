@@ -71,6 +71,7 @@ CurrentTenantAdmin: TypeAlias = Annotated[
 
 @router.post(
     "/accounts/register",
+    response_model=None,
     status_code=status.HTTP_201_CREATED,
 )
 async def register_teacher_account(
