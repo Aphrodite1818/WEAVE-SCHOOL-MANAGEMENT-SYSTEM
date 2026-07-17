@@ -20,6 +20,7 @@ from app.modules.students.models import Student
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.models import Tenant
+from app.tenant_management.registration_service import TenantRegistrationService
 from app.tenant_management.schemas import (
     TenantManagementResponse,
     TenantRegisterRequest,
@@ -58,7 +59,7 @@ async def register_tenant(
     background_tasks: BackgroundTasks,
 ) -> dict | JSONResponse:
     """Perform register tenant."""
-    result = await TenantService.register_tenant(
+    result = await TenantRegistrationService.register_tenant(
         db,
         payload,
         background_tasks=background_tasks,
@@ -114,6 +115,3 @@ async def update_tenant(
         tenant_id,
         payload,
     )
-
-
-
