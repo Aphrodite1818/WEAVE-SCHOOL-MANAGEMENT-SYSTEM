@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
+from app.modules.students.creation_service import StudentCreationService
 from app.modules.students.models import (
     AcademicStatus,
     StudentAccessCodePurpose,
@@ -123,7 +124,7 @@ async def create_student(
         current_admin.tenant_id,
         ResourceLimitCode.STUDENTS,
     )
-    student = await StudentService.create_student_profile(
+    student = await StudentCreationService.create_student_profile(
         db,
         current_admin,
         payload,
