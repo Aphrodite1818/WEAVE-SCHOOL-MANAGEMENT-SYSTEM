@@ -106,7 +106,6 @@ class TeacherPasswordChangeRequest(InputBase):
 
 class TeacherInvitationCreateRequest(InputBase):
     email: EmailStr
-    staff_id: str | None = Field(default=None, max_length=50)
     job_title: str | None = Field(default=None, max_length=100)
     department: str | None = Field(default=None, max_length=100)
     employment_type: str | None = Field(default=None, max_length=50)
@@ -126,7 +125,6 @@ class TeacherInvitationRevokeRequest(InputBase):
 
 
 class TeacherMembershipUpdateRequest(InputBase):
-    staff_id: str | None = Field(default=None, max_length=50)
     job_title: str | None = Field(default=None, max_length=100)
     department: str | None = Field(default=None, max_length=100)
     employment_type: str | None = Field(default=None, max_length=50)
