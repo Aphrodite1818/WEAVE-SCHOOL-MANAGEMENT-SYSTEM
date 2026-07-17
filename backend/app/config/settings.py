@@ -150,8 +150,8 @@ class Settings(BaseSettings):
     LOGIN_IDENTIFIER_IP_FAIL_LIMIT_10M: int = Field(default=5, gt=0)
 
     OTP_EMAIL_COOLDOWN_SECONDS: int = Field(default=60, gt=0)
-    OTP_EMAIL_LIMIT_10M: int = Field(default=3, gt=0)
-    OTP_EMAIL_LIMIT_24H: int = Field(default=8, gt=0)
+    OTP_EMAIL_LIMIT_10M: int = Field(default=5, gt=0)
+    OTP_EMAIL_LIMIT_24H: int = Field(default=12, gt=0)
     OTP_IP_LIMIT_1H: int = Field(default=20, gt=0)
 
     OTP_VERIFY_EMAIL_FAIL_LIMIT_10M: int = Field(default=5, gt=0)
