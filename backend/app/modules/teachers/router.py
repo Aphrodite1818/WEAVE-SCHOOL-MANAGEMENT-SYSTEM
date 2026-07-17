@@ -6,6 +6,8 @@ from typing import Annotated, TypeAlias
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
@@ -21,6 +23,9 @@ from app.modules.teachers.models import (
     TeacherAccount,
     TeacherInvitationStatus,
     TeacherMembershipStatus,
+)
+from app.modules.teachers.registration_service import (
+    TeacherRegistrationService,
 )
 from app.modules.teachers.schemas import (
     TeacherAccountOnboardingRequest,
@@ -47,6 +52,7 @@ from app.modules.teachers.service import (
 )
 from app.modules.tenant_admins.models import TenantAdmin
 
+
 router = APIRouter(tags=["Teachers"])
 
 CurrentTeacherAccount: TypeAlias = Annotated[
@@ -71,12 +77,19 @@ async def register_teacher_account(
     payload: TeacherAccountRegisterRequest,
     db: DbSession,
     background_tasks: BackgroundTasks,
-) -> dict[str, object]:
-    return await TeacherAccountService.register_account(
+) -> dict[str, object] | JSONResponse:
+    result = await TeacherRegistrationService.register_account(
         db,
         payload,
         background_tasks,
     )
+    if result.get("created") is False:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=jsonable_encoder(result),
+            background=background_tasks,
+        )
+    return result
 
 
 @router.get(
