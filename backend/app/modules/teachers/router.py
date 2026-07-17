@@ -13,6 +13,9 @@ from app.core.dependencies.route_guards import (
     get_current_teacher_account,
     get_current_tenant_admin,
 )
+from app.modules.teachers.invitation_workflow_service import (
+    TeacherInvitationWorkflowService,
+)
 from app.modules.teachers.models import (
     Teacher,
     TeacherAccount,
@@ -173,7 +176,7 @@ async def accept_teacher_invitation(
     db: DbSession,
     current_account: CurrentTeacherAccount,
 ) -> TeacherMembershipWithAccountResponse:
-    return await TeacherInvitationService.accept_invitation(
+    return await TeacherInvitationWorkflowService.accept_invitation(
         db,
         account=current_account,
         payload=payload,
@@ -223,7 +226,7 @@ async def create_teacher_invitation(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherInvitationResponse:
-    return await TeacherInvitationService.create_invitation(
+    return await TeacherInvitationWorkflowService.create_invitation(
         db,
         actor=current_admin,
         payload=payload,
