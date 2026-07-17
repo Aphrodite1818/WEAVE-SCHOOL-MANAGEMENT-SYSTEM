@@ -1,8 +1,8 @@
 # ====================================== #
-#              service.py                #
+#              service.py               #
 # ====================================== #
 
-"""Teacher service layer."""
+"""Teacher service layer. for weave"""
 
 from locale import normalize
 import secrets
