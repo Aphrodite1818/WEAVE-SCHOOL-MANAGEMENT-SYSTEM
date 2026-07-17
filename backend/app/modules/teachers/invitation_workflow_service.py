@@ -79,7 +79,7 @@ class TeacherInvitationWorkflowService:
         account: TeacherAccount,
         payload: TeacherInvitationAcceptanceRequest,
     ) -> TeacherMembershipWithAccountResponse:
-        """Accept an invitation and backfill a staff ID for legacy pending rows."""
+        """Accept an invitation and replace null or legacy-format staff IDs."""
 
         token_digest = hash_auth_secret(payload.invitation_token)
         preview = await TeacherInvitationRepository.get_by_token_digest(
@@ -97,7 +97,12 @@ class TeacherInvitationWorkflowService:
                 token_digest,
                 lock=True,
             )
-            if invitation is not None and not invitation.staff_id:
+            if invitation is not None and not (
+                TenantIdentifierService.is_canonical_identifier(
+                    tenant=tenant,
+                    value=invitation.staff_id,
+                )
+            ):
                 invitation.staff_id = (
                     await TenantIdentifierService.generate_identifier(
                         db,
