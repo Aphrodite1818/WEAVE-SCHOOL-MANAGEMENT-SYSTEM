@@ -28,6 +28,8 @@ class TenantIdentifierService:
     """Validate tenant onboarding and allocate school-owned identifiers."""
 
     MAX_GENERATION_ATTEMPTS = 50
+    YEAR_DIGITS = 2
+    RANDOM_DIGITS = 6
 
     @staticmethod
     async def require_completed_onboarding(
@@ -60,6 +62,27 @@ class TenantIdentifierService:
 
         tenant.admission_number_prefix = prefix
         return tenant
+
+    @classmethod
+    def is_canonical_identifier(
+        cls,
+        *,
+        tenant: Tenant,
+        value: str | None,
+    ) -> bool:
+        """Return whether a value matches PREFIX + YY + six numeric digits."""
+
+        if not value:
+            return False
+        prefix = (tenant.admission_number_prefix or "").strip().upper()
+        normalized = value.strip().upper()
+        if not prefix or not normalized.startswith(prefix):
+            return False
+        numeric_part = normalized[len(prefix) :]
+        return (
+            len(numeric_part) == cls.YEAR_DIGITS + cls.RANDOM_DIGITS
+            and numeric_part.isdigit()
+        )
 
     @staticmethod
     def _build_candidate(prefix: str) -> str:
