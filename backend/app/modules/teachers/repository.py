@@ -128,7 +128,7 @@ class TeacherMembershipRepository:
         query = select(TeacherMembership).where(*filters)
         if load_account:
             query = query.options(
-                joinedload(TeacherMembership.teacher_account),
+                selectinload(TeacherMembership.teacher_account),
             )
         if load_subjects:
             query = query.options(
@@ -169,7 +169,7 @@ class TeacherMembershipRepository:
     ) -> TeacherMembership | None:
         query = (
             select(TeacherMembership)
-            .options(joinedload(TeacherMembership.teacher_account))
+            .options(selectinload(TeacherMembership.teacher_account))
             .where(
                 TeacherMembership.teacher_account_id == account_id,
                 TeacherMembership.tenant_id == tenant_id,
