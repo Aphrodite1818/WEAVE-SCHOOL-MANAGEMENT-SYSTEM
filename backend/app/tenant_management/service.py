@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.logging import get_logger
+from app.config.security import verify_password
 from app.core.exceptions import (
     BadRequestException,
     ConflictException,
@@ -352,6 +353,16 @@ class TenantService:
                         raise ConflictException(
                             "A pending registration already exists for this email "
                             "under a different school name."
+                        )
+
+                    if not verify_password(
+                        payload.password,
+                        existing_admin.password_hash,
+                    ):
+                        raise ConflictException(
+                            "A pending registration already exists for this email. "
+                            "The password does not match the original registration. "
+                            "Use the original password or verify the email and reset it."
                         )
 
                     tenant = existing_tenant_by_email
