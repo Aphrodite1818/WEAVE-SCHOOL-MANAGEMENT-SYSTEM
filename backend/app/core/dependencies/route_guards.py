@@ -254,15 +254,19 @@ async def get_current_teacher_account(
 async def get_current_parent_account(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
 ) -> ParentAccount:
-    if not isinstance(actor, ParentAccount):
+    if isinstance(actor, ParentAccount):
+        account = actor
+    elif isinstance(actor, Parent):
+        account = actor.parent_account
+    else:
         raise ForbiddenException("Parent account credentials are required.")
     if (
-        not actor.is_active
-        or not actor.is_verified
-        or actor.account_status != ParentAccountStatus.ACTIVE
+        not account.is_active
+        or not account.is_verified
+        or account.account_status != ParentAccountStatus.ACTIVE
     ):
         raise ForbiddenException("Inactive account")
-    return actor
+    return account
 
 
 async def get_current_teacher(
