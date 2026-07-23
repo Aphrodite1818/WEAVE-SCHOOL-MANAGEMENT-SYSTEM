@@ -6,7 +6,9 @@ const buildQuery = (options = {}, map = {}) => {
   params.set("limit", String(options.limit ?? 100));
 
   Object.entries(map).forEach(([optionKey, paramKey]) => {
-    if (options[optionKey]) params.set(paramKey, options[optionKey]);
+    if (options[optionKey] !== undefined && options[optionKey] !== null && options[optionKey] !== "") {
+      params.set(paramKey, String(options[optionKey]));
+    }
   });
 
   return params.toString();
@@ -32,20 +34,35 @@ const filterClasses = (items, search) => {
   if (!normalizedSearch) return items;
 
   return items.filter((item) =>
-    [item.name, item.level, item.arm]
+    [item.name, item.arm]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(normalizedSearch))
   );
 };
 
+const normalizeClassPayload = (payload = {}) => ({
+  ...(payload.name !== undefined ? { name: payload.name } : {}),
+  ...(payload.arm !== undefined ? { arm: payload.arm || null } : {}),
+  ...(payload.teacher_membership_id !== undefined || payload.teacher_id !== undefined
+    ? {
+        teacher_membership_id:
+          payload.teacher_membership_id || payload.teacher_id || null,
+      }
+    : {}),
+  ...(payload.is_active !== undefined ? { is_active: payload.is_active } : {}),
+});
+
 export const classService = {
   getClasses: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;
     const result = normalizeListResponse(
-      await api.get(`/classes?${buildQuery(queryOptions)}`, {
-        ...requestOptions,
-        ...(signal ? { signal } : {}),
-      })
+      await api.get(
+        `/classes?${buildQuery(queryOptions, { activeOnly: "active_only" })}`,
+        {
+          ...requestOptions,
+          ...(signal ? { signal } : {}),
+        }
+      )
     );
     const items = filterClasses(result.items, queryOptions.search);
 
@@ -57,10 +74,10 @@ export const classService = {
   },
 
   createClass: (payload) =>
-    api.post("/classes", payload),
+    api.post("/classes", normalizeClassPayload(payload)),
 
   updateClass: (classId, payload) =>
-    api.patch(`/classes/${classId}`, payload),
+    api.patch(`/classes/${classId}`, normalizeClassPayload(payload)),
 
   deleteClass: (classId) =>
     api.delete(`/classes/${classId}`),
