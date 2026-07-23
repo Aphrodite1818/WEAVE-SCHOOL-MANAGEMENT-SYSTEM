@@ -14,6 +14,15 @@ const queryString = (params = {}) => {
   return value ? `?${value}` : "";
 };
 
+const sessionPayload = (payload = {}) => ({
+  ...(payload.name !== undefined ? { name: payload.name } : {}),
+  ...(payload.start_date !== undefined ? { start_date: payload.start_date } : {}),
+  ...(payload.end_date !== undefined ? { end_date: payload.end_date } : {}),
+  ...(payload.next_academic_session_id !== undefined
+    ? { next_academic_session_id: payload.next_academic_session_id }
+    : {}),
+});
+
 const newClassSubjectValue = (classId, subjectId) =>
   `${NEW_CLASS_SUBJECT_PREFIX}:${classId}:${subjectId}`;
 
@@ -125,9 +134,13 @@ const reassignTeacherAssignment = async (assignmentId, payload) => {
 export const academicService = {
   listSessions: (params) =>
     api.get(`/tenant-admin/academics/sessions${queryString(params)}`),
-  createSession: (payload) => api.post("/tenant-admin/academics/sessions", payload),
+  createSession: (payload) =>
+    api.post("/tenant-admin/academics/sessions", sessionPayload(payload)),
   updateSession: (sessionId, payload) =>
-    api.patch(`/tenant-admin/academics/sessions/${sessionId}`, payload),
+    api.patch(
+      `/tenant-admin/academics/sessions/${sessionId}`,
+      sessionPayload(payload),
+    ),
   openSession: (sessionId) =>
     api.post(`/tenant-admin/academics/sessions/${sessionId}/open`, {
       confirmation: "OPEN_ACADEMIC_SESSION",
