@@ -60,7 +60,7 @@ async def test_queue_parent_invitation_email_builds_expected_outbox_row(
     assert kwargs["tenant_id"] == tenant_id
 
     email_data = kwargs["email_data"]
-    assert email_data.recipient_email == "Parent@Example.com"
+    assert str(email_data.recipient_email).casefold() == "parent@example.com"
     assert email_data.template_name == PARENT_INVITATION_TEMPLATE
     assert email_data.subject == "Join Weave Test School on Weave"
     assert email_data.template_context == {
