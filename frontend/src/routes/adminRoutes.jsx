@@ -8,13 +8,11 @@ import AdminInvitationPage from "../pages/admin/AdminInvitationPage";
 import AdminSearchDetailPage from "../pages/admin/AdminSearchDetailPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
-import ClassesPage from "../pages/admin/ClassesPage";
 import CreateUserPage from "../pages/admin/CreateUserPage";
 import FeesPage from "../pages/admin/FeesPage";
 import ParentsPage from "../pages/admin/ParentsPage";
 import PaymentsPage from "../pages/admin/PaymentsPage";
 import StudentsPage from "../pages/admin/StudentsPage";
-import SubjectsPage from "../pages/admin/SubjectsPage";
 import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
 import SubscriptionVerifyPage from "../pages/admin/SubscriptionVerifyPage";
 import TeachersPage from "../pages/admin/TeachersPage";
@@ -52,8 +50,14 @@ export const adminRoutes = (
       <Route path="/admin/teachers" element={<TeachersPage />} />
       <Route path="/admin/students" element={<StudentsPage />} />
       <Route path="/admin/parents" element={<ParentsPage />} />
-      <Route path="/admin/classes" element={<ClassesPage />} />
-      <Route path="/admin/subjects" element={<SubjectsPage />} />
+      <Route
+        path="/admin/classes"
+        element={<Navigate to="/admin/academic/class-subjects" replace />}
+      />
+      <Route
+        path="/admin/subjects"
+        element={<Navigate to="/admin/academic/setup?tab=subjects" replace />}
+      />
       <Route path="/admin/imports" element={<BulkImportRouteGuard />} />
       <Route path="/admin/attendance" element={<AttendancePage />} />
       <Route
