@@ -1,15 +1,7 @@
-import ResourceModulePage from "../shared/ResourceModulePage";
-import { parentResourceConfig } from "../shared/resourceConfigs";
+import MembershipDirectoryPage from "./MembershipDirectoryPage";
 
 function ParentsPage() {
-  return (
-    <ResourceModulePage
-      role="admin"
-      title="Parent Directory"
-      description="Review invited parent profiles and maintain optional contact details."
-      config={parentResourceConfig}
-    />
-  );
+  return <MembershipDirectoryPage role="parent" />;
 }
 
 export default ParentsPage;
