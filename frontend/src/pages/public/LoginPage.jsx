@@ -15,6 +15,35 @@ const ROLE_ROUTES = {
   PARENT: "/parent/dashboard",
 };
 
+const ACCOUNT_SCHOOL_ROUTES = {
+  TEACHER: "/teacher/schools",
+  PARENT: "/parent/schools",
+};
+
+const resolvePostLoginRoute = (data, role) => {
+  const actorType = String(
+    data?.actor_type || data?.user?.actor_type || ""
+  ).toLowerCase();
+  const tenantId = data?.tenant_id || data?.user?.tenant_id || null;
+  const membershipSelectionRequired = Boolean(
+    data?.membership_selection_required ||
+      data?.user?.membership_selection_required ||
+      data?.user?.meta?.membership_selection_required
+  );
+  const isGlobalAccount = ["parent_account", "teacher_account"].includes(
+    actorType
+  );
+
+  if (
+    ACCOUNT_SCHOOL_ROUTES[role] &&
+    (isGlobalAccount || membershipSelectionRequired || !tenantId)
+  ) {
+    return ACCOUNT_SCHOOL_ROUTES[role];
+  }
+
+  return ROLE_ROUTES[role] || "/";
+};
+
 const formatCountdown = (totalSeconds) => {
   const safeSeconds = Math.max(Number(totalSeconds) || 0, 0);
   const minutes = Math.floor(safeSeconds / 60);
@@ -91,11 +120,9 @@ function LoginPage() {
 
   useEffect(() => {
     if (!retryAfterSeconds) return undefined;
-
     const intervalId = window.setInterval(() => {
       setRetryAfterSeconds((currentValue) => Math.max(currentValue - 1, 0));
     }, 1000);
-
     return () => window.clearInterval(intervalId);
   }, [retryAfterSeconds]);
 
@@ -152,7 +179,8 @@ function LoginPage() {
         navigate("/student/change-password", { replace: true });
         return;
       }
-      navigate(ROLE_ROUTES[role] || "/", { replace: true });
+
+      navigate(resolvePostLoginRoute(data, role), { replace: true });
     } catch (err) {
       const apiError = parseApiError(err, "Invalid email/admission number or password.");
       if (Object.keys(apiError.fieldErrors || {}).length > 0) {
