@@ -1,5 +1,4 @@
-import { authSession } from "./api";
-import { api } from "./api";
+import { api, authSession } from "./api";
 import { tenantService } from "./tenant.service";
 
 const MEMBERSHIP_ENDPOINTS = {
@@ -16,7 +15,7 @@ const asItems = (response) => {
 
 const getStoredSummaries = () => {
   const user = authSession.getUser() || {};
-  const memberships = user?.meta?.memberships;
+  const memberships = user?.memberships || user?.meta?.memberships;
   return Array.isArray(memberships) ? memberships : [];
 };
 
@@ -60,8 +59,10 @@ const hydrateTenantContext = async (membership) => {
     const tenant = await tenantService.getTenant(membership.tenant_id);
     return {
       ...membership,
-      tenant_name: membership.tenant_name || resolveTenantName(tenant) || "School workspace",
-      tenant_logo_url: membership.tenant_logo_url || resolveTenantLogo(tenant),
+      tenant_name:
+        membership.tenant_name || resolveTenantName(tenant) || "School workspace",
+      tenant_logo_url:
+        membership.tenant_logo_url || resolveTenantLogo(tenant),
     };
   } catch {
     return {
