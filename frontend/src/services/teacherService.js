@@ -19,6 +19,18 @@ const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
 };
 
 export const teacherService = {
+  registerAccount: (payload) =>
+    api.post("/teachers/accounts/register", payload, {
+      auth: false,
+      clearAuthOnUnauthorized: false,
+      skipAuthRefresh: true,
+    }),
+
+  acceptInvitation: (invitationToken) =>
+    api.post("/teachers/accounts/me/invitations/accept", {
+      invitation_token: invitationToken,
+    }),
+
   getTeachers: (options = {}) =>
     api.get(`/tenant-admin/teachers?${buildTeacherQuery(options)}`),
 
