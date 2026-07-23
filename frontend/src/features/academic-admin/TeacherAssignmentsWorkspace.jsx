@@ -1,4 +1,4 @@
-import { BookOpen, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
