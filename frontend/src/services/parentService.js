@@ -20,6 +20,26 @@ const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
 };
 
 export const parentService = {
+  registerAccount: (payload) =>
+    api.post("/parents/accounts/register", payload, {
+      auth: false,
+      clearAuthOnUnauthorized: false,
+      skipAuthRefresh: true,
+    }),
+
+  getInvitationContext: (token) =>
+    api.get(`/parents/invitations/context?token=${encodeURIComponent(token)}`, {
+      auth: false,
+      clearAuthOnUnauthorized: false,
+      skipAuthRefresh: true,
+    }),
+
+  acceptInvitation: (invitationToken, admissionNumber) =>
+    api.post("/parents/accounts/me/invitations/accept", {
+      invitation_token: invitationToken,
+      admission_number: admissionNumber,
+    }),
+
   getParents: (options = {}) =>
     api.get(`/tenant-admin/parents?${buildParentQuery(options)}`),
 
