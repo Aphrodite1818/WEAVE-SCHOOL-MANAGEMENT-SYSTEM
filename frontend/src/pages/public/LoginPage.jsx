@@ -20,6 +20,19 @@ const ACCOUNT_SCHOOL_ROUTES = {
   PARENT: "/parent/schools",
 };
 
+const safeInvitationReturnTo = (value) => {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "";
+  }
+  if (
+    value.startsWith("/parent-invitations/") ||
+    value.startsWith("/teacher-invitations/")
+  ) {
+    return value;
+  }
+  return "";
+};
+
 const resolvePostLoginRoute = (data, role) => {
   const actorType = String(
     data?.actor_type || data?.user?.actor_type || ""
@@ -106,6 +119,7 @@ function LoginPage() {
   const justVerified = searchParams.get("verified") === "true";
   const passwordReset = searchParams.get("reset") === "true";
   const inviteCompleted = searchParams.get("invite") === "success";
+  const returnTo = safeInvitationReturnTo(searchParams.get("returnTo"));
 
   const [formData, setFormData] = useState({
     identifier: "",
@@ -139,7 +153,12 @@ function LoginPage() {
   const redirectToVerification = (identifier, notice, purpose = "verification", redirectTo = "/verify-otp") => {
     if (!identifier) return;
     authService.setPendingVerificationEmail(identifier);
-    navigate(`${redirectTo}?email=${encodeURIComponent(identifier)}&purpose=${encodeURIComponent(purpose)}`, {
+    const query = new URLSearchParams({
+      email: identifier,
+      purpose,
+    });
+    if (returnTo) query.set("returnTo", returnTo);
+    navigate(`${redirectTo}?${query.toString()}`, {
       replace: true,
       state: { notice },
     });
@@ -180,7 +199,7 @@ function LoginPage() {
         return;
       }
 
-      navigate(resolvePostLoginRoute(data, role), { replace: true });
+      navigate(returnTo || resolvePostLoginRoute(data, role), { replace: true });
     } catch (err) {
       const apiError = parseApiError(err, "Invalid email/admission number or password.");
       if (Object.keys(apiError.fieldErrors || {}).length > 0) {
