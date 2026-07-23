@@ -56,17 +56,17 @@ function AcademicWorkflowPage() {
     loadContext();
   }, [loadContext]);
 
-  if (!academicWorkflowConfig[workflow]) {
-    return <Navigate to="/admin/academic" replace />;
-  }
-
-  const updateContext = ({ currentSession, currentTerm }) => {
+  const updateContext = useCallback(({ currentSession, currentTerm }) => {
     setContext((current) => ({
       currentSession:
         currentSession === undefined ? current.currentSession : currentSession,
       currentTerm: currentTerm === undefined ? current.currentTerm : currentTerm,
     }));
-  };
+  }, []);
+
+  if (!academicWorkflowConfig[workflow]) {
+    return <Navigate to="/admin/academic" replace />;
+  }
 
   const renderWorkspace = (activeTab) => {
     if (workflow === "setup") {
