@@ -225,7 +225,7 @@ function MembershipDirectoryPage({ role }) {
       title={config.title}
       description={config.description}
       actions={
-        <Link to={`/admin/create-user?tab=${role}`}>
+        <Link to={`/admin/invitations/${role}`}>
           <Button type="button">
             <MailPlus className="h-4 w-4" />
             {config.inviteLabel}
