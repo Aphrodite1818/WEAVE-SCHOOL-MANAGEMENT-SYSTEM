@@ -1,18 +1,15 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 
-import LandingJoinSection from "../../features/auth/LandingJoinSection";
 import WeaveIcon from "../brand/WeaveIcon";
 import Button from "../ui/Button";
 
 function Navbar() {
   const [open, setOpen] = useState(false);
-  const location = useLocation();
-  const isLandingPage = location.pathname === "/";
   const links = [
     { label: "Home", href: "/#home" },
-    { label: "Join", href: "/#join" },
+    { label: "Join", to: "/join" },
     { label: "Features", href: "/#features" },
     { label: "Benefits", href: "/#benefits" },
     { label: "Pricing", to: "/pricing" },
@@ -112,8 +109,6 @@ function Navbar() {
         className="h-[calc(4rem+max(0.35rem,env(safe-area-inset-top)))] md:h-20"
         aria-hidden="true"
       />
-
-      {isLandingPage ? <LandingJoinSection /> : null}
     </>
   );
 }
