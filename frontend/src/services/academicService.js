@@ -96,17 +96,26 @@ const stripTermCreateOnlyFields = (payload = {}) => {
 };
 
 const buildTeacherAssignmentPayload = (payload = {}, classSubjectId) => ({
-  teacher_id: payload.teacher_id,
+  teacher_membership_id:
+    payload.teacher_membership_id || payload.teacher_id,
   class_subject_id: classSubjectId,
 });
 
 const activateTeacherAssignment = (assignmentId) =>
-  api.patch(`/tenant-admin/academic/teacher-assignments/${assignmentId}/activate`, {});
+  api.post(`/tenant-admin/academics/teacher-assignments/${assignmentId}/activate`);
 
 const reassignTeacherAssignment = async (assignmentId, payload) => {
-  const response = await api.post(`/tenant-admin/academic/teacher-assignments/${assignmentId}/reassign`, payload);
+  const teacherMembershipId =
+    payload.teacher_membership_id || payload.teacher_id;
+  const response = await api.post(
+    `/tenant-admin/academics/teacher-assignments/${assignmentId}/reassign`,
+    { teacher_membership_id: teacherMembershipId },
+  );
 
-  if (response?.is_active === false && response?.teacher_id === payload?.teacher_id) {
+  if (
+    response?.is_active === false &&
+    response?.teacher_membership_id === teacherMembershipId
+  ) {
     return activateTeacherAssignment(assignmentId);
   }
 
@@ -115,27 +124,31 @@ const reassignTeacherAssignment = async (assignmentId, payload) => {
 
 export const academicService = {
   listSessions: (params) =>
-    api.get(`/tenant-admin/academic/sessions${queryString(params)}`),
-  createSession: (payload) => api.post("/tenant-admin/academic/sessions", payload),
+    api.get(`/tenant-admin/academics/sessions${queryString(params)}`),
+  createSession: (payload) => api.post("/tenant-admin/academics/sessions", payload),
   updateSession: (sessionId, payload) =>
-    api.patch(`/tenant-admin/academic/sessions/${sessionId}`, payload),
+    api.patch(`/tenant-admin/academics/sessions/${sessionId}`, payload),
+  openSession: (sessionId) =>
+    api.post(`/tenant-admin/academics/sessions/${sessionId}/open`, {
+      confirmation: "OPEN_ACADEMIC_SESSION",
+    }),
   listTeacherSessions: (params) =>
-    api.get(`/teachers/me/academic/sessions${queryString(params)}`),
+    api.get(`/teachers/academics/sessions${queryString(params)}`),
 
   listTerms: (params) =>
-    api.get(`/tenant-admin/academic/terms${queryString(params)}`),
-  createTerm: (payload) => api.post("/tenant-admin/academic/terms", payload),
+    api.get(`/tenant-admin/academics/terms${queryString(params)}`),
+  createTerm: (payload) => api.post("/tenant-admin/academics/terms", payload),
   updateTerm: (termId, payload) =>
-    api.patch(`/tenant-admin/academic/terms/${termId}`, stripTermCreateOnlyFields(payload)),
+    api.patch(`/tenant-admin/academics/terms/${termId}`, stripTermCreateOnlyFields(payload)),
   listTeacherTerms: (params) =>
-    api.get(`/teachers/me/academic/terms${queryString(params)}`),
+    api.get(`/teachers/academics/terms${queryString(params)}`),
 
   listGradingScales: (params) =>
-    api.get(`/tenant-admin/academic/grading-scales${queryString(params)}`),
+    api.get(`/tenant-admin/academics/grading-scales${queryString(params)}`),
   createGradingScale: (payload) =>
-    api.post("/tenant-admin/academic/grading-scales", payload),
+    api.post("/tenant-admin/academics/grading-scales", payload),
   updateGradingScale: (scaleId, payload) =>
-    api.patch(`/tenant-admin/academic/grading-scales/${scaleId}`, payload),
+    api.patch(`/tenant-admin/academics/grading-scales/${scaleId}`, payload),
 
   listClassSubjects: async (classId, params) => {
     const [classSubjectResponse, subjectResponse] = await Promise.all([
@@ -153,7 +166,7 @@ export const academicService = {
     api.delete(`/class-subjects/${classSubjectId}`),
 
   listTeacherAssignments: (params) =>
-    api.get(`/tenant-admin/academic/teacher-assignments${queryString(params)}`),
+    api.get(`/tenant-admin/academics/teacher-assignments${queryString(params)}`),
   createTeacherAssignment: async (payload) => {
     const classSubjectId = await resolveClassSubjectId(
       payload.class_subject_id,
@@ -161,32 +174,37 @@ export const academicService = {
     );
 
     return api.post(
-      "/tenant-admin/academic/teacher-assignments",
+      "/tenant-admin/academics/teacher-assignments",
       buildTeacherAssignmentPayload(payload, classSubjectId),
     );
   },
   deactivateTeacherAssignment: (assignmentId) =>
-    api.patch(`/tenant-admin/academic/teacher-assignments/${assignmentId}/deactivate`),
+    api.post(`/tenant-admin/academics/teacher-assignments/${assignmentId}/deactivate`),
   activateTeacherAssignment,
   reassignTeacherAssignment,
 
   listAdminResults: (params, requestOptions) =>
-    api.get(`/tenant-admin/academic/results${queryString(params)}`, requestOptions),
-  saveAdminResult: (payload) => api.post("/tenant-admin/academic/results", payload),
+    api.get(`/tenant-admin/academics/results${queryString(params)}`, requestOptions),
+  saveAdminResult: (payload) => api.post("/tenant-admin/academics/results", payload),
   updateResultStatus: (resultId, payload) =>
-    api.patch(`/tenant-admin/academic/results/${resultId}/status`, payload),
+    api.patch(`/tenant-admin/academics/results/${resultId}/status`, payload),
 
-  listMyTeacherAssignments: (requestOptions) => api.get("/teachers/me/academic/assignments", requestOptions),
+  listMyTeacherAssignments: (requestOptions) =>
+    api.get("/teachers/academics/assignments", requestOptions),
   listMyAssignmentStudents: (assignmentId, params) =>
-    api.get(`/teachers/me/academic/assignments/${assignmentId}/students${queryString(params)}`),
+    api.get(`/teachers/academics/assignments/${assignmentId}/students${queryString(params)}`),
   listTeacherResults: (params, requestOptions) =>
-    api.get(`/teachers/me/academic/results${queryString(params)}`, requestOptions),
-  saveTeacherResult: (payload) => api.post("/teachers/me/academic/results", payload),
+    api.get(`/teachers/academics/results${queryString(params)}`, requestOptions),
+  saveTeacherResult: (payload) => api.post("/teachers/academics/results", payload),
 
-  listMyResults: (requestOptions) => api.get("/students/me/academic/results", requestOptions),
-  listMySubjectCards: (requestOptions) => api.get("/students/me/academic/subjects", requestOptions),
+  listMyResults: (requestOptions) =>
+    api.get("/students/academics/results", requestOptions),
+  listMySubjectCards: (requestOptions) =>
+    api.get("/students/academics/subjects", requestOptions),
   listChildResults: (studentId, requestOptions) =>
-    api.get(`/parents/me/children/${studentId}/academic/results`, requestOptions),
+    api.get(`/parents/academics/students/${studentId}/results`, requestOptions),
+  listChildSubjectCards: (studentId, requestOptions) =>
+    api.get(`/parents/academics/students/${studentId}/subjects`, requestOptions),
 };
 
 export default academicService;
