@@ -13,6 +13,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.utils.normalization import normalize_class_name
 from app.core.utils.validators import validate_password_strength
 from app.modules.parents.models import ParentMembershipStatus
 from app.modules.students.models import (
@@ -48,6 +49,13 @@ class OutputBase(BaseModel):
         use_enum_values=True,
         populate_by_name=True,
     )
+
+    @field_validator("class_name", mode="before", check_fields=False)
+    @classmethod
+    def normalize_response_class_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_class_name(value) or value
 
 
 def clean_optional_string(value: str | None) -> str | None:

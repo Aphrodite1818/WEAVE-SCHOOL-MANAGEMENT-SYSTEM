@@ -76,6 +76,11 @@ class ClassRoomResponse(OutputBase):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_response_name(cls, value: str) -> str:
+        return normalize_class_name(value) or value
+
 
 class ClassProgressionConfigureRequest(InputBase):
     next_class_id: uuid.UUID | None = None
@@ -102,6 +107,13 @@ class ClassProgressionResponse(OutputBase):
     is_terminal: bool
     is_active: bool
 
+    @field_validator("class_name", "next_class_name", mode="before")
+    @classmethod
+    def normalize_response_class_names(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_class_name(value) or value
+
 
 class ClassProgressionValidationIssue(OutputBase):
     class_id: uuid.UUID
@@ -116,6 +128,11 @@ class ClassProgressionValidationIssue(OutputBase):
         "terminal_has_next_class",
     ]
     message: str
+
+    @field_validator("class_name", mode="before")
+    @classmethod
+    def normalize_response_class_name(cls, value: str) -> str:
+        return normalize_class_name(value) or value
 
 
 class ClassProgressionValidationResponse(OutputBase):

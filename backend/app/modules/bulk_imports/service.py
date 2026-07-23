@@ -386,7 +386,7 @@ class BulkImportService:
                 )
                 continue
 
-            classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
+            classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
                 db=db,
                 tenant_id=tenant_id,
                 class_name=str(class_name),

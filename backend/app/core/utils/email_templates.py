@@ -5,9 +5,12 @@
 from datetime import datetime
 from html import escape
 
+from app.config.settings import settings
+
 
 BRAND_NAME = "Weave"
 BRAND_SUBTITLE = "School Management"
+BRAND_LOGO_PATH = "/assets/logo.svg"
 
 
 def _html(value: object) -> str:
@@ -15,9 +18,16 @@ def _html(value: object) -> str:
     return escape(str(value), quote=True)
 
 
+def _frontend_asset_url(path: str) -> str:
+    """Return an absolute frontend asset URL for email clients."""
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return f"{settings.FRONTEND_APP_URL.rstrip('/')}{normalized_path}"
+
+
 def _email_shell(title: str, eyebrow: str, body: str) -> str:
     """Return the shared Weave branded email shell."""
     year = datetime.now().year
+    logo_url = _frontend_asset_url(BRAND_LOGO_PATH)
     return f"""
 <!DOCTYPE html>
 <html>
@@ -29,9 +39,8 @@ def _email_shell(title: str, eyebrow: str, body: str) -> str:
 <body style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8FAFC; margin: 0; padding: 40px 20px; color: #0F172A;">
     <div style="max-width: 600px; margin: 0 auto;">
         <div style="padding: 0 0 18px 0;">
-            <div style="display: inline-block; vertical-align: middle; width: 42px; height: 42px; border-radius: 16px; background-color: #DBEAFE; border: 1px solid #E2E8F0; text-align: center; line-height: 42px; color: #2563EB; font-size: 20px; font-weight: 800;">L</div>
+            <img src="{_html(logo_url)}" alt="{BRAND_NAME}" width="148" style="display: block; width: 148px; max-width: 100%; height: auto; border: 0;">
             <div style="display: inline-block; vertical-align: middle; margin-left: 10px;">
-                <p style="margin: 0; font-size: 18px; line-height: 1.2; font-weight: 800; color: #0F172A;">{BRAND_NAME}</p>
                 <p style="margin: 2px 0 0 0; font-size: 12px; line-height: 1.4; color: #64748B;">{BRAND_SUBTITLE}</p>
             </div>
         </div>
@@ -118,6 +127,64 @@ def get_teacher_onboarding_email_html(
             {_fallback_link(setup_link)}
 """
     return _email_shell(f"Welcome to {school_name}", "Teacher onboarding", body)
+
+
+def get_teacher_invitation_email_html(
+    school_name: str,
+    invite_link: str,
+) -> str:
+    """Return the canonical teacher invitation email HTML."""
+    safe_school_name = _html(school_name or "your school")
+    body = f"""
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 18px 0; color: #334155;">Hello,</p>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; color: #334155;">
+                You have been invited to join <strong>{safe_school_name}</strong> as a teacher on Weave.
+            </p>
+
+            <div style="margin: 0 0 28px 0; padding: 18px; border-radius: 14px; background-color: #F8FAFC; border: 1px solid #E2E8F0;">
+                <p style="margin: 0 0 8px 0; font-size: 14px; line-height: 1.6; font-weight: 700; color: #0F172A;">What happens next</p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #475569;">
+                    Review the invitation, create or sign in to your teacher account, then complete your staff profile for the school workspace.
+                </p>
+            </div>
+
+            {_action_button("Review invitation", invite_link)}
+            {_fallback_link(invite_link)}
+            <p style="font-size: 14px; line-height: 1.6; margin: 24px 0 0 0; color: #64748B;">
+                This invitation is personal to your email address. If you were not expecting it, you can ignore this message.
+            </p>
+"""
+    return _email_shell(f"Join {school_name} on Weave", "Teacher invitation", body)
+
+
+def get_parent_invitation_email_html(
+    school_name: str,
+    student_name: str,
+    invite_link: str,
+) -> str:
+    """Return the canonical parent invitation email HTML."""
+    safe_school_name = _html(school_name or "your school")
+    safe_student_name = _html(student_name or "a student")
+    body = f"""
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 18px 0; color: #334155;">Hello,</p>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; color: #334155;">
+                <strong>{safe_school_name}</strong> invited you to connect with <strong>{safe_student_name}</strong> on Weave.
+            </p>
+
+            <div style="margin: 0 0 28px 0; padding: 18px; border-radius: 14px; background-color: #F8FAFC; border: 1px solid #E2E8F0;">
+                <p style="margin: 0 0 8px 0; font-size: 14px; line-height: 1.6; font-weight: 700; color: #0F172A;">Before access is granted</p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #475569;">
+                    You will confirm the student's admission number. The student or school administrator must approve the link request before records become available.
+                </p>
+            </div>
+
+            {_action_button("Review invitation", invite_link)}
+            {_fallback_link(invite_link)}
+            <p style="font-size: 14px; line-height: 1.6; margin: 24px 0 0 0; color: #64748B;">
+                This link is for the invited parent or guardian only. If this message was sent to you by mistake, no action is needed.
+            </p>
+"""
+    return _email_shell(f"Connect with {student_name}", "Parent invitation", body)
 
 
 def get_superadmin_invite_email_html(

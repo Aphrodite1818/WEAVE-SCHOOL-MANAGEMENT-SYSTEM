@@ -19,6 +19,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.core.utils.email import send_email
+from app.core.utils.email_templates import get_parent_invitation_email_html
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth.models import AuthPurpose, AuthSession, AuthSessionActorType
 from app.modules.auth.schemas import RequestOTP
@@ -280,7 +281,10 @@ class ParentAccountService:
             )
         )
         ParentAccountService._require_active_account(account)
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+        ).items():
             setattr(account, field, value)
         await ParentAccountRepository.save(db, account)
         await db.commit()
@@ -447,7 +451,10 @@ class ParentMembershipService:
         membership: ParentMembership,
         payload: ParentMembershipNotificationUpdateRequest,
     ) -> ParentMembershipResponse:
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+        ).items():
             setattr(membership, field, value)
         await ParentMembershipRepository.save(db, membership)
         await db.commit()
@@ -629,15 +636,18 @@ class ParentInvitationService:
             f"/parent-invitations/{raw_token}"
         )
         if background_tasks is not None:
+            school_name = tenant.school_name if tenant else "your school"
+            student_name = " ".join(
+                part for part in [student.first_name, student.last_name] if part
+            ) or "a student"
             background_tasks.add_task(
                 send_email,
                 normalized_email,
-                f"Join {tenant.school_name if tenant else 'your school'} on Weave",
-                (
-                    "<p>You were invited to link to a student on Weave.</p>"
-                    f"<p><a href=\"{invite_url}\">Review invitation</a></p>"
-                    "<p>You will confirm the student's admission number "
-                    "before the link request is created.</p>"
+                f"Join {school_name} on Weave",
+                get_parent_invitation_email_html(
+                    school_name=school_name,
+                    student_name=student_name,
+                    invite_link=invite_url,
                 ),
                 True,
             )

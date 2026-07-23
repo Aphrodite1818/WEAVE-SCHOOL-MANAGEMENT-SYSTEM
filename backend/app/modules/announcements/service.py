@@ -176,16 +176,16 @@ class AnnouncementService:
             "role": role,
             "class_id": target.class_id,
             "student_id": target.student_id,
-            "parent_id": target.parent_id,
-            "teacher_id": target.teacher_id,
+            "parent_membership_id": target.parent_membership_id,
+            "teacher_membership_id": target.teacher_membership_id,
         }
         expected = {
             AnnouncementTargetType.ALL: set(),
             AnnouncementTargetType.ROLE: {"role"},
             AnnouncementTargetType.CLASS: {"class_id"},
-            AnnouncementTargetType.SPECIFIC_PARENT: {"parent_id"},
+            AnnouncementTargetType.SPECIFIC_PARENT: {"parent_membership_id"},
             AnnouncementTargetType.SPECIFIC_STUDENT: {"student_id"},
-            AnnouncementTargetType.SPECIFIC_TEACHER: {"teacher_id"},
+            AnnouncementTargetType.SPECIFIC_TEACHER: {"teacher_membership_id"},
             AnnouncementTargetType.PARENTS_OF_STUDENT: {"student_id"},
             AnnouncementTargetType.PARENTS_OF_CLASS: {"class_id"},
         }[target_type]
@@ -201,8 +201,16 @@ class AnnouncementService:
     ) -> None:
         class_ids = {target.class_id for target in targets if target.class_id}
         student_ids = {target.student_id for target in targets if target.student_id}
-        parent_ids = {target.parent_id for target in targets if target.parent_id}
-        teacher_ids = {target.teacher_id for target in targets if target.teacher_id}
+        parent_ids = {
+            target.parent_membership_id
+            for target in targets
+            if target.parent_membership_id
+        }
+        teacher_ids = {
+            target.teacher_membership_id
+            for target in targets
+            if target.teacher_membership_id
+        }
 
         checks = [
             (ClassRoom, class_ids, "class"),
@@ -239,7 +247,7 @@ class AnnouncementService:
                     select(func.count()).select_from(ClassRoom).where(
                         ClassRoom.tenant_id == teacher.tenant_id,
                         ClassRoom.id.in_(class_ids),
-                        ClassRoom.teacher_id == teacher.id,
+                        ClassRoom.teacher_membership_id == teacher.id,
                     )
                 )
             ).scalar_one()
@@ -258,7 +266,7 @@ class AnnouncementService:
                     ).where(
                         Student.tenant_id == teacher.tenant_id,
                         Student.id.in_(student_ids),
-                        ClassRoom.teacher_id == teacher.id,
+                        ClassRoom.teacher_membership_id == teacher.id,
                     )
                 )
             ).scalar_one()
@@ -310,8 +318,8 @@ class AnnouncementService:
                 role=AnnouncementService._coerce_role(target.role),
                 class_id=target.class_id,
                 student_id=target.student_id,
-                parent_id=target.parent_id,
-                teacher_id=target.teacher_id,
+                parent_membership_id=target.parent_membership_id,
+                teacher_membership_id=target.teacher_membership_id,
             )
             for target in targets
         ]
@@ -450,7 +458,7 @@ class AnnouncementService:
             actor=actor,
             announcement_id=announcement_id,
         )
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
         targets = update_data.pop("targets", None)
         if "category" in update_data and update_data["category"] is not None:
             update_data["category"] = AnnouncementService._coerce_category(update_data["category"])
@@ -648,7 +656,7 @@ class AnnouncementService:
             await db.execute(
                 select(StudentParentLink.student_id).where(
                     StudentParentLink.tenant_id == parent.tenant_id,
-                    StudentParentLink.parent_id == parent.id,
+                    StudentParentLink.parent_membership_id == parent.id,
                 )
             )
         ).scalars().all()
@@ -796,7 +804,7 @@ class AnnouncementService:
                 direct_filters.append(
                     and_(
                         AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_PARENT,
-                        AnnouncementTarget.parent_id == actor.id,
+                        AnnouncementTarget.parent_membership_id == actor.id,
                     )
                 )
                 student_ids = await AnnouncementService._parent_student_ids(db, actor)

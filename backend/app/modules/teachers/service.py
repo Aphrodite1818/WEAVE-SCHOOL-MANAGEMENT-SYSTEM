@@ -20,6 +20,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.core.utils.email import send_email
+from app.core.utils.email_templates import get_teacher_invitation_email_html
 from app.core.utils.normalization import normalize_staff_id
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth.models import AuthPurpose, AuthSession, AuthSessionActorType
@@ -278,7 +279,10 @@ class TeacherAccountService:
             )
         )
         TeacherAccountService._require_active_account(account)
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+        ).items():
             setattr(account, field, value)
         await TeacherAccountRepository.save(db, account)
         await db.commit()
@@ -468,7 +472,7 @@ class TeacherMembershipService:
                     "Employment fields are controlled by the school."
                 )
 
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
         if "staff_id" in update_data:
             normalized_staff_id = normalize_staff_id(
                 update_data["staff_id"]
@@ -735,13 +739,14 @@ class TeacherInvitationService:
             f"/teacher-invitations/{raw_token}"
         )
         if background_tasks is not None:
+            school_name = tenant.school_name if tenant else "your school"
             background_tasks.add_task(
                 send_email,
                 normalized_email,
-                f"Join {tenant.school_name if tenant else 'your school'} on Weave",
-                (
-                    "<p>You were invited to join a school on Weave.</p>"
-                    f"<p><a href=\"{invite_url}\">Review invitation</a></p>"
+                f"Join {school_name} on Weave",
+                get_teacher_invitation_email_html(
+                    school_name=school_name,
+                    invite_link=invite_url,
                 ),
                 True,
             )

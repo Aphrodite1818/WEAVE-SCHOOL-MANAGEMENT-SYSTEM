@@ -15,7 +15,7 @@ from app.modules.announcements.models import (
     AnnouncementReadStatus,
 )
 from app.modules.classes.models import ClassRoom
-from app.modules.parents.models import Parent, ParentAccountStatus
+from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus
 from app.modules.students.models import Student, StudentProfileStatus
 from app.modules.subjects.models import Subject
 from app.modules.student_academics.models import (
@@ -26,7 +26,7 @@ from app.modules.student_academics.models import (
     TeacherAssignment,
 )
 from app.modules.report_cards.models import ReportCard, ReportCardStatus
-from app.modules.teachers.models import Teacher, TeacherAccountStatus
+from app.modules.teachers.models import Teacher, TeacherAccount, TeacherAccountStatus
 from app.tenant_management.models import (
     SubscriptionPlan,
     Tenant,
@@ -191,22 +191,30 @@ class MetricsRepository:
                     MetricsRepository._count_subquery(
                         Teacher,
                         Teacher.tenant_id == tenant_id,
-                        Teacher.account_status == TeacherAccountStatus.PENDING,
+                        Teacher.teacher_account.has(
+                            TeacherAccount.account_status == TeacherAccountStatus.PENDING,
+                        ),
                     ).label("pending_teachers"),
                     MetricsRepository._count_subquery(
                         Teacher,
                         Teacher.tenant_id == tenant_id,
-                        Teacher.account_status == TeacherAccountStatus.ACTIVE,
+                        Teacher.teacher_account.has(
+                            TeacherAccount.account_status == TeacherAccountStatus.ACTIVE,
+                        ),
                     ).label("active_teachers"),
                     MetricsRepository._count_subquery(
                         Parent,
                         Parent.tenant_id == tenant_id,
-                        Parent.account_status == ParentAccountStatus.PENDING,
+                        Parent.parent_account.has(
+                            ParentAccount.account_status == ParentAccountStatus.PENDING,
+                        ),
                     ).label("pending_parents"),
                     MetricsRepository._count_subquery(
                         Parent,
                         Parent.tenant_id == tenant_id,
-                        Parent.account_status == ParentAccountStatus.ACTIVE,
+                        Parent.parent_account.has(
+                            ParentAccount.account_status == ParentAccountStatus.ACTIVE,
+                        ),
                     ).label("active_parents"),
                 )
             )
@@ -348,7 +356,10 @@ class MetricsRepository:
                         Student.tenant_id == ClassRoom.tenant_id,
                     ),
                 )
-                .where(ClassRoom.tenant_id == tenant_id, ClassRoom.teacher_id == teacher_id)
+                .where(
+                    ClassRoom.tenant_id == tenant_id,
+                    ClassRoom.teacher_membership_id == teacher_id,
+                )
                 .group_by(ClassRoom.id, ClassRoom.name, ClassRoom.arm)
                 .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
             )
@@ -369,7 +380,7 @@ class MetricsRepository:
             db,
             TeacherAssignment,
             TeacherAssignment.tenant_id == tenant_id,
-            TeacherAssignment.teacher_id == teacher_id,
+            TeacherAssignment.teacher_membership_id == teacher_id,
             TeacherAssignment.is_active.is_(True),
         )
 
@@ -384,7 +395,7 @@ class MetricsRepository:
             db,
             StudentSubjectResult,
             StudentSubjectResult.tenant_id == tenant_id,
-            StudentSubjectResult.teacher_id == teacher_id,
+            StudentSubjectResult.teacher_membership_id == teacher_id,
             StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
         )
 
@@ -400,7 +411,7 @@ class MetricsRepository:
                 select(StudentSubjectResult.grade, func.count(StudentSubjectResult.id))
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.teacher_id == teacher_id,
+                    StudentSubjectResult.teacher_membership_id == teacher_id,
                 )
                 .group_by(StudentSubjectResult.grade)
             )

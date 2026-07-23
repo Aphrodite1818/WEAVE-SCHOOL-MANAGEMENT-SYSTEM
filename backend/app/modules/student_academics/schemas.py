@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.core.utils.normalization import normalize_grade
+from app.core.utils.normalization import normalize_class_name, normalize_grade
 from app.core.utils.validators import validate_academic_session_name
 from app.modules.student_academics.models import (
     AcademicResultStatus,
@@ -35,6 +35,13 @@ class OutputBase(BaseModel):
         use_enum_values=True,
         populate_by_name=True,
     )
+
+    @field_validator("class_name", mode="before", check_fields=False)
+    @classmethod
+    def normalize_response_class_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_class_name(value) or value
 
 
 class AcademicSessionCreate(InputBase):

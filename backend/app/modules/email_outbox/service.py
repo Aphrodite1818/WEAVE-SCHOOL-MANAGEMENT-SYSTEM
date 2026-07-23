@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from html import escape
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.queue.context import get_current_bulk_import_job_id
 from app.core.utils.email import send_email
+from app.core.utils.email_templates import (
+    get_parent_invitation_email_html,
+    get_teacher_invitation_email_html,
+)
 from app.modules.email_outbox.models import EmailOutbox
 from app.modules.email_outbox.repository import EmailOutboxRepository, utc_now
 from app.modules.email_outbox.schemas import EmailOutboxCreate, EmailOutboxSummaryResponse
@@ -50,10 +53,9 @@ def build_teacher_invitation_subject(*, school_name: str) -> str:
 def build_teacher_invitation_body(*, context: dict[str, Any]) -> str:
     """Build the teacher invitation email body."""
 
-    invite_link = escape(str(context["invite_link"]), quote=True)
-    return (
-        "<p>You were invited to join a school on Weave.</p>"
-        f'<p><a href="{invite_link}">Review invitation</a></p>'
+    return get_teacher_invitation_email_html(
+        school_name=str(context.get("school_name") or "your school"),
+        invite_link=str(context["invite_link"]),
     )
 
 
@@ -66,14 +68,10 @@ def build_parent_invitation_subject(*, school_name: str) -> str:
 def build_parent_invitation_body(*, context: dict[str, Any]) -> str:
     """Build the parent invitation email body."""
 
-    school_name = escape(str(context.get("school_name") or "your school"))
-    student_name = escape(str(context.get("student_name") or "a student"))
-    invite_link = escape(str(context["invite_link"]), quote=True)
-    return (
-        f"<p>You were invited to link to {student_name} at {school_name} on Weave.</p>"
-        f'<p><a href="{invite_link}">Review invitation</a></p>'
-        "<p>You will confirm the student's admission number "
-        "before the link request is created.</p>"
+    return get_parent_invitation_email_html(
+        school_name=str(context.get("school_name") or "your school"),
+        student_name=str(context.get("student_name") or "a student"),
+        invite_link=str(context["invite_link"]),
     )
 
 

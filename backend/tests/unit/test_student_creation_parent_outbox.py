@@ -13,6 +13,7 @@ from app.modules.email_outbox.models import EmailOutbox
 from app.modules.email_outbox.repository import EmailOutboxRepository
 from app.modules.email_outbox.service import (
     PARENT_INVITATION_TEMPLATE,
+    TEACHER_INVITATION_TEMPLATE,
     EmailOutboxService,
 )
 from app.modules.student_academics.lifecycle_repository import (
@@ -110,6 +111,53 @@ async def test_worker_sends_parent_invitation_template(
     assert "Ada Student" in body
     assert "Weave Test School" in body
     assert "https://app.example.com/parent-invitations/token" in body
+    assert "/assets/logo.svg" in body
+    assert "Review invitation" in body
+    assert "Before access is granted" in body
+    mark_sent.assert_awaited_once_with(db=db, email_item=email_item)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_worker_sends_teacher_invitation_template(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    email_item = EmailOutbox(
+        tenant_id=uuid4(),
+        recipient_email="teacher@example.com",
+        recipient_name="teacher@example.com",
+        subject="Join Weave Test School on Weave",
+        template_name=TEACHER_INVITATION_TEMPLATE,
+        template_context={
+            "school_name": "Weave Test School",
+            "invite_link": "https://app.example.com/teacher-invitations/token",
+        },
+        metadata_json={},
+    )
+    email_item.attempts = 1
+
+    send_email = AsyncMock(return_value=True)
+    mark_sent = AsyncMock(return_value=email_item)
+    monkeypatch.setattr(
+        "app.modules.email_outbox.service.send_email",
+        send_email,
+    )
+    monkeypatch.setattr(EmailOutboxRepository, "mark_sent", mark_sent)
+
+    db = SimpleNamespace(commit=AsyncMock())
+
+    result = await EmailOutboxService.send_claimed_email(
+        db,  # type: ignore[arg-type]
+        email_item=email_item,
+    )
+
+    assert result is True
+    body = send_email.await_args.kwargs["body"]
+    assert "Weave Test School" in body
+    assert "https://app.example.com/teacher-invitations/token" in body
+    assert "/assets/logo.svg" in body
+    assert "Review invitation" in body
+    assert "What happens next" in body
     mark_sent.assert_awaited_once_with(db=db, email_item=email_item)
     db.commit.assert_awaited_once()
 

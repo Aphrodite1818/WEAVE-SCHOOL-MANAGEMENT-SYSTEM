@@ -2,9 +2,10 @@ import uuid
 
 from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.modules.classes.models import ClassRoom
-from app.modules.parents.models import Parent
+from app.modules.parents.models import Parent, ParentAccount
 from app.modules.search.schemas import TenantSearchResult
 from app.modules.student_academics.models import (
     AcademicSession,
@@ -15,7 +16,7 @@ from app.modules.student_academics.models import (
 )
 from app.modules.students.models import Student
 from app.modules.subjects.models import Subject
-from app.modules.teachers.models import Teacher
+from app.modules.teachers.models import Teacher, TeacherAccount
 from app.modules.superadmin.models import SuperAdmin
 from app.tenant_management.models import Tenant
 
@@ -118,12 +119,15 @@ class TenantSearchService:
 
         teachers = (
             await db.execute(
-                select(Teacher).where(
+                select(Teacher)
+                .join(TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id)
+                .options(selectinload(Teacher.teacher_account))
+                .where(
                     Teacher.tenant_id == tenant_id,
                     or_(
-                        Teacher.first_name.ilike(term),
-                        Teacher.last_name.ilike(term),
-                        Teacher.email.ilike(term),
+                        TeacherAccount.first_name.ilike(term),
+                        TeacherAccount.last_name.ilike(term),
+                        TeacherAccount.email.ilike(term),
                         Teacher.staff_id.ilike(term),
                     ),
                 ).limit(per_type_limit)
@@ -143,12 +147,15 @@ class TenantSearchService:
 
         parents = (
             await db.execute(
-                select(Parent).where(
+                select(Parent)
+                .join(ParentAccount, ParentAccount.id == Parent.parent_account_id)
+                .options(selectinload(Parent.parent_account))
+                .where(
                     Parent.tenant_id == tenant_id,
                     or_(
-                        Parent.first_name.ilike(term),
-                        Parent.last_name.ilike(term),
-                        Parent.email.ilike(term),
+                        ParentAccount.first_name.ilike(term),
+                        ParentAccount.last_name.ilike(term),
+                        ParentAccount.email.ilike(term),
                     ),
                 ).limit(per_type_limit)
             )
@@ -224,7 +231,7 @@ class TenantSearchService:
                 .join(Subject, Subject.id == ClassSubject.subject_id)
                 .where(
                     ClassRoom.tenant_id == tenant_id,
-                    TeacherAssignment.teacher_id == teacher_id,
+                    TeacherAssignment.teacher_membership_id == teacher_id,
                     TeacherAssignment.is_active.is_(True),
                     ClassSubject.is_active.is_(True),
                 )
@@ -317,7 +324,7 @@ class TenantSearchService:
                 .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.teacher_id == teacher_id,
+                    StudentSubjectResult.teacher_membership_id == teacher_id,
                 )
                 .order_by(Student.first_name, Student.last_name, Subject.name)
             )

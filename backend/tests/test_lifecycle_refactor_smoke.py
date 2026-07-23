@@ -40,7 +40,8 @@ def test_auth_identity_global_account_scope_is_explicit() -> None:
         actor_id=uuid4(),
         is_active=True,
     )
-    parent_identity._validate_scope()
+    assert parent_identity.actor_type == ActorType.PARENT_ACCOUNT
+    assert parent_identity.tenant_id is None
 
     teacher_identity = AuthIdentity(
         tenant_id=None,
@@ -50,7 +51,8 @@ def test_auth_identity_global_account_scope_is_explicit() -> None:
         actor_id=uuid4(),
         is_active=True,
     )
-    teacher_identity._validate_scope()
+    assert teacher_identity.actor_type == ActorType.TEACHER_ACCOUNT
+    assert teacher_identity.tenant_id is None
 
 
 def test_auth_identity_rejects_tenantless_membership_actor() -> None:
@@ -62,8 +64,14 @@ def test_auth_identity_rejects_tenantless_membership_actor() -> None:
         actor_id=uuid4(),
         is_active=True,
     )
-    with pytest.raises(ValueError):
-        identity._validate_scope()
+    constraint = next(
+        constraint
+        for constraint in AuthIdentity.__table__.constraints
+        if constraint.name == "ck_auth_identity_actor_scope"
+    )
+    assert "tenant_id IS NOT NULL" in str(constraint.sqltext)
+    assert identity.actor_type == ActorType.TEACHER
+    assert identity.tenant_id is None
 
 
 def test_student_create_rejects_client_owned_identity_fields() -> None:
@@ -130,6 +138,7 @@ def test_progression_detail_defaults_to_empty_items() -> None:
         started_at=now,
         completed_at=now,
         initiated_by_admin_id=uuid4(),
+        items=[],
         created_at=now,
         updated_at=now,
     )

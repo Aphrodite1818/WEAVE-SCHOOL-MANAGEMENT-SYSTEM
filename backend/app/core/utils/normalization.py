@@ -27,6 +27,23 @@ _CLASS_PREFIX_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^KG\s*[-_]?\s*(\d+)$", re.IGNORECASE), "KG"),
 )
 
+_CLASS_FULL_NAME_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"^JUNIOR\s*SECONDARY\s*SCHOOL\s*[-_]?\s*(\d+)$",
+            re.IGNORECASE,
+        ),
+        "JUNIOR SECONDARY SCHOOL",
+    ),
+    (
+        re.compile(
+            r"^SENIOR\s*SECONDARY\s*SCHOOL\s*[-_]?\s*(\d+)$",
+            re.IGNORECASE,
+        ),
+        "SENIOR SECONDARY SCHOOL",
+    ),
+)
+
 _NO_ARM_SENTINELS = {"-", "NOARM", "NO_ARM", "NO ARM", "NONE", "N/A", "NA"}
 
 
@@ -116,14 +133,19 @@ def normalize_subject_name(value: Any) -> str | None:
     return cleaned.casefold() if cleaned else None
 
 
-def _canonical_class_name(value: Any) -> str | None:
-    """Return a canonical class name used for both display and lookup."""
+def _display_class_name(value: Any) -> str | None:
+    """Return a readable canonical class name for display."""
 
     cleaned = clean_string(value)
     if cleaned is None:
         return None
 
     compact = re.sub(r"[\s_\-]+", " ", cleaned).strip()
+
+    for pattern, label in _CLASS_FULL_NAME_ALIASES:
+        match = pattern.fullmatch(compact)
+        if match:
+            return f"{label} {match.group(1)}"
 
     for pattern, prefix in _CLASS_PREFIX_ALIASES:
         match = pattern.fullmatch(compact)
@@ -146,13 +168,16 @@ def normalize_class_name(value: Any) -> str | None:
     - primary 4, pry4 -> PRIMARY4
     """
 
-    return _canonical_class_name(value)
+    return _display_class_name(value)
 
 
 def normalized_class_name_key(value: Any) -> str | None:
     """Normalize a classroom name for uniqueness and lookup keys."""
 
-    return _canonical_class_name(value)
+    normalized = _display_class_name(value)
+    if normalized is None:
+        return None
+    return re.sub(r"[^A-Za-z0-9]+", "", normalized).upper()
 
 
 def normalize_class_arm(value: Any) -> str | None:

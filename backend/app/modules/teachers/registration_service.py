@@ -190,7 +190,7 @@ class TeacherRegistrationService:
     ) -> tuple[TeacherAccount, bool]:
         """Apply one registration attempt inside an atomic transaction."""
 
-        async with db.begin():
+        try:
             await AccountEmailGuard.ensure_not_superadmin_email(
                 db=db,
                 email=normalized_email,
@@ -235,6 +235,7 @@ class TeacherRegistrationService:
                     account=account,
                     normalized_email=normalized_email,
                 )
+                await db.commit()
                 return account, True
 
             state = TeacherRegistrationService._registration_state(account)
@@ -267,7 +268,11 @@ class TeacherRegistrationService:
                 account=account,
                 normalized_email=normalized_email,
             )
+            await db.commit()
             return account, False
+        except Exception:
+            await db.rollback()
+            raise
 
     @staticmethod
     async def _recover_concurrent_registration(
@@ -278,7 +283,7 @@ class TeacherRegistrationService:
     ) -> TeacherAccount:
         """Recover the account that won a concurrent registration race."""
 
-        async with db.begin():
+        try:
             account = await TeacherAccountRepository.get_by_email(
                 db,
                 normalized_email,
@@ -309,7 +314,11 @@ class TeacherRegistrationService:
                 account=account,
                 normalized_email=normalized_email,
             )
+            await db.commit()
             return account
+        except Exception:
+            await db.rollback()
+            raise
 
     @staticmethod
     async def register_account(

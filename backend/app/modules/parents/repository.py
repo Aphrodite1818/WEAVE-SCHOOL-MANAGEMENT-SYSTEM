@@ -126,7 +126,7 @@ class ParentMembershipRepository:
                 joinedload(ParentMembership.parent_account),
             )
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update(of=ParentMembership)
 
         result = await db.execute(query)
         return result.scalar_one_or_none()
@@ -164,7 +164,7 @@ class ParentMembershipRepository:
             )
         )
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update(of=ParentMembership)
         result = await db.execute(query)
         return result.scalar_one_or_none()
 

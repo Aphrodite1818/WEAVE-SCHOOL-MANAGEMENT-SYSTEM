@@ -30,7 +30,7 @@ from app.core.utils.normalization import (
 )
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
 from app.modules.classes.models import ClassRoom
-from app.modules.parents.models import Parent, ParentAccountStatus
+from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus, ParentMembershipStatus
 from app.modules.student_academics.models import GradingScale
 from app.modules.students.models import (
     AcademicStatus,
@@ -40,7 +40,7 @@ from app.modules.students.models import (
     StudentProfileStatus,
 )
 from app.modules.subjects.models import Subject
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
+from app.modules.teachers.models import Teacher, TeacherAccount, TeacherAccountStatus, TeacherMembershipStatus
 from app.tenant_management.models import Tenant
 
 
@@ -67,7 +67,7 @@ async def resolve_target_tenant(session, tenant_id_arg: str | None) -> Tenant:
 async def ensure_auth_identity(
     session,
     *,
-    tenant_id: uuid.UUID,
+    tenant_id: uuid.UUID | None,
     identifier: str,
     identifier_type: IdentifierType,
     actor_type: ActorType,
@@ -135,41 +135,64 @@ async def ensure_teacher(
     )
     teacher = result.scalar_one_or_none()
 
-    if teacher is None:
-        teacher = Teacher(
-            tenant_id=tenant_id,
+    account = None
+    if teacher is not None:
+        account = teacher.teacher_account
+    if account is None:
+        account = (
+            await session.execute(
+                select(TeacherAccount).where(TeacherAccount.email == normalized_email)
+            )
+        ).scalar_one_or_none()
+
+    if account is None:
+        account = TeacherAccount(
             email=normalized_email,
             password_hash=hash_password(DEFAULT_PASSWORD),
             first_name=first_name,
             last_name=last_name,
-            staff_id=normalized_staff_id,
             qualification="B.Ed",
             specialization=specialization,
             account_status=TeacherAccountStatus.ACTIVE,
-            status=TeacherStatus.ACTIVE,
             is_verified=True,
             is_active=True,
+        )
+        session.add(account)
+        await session.flush()
+    else:
+        account.email = normalized_email
+        account.first_name = first_name
+        account.last_name = last_name
+        account.qualification = "B.Ed"
+        account.specialization = specialization
+        account.account_status = TeacherAccountStatus.ACTIVE
+        account.is_verified = True
+        account.is_active = True
+
+    if teacher is None:
+        teacher = Teacher(
+            tenant_id=tenant_id,
+            teacher_account_id=account.id,
+            staff_id=normalized_staff_id,
+            status=TeacherMembershipStatus.ACTIVE,
+            joined_at=date.today(),
         )
         session.add(teacher)
         await session.flush()
     else:
-        teacher.email = normalized_email
-        teacher.first_name = first_name
-        teacher.last_name = last_name
-        teacher.specialization = specialization
-        teacher.account_status = TeacherAccountStatus.ACTIVE
-        teacher.status = TeacherStatus.ACTIVE
-        teacher.is_verified = True
-        teacher.is_active = True
+        teacher.teacher_account_id = account.id
+        teacher.staff_id = normalized_staff_id
+        teacher.status = TeacherMembershipStatus.ACTIVE
+        teacher.ended_at = None
         await session.flush()
 
     await ensure_auth_identity(
         session,
-        tenant_id=tenant_id,
+        tenant_id=None,
         identifier=normalized_email,
         identifier_type=IdentifierType.EMAIL,
-        actor_type=ActorType.TEACHER,
-        actor_id=teacher.id,
+        actor_type=ActorType.TEACHER_ACCOUNT,
+        actor_id=account.id,
     )
     return teacher
 
@@ -180,7 +203,7 @@ async def ensure_classroom(
     tenant_id: uuid.UUID,
     name: str,
     arm: str | None,
-    teacher_id: uuid.UUID | None = None,
+    teacher_membership_id: uuid.UUID | None = None,
 ) -> ClassRoom:
     display_name = normalize_class_name(name)
     display_arm = normalize_class_arm(arm)
@@ -206,7 +229,7 @@ async def ensure_classroom(
             normalized_name=normalized_name,
             arm=display_arm,
             normalized_arm=normalized_arm,
-            teacher_id=teacher_id,
+            teacher_membership_id=teacher_membership_id,
             is_active=True,
         )
         session.add(classroom)
@@ -217,7 +240,7 @@ async def ensure_classroom(
     classroom.normalized_name = normalized_name
     classroom.arm = display_arm
     classroom.normalized_arm = normalized_arm
-    classroom.teacher_id = teacher_id
+    classroom.teacher_membership_id = teacher_membership_id
     classroom.is_active = True
     await session.flush()
     return classroom
@@ -314,13 +337,24 @@ async def ensure_parent(
         raise ValueError("parent email cannot be empty")
 
     result = await session.execute(
-        select(Parent).where(Parent.email == normalized_email)
+        select(Parent)
+        .join(ParentAccount, ParentAccount.id == Parent.parent_account_id)
+        .where(ParentAccount.email == normalized_email)
     )
     parent = result.scalar_one_or_none()
 
-    if parent is None:
-        parent = Parent(
-            tenant_id=tenant_id,
+    account = None
+    if parent is not None:
+        account = parent.parent_account
+    if account is None:
+        account = (
+            await session.execute(
+                select(ParentAccount).where(ParentAccount.email == normalized_email)
+            )
+        ).scalar_one_or_none()
+
+    if account is None:
+        account = ParentAccount(
             email=normalized_email,
             password_hash=hash_password(DEFAULT_PASSWORD),
             first_name=first_name,
@@ -333,24 +367,43 @@ async def ensure_parent(
             is_verified=True,
             is_active=True,
         )
+        session.add(account)
+        await session.flush()
+    else:
+        account.email = normalized_email
+        account.first_name = first_name
+        account.last_name = last_name
+        account.phone_number = "+2348012345678"
+        account.occupation = "Engineer"
+        account.address = "12 Normalized Seed Street"
+        account.emergency_phone = "+2348098765432"
+        account.account_status = ParentAccountStatus.ACTIVE
+        account.is_verified = True
+        account.is_active = True
+
+    if parent is None:
+        parent = Parent(
+            tenant_id=tenant_id,
+            parent_account_id=account.id,
+            status=ParentMembershipStatus.ACTIVE,
+            joined_at=date.today(),
+        )
         session.add(parent)
         await session.flush()
     else:
         parent.tenant_id = tenant_id
-        parent.first_name = first_name
-        parent.last_name = last_name
-        parent.account_status = ParentAccountStatus.ACTIVE
-        parent.is_verified = True
-        parent.is_active = True
+        parent.parent_account_id = account.id
+        parent.status = ParentMembershipStatus.ACTIVE
+        parent.ended_at = None
         await session.flush()
 
     await ensure_auth_identity(
         session,
-        tenant_id=tenant_id,
+        tenant_id=None,
         identifier=normalized_email,
         identifier_type=IdentifierType.EMAIL,
-        actor_type=ActorType.PARENT,
-        actor_id=parent.id,
+        actor_type=ActorType.PARENT_ACCOUNT,
+        actor_id=account.id,
     )
     return parent
 
@@ -441,21 +494,21 @@ async def seed(tenant_id_arg: str | None) -> None:
             tenant_id=tenant.id,
             name="jss 1",
             arm=None,
-            teacher_id=teacher.id,
+            teacher_membership_id=teacher.id,
         )
         class_a = await ensure_classroom(
             session,
             tenant_id=tenant.id,
             name="JSS-1",
             arm="a",
-            teacher_id=teacher.id,
+            teacher_membership_id=teacher.id,
         )
         class_b = await ensure_classroom(
             session,
             tenant_id=tenant.id,
             name="Jss1",
             arm=" B ",
-            teacher_id=teacher.id,
+            teacher_membership_id=teacher.id,
         )
 
         await ensure_subject(session, tenant_id=tenant.id, name="mathematics", code="math")

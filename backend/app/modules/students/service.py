@@ -401,7 +401,10 @@ class StudentService:
         if student is None:
             raise NotFoundException("Student not found.")
 
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+        ).items():
             setattr(student, field, value)
         student.profile_status = StudentService._resolve_profile_status(student)
         await StudentRepository.save(db, student)
@@ -425,7 +428,10 @@ class StudentService:
         if student is None:
             raise NotFoundException("Student not found.")
 
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+        ).items():
             setattr(student, field, value)
         student.profile_status = StudentService._resolve_profile_status(student)
         await StudentRepository.save(db, student)
@@ -1514,7 +1520,10 @@ class StudentParentLinkService:
         )
         if link is None:
             raise NotFoundException("Parent link not found.")
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+        ).items():
             setattr(link, field, value)
         await StudentParentLinkRepository.save(db, link)
         await db.commit()
@@ -1682,11 +1691,18 @@ class StudentParentLinkRequestService:
             )
 
         now = _utc_now()
+        responder_type = (
+            ParentLinkVerifiedByType.STUDENT
+            if isinstance(actor, Student)
+            else ParentLinkVerifiedByType.TENANT_ADMIN
+        )
         if payload.action == "reject":
             request.status = StudentParentLinkRequestStatus.REJECTED
+            request.responded_at = now
+            request.responded_by_type = responder_type
+            request.responded_by_id = actor.id
             request.rejection_reason = payload.reason
         else:
-            request.status = StudentParentLinkRequestStatus.APPROVED
             membership = await ParentMembershipRepository.get_by_id(
                 db,
                 request.parent_membership_id,
@@ -1704,6 +1720,11 @@ class StudentParentLinkRequestService:
                     lock=True,
                 )
             )
+            request.status = StudentParentLinkRequestStatus.APPROVED
+            request.responded_at = now
+            request.responded_by_type = responder_type
+            request.responded_by_id = actor.id
+            request.rejection_reason = None
             if existing_link is None:
                 await StudentParentLinkRepository.add(
                     db,
@@ -1714,11 +1735,7 @@ class StudentParentLinkRequestService:
                         relationship_type=request.relationship_type,
                         status=StudentParentLinkStatus.ACTIVE,
                         verified_at=now,
-                        verified_by_type=(
-                            ParentLinkVerifiedByType.STUDENT
-                            if isinstance(actor, Student)
-                            else ParentLinkVerifiedByType.TENANT_ADMIN
-                        ),
+                        verified_by_type=responder_type,
                         verified_by_id=actor.id,
                     ),
                 )
@@ -1746,13 +1763,6 @@ class StudentParentLinkRequestService:
                 )
                 await ParentInvitationRepository.save(db, invitation)
 
-        request.responded_at = now
-        request.responded_by_type = (
-            ParentLinkVerifiedByType.STUDENT
-            if isinstance(actor, Student)
-            else ParentLinkVerifiedByType.TENANT_ADMIN
-        )
-        request.responded_by_id = actor.id
         await StudentParentLinkRequestRepository.save(db, request)
         await db.commit()
         return await StudentParentLinkRequestService._detail(db, request)

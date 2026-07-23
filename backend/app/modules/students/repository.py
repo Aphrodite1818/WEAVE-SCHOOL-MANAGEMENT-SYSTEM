@@ -632,6 +632,7 @@ class StudentParentLinkRequestRepository:
     ) -> StudentParentLinkRequest:
         db.add(request)
         await db.flush()
+        await db.refresh(request)
         return request
 
     @staticmethod
@@ -723,4 +724,5 @@ class StudentParentLinkRequestRepository:
     ) -> StudentParentLinkRequest:
         db.add(request)
         await db.flush()
+        await db.refresh(request)
         return request

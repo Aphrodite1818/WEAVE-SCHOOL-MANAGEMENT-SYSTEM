@@ -687,7 +687,7 @@ class StudentAcademicService:
                 )
             row.teacher_membership_id = payload.teacher_membership_id
         for field in ("is_core", "sort_order", "is_active"):
-            if field in payload.model_fields_set:
+            if field in payload.model_fields_set and getattr(payload, field) is not None:
                 setattr(row, field, getattr(payload, field))
         row = await StudentAcademicRepository.save_class_subject_teacher(db, row)
         await db.commit()
@@ -745,7 +745,15 @@ class StudentAcademicService:
             raise NotFoundException("Academic session not found.")
         if row.status in {AcademicSessionStatus.CLOSING, AcademicSessionStatus.CLOSED}:
             raise ConflictException("Closing or closed sessions cannot be edited.")
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
+        effective_start_date = update_data.get("start_date", row.start_date)
+        effective_end_date = update_data.get("end_date", row.end_date)
+        if (
+            effective_start_date is not None
+            and effective_end_date is not None
+            and effective_end_date <= effective_start_date
+        ):
+            raise BadRequestException("Session end date must be after start date.")
         if "name" in update_data and update_data["name"] != row.name:
             if await StudentAcademicRepository.get_academic_session_by_name(
                 db,
@@ -837,7 +845,10 @@ class StudentAcademicService:
             if current is not None and current.id != row.id:
                 current.is_current = False
                 await StudentAcademicRepository.save_academic_term(db, current)
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload.model_dump(
+            exclude_unset=True,
+            exclude_none=True,
+        ).items():
             setattr(row, field, value)
         row = await StudentAcademicRepository.save_academic_term(db, row)
         await db.commit()
@@ -928,7 +939,7 @@ class StudentAcademicService:
         )
         if row is None:
             raise NotFoundException("Grading scale not found.")
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
         minimum = update_data.get("min_score", row.min_score)
         maximum = update_data.get("max_score", row.max_score)
         if minimum > maximum:
