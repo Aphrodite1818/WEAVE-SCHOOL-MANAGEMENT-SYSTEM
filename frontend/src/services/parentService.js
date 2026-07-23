@@ -2,10 +2,20 @@ import { api } from "./api";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 100, 1), 100);
 
-const buildParentQuery = ({ skip = 0, limit = 100 } = {}) => {
+const buildParentQuery = ({ skip = 0, limit = 100, search, status } = {}) => {
   const params = new URLSearchParams();
   params.set("skip", String(skip));
   params.set("limit", String(clampLimit(limit)));
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
+  return params.toString();
+};
+
+const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
+  const params = new URLSearchParams();
+  params.set("skip", String(skip));
+  params.set("limit", String(Math.min(Math.max(Number(limit) || 50, 1), 100)));
+  if (status) params.set("status", status);
   return params.toString();
 };
 
@@ -16,6 +26,18 @@ export const parentService = {
   createParent: (payload) =>
     api.post("/tenant-admin/parents", payload),
 
+  createInvitation: (payload) =>
+    api.post("/parents/invitations", payload),
+
+  listInvitations: (options = {}) =>
+    api.get(`/parents/invitations?${buildInvitationQuery(options)}`),
+
+  revokeInvitation: (invitationId) =>
+    api.post(`/parents/invitations/${invitationId}/revoke`),
+
+  listMemberships: (options = {}) =>
+    api.get(`/parents/memberships?${buildParentQuery(options)}`),
+
   getMyParent: (requestOptions) =>
     api.get("/parents/me", requestOptions),
 
@@ -24,9 +46,6 @@ export const parentService = {
 
   getMyStudents: (requestOptions) =>
     api.get("/parents/me/students", requestOptions),
-
-  createStudentLinkRequest: (payload) =>
-    api.post("/parents/me/student-link-requests", payload),
 
   getMyStudentLinkRequests: (requestOptions) =>
     api.get("/parents/me/student-link-requests", requestOptions),
