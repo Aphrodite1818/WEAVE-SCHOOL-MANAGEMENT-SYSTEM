@@ -22,6 +22,8 @@ import { getErrorMessage } from "../../services/api";
 import { parentService } from "../../services/parentService";
 import { teacherService } from "../../services/teacherService";
 
+const INVITATION_STATUSES = ["pending", "accepted", "revoked", "expired"];
+
 const roleConfig = {
   teacher: {
     title: "Teacher Directory",
@@ -31,7 +33,7 @@ const roleConfig = {
     inviteLabel: "Invite teacher",
     service: teacherService,
     accountKey: "teacher_account",
-    statuses: ["active", "suspended", "ended"],
+    membershipStatuses: ["active", "suspended", "ended"],
   },
   parent: {
     title: "Parent Directory",
@@ -41,7 +43,7 @@ const roleConfig = {
     inviteLabel: "Invite parent",
     service: parentService,
     accountKey: "parent_account",
-    statuses: ["active", "read_only", "inactive"],
+    membershipStatuses: ["active", "read_only", "inactive"],
   },
 };
 
@@ -87,16 +89,25 @@ function MembershipDirectoryPage({ role }) {
   const loadPage = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    const membershipStatus =
+      activeTab === "memberships" ? statusFilter || undefined : undefined;
+    const invitationStatus =
+      activeTab === "invitations" ? statusFilter || undefined : undefined;
+
     try {
       const [membershipResponse, invitationResponse] = await Promise.all([
         config.service.listMemberships({
           limit: 100,
-          search: searchQuery.trim() || undefined,
-          status: statusFilter || undefined,
+          search:
+            activeTab === "memberships"
+              ? searchQuery.trim() || undefined
+              : undefined,
+          status: membershipStatus,
         }),
         config.service.listInvitations({
           limit: 100,
-          status: statusFilter || undefined,
+          status: invitationStatus,
         }),
       ]);
       setMemberships(asItems(membershipResponse));
@@ -108,12 +119,22 @@ function MembershipDirectoryPage({ role }) {
     } finally {
       setLoading(false);
     }
-  }, [config.service, role, searchQuery, showError, statusFilter]);
+  }, [
+    activeTab,
+    config.service,
+    role,
+    searchQuery,
+    showError,
+    statusFilter,
+  ]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(loadPage, searchQuery ? 250 : 0);
+    const timeoutId = window.setTimeout(
+      loadPage,
+      activeTab === "memberships" && searchQuery ? 250 : 0,
+    );
     return () => window.clearTimeout(timeoutId);
-  }, [loadPage, searchQuery]);
+  }, [activeTab, loadPage, searchQuery]);
 
   const filteredInvitations = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
@@ -122,6 +143,16 @@ function MembershipDirectoryPage({ role }) {
       String(item.invited_email || "").toLowerCase().includes(normalized),
     );
   }, [invitations, searchQuery]);
+
+  const statusOptions =
+    activeTab === "memberships"
+      ? config.membershipStatuses
+      : INVITATION_STATUSES;
+
+  const selectTab = (tabId) => {
+    setActiveTab(tabId);
+    setStatusFilter("");
+  };
 
   const revokeInvitation = async (item) => {
     setActionId(item.id);
@@ -147,15 +178,20 @@ function MembershipDirectoryPage({ role }) {
       showWarning("Enter a reason with at least three characters.");
       return;
     }
+
     const { membership, action } = lifecycleAction;
     setActionId(membership.id);
+
     try {
       if (action === "suspend") {
         await config.service.suspendMembership(membership.id, normalizedReason);
       } else if (action === "end") {
         await config.service.endMembership(membership.id, normalizedReason);
       } else {
-        await config.service.reactivateMembership(membership.id, normalizedReason);
+        await config.service.reactivateMembership(
+          membership.id,
+          normalizedReason,
+        );
       }
       showSuccess(
         action === "reactivate"
@@ -175,7 +211,11 @@ function MembershipDirectoryPage({ role }) {
   };
 
   const tabs = [
-    { id: "memberships", label: config.membershipLabel, count: memberships.length },
+    {
+      id: "memberships",
+      label: config.membershipLabel,
+      count: memberships.length,
+    },
     { id: "invitations", label: "Invitations", count: invitations.length },
   ];
 
@@ -224,7 +264,11 @@ function MembershipDirectoryPage({ role }) {
             </Button>
             <Button
               type="button"
-              variant={lifecycleAction?.action === "reactivate" ? "success" : "danger"}
+              variant={
+                lifecycleAction?.action === "reactivate"
+                  ? "success"
+                  : "danger"
+              }
               disabled={Boolean(actionId)}
               onClick={submitLifecycleAction}
             >
@@ -262,7 +306,11 @@ function MembershipDirectoryPage({ role }) {
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={`Search ${role} email or name`}
+                placeholder={
+                  activeTab === "memberships"
+                    ? `Search ${role} email or name`
+                    : "Search invited email"
+                }
                 className="pl-11"
               />
             </div>
@@ -272,15 +320,22 @@ function MembershipDirectoryPage({ role }) {
               className="input-base"
             >
               <option value="">All statuses</option>
-              {config.statuses.map((status) => (
+              {statusOptions.map((status) => (
                 <option key={status} value={status}>
                   {status.replaceAll("_", " ")}
                 </option>
               ))}
             </select>
           </div>
-          <Button type="button" variant="outline" onClick={loadPage} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={loadPage}
+            disabled={loading}
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            />
             Refresh
           </Button>
         </div>
@@ -290,7 +345,7 @@ function MembershipDirectoryPage({ role }) {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => selectTab(tab.id)}
               className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                 activeTab === tab.id
                   ? "bg-surface text-primary shadow-sm"
@@ -350,8 +405,12 @@ function MembershipList({
         const account = membership[accountKey] || {};
         const status = String(membership.status || "unknown").toLowerCase();
         const busy = actionId === membership.id;
+
         return (
-          <Card key={membership.id} className="flex min-h-[15rem] flex-col p-5">
+          <Card
+            key={membership.id}
+            className="flex min-h-[15rem] flex-col p-5"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
@@ -366,7 +425,9 @@ function MembershipList({
                   </p>
                 </div>
               </div>
-              <Badge variant={badgeVariant(status)}>{status.replaceAll("_", " ")}</Badge>
+              <Badge variant={badgeVariant(status)}>
+                {status.replaceAll("_", " ")}
+              </Badge>
             </div>
 
             <div className="mt-4 space-y-2 rounded-2xl bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
@@ -378,8 +439,18 @@ function MembershipList({
                 </>
               ) : (
                 <>
-                  <p>Joined: {membership.joined_at ? new Date(membership.joined_at).toLocaleDateString() : "Unknown"}</p>
-                  <p>Access: {status === "read_only" ? "Historical records only" : "Active student links"}</p>
+                  <p>
+                    Joined:{" "}
+                    {membership.joined_at
+                      ? new Date(membership.joined_at).toLocaleDateString()
+                      : "Unknown"}
+                  </p>
+                  <p>
+                    Access:{" "}
+                    {status === "read_only"
+                      ? "Historical records only"
+                      : "Active student links"}
+                  </p>
                 </>
               )}
             </div>
@@ -444,14 +515,20 @@ function InvitationList({ role, invitations, actionId, onRevoke }) {
       {invitations.map((item) => {
         const status = String(item.status || "unknown").toLowerCase();
         return (
-          <Card key={item.id} className="flex min-h-[13rem] flex-col p-5">
+          <Card
+            key={item.id}
+            className="flex min-h-[13rem] flex-col p-5"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="break-words font-semibold text-text">
                   {item.invited_email}
                 </p>
                 <p className="mt-1 text-xs text-text-muted">
-                  Expires {item.expires_at ? new Date(item.expires_at).toLocaleDateString() : "–"}
+                  Expires{" "}
+                  {item.expires_at
+                    ? new Date(item.expires_at).toLocaleDateString()
+                    : "–"}
                 </p>
               </div>
               <Badge variant={badgeVariant(status)}>{status}</Badge>
@@ -459,7 +536,9 @@ function InvitationList({ role, invitations, actionId, onRevoke }) {
             <div className="mt-4 flex items-start gap-2 rounded-2xl bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               {role === "teacher"
-                ? item.job_title || item.department || "Teacher school invitation"
+                ? item.job_title ||
+                  item.department ||
+                  "Teacher school invitation"
                 : `${item.relationship_type || "guardian"} invitation for a specific student`}
             </div>
             {status === "pending" ? (
@@ -471,7 +550,9 @@ function InvitationList({ role, invitations, actionId, onRevoke }) {
                 disabled={actionId === item.id}
                 onClick={() => onRevoke(item)}
               >
-                {actionId === item.id ? "Revoking..." : "Revoke invitation"}
+                {actionId === item.id
+                  ? "Revoking..."
+                  : "Revoke invitation"}
               </Button>
             ) : null}
           </Card>
