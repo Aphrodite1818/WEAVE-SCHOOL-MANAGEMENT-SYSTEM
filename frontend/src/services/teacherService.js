@@ -2,11 +2,12 @@ import { api } from "./api";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 100, 1), 100);
 
-const buildTeacherQuery = ({ skip = 0, limit = 100, search } = {}) => {
+const buildTeacherQuery = ({ skip = 0, limit = 100, search, status } = {}) => {
   const params = new URLSearchParams();
   params.set("skip", String(skip));
   params.set("limit", String(clampLimit(limit)));
   if (search) params.set("search", search);
+  if (status) params.set("status", status);
   return params.toString();
 };
 
@@ -48,6 +49,26 @@ export const teacherService = {
 
   listMemberships: (options = {}) =>
     api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
+
+  getMembership: (membershipId) =>
+    api.get(`/teachers/memberships/${membershipId}`),
+
+  updateMembership: (membershipId, payload) =>
+    api.patch(`/teachers/memberships/${membershipId}`, payload),
+
+  suspendMembership: (membershipId, reason) =>
+    api.post(`/teachers/memberships/${membershipId}/suspend`, { reason }),
+
+  endMembership: (membershipId, reason) =>
+    api.post(`/teachers/memberships/${membershipId}/end`, { reason }),
+
+  reactivateMembership: (membershipId, reason) =>
+    api.post(`/teachers/memberships/${membershipId}/reactivate`, { reason }),
+
+  replaceSubjectCapabilities: (membershipId, subjectIds) =>
+    api.put(`/teachers/memberships/${membershipId}/subject-capabilities`, {
+      subject_ids: subjectIds,
+    }),
 
   getMyTeacher: (requestOptions) =>
     api.get("/teachers/me", requestOptions),
