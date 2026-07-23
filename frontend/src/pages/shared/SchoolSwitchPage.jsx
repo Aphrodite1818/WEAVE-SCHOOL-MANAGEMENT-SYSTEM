@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Building2, CheckCircle2, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -68,7 +68,7 @@ function SchoolSwitchPage({ role }) {
     return actorType === normalizedRole ? String(storedUser?.id || "") : "";
   }, [normalizedRole, storedUser?.actor_type, storedUser?.id]);
 
-  const loadMemberships = async () => {
+  const loadMemberships = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
 
@@ -82,11 +82,11 @@ function SchoolSwitchPage({ role }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [normalizedRole]);
 
   useEffect(() => {
     loadMemberships();
-  }, [normalizedRole]);
+  }, [loadMemberships]);
 
   const handleSelect = async (membership) => {
     const membershipId = String(membership?.membership_id || "");
