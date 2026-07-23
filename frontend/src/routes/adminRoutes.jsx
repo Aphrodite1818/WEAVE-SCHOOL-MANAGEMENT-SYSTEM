@@ -4,6 +4,7 @@ import { DashboardShell } from "../components/layout/DashboardLayout";
 import AcademicHubOverviewPage from "../pages/admin/AcademicHubOverviewPage";
 import AcademicWorkflowPage from "../pages/admin/AcademicWorkflowPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
+import AdminInvitationPage from "../pages/admin/AdminInvitationPage";
 import AdminSearchDetailPage from "../pages/admin/AdminSearchDetailPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
@@ -28,13 +29,26 @@ import RoleGuard from "./RoleGuard";
 export const adminRoutes = (
   <Route element={<RoleGuard allowedRoles={["ADMIN"]} />}>
     <Route path="/admin/billing/plans" element={<SubscriptionOptionsPage />} />
-    <Route path="/billing/subscription/verify" element={<SubscriptionVerifyPage />} />
+    <Route
+      path="/billing/subscription/verify"
+      element={<SubscriptionVerifyPage />}
+    />
 
     <Route element={<DashboardShell role="admin" />}>
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-      <Route path="/admin/search/:resultKey" element={<AdminSearchDetailPage />} />
-      <Route path="/admin/analytics" element={<RoleAnalyticsPage role="admin" />} />
+      <Route
+        path="/admin/search/:resultKey"
+        element={<AdminSearchDetailPage />}
+      />
+      <Route
+        path="/admin/analytics"
+        element={<RoleAnalyticsPage role="admin" />}
+      />
       <Route path="/admin/create-user" element={<CreateUserPage />} />
+      <Route
+        path="/admin/invitations/:role"
+        element={<AdminInvitationPage />}
+      />
       <Route path="/admin/teachers" element={<TeachersPage />} />
       <Route path="/admin/students" element={<StudentsPage />} />
       <Route path="/admin/parents" element={<ParentsPage />} />
@@ -42,20 +56,66 @@ export const adminRoutes = (
       <Route path="/admin/subjects" element={<SubjectsPage />} />
       <Route path="/admin/imports" element={<BulkImportRouteGuard />} />
       <Route path="/admin/attendance" element={<AttendancePage />} />
-      <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />
-      <Route path="/admin/results" element={<Navigate to="/admin/academic/results" replace />} />
+      <Route
+        path="/admin/exams"
+        element={<Navigate to="/admin/academic" replace />}
+      />
+      <Route
+        path="/admin/results"
+        element={<Navigate to="/admin/academic/results" replace />}
+      />
       <Route path="/admin/academic" element={<AcademicHubOverviewPage />} />
-      <Route path="/admin/academic/manage" element={<Navigate to="/admin/academic" replace />} />
-      <Route path="/admin/academic/:workflow" element={<AcademicWorkflowPage />} />
+      <Route
+        path="/admin/academic/manage"
+        element={<Navigate to="/admin/academic" replace />}
+      />
+      <Route
+        path="/admin/academic/:workflow"
+        element={<AcademicWorkflowPage />}
+      />
       <Route path="/admin/fees" element={<FeesPage />} />
       <Route path="/admin/payments" element={<PaymentsPage />} />
       <Route path="/admin/billing" element={<BillingPage />} />
       <Route path="/admin/usage" element={<UsagePage />} />
-      <Route path="/admin/timetable" element={<StaticModulePage role="admin" title="Timetable" description="Professional schedule grid and class timetable planning." type="timetable" />} />
-      <Route path="/admin/announcements" element={<AnnouncementsWorkspacePage mode="tenant-admin" />} />
-      <Route path="/admin/messages" element={<AnnouncementsWorkspacePage mode="tenant-admin" variant="messages" />} />
-      <Route path="/admin/reports" element={<StaticModulePage role="admin" title="Reports" description="Operational reports will appear here when backend reporting endpoints are available." type="settings" />} />
-      <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
+      <Route
+        path="/admin/timetable"
+        element={
+          <StaticModulePage
+            role="admin"
+            title="Timetable"
+            description="Professional schedule grid and class timetable planning."
+            type="timetable"
+          />
+        }
+      />
+      <Route
+        path="/admin/announcements"
+        element={<AnnouncementsWorkspacePage mode="tenant-admin" />}
+      />
+      <Route
+        path="/admin/messages"
+        element={
+          <AnnouncementsWorkspacePage
+            mode="tenant-admin"
+            variant="messages"
+          />
+        }
+      />
+      <Route
+        path="/admin/reports"
+        element={
+          <StaticModulePage
+            role="admin"
+            title="Reports"
+            description="Operational reports will appear here when backend reporting endpoints are available."
+            type="settings"
+          />
+        }
+      />
+      <Route
+        path="/admin/settings"
+        element={<RoleSettingsPage role="admin" />}
+      />
     </Route>
   </Route>
 );
