@@ -10,12 +10,32 @@ const buildTeacherQuery = ({ skip = 0, limit = 100, search } = {}) => {
   return params.toString();
 };
 
+const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
+  const params = new URLSearchParams();
+  params.set("skip", String(skip));
+  params.set("limit", String(Math.min(Math.max(Number(limit) || 50, 1), 100)));
+  if (status) params.set("status", status);
+  return params.toString();
+};
+
 export const teacherService = {
   getTeachers: (options = {}) =>
     api.get(`/tenant-admin/teachers?${buildTeacherQuery(options)}`),
 
   createTeacher: (payload) =>
     api.post("/tenant-admin/teachers", payload),
+
+  createInvitation: (payload) =>
+    api.post("/teachers/invitations", payload),
+
+  listInvitations: (options = {}) =>
+    api.get(`/teachers/invitations?${buildInvitationQuery(options)}`),
+
+  revokeInvitation: (invitationId) =>
+    api.post(`/teachers/invitations/${invitationId}/revoke`),
+
+  listMemberships: (options = {}) =>
+    api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
 
   getMyTeacher: (requestOptions) =>
     api.get("/teachers/me", requestOptions),
