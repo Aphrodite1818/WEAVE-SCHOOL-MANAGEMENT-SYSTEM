@@ -21,15 +21,6 @@ function ParentStudentLinkingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  const loadPageData = async () => {
-    const [studentsResponse, requestsResponse] = await Promise.all([
-      parentService.getMyStudents(),
-      parentService.getMyStudentLinkRequests(),
-    ]);
-    setChildren(studentsResponse?.items || []);
-    setRequests(requestsResponse?.items || []);
-  };
-
   useEffect(() => {
     let mounted = true;
 
@@ -63,9 +54,8 @@ function ParentStudentLinkingPage() {
 
   const summary = useMemo(() => {
     const pending = requests.filter((request) => asStatus(request.status) === "pending");
-    const approved = requests.filter((request) => asStatus(request.status) === "approved");
     const declined = requests.filter((request) => ["rejected", "declined"].includes(asStatus(request.status)));
-    return { pending, approved, declined };
+    return { pending, declined };
   }, [requests]);
 
   if (isLoading) {
