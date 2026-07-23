@@ -236,15 +236,19 @@ async def get_current_tenant_admin(
 async def get_current_teacher_account(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
 ) -> TeacherAccount:
-    if not isinstance(actor, TeacherAccount):
+    if isinstance(actor, TeacherAccount):
+        account = actor
+    elif isinstance(actor, Teacher):
+        account = actor.teacher_account
+    else:
         raise ForbiddenException("Teacher account credentials are required.")
     if (
-        not actor.is_active
-        or not actor.is_verified
-        or actor.account_status != TeacherAccountStatus.ACTIVE
+        not account.is_active
+        or not account.is_verified
+        or account.account_status != TeacherAccountStatus.ACTIVE
     ):
         raise ForbiddenException("Inactive account")
-    return actor
+    return account
 
 
 async def get_current_parent_account(

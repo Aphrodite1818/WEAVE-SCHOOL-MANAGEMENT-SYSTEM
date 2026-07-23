@@ -11,6 +11,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.security import (
+    hash_auth_secret,
     hash_otp,
     hash_password,
     verify_auth_secret,
