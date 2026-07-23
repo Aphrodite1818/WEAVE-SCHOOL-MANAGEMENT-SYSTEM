@@ -17,7 +17,6 @@ BULK_IMPORT_NO_ARM_SENTINEL = "NO_ARM"
 SUPPORTED_IMPORT_RESOURCE_TYPES = {
     ImportResourceType.STUDENTS,
     ImportResourceType.TEACHERS,
-    ImportResourceType.PARENTS,
 }
 
 

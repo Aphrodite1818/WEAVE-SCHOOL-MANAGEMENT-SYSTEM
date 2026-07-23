@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -51,7 +52,6 @@ from app.modules.teachers.schemas import (
     TeacherAccountRegisterRequest,
     TeacherAccountResponse,
     TeacherInvitationAcceptanceRequest,
-    TeacherInvitationCreateRequest,
     TeacherInvitationResponse,
     TeacherMembershipEndRequest,
     TeacherMembershipListResponse,
@@ -69,6 +69,17 @@ from app.tenant_management.repository import TenantRepository
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+@dataclass(frozen=True, slots=True)
+class TeacherInvitationCreateCommand:
+    """Internal command carrying backend-owned invitation fields."""
+
+    email: str
+    staff_id: str
+    job_title: str | None
+    department: str | None
+    employment_type: str | None
 
 
 class TeacherAccountService:
@@ -675,7 +686,7 @@ class TeacherInvitationService:
         db: AsyncSession,
         *,
         actor: TenantAdmin,
-        payload: TeacherInvitationCreateRequest,
+        payload: TeacherInvitationCreateCommand,
         background_tasks: BackgroundTasks | None = None,
     ) -> TeacherInvitationResponse:
         normalized_email = str(payload.email).casefold()

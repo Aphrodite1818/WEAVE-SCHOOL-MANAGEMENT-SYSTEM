@@ -21,7 +21,6 @@ from app.modules.announcements.router import (
     teacher_router as teacher_announcement_router,
     tenant_admin_router as tenant_admin_announcement_router,
 )
-from app.modules.auth.membership_router import router as auth_membership_router
 from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
 from app.modules.classes.class_subjects_router import router as class_subjects_router
@@ -98,12 +97,14 @@ def create_app() -> FastAPI:
 
     app.add_middleware(PlatformLockdownMiddleware)
     app.add_middleware(RequestTimingMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        allow_docs_cdn=settings.is_development,
+    )
     app.add_middleware(CORSMiddleware, **middleware_options)
     register_exception_handlers(app)
 
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
-    app.include_router(auth_membership_router, prefix="/api/v1/auth")
     app.include_router(superadmin_router, prefix="/api/v1")
     app.include_router(
         tenant_admin_router,

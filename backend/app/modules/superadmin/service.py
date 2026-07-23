@@ -12,7 +12,7 @@ from app.config.security import hash_auth_secret, hash_password, verify_password
 from app.config.settings import settings
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException, UnauthorizedException
 from app.core.utils.email import send_email
-from app.core.utils.email_templates import get_tenant_invite_email_html, get_user_invite_email_html
+from app.core.utils.email_templates import get_superadmin_invite_email_html, get_tenant_invite_email_html
 from app.modules.auth.models import AuthPurpose, AuthRecord
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
@@ -352,7 +352,7 @@ class SuperadminService:
 
         invite_link = SuperadminService._build_invite_link(raw_token, frontend_app_url=frontend_app_url)
         subject = f"Set up your {settings.APP_NAME} superadmin account"
-        html_body = get_user_invite_email_html(normalized_email, settings.APP_NAME, invite_link)
+        html_body = get_superadmin_invite_email_html(normalized_email, settings.APP_NAME, invite_link)
 
         if background_tasks is not None:
             background_tasks.add_task(

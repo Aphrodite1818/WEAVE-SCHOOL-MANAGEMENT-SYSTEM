@@ -87,9 +87,3 @@ class TenantActivationRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
     token: str = Field(..., min_length=20, max_length=500)
-
-
-class UserInviteAcceptanceRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-    token: str = Field(..., min_length=20, max_length=500)

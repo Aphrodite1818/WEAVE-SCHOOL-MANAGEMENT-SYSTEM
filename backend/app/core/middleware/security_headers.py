@@ -18,13 +18,35 @@ CONTENT_SECURITY_POLICY = (
     "form-action 'self'"
 )
 
+DOCS_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https:; "
+    "font-src 'self' data: https://cdn.jsdelivr.net; "
+    "connect-src 'self' https:; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+DOCS_PATHS = ("/docs", "/redoc")
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Attach conservative browser security headers to every response."""
 
+    def __init__(self, app, allow_docs_cdn: bool = False):  # type: ignore[no-untyped-def]
+        super().__init__(app)
+        self.allow_docs_cdn = allow_docs_cdn
+
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        policy = CONTENT_SECURITY_POLICY
+        if self.allow_docs_cdn and request.url.path.startswith(DOCS_PATHS):
+            policy = DOCS_CONTENT_SECURITY_POLICY
+
+        response.headers.setdefault("Content-Security-Policy", policy)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         return response

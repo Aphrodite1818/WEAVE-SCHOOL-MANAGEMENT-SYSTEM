@@ -120,22 +120,22 @@ def get_teacher_onboarding_email_html(
     return _email_shell(f"Welcome to {school_name}", "Teacher onboarding", body)
 
 
-def get_user_invite_email_html(
+def get_superadmin_invite_email_html(
     user_name: str,
     school_name: str,
     setup_link: str,
 ) -> str:
-    """Return user invite email html."""
+    """Return superadmin invite email html."""
     safe_school_name = _html(school_name)
     body = f"""
             <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0; color: #334155;">Hello {_html(user_name)},</p>
             <p style="font-size: 16px; line-height: 1.6; margin: 0 0 30px 0; color: #334155;">
-                Your school admin created your account for <strong>{safe_school_name}</strong>. Confirm your email address and set your password to continue.
+                You were invited to administer <strong>{safe_school_name}</strong>. Confirm your email address and set your password to continue.
             </p>
             {_action_button("Set up your account", setup_link)}
             {_fallback_link(setup_link)}
 """
-    return _email_shell(f"Welcome to {school_name}", "Account invite", body)
+    return _email_shell(f"Welcome to {school_name}", "Superadmin invite", body)
 
 
 def get_tenant_invite_email_html(school_name: str, invite_link: str) -> str:

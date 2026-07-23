@@ -384,7 +384,7 @@ class TeacherRegistrationService:
             extra={
                 "teacher_account_id": str(account.id),
                 "email": normalized_email,
-                "created": created,
+                "account_created": created,
                 "resend_otp_available": resend_otp_available,
             },
         )

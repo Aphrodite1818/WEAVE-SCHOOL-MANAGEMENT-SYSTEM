@@ -27,7 +27,6 @@ CONTROL_COLUMNS: set[str] = {
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
     ImportResourceType.STUDENTS: "students_v2",
     ImportResourceType.TEACHERS: "teachers_v1",
-    ImportResourceType.PARENTS: "parents_v1",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -47,15 +46,6 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "staff_id",
         "qualification",
         "specialization",
-    ],
-    ImportResourceType.PARENTS: [
-        "email",
-        "first_name",
-        "last_name",
-        "phone_number",
-        "occupation",
-        "address",
-        "emergency_phone",
     ],
 }
 
@@ -177,38 +167,12 @@ def create_teacher_template() -> ImportTemplateDefinition:
     )
 
 
-def create_parent_template() -> ImportTemplateDefinition:
-    """Create the parent import template definition."""
-
-    return ImportTemplateDefinition(
-        resource_type=ImportResourceType.PARENTS,
-        filename="parents_import_template.xlsx",
-        columns=[
-            create_template_column(name="email", label="Email", required=True, example="parent@example.com"),
-            create_template_column(name="first_name", label="First Name", required=False, example="Tunde"),
-            create_template_column(name="last_name", label="Last Name", required=False, example="Johnson"),
-            create_template_column(name="phone_number", label="Phone Number", required=False, example="+2348012345678"),
-            create_template_column(name="occupation", label="Occupation", required=False, example="Engineer"),
-            create_template_column(name="address", label="Address", required=False, example="12 Allen Avenue"),
-            create_template_column(name="emergency_phone", label="Emergency Phone", required=False, example="+2348098765432"),
-        ],
-        notes=[
-            "Use the downloaded backend-generated template file. Do not recreate headers manually.",
-            "Parent email is required and must be unique.",
-            "Parent invite emails are queued through the email outbox worker instead of sent inline.",
-            "Parent-student linking is intentionally not handled by this first bulk import version.",
-            "Only fields accepted by manual parent creation are allowed.",
-        ],
-    )
-
-
 def build_template_definitions() -> dict[ImportResourceType, ImportTemplateDefinition]:
     """Build all supported template definitions."""
 
     templates = [
         create_student_template(),
         create_teacher_template(),
-        create_parent_template(),
     ]
 
     return {template.resource_type: template for template in templates}

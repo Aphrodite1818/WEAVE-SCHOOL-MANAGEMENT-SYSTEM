@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.login_service import AuthService, _tenant_allows_login
-from app.modules.auth.otp_service import OTPService, TenantActivationService, UserInviteService
+from app.modules.auth.otp_service import OTPService, TenantActivationService
 from app.modules.auth.session_service import (
     AuthenticatedActor,
     AuthSessionService,
@@ -58,7 +58,6 @@ __all__ = [
     "AuthSessionTokenPair",
     "OTPService",
     "TenantActivationService",
-    "UserInviteService",
     "_enum_value",
     "_tenant_allows_login",
     "_update_last_login_if_due",

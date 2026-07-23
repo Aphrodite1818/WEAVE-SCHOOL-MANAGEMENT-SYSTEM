@@ -34,7 +34,6 @@ class AuthPurpose(str, PyEnum):
     VERIFICATION = "verification"
     PASSWORD_RESET = "password_reset"
     TENANT_ACTIVATION = "tenant_activation"
-    USER_INVITE = "user_invite"
 
 
 class AuthRecord(UUIDMixin, TimestampMixin, Base):

@@ -11,7 +11,6 @@ The authentication module uses these schemas for:
 * OTP verification
 * Password reset
 * Tenant activation
-* User invitation acceptance
 * JWT token responses
 
 ---
@@ -247,50 +246,6 @@ Allows a tenant administrator to claim and activate a tenant account.
 
 ---
 
-## UserInviteAcceptanceRequest
-
-Used when accepting an invitation sent by a tenant administrator.
-
-### Fields
-
-#### email
-
-Invited user's email address.
-
-#### password
-
-Password chosen by the invited user.
-
-Validation:
-
-```txt
-Minimum Length: 8
-Maximum Length: 64
-```
-
-#### token
-
-Invitation token.
-
-Validation:
-
-```txt
-Minimum Length: 20
-```
-
-### Purpose
-
-Allows invited users such as:
-
-* Teachers
-* Parents
-* Staff
-* Other administrators
-
-to claim their account and complete account setup.
-
----
-
 # Authentication Flow
 
 ```txt
@@ -323,8 +278,4 @@ Tenant Activation
     ↓
 TenantActivationRequest
 
-
-User Invitation
-    ↓
-UserInviteAcceptanceRequest
 ```

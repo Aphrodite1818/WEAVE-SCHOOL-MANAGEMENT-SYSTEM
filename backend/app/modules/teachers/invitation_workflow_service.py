@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,23 +14,15 @@ from app.modules.teachers.schemas import (
     TeacherInvitationResponse,
     TeacherMembershipWithAccountResponse,
 )
-from app.modules.teachers.service import TeacherInvitationService
+from app.modules.teachers.service import (
+    TeacherInvitationCreateCommand,
+    TeacherInvitationService,
+)
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.identifier_service import (
     TenantIdentifierKind,
     TenantIdentifierService,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class _TeacherInvitationCreateCommand:
-    """Internal command carrying the backend-owned staff identifier."""
-
-    email: str
-    staff_id: str
-    job_title: str | None
-    department: str | None
-    employment_type: str | None
 
 
 class TeacherInvitationWorkflowService:
@@ -58,7 +48,7 @@ class TeacherInvitationWorkflowService:
             tenant=tenant,
             kind=TenantIdentifierKind.TEACHER,
         )
-        command = _TeacherInvitationCreateCommand(
+        command = TeacherInvitationCreateCommand(
             email=str(payload.email).casefold(),
             staff_id=staff_id,
             job_title=payload.job_title,
@@ -68,7 +58,7 @@ class TeacherInvitationWorkflowService:
         return await TeacherInvitationService.create_invitation(
             db,
             actor=actor,
-            payload=command,  # type: ignore[arg-type]
+            payload=command,
             background_tasks=background_tasks,
         )
 

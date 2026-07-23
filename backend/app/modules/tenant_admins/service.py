@@ -11,16 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.security import hash_password
 from app.core.exceptions import ConflictException , NotFoundException
-from app.modules.auth.models import AuthPurpose, AuthRecord
 from app.modules.auth_identity.models import ActorType , IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.classes.models import ClassRoom
-from app.modules.parents.models import Parent, ParentAccountStatus
+from app.modules.parents.models import Parent, ParentInvitation, ParentInvitationStatus
 from app.modules.students.models import Student, StudentParentLinkRequest, StudentParentLinkRequestStatus, StudentProfileStatus
 from app.modules.subjects.models import Subject
-from app.modules.teachers.models import Teacher, TeacherAccountStatus
+from app.modules.teachers.models import Teacher, TeacherInvitation, TeacherInvitationStatus
 from app.modules.tenant_admins.models import TenantAdmin ,TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.modules.tenant_admins.schemas import (
@@ -327,26 +326,17 @@ class TenantAdminService:
         student_profiles_incomplete = total_students - student_profiles_complete
         pending_teacher_invites = (
             await db.execute(
-                select(func.count()).select_from(Teacher).where(
-                    Teacher.tenant_id == tenant_id,
-                    Teacher.account_status == TeacherAccountStatus.PENDING,
+                select(func.count()).select_from(TeacherInvitation).where(
+                    TeacherInvitation.tenant_id == tenant_id,
+                    TeacherInvitation.status == TeacherInvitationStatus.PENDING,
                 )
             )
         ).scalar_one()
         pending_parent_invites = (
             await db.execute(
-                select(func.count()).select_from(Parent).where(
-                    Parent.tenant_id == tenant_id,
-                    Parent.account_status == ParentAccountStatus.PENDING,
-                )
-            )
-        ).scalar_one()
-        pending_user_invites = (
-            await db.execute(
-                select(func.count()).select_from(AuthRecord).where(
-                    AuthRecord.tenant_id == tenant_id,
-                    AuthRecord.purpose == AuthPurpose.USER_INVITE,
-                    AuthRecord.is_used.is_(False),
+                select(func.count()).select_from(ParentInvitation).where(
+                    ParentInvitation.tenant_id == tenant_id,
+                    ParentInvitation.status == ParentInvitationStatus.PENDING,
                 )
             )
         ).scalar_one()
@@ -368,7 +358,8 @@ class TenantAdminService:
                 "total_subjects": total_subjects,
                 "student_profiles_complete": student_profiles_complete,
                 "student_profiles_incomplete": student_profiles_incomplete,
-                "pending_user_invites": pending_user_invites,
+                "pending_teacher_invites": pending_teacher_invites,
+                "pending_parent_invites": pending_parent_invites,
                 "pending_parent_link_requests": pending_parent_link_requests,
             },
             "charts": {
@@ -386,7 +377,6 @@ class TenantAdminService:
                 "pending_workflows": [
                     {"label": "teacher_invites", "value": pending_teacher_invites},
                     {"label": "parent_invites", "value": pending_parent_invites},
-                    {"label": "user_invites", "value": pending_user_invites},
                     {
                         "label": "parent_link_requests",
                         "value": pending_parent_link_requests,

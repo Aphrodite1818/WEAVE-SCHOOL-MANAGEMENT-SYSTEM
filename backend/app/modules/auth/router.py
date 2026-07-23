@@ -21,7 +21,6 @@ from app.modules.auth.schemas import (
     TenantActivationRequest,
     Token,
     UpdatePassword,
-    UserInviteAcceptanceRequest,
     VerifyOTP,
 )
 from app.modules.auth.service import (
@@ -29,7 +28,6 @@ from app.modules.auth.service import (
     AuthSessionService,
     OTPService,
     TenantActivationService,
-    UserInviteService,
 )
 from app.modules.auth.student_authentication import authenticate_student_actor
 from app.modules.parents.models import Parent, ParentAccount
@@ -439,19 +437,3 @@ async def activate_tenant(
     db: DbSession,
 ) -> dict[str, str]:
     return await TenantActivationService.activate_tenant(db, payload)
-
-
-@router.get("/invite-status")
-async def get_invite_status(
-    token: str,
-    db: DbSession,
-) -> dict[str, str | None]:
-    return await UserInviteService.get_invite_status(db, token)
-
-
-@router.post("/accept-invite")
-async def accept_invite(
-    payload: UserInviteAcceptanceRequest,
-    db: DbSession,
-) -> dict[str, str]:
-    return await UserInviteService.accept_invite(db, payload)
