@@ -6,11 +6,13 @@ from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.settings import settings
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.repository import ClassRoomRepository
+from app.modules.email_outbox.service import EmailOutboxService
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
 )
@@ -49,7 +51,7 @@ class StudentCreationService:
         actor: TenantAdmin,
         payload: StudentCreate,
     ) -> StudentDetailResponse:
-        """Create student, enrollment, setup code, and parent invites atomically."""
+        """Create student, enrollment, setup code, invitations, and email jobs."""
 
         tenant_id = StudentService._require_tenant_admin(actor)
         tenant = await TenantIdentifierService.require_completed_onboarding(
@@ -140,15 +142,50 @@ class StudentCreationService:
                 created_by_admin_id=actor.id,
                 revoke_existing=False,
             )
+
+            student_name = " ".join(
+                part
+                for part in [student.first_name, student.last_name]
+                if part
+            ) or "Student"
+
             for parent in payload.parents:
-                await ParentInvitationService._create_invitation_record(
+                normalized_email = str(parent.email).casefold()
+                invitation = (
+                    await ParentInvitationService._create_invitation_record(
+                        db,
+                        tenant_id=tenant_id,
+                        student=student,
+                        normalized_email=normalized_email,
+                        relationship_type=parent.relationship_type,
+                        created_by_admin_id=actor.id,
+                    )
+                )
+                raw_token = getattr(invitation, "raw_token", None)
+                if not raw_token:
+                    raise RuntimeError(
+                        "Parent invitation token was not generated."
+                    )
+
+                invite_link = (
+                    f"{settings.FRONTEND_APP_URL.rstrip('/')}"
+                    f"/parent-invitations/{raw_token}"
+                )
+                await EmailOutboxService.queue_parent_invitation_email(
                     db,
                     tenant_id=tenant_id,
-                    student=student,
-                    normalized_email=str(parent.email).casefold(),
-                    relationship_type=parent.relationship_type,
-                    created_by_admin_id=actor.id,
+                    email=normalized_email,
+                    school_name=tenant.school_name,
+                    student_name=student_name,
+                    invite_link=invite_link,
+                    metadata_json={
+                        "source": "student_creation",
+                        "student_id": str(student.id),
+                        "invitation_id": str(invitation.id),
+                        "relationship_type": parent.relationship_type.value,
+                    },
                 )
+
             await db.commit()
             await AuthIdentityService.invalidate_after_commit(db)
         except Exception:
