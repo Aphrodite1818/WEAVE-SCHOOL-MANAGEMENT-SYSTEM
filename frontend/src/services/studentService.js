@@ -38,7 +38,7 @@ export const studentService = {
     api.get("/students/me/parent-link-requests", requestOptions),
 
   respondToParentLinkRequest: (requestId, payload) =>
-    api.post(`/students/me/parent-link-requests/${requestId}/respond`, payload),
+    api.post(`/students/me/parent-link-requests/${requestId}/decision`, payload),
 
   getMyParentLinks: (requestOptions) =>
     api.get("/students/me/parent-links", requestOptions),
