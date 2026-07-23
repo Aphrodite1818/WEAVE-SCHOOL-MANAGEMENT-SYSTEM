@@ -58,6 +58,15 @@ export const parentService = {
   listMemberships: (options = {}) =>
     api.get(`/parents/memberships?${buildParentQuery(options)}`),
 
+  getMembership: (membershipId) =>
+    api.get(`/parents/memberships/${membershipId}`),
+
+  endMembership: (membershipId, reason) =>
+    api.post(`/parents/memberships/${membershipId}/end`, { reason }),
+
+  reactivateMembership: (membershipId, reason) =>
+    api.post(`/parents/memberships/${membershipId}/reactivate`, { reason }),
+
   getMyParent: (requestOptions) =>
     api.get("/parents/me", requestOptions),
 
