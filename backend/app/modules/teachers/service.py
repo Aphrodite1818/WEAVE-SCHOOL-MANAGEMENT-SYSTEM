@@ -53,6 +53,7 @@ from app.modules.teachers.schemas import (
     TeacherAccountRegisterRequest,
     TeacherAccountResponse,
     TeacherInvitationAcceptanceRequest,
+    TeacherInvitationPublicContextResponse,
     TeacherInvitationResponse,
     TeacherMembershipEndRequest,
     TeacherMembershipListResponse,
@@ -549,6 +550,7 @@ class TeacherMembershipService:
             reason="membership_suspended",
         )
         await db.commit()
+        await db.refresh(membership)
         return TeacherMembershipResponse.model_validate(membership)
 
     @staticmethod
@@ -584,6 +586,7 @@ class TeacherMembershipService:
         await SubscriptionFeatureService.invalidate_tenant_subscription_state(
             actor.tenant_id
         )
+        await db.refresh(membership)
         return TeacherMembershipResponse.model_validate(membership)
 
     @staticmethod
@@ -619,6 +622,7 @@ class TeacherMembershipService:
         await SubscriptionFeatureService.invalidate_tenant_subscription_state(
             actor.tenant_id
         )
+        await db.refresh(membership)
         return TeacherMembershipResponse.model_validate(membership)
 
     @staticmethod
@@ -684,6 +688,63 @@ class TeacherInvitationService:
     """School invitation and teacher membership acceptance workflow."""
 
     INVITATION_DAYS = 7
+
+    @staticmethod
+    async def _recommended_action_for_email(
+        db: AsyncSession,
+        normalized_email: str,
+    ) -> str:
+        identity = await AuthIdentityRepository.get_by_identifier(
+            db,
+            normalized_email,
+            IdentifierType.EMAIL,
+        )
+        if identity is None:
+            return "register"
+        if identity.actor_type in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}:
+            return "login"
+        return "contact_school"
+
+    @staticmethod
+    async def get_public_context(
+        db: AsyncSession,
+        *,
+        invitation_token: str,
+    ) -> TeacherInvitationPublicContextResponse:
+        invitation = await TeacherInvitationRepository.get_by_token_digest(
+            db,
+            hash_auth_secret(invitation_token),
+        )
+        if invitation is None:
+            raise NotFoundException("Invitation not found.")
+        if (
+            invitation.status == TeacherInvitationStatus.PENDING
+            and invitation.expires_at <= _utc_now()
+        ):
+            invitation.status = TeacherInvitationStatus.EXPIRED
+            await TeacherInvitationRepository.save(db, invitation)
+            await db.commit()
+
+        tenant = await TenantRepository.get_by_id(db, invitation.tenant_id)
+        if tenant is None:
+            raise NotFoundException("Invitation context is unavailable.")
+
+        return TeacherInvitationPublicContextResponse(
+            invitation_id=invitation.id,
+            tenant_name=tenant.school_name,
+            tenant_logo_url=tenant.logo_url,
+            invited_email=invitation.invited_email,
+            staff_id=invitation.staff_id,
+            job_title=invitation.job_title,
+            department=invitation.department,
+            employment_type=invitation.employment_type,
+            expires_at=invitation.expires_at,
+            status=invitation.status,
+            recommended_action=await TeacherInvitationService._recommended_action_for_email(
+                db,
+                invitation.invited_email,
+            ),
+        )
 
     @staticmethod
     async def create_invitation(
@@ -895,4 +956,5 @@ class TeacherInvitationService:
         invitation.revoked_at = _utc_now()
         await TeacherInvitationRepository.save(db, invitation)
         await db.commit()
+        await db.refresh(invitation)
         return TeacherInvitationResponse.model_validate(invitation)

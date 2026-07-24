@@ -506,10 +506,13 @@ class ParentInvitationPublicContextResponse(OutputBase):
     tenant_name: str
     tenant_logo_url: str | None = None
     student_display_name: str
+    invited_email: EmailStr
+    admission_number: str
     admission_number_hint: str
     relationship_type: ParentRelationship
     expires_at: datetime
     status: ParentInvitationStatus
+    recommended_action: Literal["login", "register", "contact_school"]
 
 
 class ParentInvitationListResponse(OutputBase):

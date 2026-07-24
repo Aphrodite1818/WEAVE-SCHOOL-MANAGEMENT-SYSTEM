@@ -2,12 +2,15 @@ import { api } from "./api";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 100, 1), 100);
 
+const normalizeTeacherMembershipStatus = (status) =>
+  status === "ended" ? "inactive" : status;
+
 const buildTeacherQuery = ({ skip = 0, limit = 100, search, status } = {}) => {
   const params = new URLSearchParams();
   params.set("skip", String(skip));
   params.set("limit", String(clampLimit(limit)));
   if (search) params.set("search", search);
-  if (status) params.set("status", status);
+  if (status) params.set("status", normalizeTeacherMembershipStatus(status));
   return params.toString();
 };
 
@@ -18,6 +21,22 @@ const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
   if (status) params.set("status", status);
   return params.toString();
 };
+
+const subjectsFromAssignments = (assignments = []) => [
+  ...new Map(
+    assignments
+      .filter((item) => item.subject_id || item.subject_name || item.subject_code)
+      .map((item) => [
+        item.subject_id || item.subject_name || item.subject_code,
+        {
+          id: item.subject_id || item.subject_name || item.subject_code,
+          name: item.subject_name,
+          code: item.subject_code,
+          is_active: item.is_active,
+        },
+      ]),
+  ).values(),
+];
 
 export const teacherService = {
   registerAccount: (payload) =>
@@ -30,6 +49,13 @@ export const teacherService = {
   acceptInvitation: (invitationToken) =>
     api.post("/teachers/accounts/me/invitations/accept", {
       invitation_token: invitationToken,
+    }),
+
+  getInvitationContext: (token) =>
+    api.get(`/teachers/invitations/context?token=${encodeURIComponent(token)}`, {
+      auth: false,
+      clearAuthOnUnauthorized: false,
+      skipAuthRefresh: true,
     }),
 
   getTeachers: (options = {}) =>
@@ -73,22 +99,30 @@ export const teacherService = {
   getMyTeacher: (requestOptions) =>
     api.get("/teachers/me", requestOptions),
 
-  getMySubjects: (options = {}, requestOptions = {}) => {
+  getMySubjects: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;
-    return api.get(
-      `/teachers/me/subjects?${new URLSearchParams({
-        skip: String(queryOptions.skip ?? 0),
-        limit: String(clampLimit(queryOptions.limit)),
-        ...(queryOptions.search ? { search: queryOptions.search } : {}),
-        ...(typeof queryOptions.isActive === "boolean"
-          ? { is_active: String(queryOptions.isActive) }
-          : {}),
-      }).toString()}`,
-      {
-        ...requestOptions,
-        ...(signal ? { signal } : {}),
-      }
-    );
+    const response = await api.get("/teachers/academics/assignments", {
+      ...requestOptions,
+      ...(signal ? { signal } : {}),
+    });
+    let items = subjectsFromAssignments(response?.items || []);
+    if (typeof queryOptions.isActive === "boolean") {
+      items = items.filter((item) => item.is_active !== !queryOptions.isActive);
+    }
+    if (queryOptions.search) {
+      const term = String(queryOptions.search).trim().toLowerCase();
+      items = items.filter((item) =>
+        [item.name, item.code].some((value) =>
+          String(value || "").toLowerCase().includes(term),
+        ),
+      );
+    }
+    const skip = Number(queryOptions.skip ?? 0) || 0;
+    const limit = clampLimit(queryOptions.limit);
+    return {
+      items: items.slice(skip, skip + limit),
+      total: items.length,
+    };
   },
 
   getTeacher: (teacherId) =>

@@ -41,6 +41,7 @@ export default function SidebarContent({
   onNavigate,
   mobile = false,
   schoolName,
+  schoolLogoUrl,
 }) {
   const location = useLocation();
   const subscription = useSubscription();
@@ -49,7 +50,7 @@ export default function SidebarContent({
   const isAccountScope =
     ["parent_account", "teacher_account"].includes(actorType) &&
     !user?.tenant_id;
-  const workspaceLogo = resolveWorkspaceLogo(user);
+  const workspaceLogo = schoolLogoUrl || resolveWorkspaceLogo(user);
   const [failedWorkspaceLogo, setFailedWorkspaceLogo] = useState(null);
   const hasCustomWorkspaceLogo = Boolean(workspaceLogo) && failedWorkspaceLogo !== workspaceLogo;
   const workspaceLogoAlt = `${schoolName || "School"} logo`;

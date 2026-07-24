@@ -72,6 +72,11 @@ def build_parent_invitation_body(*, context: dict[str, Any]) -> str:
         school_name=str(context.get("school_name") or "your school"),
         student_name=str(context.get("student_name") or "a student"),
         invite_link=str(context["invite_link"]),
+        admission_number=(
+            str(context["admission_number"])
+            if context.get("admission_number")
+            else None
+        ),
     )
 
 
@@ -129,6 +134,7 @@ class EmailOutboxService:
         school_name: str,
         student_name: str,
         invite_link: str,
+        admission_number: str | None = None,
         metadata_json: dict[str, Any] | None = None,
     ) -> EmailOutbox:
         """Queue one canonical parent invitation email."""
@@ -137,6 +143,7 @@ class EmailOutboxService:
             "school_name": school_name,
             "student_name": student_name,
             "invite_link": invite_link,
+            "admission_number": admission_number,
         }
 
         return await EmailOutboxRepository.create_email(

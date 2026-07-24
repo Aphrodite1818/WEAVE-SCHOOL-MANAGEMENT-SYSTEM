@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import AsyncSessionLocal
 from app.config.logging import get_logger
+from app.core.cache.events import (
+    discard_cache_invalidation_events,
+    flush_cache_invalidation_events,
+)
 
 logger = get_logger(__name__)
 
@@ -21,9 +25,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield db
             await db.commit()
+            await flush_cache_invalidation_events(db)
         except Exception:
             logger.warning("Database session rollback due to exception", exc_info=True)
             await db.rollback()
+            discard_cache_invalidation_events(db)
             raise
         finally:
             await db.close()

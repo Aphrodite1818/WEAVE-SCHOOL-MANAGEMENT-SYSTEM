@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config.settings import settings
+from app.core.cache.events import flush_cache_invalidation_events
 from app.core.cache.manager import CacheManager
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.modules.announcements.cache import (
@@ -138,23 +139,31 @@ class AnnouncementService:
         return "global" if isinstance(actor, SuperAdmin) else actor.tenant_id
 
     @staticmethod
-    async def _invalidate_dashboard_for_creator(announcement: Announcement) -> None:
-        await invalidate_tenant_admin_dashboard_cache(announcement.tenant_id)
+    async def _invalidate_dashboard_for_creator(
+        db: AsyncSession,
+        announcement: Announcement,
+    ) -> None:
+        await invalidate_tenant_admin_dashboard_cache(announcement.tenant_id, db=db)
         if announcement.created_by_actor_type == AnnouncementActorType.TEACHER:
             await invalidate_teacher_dashboard_cache(
                 announcement.tenant_id,
                 announcement.created_by_actor_id,
+                db=db,
             )
 
     @staticmethod
-    async def _invalidate_after_announcement_write(announcement: Announcement) -> None:
-        await invalidate_announcement_tenant_cache(announcement.tenant_id)
+    async def _invalidate_after_announcement_write(
+        db: AsyncSession,
+        announcement: Announcement,
+    ) -> None:
+        await invalidate_announcement_tenant_cache(announcement.tenant_id, db=db)
         if announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN:
-            await invalidate_announcement_tenant_cache("global")
-        await AnnouncementService._invalidate_dashboard_for_creator(announcement)
+            await invalidate_announcement_tenant_cache("global", db=db)
+        await AnnouncementService._invalidate_dashboard_for_creator(db, announcement)
 
     @staticmethod
     async def _invalidate_after_read(
+        db: AsyncSession,
         actor: TenantAdmin | Teacher | Parent | Student,
     ) -> None:
         actor_type = AnnouncementService._actor_cache_type(actor)
@@ -162,11 +171,12 @@ class AnnouncementService:
             actor.tenant_id,
             actor_type,
             actor.id,
+            db=db,
         )
         if isinstance(actor, Parent):
-            await invalidate_parent_dashboard_cache(actor.tenant_id, actor.id)
+            await invalidate_parent_dashboard_cache(actor.tenant_id, actor.id, db=db)
         elif isinstance(actor, Student):
-            await invalidate_student_dashboard_cache(actor.tenant_id, actor.id)
+            await invalidate_student_dashboard_cache(actor.tenant_id, actor.id, db=db)
 
     @staticmethod
     def _validate_target_shape(target: AnnouncementTargetCreate) -> None:
@@ -355,8 +365,9 @@ class AnnouncementService:
         db.add_all(targets)
         await db.flush()
         await db.refresh(announcement, ["targets"])
+        await AnnouncementService._invalidate_after_announcement_write(db, announcement)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(announcement)
+        await flush_cache_invalidation_events(db)
         return announcement
 
     @staticmethod
@@ -401,9 +412,9 @@ class AnnouncementService:
             await db.flush()
             await db.refresh(announcement, ["targets"])
             announcements.append(announcement)
+            await AnnouncementService._invalidate_after_announcement_write(db, announcement)
         await db.commit()
-        for announcement in announcements:
-            await AnnouncementService._invalidate_after_announcement_write(announcement)
+        await flush_cache_invalidation_events(db)
         return announcements
 
     @staticmethod
@@ -481,8 +492,9 @@ class AnnouncementService:
                 AnnouncementService._build_targets(announcement.tenant_id, announcement.id, targets),
             )
         saved = await AnnouncementRepository.save(db, announcement)
+        await AnnouncementService._invalidate_after_announcement_write(db, saved)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(saved)
+        await flush_cache_invalidation_events(db)
         return saved
 
     @staticmethod
@@ -497,8 +509,9 @@ class AnnouncementService:
         announcement.status = AnnouncementStatus.PUBLISHED
         announcement.publish_at = publish_at or announcement.publish_at or AnnouncementService._now()
         saved = await AnnouncementRepository.save(db, announcement)
+        await AnnouncementService._invalidate_after_announcement_write(db, saved)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(saved)
+        await flush_cache_invalidation_events(db)
         return saved
 
     @staticmethod
@@ -511,8 +524,9 @@ class AnnouncementService:
         announcement = await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
         announcement.status = AnnouncementStatus.ARCHIVED
         saved = await AnnouncementRepository.save(db, announcement)
+        await AnnouncementService._invalidate_after_announcement_write(db, saved)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(saved)
+        await flush_cache_invalidation_events(db)
         return saved
 
     @staticmethod
@@ -525,11 +539,12 @@ class AnnouncementService:
         announcement = await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
         tenant_id = announcement.tenant_id
         await AnnouncementRepository.delete_announcement(db, announcement)
-        await db.commit()
-        await invalidate_announcement_tenant_cache(tenant_id)
+        await invalidate_announcement_tenant_cache(tenant_id, db=db)
         if announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN:
-            await invalidate_announcement_tenant_cache("global")
-        await invalidate_tenant_admin_dashboard_cache(tenant_id)
+            await invalidate_announcement_tenant_cache("global", db=db)
+        await invalidate_tenant_admin_dashboard_cache(tenant_id, db=db)
+        await db.commit()
+        await flush_cache_invalidation_events(db)
 
     @staticmethod
     async def list_manageable(
@@ -906,6 +921,7 @@ class AnnouncementService:
             actor_id=actor.id,
             status=status,
         )
+        await AnnouncementService._invalidate_after_read(db, actor)
         await db.commit()
-        await AnnouncementService._invalidate_after_read(actor)
+        await flush_cache_invalidation_events(db)
         return read

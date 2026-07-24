@@ -34,6 +34,7 @@ from app.modules.teachers.schemas import (
     TeacherAccountResponse,
     TeacherInvitationAcceptanceRequest,
     TeacherInvitationCreateRequest,
+    TeacherInvitationPublicContextResponse,
     TeacherInvitationResponse,
     TeacherMembershipEndRequest,
     TeacherMembershipListResponse,
@@ -194,6 +195,20 @@ async def accept_teacher_invitation(
         db,
         account=current_account,
         payload=payload,
+    )
+
+
+@router.get(
+    "/invitations/context",
+    response_model=TeacherInvitationPublicContextResponse,
+)
+async def get_teacher_invitation_context(
+    token: str = Query(min_length=20, max_length=500),
+    db: DbSession = None,
+) -> TeacherInvitationPublicContextResponse:
+    return await TeacherInvitationService.get_public_context(
+        db,
+        invitation_token=token,
     )
 
 

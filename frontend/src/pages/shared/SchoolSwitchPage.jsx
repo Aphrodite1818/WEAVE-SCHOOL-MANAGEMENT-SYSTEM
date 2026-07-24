@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Building2, CheckCircle2, RefreshCw } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -120,17 +120,6 @@ function SchoolSwitchPage({ role }) {
       title="School Workspaces"
       description="Choose the school workspace you want to use. Your account stays the same while permissions and records remain isolated per school."
       onboardingModalEnabled={false}
-      actions={
-        <Button
-          type="button"
-          variant="outline"
-          onClick={loadMemberships}
-          disabled={isLoading || Boolean(selectingId)}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      }
     >
       {loadError ? (
         <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">

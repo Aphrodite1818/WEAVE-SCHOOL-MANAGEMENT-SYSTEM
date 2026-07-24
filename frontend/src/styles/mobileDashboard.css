@@ -145,6 +145,10 @@
     display: block !important;
   }
 
+  html[data-standalone-pwa="true"] [data-pwa-safe-area-fill="true"] {
+    display: block !important;
+  }
+
   button,
   a {
     touch-action: manipulation;

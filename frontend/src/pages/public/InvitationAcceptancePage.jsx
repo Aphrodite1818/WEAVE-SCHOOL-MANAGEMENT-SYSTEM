@@ -74,7 +74,7 @@ function InvitationAcceptancePage({ role }) {
   const config = ROLE_CONFIG[role] || ROLE_CONFIG.parent;
   const [context, setContext] = useState(null);
   const [contextStatus, setContextStatus] = useState(
-    role === "parent" ? "loading" : "ready",
+    token ? "loading" : "ready",
   );
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [isAccepting, setIsAccepting] = useState(false);
@@ -93,22 +93,28 @@ function InvitationAcceptancePage({ role }) {
   const registerPath = `${config.registerPath}?returnTo=${encodeURIComponent(returnTo)}`;
 
   useEffect(() => {
-    if (role !== "parent" || !token) return undefined;
+    if (!token) return undefined;
     let mounted = true;
 
     async function loadContext() {
       setContextStatus("loading");
       setError(null);
       try {
-        const result = await parentService.getInvitationContext(token);
+        const result =
+          role === "parent"
+            ? await parentService.getInvitationContext(token)
+            : await teacherService.getInvitationContext(token);
         if (!mounted) return;
         setContext(result);
         setContextStatus(String(result?.status || "ready").toLowerCase());
+        if (role === "parent" && result?.admission_number) {
+          setAdmissionNumber(String(result.admission_number).toUpperCase());
+        }
       } catch (err) {
         if (!mounted) return;
         const apiError = parseApiError(
           err,
-          "Could not load this parent invitation.",
+          `Could not load this ${role} invitation.`,
         );
         setError(apiError.message);
         setContextStatus("error");
@@ -123,9 +129,8 @@ function InvitationAcceptancePage({ role }) {
 
   const invitationAvailable = useMemo(() => {
     if (!token) return false;
-    if (role === "teacher") return true;
     return ["pending", "ready", "valid"].includes(contextStatus);
-  }, [contextStatus, role, token]);
+  }, [contextStatus, token]);
 
   const handleDifferentAccount = async () => {
     await authService.logout();
@@ -160,6 +165,17 @@ function InvitationAcceptancePage({ role }) {
   const expiredOrUnavailable = ["expired", "revoked", "accepted", "error"].includes(
     status,
   );
+  const recommendedAction = String(context?.recommended_action || "").toLowerCase();
+  const authActionCopy =
+    recommendedAction === "register"
+      ? {
+          primaryLabel: `Create ${role} account first`,
+          primaryPath: registerPath,
+        }
+      : {
+          primaryLabel: "Log in to accept",
+          primaryPath: loginPath,
+        };
 
   return (
     <AuthLayout
@@ -205,6 +221,9 @@ function InvitationAcceptancePage({ role }) {
                   <GraduationCap className="h-4 w-4" />
                   {context.student_display_name}
                 </p>
+                <p className="mt-1 text-xs font-semibold text-text-soft">
+                  Admission number: {context.admission_number || context.admission_number_hint}
+                </p>
                 <p className="mt-1 text-xs text-text-muted">
                   Relationship: {String(context.relationship_type || "guardian").replaceAll("_", " ")}
                 </p>
@@ -213,17 +232,30 @@ function InvitationAcceptancePage({ role }) {
           </div>
         ) : null}
 
-        {role === "teacher" && token && !success ? (
+        {role === "teacher" && context && !expiredOrUnavailable && !success ? (
           <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
             <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-                <Building2 className="h-5 w-5" />
-              </span>
+              {context.tenant_logo_url ? (
+                <img
+                  src={context.tenant_logo_url}
+                  alt={`${context.tenant_name} logo`}
+                  className="h-11 w-11 shrink-0 rounded-2xl border border-border/70 bg-surface object-contain p-1"
+                />
+              ) : (
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+                  <Building2 className="h-5 w-5" />
+                </span>
+              )}
               <div>
-                <p className="text-sm font-semibold text-text">School teacher membership</p>
+                <p className="text-sm font-semibold text-text">{context.tenant_name}</p>
                 <p className="mt-1 text-sm leading-6 text-text-muted">
-                  Log in with the invited teacher email before accepting. The school name will appear in your School Workspaces page after acceptance.
+                  Teacher membership invitation for {context.invited_email}.
                 </p>
+                {context.staff_id ? (
+                  <p className="mt-1 text-xs font-semibold text-text-soft">
+                    Staff ID: {context.staff_id}
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -266,20 +298,19 @@ function InvitationAcceptancePage({ role }) {
           </>
         ) : null}
 
-        {!success && invitationAvailable && !isAuthenticated ? (
-          <div className="grid gap-3">
-            <Link to={loginPath} className="block">
-              <Button type="button" className="w-full">
-                <LogIn className="h-4 w-4" />
-                Log in to accept
-              </Button>
-            </Link>
-            <Link to={registerPath} className="block">
-              <Button type="button" variant="outline" className="w-full">
-                Create {role} account
-              </Button>
-            </Link>
-          </div>
+        {!success && invitationAvailable && !isAuthenticated && recommendedAction === "contact_school" ? (
+          <StateMessage type="warning" title="Contact the school">
+            This invited email is already connected to a different account type. Ask the school to resend the invitation to the correct {role} email.
+          </StateMessage>
+        ) : null}
+
+        {!success && invitationAvailable && !isAuthenticated && recommendedAction !== "contact_school" ? (
+          <Link to={authActionCopy.primaryPath} className="block">
+            <Button type="button" className="w-full">
+              {recommendedAction === "register" ? null : <LogIn className="h-4 w-4" />}
+              {authActionCopy.primaryLabel}
+            </Button>
+          </Link>
         ) : null}
 
         {!success && invitationAvailable && isAuthenticated && !isCorrectAccount ? (

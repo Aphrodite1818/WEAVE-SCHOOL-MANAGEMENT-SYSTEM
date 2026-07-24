@@ -4,7 +4,6 @@ import {
   CalendarClock,
   CreditCard,
   FileText,
-  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -95,13 +94,13 @@ function DetailValue({ fieldKey, subscription, statusMeta }) {
 
 function BillingSignal({ icon: Icon, label, value }) {
   return (
-    <div className="flex min-h-16 items-center gap-3 rounded-2xl border border-white/20 bg-white/[0.12] px-4 py-3 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-white">
+    <div className="flex min-h-16 min-w-0 items-center gap-3 rounded-xl border border-white/20 bg-white/[0.12] px-3 py-3 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] sm:px-4">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white">
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/65">{label}</p>
-        <p className="mt-1 truncate text-sm font-semibold text-white">{value || "--"}</p>
+        <p className="mt-1 text-sm font-semibold leading-5 text-white">{value || "--"}</p>
       </div>
     </div>
   );
@@ -115,9 +114,7 @@ function BillingPage() {
     statusMeta,
     isAttentionRequired,
     isLoading,
-    isRefreshing,
     errors,
-    refreshSubscriptionState,
   } = useSubscription();
 
   const paymentRows = getPaymentRows(currentSubscription);
@@ -131,24 +128,12 @@ function BillingPage() {
       ? "Renews today"
       : `${daysUntilRenewal} day${daysUntilRenewal === 1 ? "" : "s"} left`;
 
-  const refreshAction = (
-    <Button
-      variant="outline"
-      onClick={() => refreshSubscriptionState()}
-      disabled={isLoading || isRefreshing}
-    >
-      <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-      {isRefreshing ? "Refreshing..." : "Refresh"}
-    </Button>
-  );
-
   if (isLoading && !currentSubscription && !entitlements) {
     return (
       <DashboardLayout
         role="admin"
         title="Billing"
         description="Payment records, subscription status, and billing details."
-        actions={refreshAction}
       >
         <LoadingState label="Loading billing..." />
       </DashboardLayout>
@@ -160,7 +145,6 @@ function BillingPage() {
       role="admin"
       title="Billing"
       description="Payment records, subscription status, and billing details."
-      actions={refreshAction}
     >
       <div className="space-y-5">
         {errors.currentSubscription ? (
@@ -186,7 +170,7 @@ function BillingPage() {
           </div>
         ) : null}
 
-        <section className="dashboard-grid xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <section className="dashboard-grid xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <Card className="dashboard-welcome-blue relative overflow-hidden border-0 p-5 shadow-premium sm:p-7 lg:p-8">
             <div
               aria-hidden="true"
@@ -196,7 +180,7 @@ function BillingPage() {
               aria-hidden="true"
               className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-white/25"
             />
-            <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-stretch">
+            <div className="relative grid gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:items-stretch">
               <div className="flex min-w-0 flex-col justify-between gap-6">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -219,36 +203,36 @@ function BillingPage() {
                   </p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-3">
                   <BillingSignal icon={CalendarClock} label="Lifecycle" value={renewalLabel} />
                   <BillingSignal icon={CreditCard} label="Provider" value={provider || "--"} />
                   <BillingSignal icon={ShieldCheck} label="Status" value={statusMeta.label} />
                 </div>
               </div>
 
-              <div className="rounded-[1.5rem] border border-white/25 bg-white px-5 py-5 text-primary shadow-[0_22px_55px_rgba(15,23,42,0.18)]">
+              <div className="rounded-2xl border border-white/25 bg-white px-5 py-5 text-primary shadow-[0_22px_55px_rgba(15,23,42,0.18)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary/60">Plan card</p>
                     <p className="mt-2 text-2xl font-semibold text-primary">{formatPlanName(planCode)}</p>
                   </div>
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
                     <CreditCard className="h-5 w-5" />
                   </span>
                 </div>
 
                 <div className="mt-8 grid gap-3">
-                  <div className="flex items-center justify-between gap-4 border-b border-primary/10 pb-3">
+                  <div className="grid gap-1 border-b border-primary/10 pb-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                     <span className="text-xs font-semibold uppercase tracking-wide text-primary/60">Next billing</span>
-                    <span className="text-sm font-semibold text-primary">{formatDateTime(renewalDate)}</span>
+                    <span className="text-sm font-semibold text-primary sm:text-right">{formatDateTime(renewalDate)}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-4 border-b border-primary/10 pb-3">
+                  <div className="grid gap-1 border-b border-primary/10 pb-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                     <span className="text-xs font-semibold uppercase tracking-wide text-primary/60">Processor</span>
-                    <span className="text-sm font-semibold capitalize text-primary">{provider || "--"}</span>
+                    <span className="text-sm font-semibold capitalize text-primary sm:text-right">{provider || "--"}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                     <span className="text-xs font-semibold uppercase tracking-wide text-primary/60">Workspace</span>
-                    <span className="text-sm font-semibold text-primary">Admin billing</span>
+                    <span className="text-sm font-semibold text-primary sm:text-right">Admin billing</span>
                   </div>
                 </div>
 

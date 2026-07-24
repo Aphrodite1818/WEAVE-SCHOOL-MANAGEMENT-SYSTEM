@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 
 import SidebarContent from "./Sidebar";
 
-export default function MobileDrawer({ open, role, schoolName, onClose }) {
+export default function MobileDrawer({ open, role, schoolName, schoolLogoUrl, onClose }) {
   if (!open) return null;
 
   return (
@@ -29,6 +29,7 @@ export default function MobileDrawer({ open, role, schoolName, onClose }) {
             collapsed={false}
             onNavigate={onClose}
             schoolName={schoolName}
+            schoolLogoUrl={schoolLogoUrl}
           />
         </div>
       </aside>

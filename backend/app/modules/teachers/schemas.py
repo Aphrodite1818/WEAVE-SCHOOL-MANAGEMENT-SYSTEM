@@ -241,6 +241,20 @@ class TeacherInvitationResponse(OutputBase):
     updated_at: datetime
 
 
+class TeacherInvitationPublicContextResponse(OutputBase):
+    invitation_id: uuid.UUID
+    tenant_name: str
+    tenant_logo_url: str | None = None
+    invited_email: EmailStr
+    staff_id: str | None = None
+    job_title: str | None = None
+    department: str | None = None
+    employment_type: str | None = None
+    expires_at: datetime
+    status: TeacherInvitationStatus
+    recommended_action: Literal["login", "register", "contact_school"]
+
+
 class TeacherInvitationDispatchResponse(OutputBase):
     success: Literal[True] = True
     message: str = "Invitation processing started."

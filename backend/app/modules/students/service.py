@@ -565,6 +565,21 @@ class StudentAccessCodeService:
             purpose=purpose,
             created_by_admin_id=actor.id,
         )
+        if purpose == StudentAccessCodePurpose.PASSWORD_RESET:
+            student.password_hash = None
+            await db.execute(
+                update(AuthSession)
+                .where(
+                    AuthSession.actor_type == AuthSessionActorType.STUDENT,
+                    AuthSession.actor_id == student.id,
+                    AuthSession.tenant_id == student.tenant_id,
+                    AuthSession.revoked_at.is_(None),
+                )
+                .values(
+                    revoked_at=_utc_now(),
+                    revoked_reason="student_password_reset",
+                )
+            )
         student.password_reset_required = True
         await StudentRepository.save(db, student)
         await db.commit()

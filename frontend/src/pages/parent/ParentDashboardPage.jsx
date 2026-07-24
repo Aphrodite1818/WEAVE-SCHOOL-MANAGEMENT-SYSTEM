@@ -22,6 +22,7 @@ import {
 } from "../../utils/academicDashboard";
 import { displayName } from "../../utils/user";
 import ParentChildSelector from "./ParentChildSelector";
+import { normalizeParentChildRecord } from "./parentPageUtils";
 import useParentChildren from "./useParentChildren";
 
 function ParentDashboardPage() {
@@ -135,7 +136,8 @@ function ParentDashboardPage() {
     latestResult?.academic_session_name || latestCard?.academic_session_name,
     cleanText(latestResult?.academic_term_name || latestCard?.academic_term_name, ""),
   ].filter(Boolean).join(" / ") || "-";
-  const selectedChildName = selectedChildRecord ? displayName(selectedChildRecord.student) : "No child selected";
+  const selectedChild = normalizeParentChildRecord(selectedChildRecord).student;
+  const selectedChildName = selectedChild ? displayName(selectedChild) : "No child selected";
   const linkedStudents = parentStats.linked_students ?? children.length;
   const primaryContacts = parentStats.primary_contacts ?? children.filter((item) => item.link?.is_primary_contact).length;
   const unreadNotices = parentStats.unread_count ?? 0;

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   MailPlus,
-  RefreshCw,
   Search,
   ShieldCheck,
   UserRound,
@@ -33,7 +32,7 @@ const roleConfig = {
     inviteLabel: "Invite teacher",
     service: teacherService,
     accountKey: "teacher_account",
-    membershipStatuses: ["active", "suspended", "ended"],
+    membershipStatuses: ["active", "suspended", "inactive"],
   },
   parent: {
     title: "Parent Directory",
@@ -327,17 +326,6 @@ function MembershipDirectoryPage({ role }) {
               ))}
             </select>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={loadPage}
-            disabled={loading}
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-            />
-            Refresh
-          </Button>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1">
@@ -504,7 +492,7 @@ function InvitationList({ role, invitations, actionId, onRevoke }) {
         <EmptyState
           icon={MailPlus}
           title="No invitations found"
-          description={`Send a ${role} invitation from Create & Invite.`}
+          description={`Send a ${role} invitation from this ${role} section.`}
         />
       </Card>
     );

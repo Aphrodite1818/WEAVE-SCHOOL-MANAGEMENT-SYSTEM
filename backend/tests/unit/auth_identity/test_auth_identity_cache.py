@@ -208,7 +208,7 @@ async def test_create_invalidates_negative_identifier_cache() -> None:
     payload = AuthIdentityCreate(
         identifier=EMAIL,
         identifier_type=IdentifierType.EMAIL,
-        actor_type=ActorType.TEACHER,
+        actor_type=ActorType.STUDENT,
         actor_id=ACTOR_ID,
     )
 
@@ -289,7 +289,7 @@ async def test_deactivation_invalidates_positive_identifier_cache() -> None:
             new=AsyncMock(return_value=identity),
         ),
         patch(
-            "app.modules.auth_identity.service.AuthIdentityRepository.deactivate",
+            "app.modules.auth_identity.service.AuthIdentityRepository.save",
             new=AsyncMock(return_value=identity),
         ),
         patch(

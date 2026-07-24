@@ -1,9 +1,13 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, ChevronRight } from "lucide-react";
+import { useState } from "react";
 
 import Card from "../ui/Card";
 import Button from "../ui/Button";
+import WeaveIcon from "../brand/WeaveIcon";
 import { cn } from "../../utils/cn";
+import { authSession } from "../../services/api";
+import { useTenantWorkspaceBranding } from "../layout/useTenantWorkspaceName";
 
 const toneStyles = {
   primary: {
@@ -62,7 +66,13 @@ export function DashboardWelcomePanel({
   profileCompletion,
   variant = "default",
 }) {
+  const user = authSession.getUser() || {};
+  const role = String(user?.role || authSession.getRole() || "").toLowerCase();
+  const { schoolName, logoUrl } = useTenantWorkspaceBranding({ user, role });
+  const [failedLogoUrl, setFailedLogoUrl] = useState("");
   const isBlueHero = variant === "student" || variant === "blue";
+  const hasSchoolLogo = Boolean(logoUrl) && failedLogoUrl !== logoUrl;
+  const brandLabel = hasSchoolLogo ? schoolName || "School workspace" : "Weave";
   const visibleChips = [
     isProfileIncomplete(profileCompletion)
       ? { label: "Profile incomplete", tone: "warning" }
@@ -80,6 +90,33 @@ export function DashboardWelcomePanel({
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
+          <div
+            className={cn(
+              "mb-5 flex min-w-0 items-center gap-3 sm:inline-flex sm:max-w-full",
+              isBlueHero ? "text-white" : "text-text",
+            )}
+          >
+            {hasSchoolLogo ? (
+              <img
+                src={logoUrl}
+                alt={`${brandLabel} logo`}
+                className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16"
+                onError={() => setFailedLogoUrl(logoUrl)}
+              />
+            ) : (
+              <WeaveIcon className="h-12 w-12 shrink-0 sm:h-14 sm:w-14" />
+            )}
+            <div className="min-w-0">
+              {!hasSchoolLogo ? (
+                <p className={cn("text-[10px] font-bold uppercase tracking-[0.16em]", isBlueHero ? "text-white/65" : "text-text-faint")}>
+                  Powered by
+                </p>
+              ) : null}
+              <p className="mt-0.5 max-w-[min(30rem,100%)] truncate text-lg font-bold leading-tight sm:text-2xl">
+                {brandLabel}
+              </p>
+            </div>
+          </div>
           {eyebrow ? <p className={cn("text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs", isBlueHero && "text-white/75")}>{eyebrow}</p> : null}
           <h2 className={cn("mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl", isBlueHero && "text-white")}>{title}</h2>
           {description ? <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/80")}>{description}</p> : null}

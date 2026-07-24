@@ -2,12 +2,15 @@ import { api } from "./api";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 100, 1), 100);
 
+const normalizeParentMembershipStatus = (status) =>
+  status === "ended" ? "inactive" : status;
+
 const buildParentQuery = ({ skip = 0, limit = 100, search, status } = {}) => {
   const params = new URLSearchParams();
   params.set("skip", String(skip));
   params.set("limit", String(clampLimit(limit)));
   if (search) params.set("search", search);
-  if (status) params.set("status", status);
+  if (status) params.set("status", normalizeParentMembershipStatus(status));
   return params.toString();
 };
 

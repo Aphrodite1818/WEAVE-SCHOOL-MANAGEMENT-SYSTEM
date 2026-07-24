@@ -8,10 +8,10 @@ import AdminInvitationPage from "../pages/admin/AdminInvitationPage";
 import AdminSearchDetailPage from "../pages/admin/AdminSearchDetailPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
-import CreateUserPage from "../pages/admin/CreateUserPage";
 import FeesPage from "../pages/admin/FeesPage";
 import ParentsPage from "../pages/admin/ParentsPage";
 import PaymentsPage from "../pages/admin/PaymentsPage";
+import StudentCreatePage from "../pages/admin/StudentCreatePage";
 import StudentsPage from "../pages/admin/StudentsPage";
 import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
 import SubscriptionVerifyPage from "../pages/admin/SubscriptionVerifyPage";
@@ -42,13 +42,13 @@ export const adminRoutes = (
         path="/admin/analytics"
         element={<RoleAnalyticsPage role="admin" />}
       />
-      <Route path="/admin/create-user" element={<CreateUserPage />} />
       <Route
         path="/admin/invitations/:role"
         element={<AdminInvitationPage />}
       />
       <Route path="/admin/teachers" element={<TeachersPage />} />
       <Route path="/admin/students" element={<StudentsPage />} />
+      <Route path="/admin/students/create" element={<StudentCreatePage />} />
       <Route path="/admin/parents" element={<ParentsPage />} />
       <Route
         path="/admin/classes"

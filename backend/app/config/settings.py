@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     TENANT_ACTIVATION_EXPIRATION_HOURS: int = 48
 
     FRONTEND_APP_URL: str = Field(..., description="Frontend application URL")
+    EMAIL_BRAND_LOGO_URL: str | None = Field(
+        default=None,
+        description="Public HTTPS URL for the Weave logo used in HTML emails",
+    )
     STUDENT_ACCESS_CODE_EXPIRY_HOURS: int = 48
     STUDENT_ACCESS_CODE_LENGTH: int = 8
 

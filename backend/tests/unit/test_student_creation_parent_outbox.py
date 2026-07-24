@@ -50,6 +50,7 @@ async def test_queue_parent_invitation_email_builds_expected_outbox_row(
         school_name="Weave Test School",
         student_name="Ada Student",
         invite_link="https://app.example.com/parent-invitations/token",
+        admission_number="WVS260001",
         metadata_json={
             "source": "student_creation",
             "student_id": str(uuid4()),
@@ -68,6 +69,7 @@ async def test_queue_parent_invitation_email_builds_expected_outbox_row(
         "school_name": "Weave Test School",
         "student_name": "Ada Student",
         "invite_link": "https://app.example.com/parent-invitations/token",
+        "admission_number": "WVS260001",
     }
     assert email_data.metadata_json["source"] == "student_creation"
 
@@ -86,6 +88,7 @@ async def test_worker_sends_parent_invitation_template(
             "school_name": "Weave Test School",
             "student_name": "Ada Student",
             "invite_link": "https://app.example.com/parent-invitations/token",
+            "admission_number": "WVS260001",
         },
         metadata_json={},
     )
@@ -111,7 +114,10 @@ async def test_worker_sends_parent_invitation_template(
     assert "Ada Student" in body
     assert "Weave Test School" in body
     assert "https://app.example.com/parent-invitations/token" in body
-    assert "/assets/logo.svg" in body
+    assert "WVS260001" in body
+    assert "<img" not in body
+    assert "weave-email-icon.png" not in body
+    assert ">W</span>" in body
     assert "Review invitation" in body
     assert "Before access is granted" in body
     mark_sent.assert_awaited_once_with(db=db, email_item=email_item)
@@ -155,7 +161,9 @@ async def test_worker_sends_teacher_invitation_template(
     body = send_email.await_args.kwargs["body"]
     assert "Weave Test School" in body
     assert "https://app.example.com/teacher-invitations/token" in body
-    assert "/assets/logo.svg" in body
+    assert "<img" not in body
+    assert "weave-email-icon.png" not in body
+    assert ">W</span>" in body
     assert "Review invitation" in body
     assert "What happens next" in body
     mark_sent.assert_awaited_once_with(db=db, email_item=email_item)
@@ -315,6 +323,7 @@ async def test_student_creation_queues_one_parent_email_per_parent(
 
     assert first_call["email"] == "mother@example.com"
     assert first_call["student_name"] == "Ada Student"
+    assert first_call["admission_number"] == "WVS26483912"
     assert first_call["invite_link"].endswith(
         "/parent-invitations/mother-token"
     )
@@ -322,6 +331,7 @@ async def test_student_creation_queues_one_parent_email_per_parent(
     assert first_call["metadata_json"]["student_id"] == str(student_id)
 
     assert second_call["email"] == "father@example.com"
+    assert second_call["admission_number"] == "WVS26483912"
     assert second_call["invite_link"].endswith(
         "/parent-invitations/father-token"
     )

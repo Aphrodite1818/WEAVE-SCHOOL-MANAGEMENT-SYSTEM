@@ -8,7 +8,6 @@ import {
   GraduationCap,
   PlusCircle,
   UploadCloud,
-  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -147,10 +146,10 @@ function AdminDashboardPage() {
       role="admin"
       title={`${firstName}'s Dashboard`}
       actions={
-        <Link to="/admin/create-user">
+        <Link to="/admin/students/create">
           <Button>
             <PlusCircle className="h-4 w-4" />
-            Create user
+            Create student
           </Button>
         </Link>
       }
@@ -247,7 +246,7 @@ function AdminDashboardPage() {
               title="Quick actions"
               description="Common admin workflows."
               actions={[
-                { label: "Create user", description: "Add student, teacher, or parent", to: "/admin/create-user", icon: UserPlus, tone: "primary" },
+                { label: "Create student", description: "Add a learner record", to: "/admin/students/create", icon: GraduationCap, tone: "primary" },
                 canShowBulkImport
                   ? { label: "Bulk import", description: "Upload school records", to: "/admin/imports", icon: UploadCloud, tone: "success" }
                   : null,

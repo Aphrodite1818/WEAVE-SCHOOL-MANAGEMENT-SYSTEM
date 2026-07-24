@@ -48,7 +48,14 @@ const schoolSwitchPaths = {
   parent: "/parent/schools",
 };
 
-export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false, onToggleSidebar, schoolName }) {
+export default function Topbar({
+  role,
+  onOpenMobileNav,
+  sidebarCollapsed = false,
+  onToggleSidebar,
+  schoolName,
+  schoolLogoUrl = "",
+}) {
   const navigate = useNavigate();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
@@ -60,6 +67,7 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [failedSchoolLogoUrl, setFailedSchoolLogoUrl] = useState("");
   const [themeHint, setThemeHint] = useState(() =>
     typeof document === "undefined"
       ? "light"
@@ -76,6 +84,15 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
     ? "/profile"
     : roleSettingsPaths[role] || "/profile";
   const schoolSwitchPath = schoolSwitchPaths[role] || null;
+  const resolvedSchoolLogoUrl =
+    schoolLogoUrl ||
+    user?.tenant_logo_url ||
+    user?.tenant?.logo_url ||
+    "";
+  const hasSchoolLogo =
+    Boolean(resolvedSchoolLogoUrl) &&
+    failedSchoolLogoUrl !== resolvedSchoolLogoUrl &&
+    !isAccountScope;
 
   useEffect(() => {
     let mounted = true;
@@ -147,9 +164,19 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
         </button>
 
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <p className="truncate text-base font-bold text-text sm:hidden">
-            {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
-          </p>
+          <div className="flex min-w-0 items-center gap-2 sm:hidden">
+            {hasSchoolLogo ? (
+              <img
+                src={resolvedSchoolLogoUrl}
+                alt={`${schoolName || "School"} logo`}
+                className="h-8 w-8 shrink-0 rounded-lg border border-border/70 bg-surface object-contain p-0.5 shadow-sm"
+                onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
+              />
+            ) : null}
+            <p className="truncate text-base font-bold text-text">
+              {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
+            </p>
+          </div>
           {onToggleSidebar ? (
             <button
               type="button"
@@ -161,9 +188,20 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
               {sidebarCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
             </button>
           ) : null}
-          <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
+          {hasSchoolLogo ? (
+            <img
+              src={resolvedSchoolLogoUrl}
+              alt={`${schoolName || "School"} logo`}
+              className="hidden h-9 w-9 shrink-0 rounded-xl border border-border/70 bg-surface object-contain p-1 shadow-sm sm:block"
+              onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
+            />
+          ) : (
+            <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
+          )}
           <div className="hidden min-w-0 sm:block">
-            <p className="brand-wordmark truncate text-sm font-bold sm:text-lg">Weave</p>
+            <p className="brand-wordmark truncate text-sm font-bold sm:text-lg">
+              {hasSchoolLogo ? schoolName || "School workspace" : "Weave"}
+            </p>
           </div>
         </div>
 

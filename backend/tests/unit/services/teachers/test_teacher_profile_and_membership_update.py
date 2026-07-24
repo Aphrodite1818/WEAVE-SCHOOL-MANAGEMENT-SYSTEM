@@ -9,6 +9,8 @@ import pytest
 from app.modules.teachers.models import (
     TeacherAccount,
     TeacherAccountStatus,
+    TeacherInvitation,
+    TeacherInvitationStatus,
     TeacherMembership,
     TeacherMembershipStatus,
 )
@@ -17,6 +19,7 @@ from app.modules.teachers.schemas import (
     TeacherMembershipUpdateRequest,
 )
 from app.modules.teachers.service import TeacherAccountService, TeacherMembershipService
+from app.modules.teachers.service import TeacherInvitationService
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 
 
@@ -65,6 +68,21 @@ def _membership(tenant_id: uuid.UUID, account_id: uuid.UUID) -> TeacherMembershi
         joined_at=now,
         receive_email_notifications=True,
         receive_push_notifications=True,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _invitation(tenant_id: uuid.UUID) -> TeacherInvitation:
+    now = datetime.now(timezone.utc)
+    return TeacherInvitation(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        invited_email="teacher@example.com",
+        token_digest="hashed-token",
+        staff_id="TCH-002",
+        status=TeacherInvitationStatus.PENDING,
+        expires_at=now,
         created_at=now,
         updated_at=now,
     )
@@ -186,3 +204,32 @@ async def test_update_teacher_membership_applies_explicit_values() -> None:
 
     assert membership.receive_push_notifications is False
     assert response.receive_push_notifications is False
+
+
+@pytest.mark.asyncio
+async def test_revoke_teacher_invitation_refreshes_before_response() -> None:
+    tenant_id = uuid.uuid4()
+    invitation = _invitation(tenant_id)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.teachers.service.TeacherInvitationRepository.get_by_id",
+            new=AsyncMock(return_value=invitation),
+        ),
+        patch(
+            "app.modules.teachers.service.TeacherInvitationRepository.save",
+            new=AsyncMock(return_value=invitation),
+        ),
+    ):
+        response = await TeacherInvitationService.revoke_invitation(
+            db=db,
+            actor=_admin(tenant_id),
+            invitation_id=invitation.id,
+        )
+
+    assert invitation.status == TeacherInvitationStatus.REVOKED
+    assert invitation.revoked_at is not None
+    assert response.status == TeacherInvitationStatus.REVOKED.value
+    db.commit.assert_awaited_once()
+    db.refresh.assert_awaited_once_with(invitation)

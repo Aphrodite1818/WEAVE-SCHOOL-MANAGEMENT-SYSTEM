@@ -178,6 +178,7 @@ class StudentCreationService:
                     school_name=tenant.school_name,
                     student_name=student_name,
                     invite_link=invite_link,
+                    admission_number=student.admission_number,
                     metadata_json={
                         "source": "student_creation",
                         "student_id": str(student.id),

@@ -5,8 +5,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.cache.base import build_cache_key, hash_params, tenant_prefix
-from app.core.cache.manager import CacheManager
+from app.core.cache.events import (
+    invalidate_cache_pattern_now,
+    queue_cache_pattern_invalidation,
+)
 
 
 def announcement_feed_cache_key(
@@ -61,24 +66,32 @@ async def invalidate_announcement_actor_cache(
     tenant_id: UUID,
     actor_type: str,
     actor_id: UUID,
+    db: AsyncSession | None = None,
 ) -> None:
-    await CacheManager.delete_pattern(
-        build_cache_key(
-            tenant_prefix(str(tenant_id)),
-            "announcements",
-            "feed",
-            actor_type,
-            str(actor_id),
-            "*",
-        )
+    pattern = build_cache_key(
+        tenant_prefix(str(tenant_id)),
+        "announcements",
+        "feed",
+        actor_type,
+        str(actor_id),
+        "*",
     )
+    if db is not None:
+        queue_cache_pattern_invalidation(db, pattern)
+        return
+    await invalidate_cache_pattern_now(pattern)
 
 
-async def invalidate_announcement_tenant_cache(tenant_id: UUID | str) -> None:
-    await CacheManager.delete_pattern(
-        build_cache_key(
-            tenant_prefix(str(tenant_id)),
-            "announcements",
-            "*",
-        )
+async def invalidate_announcement_tenant_cache(
+    tenant_id: UUID | str,
+    db: AsyncSession | None = None,
+) -> None:
+    pattern = build_cache_key(
+        tenant_prefix(str(tenant_id)),
+        "announcements",
+        "*",
     )
+    if db is not None:
+        queue_cache_pattern_invalidation(db, pattern)
+        return
+    await invalidate_cache_pattern_now(pattern)

@@ -23,7 +23,9 @@ export const studentService = {
     api.post("/tenant-admin/students", payload),
 
   resetStudentAccessCode: (studentId) =>
-    api.post(`/tenant-admin/students/${studentId}/reset-access-code`),
+    api.post(`/tenant-admin/students/${studentId}/access-codes`, {
+      purpose: "password_reset",
+    }),
 
   getMyStudent: (requestOptions) =>
     api.get("/students/me", requestOptions),
@@ -53,10 +55,37 @@ export const studentService = {
     api.patch(`/students/${studentId}`, payload),
 
   updateAdminStudent: (studentId, payload) =>
-    api.patch(`/tenant-admin/students/${studentId}`, payload),
+    api.patch(`/tenant-admin/students/${studentId}/profile`, payload),
 
-  deleteStudent: (studentId) =>
-    api.delete(`/tenant-admin/students/${studentId}`),
+  suspendStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/suspend`, payload),
+
+  reinstateStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/reinstate`, payload),
+
+  reinstateExpelledStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/reinstate-expelled`, payload),
+
+  withdrawStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/withdraw`, payload),
+
+  expelStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/expel`, payload),
+
+  graduateStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/graduate`, payload),
+
+  archiveStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/archive`, payload),
+
+  restoreStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/restore`, payload),
+
+  getHardDeleteEligibility: (studentId) =>
+    api.get(`/tenant-admin/students/${studentId}/hard-delete-eligibility`),
+
+  hardDeleteStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/hard-delete`, payload),
 
   completeStudentProfile: (studentId, payload) =>
     api.patch(`/tenant-admin/students/${studentId}/complete-profile`, payload),

@@ -10,6 +10,7 @@ import { getErrorMessage } from "../../services/api";
 import { parentService } from "../../services/parentService";
 import { displayName } from "../../utils/user";
 import { cleanText } from "../../utils/academicDashboard";
+import { normalizeParentChildRecord } from "./parentPageUtils";
 
 function asStatus(value) {
   return String(value || "").trim().toLowerCase();
@@ -184,12 +185,11 @@ function ParentStudentLinkingPage() {
               />
             </div>
           ) : (
-            children.map((entry) => {
-              const student = entry.student || entry;
-              const link = entry.link || entry.parent_link || {};
+            children.map((entry, index) => {
+              const { student, link } = normalizeParentChildRecord(entry);
               return (
                 <div
-                  key={link.id || student.id}
+                  key={link.id || student?.id || `linked-student-${index}`}
                   className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-4"
                 >
                   <div className="flex h-full flex-col gap-4">

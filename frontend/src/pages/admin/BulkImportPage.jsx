@@ -496,7 +496,7 @@ function ErrorPreview({ job, onDownloadSpreadsheet, onDownloadSlip }) {
   );
 }
 
-function EmailStatusPanel({ summary, onRefresh, onRecover, onRetry, loading }) {
+function EmailStatusPanel({ summary, onRecover, onRetry, loading }) {
   if (!summary) return null;
   const total = Number(summary.total || 0);
   const sentPercent = percent(summary.sent, total);
@@ -508,7 +508,6 @@ function EmailStatusPanel({ summary, onRefresh, onRecover, onRetry, loading }) {
           <p className="mt-1 text-sm text-text-muted">Invite emails are sent in small background batches so the app stays usable.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}><RefreshCw className="h-4 w-4" />Refresh</Button>
           <Button variant="outline" size="sm" onClick={onRecover} disabled={loading}><RotateCcw className="h-4 w-4" />Recover stuck</Button>
           <Button variant="outline" size="sm" onClick={onRetry} disabled={loading}>Retry failed</Button>
         </div>
@@ -862,7 +861,6 @@ function BulkImportPage() {
 
       <EmailStatusPanel
         summary={emailSummary}
-        onRefresh={() => refreshEmailSummary()}
         onRecover={recoverStale}
         onRetry={retryFailed}
         loading={loadingState === "email"}

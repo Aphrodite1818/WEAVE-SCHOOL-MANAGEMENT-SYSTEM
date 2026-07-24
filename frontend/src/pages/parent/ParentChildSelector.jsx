@@ -4,6 +4,7 @@ import EmptyState from "../../components/shared/EmptyState";
 import { displayName } from "../../utils/user";
 import { cleanText } from "../../utils/academicDashboard";
 import { cn } from "../../utils/cn";
+import { normalizeParentChildRecord } from "./parentPageUtils";
 
 function ParentChildSelector({
   linkedChildren = [],
@@ -24,13 +25,16 @@ function ParentChildSelector({
       {showCards && (
         <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {linkedChildren.length > 0 ? (
-            linkedChildren.map(({ student, link }) => {
-              const isActive = student.id === selectedChildId;
+            linkedChildren.map((entry, index) => {
+              const { student, link } = normalizeParentChildRecord(entry);
+              const studentId = student?.id;
+              const isActive = studentId === selectedChildId;
               return (
                 <button
-                  key={link.id}
+                  key={link.id || studentId || `linked-child-${index}`}
                   type="button"
-                  onClick={() => onSelectChild(student.id)}
+                  onClick={() => studentId && onSelectChild(studentId)}
+                  disabled={!studentId}
                   className={cn(
                     "rounded-[1.2rem] border px-4 py-3 text-left transition",
                     isActive
@@ -44,11 +48,11 @@ function ParentChildSelector({
                         {displayName(student)}
                       </p>
                       <p className={cn("mt-1 text-xs", isActive ? "text-white/80" : "text-text-muted")}>
-                        {cleanText(student.admission_number)} / {cleanText(student.profile_status)}
+                        {cleanText(student?.admission_number)} / {cleanText(student?.profile_status || student?.status)}
                       </p>
                     </div>
                     <Badge variant={isActive ? "default" : (link.is_primary_contact ? "success" : "default")} className={cn(isActive && "bg-white/20 text-white hover:bg-white/30 border-transparent backdrop-blur-md")}>
-                      {cleanText(link.relationship_type)}
+                      {cleanText(link.relationship_type || "linked")}
                     </Badge>
                   </div>
                 </button>

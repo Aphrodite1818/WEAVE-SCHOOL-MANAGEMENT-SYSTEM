@@ -19,7 +19,6 @@ import {
   Settings,
   Shield,
   UploadCloud,
-  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -34,7 +33,7 @@ export const roleLabels = {
 };
 
 export const workspaceSearchRoles = new Set(["admin", "teacher", "student"]);
-export const tenantNameFallbackRoles = new Set(["admin", "teacher"]);
+export const tenantNameFallbackRoles = new Set(["admin", "teacher", "student", "parent"]);
 
 export const announcementPaths = {
   admin: "/admin/announcements",
@@ -82,7 +81,6 @@ export const navGroups = {
       items: [
         { label: "Dashboard", to: "/admin/dashboard", icon: Home },
         { label: "Analytics", to: "/admin/analytics", icon: BarChart3 },
-        { label: "Create User", to: "/admin/create-user", icon: UserPlus },
         { label: "Calendar", to: "/admin/timetable", icon: CalendarDays },
       ],
     },

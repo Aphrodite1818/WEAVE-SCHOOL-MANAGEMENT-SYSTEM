@@ -10,6 +10,11 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache.base import build_cache_key, global_prefix
+from app.core.cache.events import (
+    discard_cache_invalidation_events,
+    flush_cache_invalidation_events,
+    queue_cache_key_invalidation,
+)
 from app.core.cache.manager import CacheManager
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
@@ -23,7 +28,6 @@ from app.modules.auth_identity.schemas import (
 AUTH_IDENTITY_CACHE_TTL_SECONDS = 300
 AUTH_IDENTITY_NOT_FOUND_CACHE_TTL_SECONDS = 15
 AUTH_IDENTITY_FOUND_FIELD = "found"
-AUTH_IDENTITY_PENDING_INVALIDATIONS = "auth_identity_pending_invalidations"
 
 logger = logging.getLogger(__name__)
 
@@ -120,24 +124,12 @@ class AuthIdentityService:
         db: AsyncSession,
         *keys: str,
     ) -> None:
-        pending = db.sync_session.info.setdefault(
-            AUTH_IDENTITY_PENDING_INVALIDATIONS,
-            set(),
-        )
-        pending.update(keys)
+        queue_cache_key_invalidation(db, *keys)
 
     @staticmethod
     async def invalidate_after_commit(db: AsyncSession) -> None:
-        keys = tuple(
-            db.sync_session.info.pop(
-                AUTH_IDENTITY_PENDING_INVALIDATIONS,
-                set(),
-            )
-        )
-        if not keys:
-            return
         try:
-            await CacheManager.delete_many(list(keys))
+            await flush_cache_invalidation_events(db)
         except Exception:
             logger.exception(
                 "Auth identity post-commit cache invalidation failed"
@@ -145,10 +137,7 @@ class AuthIdentityService:
 
     @staticmethod
     def discard_pending_invalidations(db: AsyncSession) -> None:
-        db.sync_session.info.pop(
-            AUTH_IDENTITY_PENDING_INVALIDATIONS,
-            None,
-        )
+        discard_cache_invalidation_events(db)
 
     @staticmethod
     async def ensure_identifier_available(

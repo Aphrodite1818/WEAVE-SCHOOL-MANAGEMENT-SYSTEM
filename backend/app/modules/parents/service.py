@@ -515,6 +515,7 @@ class ParentMembershipService:
         await SubscriptionFeatureService.invalidate_tenant_subscription_state(
             actor.tenant_id
         )
+        await db.refresh(membership)
         return ParentMembershipResponse.model_validate(membership)
 
     @staticmethod
@@ -549,6 +550,7 @@ class ParentMembershipService:
         await SubscriptionFeatureService.invalidate_tenant_subscription_state(
             actor.tenant_id
         )
+        await db.refresh(membership)
         return ParentMembershipResponse.model_validate(membership)
 
     @staticmethod
@@ -583,6 +585,22 @@ class ParentInvitationService:
     """School invitation and parent acceptance workflow."""
 
     INVITATION_DAYS = 7
+
+    @staticmethod
+    async def _recommended_action_for_email(
+        db: AsyncSession,
+        normalized_email: str,
+    ) -> str:
+        identity = await AuthIdentityRepository.get_by_identifier(
+            db,
+            normalized_email,
+            IdentifierType.EMAIL,
+        )
+        if identity is None:
+            return "register"
+        if identity.actor_type in {ActorType.PARENT_ACCOUNT, ActorType.PARENT}:
+            return "login"
+        return "contact_school"
 
     @staticmethod
     async def create_invitation(
@@ -648,6 +666,7 @@ class ParentInvitationService:
                     school_name=school_name,
                     student_name=student_name,
                     invite_link=invite_url,
+                    admission_number=student.admission_number,
                 ),
                 True,
             )
@@ -698,10 +717,16 @@ class ParentInvitationService:
             tenant_name=tenant.school_name,
             tenant_logo_url=tenant.logo_url,
             student_display_name=display_name,
+            invited_email=invitation.invited_email,
+            admission_number=admission,
             admission_number_hint=hint,
             relationship_type=invitation.relationship_type,
             expires_at=invitation.expires_at,
             status=invitation.status,
+            recommended_action=await ParentInvitationService._recommended_action_for_email(
+                db,
+                invitation.invited_email,
+            ),
         )
 
     @staticmethod
@@ -839,4 +864,5 @@ class ParentInvitationService:
         invitation.revoked_at = _utc_now()
         await ParentInvitationRepository.save(db, invitation)
         await db.commit()
+        await db.refresh(invitation)
         return ParentInvitationResponse.model_validate(invitation)

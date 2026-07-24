@@ -145,7 +145,7 @@ function AdminInvitationPage() {
   );
 
   if (!config) {
-    return <Navigate to="/admin/create-user" replace />;
+    return <Navigate to="/admin/dashboard" replace />;
   }
 
   const resetErrors = () => {

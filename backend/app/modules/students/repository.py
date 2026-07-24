@@ -529,7 +529,7 @@ class StudentParentLinkRepository:
             .order_by(StudentParentLink.created_at.asc())
         )
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update(of=StudentParentLink)
         return list(
             (await db.execute(query)).scalars().unique().all()
         )
@@ -553,7 +553,7 @@ class StudentParentLinkRepository:
             joinedload(StudentParentLink.student)
         ).order_by(StudentParentLink.created_at.asc())
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update(of=StudentParentLink)
         return list(
             (await db.execute(query)).scalars().unique().all()
         )
