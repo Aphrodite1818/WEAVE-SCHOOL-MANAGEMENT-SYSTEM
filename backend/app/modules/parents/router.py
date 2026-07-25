@@ -13,6 +13,10 @@ from app.core.dependencies.route_guards import (
     get_current_parent_account,
     get_current_tenant_admin,
 )
+from app.modules.auth.membership_summary_service import (
+    AccountMembershipSummaryList,
+    AccountMembershipSummaryService,
+)
 from app.modules.parents.account_patch_service import ParentAccountPatchService
 from app.modules.parents.lifecycle_contracts import (
     AdminParentLinkListResponse,
@@ -163,13 +167,13 @@ async def change_my_parent_account_password(
 
 @router.get(
     "/accounts/me/memberships",
-    response_model=ParentMembershipListResponse,
+    response_model=AccountMembershipSummaryList,
 )
 async def list_my_parent_memberships(
     db: DbSession,
     current_account: CurrentParentAccount,
-) -> ParentMembershipListResponse:
-    return await ParentAccountService.list_memberships(
+) -> AccountMembershipSummaryList:
+    return await AccountMembershipSummaryService.list_parent_memberships(
         db,
         account_id=current_account.id,
     )
