@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
+from app.modules.students.admin_contracts import StudentAdminContractService
 from app.modules.students.creation_service import StudentCreationService
 from app.modules.students.models import (
     AcademicStatus,
@@ -45,7 +46,6 @@ from app.modules.students.service import (
     StudentLifecycleService,
     StudentParentLinkRequestService,
     StudentParentLinkService,
-    StudentService,
 )
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
@@ -147,15 +147,17 @@ async def list_students(
         default=None,
         alias="status",
     ),
+    include_archived: bool = Query(default=False),
 ) -> StudentListResponse:
-    students, total = await StudentService.list_students(
+    students, total = await StudentAdminContractService.list_students(
         db,
-        current_admin,
+        actor=current_admin,
         skip=skip,
         limit=limit,
         search=search,
         class_id=class_id,
         status=status_filter,
+        include_archived=include_archived,
     )
     return StudentListResponse(items=students, total=total)
 
@@ -169,7 +171,7 @@ async def get_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentDetailResponse:
-    return await StudentService.get_student_profile(
+    return await StudentAdminContractService.update_profile.__self__.get_student_profile(
         db,
         current_admin,
         student_id,
@@ -186,11 +188,11 @@ async def update_student_profile(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentDetailResponse:
-    return await StudentService.update_student_profile(
+    return await StudentAdminContractService.update_profile(
         db,
-        current_admin,
-        student_id,
-        payload,
+        actor=current_admin,
+        student_id=student_id,
+        payload=payload,
     )
 
 
@@ -425,7 +427,6 @@ async def hard_delete_unused_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> None:
-    # Pydantic enforces the explicit confirmation literal.
     _ = payload.reason
     await StudentLifecycleService.hard_delete(
         db,
