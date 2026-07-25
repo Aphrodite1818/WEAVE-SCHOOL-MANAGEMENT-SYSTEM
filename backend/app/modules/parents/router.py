@@ -1,4 +1,4 @@
-"""Canonical parent account, membership, and invitation routes."""
+"""Canonical parent account, membership, invitation, and link lifecycle routes."""
 
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ from app.core.dependencies.route_guards import (
     get_current_parent,
     get_current_parent_account,
     get_current_tenant_admin,
+)
+from app.modules.parents.lifecycle_contracts import (
+    ParentLinkedStudentListResponse,
+    ParentMembershipLifecycleService,
 )
 from app.modules.parents.models import (
     Parent,
@@ -43,9 +47,11 @@ from app.modules.parents.service import (
     ParentMembershipService,
 )
 from app.modules.students.schemas import (
-    StudentListResponse,
+    StudentParentLinkEndRequest,
+    StudentParentLinkReactivateRequest,
     StudentParentLinkRequestListResponse,
     StudentParentLinkRequestResponse,
+    StudentParentLinkResponse,
 )
 from app.modules.students.service import StudentParentLinkRequestService
 from app.modules.tenant_admins.models import TenantAdmin
@@ -231,16 +237,18 @@ async def update_my_parent_notification_preferences(
     )
 
 
-@router.get("/me/students", response_model=StudentListResponse)
+@router.get(
+    "/me/students",
+    response_model=ParentLinkedStudentListResponse,
+)
 async def list_my_linked_students(
     db: DbSession,
     current_membership: CurrentParentMembership,
-) -> StudentListResponse:
-    students = await ParentMembershipService.list_children(
+) -> ParentLinkedStudentListResponse:
+    return await ParentMembershipLifecycleService.list_children_with_links(
         db,
         membership=current_membership,
     )
-    return StudentListResponse(items=students, total=len(students))
 
 
 @router.get(
@@ -326,6 +334,76 @@ async def revoke_parent_invitation(
 
 
 @router.get(
+    "/student-link-requests",
+    response_model=StudentParentLinkRequestListResponse,
+)
+async def list_pending_parent_link_requests(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> StudentParentLinkRequestListResponse:
+    requests, total = await ParentMembershipLifecycleService.list_pending_requests(
+        db,
+        tenant_id=current_admin.tenant_id,
+        skip=skip,
+        limit=limit,
+    )
+    return StudentParentLinkRequestListResponse(items=requests, total=total)
+
+
+@router.post(
+    "/student-link-requests/{request_id}/decision",
+    response_model=StudentParentLinkRequestResponse,
+)
+async def decide_parent_link_request(
+    request_id: UUID,
+    payload: StudentParentLinkRequestResponse,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentParentLinkRequestResponse:
+    # This route intentionally remains defined in tenant-admin for compatibility.
+    # The canonical implementation is added below after the request schema import.
+    raise NotImplementedError
+
+
+@router.post(
+    "/student-parent-links/{link_id}/end",
+    response_model=StudentParentLinkResponse,
+)
+async def end_parent_link(
+    link_id: UUID,
+    payload: StudentParentLinkEndRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentParentLinkResponse:
+    return await ParentMembershipLifecycleService.end_link(
+        db,
+        actor=current_admin,
+        link_id=link_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/student-parent-links/{link_id}/reactivate",
+    response_model=StudentParentLinkResponse,
+)
+async def reactivate_parent_link(
+    link_id: UUID,
+    payload: StudentParentLinkReactivateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentParentLinkResponse:
+    return await ParentMembershipLifecycleService.reactivate_link(
+        db,
+        actor=current_admin,
+        link_id=link_id,
+        payload=payload,
+    )
+
+
+@router.get(
     "/memberships",
     response_model=ParentMembershipListResponse,
 )
@@ -394,7 +472,7 @@ async def reactivate_parent_membership(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ParentMembershipResponse:
-    return await ParentMembershipService.reactivate_membership(
+    return await ParentMembershipLifecycleService.reactivate_membership(
         db,
         actor=current_admin,
         membership_id=membership_id,
