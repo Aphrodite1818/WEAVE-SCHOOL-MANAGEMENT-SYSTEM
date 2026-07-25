@@ -9,8 +9,10 @@ from app.shared.base_model import Base
 CRITICAL_TABLES = {
     "tenants",
     "tenant_admins",
-    "teachers",
-    "parents",
+    "teacher_accounts",
+    "teacher_memberships",
+    "parent_accounts",
+    "parent_memberships",
     "students",
     "auth_identities",
     "auth_sessions",

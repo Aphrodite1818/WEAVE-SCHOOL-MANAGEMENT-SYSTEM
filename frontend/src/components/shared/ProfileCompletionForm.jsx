@@ -21,7 +21,7 @@ const ROLE_FORM_CONFIG = {
     {
       key: "school_profile",
       title: "School profile",
-      description: "Complete the school profile fields required for onboarding and student admission setup.",
+      description: "School details used for student admission setup.",
       fields: [
         { name: "admission_number_prefix", label: "Admission prefix", required: true, placeholder: "WVS" },
         { name: "phone", label: "School phone", placeholder: "+2348012345678" },
@@ -39,7 +39,7 @@ const ROLE_FORM_CONFIG = {
     {
       key: "teacher_profile",
       title: "Teacher profile",
-      description: "Complete the teacher profile fields used in your self-service onboarding.",
+      description: "Profile details for your teacher account.",
       fields: [
         { name: "email", label: "Email", type: "email", readOnly: true },
         { name: "first_name", label: "First name", required: true },
@@ -53,7 +53,7 @@ const ROLE_FORM_CONFIG = {
     {
       key: "parent_profile",
       title: "Parent profile",
-      description: "Complete the parent profile fields used in your self-service onboarding.",
+      description: "Profile details for your parent account.",
       fields: [
         { name: "email", label: "Email", type: "email", readOnly: true },
         { name: "first_name", label: "First name", required: true },
@@ -69,7 +69,7 @@ const ROLE_FORM_CONFIG = {
     {
       key: "student_profile",
       title: "Student profile",
-      description: "Complete the student profile fields exposed by the backend. School-managed fields stay read-only.",
+      description: "Profile details available for this student account.",
       fields: [
         { name: "admission_number", label: "Admission number", readOnly: true },
         { name: "first_name", label: "First name", required: true },

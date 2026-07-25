@@ -35,6 +35,21 @@ import { cleanText } from "../../utils/academicDashboard";
 const assignmentClassLabel = (item) =>
   cleanText([item.class_name, item.class_arm].filter(Boolean).join(" "), "");
 const classLabel = (item) => cleanText([item.name, item.arm].filter(Boolean).join(" "), "");
+const uniqueSubjectsFromAssignments = (assignments = []) => [
+  ...new Map(
+    assignments
+      .filter((item) => item.subject_id || item.subject_name || item.subject_code)
+      .map((item) => [
+        item.subject_id || item.subject_name || item.subject_code,
+        {
+          id: item.subject_id || item.subject_name || item.subject_code,
+          name: item.subject_name,
+          code: item.subject_code,
+          is_active: item.is_active,
+        },
+      ]),
+  ).values(),
+];
 
 function TeacherDashboardPage() {
   const [teacher, setTeacher] = useState(null);
@@ -58,9 +73,8 @@ function TeacherDashboardPage() {
       try {
         const cacheKey = getDashboardSessionCacheKey("teacher:dashboard");
         const bundle = await getCachedDashboardBundle(cacheKey, async () => {
-          const [teacherProfile, subjectResponse, assignmentResponse, classResponse, metricsResponse] = await Promise.all([
+          const [teacherProfile, assignmentResponse, classResponse, metricsResponse] = await Promise.all([
             teacherService.getMyTeacher({ signal: controller.signal }),
-            teacherService.getMySubjects({ signal: controller.signal }),
             academicService.listMyTeacherAssignments({ signal: controller.signal }),
             classService.getClasses({ limit: 100, active_only: true, signal: controller.signal }),
             dashboardService.getTeacherAnalytics({ signal: controller.signal }),
@@ -68,7 +82,7 @@ function TeacherDashboardPage() {
 
           return {
             teacher: teacherProfile,
-            subjects: subjectResponse?.items || [],
+            subjects: uniqueSubjectsFromAssignments(assignmentResponse?.items || []),
             assignments: assignmentResponse?.items || [],
             classTeacherClasses: classResponse?.items || [],
             metrics: metricsResponse,

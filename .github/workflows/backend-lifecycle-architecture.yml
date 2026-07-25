@@ -1,0 +1,43 @@
+name: Backend lifecycle architecture
+
+on:
+  push:
+    branches:
+      - student_lifecycle
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-lifecycle-architecture.yml"
+
+jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      ENVIRONMENT: development
+      SECRET_KEY: test-secret-key-that-is-long-enough-for-ci-only
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/weave_test
+      REDIS_URL: redis://localhost:6379/0
+      FRONTEND_APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify lifecycle architecture
+        run: python scripts/verify_lifecycle_architecture.py

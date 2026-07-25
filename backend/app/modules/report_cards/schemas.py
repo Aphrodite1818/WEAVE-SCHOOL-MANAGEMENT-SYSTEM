@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from app.core.utils.normalization import normalize_class_name
 from app.modules.report_cards.models import ReportCardStatus
 
 
@@ -13,6 +14,13 @@ class InputBase(BaseModel):
 
 class OutputBase(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
+
+    @field_validator("class_name", mode="before", check_fields=False)
+    @classmethod
+    def normalize_response_class_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_class_name(value) or value
 
 
 class ReportCardGenerateRequest(InputBase):

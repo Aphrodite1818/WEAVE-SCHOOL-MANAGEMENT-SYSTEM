@@ -8,8 +8,13 @@
 
 from __future__ import annotations
 from uuid import UUID 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.cache.base import build_cache_key , global_prefix , tenant_prefix
-from app.core.cache.manager import CacheManager
+from app.core.cache.events import (
+    invalidate_cache_key_now,
+    queue_cache_key_invalidation,
+)
 
 
 
@@ -94,21 +99,58 @@ def student_dashboard_cache_key(tenant_id: UUID, student_id: UUID) -> str:
     )
 
 
-async def invalidate_parent_dashboard_cache(tenant_id: UUID, parent_id: UUID) -> None:
-    await CacheManager.delete(parent_dashboard_cache_key(tenant_id, parent_id))
+async def invalidate_parent_dashboard_cache(
+    tenant_id: UUID,
+    parent_id: UUID,
+    db: AsyncSession | None = None,
+) -> None:
+    key = parent_dashboard_cache_key(tenant_id, parent_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return
+    await invalidate_cache_key_now(key)
 
 
-async def invalidate_student_dashboard_cache(tenant_id: UUID, student_id: UUID) -> None:
-    await CacheManager.delete(student_dashboard_cache_key(tenant_id, student_id))
+async def invalidate_student_dashboard_cache(
+    tenant_id: UUID,
+    student_id: UUID,
+    db: AsyncSession | None = None,
+) -> None:
+    key = student_dashboard_cache_key(tenant_id, student_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return
+    await invalidate_cache_key_now(key)
 
 
-async def invalidate_teacher_dashboard_cache(tenant_id: UUID, teacher_id: UUID) -> None:
-    await CacheManager.delete(teacher_dashboard_cache_key(tenant_id, teacher_id))
+async def invalidate_teacher_dashboard_cache(
+    tenant_id: UUID,
+    teacher_id: UUID,
+    db: AsyncSession | None = None,
+) -> None:
+    key = teacher_dashboard_cache_key(tenant_id, teacher_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return
+    await invalidate_cache_key_now(key)
 
 
-async def invalidate_tenant_admin_dashboard_cache(tenant_id: UUID) -> None:
-    await CacheManager.delete(tenant_admin_dashboard_cache_key(tenant_id))
+async def invalidate_tenant_admin_dashboard_cache(
+    tenant_id: UUID,
+    db: AsyncSession | None = None,
+) -> None:
+    key = tenant_admin_dashboard_cache_key(tenant_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return
+    await invalidate_cache_key_now(key)
 
 
-async def invalidate_superadmin_dashboard_cache() -> None:
-    await CacheManager.delete(superadmin_dashboard_cache_key())
+async def invalidate_superadmin_dashboard_cache(
+    db: AsyncSession | None = None,
+) -> None:
+    key = superadmin_dashboard_cache_key()
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return
+    await invalidate_cache_key_now(key)

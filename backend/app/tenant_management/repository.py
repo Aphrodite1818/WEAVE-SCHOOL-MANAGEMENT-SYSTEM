@@ -52,64 +52,91 @@ class TenantRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_slug(db: AsyncSession, slug: str) -> Tenant | None:
+    async def get_by_slug(
+        db: AsyncSession,
+        slug: str,
+        *,
+        lock: bool = False,
+    ) -> Tenant | None:
         """Return a non-deleted tenant by slug."""
-        result = await db.execute(
-            select(Tenant).where(
-                Tenant.slug == slug,
-                Tenant.is_deleted == False
-            )
+        query = select(Tenant).where(
+            Tenant.slug == slug,
+            Tenant.is_deleted == False
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
     async def get_by_admission_number_prefix(
         db: AsyncSession,
         admission_number_prefix: str,
+        *,
+        lock: bool = False,
     ) -> Tenant | None:
         """Return a non-deleted tenant by admission number prefix."""
         normalized_prefix = admission_number_prefix.strip().upper()
-        result = await db.execute(
-            select(Tenant).where(
-                func.upper(Tenant.admission_number_prefix) == normalized_prefix,
-                Tenant.is_deleted == False,
-            )
+        query = select(Tenant).where(
+            func.upper(Tenant.admission_number_prefix) == normalized_prefix,
+            Tenant.is_deleted == False,
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_email(db: AsyncSession, email: str) -> Tenant | None:
+    async def get_by_email(
+        db: AsyncSession,
+        email: str,
+        *,
+        lock: bool = False,
+    ) -> Tenant | None:
         """Return a non-deleted tenant by email address."""
         normalized_email = _normalize_email(email)
-        result = await db.execute(
-            select(Tenant).where(
-                func.lower(Tenant.email) == normalized_email,
-                Tenant.is_deleted == False
-            )
+        query = select(Tenant).where(
+            func.lower(Tenant.email) == normalized_email,
+            Tenant.is_deleted == False
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_email_including_deleted(db: AsyncSession, email: str) -> Tenant | None:
+    async def get_by_email_including_deleted(
+        db: AsyncSession,
+        email: str,
+        *,
+        lock: bool = False,
+    ) -> Tenant | None:
         """Return a tenant by email address whether or not it has been soft-deleted."""
         normalized_email = _normalize_email(email)
-        result = await db.execute(
-            select(Tenant).where(
-                func.lower(Tenant.email) == normalized_email
-            )
+        query = select(Tenant).where(
+            func.lower(Tenant.email) == normalized_email
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_school_name(db: AsyncSession, school_name: str) -> Tenant | None:
+    async def get_by_school_name(
+        db: AsyncSession,
+        school_name: str,
+        *,
+        lock: bool = False,
+    ) -> Tenant | None:
         """Return a non-deleted tenant by normalized school name."""
         normalized_school_name = school_name.strip().lower()
-        result = await db.execute(
-            select(Tenant).where(
-                func.lower(Tenant.school_name) == normalized_school_name,
-                Tenant.is_deleted == False,
-            )
+        query = select(Tenant).where(
+            func.lower(Tenant.school_name) == normalized_school_name,
+            Tenant.is_deleted == False,
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod

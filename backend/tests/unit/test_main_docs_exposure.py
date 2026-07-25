@@ -23,7 +23,12 @@ def _build_app(is_development: bool):
 def test_docs_routes_are_enabled_in_development():
     client = TestClient(_build_app(is_development=True))
 
-    assert client.get("/docs").status_code == 200
+    docs_response = client.get("/docs")
+    assert docs_response.status_code == 200
+    docs_csp = docs_response.headers["Content-Security-Policy"]
+    assert "https://cdn.jsdelivr.net" in docs_csp
+    assert "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net" in docs_csp
+
     assert client.get("/redoc").status_code == 200
     assert client.get("/openapi.json").status_code == 200
 

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -16,9 +16,10 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.security import hash_password
+from app.config.security import hash_auth_secret, hash_password
+from app.config.settings import settings
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
-from app.modules.auth.service import UserInviteService
+from app.core.utils.normalization import normalize_staff_id
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
@@ -60,9 +61,6 @@ from app.modules.bulk_imports.validators import (
 )
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.email_outbox.service import EmailOutboxService
-from app.modules.parents.models import Parent, ParentAccountStatus
-from app.modules.parents.repository import ParentRepository
-from app.modules.parents.schemas import ParentCreate
 from app.modules.students.models import (
     AcademicStatus,
     Student,
@@ -76,10 +74,15 @@ from app.modules.students.schemas import StudentCreate
 from app.modules.students.service import StudentService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLimitCode
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
-from app.modules.teachers.repository import TeacherRepository
+from app.modules.teachers.models import TeacherInvitation, TeacherInvitationStatus
+from app.modules.teachers.repository import TeacherInvitationRepository, TeacherMembershipRepository
+from app.modules.teachers.service import TeacherInvitationService
 from app.modules.teachers.schemas import TeacherCreate
 from app.modules.tenant_admins.models import TenantAdmin
+from app.tenant_management.identifier_service import (
+    TenantIdentifierKind,
+    TenantIdentifierService,
+)
 from app.tenant_management.repository import TenantRepository
 
 
@@ -90,13 +93,6 @@ def utc_now() -> datetime:
     """Return timezone-aware UTC now."""
 
     return datetime.now(timezone.utc)
-
-
-def build_full_name(*, first_name: str | None, last_name: str | None, fallback: str) -> str:
-    """Build a display name for invite emails."""
-
-    name = " ".join(part for part in [first_name, last_name] if part).strip()
-    return name or fallback
 
 
 def compact_validation_error(exc: ValidationError) -> str:
@@ -199,7 +195,6 @@ class BulkImportService:
         return {
             ImportResourceType.STUDENTS: ResourceLimitCode.STUDENTS,
             ImportResourceType.TEACHERS: ResourceLimitCode.TEACHERS,
-            ImportResourceType.PARENTS: ResourceLimitCode.PARENTS,
         }[resource_type]
 
     @staticmethod
@@ -391,7 +386,7 @@ class BulkImportService:
                 )
                 continue
 
-            classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
+            classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
                 db=db,
                 tenant_id=tenant_id,
                 class_name=str(class_name),
@@ -514,164 +509,78 @@ class BulkImportService:
         normalized_row: dict[str, Any],
         school_name: str,
     ) -> dict[str, Any]:
-        """Create one teacher and queue invite email without committing."""
+        """Create one canonical teacher invitation and queue email without committing."""
 
         teacher_data = TeacherCreate(**normalized_row)
         normalized_email = str(teacher_data.email).strip().lower()
 
-        await AuthIdentityService.ensure_identifier_available(
-            db=db,
-            identifier=normalized_email,
-            identifier_type=IdentifierType.EMAIL,
+        pending = await TeacherInvitationRepository.get_pending_for_email(
+            db,
+            actor.tenant_id,
+            normalized_email,
+            lock=True,
+        )
+        if pending is not None:
+            raise ConflictException(
+                detail="A pending invitation already exists for this teacher."
+            )
+
+        tenant = await TenantIdentifierService.require_completed_onboarding(
+            db,
+            tenant_id=actor.tenant_id,
+            lock=True,
         )
 
-        existing_teacher = await TeacherRepository.get_by_email(db=db, email=normalized_email)
-        if existing_teacher is not None:
-            raise ConflictException(detail="A teacher with this email already exists")
-
         if teacher_data.staff_id is not None:
-            staff_id_exists = await TeacherRepository.staff_id_exists(
-                db=db,
-                tenant_id=actor.tenant_id,
-                staff_id=teacher_data.staff_id,
+            staff_id = normalize_staff_id(teacher_data.staff_id)
+            staff_id_exists = await TeacherMembershipRepository.staff_id_exists(
+                db,
+                actor.tenant_id,
+                staff_id,
             )
             if staff_id_exists:
                 raise ConflictException(detail="A teacher with this staff ID already exists")
+        else:
+            staff_id = await TenantIdentifierService.generate_identifier(
+                db,
+                tenant=tenant,
+                kind=TenantIdentifierKind.TEACHER,
+            )
 
-        temporary_password = secrets.token_urlsafe(32)
-        teacher = Teacher(
+        raw_token = secrets.token_urlsafe(48)
+        invitation = TeacherInvitation(
             tenant_id=actor.tenant_id,
-            email=normalized_email,
-            password_hash=hash_password(temporary_password),
-            first_name=teacher_data.first_name,
-            last_name=teacher_data.last_name,
-            staff_id=teacher_data.staff_id,
-            qualification=teacher_data.qualification,
-            specialization=teacher_data.specialization,
-            account_status=TeacherAccountStatus.PENDING,
-            status=TeacherStatus.ACTIVE,
-            is_verified=False,
-            is_active=True,
+            invited_email=normalized_email,
+            token_digest=hash_auth_secret(raw_token),
+            staff_id=staff_id,
+            job_title=teacher_data.specialization,
+            department=teacher_data.qualification,
+            employment_type=None,
+            status=TeacherInvitationStatus.PENDING,
+            expires_at=utc_now()
+            + timedelta(days=TeacherInvitationService.INVITATION_DAYS),
+            created_by_admin_id=actor.id,
+        )
+        invitation = await TeacherInvitationRepository.add(db, invitation)
+        invite_link = (
+            f"{settings.FRONTEND_APP_URL.rstrip('/')}"
+            f"/teacher-invitations/{raw_token}"
         )
 
-        created_teacher = await TeacherRepository.create_teacher(db=db, teacher=teacher)
-
-        await AuthIdentityService.create_for_actor(
-            db=db,
-            tenant_id=actor.tenant_id,
-            payload=AuthIdentityCreate(
-                identifier=normalized_email,
-                identifier_type=IdentifierType.EMAIL,
-                actor_type=ActorType.TEACHER,
-                actor_id=created_teacher.id,
-                is_active=True,
-            ),
-        )
-
-        invite_link = await UserInviteService.create_invite_record(
-            db=db,
-            email=normalized_email,
-            tenant_id=actor.tenant_id,
-        )
-
-        await EmailOutboxService.queue_user_invite_email(
+        await EmailOutboxService.queue_teacher_invitation_email(
             db=db,
             tenant_id=actor.tenant_id,
             email=normalized_email,
-            user_name=build_full_name(
-                first_name=created_teacher.first_name,
-                last_name=created_teacher.last_name,
-                fallback=normalized_email,
-            ),
             school_name=school_name,
             invite_link=invite_link,
             metadata_json={
                 "source": "bulk_import",
                 "actor_type": "teacher",
-                "actor_id": str(created_teacher.id),
+                "invitation_id": str(invitation.id),
             },
         )
 
-        return {"teacher": created_teacher, "invite_status": "queued"}
-
-    @staticmethod
-    async def create_parent_from_row(
-        db: AsyncSession,
-        *,
-        actor: TenantAdmin,
-        normalized_row: dict[str, Any],
-        school_name: str,
-    ) -> dict[str, Any]:
-        """Create one parent and queue invite email without committing."""
-
-        parent_data = ParentCreate(**normalized_row)
-        normalized_email = str(parent_data.email).strip().lower()
-
-        await AuthIdentityService.ensure_identifier_available(
-            db=db,
-            identifier=normalized_email,
-            identifier_type=IdentifierType.EMAIL,
-        )
-
-        if await ParentRepository.email_exists(db=db, email=normalized_email):
-            raise ConflictException(detail="A parent with this email already exists")
-
-        temporary_password = secrets.token_urlsafe(32)
-        parent = Parent(
-            tenant_id=actor.tenant_id,
-            email=normalized_email,
-            password_hash=hash_password(temporary_password),
-            first_name=parent_data.first_name,
-            last_name=parent_data.last_name,
-            phone_number=parent_data.phone_number,
-            occupation=parent_data.occupation,
-            address=parent_data.address,
-            emergency_phone=parent_data.emergency_phone,
-            account_status=ParentAccountStatus.PENDING,
-            is_verified=False,
-            is_active=True,
-            last_login_at=None,
-        )
-
-        created_parent = await ParentRepository.create_parent(db=db, parent=parent)
-
-        await AuthIdentityService.create_for_actor(
-            db=db,
-            tenant_id=actor.tenant_id,
-            payload=AuthIdentityCreate(
-                identifier=normalized_email,
-                identifier_type=IdentifierType.EMAIL,
-                actor_type=ActorType.PARENT,
-                actor_id=created_parent.id,
-                is_active=True,
-            ),
-        )
-
-        invite_link = await UserInviteService.create_invite_record(
-            db=db,
-            email=normalized_email,
-            tenant_id=actor.tenant_id,
-        )
-
-        await EmailOutboxService.queue_user_invite_email(
-            db=db,
-            tenant_id=actor.tenant_id,
-            email=normalized_email,
-            user_name=build_full_name(
-                first_name=created_parent.first_name,
-                last_name=created_parent.last_name,
-                fallback=normalized_email,
-            ),
-            school_name=school_name,
-            invite_link=invite_link,
-            metadata_json={
-                "source": "bulk_import",
-                "actor_type": "parent",
-                "actor_id": str(created_parent.id),
-            },
-        )
-
-        return {"parent": created_parent, "invite_status": "queued"}
+        return {"invitation": invitation, "invite_status": "queued"}
 
     @staticmethod
     async def process_valid_row(
@@ -712,33 +621,15 @@ class BulkImportService:
                 normalized_row=validation_result.normalized_row,
                 school_name=school_name,
             )
-            teacher: Teacher = created["teacher"]
+            invitation: TeacherInvitation = created["invitation"]
             return {
                 "row_number": validation_result.row_number,
                 "status": "created",
                 "invite_status": created["invite_status"],
-                "email": teacher.email,
-                "first_name": teacher.first_name,
-                "last_name": teacher.last_name,
-                "staff_id": teacher.staff_id,
-                "error_message": "",
-            }
-
-        if resource_type == ImportResourceType.PARENTS:
-            created = await BulkImportService.create_parent_from_row(
-                db=db,
-                actor=actor,
-                normalized_row=validation_result.normalized_row,
-                school_name=school_name,
-            )
-            parent: Parent = created["parent"]
-            return {
-                "row_number": validation_result.row_number,
-                "status": "created",
-                "invite_status": created["invite_status"],
-                "email": parent.email,
-                "first_name": parent.first_name,
-                "last_name": parent.last_name,
+                "email": invitation.invited_email,
+                "first_name": validation_result.normalized_row.get("first_name"),
+                "last_name": validation_result.normalized_row.get("last_name"),
+                "staff_id": invitation.staff_id,
                 "error_message": "",
             }
 
@@ -1176,7 +1067,7 @@ class BulkImportService:
         await db.commit()
         await AuthIdentityService.invalidate_after_commit(db)
 
-        if successful_rows > 0 and import_job.resource_type in {ImportResourceType.TEACHERS, ImportResourceType.PARENTS}:
+        if successful_rows > 0 and import_job.resource_type == ImportResourceType.TEACHERS:
             try:
                 from app.core.queue.arq import enqueue_email_outbox_batch
 

@@ -95,9 +95,9 @@ class Settings(BaseSettings):
 
     ALLOWED_ORIGINS: list[str] = Field(default_factory=list)
 
-    TWILIO_ACCOUNT_SID: str = Field(..., description="Twilio account SID")
-    TWILIO_AUTH_TOKEN: str = Field(..., description="Twilio auth token")
-    TWILIO_WHATSAPP_FROM: str = Field(..., description="Twilio WhatsApp number")
+    TWILIO_ACCOUNT_SID: str | None = Field(default=None, description="Twilio account SID")
+    TWILIO_AUTH_TOKEN: str | None = Field(default=None, description="Twilio auth token")
+    TWILIO_WHATSAPP_FROM: str | None = Field(default=None, description="Twilio WhatsApp number")
 
     # SMTP Settings for Emails (Optional for local testing)
     SMTP_HOST: str | None = Field(default=None, description="SMTP Server Host")
@@ -114,10 +114,14 @@ class Settings(BaseSettings):
     TENANT_ACTIVATION_EXPIRATION_HOURS: int = 48
 
     FRONTEND_APP_URL: str = Field(..., description="Frontend application URL")
+    EMAIL_BRAND_LOGO_URL: str | None = Field(
+        default=None,
+        description="Public HTTPS URL for the Weave logo used in HTML emails",
+    )
     STUDENT_ACCESS_CODE_EXPIRY_HOURS: int = 48
     STUDENT_ACCESS_CODE_LENGTH: int = 8
 
-    APP_SCRIPT_URL: str = Field(...)
+    APP_SCRIPT_URL: str | None = Field(default=None)
 
     PAYSTACK_SECRET_KEY: str | None = Field(default=None, description="Paystack secret key")
     PAYSTACK_BASE_URL: str = Field(default="https://api.paystack.co", description="Paystack API base URL")
@@ -150,8 +154,8 @@ class Settings(BaseSettings):
     LOGIN_IDENTIFIER_IP_FAIL_LIMIT_10M: int = Field(default=5, gt=0)
 
     OTP_EMAIL_COOLDOWN_SECONDS: int = Field(default=60, gt=0)
-    OTP_EMAIL_LIMIT_10M: int = Field(default=3, gt=0)
-    OTP_EMAIL_LIMIT_24H: int = Field(default=8, gt=0)
+    OTP_EMAIL_LIMIT_10M: int = Field(default=5, gt=0)
+    OTP_EMAIL_LIMIT_24H: int = Field(default=12, gt=0)
     OTP_IP_LIMIT_1H: int = Field(default=20, gt=0)
 
     OTP_VERIFY_EMAIL_FAIL_LIMIT_10M: int = Field(default=5, gt=0)

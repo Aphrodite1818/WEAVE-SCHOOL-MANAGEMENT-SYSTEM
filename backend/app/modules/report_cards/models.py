@@ -35,7 +35,7 @@ class ReportCard(BaseModel):
 
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("students.id", ondelete="CASCADE"),
+        ForeignKey("students.id", ondelete="RESTRICT"),
         nullable=False,
     )
     class_id: Mapped[uuid.UUID] = mapped_column(

@@ -5,28 +5,34 @@ const ROLE_CONFIG = {
     actorType: "tenant_admin",
     statusEndpoint: "/tenant-admin/onboarding-status",
     submitEndpoint: "/tenant-admin/tenant/onboarding",
+    submitMethod: "patch",
   },
   teacher: {
     actorType: "teacher",
-    statusEndpoint: "/teachers/me/onboarding-status",
-    submitEndpoint: "/teachers/me/profile",
+    statusEndpoint: "/teachers/accounts/me/onboarding-status",
+    submitEndpoint: "/teachers/accounts/me/onboarding",
+    submitMethod: "post",
   },
   parent: {
     actorType: "parent",
-    statusEndpoint: "/parents/me/onboarding-status",
-    submitEndpoint: "/parents/me/profile",
+    statusEndpoint: "/parents/accounts/me/onboarding-status",
+    submitEndpoint: "/parents/accounts/me/onboarding",
+    submitMethod: "post",
   },
   student: {
     actorType: "student",
     statusEndpoint: "/students/me/onboarding-status",
-    submitEndpoint: "/students/me/profile",
+    submitEndpoint: "/students/me/onboarding",
+    submitMethod: "post",
   },
 };
 
 const ACTOR_ROLE_MAP = {
   tenant_admin: "admin",
   teacher: "teacher",
+  teacher_account: "teacher",
   parent: "parent",
+  parent_account: "parent",
   student: "student",
   superadmin: "superadmin",
 };
@@ -57,7 +63,7 @@ const buildSessionUserFromStatus = (role, status, currentUser = authSession.getU
   const nextUser = {
     ...(currentUser || {}),
     role: normalizedRole,
-    actor_type: roleConfig.actorType,
+    actor_type: currentUser?.actor_type || roleConfig.actorType,
   };
 
   const idField = ID_FIELD_BY_ROLE[normalizedRole];
@@ -87,10 +93,15 @@ const buildSessionUserFromStatus = (role, status, currentUser = authSession.getU
     nextUser.first_name = status.current_values?.first_name || nextUser.first_name;
     nextUser.last_name = status.current_values?.last_name || nextUser.last_name;
     nextUser.profile_completed = status.profile_completed;
+    nextUser.onboarding_required = !status.profile_completed;
   }
 
-  authSession.setUser(nextUser);
-  authSession.setRole(normalizedRole);
+  authSession.setUser(nextUser, {
+    remember: authSession.getRememberPreference?.() ?? true,
+  });
+  authSession.setRole(normalizedRole, {
+    remember: authSession.getRememberPreference?.() ?? true,
+  });
   return nextUser;
 };
 
@@ -122,7 +133,8 @@ export const onboardingService = {
       throw new Error("Unsupported onboarding role.");
     }
 
-    return api.patch(roleConfig.submitEndpoint, payload);
+    const submit = api[roleConfig.submitMethod] || api.patch;
+    return submit(roleConfig.submitEndpoint, payload);
   },
 
   updateSessionUserFromStatus(role, status) {

@@ -268,6 +268,11 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
 
 const persistMaintenanceState = (data = {}) => {
   if (data?.maintenance_mode !== true) return;
+  const currentUser = authSession.getUser?.() || {};
+  const currentRole = String(
+    currentUser.role || currentUser.actor_type || authSession.getRole?.() || "",
+  ).toLowerCase();
+  if (currentRole === "superadmin") return;
 
   const payload = {
     message:

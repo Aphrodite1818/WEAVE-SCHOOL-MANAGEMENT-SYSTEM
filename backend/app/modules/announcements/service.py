@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config.settings import settings
+from app.core.cache.events import flush_cache_invalidation_events
 from app.core.cache.manager import CacheManager
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.modules.announcements.cache import (
@@ -138,23 +139,31 @@ class AnnouncementService:
         return "global" if isinstance(actor, SuperAdmin) else actor.tenant_id
 
     @staticmethod
-    async def _invalidate_dashboard_for_creator(announcement: Announcement) -> None:
-        await invalidate_tenant_admin_dashboard_cache(announcement.tenant_id)
+    async def _invalidate_dashboard_for_creator(
+        db: AsyncSession,
+        announcement: Announcement,
+    ) -> None:
+        await invalidate_tenant_admin_dashboard_cache(announcement.tenant_id, db=db)
         if announcement.created_by_actor_type == AnnouncementActorType.TEACHER:
             await invalidate_teacher_dashboard_cache(
                 announcement.tenant_id,
                 announcement.created_by_actor_id,
+                db=db,
             )
 
     @staticmethod
-    async def _invalidate_after_announcement_write(announcement: Announcement) -> None:
-        await invalidate_announcement_tenant_cache(announcement.tenant_id)
+    async def _invalidate_after_announcement_write(
+        db: AsyncSession,
+        announcement: Announcement,
+    ) -> None:
+        await invalidate_announcement_tenant_cache(announcement.tenant_id, db=db)
         if announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN:
-            await invalidate_announcement_tenant_cache("global")
-        await AnnouncementService._invalidate_dashboard_for_creator(announcement)
+            await invalidate_announcement_tenant_cache("global", db=db)
+        await AnnouncementService._invalidate_dashboard_for_creator(db, announcement)
 
     @staticmethod
     async def _invalidate_after_read(
+        db: AsyncSession,
         actor: TenantAdmin | Teacher | Parent | Student,
     ) -> None:
         actor_type = AnnouncementService._actor_cache_type(actor)
@@ -162,11 +171,12 @@ class AnnouncementService:
             actor.tenant_id,
             actor_type,
             actor.id,
+            db=db,
         )
         if isinstance(actor, Parent):
-            await invalidate_parent_dashboard_cache(actor.tenant_id, actor.id)
+            await invalidate_parent_dashboard_cache(actor.tenant_id, actor.id, db=db)
         elif isinstance(actor, Student):
-            await invalidate_student_dashboard_cache(actor.tenant_id, actor.id)
+            await invalidate_student_dashboard_cache(actor.tenant_id, actor.id, db=db)
 
     @staticmethod
     def _validate_target_shape(target: AnnouncementTargetCreate) -> None:
@@ -176,16 +186,16 @@ class AnnouncementService:
             "role": role,
             "class_id": target.class_id,
             "student_id": target.student_id,
-            "parent_id": target.parent_id,
-            "teacher_id": target.teacher_id,
+            "parent_membership_id": target.parent_membership_id,
+            "teacher_membership_id": target.teacher_membership_id,
         }
         expected = {
             AnnouncementTargetType.ALL: set(),
             AnnouncementTargetType.ROLE: {"role"},
             AnnouncementTargetType.CLASS: {"class_id"},
-            AnnouncementTargetType.SPECIFIC_PARENT: {"parent_id"},
+            AnnouncementTargetType.SPECIFIC_PARENT: {"parent_membership_id"},
             AnnouncementTargetType.SPECIFIC_STUDENT: {"student_id"},
-            AnnouncementTargetType.SPECIFIC_TEACHER: {"teacher_id"},
+            AnnouncementTargetType.SPECIFIC_TEACHER: {"teacher_membership_id"},
             AnnouncementTargetType.PARENTS_OF_STUDENT: {"student_id"},
             AnnouncementTargetType.PARENTS_OF_CLASS: {"class_id"},
         }[target_type]
@@ -201,8 +211,16 @@ class AnnouncementService:
     ) -> None:
         class_ids = {target.class_id for target in targets if target.class_id}
         student_ids = {target.student_id for target in targets if target.student_id}
-        parent_ids = {target.parent_id for target in targets if target.parent_id}
-        teacher_ids = {target.teacher_id for target in targets if target.teacher_id}
+        parent_ids = {
+            target.parent_membership_id
+            for target in targets
+            if target.parent_membership_id
+        }
+        teacher_ids = {
+            target.teacher_membership_id
+            for target in targets
+            if target.teacher_membership_id
+        }
 
         checks = [
             (ClassRoom, class_ids, "class"),
@@ -239,7 +257,7 @@ class AnnouncementService:
                     select(func.count()).select_from(ClassRoom).where(
                         ClassRoom.tenant_id == teacher.tenant_id,
                         ClassRoom.id.in_(class_ids),
-                        ClassRoom.teacher_id == teacher.id,
+                        ClassRoom.teacher_membership_id == teacher.id,
                     )
                 )
             ).scalar_one()
@@ -258,7 +276,7 @@ class AnnouncementService:
                     ).where(
                         Student.tenant_id == teacher.tenant_id,
                         Student.id.in_(student_ids),
-                        ClassRoom.teacher_id == teacher.id,
+                        ClassRoom.teacher_membership_id == teacher.id,
                     )
                 )
             ).scalar_one()
@@ -310,8 +328,8 @@ class AnnouncementService:
                 role=AnnouncementService._coerce_role(target.role),
                 class_id=target.class_id,
                 student_id=target.student_id,
-                parent_id=target.parent_id,
-                teacher_id=target.teacher_id,
+                parent_membership_id=target.parent_membership_id,
+                teacher_membership_id=target.teacher_membership_id,
             )
             for target in targets
         ]
@@ -347,8 +365,9 @@ class AnnouncementService:
         db.add_all(targets)
         await db.flush()
         await db.refresh(announcement, ["targets"])
+        await AnnouncementService._invalidate_after_announcement_write(db, announcement)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(announcement)
+        await flush_cache_invalidation_events(db)
         return announcement
 
     @staticmethod
@@ -393,9 +412,9 @@ class AnnouncementService:
             await db.flush()
             await db.refresh(announcement, ["targets"])
             announcements.append(announcement)
+            await AnnouncementService._invalidate_after_announcement_write(db, announcement)
         await db.commit()
-        for announcement in announcements:
-            await AnnouncementService._invalidate_after_announcement_write(announcement)
+        await flush_cache_invalidation_events(db)
         return announcements
 
     @staticmethod
@@ -450,7 +469,7 @@ class AnnouncementService:
             actor=actor,
             announcement_id=announcement_id,
         )
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
         targets = update_data.pop("targets", None)
         if "category" in update_data and update_data["category"] is not None:
             update_data["category"] = AnnouncementService._coerce_category(update_data["category"])
@@ -473,8 +492,9 @@ class AnnouncementService:
                 AnnouncementService._build_targets(announcement.tenant_id, announcement.id, targets),
             )
         saved = await AnnouncementRepository.save(db, announcement)
+        await AnnouncementService._invalidate_after_announcement_write(db, saved)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(saved)
+        await flush_cache_invalidation_events(db)
         return saved
 
     @staticmethod
@@ -489,8 +509,9 @@ class AnnouncementService:
         announcement.status = AnnouncementStatus.PUBLISHED
         announcement.publish_at = publish_at or announcement.publish_at or AnnouncementService._now()
         saved = await AnnouncementRepository.save(db, announcement)
+        await AnnouncementService._invalidate_after_announcement_write(db, saved)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(saved)
+        await flush_cache_invalidation_events(db)
         return saved
 
     @staticmethod
@@ -503,8 +524,9 @@ class AnnouncementService:
         announcement = await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
         announcement.status = AnnouncementStatus.ARCHIVED
         saved = await AnnouncementRepository.save(db, announcement)
+        await AnnouncementService._invalidate_after_announcement_write(db, saved)
         await db.commit()
-        await AnnouncementService._invalidate_after_announcement_write(saved)
+        await flush_cache_invalidation_events(db)
         return saved
 
     @staticmethod
@@ -517,11 +539,12 @@ class AnnouncementService:
         announcement = await AnnouncementService._get_manageable(db, actor=actor, announcement_id=announcement_id)
         tenant_id = announcement.tenant_id
         await AnnouncementRepository.delete_announcement(db, announcement)
-        await db.commit()
-        await invalidate_announcement_tenant_cache(tenant_id)
+        await invalidate_announcement_tenant_cache(tenant_id, db=db)
         if announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN:
-            await invalidate_announcement_tenant_cache("global")
-        await invalidate_tenant_admin_dashboard_cache(tenant_id)
+            await invalidate_announcement_tenant_cache("global", db=db)
+        await invalidate_tenant_admin_dashboard_cache(tenant_id, db=db)
+        await db.commit()
+        await flush_cache_invalidation_events(db)
 
     @staticmethod
     async def list_manageable(
@@ -648,7 +671,7 @@ class AnnouncementService:
             await db.execute(
                 select(StudentParentLink.student_id).where(
                     StudentParentLink.tenant_id == parent.tenant_id,
-                    StudentParentLink.parent_id == parent.id,
+                    StudentParentLink.parent_membership_id == parent.id,
                 )
             )
         ).scalars().all()
@@ -796,7 +819,7 @@ class AnnouncementService:
                 direct_filters.append(
                     and_(
                         AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_PARENT,
-                        AnnouncementTarget.parent_id == actor.id,
+                        AnnouncementTarget.parent_membership_id == actor.id,
                     )
                 )
                 student_ids = await AnnouncementService._parent_student_ids(db, actor)
@@ -898,6 +921,7 @@ class AnnouncementService:
             actor_id=actor.id,
             status=status,
         )
+        await AnnouncementService._invalidate_after_read(db, actor)
         await db.commit()
-        await AnnouncementService._invalidate_after_read(actor)
+        await flush_cache_invalidation_events(db)
         return read

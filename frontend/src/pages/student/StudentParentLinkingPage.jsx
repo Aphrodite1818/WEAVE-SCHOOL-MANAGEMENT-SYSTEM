@@ -4,15 +4,25 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
+import Modal from "../../components/ui/Modal";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import StatCard from "../../components/shared/StatCard";
 import { getErrorMessage } from "../../services/api";
 import { studentService } from "../../services/studentService";
-import { displayName } from "../../utils/user";
 import { cleanText } from "../../utils/academicDashboard";
 import { asStatus, statusVariant } from "./studentPageUtils";
 import { useToast } from "../../hooks/useToast";
+
+const parentDisplayName = (record) => {
+  const firstName = record?.parent_first_name || record?.parent?.first_name;
+  const lastName = record?.parent_last_name || record?.parent?.last_name;
+  const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+  return name || record?.parent_email || record?.parent?.email || "Parent contact";
+};
+
+const parentEmail = (record) =>
+  record?.parent_email || record?.parent?.email || "No email provided";
 
 function StudentParentLinkingPage() {
   const [parentLinks, setParentLinks] = useState([]);
@@ -20,7 +30,9 @@ function StudentParentLinkingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [actionId, setActionId] = useState(null);
-  const { showSuccess, showError } = useToast();
+  const [rejectionRequest, setRejectionRequest] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const { showSuccess, showError, showWarning } = useToast();
 
   const loadParentLinks = async () => {
     const [linksResponse, requestsResponse] = await Promise.all([
@@ -60,18 +72,32 @@ function StudentParentLinkingPage() {
     };
   }, []);
 
-  const handleRequestResponse = async (requestId, action) => {
+  const handleRequestResponse = async (requestId, action, reason = null) => {
     setActionId(requestId);
 
     try {
-      await studentService.respondToParentLinkRequest(requestId, { action });
+      await studentService.respondToParentLinkRequest(requestId, {
+        action,
+        ...(reason ? { reason } : {}),
+      });
       await loadParentLinks();
-      showSuccess(action === "approve" ? "Parent link approved." : "Parent link declined.");
+      showSuccess(action === "approve" ? "Parent link approved." : "Parent link rejected.");
+      setRejectionRequest(null);
+      setRejectionReason("");
     } catch (error) {
       showError(getErrorMessage(error, "Could not update parent link request."));
     } finally {
       setActionId(null);
     }
+  };
+
+  const submitRejection = () => {
+    const reason = rejectionReason.trim();
+    if (reason.length < 3) {
+      showWarning("Enter a short reason before rejecting this request.");
+      return;
+    }
+    handleRequestResponse(rejectionRequest.id, "reject", reason);
   };
 
   const summary = useMemo(() => {
@@ -94,6 +120,54 @@ function StudentParentLinkingPage() {
       title="Parent Linking"
       description="Manage who can view your academic record and receive school updates."
     >
+      <Modal
+        open={Boolean(rejectionRequest)}
+        onClose={() => {
+          if (actionId) return;
+          setRejectionRequest(null);
+          setRejectionReason("");
+        }}
+        title="Reject parent link request"
+        description={`Explain why ${parentDisplayName(rejectionRequest)} should not be linked to your student profile.`}
+        closeOnOverlay={!actionId}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(actionId)}
+              onClick={() => {
+                setRejectionRequest(null);
+                setRejectionReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={Boolean(actionId) || rejectionReason.trim().length < 3}
+              onClick={submitRejection}
+            >
+              {actionId ? "Rejecting..." : "Reject request"}
+            </Button>
+          </div>
+        }
+      >
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-semibold text-text-soft">Reason</span>
+          <textarea
+            value={rejectionReason}
+            onChange={(event) => setRejectionReason(event.target.value)}
+            rows={4}
+            maxLength={500}
+            placeholder="For example: I do not recognize this parent account."
+            className="input-base min-h-28 resize-y"
+          />
+          <span className="mt-1 block text-xs text-text-muted">{rejectionReason.length}/500</span>
+        </label>
+      </Modal>
+
       {loadError && (
         <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {loadError}
@@ -130,16 +204,16 @@ function StudentParentLinkingPage() {
       <Card className="p-4 sm:p-5 md:p-6">
         <h2 className="section-title">Pending requests</h2>
         <p className="mt-1 text-sm text-text-muted">
-          These parents have asked to be linked to your profile. Review before approving.
+          These parents accepted a school invitation and requested access to your profile. Review each request before approving it.
         </p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mobile-scroll-list mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {summary.pending.length === 0 ? (
             <div className="sm:col-span-2 xl:col-span-3">
               <EmptyState
                 icon={UserRound}
                 title="No pending requests"
-                description="New parent access requests will appear here for approval."
+                description="Accepted parent invitations will appear here for approval."
               />
             </div>
           ) : (
@@ -148,18 +222,18 @@ function StudentParentLinkingPage() {
                 <div className="flex h-full flex-col gap-4">
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-sm font-bold text-primary">
-                      {displayName(request.parent).slice(0, 2).toUpperCase()}
+                      {parentDisplayName(request).slice(0, 2).toUpperCase()}
                     </span>
                     <div className="min-w-0">
                       <p className="break-words text-sm font-semibold text-text">
-                        {displayName(request.parent)} · {cleanText(request.relationship_type)}
+                        {parentDisplayName(request)} · {cleanText(request.relationship_type)}
                       </p>
                       <p className="mt-1 break-words text-xs text-text-muted">
-                        {request.parent?.email || "No email provided"}
+                        {parentEmail(request)}
                       </p>
                     </div>
                   </div>
-                  <div className="mt-auto grid gap-2 grid-cols-2">
+                  <div className="mt-auto grid grid-cols-2 gap-2">
                     <Button
                       type="button"
                       onClick={() => handleRequestResponse(request.id, "approve")}
@@ -171,10 +245,13 @@ function StudentParentLinkingPage() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => handleRequestResponse(request.id, "reject")}
+                      onClick={() => {
+                        setRejectionRequest(request);
+                        setRejectionReason("");
+                      }}
                       disabled={actionId === request.id}
                     >
-                      Decline
+                      Reject
                     </Button>
                   </div>
                 </div>
@@ -188,7 +265,7 @@ function StudentParentLinkingPage() {
         <h2 className="section-title">Linked contacts</h2>
         <p className="mt-1 text-sm text-text-muted">People currently connected to your academic record.</p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mobile-scroll-list mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {parentLinks.length === 0 ? (
             <div className="sm:col-span-2 xl:col-span-3">
               <EmptyState
@@ -203,14 +280,14 @@ function StudentParentLinkingPage() {
                 <div className="flex h-full flex-col gap-4">
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-sm font-bold text-primary">
-                      {displayName(link.parent).slice(0, 2).toUpperCase()}
+                      {parentDisplayName(link).slice(0, 2).toUpperCase()}
                     </span>
                     <div className="min-w-0">
                       <p className="break-words text-sm font-semibold text-text">
-                        {displayName(link.parent)} · {cleanText(link.relationship_type)}
+                        {parentDisplayName(link)} · {cleanText(link.relationship_type)}
                       </p>
                       <p className="mt-1 break-words text-xs text-text-muted">
-                        {link.parent?.email || "No email provided"}
+                        {parentEmail(link)}
                       </p>
                     </div>
                   </div>

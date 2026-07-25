@@ -1,4 +1,4 @@
-import { Activity, RefreshCw } from "lucide-react";
+import { Activity } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -12,7 +12,6 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
-import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import {
   formatLimitValue,
@@ -104,23 +103,10 @@ function UsagePage() {
     entitlements,
     planCode,
     isLoading,
-    isRefreshing,
     errors,
-    refreshSubscriptionState,
   } = useSubscription();
   const usageItems = buildUsageItems(entitlements);
   const limitedUsageItems = usageItems.filter((item) => item.limit !== null);
-
-  const refreshAction = (
-    <Button
-      variant="outline"
-      onClick={() => refreshSubscriptionState()}
-      disabled={isLoading || isRefreshing}
-    >
-      <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-      {isRefreshing ? "Refreshing..." : "Refresh"}
-    </Button>
-  );
 
   if (isLoading && !entitlements) {
     return (
@@ -134,7 +120,6 @@ function UsagePage() {
                   Track actual resource usage against your current plan limits.
                 </p>
               </div>
-              {refreshAction}
             </div>
           </div>
           <LoadingState label="Loading usage..." />
@@ -158,7 +143,6 @@ function UsagePage() {
                 Track actual resource usage against your current plan limits.
               </p>
             </div>
-            {refreshAction}
           </div>
         </div>
         <div className="space-y-5">

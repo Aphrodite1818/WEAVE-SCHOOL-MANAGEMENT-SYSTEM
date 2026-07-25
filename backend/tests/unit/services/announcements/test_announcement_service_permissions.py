@@ -29,8 +29,6 @@ async def test_teacher_cannot_broadcast_to_all() -> None:
     teacher = Teacher(
         id=uuid4(),
         tenant_id=uuid4(),
-        email="teacher@example.com",
-        password_hash="hashed",
     )
 
     with pytest.raises(ForbiddenException):

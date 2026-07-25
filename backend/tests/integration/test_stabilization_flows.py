@@ -8,14 +8,21 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.security import create_access_token, hash_auth_secret, hash_password
+from app.config.security import create_access_token, hash_auth_secret, hash_otp, hash_password
 from app.config.settings import settings
 from app.core.dependencies.db import get_db
 from app.main import app
-from app.modules.auth.models import AuthPurpose, AuthRecord
+from app.modules.auth.models import AuthPurpose, AuthRecord, AuthSession, AuthSessionActorType
+from app.modules.auth.otp_service import OTPService
+from app.modules.auth.schemas import VerifyOTP
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
 from app.modules.classes.models import ClassRoom
-from app.modules.parents.models import Parent, ParentAccountStatus
+from app.modules.parents.models import (
+    Parent,
+    ParentAccountStatus,
+    ParentInvitation,
+    ParentInvitationStatus,
+)
 from app.modules.students.models import (
     Gender,
     Student,
@@ -26,7 +33,15 @@ from app.modules.students.models import (
 )
 from app.modules.subjects.models import Subject
 from app.modules.superadmin.models import SuperAdmin
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
+from app.modules.teachers.models import (
+    Teacher,
+    TeacherAccount,
+    TeacherAccountStatus,
+    TeacherInvitation,
+    TeacherInvitationStatus,
+    TeacherMembershipStatus,
+    TeacherStatus,
+)
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.tenant_management.models import SubscriptionPlan, Tenant, TenantStatus, TenantVerificationStatus
 
@@ -156,6 +171,48 @@ async def create_teacher(
     return teacher
 
 
+async def create_teacher_account_with_membership(
+    db_session: AsyncSession,
+    *,
+    tenant: Tenant,
+    email: str,
+) -> tuple[TeacherAccount, Teacher]:
+    account = TeacherAccount(
+        email=email,
+        password_hash=hash_password("TeacherPass123"),
+        first_name="Tola",
+        last_name="Teacher",
+        account_status=TeacherAccountStatus.ACTIVE,
+        is_verified=True,
+        is_active=True,
+    )
+    db_session.add(account)
+    await db_session.flush()
+    await db_session.refresh(account)
+
+    membership = Teacher(
+        tenant_id=tenant.id,
+        teacher_account_id=account.id,
+        staff_id=f"TCH-{email.split('@')[0]}",
+        job_title="Teacher",
+        status=TeacherMembershipStatus.ACTIVE,
+        joined_at=datetime.now(timezone.utc),
+    )
+    db_session.add(membership)
+    await db_session.flush()
+    await db_session.refresh(membership)
+
+    await create_auth_identity(
+        db_session,
+        tenant_id=None,
+        identifier=email,
+        identifier_type=IdentifierType.EMAIL,
+        actor_type=ActorType.TEACHER_ACCOUNT,
+        actor_id=account.id,
+    )
+    return account, membership
+
+
 async def create_parent(
     db_session: AsyncSession,
     *,
@@ -225,27 +282,6 @@ async def create_student(
     return student
 
 
-async def create_user_invite(
-    db_session: AsyncSession,
-    *,
-    tenant: Tenant,
-    email: str,
-) -> tuple[AuthRecord, str]:
-    raw_token = f"token-{email.replace('@', '-at-')}"
-    record = AuthRecord(
-        tenant_id=tenant.id,
-        email=email,
-        hashed_value=hash_auth_secret(raw_token),
-        purpose=AuthPurpose.USER_INVITE,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=4),
-        is_used=False,
-    )
-    db_session.add(record)
-    await db_session.flush()
-    await db_session.refresh(record)
-    return record, raw_token
-
-
 def auth_headers(*, actor_id, actor_type: str, role: str, email: str, tenant_id=None) -> dict[str, str]:
     payload = {
         "sub": str(actor_id),
@@ -261,86 +297,161 @@ def auth_headers(*, actor_id, actor_type: str, role: str, email: str, tenant_id=
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("actor_kind", "email"),
-    [
-        ("teacher", "teacher@example.com"),
-        ("parent", "parent@example.com"),
-    ],
-)
-async def test_accept_invite_returns_success_and_rejects_reuse(
-    api_client: AsyncClient,
+async def session_auth_headers(
     db_session: AsyncSession,
-    actor_kind: str,
+    *,
+    actor_id,
+    actor_type: AuthSessionActorType,
+    role: str,
     email: str,
-) -> None:
-    tenant = await create_tenant(db_session, suffix=actor_kind)
-
-    if actor_kind == "teacher":
-        actor = await create_teacher(
-            db_session,
-            tenant=tenant,
-            email=email,
-            verified=False,
-            account_status=TeacherAccountStatus.PENDING,
+    tenant_id=None,
+) -> dict[str, str]:
+    session_jti = f"test-{actor_type.value}-{actor_id}"
+    db_session.add(
+        AuthSession(
+            tenant_id=tenant_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            session_jti=session_jti,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
-    else:
-        actor = await create_parent(
-            db_session,
-            tenant=tenant,
-            email=email,
-            verified=False,
-            account_status=ParentAccountStatus.PENDING,
-        )
-
-    invite_record, raw_token = await create_user_invite(
-        db_session,
-        tenant=tenant,
-        email=email,
     )
-    await db_session.commit()
+    await db_session.flush()
 
-    response = await api_client.post(
+    payload = {
+        "sub": str(actor_id),
+        "actor_type": actor_type.value,
+        "account_type": (
+            AuthSessionActorType.TEACHER_ACCOUNT.value
+            if actor_type == AuthSessionActorType.TEACHER
+            else actor_type.value
+        ),
+        "role": role,
+        "email": email,
+    }
+    if tenant_id is not None:
+        payload["tenant_id"] = str(tenant_id)
+
+    token = create_access_token(data=payload, session_jti=session_jti)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.asyncio
+async def test_removed_legacy_auth_invite_endpoints_return_404(
+    api_client: AsyncClient,
+) -> None:
+    accept_response = await api_client.post(
         "/api/v1/auth/accept-invite",
         json={
-            "email": email,
+            "email": "removed@example.com",
             "password": "InvitePass123",
-            "token": raw_token,
+            "token": "removed-token-value-that-is-long-enough",
         },
+    )
+    status_response = await api_client.get(
+        "/api/v1/auth/invite-status",
+        params={"token": "removed-token-value-that-is-long-enough"},
+    )
+    duplicate_membership_response = await api_client.post(
+        "/api/v1/auth/memberships/select",
+        json={"membership_id": "00000000-0000-0000-0000-000000000000"},
+    )
+
+    assert accept_response.status_code == 404
+    assert status_response.status_code == 404
+    assert duplicate_membership_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_teacher_membership_token_can_access_teacher_account_routes(
+    api_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    tenant = await create_tenant(db_session, suffix="teacher-account-route")
+    account, membership = await create_teacher_account_with_membership(
+        db_session,
+        tenant=tenant,
+        email="teacher-account-route@example.com",
+    )
+
+    response = await api_client.get(
+        "/api/v1/teachers/accounts/me",
+        headers=await session_auth_headers(
+            db_session,
+            actor_id=membership.id,
+            actor_type=AuthSessionActorType.TEACHER,
+            role="teacher",
+            email=account.email,
+            tenant_id=tenant.id,
+        ),
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["access_token"]
-    assert payload["role"] == actor_kind
-    assert payload["actor_type"] == actor_kind
-    assert payload["account_type"] == actor_kind
+    assert payload["id"] == str(account.id)
+    assert payload["email"] == account.email
 
-    await db_session.refresh(actor)
-    await db_session.refresh(invite_record)
 
-    assert invite_record.is_used is True
-    assert actor.is_active is True
-    assert actor.is_verified is True
-    assert actor.last_login_at is not None
-
-    if actor_kind == "teacher":
-        assert actor.account_status == TeacherAccountStatus.ACTIVE
-    else:
-        assert actor.account_status == ParentAccountStatus.ACTIVE
-
-    second_response = await api_client.post(
-        "/api/v1/auth/accept-invite",
-        json={
-            "email": email,
-            "password": "InvitePass123",
-            "token": raw_token,
-        },
+@pytest.mark.asyncio
+async def test_teacher_account_token_cannot_access_teacher_membership_me(
+    api_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    tenant = await create_tenant(db_session, suffix="teacher-me-strict")
+    account, _ = await create_teacher_account_with_membership(
+        db_session,
+        tenant=tenant,
+        email="teacher-me-strict@example.com",
     )
 
-    assert second_response.status_code == 400
-    assert "already been used" in second_response.json()["detail"].lower()
+    response = await api_client.get(
+        "/api/v1/teachers/me",
+        headers=await session_auth_headers(
+            db_session,
+            actor_id=account.id,
+            actor_type=AuthSessionActorType.TEACHER_ACCOUNT,
+            role="teacher",
+            email=account.email,
+        ),
+    )
+
+    assert response.status_code == 403
+    assert "teacher membership credentials" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_password_reset_otp_verification_hashes_reset_token_without_name_error(
+    db_session: AsyncSession,
+) -> None:
+    tenant = await create_tenant(db_session, suffix="otp-reset-token")
+    account, _ = await create_teacher_account_with_membership(
+        db_session,
+        tenant=tenant,
+        email="otp-reset-token@example.com",
+    )
+    db_session.add(
+        AuthRecord(
+            tenant_id=None,
+            email=account.email,
+            hashed_value=hash_otp("123456"),
+            purpose=AuthPurpose.PASSWORD_RESET,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+            is_used=False,
+        )
+    )
+    await db_session.flush()
+
+    result = await OTPService.verify_otp(
+        db_session,
+        VerifyOTP(
+            email=account.email,
+            code="123456",
+            purpose=AuthPurpose.PASSWORD_RESET.value,
+        ),
+    )
+
+    assert result["detail"] == "OTP verified successfully."
+    assert result["reset_token"]
 
 
 @pytest.mark.asyncio
@@ -616,13 +727,26 @@ async def test_analytics_endpoints_return_real_counts(
         )
     )
     db_session.add(
-        AuthRecord(
+        TeacherInvitation(
             tenant_id=active_tenant.id,
-            email="teacher-analytics@example.com",
-            hashed_value=hash_auth_secret("pending-invite-token"),
-            purpose=AuthPurpose.USER_INVITE,
+            invited_email="new-teacher@example.com",
+            token_digest=hash_auth_secret("pending-teacher-invite-token"),
+            status=TeacherInvitationStatus.PENDING,
             expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
-            is_used=False,
+            created_by_admin_id=admin.id,
+        )
+    )
+    db_session.add(
+        ParentInvitation(
+            tenant_id=active_tenant.id,
+            student_id=student.id,
+            invited_email="new-parent@example.com",
+            relationship_type="guardian",
+            admission_number_snapshot=student.admission_number,
+            token_digest=hash_auth_secret("pending-parent-invite-token"),
+            status=ParentInvitationStatus.PENDING,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            created_by_admin_id=admin.id,
         )
     )
     db_session.add(
@@ -681,5 +805,6 @@ async def test_analytics_endpoints_return_real_counts(
     assert tenant_payload["stats"]["total_parents"] == 2
     assert tenant_payload["stats"]["total_classes"] == 1
     assert tenant_payload["stats"]["total_subjects"] == 1
-    assert tenant_payload["stats"]["pending_user_invites"] == 1
+    assert tenant_payload["stats"]["pending_teacher_invites"] == 1
+    assert tenant_payload["stats"]["pending_parent_invites"] == 1
     assert tenant_payload["stats"]["pending_parent_link_requests"] == 1

@@ -354,25 +354,6 @@ function ResourcePage({ config }) {
     }
   };
 
-  const handleRefresh = async () => {
-    try {
-      const nextContext = await loadContext();
-      await loadItems(filters, nextContext);
-      showSuccess(`${config.pluralLabel} refreshed successfully.`);
-    } catch (err) {
-      const parsed = parseApiError(err, "Failed to refresh page data.");
-
-      if (config.allowUnavailable && parsed.status === 404) {
-        setItems([]);
-        setTotal(0);
-        setIsUnavailable(true);
-        showError(parsed.message);
-      } else {
-        showError(parsed.message);
-      }
-    }
-  };
-
   const clearFilters = () => {
     setFilters(resolveConfig(config.initialFilters, context) || {});
   };
@@ -451,9 +432,6 @@ function ResourcePage({ config }) {
                 {total} record{total === 1 ? "" : "s"} found.
               </p>
             </div>
-            <Button variant="outline" onClick={handleRefresh} disabled={isLoading} className="w-full md:w-auto">
-              Refresh
-            </Button>
           </div>
 
           {isUnavailable ? (
@@ -521,7 +499,7 @@ function ResourcePage({ config }) {
 
           {!isUnavailable && (
             <>
-            <div className="mt-5 grid gap-2 md:hidden">
+            <div className="resource-page-mobile-list mobile-scroll-list mt-5 grid gap-2 md:hidden">
               {items.length === 0 ? (
                 <div className="rounded-xl border border-border bg-surface-muted/30 px-4 py-5 text-sm text-text-muted">
                   No records found.

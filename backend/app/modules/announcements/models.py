@@ -192,8 +192,8 @@ class AnnouncementTarget(BaseModel):
             "role",
             "class_id",
             "student_id",
-            "parent_id",
-            "teacher_id",
+            "parent_membership_id",
+            "teacher_membership_id",
             name="uq_announcement_target_rule",
         ),
     )
@@ -234,14 +234,14 @@ class AnnouncementTarget(BaseModel):
         index=True,
     )
 
-    parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("parents.id", ondelete="CASCADE"),
+    parent_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("parent_memberships.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
 
-    teacher_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("teachers.id", ondelete="CASCADE"),
+    teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teacher_memberships.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )

@@ -176,7 +176,7 @@ class SubjectService:
         if not subject:
             raise NotFoundException(detail="Subject not found.")
 
-        update_data = subject_data.model_dump(exclude_unset=True)
+        update_data = subject_data.model_dump(exclude_unset=True, exclude_none=True)
         if not update_data:
             raise BadRequestException(detail="No update data provided.")
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, RefreshCw } from "lucide-react";
+import { Activity } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -14,7 +14,6 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
-import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import {
   formatLimitValue,
@@ -153,12 +152,6 @@ function SuperadminTenantUsagePage() {
     <DashboardLayout
       role="superadmin"
       title="Tenant Usage Tracking"
-      actions={
-        <Button variant="outline" onClick={() => selectedTenantId && loadUsage(selectedTenantId)} disabled={isUsageLoading || !selectedTenantId}>
-          <RefreshCw className={`h-4 w-4 ${isUsageLoading ? "animate-spin" : ""}`} />
-          Refresh usage
-        </Button>
-      }
     >
       {error ? (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error mb-5">

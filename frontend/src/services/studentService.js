@@ -1,14 +1,22 @@
 import { api } from "./api";
 
-const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 100, 1), 100);
+const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
 
-const buildStudentQuery = ({ skip = 0, limit = 100, search, classId, status } = {}) => {
+const buildStudentQuery = ({
+  skip = 0,
+  limit = 50,
+  search,
+  classId,
+  status,
+  includeArchived = false,
+} = {}) => {
   const params = new URLSearchParams();
-  params.set("skip", String(skip));
+  params.set("skip", String(Math.max(Number(skip) || 0, 0)));
   params.set("limit", String(clampLimit(limit)));
   if (search) params.set("search", search);
   if (classId) params.set("class_id", classId);
   if (status) params.set("status", status);
+  if (includeArchived) params.set("include_archived", "true");
   return params.toString();
 };
 
@@ -23,7 +31,9 @@ export const studentService = {
     api.post("/tenant-admin/students", payload),
 
   resetStudentAccessCode: (studentId) =>
-    api.post(`/tenant-admin/students/${studentId}/reset-access-code`),
+    api.post(`/tenant-admin/students/${studentId}/access-codes`, {
+      purpose: "password_reset",
+    }),
 
   getMyStudent: (requestOptions) =>
     api.get("/students/me", requestOptions),
@@ -38,7 +48,7 @@ export const studentService = {
     api.get("/students/me/parent-link-requests", requestOptions),
 
   respondToParentLinkRequest: (requestId, payload) =>
-    api.post(`/students/me/parent-link-requests/${requestId}/respond`, payload),
+    api.post(`/students/me/parent-link-requests/${requestId}/decision`, payload),
 
   getMyParentLinks: (requestOptions) =>
     api.get("/students/me/parent-links", requestOptions),
@@ -49,24 +59,48 @@ export const studentService = {
   getAdminStudent: (studentId) =>
     api.get(`/tenant-admin/students/${studentId}`),
 
-  updateStudent: (studentId, payload) =>
-    api.patch(`/students/${studentId}`, payload),
-
   updateAdminStudent: (studentId, payload) =>
-    api.patch(`/tenant-admin/students/${studentId}`, payload),
+    api.patch(`/tenant-admin/students/${studentId}/profile`, payload),
 
-  deleteStudent: (studentId) =>
-    api.delete(`/tenant-admin/students/${studentId}`),
+  getEnrollmentHistory: (studentId) =>
+    api.get(`/tenant-admin/students/${studentId}/enrollments`),
+
+  changeStudentClass: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/class-change`, payload),
+
+  suspendStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/suspend`, payload),
+
+  reinstateStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/reinstate`, payload),
+
+  reinstateExpelledStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/reinstate-expelled`, payload),
+
+  withdrawStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/withdraw`, payload),
+
+  expelStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/expel`, payload),
+
+  graduateStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/graduate`, payload),
+
+  archiveStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/archive`, payload),
+
+  restoreStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/restore`, payload),
+
+  getHardDeleteEligibility: (studentId) =>
+    api.get(`/tenant-admin/students/${studentId}/hard-delete-eligibility`),
+
+  hardDeleteStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/hard-delete`, payload),
 
   completeStudentProfile: (studentId, payload) =>
     api.patch(`/tenant-admin/students/${studentId}/complete-profile`, payload),
 
-  createParentLink: (payload) =>
-    api.post("/tenant-admin/student-parent-links", payload),
-
   updateParentLink: (linkId, payload) =>
     api.patch(`/tenant-admin/student-parent-links/${linkId}`, payload),
-
-  deleteParentLink: (linkId) =>
-    api.delete(`/tenant-admin/student-parent-links/${linkId}`),
 };

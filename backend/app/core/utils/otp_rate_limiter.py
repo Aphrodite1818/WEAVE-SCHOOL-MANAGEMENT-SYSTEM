@@ -7,6 +7,7 @@ from threading import Lock
 from typing import Self
 
 from redis import Redis
+from redis.exceptions import RedisError
 
 from app.config.settings import settings
 from app.core.rate_limits.keys import build_rate_limit_key, digest_key_part
@@ -40,7 +41,7 @@ class OTPRateLimiter:
         return cls._instance
 
     def _get_redis_client(self) -> Redis | None:
-        """Return a sync Redis client for legacy synchronous callers."""
+        """Return the shared Redis client when distributed limiting is configured."""
 
         if not settings.RATE_LIMIT_ENABLED:
             return None
@@ -63,6 +64,8 @@ class OTPRateLimiter:
         return self._redis_client
 
     def _rules(self, email: str, purpose: str) -> list[_SyncRateLimitRule]:
+        """Return the cooldown, burst, and daily OTP request rules."""
+
         email_hash = digest_key_part(email.strip().lower())
         purpose_value = getattr(purpose, "value", str(purpose))
 
@@ -101,37 +104,61 @@ class OTPRateLimiter:
                     "24h",
                 ),
                 limit=settings.OTP_EMAIL_LIMIT_24H,
-                window_seconds=86400,
+                window_seconds=86_400,
             ),
         ]
 
     def _is_allowed_in_memory(self, email: str, purpose: str) -> tuple[bool, int]:
-        key = f"{email.strip().lower()}:{purpose}"
+        """Apply all OTP rules locally when Redis is unavailable."""
+
+        purpose_value = getattr(purpose, "value", str(purpose))
+        key = f"{email.strip().lower()}:{purpose_value}"
         now = time.time()
-        window_seconds = 600
-        max_requests = settings.OTP_EMAIL_LIMIT_10M
+        rules = self._rules(email, purpose_value)
+        longest_window = max(rule.window_seconds for rule in rules)
 
-        self._records[key] = [
-            timestamp
-            for timestamp in self._records[key]
-            if now - timestamp < window_seconds
-        ]
+        with self._lock:
+            timestamps = [
+                timestamp
+                for timestamp in self._records[key]
+                if now - timestamp < longest_window
+            ]
+            self._records[key] = timestamps
 
-        current_count = len(self._records[key])
-        if current_count >= max_requests:
-            oldest = self._records[key][0]
-            retry_after = int(window_seconds - (now - oldest))
-            return False, max(retry_after, 1)
+            blocked_retry_after = 0
 
-        self._records[key].append(now)
+            for rule in rules:
+                timestamps_in_window = [
+                    timestamp
+                    for timestamp in timestamps
+                    if now - timestamp < rule.window_seconds
+                ]
+
+                if len(timestamps_in_window) >= rule.limit:
+                    oldest_relevant = timestamps_in_window[0]
+                    retry_after = int(
+                        rule.window_seconds - (now - oldest_relevant)
+                    )
+                    blocked_retry_after = max(
+                        blocked_retry_after,
+                        retry_after,
+                        1,
+                    )
+
+            if blocked_retry_after > 0:
+                return False, blocked_retry_after
+
+            self._records[key].append(now)
+
         return True, 0
 
-    def is_allowed(self, email: str, purpose: str) -> tuple[bool, int]:
-        """Return whether an OTP request is allowed."""
-
-        redis_client = self._get_redis_client()
-        if redis_client is None:
-            return self._is_allowed_in_memory(email, purpose)
+    def _is_allowed_with_redis(
+        self,
+        redis_client: Redis,
+        email: str,
+        purpose: str,
+    ) -> tuple[bool, int]:
+        """Apply OTP request rules using shared Redis counters."""
 
         rules = self._rules(email, purpose)
         blocked_retry_after = 0
@@ -139,6 +166,7 @@ class OTPRateLimiter:
         for rule in rules:
             raw_current = redis_client.get(rule.key)
             current = int(raw_current or 0)
+
             if current >= rule.limit:
                 ttl = redis_client.ttl(rule.key)
                 if ttl < 0:
@@ -163,3 +191,25 @@ class OTPRateLimiter:
             return False, max(blocked_retry_after, 1)
 
         return True, 0
+
+    def is_allowed(self, email: str, purpose: str) -> tuple[bool, int]:
+        """Return whether an OTP request is allowed."""
+
+        if not settings.RATE_LIMIT_ENABLED:
+            return True, 0
+
+        redis_client = self._get_redis_client()
+        if redis_client is None:
+            return self._is_allowed_in_memory(email, purpose)
+
+        try:
+            return self._is_allowed_with_redis(
+                redis_client,
+                email,
+                purpose,
+            )
+        except (RedisError, OSError, ValueError):
+            # Preserve OTP availability if Redis is temporarily unreachable while
+            # retaining equivalent per-process protection through local counters.
+            self._redis_client = None
+            return self._is_allowed_in_memory(email, purpose)

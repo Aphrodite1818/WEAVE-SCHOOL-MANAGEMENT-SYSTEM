@@ -47,7 +47,7 @@ connect_args = (
 
 engine = create_async_engine(
     database_url,
-    echo=is_development() or resolve_log_level() <= logging.DEBUG,
+    echo= False , #is_development() or resolve_log_level() <= logging.DEBUG,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,

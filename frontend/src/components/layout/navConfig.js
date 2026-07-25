@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  Building2,
   CalendarDays,
   CheckSquare,
   ClipboardList,
@@ -18,7 +19,6 @@ import {
   Settings,
   Shield,
   UploadCloud,
-  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -33,7 +33,7 @@ export const roleLabels = {
 };
 
 export const workspaceSearchRoles = new Set(["admin", "teacher", "student"]);
-export const tenantNameFallbackRoles = new Set(["admin", "teacher"]);
+export const tenantNameFallbackRoles = new Set(["admin", "teacher", "student", "parent"]);
 
 export const announcementPaths = {
   admin: "/admin/announcements",
@@ -81,7 +81,6 @@ export const navGroups = {
       items: [
         { label: "Dashboard", to: "/admin/dashboard", icon: Home },
         { label: "Analytics", to: "/admin/analytics", icon: BarChart3 },
-        { label: "Create User", to: "/admin/create-user", icon: UserPlus },
         { label: "Calendar", to: "/admin/timetable", icon: CalendarDays },
       ],
     },
@@ -138,6 +137,7 @@ export const navGroups = {
         { label: "My Class", to: "/teacher/classes", icon: Library },
         { label: "Class Attendance", to: "/teacher/attendance", icon: CheckSquare },
         { label: "Class Notices", to: "/teacher/announcements", icon: FileText },
+        { label: "Switch School", to: "/teacher/schools", icon: Building2, accountScope: true },
         { label: "Settings", to: "/teacher/settings", icon: Settings },
       ],
     },
@@ -170,6 +170,7 @@ export const navGroups = {
         { label: "Attendance", to: "/parent/attendance", icon: CheckSquare },
         { label: "Notices", to: "/parent/notices", icon: FileText },
         { label: "Fees", to: "/parent/fees", icon: CreditCard },
+        { label: "Switch School", to: "/parent/schools", icon: Building2, accountScope: true },
         { label: "Settings", to: "/parent/settings", icon: Settings },
       ],
     },

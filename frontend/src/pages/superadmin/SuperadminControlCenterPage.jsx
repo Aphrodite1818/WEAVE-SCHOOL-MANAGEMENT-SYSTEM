@@ -3,7 +3,6 @@ import {
   Ban,
   CheckCircle2,
   LockKeyhole,
-  RefreshCw,
   ShieldAlert,
 } from "lucide-react";
 
@@ -156,12 +155,6 @@ function SuperadminControlCenterPage() {
     <DashboardLayout
       role="superadmin"
       title="Control Center"
-      actions={
-        <Button variant="outline" onClick={loadData} disabled={isLoading || isSubmitting}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh state
-        </Button>
-      }
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between mb-8">
         <div>

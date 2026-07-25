@@ -10,6 +10,27 @@
   word-break: normal;
 }
 
+#dashboard-content * {
+  min-width: 0;
+}
+
+#dashboard-content p,
+#dashboard-content h1,
+#dashboard-content h2,
+#dashboard-content h3,
+#dashboard-content h4,
+#dashboard-content span,
+#dashboard-content a,
+#dashboard-content button {
+  overflow-wrap: anywhere;
+}
+
+#dashboard-content .inline-flex,
+#dashboard-content [class*="whitespace-nowrap"],
+#dashboard-content .badge {
+  overflow-wrap: normal;
+}
+
 .chart-interactive-scroll {
   min-width: 0;
   overflow: auto;
@@ -21,6 +42,16 @@
 
 .chart-interactive-scroll * {
   min-width: 0;
+}
+
+#dashboard-content .mobile-scroll-list {
+  max-height: min(42rem, calc(100dvh - 14rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 0.25rem;
+  scrollbar-width: thin;
+  align-content: start;
 }
 
 .dashboard-topbar {
@@ -142,6 +173,10 @@
 
 @media (max-width: 767px) {
   html[data-standalone-pwa="true"] [data-pwa-status-fill="true"] {
+    display: block !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-pwa-safe-area-fill="true"] {
     display: block !important;
   }
 
@@ -277,6 +312,19 @@
     margin-top: 0.75rem;
     min-height: 12rem;
     padding: 1rem;
+  }
+
+  #dashboard-content .data-table tbody {
+    max-height: min(34rem, 68dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 0.25rem;
+    scrollbar-width: thin;
+  }
+
+  #dashboard-content .mobile-scroll-list {
+    max-height: min(34rem, 68dvh);
   }
 
   #dashboard-content .stat-grid + .dashboard-grid,

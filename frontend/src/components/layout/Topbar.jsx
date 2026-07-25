@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, FileText, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Sun, UserRound } from "lucide-react";
+import { Bell, Building2, ChevronDown, FileText, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Sun, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -43,14 +43,31 @@ const roleSettingsPaths = {
   superadmin: "/superadmin/settings",
 };
 
-export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false, onToggleSidebar, schoolName }) {
+const schoolSwitchPaths = {
+  teacher: "/teacher/schools",
+  parent: "/parent/schools",
+};
+
+export default function Topbar({
+  role,
+  onOpenMobileNav,
+  sidebarCollapsed = false,
+  onToggleSidebar,
+  schoolName,
+  schoolLogoUrl = "",
+}) {
   const navigate = useNavigate();
   const user = authSession.getUser() || {};
+  const actorType = String(user?.actor_type || "").toLowerCase();
+  const isAccountScope =
+    ["parent_account", "teacher_account"].includes(actorType) &&
+    !user?.tenant_id;
   const { isTenantAdmin, planCode } = useSubscription();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [failedSchoolLogoUrl, setFailedSchoolLogoUrl] = useState("");
   const [themeHint, setThemeHint] = useState(() =>
     typeof document === "undefined"
       ? "light"
@@ -58,13 +75,35 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
   );
   const userName = getUserLabel(user);
   const avatarSrc = getUserAvatarSrc(user);
-  const canSearchWorkspace = workspaceSearchRoles.has(role);
-  const notificationPath = announcementPaths[role] || "/profile";
+  const canSearchWorkspace = !isAccountScope && workspaceSearchRoles.has(role);
+  const notificationPath = isAccountScope
+    ? schoolSwitchPaths[role] || "/profile"
+    : announcementPaths[role] || "/profile";
   const showPlanBadge = role === "admin" && isTenantAdmin;
-  const settingsPath = roleSettingsPaths[role] || "/profile";
+  const settingsPath = isAccountScope
+    ? "/profile"
+    : roleSettingsPaths[role] || "/profile";
+  const schoolSwitchPath = schoolSwitchPaths[role] || null;
+  const resolvedSchoolLogoUrl =
+    schoolLogoUrl ||
+    user?.tenant_logo_url ||
+    user?.tenant?.logo_url ||
+    "";
+  const hasSchoolLogo =
+    Boolean(resolvedSchoolLogoUrl) &&
+    failedSchoolLogoUrl !== resolvedSchoolLogoUrl &&
+    !isAccountScope;
 
   useEffect(() => {
     let mounted = true;
+
+    if (isAccountScope) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return () => {
+        mounted = false;
+      };
+    }
 
     async function loadNotificationPreview() {
       try {
@@ -85,7 +124,7 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
     return () => {
       mounted = false;
     };
-  }, [role]);
+  }, [isAccountScope, role]);
 
   useEffect(() => {
     const syncThemeHint = () => {
@@ -125,9 +164,19 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
         </button>
 
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <p className="truncate text-base font-bold text-text sm:hidden">
-            {schoolName || roleLabels[role] || "Workspace"}
-          </p>
+          <div className="flex min-w-0 items-center gap-2 sm:hidden">
+            {hasSchoolLogo ? (
+              <img
+                src={resolvedSchoolLogoUrl}
+                alt={`${schoolName || "School"} logo`}
+                className="h-8 w-8 shrink-0 rounded-lg border border-border/70 bg-surface object-contain p-0.5 shadow-sm"
+                onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
+              />
+            ) : null}
+            <p className="truncate text-base font-bold text-text">
+              {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
+            </p>
+          </div>
           {onToggleSidebar ? (
             <button
               type="button"
@@ -139,9 +188,20 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
               {sidebarCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
             </button>
           ) : null}
-          <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
+          {hasSchoolLogo ? (
+            <img
+              src={resolvedSchoolLogoUrl}
+              alt={`${schoolName || "School"} logo`}
+              className="hidden h-9 w-9 shrink-0 rounded-xl border border-border/70 bg-surface object-contain p-1 shadow-sm sm:block"
+              onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
+            />
+          ) : (
+            <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
+          )}
           <div className="hidden min-w-0 sm:block">
-            <p className="brand-wordmark truncate text-sm font-bold sm:text-lg">Weave</p>
+            <p className="brand-wordmark truncate text-sm font-bold sm:text-lg">
+              {hasSchoolLogo ? schoolName || "School workspace" : "Weave"}
+            </p>
           </div>
         </div>
 
@@ -161,38 +221,40 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <Dropdown
-            align="right"
-            className="w-80 max-w-[calc(100vw-1rem)]"
-            open={notificationsOpen}
-            onOpenChange={setNotificationsOpen}
-            trigger={
-              <button type="button" className={cn(headerIconButtonClass, "relative")} aria-label="Open notifications">
-                <Bell className="h-4 w-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none text-white">{unreadCount}</span>
+          {!isAccountScope ? (
+            <Dropdown
+              align="right"
+              className="notification-dropdown-panel w-80 max-w-[calc(100vw-1rem)]"
+              open={notificationsOpen}
+              onOpenChange={setNotificationsOpen}
+              trigger={
+                <button type="button" className={cn(headerIconButtonClass, "relative")} aria-label="Open notifications">
+                  <Bell className="h-4 w-4" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none text-white">{unreadCount}</span>
+                  )}
+                </button>
+              }
+            >
+              <div className="space-y-3 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-text">Notifications</p>
+                  <Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>View all</Link>
+                </div>
+                {notifications.length > 0 ? (
+                  notifications.map((item) => (
+                    <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2">
+                      <p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.message}</p>
+                      <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-text-muted">No notifications yet.</p>
                 )}
-              </button>
-            }
-          >
-            <div className="space-y-3 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-text">Notifications</p>
-                <Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>View all</Link>
               </div>
-              {notifications.length > 0 ? (
-                notifications.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2">
-                    <p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
-                    <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.message}</p>
-                    <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-text-muted">No notifications yet.</p>
-              )}
-            </div>
-          </Dropdown>
+            </Dropdown>
+          ) : null}
 
           <button
             type="button"
@@ -231,6 +293,18 @@ export default function Topbar({ role, onOpenMobileNav, sidebarCollapsed = false
                 {showPlanBadge ? <p className="mt-3 text-xs text-text-muted">{formatPlanName(planCode)}</p> : null}
               </div>
               <div className="mb-2 grid gap-2">
+                {schoolSwitchPath ? (
+                  <Link
+                    to={schoolSwitchPath}
+                    onClick={closeAccountMenu}
+                    className="flex min-h-11 items-center gap-3 rounded-2xl border border-border/70 bg-surface px-3 py-2 text-sm font-semibold text-text transition hover:border-primary/30 hover:bg-primary-subtle/35"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                      <Building2 className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">Switch school</span>
+                  </Link>
+                ) : null}
                 <Link
                   to={settingsPath}
                   onClick={closeAccountMenu}
