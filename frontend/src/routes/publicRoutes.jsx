@@ -3,7 +3,6 @@ import { Route } from "react-router-dom";
 import AccountRegisterPage from "../pages/public/AccountRegisterPage";
 import ForgotPasswordPage from "../pages/public/ForgotPasswordPage";
 import InvitationAcceptancePage from "../pages/public/InvitationAcceptancePage";
-import InvitePage from "../pages/public/InvitePage";
 import JoinPage from "../pages/public/JoinPage";
 import LandingPage from "../pages/public/LandingPage";
 import LoginPage from "../pages/public/LoginPage";
@@ -25,7 +24,6 @@ export const publicRoutes = (
     <Route path="/parent/register" element={<AccountRegisterPage role="parent" />} />
     <Route path="/teacher/register" element={<AccountRegisterPage role="teacher" />} />
     <Route path="/verify-otp" element={<OTPValidationPage />} />
-    <Route path="/invite" element={<InvitePage />} />
     <Route
       path="/parent-invitations/:token"
       element={<InvitationAcceptancePage role="parent" />}
