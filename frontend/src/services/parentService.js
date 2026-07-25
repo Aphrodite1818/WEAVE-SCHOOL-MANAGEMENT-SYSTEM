@@ -22,6 +22,13 @@ const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
   return params.toString();
 };
 
+const buildPageQuery = ({ skip = 0, limit = 50 } = {}) => {
+  const params = new URLSearchParams();
+  params.set("skip", String(Math.max(Number(skip) || 0, 0)));
+  params.set("limit", String(Math.min(Math.max(Number(limit) || 50, 1), 100)));
+  return params.toString();
+};
+
 export const parentService = {
   registerAccount: (payload) =>
     api.post("/parents/accounts/register", payload, {
@@ -70,11 +77,23 @@ export const parentService = {
   reactivateMembership: (membershipId, reason) =>
     api.post(`/parents/memberships/${membershipId}/reactivate`, { reason }),
 
+  listPendingLinkRequests: (options = {}) =>
+    api.get(`/parents/student-link-requests?${buildPageQuery(options)}`),
+
+  decideLinkRequest: (requestId, payload) =>
+    api.post(`/tenant-admin/student-parent-link-requests/${requestId}/decision`, payload),
+
+  endParentLink: (linkId, reason) =>
+    api.post(`/parents/student-parent-links/${linkId}/end`, { reason }),
+
+  reactivateParentLink: (linkId, payload) =>
+    api.post(`/parents/student-parent-links/${linkId}/reactivate`, payload),
+
   getMyParent: (requestOptions) =>
     api.get("/parents/me", requestOptions),
 
   updateMyParentProfile: (payload) =>
-    api.patch("/parents/me/profile", payload),
+    api.patch("/parents/accounts/me/profile", payload),
 
   getMyStudents: (requestOptions) =>
     api.get("/parents/me/students", requestOptions),
