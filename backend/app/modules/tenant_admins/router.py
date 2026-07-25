@@ -46,6 +46,7 @@ from app.modules.students.service import (
     StudentLifecycleService,
     StudentParentLinkRequestService,
     StudentParentLinkService,
+    StudentService,
 )
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
@@ -171,7 +172,7 @@ async def get_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentDetailResponse:
-    return await StudentAdminContractService.update_profile.__self__.get_student_profile(
+    return await StudentService.get_student_profile(
         db,
         current_admin,
         student_id,
