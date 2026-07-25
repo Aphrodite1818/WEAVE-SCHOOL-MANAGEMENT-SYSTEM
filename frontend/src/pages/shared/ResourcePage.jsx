@@ -499,7 +499,7 @@ function ResourcePage({ config }) {
 
           {!isUnavailable && (
             <>
-            <div className="mt-5 grid gap-2 md:hidden">
+            <div className="resource-page-mobile-list mobile-scroll-list mt-5 grid gap-2 md:hidden">
               {items.length === 0 ? (
                 <div className="rounded-xl border border-border bg-surface-muted/30 px-4 py-5 text-sm text-text-muted">
                   No records found.

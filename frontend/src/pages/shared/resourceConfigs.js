@@ -191,6 +191,9 @@ export const subjectReadOnlyResourceConfig = {
   canCreate: false,
   canUpdate: false,
   canDelete: false,
+  initialFilters: {
+    isActive: "true",
+  },
   filters: [
     { name: "search", label: "Search", placeholder: "Subject name" },
     {
@@ -258,6 +261,7 @@ export const subjectResourceConfig = {
     description: "",
     is_active: "true",
   },
+  initialFilters: subjectReadOnlyResourceConfig.initialFilters,
   fields: () => [
     { name: "name", label: "Subject name", required: true },
     { name: "code", label: "Subject code" },
@@ -370,6 +374,9 @@ export const getStudentResourceConfig = ({ writable, role = "admin" }) => ({
     gender: "",
     date_of_birth: "",
     arm: "",
+  },
+  initialFilters: {
+    status: "active",
   },
   fields: () => [
     { name: "gender", label: "Gender", type: "select", options: enumOptions(["male", "female"]) },

@@ -124,7 +124,7 @@ function ParentStudentLinkingPage() {
         <h2 className="section-title">Request status</h2>
         <p className="mt-1 text-sm text-text-muted">Track link requests created from parent invitation emails.</p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mobile-scroll-list mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {requests.length === 0 ? (
             <div className="sm:col-span-2 xl:col-span-3">
               <EmptyState
@@ -175,7 +175,7 @@ function ParentStudentLinkingPage() {
         <h2 className="section-title">Linked students</h2>
         <p className="mt-1 text-sm text-text-muted">Children currently connected to this school membership.</p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mobile-scroll-list mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {children.length === 0 ? (
             <div className="sm:col-span-2 xl:col-span-3">
               <EmptyState

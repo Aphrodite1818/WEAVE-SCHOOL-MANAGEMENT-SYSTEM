@@ -10,6 +10,7 @@ import {
   DashboardQuickActions,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import { cn } from "../../utils/cn";
 import { academicService } from "../../services/academicService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
@@ -21,7 +22,6 @@ import {
   cleanText,
 } from "../../utils/academicDashboard";
 import { displayName } from "../../utils/user";
-import ParentChildSelector from "./ParentChildSelector";
 import { normalizeParentChildRecord } from "./parentPageUtils";
 import useParentChildren from "./useParentChildren";
 
@@ -194,22 +194,19 @@ function ParentDashboardPage() {
         <>
           <DashboardWelcomePanel
             variant="blue"
-            eyebrow="Parent dashboard"
             title={`Welcome, ${firstName}`}
-            description="Your child's progress, school updates, and next actions."
-            profileCompletion={user?.profile_completed}
+            description="Track the selected child's school progress and updates."
             chips={[
-              { label: "Viewing", value: selectedChildName, tone: selectedChildRecord ? "primary" : "warning" },
-              { label: selectedChildAcademicLabel, tone: selectedChildAcademicLabel !== "-" ? "success" : "neutral" },
+              { label: "Viewing", value: selectedChildName, tone: selectedChildRecord ? "success" : "warning" },
             ]}
-          >
-            <ParentChildSelector
-              linkedChildren={children}
-              selectedChildId={selectedChildId}
-              onSelectChild={setSelectedChildId}
-              academicLabel={selectedChildAcademicLabel}
-            />
-          </DashboardWelcomePanel>
+          />
+
+          <ChildSwitcher
+            linkedChildren={children}
+            selectedChildId={selectedChildId}
+            onSelectChild={setSelectedChildId}
+            academicLabel={selectedChildAcademicLabel}
+          />
 
           <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
@@ -294,6 +291,49 @@ function InfoTile({ label, value }) {
       <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
     </div>
+  );
+}
+
+function ChildSwitcher({ linkedChildren = [], selectedChildId, onSelectChild, academicLabel }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-surface/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Viewing child</p>
+        <p className="mt-0.5 truncate text-sm font-semibold text-text">
+          {academicLabel && academicLabel !== "-" ? academicLabel : "Select a linked child"}
+        </p>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1 sm:justify-end sm:pb-0">
+        {linkedChildren.length > 0 ? (
+          linkedChildren.map((entry, index) => {
+            const { student, link } = normalizeParentChildRecord(entry);
+            const studentId = student?.id;
+            const isActive = studentId === selectedChildId;
+            return (
+              <button
+                key={link.id || studentId || `linked-child-${index}`}
+                type="button"
+                onClick={() => studentId && onSelectChild(studentId)}
+                disabled={!studentId}
+                className={cn(
+                  "min-h-10 shrink-0 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition",
+                  isActive
+                    ? "border-primary bg-primary text-white shadow-sm"
+                    : "border-border/70 bg-surface text-text-soft hover:border-primary/40 hover:text-text",
+                )}
+              >
+                {displayName(student)}
+              </button>
+            );
+          })
+        ) : (
+          <p className="rounded-xl border border-dashed border-border px-3 py-2 text-sm text-text-muted">
+            No linked children yet
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 

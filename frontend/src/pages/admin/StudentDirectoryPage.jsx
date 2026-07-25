@@ -39,17 +39,8 @@ const GENDER_OPTIONS = ["male", "female"];
 const EMPTY_FILTERS = {
   search: "",
   classId: "",
-  status: "",
+  status: "active",
   includeArchived: false,
-};
-
-const EMPTY_EDIT = {
-  first_name: "",
-  last_name: "",
-  gender: "",
-  date_of_birth: "",
-  state_of_origin: "",
-  arm: "",
 };
 
 const localDateInputValue = (date = new Date()) => {
@@ -652,7 +643,7 @@ function StudentDirectoryPage() {
           <EmptyState title="No students found" description="Adjust the filters or create a student." />
         </Card>
       ) : (
-        <section className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <section className="directory-card-grid mobile-scroll-list grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {students.map((student) => (
             <StudentCard
               key={student.id}

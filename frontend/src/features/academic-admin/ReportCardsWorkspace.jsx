@@ -293,7 +293,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         ))}
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mobile-scroll-list mt-4 space-y-3">
         {(overview?.items || []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
             No students are available in this class context.
@@ -390,7 +390,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="mobile-scroll-list grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
           {cards.map((card) => (
             <div
               key={card.id}

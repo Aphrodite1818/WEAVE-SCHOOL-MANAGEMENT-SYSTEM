@@ -23,7 +23,7 @@ function ParentChildSelector({
       </div>
 
       {showCards && (
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="mobile-scroll-list grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {linkedChildren.length > 0 ? (
             linkedChildren.map((entry, index) => {
               const { student, link } = normalizeParentChildRecord(entry);

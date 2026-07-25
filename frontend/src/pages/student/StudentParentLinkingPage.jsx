@@ -207,7 +207,7 @@ function StudentParentLinkingPage() {
           These parents accepted a school invitation and requested access to your profile. Review each request before approving it.
         </p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mobile-scroll-list mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {summary.pending.length === 0 ? (
             <div className="sm:col-span-2 xl:col-span-3">
               <EmptyState
@@ -265,7 +265,7 @@ function StudentParentLinkingPage() {
         <h2 className="section-title">Linked contacts</h2>
         <p className="mt-1 text-sm text-text-muted">People currently connected to your academic record.</p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mobile-scroll-list mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {parentLinks.length === 0 ? (
             <div className="sm:col-span-2 xl:col-span-3">
               <EmptyState

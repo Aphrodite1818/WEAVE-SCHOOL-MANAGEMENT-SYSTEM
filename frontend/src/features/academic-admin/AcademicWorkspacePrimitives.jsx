@@ -143,7 +143,7 @@ export function RecordList({
           description={emptyDescription}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
           {items.map((item) => {
             const status = renderStatus?.(item);
             return (
@@ -152,7 +152,7 @@ export function RecordList({
                 className="flex min-h-[9rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="break-words text-sm font-semibold text-text">
                       {renderTitle(item)}
                     </p>
@@ -163,7 +163,7 @@ export function RecordList({
                     ) : null}
                   </div>
                   {status ? (
-                    <Badge variant={badgeVariant(status)}>
+                    <Badge variant={badgeVariant(status)} title={String(status).replaceAll("_", " ")}>
                       {String(status).replaceAll("_", " ")}
                     </Badge>
                   ) : null}

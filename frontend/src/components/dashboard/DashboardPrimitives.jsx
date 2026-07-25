@@ -223,7 +223,7 @@ export function DashboardListCard({ title, description, items = [], emptyTitle =
   return (
     <Card className={cn("flex h-full flex-col p-4 sm:p-6", className)}>
       <DashboardSectionHeader title={title} description={description} action={action} />
-      <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(10rem, 100%), 1fr))" }}>
+      <div className="mobile-scroll-list mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(10rem, 100%), 1fr))" }}>
         {items.length > 0 ? (
           items.map((item) => <DashboardListItem key={item.key || item.title} {...item} />)
         ) : (

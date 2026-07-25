@@ -56,6 +56,12 @@ const ROLE_CONFIG = {
 const asItems = (response) =>
   Array.isArray(response) ? response : Array.isArray(response?.items) ? response.items : [];
 
+const defaultStatusForTab = (tabId) => {
+  if (tabId === "memberships") return "active";
+  if (tabId === "invitations") return "pending";
+  return "";
+};
+
 const displayName = (account) => {
   const name = [account?.first_name, account?.last_name].filter(Boolean).join(" ").trim();
   return name || account?.email || "Account";
@@ -90,8 +96,8 @@ function MembershipDirectoryPage({ role }) {
   const [page, setPage] = useState(1);
   const [draftSearch, setDraftSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
-  const [draftStatus, setDraftStatus] = useState("");
-  const [appliedStatus, setAppliedStatus] = useState("");
+  const [draftStatus, setDraftStatus] = useState(() => defaultStatusForTab("memberships"));
+  const [appliedStatus, setAppliedStatus] = useState(() => defaultStatusForTab("memberships"));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionId, setActionId] = useState("");
@@ -158,12 +164,13 @@ function MembershipDirectoryPage({ role }) {
   }, [loadPage]);
 
   const selectTab = (tabId) => {
+    const nextStatus = defaultStatusForTab(tabId);
     setActiveTab(tabId);
     setPage(1);
     setDraftSearch("");
     setAppliedSearch("");
-    setDraftStatus("");
-    setAppliedStatus("");
+    setDraftStatus(nextStatus);
+    setAppliedStatus(nextStatus);
   };
 
   const applyFilters = (event) => {
@@ -174,11 +181,12 @@ function MembershipDirectoryPage({ role }) {
   };
 
   const clearFilters = () => {
+    const nextStatus = defaultStatusForTab(activeTab);
     setPage(1);
     setDraftSearch("");
     setAppliedSearch("");
-    setDraftStatus("");
-    setAppliedStatus("");
+    setDraftStatus(nextStatus);
+    setAppliedStatus(nextStatus);
   };
 
   const revokeInvitation = async (item) => {
@@ -433,7 +441,7 @@ function MembershipDirectoryPage({ role }) {
           <EmptyState icon={Users} title="No records found" description="Adjust the filters or create an invitation." />
         </Card>
       ) : activeTab === "memberships" ? (
-        <section className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+        <section className="directory-card-grid mobile-scroll-list grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {items.map((membership) => {
             const account = membership[config.accountKey] || {};
             const status = String(membership.status || "unknown").toLowerCase();
@@ -480,7 +488,7 @@ function MembershipDirectoryPage({ role }) {
           })}
         </section>
       ) : activeTab === "invitations" ? (
-        <section className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+        <section className="directory-card-grid mobile-scroll-list grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {items.map((item) => {
             const status = String(item.status || "unknown").toLowerCase();
             return (
@@ -496,7 +504,7 @@ function MembershipDirectoryPage({ role }) {
           })}
         </section>
       ) : (
-        <section className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+        <section className="directory-card-grid mobile-scroll-list grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {items.map((request) => (
             <Card key={request.id} className="flex min-h-[15rem] flex-col p-5">
               <div className="flex items-start justify-between gap-3">

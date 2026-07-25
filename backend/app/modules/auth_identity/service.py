@@ -58,6 +58,16 @@ class AuthIdentityService:
     }
 
     @staticmethod
+    async def _build_response(
+        db: AsyncSession,
+        record: AuthIdentity,
+    ) -> AuthIdentityResponse:
+        refresh = getattr(db, "refresh", None)
+        if refresh is not None:
+            await refresh(record)
+        return AuthIdentityResponse.model_validate(record)
+
+    @staticmethod
     def _normalize_identifier(
         identifier: str,
         identifier_type: IdentifierType,
@@ -207,7 +217,7 @@ class AuthIdentityService:
                 identifier_type=payload.identifier_type,
             ),
         )
-        return AuthIdentityResponse.model_validate(record)
+        return await AuthIdentityService._build_response(db, record)
 
     @staticmethod
     async def ensure_for_actor(
@@ -254,7 +264,7 @@ class AuthIdentityService:
                     identifier_type=payload.identifier_type,
                 ),
             )
-        return AuthIdentityResponse.model_validate(existing)
+        return await AuthIdentityService._build_response(db, existing)
 
     @staticmethod
     def lookup_table_for_actor_type(
@@ -401,7 +411,7 @@ class AuthIdentityService:
             old_key,
             new_key,
         )
-        return AuthIdentityResponse.model_validate(identity)
+        return await AuthIdentityService._build_response(db, identity)
 
     @staticmethod
     async def deactivate_for_actor(

@@ -142,12 +142,16 @@
 
   .dashboard-welcome-blue,
   .dashboard-welcome-student {
+    --weave-icon-primary: #eff6ff;
+    --weave-icon-accent: #f59e0b;
     background-color: #1d4ed8;
     box-shadow: 0 18px 40px rgb(29 78 216 / 0.18);
   }
 
   :root[data-theme="dark"] .dashboard-welcome-blue,
   :root[data-theme="dark"] .dashboard-welcome-student {
+    --weave-icon-primary: #bfdbfe;
+    --weave-icon-accent: #fbbf24;
     background-color: #172554;
     box-shadow: 0 18px 42px rgb(2 6 23 / 0.42);
   }

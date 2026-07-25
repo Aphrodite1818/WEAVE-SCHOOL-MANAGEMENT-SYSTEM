@@ -1,4 +1,4 @@
-import { BarChart3, CheckCircle2, ClipboardList, GraduationCap } from "lucide-react";
+import { ClipboardList, GraduationCap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
@@ -407,7 +407,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="mobile-scroll-list grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
           {visibleResults.map((item) => (
             <div
               key={item.id}

@@ -360,7 +360,7 @@ function DashboardShellFrame({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block",
-          sidebarCollapsed ? "w-[4.25rem]" : "w-[15rem]"
+          sidebarCollapsed ? "w-[4.25rem]" : "w-[13rem] xl:w-[14rem]"
         )}
       >
         <SidebarContent
@@ -382,7 +382,7 @@ function DashboardShellFrame({
       <div
         className={cn(
           "flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300",
-          sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[15rem]"
+          sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[13rem] xl:pl-[14rem]"
         )}
       >
         <Topbar

@@ -88,6 +88,7 @@ function AdminDashboardPage() {
   const charts = analytics?.charts || {};
   const totalStudents = metricNumber(stats.total_students);
   const totalTeachers = metricNumber(stats.total_teachers);
+  const totalParents = metricNumber(stats.total_parents);
   const totalClasses = metricNumber(stats.total_classes);
   const resultCompletion = metricNumber(stats.result_completion_percent);
   const submittedResults = metricNumber(stats.result_rows_submitted);
@@ -200,12 +201,12 @@ function AdminDashboardPage() {
               to="/admin/classes"
             />
             <DashboardMetricCard
-              label="Result completion"
-              value={`${resultCompletion}%`}
-              description={`${submittedResults} of ${resultRowsTotal} rows submitted`}
-              icon={BarChart3}
-              tone={resultCompletion >= 80 ? "success" : resultCompletion > 0 ? "warning" : "neutral"}
-              to="/admin/analytics"
+              label="Parents"
+              value={totalParents}
+              description="Parent accounts"
+              icon={Users}
+              tone="accent"
+              to="/admin/parents"
             />
           </section>
 
@@ -221,6 +222,8 @@ function AdminDashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Active session" value={cleanText(stats.active_academic_session, "Not set")} />
                 <InfoTile label="Active term" value={cleanText(stats.active_academic_term, "Not set")} />
+                <InfoTile label="Result completion" value={`${resultCompletion}%`} />
+                <InfoTile label="Submitted results" value={`${submittedResults} / ${resultRowsTotal}`} />
                 <InfoTile label="Generated reports" value={reportCardsGenerated} />
                 <InfoTile label="Published reports" value={reportCardsPublished} />
               </div>

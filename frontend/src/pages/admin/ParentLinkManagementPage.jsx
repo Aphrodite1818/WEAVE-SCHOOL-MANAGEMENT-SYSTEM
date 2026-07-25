@@ -74,6 +74,7 @@ function ParentLinkManagementPage() {
           skip: (page - 1) * PAGE_SIZE,
           limit: PAGE_SIZE,
           search: search.trim() || undefined,
+          status: "active",
         });
         if (controller.signal.aborted) return;
         setMemberships(asItems(response));
@@ -106,10 +107,12 @@ function ParentLinkManagementPage() {
     }
   };
 
-  const selectedParent = selectedMembership?.parent_account || {};
   const selectedLabel = useMemo(
-    () => (selectedMembership ? personName(selectedParent) : "Select a parent membership"),
-    [selectedMembership, selectedParent],
+    () =>
+      selectedMembership
+        ? personName(selectedMembership.parent_account || {})
+        : "Select a parent membership",
+    [selectedMembership],
   );
 
   const openAction = (mode, item) => {
@@ -134,7 +137,7 @@ function ParentLinkManagementPage() {
     event.preventDefault();
     if (!actionState) return;
     const { mode, item, form } = actionState;
-    if (mode === "end" && form.reason.trim().length < 3) {
+    if (["end", "reactivate"].includes(mode) && form.reason.trim().length < 3) {
       showWarning("Enter a reason with at least three characters.");
       return;
     }
@@ -145,6 +148,7 @@ function ParentLinkManagementPage() {
         showSuccess("Parent access to this student ended.");
       } else if (mode === "reactivate") {
         await parentService.reactivateParentLink(item.link.id, {
+          reason: form.reason.trim(),
           is_primary_contact: form.is_primary_contact,
           receives_academic_updates: form.receives_academic_updates,
           receives_fee_updates: form.receives_fee_updates,
@@ -179,9 +183,9 @@ function ParentLinkManagementPage() {
         </Link>
       }
     >
-      <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)]">
-        <Card className="h-fit p-4 sm:p-5">
-          <div className="relative">
+      <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)] xl:items-start">
+        <Card className="h-fit p-4 sm:p-5 xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100dvh-10rem)] xl:min-h-0 xl:flex-col">
+          <div className="relative shrink-0">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <Input
               value={search}
@@ -194,7 +198,7 @@ function ParentLinkManagementPage() {
             />
           </div>
 
-          <div className="mt-4 space-y-2">
+          <div className="mobile-scroll-list mt-4 space-y-2 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-1">
             {loadingMemberships ? (
               <LoadingState label="Loading parents..." />
             ) : memberships.length === 0 ? (
@@ -220,7 +224,7 @@ function ParentLinkManagementPage() {
             )}
           </div>
 
-          <div className="mt-4 flex items-center justify-between text-xs text-text-muted">
+          <div className="mt-4 flex shrink-0 items-center justify-between border-t border-border/70 pt-4 text-xs text-text-muted">
             <span>{total} membership{total === 1 ? "" : "s"}</span>
             <div className="flex items-center gap-2">
               <Button type="button" size="icon" variant="outline" disabled={loadingMemberships || page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-4 w-4" /></Button>
@@ -242,7 +246,7 @@ function ParentLinkManagementPage() {
           ) : links.length === 0 ? (
             <Card className="p-6"><EmptyState icon={Link2} title="No child links" description="This membership currently has no student-link records." /></Card>
           ) : (
-            <section className="grid gap-4 lg:grid-cols-2">
+            <section className="mobile-scroll-list grid gap-4 lg:grid-cols-2">
               {links.map((item) => {
                 const status = String(item.link.status || "unknown").toLowerCase();
                 const busy = busyId === item.link.id;
@@ -270,16 +274,17 @@ function ParentLinkManagementPage() {
       >
         {actionState ? (
           <form onSubmit={submitAction} onTouchStartCapture={(event) => event.stopPropagation()} className="space-y-4">
-            {actionState.mode === "end" ? (
+            {["end", "reactivate"].includes(actionState.mode) ? (
               <label className="block"><span className="mb-1.5 block text-sm font-semibold text-text-soft">Reason</span><textarea className="input-base min-h-28" maxLength={500} value={actionState.form.reason} onChange={(event) => setActionState((current) => ({ ...current, form: { ...current.form, reason: event.target.value } }))} /></label>
-            ) : (
+            ) : null}
+            {actionState.mode !== "end" ? (
               <>
                 {actionState.mode === "edit" ? <label className="block"><span className="mb-1.5 block text-sm font-semibold text-text-soft">Relationship</span><select className="input-base" value={actionState.form.relationship_type} onChange={(event) => setActionState((current) => ({ ...current, form: { ...current.form, relationship_type: event.target.value } }))}>{RELATIONSHIP_OPTIONS.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label> : null}
                 <label className="flex items-center gap-2 text-sm text-text-soft"><input type="checkbox" checked={actionState.form.is_primary_contact} onChange={(event) => setActionState((current) => ({ ...current, form: { ...current.form, is_primary_contact: event.target.checked } }))} />Primary contact</label>
                 <label className="flex items-center gap-2 text-sm text-text-soft"><input type="checkbox" checked={actionState.form.receives_academic_updates} onChange={(event) => setActionState((current) => ({ ...current, form: { ...current.form, receives_academic_updates: event.target.checked } }))} />Receive academic updates</label>
                 <label className="flex items-center gap-2 text-sm text-text-soft"><input type="checkbox" checked={actionState.form.receives_fee_updates} onChange={(event) => setActionState((current) => ({ ...current, form: { ...current.form, receives_fee_updates: event.target.checked } }))} />Receive fee updates</label>
               </>
-            )}
+            ) : null}
             <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setActionState(null)}>Cancel</Button><Button type="submit" variant={actionState.mode === "end" ? "danger" : actionState.mode === "reactivate" ? "success" : "default"} disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Confirm"}</Button></div>
           </form>
         ) : null}

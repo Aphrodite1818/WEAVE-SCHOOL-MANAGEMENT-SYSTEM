@@ -279,6 +279,44 @@ async def test_update_invalidates_old_positive_and_new_negative_keys() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ensure_for_actor_refreshes_reactivated_identity_before_response() -> None:
+    db = AsyncMock()
+    identity = _identity(is_active=False)
+    identity.actor_type = ActorType.STUDENT
+    payload = AuthIdentityCreate(
+        identifier=EMAIL,
+        identifier_type=IdentifierType.EMAIL,
+        actor_type=ActorType.STUDENT,
+        actor_id=ACTOR_ID,
+    )
+
+    with (
+        patch(
+            "app.modules.auth_identity.service.AuthIdentityRepository.get_by_actor",
+            new=AsyncMock(return_value=identity),
+        ),
+        patch(
+            "app.modules.auth_identity.service.AuthIdentityRepository.save",
+            new=AsyncMock(return_value=identity),
+        ) as save,
+        patch(
+            "app.modules.auth_identity.service.AuthIdentityResponse.model_validate",
+            return_value=object(),
+        ) as model_validate,
+    ):
+        await AuthIdentityService.ensure_for_actor(
+            db,
+            tenant_id=TENANT_ID,
+            payload=payload,
+        )
+
+    assert identity.is_active is True
+    save.assert_awaited_once_with(db, identity)
+    db.refresh.assert_awaited_once_with(identity)
+    model_validate.assert_called_once_with(identity)
+
+
+@pytest.mark.asyncio
 async def test_deactivation_invalidates_positive_identifier_cache() -> None:
     db = _db()
     identity = _identity()

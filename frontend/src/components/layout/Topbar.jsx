@@ -224,7 +224,7 @@ export default function Topbar({
           {!isAccountScope ? (
             <Dropdown
               align="right"
-              className="w-80 max-w-[calc(100vw-1rem)]"
+              className="notification-dropdown-panel w-80 max-w-[calc(100vw-1rem)]"
               open={notificationsOpen}
               onOpenChange={setNotificationsOpen}
               trigger={
