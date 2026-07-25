@@ -5,16 +5,17 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.modules.classes.models import ClassRoom
 from app.modules.student_academics.models import (
     ClassSubjectTeacher,
     TeacherAssignment,
 )
+from app.modules.teachers.models import TeacherMembershipStatus
 from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.teachers.schemas import (
     TeacherMembershipEndRequest,
@@ -24,6 +25,18 @@ from app.modules.teachers.service import TeacherMembershipService
 from app.modules.tenant_admins.models import TenantAdmin
 
 
+class TeacherOffboardingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str = Field(min_length=3, max_length=500)
+    replacement_teacher_membership_id: UUID | None = None
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def clean_reason(cls, value: str) -> str:
+        return str(value or "").strip()
+
+
 class TeacherOffboardingImpactResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -31,14 +44,6 @@ class TeacherOffboardingImpactResponse(BaseModel):
     class_teacher_assignments: int = Field(ge=0)
     teacher_assignments: int = Field(ge=0)
     legacy_class_subject_assignments: int = Field(ge=0)
-
-    @property
-    def total_active_responsibilities(self) -> int:
-        return (
-            self.class_teacher_assignments
-            + self.teacher_assignments
-            + self.legacy_class_subject_assignments
-        )
 
 
 class TeacherOffboardingService:
@@ -112,10 +117,8 @@ class TeacherOffboardingService:
         *,
         actor: TenantAdmin,
         membership_id: UUID,
-        payload: TeacherMembershipEndRequest,
+        payload: TeacherOffboardingRequest,
     ) -> TeacherMembershipResponse:
-        # Lock the membership before touching dependent responsibility rows so
-        # concurrent assignment or reactivation actions serialize correctly.
         membership = await TeacherMembershipRepository.get_by_id(
             db,
             membership_id,
@@ -126,38 +129,71 @@ class TeacherOffboardingService:
         if membership is None:
             raise NotFoundException("Teacher membership not found.")
 
+        replacement_id = payload.replacement_teacher_membership_id
+        if replacement_id == membership_id:
+            raise BadRequestException("A teacher cannot replace their own membership.")
+
+        if replacement_id is not None:
+            replacement = await TeacherMembershipRepository.get_by_id(
+                db,
+                replacement_id,
+                tenant_id=actor.tenant_id,
+                lock=True,
+                load_account=True,
+            )
+            if replacement is None:
+                raise NotFoundException("Replacement teacher membership not found.")
+            if replacement.status != TeacherMembershipStatus.ACTIVE:
+                raise BadRequestException("Replacement teacher membership must be active.")
+
         await db.execute(
             update(ClassRoom)
             .where(
                 ClassRoom.tenant_id == actor.tenant_id,
                 ClassRoom.teacher_membership_id == membership_id,
             )
-            .values(teacher_membership_id=None)
-        )
-        await db.execute(
-            update(TeacherAssignment)
-            .where(
-                TeacherAssignment.tenant_id == actor.tenant_id,
-                TeacherAssignment.teacher_membership_id == membership_id,
-                TeacherAssignment.is_active.is_(True),
-            )
-            .values(is_active=False, effective_to=date.today())
-        )
-        await db.execute(
-            update(ClassSubjectTeacher)
-            .where(
-                ClassSubjectTeacher.tenant_id == actor.tenant_id,
-                ClassSubjectTeacher.teacher_membership_id == membership_id,
-                ClassSubjectTeacher.is_active.is_(True),
-            )
-            .values(is_active=False)
+            .values(teacher_membership_id=replacement_id)
         )
 
-        # The existing service owns status validation, session revocation,
-        # subscription invalidation, and the transaction commit.
+        assignment_filter = (
+            TeacherAssignment.tenant_id == actor.tenant_id,
+            TeacherAssignment.teacher_membership_id == membership_id,
+            TeacherAssignment.is_active.is_(True),
+        )
+        if replacement_id is None:
+            await db.execute(
+                update(TeacherAssignment)
+                .where(*assignment_filter)
+                .values(is_active=False, effective_to=date.today())
+            )
+        else:
+            await db.execute(
+                update(TeacherAssignment)
+                .where(*assignment_filter)
+                .values(teacher_membership_id=replacement_id)
+            )
+
+        legacy_filter = (
+            ClassSubjectTeacher.tenant_id == actor.tenant_id,
+            ClassSubjectTeacher.teacher_membership_id == membership_id,
+            ClassSubjectTeacher.is_active.is_(True),
+        )
+        if replacement_id is None:
+            await db.execute(
+                update(ClassSubjectTeacher)
+                .where(*legacy_filter)
+                .values(is_active=False)
+            )
+        else:
+            await db.execute(
+                update(ClassSubjectTeacher)
+                .where(*legacy_filter)
+                .values(teacher_membership_id=replacement_id)
+            )
+
         return await TeacherMembershipService.end_membership(
             db,
             actor=actor,
             membership_id=membership_id,
-            payload=payload,
+            payload=TeacherMembershipEndRequest(reason=payload.reason),
         )
