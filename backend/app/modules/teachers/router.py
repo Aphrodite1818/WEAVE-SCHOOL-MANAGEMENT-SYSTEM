@@ -24,6 +24,10 @@ from app.modules.teachers.models import (
     TeacherInvitationStatus,
     TeacherMembershipStatus,
 )
+from app.modules.teachers.offboarding_service import (
+    TeacherOffboardingImpactResponse,
+    TeacherOffboardingService,
+)
 from app.modules.teachers.registration_service import (
     TeacherRegistrationService,
 )
@@ -380,6 +384,22 @@ async def suspend_teacher_membership(
     )
 
 
+@router.get(
+    "/memberships/{membership_id}/offboarding-impact",
+    response_model=TeacherOffboardingImpactResponse,
+)
+async def inspect_teacher_offboarding_impact(
+    membership_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherOffboardingImpactResponse:
+    return await TeacherOffboardingService.inspect(
+        db,
+        tenant_id=current_admin.tenant_id,
+        membership_id=membership_id,
+    )
+
+
 @router.post(
     "/memberships/{membership_id}/end",
     response_model=TeacherMembershipResponse,
@@ -390,7 +410,7 @@ async def end_teacher_membership(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherMembershipResponse:
-    return await TeacherMembershipService.end_membership(
+    return await TeacherOffboardingService.end_membership_and_release_responsibilities(
         db,
         actor=current_admin,
         membership_id=membership_id,
