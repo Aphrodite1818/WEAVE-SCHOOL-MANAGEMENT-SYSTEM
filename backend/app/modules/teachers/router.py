@@ -15,6 +15,10 @@ from app.core.dependencies.route_guards import (
     get_current_teacher_account,
     get_current_tenant_admin,
 )
+from app.modules.auth.membership_summary_service import (
+    AccountMembershipSummaryList,
+    AccountMembershipSummaryService,
+)
 from app.modules.teachers.capability_service import (
     TeacherSubjectCapabilityListResponse,
     TeacherSubjectCapabilityService,
@@ -178,13 +182,13 @@ async def change_my_teacher_account_password(
 
 @router.get(
     "/accounts/me/memberships",
-    response_model=TeacherMembershipListResponse,
+    response_model=AccountMembershipSummaryList,
 )
 async def list_my_teacher_memberships(
     db: DbSession,
     current_account: CurrentTeacherAccount,
-) -> TeacherMembershipListResponse:
-    return await TeacherAccountService.list_memberships(
+) -> AccountMembershipSummaryList:
+    return await AccountMembershipSummaryService.list_teacher_memberships(
         db,
         account_id=current_account.id,
     )
