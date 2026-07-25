@@ -95,9 +95,9 @@ class Settings(BaseSettings):
 
     ALLOWED_ORIGINS: list[str] = Field(default_factory=list)
 
-    TWILIO_ACCOUNT_SID: str = Field(..., description="Twilio account SID")
-    TWILIO_AUTH_TOKEN: str = Field(..., description="Twilio auth token")
-    TWILIO_WHATSAPP_FROM: str = Field(..., description="Twilio WhatsApp number")
+    TWILIO_ACCOUNT_SID: str | None = Field(default=None, description="Twilio account SID")
+    TWILIO_AUTH_TOKEN: str | None = Field(default=None, description="Twilio auth token")
+    TWILIO_WHATSAPP_FROM: str | None = Field(default=None, description="Twilio WhatsApp number")
 
     # SMTP Settings for Emails (Optional for local testing)
     SMTP_HOST: str | None = Field(default=None, description="SMTP Server Host")
@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     STUDENT_ACCESS_CODE_EXPIRY_HOURS: int = 48
     STUDENT_ACCESS_CODE_LENGTH: int = 8
 
-    APP_SCRIPT_URL: str = Field(...)
+    APP_SCRIPT_URL: str | None = Field(default=None)
 
     PAYSTACK_SECRET_KEY: str | None = Field(default=None, description="Paystack secret key")
     PAYSTACK_BASE_URL: str = Field(default="https://api.paystack.co", description="Paystack API base URL")
