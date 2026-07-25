@@ -74,6 +74,9 @@ export const parentService = {
   listMembershipLinks: (membershipId) =>
     api.get(`/parents/memberships/${membershipId}/student-links`),
 
+  updateParentLink: (linkId, payload) =>
+    api.patch(`/tenant-admin/student-parent-links/${linkId}`, payload),
+
   endMembership: (membershipId, reason) =>
     api.post(`/parents/memberships/${membershipId}/end`, { reason }),
 
