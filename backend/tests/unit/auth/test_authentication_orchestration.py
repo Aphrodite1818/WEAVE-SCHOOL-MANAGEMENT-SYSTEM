@@ -6,109 +6,120 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import UnauthorizedException
-from app.modules.auth import service as auth_service
+from app.modules.auth import login_service
+from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.schemas import LoginRequest
+from app.modules.auth_identity.models import IdentifierType
 
 
 @pytest.mark.asyncio
-async def test_tenant_identity_authentication_skips_superadmin_lookup(monkeypatch) -> None:
-    tenant_actor = SimpleNamespace(actor_type="teacher")
-    superadmin_calls = 0
+async def test_superadmin_authentication_skips_identity_lookup(monkeypatch) -> None:
+    """Superadmin email login is resolved before tenant identity lookup."""
 
-    async def authenticate_tenant(*_args, **_kwargs):
-        return tenant_actor
-
-    async def authenticate_superadmin(*_args, **_kwargs):
-        nonlocal superadmin_calls
-        superadmin_calls += 1
-        return None
-
-    monkeypatch.setattr(auth_service, "_authenticate_tenant_actor", authenticate_tenant)
-    monkeypatch.setattr(auth_service, "_authenticate_superadmin", authenticate_superadmin)
-
-    result = await auth_service.AuthService.authenticate_actor(
-        object(),
-        LoginRequest(email="Teacher@Example.com", password="secret"),
-    )
-
-    assert result is tenant_actor
-    assert superadmin_calls == 0
-
-
-@pytest.mark.asyncio
-async def test_missing_tenant_identity_falls_back_to_superadmin(monkeypatch) -> None:
-    calls: list[str] = []
+    identity_calls = 0
     superadmin_id = uuid4()
     superadmin = SimpleNamespace(
         id=superadmin_id,
         email="superadmin@example.com",
+        password_hash="hashed",
+        is_active=True,
+        last_login_at=None,
     )
 
-    async def authenticate_tenant(*_args, **_kwargs):
-        calls.append("tenant_identity")
+    async def flush() -> None:
         return None
 
-    async def authenticate_superadmin(*_args, **_kwargs):
-        calls.append("superadmin")
+    async def get_superadmin_by_email(_db, email):
+        assert email == "superadmin@example.com"
         return superadmin
 
-    monkeypatch.setattr(auth_service, "_authenticate_tenant_actor", authenticate_tenant)
-    monkeypatch.setattr(auth_service, "_authenticate_superadmin", authenticate_superadmin)
+    async def resolve_identifier(*_args, **_kwargs):
+        nonlocal identity_calls
+        identity_calls += 1
+        return None
 
-    result = await auth_service.AuthService.authenticate_actor(
-        object(),
-        LoginRequest(email="SUPERADMIN@example.com", password="secret"),
+    db = SimpleNamespace(add=lambda _actor: None, flush=flush)
+    monkeypatch.setattr(
+        login_service.SuperAdminRepository,
+        "get_by_email",
+        get_superadmin_by_email,
+    )
+    monkeypatch.setattr(login_service, "verify_password", lambda password, hashed: True)
+    monkeypatch.setattr(
+        login_service.AuthIdentityService,
+        "resolve_identifier",
+        resolve_identifier,
     )
 
-    assert calls == ["tenant_identity", "superadmin"]
+    result = await login_service.AuthService.authenticate_actor(
+        db,
+        LoginRequest(identifier="SUPERADMIN@example.com", password="secret"),
+    )
+
     assert result.actor_id == superadmin_id
     assert result.email == "superadmin@example.com"
-    assert result.actor_type == "superadmin"
+    assert result.actor_type == AuthSessionActorType.SUPERADMIN.value
+    assert identity_calls == 0
 
 
 @pytest.mark.asyncio
-async def test_tenant_authentication_failure_does_not_probe_superadmin(monkeypatch) -> None:
-    superadmin_calls = 0
+async def test_missing_email_identity_raises_invalid_credentials(monkeypatch) -> None:
+    """Unknown email addresses do not leak account-existence details."""
 
-    async def authenticate_tenant(*_args, **_kwargs):
-        raise UnauthorizedException("Invalid credentials")
+    calls: list[tuple[str, str]] = []
 
-    async def authenticate_superadmin(*_args, **_kwargs):
-        nonlocal superadmin_calls
-        superadmin_calls += 1
+    async def get_superadmin_by_email(_db, email):
+        calls.append(("superadmin", email))
         return None
 
-    monkeypatch.setattr(auth_service, "_authenticate_tenant_actor", authenticate_tenant)
-    monkeypatch.setattr(auth_service, "_authenticate_superadmin", authenticate_superadmin)
+    async def resolve_identifier(_db, *, identifier, identifier_type):
+        calls.append(("identity", identifier))
+        assert identifier_type == IdentifierType.EMAIL
+        raise login_service.NotFoundException("not found")
 
-    with pytest.raises(UnauthorizedException, match="Invalid credentials"):
-        await auth_service.AuthService.authenticate_actor(
-            object(),
-            LoginRequest(email="teacher@example.com", password="wrong"),
-        )
-
-    assert superadmin_calls == 0
-
-
-@pytest.mark.asyncio
-async def test_admission_number_never_probes_superadmin(monkeypatch) -> None:
-    superadmin_calls = 0
-
-    async def authenticate_tenant(*_args, **_kwargs):
-        return None
-
-    async def authenticate_superadmin(*_args, **_kwargs):
-        nonlocal superadmin_calls
-        superadmin_calls += 1
-        return None
-
-    monkeypatch.setattr(auth_service, "_authenticate_tenant_actor", authenticate_tenant)
-    monkeypatch.setattr(auth_service, "_authenticate_superadmin", authenticate_superadmin)
+    monkeypatch.setattr(
+        login_service.SuperAdminRepository,
+        "get_by_email",
+        get_superadmin_by_email,
+    )
+    monkeypatch.setattr(
+        login_service.AuthIdentityService,
+        "resolve_identifier",
+        resolve_identifier,
+    )
 
     with pytest.raises(UnauthorizedException, match="Invalid email or password"):
-        await auth_service.AuthService.authenticate_actor(
+        await login_service.AuthService.authenticate_actor(
             object(),
-            LoginRequest(email="STUDENT-001", password="wrong"),
+            LoginRequest(identifier="MISSING@example.com", password="secret"),
         )
 
-    assert superadmin_calls == 0
+    assert calls == [
+        ("superadmin", "missing@example.com"),
+        ("identity", "missing@example.com"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_admission_number_never_probes_identity_or_superadmin(monkeypatch) -> None:
+    """Student admission numbers are not part of the email-account login path."""
+
+    async def unexpected_lookup(*_args, **_kwargs):
+        raise AssertionError("lookup should not run for non-email identifiers")
+
+    monkeypatch.setattr(
+        login_service.SuperAdminRepository,
+        "get_by_email",
+        unexpected_lookup,
+    )
+    monkeypatch.setattr(
+        login_service.AuthIdentityService,
+        "resolve_identifier",
+        unexpected_lookup,
+    )
+
+    with pytest.raises(UnauthorizedException, match="Invalid email or password"):
+        await login_service.AuthService.authenticate_actor(
+            object(),
+            LoginRequest(identifier="STUDENT-001", password="wrong"),
+        )

@@ -1,5 +1,8 @@
 """Regression tests for the tenant-admin student creation contract."""
 
+from datetime import date
+from uuid import uuid4
+
 import pytest
 from pydantic import ValidationError
 
@@ -13,6 +16,8 @@ def test_student_create_does_not_accept_passport_media() -> None:
         StudentCreate(
             first_name="Taiwo",
             last_name="Ayimora",
+            date_of_birth=date(2010, 1, 1),
+            class_id=uuid4(),
             passport_photo_url="https://example.com/student.jpg",
         )
 
@@ -23,6 +28,8 @@ def test_student_create_normalizes_optional_strings() -> None:
     payload = StudentCreate(
         first_name="  Taiwo  ",
         last_name="  Ayimora  ",
+        date_of_birth=date(2010, 1, 1),
+        class_id=uuid4(),
         state_of_origin="   ",
         arm="  A  ",
     )

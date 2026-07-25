@@ -82,7 +82,7 @@ async def test_teacher_result_listing_is_scoped_to_membership(monkeypatch) -> No
 
     assert items == []
     assert total == 0
-    assert list_results.await_args.kwargs["tenant_id"] == teacher.tenant_id
+    assert list_results.await_args.args[1] == teacher.tenant_id
     assert list_results.await_args.kwargs["teacher_id"] == teacher.id
 
 

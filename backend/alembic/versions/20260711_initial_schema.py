@@ -1,6 +1,6 @@
 """Create the complete Weave database schema from current ORM metadata.
 
-Revision ID: 0001_initial_schema
+Revision ID: 20260711_initial_schema
 Revises: None
 Create Date: 2026-07-16
 
@@ -19,7 +19,7 @@ from sqlalchemy.orm import configure_mappers
 from app.modules import import_model_modules
 from app.shared.base_model import Base
 
-revision: str = "0001_initial_schema"
+revision: str = "20260711_initial_schema"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
