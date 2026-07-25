@@ -105,18 +105,7 @@ class StudentAcademicService:
             raise NotFoundException("Teacher membership not found.")
         if membership.status != TeacherMembershipStatus.ACTIVE:
             raise BadRequestException("Teacher membership is not active.")
-        capability = (
-            await TeacherMembershipSubjectRepository.get_by_membership_and_subject(
-                db,
-                tenant_id,
-                membership.id,
-                subject_id,
-            )
-        )
-        if capability is None or not capability.is_active:
-            raise ForbiddenException(
-                "The teacher is not approved to teach this subject."
-            )
+        # Subject-specific approval requirement is removed from the pre-assignment validation stage.
         return membership
 
     @staticmethod
