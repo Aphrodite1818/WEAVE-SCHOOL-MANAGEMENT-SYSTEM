@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.auth.membership_summary_service import AccountMembershipSummary
+from app.modules.parents.invitation_contracts import ParentInvitationTokenOnlyRequest
 from app.modules.parents.lifecycle_contracts import ParentLinkedStudentListResponse
 from app.modules.students.admin_contracts import StudentAdminContractService
 from app.modules.teachers.capability_service import TeacherSubjectCapabilityListResponse
@@ -18,6 +19,17 @@ def test_lifecycle_modules_import_without_circular_dependencies() -> None:
     assert TeacherPatchService is not None
     assert ParentLinkedStudentListResponse(items=[], total=0).total == 0
     assert TeacherSubjectCapabilityListResponse(items=[], total=0).total == 0
+
+
+def test_parent_invitation_body_is_token_only() -> None:
+    payload = ParentInvitationTokenOnlyRequest(invitation_token="x" * 20)
+    assert payload.invitation_token == "x" * 20
+
+    with pytest.raises(ValidationError):
+        ParentInvitationTokenOnlyRequest(
+            invitation_token="x" * 20,
+            admission_number="STU-001",
+        )
 
 
 def test_membership_summary_requires_authoritative_school_metadata() -> None:
