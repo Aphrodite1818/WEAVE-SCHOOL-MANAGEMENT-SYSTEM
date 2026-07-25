@@ -63,6 +63,16 @@ class ParentLinkedStudentListResponse(OutputBase):
     total: int = Field(ge=0)
 
 
+class AdminParentLinkItem(OutputBase):
+    student: StudentDetailResponse
+    link: StudentParentLinkResponse
+
+
+class AdminParentLinkListResponse(OutputBase):
+    items: list[AdminParentLinkItem]
+    total: int = Field(ge=0)
+
+
 class ParentMembershipLifecycleService:
     """Keep parent memberships and child links mutually consistent."""
 
@@ -119,14 +129,43 @@ class ParentMembershipLifecycleService:
                 continue
             items.append(
                 ParentLinkedStudentItem(
-                    student=await StudentService._build_detail_response(
-                        db,
-                        link.student,
-                    ),
+                    student=await StudentService._build_detail_response(db, link.student),
                     link=StudentParentLinkResponse.model_validate(link),
                 )
             )
         return ParentLinkedStudentListResponse(items=items, total=len(items))
+
+    @staticmethod
+    async def list_membership_links(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        membership_id: UUID,
+    ) -> AdminParentLinkListResponse:
+        membership = await ParentMembershipRepository.get_by_id(
+            db,
+            membership_id,
+            tenant_id=tenant_id,
+            load_account=True,
+        )
+        if membership is None:
+            raise NotFoundException("Parent membership not found.")
+        links = await StudentParentLinkRepository.list_for_membership(
+            db,
+            tenant_id,
+            membership_id,
+        )
+        items: list[AdminParentLinkItem] = []
+        for link in links:
+            if link.student is None:
+                continue
+            items.append(
+                AdminParentLinkItem(
+                    student=await StudentService._build_detail_response(db, link.student),
+                    link=StudentParentLinkResponse.model_validate(link),
+                )
+            )
+        return AdminParentLinkListResponse(items=items, total=len(items))
 
     @staticmethod
     async def reactivate_membership(
@@ -163,8 +202,6 @@ class ParentMembershipLifecycleService:
         )
         restored = 0
         for link in links:
-            # Restore only links ended by the same membership-ending operation.
-            # Individually ended links remain ended and require explicit action.
             if ended_at is None or link.ended_at != ended_at or link.student is None:
                 continue
             target_status = ParentMembershipLifecycleService._status_for_student(
