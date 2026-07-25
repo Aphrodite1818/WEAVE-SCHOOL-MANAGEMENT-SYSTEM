@@ -15,6 +15,10 @@ from app.core.dependencies.route_guards import (
     get_current_teacher_account,
     get_current_tenant_admin,
 )
+from app.modules.teachers.capability_service import (
+    TeacherSubjectCapabilityListResponse,
+    TeacherSubjectCapabilityService,
+)
 from app.modules.teachers.invitation_workflow_service import (
     TeacherInvitationWorkflowService,
 )
@@ -26,6 +30,7 @@ from app.modules.teachers.models import (
 )
 from app.modules.teachers.offboarding_service import (
     TeacherOffboardingImpactResponse,
+    TeacherOffboardingRequest,
     TeacherOffboardingService,
 )
 from app.modules.teachers.registration_service import (
@@ -40,7 +45,6 @@ from app.modules.teachers.schemas import (
     TeacherInvitationCreateRequest,
     TeacherInvitationPublicContextResponse,
     TeacherInvitationResponse,
-    TeacherMembershipEndRequest,
     TeacherMembershipListResponse,
     TeacherMembershipReactivateRequest,
     TeacherMembershipResponse,
@@ -406,7 +410,7 @@ async def inspect_teacher_offboarding_impact(
 )
 async def end_teacher_membership(
     membership_id: UUID,
-    payload: TeacherMembershipEndRequest,
+    payload: TeacherOffboardingRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherMembershipResponse:
@@ -436,6 +440,22 @@ async def reactivate_teacher_membership(
     )
 
 
+@router.get(
+    "/memberships/{membership_id}/subject-capabilities",
+    response_model=TeacherSubjectCapabilityListResponse,
+)
+async def list_teacher_subject_capabilities(
+    membership_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherSubjectCapabilityListResponse:
+    return await TeacherSubjectCapabilityService.list_capabilities(
+        db,
+        tenant_id=current_admin.tenant_id,
+        membership_id=membership_id,
+    )
+
+
 @router.put(
     "/memberships/{membership_id}/subject-capabilities",
     response_model=TeacherMembershipResponse,
@@ -446,7 +466,7 @@ async def replace_teacher_subject_capabilities(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherMembershipResponse:
-    return await TeacherMembershipService.replace_subject_capabilities(
+    return await TeacherSubjectCapabilityService.replace_capabilities(
         db,
         actor=current_admin,
         membership_id=membership_id,
