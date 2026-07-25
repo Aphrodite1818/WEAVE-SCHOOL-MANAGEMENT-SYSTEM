@@ -45,10 +45,15 @@ export const parentService = {
     }),
 
   acceptInvitation: (invitationToken, admissionNumber) =>
-    api.post("/parents/accounts/me/invitations/accept", {
-      invitation_token: invitationToken,
-      admission_number: admissionNumber,
-    }),
+    api.post(
+      "/parents/accounts/me/invitations/accept",
+      { invitation_token: invitationToken },
+      {
+        headers: {
+          "X-Student-Admission-Number": admissionNumber,
+        },
+      },
+    ),
 
   getParents: (options = {}) =>
     api.get(`/tenant-admin/parents?${buildParentQuery(options)}`),
