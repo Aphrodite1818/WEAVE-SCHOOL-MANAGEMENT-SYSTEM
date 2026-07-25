@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Archive,
   Ban,
@@ -280,6 +281,7 @@ function StudentCard({ student, busy, onEdit, onReset, onHistory, onLifecycle, o
 }
 
 function StudentDirectoryPage() {
+  const navigate = useNavigate();
   const { showSuccess, showError, showWarning } = useToast();
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -640,7 +642,12 @@ function StudentDirectoryPage() {
 
       {students.length === 0 ? (
         <Card className="p-6">
-          <EmptyState title="No students found" description="Adjust the filters or create a student." />
+          <EmptyState 
+            title="No students found" 
+            description="Adjust the filters or create a student." 
+            actionLabel="Create student"
+            onAction={() => navigate("/admin/students/create")}
+          />
         </Card>
       ) : (
         <section className="directory-card-grid mobile-scroll-list grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
