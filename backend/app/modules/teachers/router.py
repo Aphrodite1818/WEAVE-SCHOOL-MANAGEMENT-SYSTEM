@@ -33,6 +33,7 @@ from app.modules.teachers.offboarding_service import (
     TeacherOffboardingRequest,
     TeacherOffboardingService,
 )
+from app.modules.teachers.patch_service import TeacherPatchService
 from app.modules.teachers.registration_service import (
     TeacherRegistrationService,
 )
@@ -152,7 +153,7 @@ async def update_my_teacher_account_profile(
     db: DbSession,
     current_account: CurrentTeacherAccount,
 ) -> TeacherAccountResponse:
-    return await TeacherAccountService.update_profile(
+    return await TeacherPatchService.update_account_profile(
         db,
         account_id=current_account.id,
         payload=payload,
@@ -244,7 +245,7 @@ async def update_my_teacher_membership_preferences(
     db: DbSession,
     current_membership: CurrentTeacherMembership,
 ) -> TeacherMembershipResponse:
-    return await TeacherMembershipService.update_membership(
+    return await TeacherPatchService.update_membership(
         db,
         actor=current_membership,
         membership_id=current_membership.id,
@@ -362,7 +363,7 @@ async def update_teacher_membership(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherMembershipResponse:
-    return await TeacherMembershipService.update_membership(
+    return await TeacherPatchService.update_membership(
         db,
         actor=current_admin,
         membership_id=membership_id,
