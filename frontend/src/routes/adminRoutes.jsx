@@ -10,6 +10,7 @@ import AdminSearchDetailPage from "../pages/admin/AdminSearchDetailPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
 import FeesPage from "../pages/admin/FeesPage";
+import ParentLinkManagementPage from "../pages/admin/ParentLinkManagementPage";
 import ParentsPage from "../pages/admin/ParentsPage";
 import PaymentsPage from "../pages/admin/PaymentsPage";
 import StudentCreatePage from "../pages/admin/StudentCreatePage";
@@ -43,6 +44,7 @@ export const adminRoutes = (
       <Route path="/admin/students" element={protectedWorkflow(<StudentsPage />)} />
       <Route path="/admin/students/create" element={protectedWorkflow(<StudentCreatePage />)} />
       <Route path="/admin/parents" element={protectedWorkflow(<ParentsPage />)} />
+      <Route path="/admin/parents/links" element={protectedWorkflow(<ParentLinkManagementPage />)} />
       <Route path="/admin/classes" element={<Navigate to="/admin/academic/class-subjects" replace />} />
       <Route path="/admin/subjects" element={<Navigate to="/admin/academic/setup?tab=subjects" replace />} />
       <Route path="/admin/imports" element={protectedWorkflow(<BulkImportRouteGuard />)} />
