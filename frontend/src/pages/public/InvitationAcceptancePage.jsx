@@ -12,7 +12,6 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import AuthLayout from "../../components/layout/AuthLayout";
 import Button from "../../components/ui/Button";
-import Input from "../../components/ui/Input";
 import { authSession, parseApiError } from "../../services/api";
 import { authService } from "../../services/auth.service";
 import { parentService } from "../../services/parentService";
@@ -23,7 +22,7 @@ const ROLE_CONFIG = {
   parent: {
     title: "Parent invitation",
     description:
-      "Confirm the student details and request access through your parent account.",
+      "Review the student details and request access through your parent account.",
     accountActor: "parent_account",
     membershipActor: "parent",
     schoolPath: "/parent/schools",
@@ -76,7 +75,6 @@ function InvitationAcceptancePage({ role }) {
   const [contextStatus, setContextStatus] = useState(
     token ? "loading" : "ready",
   );
-  const [admissionNumber, setAdmissionNumber] = useState("");
   const [isAccepting, setIsAccepting] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -107,9 +105,6 @@ function InvitationAcceptancePage({ role }) {
         if (!mounted) return;
         setContext(result);
         setContextStatus(String(result?.status || "ready").toLowerCase());
-        if (role === "parent" && result?.admission_number) {
-          setAdmissionNumber(String(result.admission_number).toUpperCase());
-        }
       } catch (err) {
         if (!mounted) return;
         const apiError = parseApiError(
@@ -141,16 +136,23 @@ function InvitationAcceptancePage({ role }) {
     event.preventDefault();
     if (!isAuthenticated || !isCorrectAccount || !invitationAvailable) return;
 
+    const admissionNumber = String(context?.admission_number || "")
+      .trim()
+      .toUpperCase();
+    if (role === "parent" && !admissionNumber) {
+      setError(
+        "The invitation is missing its student admission reference. Ask the school to resend it.",
+      );
+      return;
+    }
+
     setIsAccepting(true);
     setError(null);
 
     try {
       const result =
         role === "parent"
-          ? await parentService.acceptInvitation(
-              token,
-              admissionNumber.trim().toUpperCase(),
-            )
+          ? await parentService.acceptInvitation(token, admissionNumber)
           : await teacherService.acceptInvitation(token);
       setSuccess(result);
     } catch (err) {
@@ -332,20 +334,16 @@ function InvitationAcceptancePage({ role }) {
         {!success && invitationAvailable && isAuthenticated && isCorrectAccount ? (
           <form onSubmit={handleAccept} className="space-y-4">
             {role === "parent" ? (
-              <Input
-                label="Student admission number"
-                value={admissionNumber}
-                onChange={(event) => setAdmissionNumber(event.target.value)}
-                placeholder={context?.admission_number_hint || "Enter admission number"}
-                required
-              />
+              <p className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm leading-6 text-text-muted">
+                The student reference is already attached to this invitation. Review the details above, then submit the access request.
+              </p>
             ) : null}
             <Button
               type="submit"
               className="w-full"
               disabled={
                 isAccepting ||
-                (role === "parent" && !admissionNumber.trim())
+                (role === "parent" && !context?.admission_number)
               }
             >
               {isAccepting ? "Accepting invitation..." : "Accept invitation"}
