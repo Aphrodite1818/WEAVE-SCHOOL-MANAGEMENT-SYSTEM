@@ -1,13 +1,13 @@
 import { API_BASE_URL, api, authSession } from "./api";
 
-const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 100, 1), 100);
+const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
 
 const normalizeTeacherMembershipStatus = (status) =>
   status === "ended" ? "inactive" : status;
 
-const buildTeacherQuery = ({ skip = 0, limit = 100, search, status } = {}) => {
+const buildTeacherQuery = ({ skip = 0, limit = 50, search, status } = {}) => {
   const params = new URLSearchParams();
-  params.set("skip", String(skip));
+  params.set("skip", String(Math.max(Number(skip) || 0, 0)));
   params.set("limit", String(clampLimit(limit)));
   if (search) params.set("search", search);
   if (status) params.set("status", normalizeTeacherMembershipStatus(status));
@@ -16,8 +16,8 @@ const buildTeacherQuery = ({ skip = 0, limit = 100, search, status } = {}) => {
 
 const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
   const params = new URLSearchParams();
-  params.set("skip", String(skip));
-  params.set("limit", String(Math.min(Math.max(Number(limit) || 50, 1), 100)));
+  params.set("skip", String(Math.max(Number(skip) || 0, 0)));
+  params.set("limit", String(clampLimit(limit)));
   if (status) params.set("status", status);
   return params.toString();
 };
@@ -47,16 +47,11 @@ const putJson = async (endpoint, payload, hasRetried = false) => {
   });
 
   if (response.status === 401 && !hasRetried) {
-    // Run one request through the shared client so its canonical refresh flow
-    // rotates the access token, then retry the original PUT exactly once.
     await api.get("/auth/me/session");
     return putJson(endpoint, payload, true);
   }
 
-  if (!response.ok) {
-    throw await createResponseError(response);
-  }
-
+  if (!response.ok) throw await createResponseError(response);
   return response.json().catch(() => ({}));
 };
 
@@ -123,11 +118,20 @@ export const teacherService = {
   suspendMembership: (membershipId, reason) =>
     api.post(`/teachers/memberships/${membershipId}/suspend`, { reason }),
 
-  endMembership: (membershipId, reason) =>
-    api.post(`/teachers/memberships/${membershipId}/end`, { reason }),
+  getOffboardingImpact: (membershipId) =>
+    api.get(`/teachers/memberships/${membershipId}/offboarding-impact`),
+
+  endMembership: (membershipId, reason, replacementTeacherMembershipId = null) =>
+    api.post(`/teachers/memberships/${membershipId}/end`, {
+      reason,
+      replacement_teacher_membership_id: replacementTeacherMembershipId || null,
+    }),
 
   reactivateMembership: (membershipId, reason) =>
     api.post(`/teachers/memberships/${membershipId}/reactivate`, { reason }),
+
+  listSubjectCapabilities: (membershipId) =>
+    api.get(`/teachers/memberships/${membershipId}/subject-capabilities`),
 
   replaceSubjectCapabilities: (membershipId, subjectIds) =>
     putJson(`/teachers/memberships/${membershipId}/subject-capabilities`, {
