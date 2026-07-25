@@ -14,6 +14,7 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
 )
 from app.modules.parents.lifecycle_contracts import (
+    AdminParentLinkListResponse,
     ParentLinkedStudentListResponse,
     ParentMembershipLifecycleService,
 )
@@ -81,11 +82,7 @@ async def register_parent_account(
     db: DbSession,
     background_tasks: BackgroundTasks,
 ) -> dict[str, object]:
-    return await ParentAccountService.register_account(
-        db,
-        payload,
-        background_tasks,
-    )
+    return await ParentAccountService.register_account(db, payload, background_tasks)
 
 
 @router.get(
@@ -102,18 +99,12 @@ async def get_parent_invitation_context(
     )
 
 
-@router.get(
-    "/accounts/me",
-    response_model=ParentAccountResponse,
-)
+@router.get("/accounts/me", response_model=ParentAccountResponse)
 async def get_my_parent_account(
     db: DbSession,
     current_account: CurrentParentAccount,
 ) -> ParentAccountResponse:
-    return await ParentAccountService.get_account(
-        db,
-        account_id=current_account.id,
-    )
+    return await ParentAccountService.get_account(db, account_id=current_account.id)
 
 
 @router.get("/accounts/me/onboarding-status")
@@ -127,10 +118,7 @@ async def get_my_parent_account_onboarding_status(
     )
 
 
-@router.post(
-    "/accounts/me/onboarding",
-    response_model=ParentAccountResponse,
-)
+@router.post("/accounts/me/onboarding", response_model=ParentAccountResponse)
 async def complete_my_parent_account_onboarding(
     payload: ParentAccountOnboardingRequest,
     db: DbSession,
@@ -143,10 +131,7 @@ async def complete_my_parent_account_onboarding(
     )
 
 
-@router.patch(
-    "/accounts/me/profile",
-    response_model=ParentAccountResponse,
-)
+@router.patch("/accounts/me/profile", response_model=ParentAccountResponse)
 async def update_my_parent_account_profile(
     payload: ParentAccountProfileUpdateRequest,
     db: DbSession,
@@ -206,10 +191,7 @@ async def accept_parent_invitation(
     )
 
 
-@router.get(
-    "/me",
-    response_model=ParentMembershipWithAccountResponse,
-)
+@router.get("/me", response_model=ParentMembershipWithAccountResponse)
 async def get_my_parent_membership(
     db: DbSession,
     current_membership: CurrentParentMembership,
@@ -221,10 +203,7 @@ async def get_my_parent_membership(
     )
 
 
-@router.patch(
-    "/me/notifications",
-    response_model=ParentMembershipResponse,
-)
+@router.patch("/me/notifications", response_model=ParentMembershipResponse)
 async def update_my_parent_notification_preferences(
     payload: ParentMembershipNotificationUpdateRequest,
     db: DbSession,
@@ -237,10 +216,7 @@ async def update_my_parent_notification_preferences(
     )
 
 
-@router.get(
-    "/me/students",
-    response_model=ParentLinkedStudentListResponse,
-)
+@router.get("/me/students", response_model=ParentLinkedStudentListResponse)
 async def list_my_linked_students(
     db: DbSession,
     current_membership: CurrentParentMembership,
@@ -259,16 +235,11 @@ async def list_my_parent_link_requests(
     db: DbSession,
     current_membership: CurrentParentMembership,
 ) -> StudentParentLinkRequestListResponse:
-    requests, total = (
-        await StudentParentLinkRequestService.list_parent_requests(
-            db,
-            current_membership,
-        )
+    requests, total = await StudentParentLinkRequestService.list_parent_requests(
+        db,
+        current_membership,
     )
-    return StudentParentLinkRequestListResponse(
-        items=requests,
-        total=total,
-    )
+    return StudentParentLinkRequestListResponse(items=requests, total=total)
 
 
 @router.post(
@@ -290,10 +261,7 @@ async def create_parent_invitation(
     )
 
 
-@router.get(
-    "/invitations",
-    response_model=ParentInvitationListResponse,
-)
+@router.get("/invitations", response_model=ParentInvitationListResponse)
 async def list_parent_invitations(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
@@ -311,10 +279,7 @@ async def list_parent_invitations(
         limit=limit,
         status=invitation_status,
     )
-    return ParentInvitationListResponse(
-        items=invitations,
-        total=total,
-    )
+    return ParentInvitationListResponse(items=invitations, total=total)
 
 
 @router.post(
@@ -388,10 +353,7 @@ async def reactivate_parent_link(
     )
 
 
-@router.get(
-    "/memberships",
-    response_model=ParentMembershipListResponse,
-)
+@router.get("/memberships", response_model=ParentMembershipListResponse)
 async def list_parent_memberships(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
@@ -410,6 +372,22 @@ async def list_parent_memberships(
         limit=limit,
         search=search,
         status=membership_status,
+    )
+
+
+@router.get(
+    "/memberships/{membership_id}/student-links",
+    response_model=AdminParentLinkListResponse,
+)
+async def list_parent_membership_student_links(
+    membership_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AdminParentLinkListResponse:
+    return await ParentMembershipLifecycleService.list_membership_links(
+        db,
+        tenant_id=current_admin.tenant_id,
+        membership_id=membership_id,
     )
 
 
