@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
@@ -11,6 +11,7 @@ import Input from "../../components/ui/Input";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { useToast } from "../../hooks/useToast";
+import academicService from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { parseApiError } from "../../services/api";
 import { studentService } from "../../services/studentService";
@@ -19,7 +20,7 @@ import { displayName } from "../../utils/user";
 const GENDER_OPTIONS = ["male", "female"];
 const RELATIONSHIP_OPTIONS = ["father", "mother", "guardian", "sponsor", "other"];
 
-const INITIAL_STUDENT_FORM = {
+const INITIAL_FORM = {
   first_name: "",
   last_name: "",
   gender: "",
@@ -31,251 +32,221 @@ const INITIAL_STUDENT_FORM = {
 
 const titleCase = (value) =>
   String(value || "")
-    .replace(/_/g, " ")
+    .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-const enumOptions = (values) =>
-  values.map((value) => ({ value, label: titleCase(value) }));
+const asItems = (response) => (Array.isArray(response?.items) ? response.items : []);
+const cleanOptional = (value) => String(value || "").trim() || null;
 
-const listItems = (response) =>
-  Array.isArray(response)
-    ? response
-    : Array.isArray(response?.items)
-      ? response.items
-      : [];
-
-const cleanOptional = (value) => {
-  const cleaned = String(value || "").trim();
-  return cleaned || null;
-};
-
-const formatDateValue = (value) => {
+const formatDate = (value) => {
   if (!value) return "Not set";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 };
 
-function SelectControl({
-  label,
-  name,
-  value,
-  options,
-  placeholder,
-  onChange,
-  error,
-  required = false,
-}) {
+function SelectField({ label, value, onChange, options, placeholder, error, required }) {
   return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-text-soft">
-        {label}
-      </label>
-      <select
-        name={name}
-        value={value || ""}
-        onChange={onChange}
-        className="input-base"
-        required={required}
-      >
-        <option value="">{placeholder || "Select an option"}</option>
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-semibold text-text-soft">{label}</span>
+      <select className="input-base" value={value} onChange={onChange} required={required}>
+        <option value="">{placeholder || "Select"}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
       </select>
-      {error ? <p className="mt-1 text-sm text-error">{error}</p> : null}
-    </div>
+      {error ? <span className="mt-1 block text-xs text-error">{error}</span> : null}
+    </label>
   );
 }
 
-function buildStudentAccessNotice(student) {
-  const accessCode = student?.setup_code || student?.access_code;
-  if (!student || !accessCode) return null;
-
+function buildAccessNotice(student) {
+  const code = student?.setup_code || student?.access_code;
+  if (!code) return null;
   return {
     title: "Student created successfully",
-    description: "Give these details to the student for first-time login.",
+    description: "Give these first-login details to the student.",
     fields: [
       { label: "Student", value: student.full_name || displayName(student) },
       { label: "Admission number", value: student.admission_number },
-      { label: "Access code", value: accessCode },
-      {
-        label: "Expires",
-        value: formatDateValue(
-          student.access_code_expires_at || student.expires_at,
-        ),
-      },
+      { label: "Access code", value: code },
+      { label: "Expires", value: formatDate(student.access_code_expires_at || student.expires_at) },
     ],
   };
 }
 
 function StudentCreatePage() {
-  const [classOptions, setClassOptions] = useState([]);
-  const [formData, setFormData] = useState(INITIAL_STUDENT_FORM);
-  const [isLoadingContext, setIsLoadingContext] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState(null);
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [classes, setClasses] = useState([]);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [loadingContext, setLoadingContext] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
-  const [successPayload, setSuccessPayload] = useState(null);
-  const [accessCodeNotice, setAccessCodeNotice] = useState(null);
+  const [accessNotice, setAccessNotice] = useState(null);
   const { showSuccess, showError } = useToast();
   const { getResourceGuard, refreshSubscriptionState } = useSubscription();
   const studentGuard = getResourceGuard("students", {
     featureCode: FEATURE_CODES.STUDENT_MANAGEMENT,
   });
 
+  const classOptions = useMemo(
+    () =>
+      classes.map((item) => ({
+        value: item.id,
+        label: [item.name, item.arm].filter(Boolean).join(" ") || "Unnamed class",
+      })),
+    [classes],
+  );
+
   useEffect(() => {
     let mounted = true;
-
     async function loadContext() {
-      setIsLoadingContext(true);
+      setLoadingContext(true);
+      setError("");
       try {
-        const classesResponse = await classService.getClasses({ limit: 100 });
+        const [classResponse, sessionResponse] = await Promise.all([
+          classService.getClasses({ limit: 100 }),
+          academicService.listSessions({ limit: 100 }),
+        ]);
         if (!mounted) return;
-
-        setClassOptions(
-          listItems(classesResponse)
-            .filter((item) => item.is_active !== false)
-            .map((item) => ({
-              value: item.id,
-              label:
-                [item.name, item.arm].filter(Boolean).join(" ") ||
-                "Unnamed class",
-            })),
-        );
-      } catch (err) {
-        if (mounted) {
-          const parsed = parseApiError(err, "Failed to load class options.");
-          setError(parsed.message);
-          showError(parsed.message);
-        }
+        const activeClasses = asItems(classResponse).filter((item) => item.is_active !== false);
+        const sessions = asItems(sessionResponse);
+        const openCurrent =
+          sessions.find(
+            (item) =>
+              item.is_current &&
+              item.is_active !== false &&
+              String(item.status || "").toLowerCase() === "open",
+          ) || null;
+        setClasses(activeClasses);
+        setCurrentSession(openCurrent);
+      } catch (requestError) {
+        if (!mounted) return;
+        const parsed = parseApiError(requestError, "Failed to load creation requirements.");
+        setError(parsed.message);
+        showError(parsed.message);
       } finally {
-        if (mounted) setIsLoadingContext(false);
+        if (mounted) setLoadingContext(false);
       }
     }
-
     loadContext();
-
     return () => {
       mounted = false;
     };
   }, [showError]);
 
-  const resetErrors = () => {
-    setError(null);
-    setFieldErrors({});
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
+    setError("");
   };
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((current) => ({ ...current, [name]: value }));
-    resetErrors();
-  };
-
-  const handleParentChange = (index, field, value) => {
-    setFormData((current) => ({
+  const updateParent = (index, field, value) => {
+    setForm((current) => ({
       ...current,
       parents: current.parents.map((parent, parentIndex) =>
         parentIndex === index ? { ...parent, [field]: value } : parent,
       ),
     }));
-    resetErrors();
+    setError("");
   };
 
   const addParent = () => {
-    setFormData((current) => {
-      if (current.parents.length >= 2) return current;
-      return {
-        ...current,
-        parents: [
-          ...current.parents,
-          { email: "", relationship_type: "guardian" },
-        ],
-      };
-    });
+    setForm((current) =>
+      current.parents.length >= 2
+        ? current
+        : {
+            ...current,
+            parents: [...current.parents, { email: "", relationship_type: "guardian" }],
+          },
+    );
   };
 
   const removeParent = (index) => {
-    setFormData((current) => ({
+    setForm((current) => ({
       ...current,
       parents:
         current.parents.length === 1
           ? [{ email: "", relationship_type: "guardian" }]
           : current.parents.filter((_, parentIndex) => parentIndex !== index),
     }));
-    resetErrors();
   };
 
   const buildParents = () => {
-    const parents = formData.parents
+    const parents = form.parents
       .map((parent) => ({
         email: parent.email.trim().toLowerCase(),
         relationship_type: parent.relationship_type,
       }))
       .filter((parent) => parent.email);
     const emails = parents.map((parent) => parent.email);
-
     if (emails.length !== new Set(emails).size) {
       throw new Error("Each parent invitation must use a different email address.");
     }
-
     return parents;
   };
 
-  const handleSubmit = async (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    setIsSubmitting(true);
-    resetErrors();
-    setSuccessPayload(null);
+    if (!currentSession) {
+      setError("Open a current academic session before creating students.");
+      return;
+    }
+    if (!studentGuard.allowed) {
+      setError(studentGuard.reason || "The current plan does not allow another student.");
+      return;
+    }
 
+    setSubmitting(true);
+    setError("");
+    setFieldErrors({});
     try {
       const parents = buildParents();
       const result = await studentService.createStudent({
-        first_name: formData.first_name.trim(),
-        last_name: formData.last_name.trim(),
-        gender: cleanOptional(formData.gender),
-        date_of_birth: formData.date_of_birth,
-        state_of_origin: cleanOptional(formData.state_of_origin),
-        class_id: formData.class_id,
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        gender: cleanOptional(form.gender),
+        date_of_birth: form.date_of_birth,
+        state_of_origin: cleanOptional(form.state_of_origin),
+        class_id: form.class_id,
         parents,
       });
-
-      setFormData(INITIAL_STUDENT_FORM);
-      setSuccessPayload({ result, invitationCount: parents.length });
-      setAccessCodeNotice(buildStudentAccessNotice(result));
+      setForm(INITIAL_FORM);
+      setAccessNotice(buildAccessNotice(result));
       showSuccess(
         parents.length > 0
           ? "Student created and parent invitations queued."
           : "Student created successfully.",
       );
       await refreshSubscriptionState({ silent: true });
-    } catch (err) {
-      if (!err?.response && err instanceof Error) {
-        setError(err.message);
-        showError(err.message);
+    } catch (requestError) {
+      if (!requestError?.response && requestError instanceof Error) {
+        setError(requestError.message);
+        showError(requestError.message);
       } else {
-        const parsed = parseApiError(err, "Failed to create student.");
+        const parsed = parseApiError(requestError, "Failed to create student.");
         setFieldErrors(parsed.fieldErrors || {});
         setError(parsed.message);
         showError(parsed.message);
       }
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
+
+  const creationBlocked =
+    loadingContext ||
+    !currentSession ||
+    classOptions.length === 0 ||
+    !studentGuard.allowed;
 
   return (
     <DashboardLayout
       role="admin"
       title="Create Student"
-      description="Add a student record, class placement, first-login access code, and optional parent invitations."
+      description="Create the student, initial enrollment, first-login code, and optional parent invitations atomically."
       actions={
         <Link to="/admin/students">
           <Button type="button" variant="outline">
@@ -286,15 +257,11 @@ function StudentCreatePage() {
       }
     >
       <StudentAccessCodeSlipModal
-        notice={accessCodeNotice}
-        onClose={() => setAccessCodeNotice(null)}
-        onCopied={() => showSuccess("Access code details copied.")}
-        onCopyFailed={() =>
-          showError("Could not copy details automatically. Please copy them manually.")
-        }
-        onPrintFailed={() =>
-          showError("Could not open the print window. Check your browser popup setting.")
-        }
+        notice={accessNotice}
+        onClose={() => setAccessNotice(null)}
+        onCopied={() => showSuccess("Access details copied.")}
+        onCopyFailed={() => showError("Could not copy access details.")}
+        onPrintFailed={() => showError("Could not open the print window.")}
       />
 
       <section className="mx-auto grid w-full max-w-5xl gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -305,80 +272,57 @@ function StudentCreatePage() {
             </div>
           ) : null}
 
+          {!currentSession && !loadingContext ? (
+            <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-4 text-sm text-amber-800">
+              <p className="font-semibold">No open current academic session</p>
+              <p className="mt-1 leading-6">
+                Student creation also creates the initial enrollment, so an open current session is required.
+              </p>
+              <Link to="/admin/academic/setup?tab=sessions" className="mt-3 inline-flex font-semibold text-primary">
+                Open Academic Setup
+              </Link>
+            </div>
+          ) : null}
+
+          {classOptions.length === 0 && !loadingContext ? (
+            <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-4 text-sm text-amber-800">
+              Create at least one active class before admitting students.
+            </div>
+          ) : null}
+
           {!studentGuard.allowed && studentGuard.reason ? (
-            <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-700">
+            <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-800">
               {studentGuard.reason}
             </div>
           ) : null}
 
-          {isLoadingContext ? (
-            <LoadingState label="Loading class options..." />
+          {loadingContext ? (
+            <LoadingState label="Checking academic setup..." />
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={submit} className="space-y-6">
               <section className="space-y-4">
                 <div>
                   <h2 className="text-lg font-semibold text-text">Student identity</h2>
                   <p className="mt-1 text-sm text-text-muted">
-                    Admission number and access code are generated by the backend.
+                    Admission number and first-login code are generated by the backend.
                   </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    label="First name"
-                    name="first_name"
-                    value={formData.first_name}
-                    onChange={handleChange}
-                    error={fieldErrors.first_name}
-                    required
-                  />
-                  <Input
-                    label="Last name"
-                    name="last_name"
-                    value={formData.last_name}
-                    onChange={handleChange}
-                    error={fieldErrors.last_name}
-                    required
-                  />
-                  <SelectControl
-                    label="Gender"
-                    name="gender"
-                    value={formData.gender}
-                    options={enumOptions(GENDER_OPTIONS)}
-                    onChange={handleChange}
-                    error={fieldErrors.gender}
-                  />
-                  <Input
-                    label="Date of birth"
-                    type="date"
-                    name="date_of_birth"
-                    value={formData.date_of_birth}
-                    onChange={handleChange}
-                    error={fieldErrors.date_of_birth}
-                    required
-                  />
-                  <Input
-                    label="State of origin"
-                    name="state_of_origin"
-                    value={formData.state_of_origin}
-                    onChange={handleChange}
-                    error={fieldErrors.state_of_origin}
-                  />
+                  <Input label="First name" value={form.first_name} required error={fieldErrors.first_name} onChange={(event) => updateField("first_name", event.target.value)} />
+                  <Input label="Last name" value={form.last_name} required error={fieldErrors.last_name} onChange={(event) => updateField("last_name", event.target.value)} />
+                  <SelectField label="Gender" value={form.gender} options={GENDER_OPTIONS.map((value) => ({ value, label: titleCase(value) }))} error={fieldErrors.gender} onChange={(event) => updateField("gender", event.target.value)} />
+                  <Input label="Date of birth" type="date" value={form.date_of_birth} required error={fieldErrors.date_of_birth} onChange={(event) => updateField("date_of_birth", event.target.value)} />
+                  <Input label="State of origin" value={form.state_of_origin} error={fieldErrors.state_of_origin} onChange={(event) => updateField("state_of_origin", event.target.value)} />
                 </div>
               </section>
 
               <section className="border-t border-border/70 pt-5">
-                <h2 className="text-sm font-semibold text-text">Academic placement</h2>
+                <h2 className="text-sm font-semibold text-text">Initial placement</h2>
+                <p className="mt-1 text-xs text-text-muted">
+                  Session: {currentSession?.name || "Unavailable"}
+                </p>
                 <div className="mt-4">
-                  <SelectControl
-                    label="Class"
-                    name="class_id"
-                    value={formData.class_id}
-                    options={classOptions}
-                    placeholder="Select class"
-                    onChange={handleChange}
-                    error={fieldErrors.class_id}
-                    required
-                  />
+                  <SelectField label="Class" value={form.class_id} options={classOptions} placeholder="Select class" required error={fieldErrors.class_id} onChange={(event) => updateField("class_id", event.target.value)} />
                 </div>
               </section>
 
@@ -386,11 +330,9 @@ function StudentCreatePage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-semibold text-text">Parent invitations</h2>
-                    <p className="mt-1 text-xs leading-5 text-text-muted">
-                      Add up to two parent emails while creating the student.
-                    </p>
+                    <p className="mt-1 text-xs text-text-muted">Add up to two parent emails. These remain approval-based links.</p>
                   </div>
-                  {formData.parents.length < 2 ? (
+                  {form.parents.length < 2 ? (
                     <Button type="button" variant="outline" size="small" onClick={addParent}>
                       <Plus className="h-4 w-4" />
                       Add parent
@@ -399,115 +341,32 @@ function StudentCreatePage() {
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {formData.parents.map((parent, index) => (
-                    <div
-                      key={`student-parent-${index}`}
-                      className="rounded-2xl border border-border/70 bg-surface-muted/25 p-4"
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                          Parent {index + 1}
-                        </p>
-                        <button
-                          type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition hover:bg-error-soft hover:text-error"
-                          onClick={() => removeParent(index)}
-                          aria-label={`Remove parent ${index + 1}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Input
-                          label="Parent email"
-                          type="email"
-                          value={parent.email}
-                          onChange={(event) =>
-                            handleParentChange(index, "email", event.target.value)
-                          }
-                          error={
-                            fieldErrors[`parents.${index}.email`] ||
-                            fieldErrors.parents
-                          }
-                          placeholder="parent@example.com"
-                        />
-                        <SelectControl
-                          label="Relationship"
-                          value={parent.relationship_type}
-                          options={enumOptions(RELATIONSHIP_OPTIONS)}
-                          onChange={(event) =>
-                            handleParentChange(
-                              index,
-                              "relationship_type",
-                              event.target.value,
-                            )
-                          }
-                          error={fieldErrors[`parents.${index}.relationship_type`]}
-                        />
-                      </div>
+                  {form.parents.map((parent, index) => (
+                    <div key={`parent-${index}`} className="grid gap-3 rounded-2xl border border-border/70 p-4 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end">
+                      <Input label={`Parent ${index + 1} email`} type="email" value={parent.email} error={fieldErrors[`parents.${index}.email`]} onChange={(event) => updateParent(index, "email", event.target.value)} />
+                      <SelectField label="Relationship" value={parent.relationship_type} options={RELATIONSHIP_OPTIONS.map((value) => ({ value, label: titleCase(value) }))} onChange={(event) => updateParent(index, "relationship_type", event.target.value)} />
+                      <Button type="button" variant="outline" size="icon" aria-label="Remove parent" onClick={() => removeParent(index)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>
               </section>
 
-              <Button
-                type="submit"
-                disabled={isSubmitting || !studentGuard.allowed}
-                className="w-full sm:w-auto"
-              >
-                {isSubmitting
-                  ? "Creating student..."
-                  : !studentGuard.allowed
-                    ? "Upgrade required"
-                    : "Create student"}
+              <Button type="submit" disabled={submitting || creationBlocked} className="w-full sm:w-auto">
+                {submitting ? "Creating student..." : "Create student"}
               </Button>
             </form>
           )}
         </Card>
 
         <Card className="h-fit p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
-            Creation result
-          </h2>
-          {successPayload ? (
-            <div className="mt-4 space-y-3">
-              <div className="rounded-2xl border border-success/30 bg-success-soft px-4 py-3 text-sm text-emerald-800">
-                Student record accepted by the API.
-              </div>
-              <div className="space-y-2 text-sm text-text-muted">
-                <p>
-                  Admission number:{" "}
-                  <span className="font-semibold text-text">
-                    {successPayload.result.admission_number}
-                  </span>
-                </p>
-                <p>
-                  Parent invitations queued:{" "}
-                  <span className="font-semibold text-text">
-                    {successPayload.invitationCount}
-                  </span>
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() =>
-                  setAccessCodeNotice(
-                    buildStudentAccessNotice(successPayload.result),
-                  )
-                }
-              >
-                View / print slip
-              </Button>
-            </div>
-          ) : (
-            <p className="mt-4 text-sm leading-6 text-text-muted">
-              After creation, give the generated access slip only to the
-              correct student. Parent invitations appear under the parent
-              directory.
-            </p>
-          )}
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">Creation requirements</h2>
+          <div className="mt-4 space-y-3 text-sm text-text-muted">
+            <p>Academic session: <span className="font-semibold text-text">{currentSession?.name || "Missing"}</span></p>
+            <p>Active classes: <span className="font-semibold text-text">{classOptions.length}</span></p>
+            <p>Plan capacity: <span className="font-semibold text-text">{studentGuard.allowed ? "Available" : "Blocked"}</span></p>
+          </div>
         </Card>
       </section>
     </DashboardLayout>
