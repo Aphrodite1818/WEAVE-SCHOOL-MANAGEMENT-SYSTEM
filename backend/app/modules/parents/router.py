@@ -13,6 +13,7 @@ from app.core.dependencies.route_guards import (
     get_current_parent_account,
     get_current_tenant_admin,
 )
+from app.modules.parents.account_patch_service import ParentAccountPatchService
 from app.modules.parents.lifecycle_contracts import (
     AdminParentLinkListResponse,
     ParentLinkedStudentListResponse,
@@ -137,7 +138,7 @@ async def update_my_parent_account_profile(
     db: DbSession,
     current_account: CurrentParentAccount,
 ) -> ParentAccountResponse:
-    return await ParentAccountService.update_profile(
+    return await ParentAccountPatchService.update_profile(
         db,
         account_id=current_account.id,
         payload=payload,
