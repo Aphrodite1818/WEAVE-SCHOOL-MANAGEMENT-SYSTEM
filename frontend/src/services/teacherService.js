@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { API_BASE_URL, api, authSession } from "./api";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 100, 1), 100);
 
@@ -20,6 +20,44 @@ const buildInvitationQuery = ({ skip = 0, limit = 50, status } = {}) => {
   params.set("limit", String(Math.min(Math.max(Number(limit) || 50, 1), 100)));
   if (status) params.set("status", status);
   return params.toString();
+};
+
+const createResponseError = async (response) => {
+  const data = await response.json().catch(() => ({}));
+  const error = new Error(data?.detail || data?.message || "Request failed.");
+  error.response = {
+    status: response.status,
+    data,
+    headers: Object.fromEntries(response.headers.entries()),
+  };
+  return error;
+};
+
+const putJson = async (endpoint, payload, hasRetried = false) => {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(authSession.getToken()
+        ? { Authorization: `Bearer ${authSession.getToken()}` }
+        : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 401 && !hasRetried) {
+    // Run one request through the shared client so its canonical refresh flow
+    // rotates the access token, then retry the original PUT exactly once.
+    await api.get("/auth/me/session");
+    return putJson(endpoint, payload, true);
+  }
+
+  if (!response.ok) {
+    throw await createResponseError(response);
+  }
+
+  return response.json().catch(() => ({}));
 };
 
 const subjectsFromAssignments = (assignments = []) => [
@@ -92,7 +130,7 @@ export const teacherService = {
     api.post(`/teachers/memberships/${membershipId}/reactivate`, { reason }),
 
   replaceSubjectCapabilities: (membershipId, subjectIds) =>
-    api.put(`/teachers/memberships/${membershipId}/subject-capabilities`, {
+    putJson(`/teachers/memberships/${membershipId}/subject-capabilities`, {
       subject_ids: subjectIds,
     }),
 
@@ -132,7 +170,7 @@ export const teacherService = {
     api.patch(`/tenant-admin/teachers/${teacherId}`, payload),
 
   updateMyTeacherProfile: (payload) =>
-    api.patch("/teachers/me/profile", payload),
+    api.patch("/teachers/accounts/me/profile", payload),
 
   deleteTeacher: (teacherId) =>
     api.delete(`/tenant-admin/teachers/${teacherId}`),
