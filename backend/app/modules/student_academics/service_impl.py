@@ -113,10 +113,9 @@ class StudentAcademicService:
                 subject_id,
             )
         )
-        if capability is None or not capability.is_active:
-            raise ForbiddenException(
-                "The teacher is not approved to teach this subject."
-            )
+        # Removed pre-approval requirement - teachers can be assigned to subjects
+        # without prior subject-specific approval
+        # The teacher membership being active is sufficient
         return membership
 
     @staticmethod
