@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
@@ -18,6 +18,7 @@ from app.modules.auth.membership_summary_service import (
     AccountMembershipSummaryService,
 )
 from app.modules.parents.account_patch_service import ParentAccountPatchService
+from app.modules.parents.invitation_contracts import ParentInvitationTokenOnlyRequest
 from app.modules.parents.lifecycle_contracts import (
     AdminParentLinkListResponse,
     ParentLinkedStudentListResponse,
@@ -185,14 +186,26 @@ async def list_my_parent_memberships(
     status_code=status.HTTP_201_CREATED,
 )
 async def accept_parent_invitation(
-    payload: ParentInvitationAcceptanceRequest,
+    payload: ParentInvitationTokenOnlyRequest,
+    student_admission_number: Annotated[
+        str,
+        Header(
+            alias="X-Student-Admission-Number",
+            min_length=1,
+            max_length=50,
+        ),
+    ],
     db: DbSession,
     current_account: CurrentParentAccount,
 ) -> StudentParentLinkRequestResponse:
+    acceptance_payload = ParentInvitationAcceptanceRequest(
+        invitation_token=payload.invitation_token,
+        admission_number=student_admission_number,
+    )
     return await ParentInvitationService.accept_invitation(
         db,
         account=current_account,
-        payload=payload,
+        payload=acceptance_payload,
     )
 
 
