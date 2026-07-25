@@ -353,21 +353,6 @@ async def list_pending_parent_link_requests(
 
 
 @router.post(
-    "/student-link-requests/{request_id}/decision",
-    response_model=StudentParentLinkRequestResponse,
-)
-async def decide_parent_link_request(
-    request_id: UUID,
-    payload: StudentParentLinkRequestResponse,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> StudentParentLinkRequestResponse:
-    # This route intentionally remains defined in tenant-admin for compatibility.
-    # The canonical implementation is added below after the request schema import.
-    raise NotImplementedError
-
-
-@router.post(
     "/student-parent-links/{link_id}/end",
     response_model=StudentParentLinkResponse,
 )
