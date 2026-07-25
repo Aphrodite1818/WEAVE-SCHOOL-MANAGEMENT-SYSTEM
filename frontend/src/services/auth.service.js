@@ -1,26 +1,60 @@
+import { getValidTokenPayload } from "../utils/auth";
 import { api, authSession } from "./api";
 import { clearDashboardSessionCache } from "./dashboardSessionCache";
 import { onboardingService } from "./onboardingService";
 import { tenantService } from "./tenant.service";
-import { getValidTokenPayload } from "../utils/auth";
 
 const PENDING_VERIFICATION_EMAIL_KEY = "pendingVerificationEmail";
 
 let bootstrapPromise = null;
 
+const resolveAuthScope = ({ actorType, tenantId }) => {
+  const normalizedActorType = String(actorType || "").toLowerCase();
+  if (normalizedActorType === "superadmin") return "platform";
+  if (normalizedActorType === "tenant_admin") return "tenant";
+  if (["parent_account", "teacher_account"].includes(normalizedActorType)) {
+    return "account";
+  }
+  if (tenantId) return "membership";
+  return "account";
+};
+
 const normalizeAuthResponse = (response = {}) => {
+  const actorType =
+    response.actor_type || response.user?.actor_type || null;
+  const accountType =
+    response.account_type || response.user?.account_type || null;
+  const tenantId =
+    response.tenant_id || response.user?.tenant_id || null;
   const role =
     onboardingService.normalizeRole(
       response.role ||
         response.user?.role ||
-        onboardingService.roleFromActorType(response.actor_type),
+        onboardingService.roleFromActorType(actorType),
     ) || null;
+  const meta = response.user?.meta || {};
+  const membershipId =
+    ["parent", "teacher"].includes(String(actorType || "").toLowerCase())
+      ? response.user?.id || null
+      : null;
+  const authScope = resolveAuthScope({ actorType, tenantId });
 
   const currentUser = {
     ...(response.user || {}),
     email: response.email || response.user?.email || null,
     role,
-    actor_type: response.actor_type || response.user?.actor_type || null,
+    actor_type: actorType,
+    account_type: accountType,
+    tenant_id: tenantId,
+    membership_id: membershipId,
+    auth_scope: authScope,
+    membership_selection_required: Boolean(
+      meta.membership_selection_required ||
+        meta.requires_membership_selection ||
+        (authScope === "account" && ["parent", "teacher"].includes(role)),
+    ),
+    memberships: Array.isArray(meta.memberships) ? meta.memberships : [],
+    onboarding_required: Boolean(meta.onboarding_required),
     password_reset_required:
       response.user?.password_reset_required ??
       response.password_reset_required ??
@@ -29,7 +63,14 @@ const normalizeAuthResponse = (response = {}) => {
 
   return {
     ...response,
+    actor_type: actorType,
+    account_type: accountType,
+    tenant_id: tenantId,
     role,
+    auth_scope: authScope,
+    membership_id: membershipId,
+    membership_selection_required:
+      currentUser.membership_selection_required,
     user: currentUser,
   };
 };
@@ -199,6 +240,31 @@ export const authService = {
     return normalizedResponse;
   },
 
+  selectMembership: async (
+    membershipId,
+    { remember = authSession.getRememberPreference?.() ?? true } = {},
+  ) => {
+    const response = await api.post(
+      "/auth/select-membership",
+      {
+        membership_id: membershipId,
+        remember_me: remember,
+      },
+      { skipAuthRefresh: true },
+    );
+
+    clearDashboardSessionCache();
+
+    if (response.access_token) {
+      authSession.setToken(response.access_token, { remember });
+    }
+
+    const normalizedResponse = await hydrateAuthenticatedUser(response);
+    persistAuthenticatedUser(normalizedResponse, remember);
+
+    return normalizedResponse;
+  },
+
   requestOtp: (email, purpose = "verification") =>
     api.post(
       "/auth/request-otp",
@@ -224,23 +290,9 @@ export const authService = {
       { auth: false, clearAuthOnUnauthorized: false, skipAuthRefresh: true },
     ),
 
-  getInviteStatus: (token) =>
-    api.get(`/auth/invite-status?token=${encodeURIComponent(token)}`, {
-      auth: false,
-      clearAuthOnUnauthorized: false,
-      skipAuthRefresh: true,
-    }),
-
   activateTenant: (email, password, token) =>
     api.post(
       "/auth/activate-tenant",
-      { email, password, token },
-      { auth: false, clearAuthOnUnauthorized: false, skipAuthRefresh: true },
-    ),
-
-  acceptInvite: (email, password, token) =>
-    api.post(
-      "/auth/accept-invite",
       { email, password, token },
       { auth: false, clearAuthOnUnauthorized: false, skipAuthRefresh: true },
     ),

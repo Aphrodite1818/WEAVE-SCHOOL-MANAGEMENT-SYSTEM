@@ -140,7 +140,7 @@ def create_access_token(
     to_encode = data.copy()
 
     expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta or timedelta(minutes=60 if settings.ENV == "dev" else settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
     to_encode.update(

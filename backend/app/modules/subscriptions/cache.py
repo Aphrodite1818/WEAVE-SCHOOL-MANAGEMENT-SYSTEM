@@ -15,7 +15,15 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.cache.base import build_cache_key , tenant_prefix
+from app.core.cache.events import (
+    invalidate_cache_key_now,
+    invalidate_cache_pattern_now,
+    queue_cache_key_invalidation,
+    queue_cache_pattern_invalidation,
+)
 from app.core.cache.manager import CacheManager
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 
@@ -207,34 +215,55 @@ async def set_cached_all_resource_usage(
     )
 
 
-async def invalidate_tenant_entitlements_cache(tenant_id: uuid.UUID) -> bool:
-    return await CacheManager.delete(
-        tenant_entitlements_cache_key(tenant_id)
-    )
+async def invalidate_tenant_entitlements_cache(
+    tenant_id: uuid.UUID,
+    db: AsyncSession | None = None,
+) -> bool:
+    key = tenant_entitlements_cache_key(tenant_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return True
+    return bool(await invalidate_cache_key_now(key))
 
 
-async def invalidate_tenant_billing_cache(tenant_id: uuid.UUID) -> bool:
-    return await CacheManager.delete(
-        tenant_billing_cache_key(tenant_id)
-    )
+async def invalidate_tenant_billing_cache(
+    tenant_id: uuid.UUID,
+    db: AsyncSession | None = None,
+) -> bool:
+    key = tenant_billing_cache_key(tenant_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return True
+    return bool(await invalidate_cache_key_now(key))
 
 
 async def invalidate_tenant_resource_usage_cache(
     tenant_id: uuid.UUID,
     resource: ResourceLimitCode,
+    db: AsyncSession | None = None,
 ) -> bool:
-    return await CacheManager.delete(
-        tenant_resource_usage_cache_key(tenant_id, resource)
-    )
+    key = tenant_resource_usage_cache_key(tenant_id, resource)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return True
+    return bool(await invalidate_cache_key_now(key))
 
 
-async def invalidate_tenant_all_resource_usage_cache(tenant_id: uuid.UUID) -> bool:
-    return await CacheManager.delete(
-        tenant_all_resource_usage_cache_key(tenant_id)
-    )
+async def invalidate_tenant_all_resource_usage_cache(
+    tenant_id: uuid.UUID,
+    db: AsyncSession | None = None,
+) -> bool:
+    key = tenant_all_resource_usage_cache_key(tenant_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return True
+    return bool(await invalidate_cache_key_now(key))
 
 
-async def invalidate_tenant_subscription_cache(tenant_id: uuid.UUID) -> int:
+async def invalidate_tenant_subscription_cache(
+    tenant_id: uuid.UUID,
+    db: AsyncSession | None = None,
+) -> int:
     """
     Clears every subscription-related cache key for one tenant.
 
@@ -246,6 +275,8 @@ async def invalidate_tenant_subscription_cache(tenant_id: uuid.UUID) -> int:
     - student/teacher/parent/class/subject deletion
     """
 
-    return await CacheManager.delete_pattern(
-        tenant_subscription_cache_pattern(tenant_id)
-    )
+    pattern = tenant_subscription_cache_pattern(tenant_id)
+    if db is not None:
+        queue_cache_pattern_invalidation(db, pattern)
+        return 0
+    return await invalidate_cache_pattern_now(pattern)

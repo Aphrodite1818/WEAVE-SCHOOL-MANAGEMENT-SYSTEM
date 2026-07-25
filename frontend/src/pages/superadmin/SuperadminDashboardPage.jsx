@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   KeyRound,
   LockKeyhole,
-  RefreshCw,
   Shield,
   ShieldAlert,
   Users,
@@ -24,7 +23,6 @@ import {
 } from "../../components/dashboard/DashboardPrimitives";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
-import Button from "../../components/ui/Button";
 
 import { getErrorMessage } from "../../services/api";
 import { superadminService } from "../../services/superadmin.service";
@@ -141,12 +139,6 @@ function SuperadminDashboardPage() {
     <DashboardLayout
       role="superadmin"
       title="Dashboard"
-      actions={
-        <Button variant="outline" onClick={loadDashboardData} disabled={isLoading}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh data
-        </Button>
-      }
     >
       {error ? (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">

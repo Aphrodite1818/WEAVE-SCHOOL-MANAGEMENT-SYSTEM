@@ -127,7 +127,6 @@ class ParentSeed:
 class ClassSeed:
     key: str
     name: str
-    level: str
     arm: str
     homeroom_teacher_email: str
 
@@ -327,13 +326,12 @@ async def ensure_classroom(session, *, tenant_id: uuid.UUID, payload: ClassSeed,
     )
     if classroom is None:
         classroom = ClassRoom(
-            tenant_id=tenant_id, name=display_name, arm=display_arm, level=payload.level, teacher_id=teacher_id, is_active=True,
+            tenant_id=tenant_id, name=display_name, arm=display_arm, teacher_id=teacher_id, is_active=True,
         )
         session.add(classroom)
     else:
         classroom.name = display_name
         classroom.arm = display_arm
-        classroom.level = payload.level
         classroom.teacher_id = teacher_id
         classroom.is_active = True
     await session.flush()
@@ -550,7 +548,7 @@ async def seed_full_dashboard_data(
                 key = f"{level_key}-{arm.lower()}"
                 classroom = await ensure_classroom(
                     session, tenant_id=tenant.id,
-                    payload=ClassSeed(key=key, name=level, level=level, arm=arm, homeroom_teacher_email=""),
+                    payload=ClassSeed(key=key, name=level, arm=arm, homeroom_teacher_email=""),
                     teacher_id=None,  # assigned below once teachers exist
                 )
                 classrooms_by_key[key] = classroom

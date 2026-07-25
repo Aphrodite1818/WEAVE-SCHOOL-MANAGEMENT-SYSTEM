@@ -1,6 +1,10 @@
+"""Tenant-scoped classroom repository."""
+
+from __future__ import annotations
+
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
@@ -8,204 +12,134 @@ from app.modules.classes.models import ClassRoom
 
 
 class ClassRoomRepository:
-    """Database layer for classroom records."""
-
     @staticmethod
-    async def create_classroom(
-        db: AsyncSession,
-        class_room: ClassRoom,
-    ) -> ClassRoom:
-        """Create classroom within tenant scope."""
-
-        db.add(class_room)
+    async def add(db: AsyncSession, classroom: ClassRoom) -> ClassRoom:
+        db.add(classroom)
         await db.flush()
-        await db.refresh(class_room)
-        return class_room
+        return classroom
 
     @staticmethod
-    async def get_classroom_by_id(
+    async def get_by_id(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         class_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> ClassRoom | None:
-        """Get classroom by id within tenant scope."""
-
-        result = await db.execute(
-            select(ClassRoom).where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.id == class_id,
-            )
+        query = select(ClassRoom).where(
+            ClassRoom.tenant_id == tenant_id,
+            ClassRoom.id == class_id,
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_classroom_by_normalized_name_and_arm(
+    async def get_by_normalized_name_and_arm(
         db: AsyncSession,
-        *,
         tenant_id: uuid.UUID,
         class_name: str,
         class_arm: str | None = None,
     ) -> ClassRoom | None:
-        """Get a classroom by canonical name and optional arm within tenant scope."""
-
         normalized_name = normalized_class_name_key(class_name)
-        normalized_arm = normalized_class_arm_key(class_arm)
-
         if normalized_name is None:
             return None
-
         result = await db.execute(
             select(ClassRoom).where(
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.normalized_name == normalized_name,
-                ClassRoom.normalized_arm == normalized_arm,
+                ClassRoom.normalized_arm == normalized_class_arm_key(class_arm),
             )
         )
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_classroom_by_name_and_arm(
+    async def list_for_tenant(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_name: str,
-        class_arm: str | None = None,
-    ) -> ClassRoom | None:
-        """Compatibility wrapper for normalized classroom lookup."""
-
-        return await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
-            db=db,
-            tenant_id=tenant_id,
-            class_name=class_name,
-            class_arm=class_arm,
-        )
-
-    @staticmethod
-    async def get_all_classrooms(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        limit: int = 100,
-        skip: int = 0,
-    ) -> list[ClassRoom]:
-        """Get all classrooms within tenant scope."""
-
-        result = await db.execute(
-            select(ClassRoom)
-            .where(ClassRoom.tenant_id == tenant_id)
-            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
-            .offset(skip)
-            .limit(limit)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def get_active_classrooms(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        limit: int = 100,
-        skip: int = 0,
-    ) -> list[ClassRoom]:
-        """Get active classrooms within tenant scope."""
-
-        result = await db.execute(
-            select(ClassRoom)
-            .where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.is_active.is_(True),
-            )
-            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
-            .offset(skip)
-            .limit(limit)
-        )
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def get_classrooms_by_teacher_id(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        teacher_id: uuid.UUID,
         *,
+        active_only: bool = False,
+        offset: int = 0,
         limit: int = 100,
-        skip: int = 0,
     ) -> list[ClassRoom]:
-        """Get classrooms assigned to a specific teacher."""
-
+        query = select(ClassRoom).where(ClassRoom.tenant_id == tenant_id)
+        if active_only:
+            query = query.where(ClassRoom.is_active.is_(True))
         result = await db.execute(
-            select(ClassRoom)
-            .where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.teacher_id == teacher_id,
-            )
-            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
-            .offset(skip)
+            query.order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+            .offset(offset)
             .limit(limit)
         )
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_classrooms_by_ids(
+    async def list_by_teacher_membership(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        teacher_membership_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> list[ClassRoom]:
+        query = select(ClassRoom).where(
+            ClassRoom.tenant_id == tenant_id,
+            ClassRoom.teacher_membership_id == teacher_membership_id,
+        ).order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_by_ids(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         class_ids: list[uuid.UUID],
+        *,
+        lock: bool = False,
     ) -> list[ClassRoom]:
-        """Get classrooms by IDs within tenant scope."""
-
         if not class_ids:
             return []
-
-        result = await db.execute(
-            select(ClassRoom).where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.id.in_(class_ids),
-            )
+        query = select(ClassRoom).where(
+            ClassRoom.tenant_id == tenant_id,
+            ClassRoom.id.in_(class_ids),
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return list(result.scalars().all())
 
     @staticmethod
-    async def update_classroom(
+    async def list_progression_chain_rows(
         db: AsyncSession,
-        classroom: ClassRoom,
-    ) -> ClassRoom:
-        """Persist classroom updates."""
+        tenant_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> list[ClassRoom]:
+        query = select(ClassRoom).where(
+            ClassRoom.tenant_id == tenant_id,
+            ClassRoom.is_active.is_(True),
+        ).order_by(ClassRoom.id)
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
+        return list(result.scalars().all())
 
+    @staticmethod
+    async def count_current_students(db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID) -> int:
+        from app.modules.students.models import Student
+
+        result = await db.execute(
+            select(func.count()).select_from(Student).where(
+                Student.tenant_id == tenant_id,
+                Student.class_id == class_id,
+                Student.is_archived.is_(False),
+            )
+        )
+        return result.scalar_one()
+
+    @staticmethod
+    async def save(db: AsyncSession, classroom: ClassRoom) -> ClassRoom:
         db.add(classroom)
         await db.flush()
-        await db.refresh(classroom)
         return classroom
-
-    @staticmethod
-    async def deactivate_classroom(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-    ) -> ClassRoom | None:
-        """Soft-delete classroom by setting is_active to False."""
-
-        classroom = await ClassRoomRepository.get_classroom_by_id(
-            db=db,
-            tenant_id=tenant_id,
-            class_id=class_id,
-        )
-        if classroom is None:
-            return None
-
-        classroom.is_active = False
-        await db.flush()
-        await db.refresh(classroom)
-        return classroom
-
-    @staticmethod
-    async def classroom_exists_by_name_and_arm(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        class_name: str,
-        class_arm: str | None = None,
-    ) -> bool:
-        """Check whether classroom already exists by canonical name and arm."""
-
-        classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
-            db=db,
-            tenant_id=tenant_id,
-            class_name=class_name,
-            class_arm=class_arm,
-        )
-        return classroom is not None

@@ -242,12 +242,6 @@ def create_class_template() -> ImportTemplateDefinition:
             example="JSS 1",
         ),
         create_template_column(
-            name="level",
-            label="Level",
-            required=True,
-            example="Junior Secondary",
-        ),
-        create_template_column(
             name="arm",
             label="Arm",
             required=True,

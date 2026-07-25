@@ -124,7 +124,7 @@ async def backfill(
                 select(TeacherAssignment).where(
                     TeacherAssignment.tenant_id == row.tenant_id,
                     TeacherAssignment.class_subject_id == class_subject.id,
-                    TeacherAssignment.teacher_id == row.teacher_id,
+                    TeacherAssignment.teacher_membership_id == row.teacher_membership_id,
                 )
             )
         ).scalar_one_or_none()
@@ -133,7 +133,7 @@ async def backfill(
             teacher_assignment = TeacherAssignment(
                 tenant_id=row.tenant_id,
                 class_subject_id=class_subject.id,
-                teacher_id=row.teacher_id,
+                teacher_membership_id=row.teacher_membership_id,
                 is_active=row.is_active,
                 effective_from=row.created_at.date() if row.created_at else date.today(),
                 effective_to=None if row.is_active else date.today(),

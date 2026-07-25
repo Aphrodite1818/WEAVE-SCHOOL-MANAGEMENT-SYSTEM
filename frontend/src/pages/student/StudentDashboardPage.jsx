@@ -51,6 +51,20 @@ import {
 
 const PROGRESS_COLORS = ["#3452DB", "#16A34A", "#F59E0B", "#7C3AED", "#0EA5E9"];
 
+const isCompleteStudentProfile = (student) =>
+  String(student?.profile_status || "").toLowerCase() === "complete";
+
+const emptyDashboardBundle = (studentProfile) => ({
+  student: studentProfile,
+  parentLinks: [],
+  parentLinkRequests: [],
+  metrics: null,
+  academicResults: [],
+  reportCards: [],
+  subjectCards: [],
+  subjectContext: null,
+});
+
 function StudentDashboardPage() {
   const [student, setStudent] = useState(null);
   const [parentLinks, setParentLinks] = useState([]);
@@ -74,10 +88,28 @@ function StudentDashboardPage() {
       setLoadError(null);
 
       try {
+        const studentProfile = await studentService.getMyStudent({
+          signal: controller.signal,
+        });
+
+        if (!mounted || controller.signal.aborted) return;
+
+        if (!isCompleteStudentProfile(studentProfile)) {
+          const incompleteBundle = emptyDashboardBundle(studentProfile);
+          setStudent(incompleteBundle.student);
+          setParentLinks(incompleteBundle.parentLinks);
+          setParentLinkRequests(incompleteBundle.parentLinkRequests);
+          setMetrics(incompleteBundle.metrics);
+          setAcademicResults(incompleteBundle.academicResults);
+          setReportCards(incompleteBundle.reportCards);
+          setSubjectCards(incompleteBundle.subjectCards);
+          setSubjectContext(incompleteBundle.subjectContext);
+          return;
+        }
+
         const cacheKey = getDashboardSessionCacheKey("student:dashboard");
         const bundle = await getCachedDashboardBundle(cacheKey, async () => {
           const [
-            studentProfile,
             linksResponse,
             requestsResponse,
             metricsResponse,

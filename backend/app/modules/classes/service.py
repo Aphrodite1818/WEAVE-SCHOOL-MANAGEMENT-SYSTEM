@@ -42,17 +42,17 @@ class ClassRoomService:
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        teacher_id: uuid.UUID | None,
+        teacher_membership_id: uuid.UUID | None,
     ) -> None:
         """Ensure an assigned class teacher exists and is active."""
 
-        if teacher_id is None:
+        if teacher_membership_id is None:
             return
 
         teacher = await TeacherRepository.get_teacher_by_id(
             db=db,
             tenant_id=tenant_id,
-            teacher_id=teacher_id,
+            teacher_id=teacher_membership_id,
         )
         if teacher is None:
             raise NotFoundException("Teacher not found")
@@ -75,10 +75,9 @@ class ClassRoomService:
             tenant_id=tenant_id,
             name=payload.name,
             normalized_name=normalized_name,
-            level=payload.level,
             arm=payload.arm,
             normalized_arm=normalized_class_arm_key(payload.arm),
-            teacher_id=payload.teacher_id,
+            teacher_membership_id=payload.teacher_membership_id,
             is_active=payload.is_active,
         )
 
@@ -92,7 +91,7 @@ class ClassRoomService:
 
         ClassRoomService._ensure_tenant_admin(actor)
 
-        existing_classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
+        existing_classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
             db=db,
             tenant_id=actor.tenant_id,
             class_name=payload.name,
@@ -104,7 +103,7 @@ class ClassRoomService:
         await ClassRoomService._validate_teacher_assignment(
             db=db,
             tenant_id=actor.tenant_id,
-            teacher_id=payload.teacher_id,
+            teacher_membership_id=payload.teacher_membership_id,
         )
 
         classroom = ClassRoomService._build_classroom_model(
@@ -113,9 +112,9 @@ class ClassRoomService:
         )
 
         try:
-            created_classroom = await ClassRoomRepository.create_classroom(
+            created_classroom = await ClassRoomRepository.add(
                 db=db,
-                class_room=classroom,
+                classroom=classroom,
             )
             await db.commit()
             await db.refresh(created_classroom)
@@ -136,7 +135,7 @@ class ClassRoomService:
 
         ClassRoomService._ensure_tenant_actor(actor)
 
-        classroom = await ClassRoomRepository.get_classroom_by_id(
+        classroom = await ClassRoomRepository.get_by_id(
             db=db,
             tenant_id=actor.tenant_id,
             class_id=class_id,
@@ -144,7 +143,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
 
-        if isinstance(actor, Teacher) and classroom.teacher_id != actor.id:
+        if isinstance(actor, Teacher) and classroom.teacher_membership_id != actor.id:
             raise ForbiddenException("You do not have access to this classroom")
 
         if isinstance(actor, Student) and classroom.id != actor.class_id:
@@ -179,24 +178,23 @@ class ClassRoomService:
         limit = min(limit, 100)
 
         if isinstance(actor, TenantAdmin):
-            classrooms = await ClassRoomRepository.get_all_classrooms(
+            classrooms = await ClassRoomRepository.list_for_tenant(
                 db=db,
                 tenant_id=actor.tenant_id,
-                skip=skip,
+                offset=skip,
                 limit=limit,
             )
         elif isinstance(actor, Teacher):
-            classrooms = await ClassRoomRepository.get_classrooms_by_teacher_id(
+            classrooms = await ClassRoomRepository.list_by_teacher_membership(
                 db=db,
                 tenant_id=actor.tenant_id,
-                teacher_id=actor.id,
-                skip=skip,
-                limit=limit,
+                teacher_membership_id=actor.id,
             )
+            classrooms = classrooms[skip : skip + limit]
         elif isinstance(actor, Student):
             classrooms = []
             if actor.class_id is not None:
-                classroom = await ClassRoomRepository.get_classroom_by_id(
+                classroom = await ClassRoomRepository.get_by_id(
                     db=db,
                     tenant_id=actor.tenant_id,
                     class_id=actor.class_id,
@@ -216,11 +214,12 @@ class ClassRoomService:
                     if link.student is not None and link.student.class_id is not None
                 }
             )
-            classrooms = await ClassRoomRepository.get_classrooms_by_ids(
+            classrooms = await ClassRoomRepository.list_by_ids(
                 db=db,
                 tenant_id=actor.tenant_id,
                 class_ids=class_ids,
             )
+            classrooms = classrooms[skip : skip + limit]
 
         return [ClassRoomResponse.model_validate(classroom) for classroom in classrooms]
 
@@ -252,7 +251,7 @@ class ClassRoomService:
 
         ClassRoomService._ensure_tenant_admin(actor)
 
-        classroom = await ClassRoomRepository.get_classroom_by_id(
+        classroom = await ClassRoomRepository.get_by_id(
             db=db,
             tenant_id=actor.tenant_id,
             class_id=class_id,
@@ -260,7 +259,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
 
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
         new_name = update_data.get("name", classroom.name)
         new_arm = update_data.get("arm", classroom.arm)
@@ -273,7 +272,7 @@ class ClassRoomService:
             new_normalized_name != classroom.normalized_name
             or new_normalized_arm != classroom.normalized_arm
         ):
-            existing_classroom = await ClassRoomRepository.get_classroom_by_normalized_name_and_arm(
+            existing_classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
                 db=db,
                 tenant_id=actor.tenant_id,
                 class_name=new_name,
@@ -282,11 +281,11 @@ class ClassRoomService:
             if existing_classroom is not None and existing_classroom.id != classroom.id:
                 raise BadRequestException("Classroom with this name and arm already exists")
 
-        if "teacher_id" in update_data:
+        if "teacher_membership_id" in update_data:
             await ClassRoomService._validate_teacher_assignment(
                 db=db,
                 tenant_id=actor.tenant_id,
-                teacher_id=update_data["teacher_id"],
+                teacher_membership_id=update_data["teacher_membership_id"],
             )
 
         for field, value in update_data.items():
@@ -296,7 +295,7 @@ class ClassRoomService:
         classroom.normalized_arm = new_normalized_arm
 
         try:
-            updated_classroom = await ClassRoomRepository.update_classroom(
+            updated_classroom = await ClassRoomRepository.save(
                 db=db,
                 classroom=classroom,
             )
@@ -319,7 +318,7 @@ class ClassRoomService:
 
         ClassRoomService._ensure_tenant_admin(actor)
 
-        classroom = await ClassRoomRepository.deactivate_classroom(
+        classroom = await ClassRoomRepository.get_by_id(
             db=db,
             tenant_id=actor.tenant_id,
             class_id=class_id,
@@ -327,6 +326,8 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
 
+        classroom.is_active = False
+        await ClassRoomRepository.save(db, classroom)
         await db.commit()
         await db.refresh(classroom)
         return ClassRoomResponse.model_validate(classroom)

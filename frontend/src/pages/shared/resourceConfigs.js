@@ -8,7 +8,7 @@ import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
 import { displayName, fullName as actorFullName } from "../../utils/user";
 
-const studentStatuses = ["active", "withdrawn", "suspended", "graduated"];
+const studentStatuses = ["active", "withdrawn", "suspended", "graduated", "expelled"];
 const attendanceStatuses = ["present", "absent", "late", "excused"];
 const paymentStatuses = ["pending", "paid", "failed", "refunded"];
 
@@ -191,6 +191,9 @@ export const subjectReadOnlyResourceConfig = {
   canCreate: false,
   canUpdate: false,
   canDelete: false,
+  initialFilters: {
+    isActive: "true",
+  },
   filters: [
     { name: "search", label: "Search", placeholder: "Subject name" },
     {
@@ -258,6 +261,7 @@ export const subjectResourceConfig = {
     description: "",
     is_active: "true",
   },
+  initialFilters: subjectReadOnlyResourceConfig.initialFilters,
   fields: () => [
     { name: "name", label: "Subject name", required: true },
     { name: "code", label: "Subject code" },
@@ -364,23 +368,20 @@ export const getStudentResourceConfig = ({ writable, role = "admin" }) => ({
     "Review student records created by tenant admins, update academic details, and manage first-login readiness safely.",
   canCreate: false,
   canUpdate: writable,
-  canDelete: writable,
+  canDelete: false,
   loadContext: () => loadAcademicContext({ role }),
   initialForm: {
     gender: "",
     date_of_birth: "",
-    class_id: "",
     arm: "",
-    status: "active",
-    graduation_date: "",
   },
-  fields: (context) => [
+  initialFilters: {
+    status: "active",
+  },
+  fields: () => [
     { name: "gender", label: "Gender", type: "select", options: enumOptions(["male", "female"]) },
     { name: "date_of_birth", label: "Date of birth", type: "date" },
-    { name: "class_id", label: "Class", type: "select", options: optionsFrom(context.classes, className) },
     { name: "arm", label: "Arm" },
-    { name: "status", label: "Academic status", type: "select", required: true, options: enumOptions(studentStatuses) },
-    { name: "graduation_date", label: "Graduation date", type: "date" },
   ],
   filters: (context) => [
     { name: "search", label: "Search", placeholder: "Name or admission no." },
@@ -423,15 +424,12 @@ export const getStudentResourceConfig = ({ writable, role = "admin" }) => ({
     }),
   createItem: undefined,
   updateItem: (id, payload) => studentService.updateAdminStudent(id, payload),
-  deleteItem: (id) => studentService.deleteStudent(id),
+  deleteItem: undefined,
   buildPayload: (formData) => compactPayload(formData),
   mapItemToForm: (item) => ({
     gender: item.gender || "",
     date_of_birth: item.date_of_birth || "",
-    class_id: item.class_id || "",
     arm: item.arm || "",
-    status: item.status || "active",
-    graduation_date: item.graduation_date || "",
   }),
   getItemLabel: (item) => displayName(item),
 });

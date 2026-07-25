@@ -122,7 +122,6 @@ Used to send authentication emails:
 
 * OTP email
 * Tenant activation email
-* User invite email
 
 ---
 
@@ -165,7 +164,6 @@ This is safer because even if the database leaks, attackers do not directly see 
 * LoginRequest
 * RequestOTP
 * TenantActivationRequest
-* UserInviteAcceptanceRequest
 * UpdatePassword
 * VerifyOTP
 
@@ -365,20 +363,6 @@ A tenant can login only if:
 * Tenant status is either `ACTIVE` or `TRIAL`
 
 This protects the system from allowing users under inactive, deleted, rejected, or unverified tenants to login.
-
----
-
-## `_tenant_allows_user_invite_completion`
-
-Checks if a tenant is allowed to complete user invite setup.
-
-It currently uses the same rule as `_tenant_allows_login`.
-
-Meaning:
-
-```txt
-If tenant can login, invited users under that tenant can complete setup.
-```
 
 ---
 
@@ -616,7 +600,7 @@ Login is blocked.
 
 If the pending user is the public tenant admin, OTP verification is required.
 
-If the pending user is not the tenant admin, they likely need to use their invite link.
+If the pending user is not the tenant admin, they must complete the relevant canonical account verification or invitation flow.
 
 ### If all checks pass
 
@@ -784,189 +768,6 @@ Commit
 
 After this, the tenant admin can login.
 
----
-
-# UserInviteService
-
-This class handles invite links for normal tenant users.
-
-Examples:
-
-* Teachers
-* Parents
-* Staff
-* Other non-superadmin users
-
----
-
-## `_build_invite_link`
-
-Builds the frontend invite URL.
-
-Example:
-
-```txt
-https://app.school.com/invite?token=raw_token_here
-```
-
-The user clicks the link, frontend extracts the token, then sends it back to the backend.
-
----
-
-## `create_invite_record`
-
-Creates an invite token for a user.
-
-Flow:
-
-```txt
-Generate raw token
-↓
-Set expiry time
-↓
-Delete old unused invite records for this user
-↓
-Store new hashed invite token in AuthRecord
-↓
-Return frontend invite link
-```
-
-This ensures only the newest active invite is used.
-
----
-
-## `send_invite_email`
-
-Sends the invite email to the user.
-
-Flow:
-
-```txt
-Build subject
-↓
-Build HTML body
-↓
-Send email in background if possible
-↓
-Otherwise send immediately
-↓
-If sending fails:
-    raise BadRequestException
-```
-
----
-
-## `get_invite_status`
-
-Checks whether an invite token is valid before the user submits the invite acceptance form.
-
-Flow:
-
-```txt
-Hash token
-↓
-Search AuthRecord for tenant activation or user invite
-↓
-If not found:
-    check superadmin invite table
-↓
-If still not found:
-    return invalid
-↓
-Check tenant state
-↓
-Check if invite is used
-↓
-Check if invite is expired
-↓
-Return invite status
-```
-
-Possible statuses:
-
-```txt
-valid
-invalid
-used
-expired
-```
-
-Possible purposes:
-
-```txt
-tenant_activation
-user_invite
-superadmin_invite
-```
-
-This helps the frontend know what to show before the user fills the form.
-
-Example:
-
-```txt
-If valid:
-    show password setup form
-
-If expired:
-    show expired invite message
-
-If used:
-    tell user to login instead
-
-If invalid:
-    show invalid invite message
-```
-
----
-
-## `accept_invite`
-
-Completes account setup for a tenant user.
-
-Flow:
-
-```txt
-Hash submitted token
-↓
-Find matching USER_INVITE record
-↓
-If not found:
-    try accepting as superadmin invite instead
-↓
-Check if invite was already used
-↓
-Check if invite expired
-↓
-Check if submitted email matches invite email
-↓
-Fetch user
-↓
-Fetch tenant
-↓
-Check user belongs to tenant
-↓
-Check tenant allows invite completion
-↓
-Block admin users from using normal invite flow
-↓
-Check user is still pending and not verified
-↓
-Set user's password
-↓
-Mark user account active
-↓
-Mark user verified
-↓
-Mark invite as used
-↓
-Delete other unused invite records
-↓
-Commit
-```
-
-After this, the invited user can login.
-
----
 
 ## `accept_superadmin_invite`
 
@@ -1191,27 +992,6 @@ Admin can login
 
 ---
 
-## Normal User Invite Flow
-
-```txt
-Admin creates/invites user
-↓
-Invite record created
-↓
-Invite email sent
-↓
-User clicks invite link
-↓
-Frontend sends token + email + password
-↓
-accept_invite validates token
-↓
-User becomes active and verified
-↓
-User can login
-```
-
----
 
 ## Superadmin Invite Flow
 
@@ -1272,7 +1052,7 @@ So every query must check `purpose`.
 Example:
 
 ```txt
-PASSWORD_RESET token should not work as USER_INVITE token.
+PASSWORD_RESET token should not work as a tenant activation token.
 ```
 
 ---

@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
+from app.core.cache.events import flush_cache_invalidation_events
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.modules.subscriptions.cache import (
     get_cached_all_resource_usage,
@@ -194,7 +195,7 @@ class SubscriptionLifecycleService:
             current_period_end=trial_ends_at,
             trial_ends_at=trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id, db=db)
         return subscription
 
     @staticmethod
@@ -309,7 +310,7 @@ class SubscriptionLifecycleService:
             current_period_end=subscription.current_period_end,
             trial_ends_at=None,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id, db=db)
         return subscription
 
     @staticmethod
@@ -332,7 +333,7 @@ class SubscriptionLifecycleService:
             current_period_end=saved.current_period_end,
             trial_ends_at=saved.trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id, db=db)
         return saved
 
     @staticmethod
@@ -345,7 +346,7 @@ class SubscriptionLifecycleService:
         subscription.status = SubscriptionStatus.PAST_DUE
         subscription.notes = _append_note(subscription.notes, notes)
         saved = await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id, db=db)
         return saved
 
     @staticmethod
@@ -361,7 +362,7 @@ class SubscriptionLifecycleService:
         subscription.grace_ends_at = now + timedelta(days=grace_days)
         subscription.notes = _append_note(subscription.notes, notes)
         saved = await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id, db=db)
         return saved
 
     @staticmethod
@@ -385,7 +386,7 @@ class SubscriptionLifecycleService:
             current_period_end=saved.current_period_end,
             trial_ends_at=saved.trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id, db=db)
         return saved
 
     @staticmethod
@@ -410,7 +411,7 @@ class SubscriptionLifecycleService:
             current_period_end=saved.current_period_end,
             trial_ends_at=saved.trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id, db=db)
         return saved
 
     @staticmethod
@@ -480,6 +481,7 @@ class SubscriptionLifecycleService:
             updated["expired"] += 1
 
         await db.commit()
+        await flush_cache_invalidation_events(db)
         return updated
 
 
@@ -970,8 +972,9 @@ class SubscriptionFeatureService:
     @staticmethod
     async def invalidate_tenant_subscription_state(
         tenant_id: uuid.UUID,
+        db: AsyncSession | None = None,
     ) -> int:
-        return await invalidate_tenant_subscription_cache(tenant_id)
+        return await invalidate_tenant_subscription_cache(tenant_id, db=db)
 
 
 class SubscriptionPaymentService:
@@ -1135,6 +1138,7 @@ class SubscriptionPaymentService:
                 raw_payload={"initialize_error": str(exc)},
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Unable to initialize subscription checkout.",
@@ -1145,8 +1149,9 @@ class SubscriptionPaymentService:
         transaction.access_code = data.get("access_code")
         transaction.raw_payload = provider_response
         await SubscriptionRepository.save_payment_transaction(db=db, transaction=transaction)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id, db=db)
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
+        await flush_cache_invalidation_events(db)
 
         return SubscriptionCheckoutResponse(
             reference=reference,
@@ -1200,6 +1205,7 @@ class SubscriptionPaymentService:
                 provider_transaction_id=str(data.get("id")) if data.get("id") is not None else None,
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             raise BadRequestException("Payment has not been completed successfully.")
 
         await SubscriptionPaymentService.handle_charge_success(
@@ -1208,6 +1214,7 @@ class SubscriptionPaymentService:
             transaction=transaction,
         )
         await db.commit()
+        await flush_cache_invalidation_events(db)
 
         return await SubscriptionFeatureService.get_subscription_status(
             db=db,
@@ -1276,6 +1283,7 @@ class SubscriptionPaymentService:
                 processed_at=_utc_now(),
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             return WebhookProcessingResponse(
                 success=True,
                 provider=PaymentProvider.PAYSTACK,
@@ -1291,6 +1299,7 @@ class SubscriptionPaymentService:
                 error_message=str(exc),
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             raise
 
     @staticmethod
@@ -1488,7 +1497,7 @@ class SubscriptionPaymentService:
             subscription.current_period_end = next_payment_at
 
         await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(subscription.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(subscription.tenant_id, db=db)
 
     @staticmethod
     async def handle_invoice_payment_failed(
@@ -1601,4 +1610,4 @@ class SubscriptionPaymentService:
             subscription.next_payment_at = next_payment_at
             subscription.current_period_end = next_payment_at
             await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-            await SubscriptionFeatureService.invalidate_tenant_subscription_state(subscription.tenant_id)
+            await SubscriptionFeatureService.invalidate_tenant_subscription_state(subscription.tenant_id, db=db)

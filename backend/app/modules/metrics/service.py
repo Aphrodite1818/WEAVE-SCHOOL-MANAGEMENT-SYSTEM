@@ -27,7 +27,7 @@ from app.modules.student_academics.models import (
     StudentSubjectResult,
 )
 from app.modules.subjects.models import Subject
-from app.modules.teachers.models import Teacher
+from app.modules.teachers.models import Teacher, TeacherAccount
 from app.tenant_management.models import SubscriptionPlan
 
 
@@ -159,8 +159,8 @@ class MetricsService:
         rows = (
             await db.execute(
                 select(
-                    Teacher.first_name,
-                    Teacher.last_name,
+                    TeacherAccount.first_name,
+                    TeacherAccount.last_name,
                     Teacher.staff_id,
                     func.count(StudentSubjectResult.id).label("total_rows"),
                     func.count(StudentSubjectResult.id)
@@ -171,13 +171,14 @@ class MetricsService:
                 .outerjoin(
                     StudentSubjectResult,
                     and_(
-                        StudentSubjectResult.teacher_id == Teacher.id,
+                        StudentSubjectResult.teacher_membership_id == Teacher.id,
                         StudentSubjectResult.tenant_id == Teacher.tenant_id,
                     ),
                 )
+                .join(TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id)
                 .where(Teacher.tenant_id == tenant_id)
-                .group_by(Teacher.id, Teacher.first_name, Teacher.last_name, Teacher.staff_id)
-                .order_by(Teacher.first_name.asc(), Teacher.last_name.asc())
+                .group_by(Teacher.id, TeacherAccount.first_name, TeacherAccount.last_name, Teacher.staff_id)
+                .order_by(TeacherAccount.first_name.asc(), TeacherAccount.last_name.asc())
             )
         ).all()
         points: list[ChartPoint] = []
@@ -232,7 +233,7 @@ class MetricsService:
                 select(StudentSubjectResult.status, func.count(StudentSubjectResult.id).label("value"))
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.teacher_id == teacher_id,
+                    StudentSubjectResult.teacher_membership_id == teacher_id,
                 )
                 .group_by(StudentSubjectResult.status)
             )
@@ -260,7 +261,7 @@ class MetricsService:
                 .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.teacher_id == teacher_id,
+                    StudentSubjectResult.teacher_membership_id == teacher_id,
                     StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
                 )
                 .group_by(AcademicSession.name, AcademicTerm.name)
@@ -357,7 +358,7 @@ class MetricsService:
                     .label("primary_contacts"),
                 ).where(
                     StudentParentLink.tenant_id == parent.tenant_id,
-                    StudentParentLink.parent_id == parent.id,
+                    StudentParentLink.parent_membership_id == parent.id,
                 )
             )
         ).one()

@@ -27,6 +27,7 @@ _ALLOWED_EXACT_PATHS = {
 }
 _ALLOWED_PREFIXES = (
     "/api/v1/superadmin",
+    "/api/v1/metrics/superadmin",
     "/docs",
     "/redoc",
     "/openapi.json",

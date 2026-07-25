@@ -34,18 +34,13 @@ class OutputBase(BaseModel):
     )
 
 
-#________________________________________#
-#           TARGET SCHEMAS
-#________________________________________#
-
-
 class AnnouncementTargetCreate(InputBase):
     target_type: AnnouncementTargetType
     role: AnnouncementRecipientRole | None = None
     class_id: uuid.UUID | None = None
     student_id: uuid.UUID | None = None
-    parent_id: uuid.UUID | None = None
-    teacher_id: uuid.UUID | None = None
+    parent_membership_id: uuid.UUID | None = None
+    teacher_membership_id: uuid.UUID | None = None
 
 
 class AnnouncementTargetResponse(OutputBase):
@@ -56,29 +51,15 @@ class AnnouncementTargetResponse(OutputBase):
     role: AnnouncementRecipientRole | None = None
     class_id: uuid.UUID | None = None
     student_id: uuid.UUID | None = None
-    parent_id: uuid.UUID | None = None
-    teacher_id: uuid.UUID | None = None
+    parent_membership_id: uuid.UUID | None = None
+    teacher_membership_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
-#________________________________________#
-#        ANNOUNCEMENT INPUT SCHEMAS
-#________________________________________#
-
-
 class AnnouncementCreate(InputBase):
-    title: str = Field(
-        ...,
-        min_length=3,
-        max_length=200,
-        description="Title of the announcement.",
-    )
-    body: str = Field(
-        ...,
-        min_length=3,
-        description="Main announcement body/message.",
-    )
+    title: str = Field(..., min_length=3, max_length=200, description="Title of the announcement.")
+    body: str = Field(..., min_length=3, description="Main announcement body/message.")
     category: AnnouncementCategory = AnnouncementCategory.GENERAL
     priority: AnnouncementPriority = AnnouncementPriority.NORMAL
     publish_at: datetime | None = None
@@ -98,11 +79,6 @@ class AnnouncementUpdate(InputBase):
     targets: list[AnnouncementTargetCreate] | None = None
 
 
-#________________________________________#
-#            ACTION SCHEMAS
-#________________________________________#
-
-
 class AnnouncementPublishRequest(InputBase):
     publish_at: datetime | None = None
 
@@ -113,11 +89,6 @@ class AnnouncementArchiveRequest(InputBase):
 
 class AnnouncementReadRequest(InputBase):
     status: AnnouncementReadStatus = AnnouncementReadStatus.READ
-
-
-#________________________________________#
-#          READ RESPONSE SCHEMAS
-#________________________________________#
 
 
 class AnnouncementReadResponse(OutputBase):
@@ -131,11 +102,6 @@ class AnnouncementReadResponse(OutputBase):
     acknowledged_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-
-
-#________________________________________#
-#       ANNOUNCEMENT RESPONSE SCHEMAS
-#________________________________________#
 
 
 class AnnouncementResponse(OutputBase):
@@ -172,11 +138,6 @@ class AnnouncementFeedItemResponse(OutputBase):
     acknowledged_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-
-
-#________________________________________#
-#           LIST RESPONSE SCHEMAS
-#________________________________________#
 
 
 class AnnouncementListResponse(OutputBase):

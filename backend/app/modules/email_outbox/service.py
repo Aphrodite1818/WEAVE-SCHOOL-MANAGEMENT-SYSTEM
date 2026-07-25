@@ -14,13 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.queue.context import get_current_bulk_import_job_id
 from app.core.utils.email import send_email
-from app.core.utils.email_templates import get_user_invite_email_html
+from app.core.utils.email_templates import (
+    get_parent_invitation_email_html,
+    get_teacher_invitation_email_html,
+)
 from app.modules.email_outbox.models import EmailOutbox
 from app.modules.email_outbox.repository import EmailOutboxRepository, utc_now
 from app.modules.email_outbox.schemas import EmailOutboxCreate, EmailOutboxSummaryResponse
 
 
-USER_INVITE_TEMPLATE = "user_invite"
+TEACHER_INVITATION_TEMPLATE = "teacher_invitation"
+PARENT_INVITATION_TEMPLATE = "parent_invitation"
 DEFAULT_EMAIL_BATCH_SIZE = 20
 STALE_PROCESSING_MINUTES = 10
 
@@ -40,19 +44,39 @@ def build_retry_delay(*, attempts: int) -> timedelta:
     return timedelta(minutes=30)
 
 
-def build_user_invite_subject(*, school_name: str) -> str:
-    """Build the user invite email subject."""
+def build_teacher_invitation_subject(*, school_name: str) -> str:
+    """Build the teacher invitation email subject."""
 
-    return f"Set up your {school_name} account"
+    return f"Join {school_name} on Weave"
 
 
-def build_user_invite_body(*, context: dict[str, Any]) -> str:
-    """Build the user invite email body."""
+def build_teacher_invitation_body(*, context: dict[str, Any]) -> str:
+    """Build the teacher invitation email body."""
 
-    return get_user_invite_email_html(
-        context["user_name"],
-        context["school_name"],
-        context["invite_link"],
+    return get_teacher_invitation_email_html(
+        school_name=str(context.get("school_name") or "your school"),
+        invite_link=str(context["invite_link"]),
+    )
+
+
+def build_parent_invitation_subject(*, school_name: str) -> str:
+    """Build the parent invitation email subject."""
+
+    return f"Join {school_name} on Weave"
+
+
+def build_parent_invitation_body(*, context: dict[str, Any]) -> str:
+    """Build the parent invitation email body."""
+
+    return get_parent_invitation_email_html(
+        school_name=str(context.get("school_name") or "your school"),
+        student_name=str(context.get("student_name") or "a student"),
+        invite_link=str(context["invite_link"]),
+        admission_number=(
+            str(context["admission_number"])
+            if context.get("admission_number")
+            else None
+        ),
     )
 
 
@@ -72,20 +96,18 @@ class EmailOutboxService:
     """Business logic for queueing and sending email outbox rows."""
 
     @staticmethod
-    async def queue_user_invite_email(
+    async def queue_teacher_invitation_email(
         db: AsyncSession,
         *,
         tenant_id: UUID,
         email: str,
-        user_name: str,
         school_name: str,
         invite_link: str,
         metadata_json: dict[str, Any] | None = None,
     ) -> EmailOutbox:
-        """Queue one teacher/parent invite email."""
+        """Queue one canonical teacher invitation email."""
 
         context = {
-            "user_name": user_name,
             "school_name": school_name,
             "invite_link": invite_link,
         }
@@ -95,9 +117,43 @@ class EmailOutboxService:
             tenant_id=tenant_id,
             email_data=EmailOutboxCreate(
                 recipient_email=email,
-                recipient_name=user_name,
-                subject=build_user_invite_subject(school_name=school_name),
-                template_name=USER_INVITE_TEMPLATE,
+                recipient_name=email,
+                subject=build_teacher_invitation_subject(school_name=school_name),
+                template_name=TEACHER_INVITATION_TEMPLATE,
+                template_context=context,
+                metadata_json=resolve_outbox_metadata(metadata_json),
+            ),
+        )
+
+    @staticmethod
+    async def queue_parent_invitation_email(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        email: str,
+        school_name: str,
+        student_name: str,
+        invite_link: str,
+        admission_number: str | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> EmailOutbox:
+        """Queue one canonical parent invitation email."""
+
+        context = {
+            "school_name": school_name,
+            "student_name": student_name,
+            "invite_link": invite_link,
+            "admission_number": admission_number,
+        }
+
+        return await EmailOutboxRepository.create_email(
+            db=db,
+            tenant_id=tenant_id,
+            email_data=EmailOutboxCreate(
+                recipient_email=email,
+                recipient_name=email,
+                subject=build_parent_invitation_subject(school_name=school_name),
+                template_name=PARENT_INVITATION_TEMPLATE,
                 template_context=context,
                 metadata_json=resolve_outbox_metadata(metadata_json),
             ),
@@ -143,10 +199,18 @@ class EmailOutboxService:
         """Send a claimed email item and update its delivery state."""
 
         try:
-            if email_item.template_name != USER_INVITE_TEMPLATE:
-                raise ValueError(f"Unsupported email template: {email_item.template_name}")
-
-            html_body = build_user_invite_body(context=email_item.template_context)
+            if email_item.template_name == TEACHER_INVITATION_TEMPLATE:
+                html_body = build_teacher_invitation_body(
+                    context=email_item.template_context
+                )
+            elif email_item.template_name == PARENT_INVITATION_TEMPLATE:
+                html_body = build_parent_invitation_body(
+                    context=email_item.template_context
+                )
+            else:
+                raise ValueError(
+                    f"Unsupported email template: {email_item.template_name}"
+                )
 
             email_sent = await send_email(
                 to_email=email_item.recipient_email,

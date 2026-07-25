@@ -10,14 +10,15 @@ const variants = {
   error: "bg-error-soft text-rose-800 ring-rose-200",
 };
 
-function Badge({ variant = "default", children, className = "" }) {
+function Badge({ variant = "default", children, className = "", ...props }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset",
+        "inline-flex max-w-full min-w-0 shrink-0 items-center gap-1 truncate whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold leading-none ring-1 ring-inset",
         variants[variant] || variants.default,
         className
       )}
+      {...props}
     >
       {children}
     </span>

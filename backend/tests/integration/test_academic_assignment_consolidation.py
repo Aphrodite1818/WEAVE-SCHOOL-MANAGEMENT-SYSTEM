@@ -164,7 +164,6 @@ async def create_classroom(db_session: AsyncSession, *, tenant: Tenant, name: st
         tenant_id=tenant.id,
         name=name,
         arm=arm,
-        level="JSS",
         is_active=True,
     )
     db_session.add(classroom)
@@ -350,7 +349,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         StudentParentLink(
             tenant_id=tenant.id,
             student_id=student.id,
-            parent_id=parent.id,
+            parent_membership_id=parent.id,
             relationship_type=ParentRelationship.GUARDIAN,
             is_primary_contact=True,
             receives_academic_updates=True,
@@ -403,14 +402,14 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         "/api/v1/tenant-admin/academic/teacher-assignments",
         json={
             "class_subject_id": str(class_subject.id),
-            "teacher_id": str(teacher_a.id),
+            "teacher_membership_id": str(teacher_a.id),
         },
         headers=admin_headers,
     )
     assert create_response.status_code == 201
     created_assignment = create_response.json()
     assignment_a_id = created_assignment["id"]
-    assert created_assignment["teacher_id"] == str(teacher_a.id)
+    assert created_assignment["teacher_membership_id"] == str(teacher_a.id)
 
     teacher_a_assignments = await api_client.get(
         "/api/v1/teachers/me/academic/assignments",
@@ -418,17 +417,17 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     )
     assert teacher_a_assignments.status_code == 200
     assert len(teacher_a_assignments.json()["items"]) == 1
-    assert teacher_a_assignments.json()["items"][0]["teacher_id"] == str(teacher_a.id)
+    assert teacher_a_assignments.json()["items"][0]["teacher_membership_id"] == str(teacher_a.id)
 
     reassign_response = await api_client.post(
         f"/api/v1/tenant-admin/academic/teacher-assignments/{assignment_a_id}/reassign",
-        json={"teacher_id": str(teacher_b.id)},
+        json={"teacher_membership_id": str(teacher_b.id)},
         headers=admin_headers,
     )
     assert reassign_response.status_code == 200
     reassigned_assignment = reassign_response.json()
     assignment_b_id = reassigned_assignment["id"]
-    assert reassigned_assignment["teacher_id"] == str(teacher_b.id)
+    assert reassigned_assignment["teacher_membership_id"] == str(teacher_b.id)
     assert reassigned_assignment["is_active"] is True
 
     teacher_a_assignments = await api_client.get(
@@ -445,7 +444,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert teacher_b_assignments.status_code == 200
     teacher_b_items = teacher_b_assignments.json()["items"]
     assert len(teacher_b_items) == 1
-    assert teacher_b_items[0]["teacher_id"] == str(teacher_b.id)
+    assert teacher_b_items[0]["teacher_membership_id"] == str(teacher_b.id)
 
     admin_assignments = await api_client.get(
         "/api/v1/tenant-admin/academic/teacher-assignments",
@@ -455,7 +454,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert admin_assignments.status_code == 200
     admin_items = admin_assignments.json()["items"]
     assert len(admin_items) == 1
-    assert admin_items[0]["teacher_id"] == str(teacher_b.id)
+    assert admin_items[0]["teacher_membership_id"] == str(teacher_b.id)
 
     result_response = await api_client.post(
         "/api/v1/teachers/me/academic/results",
@@ -473,7 +472,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     )
     assert result_response.status_code == 200
     result_payload = result_response.json()
-    assert result_payload["teacher_id"] == str(teacher_b.id)
+    assert result_payload["teacher_membership_id"] == str(teacher_b.id)
     assert result_payload["teacher_name"] == "Teacher Beta"
     assert result_payload["teacher_assignment_id"] == assignment_b_id
 
@@ -532,7 +531,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         )
     ).scalars().all()
     assert len(active_assignment_count) == 1
-    assert active_assignment_count[0].teacher_id == teacher_b.id
+    assert active_assignment_count[0].teacher_membership_id == teacher_b.id
 
     legacy_assignment = (
         await db_session.execute(
@@ -543,7 +542,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
             )
         )
     ).scalar_one()
-    assert legacy_assignment.teacher_id == teacher_b.id
+    assert legacy_assignment.teacher_membership_id == teacher_b.id
     assert legacy_assignment.is_active is True
 
     persisted_result = (
@@ -555,7 +554,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         )
     ).scalar_one()
     assert persisted_result.teacher_assignment_id == uuid.UUID(assignment_b_id)
-    assert persisted_result.teacher_id == teacher_b.id
+    assert persisted_result.teacher_membership_id == teacher_b.id
     assert persisted_result.class_subject_teacher_id == legacy_assignment.id
 
     persisted_cards = (
@@ -632,7 +631,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
         "/api/v1/tenant-admin/academic/teacher-assignments",
         json={
             "class_subject_id": str(class_subject_math.id),
-            "teacher_id": str(teacher.id),
+            "teacher_membership_id": str(teacher.id),
         },
         headers=admin_headers,
     )
@@ -641,7 +640,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
         "/api/v1/tenant-admin/academic/teacher-assignments",
         json={
             "class_subject_id": str(class_subject_english.id),
-            "teacher_id": str(teacher.id),
+            "teacher_membership_id": str(teacher.id),
         },
         headers=admin_headers,
     )

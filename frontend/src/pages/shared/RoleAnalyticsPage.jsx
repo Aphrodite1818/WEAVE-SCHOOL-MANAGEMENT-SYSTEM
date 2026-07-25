@@ -84,6 +84,8 @@ const chartData = (charts, key) => {
   return Array.isArray(value) ? value : [];
 };
 
+const EMPTY_CHARTS = {};
+
 const formatMetric = (value, suffix = "") => {
   if (value === null || value === undefined || value === "") return "-";
   return `${value}${suffix}`;
@@ -127,6 +129,11 @@ function renderChart(chart, charts) {
   );
 }
 
+const chartGridClass = (count) => {
+  const desktopColumns = count > 0 && count % 3 === 0 ? "xl:grid-cols-3" : "xl:grid-cols-2";
+  return `grid grid-cols-1 gap-5 ${desktopColumns}`;
+};
+
 export default function RoleAnalyticsPage({ role = "admin" }) {
   const copy = roleCopy[role] || roleCopy.admin;
   const [analytics, setAnalytics] = useState(null);
@@ -160,7 +167,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
   }, [copy, shouldGateAdmin]);
 
   const stats = analytics?.stats || {};
-  const charts = analytics?.charts || {};
+  const charts = analytics?.charts || EMPTY_CHARTS;
   const visibleCharts = useMemo(() => {
     const populatedCharts = copy.charts.filter((chart) => chartData(charts, chart.key).length > 0);
     return populatedCharts.length > 0 ? populatedCharts : copy.charts;
@@ -226,7 +233,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
                 title="Trend signals"
                 description="Line charts stay at the top for movement and progress patterns over time or grouped academic signals."
               />
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div className={chartGridClass(trendCharts.length)}>
                 {trendCharts.map((chart) => renderChart(chart, charts))}
               </div>
             </section>
@@ -238,7 +245,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
                 title="Breakdowns and status mix"
                 description="Donut charts handle composition data so the page does not become a long wall of bars."
               />
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div className={chartGridClass(distributionCharts.length)}>
                 {distributionCharts.map((chart) => renderChart(chart, charts))}
               </div>
             </section>
@@ -250,7 +257,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
                 title="Key comparisons"
                 description="Only the strongest category comparisons use bar charts here."
               />
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div className={chartGridClass(comparisonCharts.length)}>
                 {comparisonCharts.map((chart) => renderChart(chart, charts))}
               </div>
             </section>

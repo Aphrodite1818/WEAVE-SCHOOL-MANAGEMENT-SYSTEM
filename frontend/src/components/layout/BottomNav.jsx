@@ -7,8 +7,8 @@ import {
   useState,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bell, Home, Menu, BookOpen, FileText, BarChart3, ClipboardList, Users } from "lucide-react";
-import { NAVIGATION_ABORT_EVENT } from "../../services/api";
+import { Bell, Home, Menu, BookOpen, FileText, BarChart3, Building2, ClipboardList, Users } from "lucide-react";
+import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 
@@ -37,7 +37,7 @@ const bottomNavConfig = {
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
     { label: "Scores", to: "/teacher/score-entry", icon: FileText },
     { label: "Home", to: "/teacher/dashboard", icon: Home, isHome: true },
-    { label: "Notices", to: "/teacher/notices", icon: Bell },
+    { label: "Schools", to: "/teacher/schools", icon: Building2, accountScope: true },
   ],
   student: [
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
@@ -47,9 +47,9 @@ const bottomNavConfig = {
   ],
   parent: [
     { label: "Results", to: "/parent/results", icon: BookOpen },
-    { label: "Reports", to: "/parent/report-cards", icon: FileText },
-    { label: "Home", to: "/parent/dashboard", icon: Home, isHome: true },
     { label: "Children", to: "/parent/student-linking", icon: Users },
+    { label: "Home", to: "/parent/dashboard", icon: Home, isHome: true },
+    { label: "Schools", to: "/parent/schools", icon: Building2, accountScope: true },
   ],
   superadmin: [
     { label: "Verify", to: "/superadmin/verification", icon: BookOpen },
@@ -71,6 +71,11 @@ const getIndicatorStyleForElement = (element) => ({
 
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
+  const user = authSession.getUser() || {};
+  const actorType = String(user?.actor_type || "").toLowerCase();
+  const isAccountScope =
+    ["parent_account", "teacher_account"].includes(actorType) &&
+    !user?.tenant_id;
   const [isStandalonePwa, setIsStandalonePwa] = useState(isStandalonePwaDisplay);
   const [indicatorStyle, setIndicatorStyle] = useState({
     width: 0,
@@ -90,7 +95,10 @@ function BottomNav({ role, onOpenMenu }) {
   const lastViewportWidth = useRef(
     typeof window === "undefined" ? 0 : window.innerWidth
   );
-  const items = bottomNavConfig[role] || bottomNavConfig.admin;
+  const configuredItems = bottomNavConfig[role] || bottomNavConfig.admin;
+  const items = isAccountScope
+    ? configuredItems.filter((item) => item.accountScope)
+    : configuredItems;
 
   const clearTimer = useCallback((timerRef) => {
     if (!timerRef.current) return;
@@ -283,14 +291,14 @@ function BottomNav({ role, onOpenMenu }) {
 
       <nav
         data-mobile-bottom-nav="true"
-        className="fixed inset-x-0 z-40 border-t border-border/70 bg-background/95 px-2 pt-0.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
+        className="fixed inset-x-0 z-40 border-t border-border/70 bg-background px-2 pt-0.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
         style={{
           bottom: "calc(-0.45 * env(safe-area-inset-bottom))",
           paddingBottom: "max(0.12rem, calc(env(safe-area-inset-bottom) * 0.45))",
         }}
         aria-label="Primary installed app navigation"
       >
-        <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface/95 p-1.5 shadow-sm">
+        <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface p-1.5 shadow-sm">
           <span
             aria-hidden="true"
             className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary/10"

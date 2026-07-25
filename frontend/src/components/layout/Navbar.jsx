@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Menu, X } from "lucide-react";
+
 import WeaveIcon from "../brand/WeaveIcon";
 import Button from "../ui/Button";
 
@@ -8,6 +9,7 @@ function Navbar() {
   const [open, setOpen] = useState(false);
   const links = [
     { label: "Home", href: "/#home" },
+    { label: "Join", to: "/join" },
     { label: "Features", href: "/#features" },
     { label: "Benefits", href: "/#benefits" },
     { label: "Pricing", to: "/pricing" },
@@ -51,22 +53,34 @@ function Navbar() {
 
           <nav className="hidden items-center gap-7 md:flex">
             {links.map((link) =>
-              renderNavLink(link, "text-sm font-semibold text-text-soft hover:text-primary")
+              renderNavLink(
+                link,
+                "text-sm font-semibold text-text-soft hover:text-primary",
+              ),
             )}
-            <Link to="/login" className="text-sm font-semibold text-text-soft hover:text-primary">
+            <Link
+              to="/login"
+              className="text-sm font-semibold text-text-soft hover:text-primary"
+            >
               Log in
             </Link>
             <Link to="/register">
-              <Button>Start free</Button>
+              <Button>Create school</Button>
             </Link>
           </nav>
 
-          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setOpen((current) => !current)} aria-label="Toggle menu">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setOpen((current) => !current)}
+            aria-label="Toggle menu"
+          >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
         </div>
 
-        {open && (
+        {open ? (
           <div className="border-t border-border bg-surface px-3 py-3 shadow-premium md:hidden">
             <nav className="grid gap-1.5 rounded-2xl border border-border/70 bg-surface-muted/35 p-1.5">
               {links.map((link) =>
@@ -74,19 +88,27 @@ function Navbar() {
                   link,
                   "flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-text-soft transition hover:bg-surface hover:text-primary",
                   () => setOpen(false),
-                )
+                ),
               )}
-              <Link to="/login" onClick={() => setOpen(false)} className="flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-text-soft transition hover:bg-surface hover:text-primary">
+              <Link
+                to="/login"
+                onClick={() => setOpen(false)}
+                className="flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-text-soft transition hover:bg-surface hover:text-primary"
+              >
                 Log in
               </Link>
               <Link to="/register" onClick={() => setOpen(false)} className="mt-1">
-                <Button className="w-full">Start free</Button>
+                <Button className="w-full">Create school</Button>
               </Link>
             </nav>
           </div>
-        )}
+        ) : null}
       </header>
-      <div className="h-[calc(4rem+max(0.35rem,env(safe-area-inset-top)))] md:h-20" aria-hidden="true" />
+
+      <div
+        className="h-[calc(4rem+max(0.35rem,env(safe-area-inset-top)))] md:h-20"
+        aria-hidden="true"
+      />
     </>
   );
 }

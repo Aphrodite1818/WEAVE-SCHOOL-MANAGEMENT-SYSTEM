@@ -24,7 +24,7 @@ import SidebarContent from "./Sidebar";
 import Topbar from "./Topbar";
 import { onboardingModalCopy } from "./navConfig";
 import useOnboardingGate from "./useOnboardingGate";
-import useTenantWorkspaceName from "./useTenantWorkspaceName";
+import { useTenantWorkspaceBranding } from "./useTenantWorkspaceName";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
@@ -99,7 +99,8 @@ function DashboardShellFrame({
     currentX: 0,
     currentY: 0,
   });
-  const schoolName = useTenantWorkspaceName({ user, role });
+  const workspaceBranding = useTenantWorkspaceBranding({ user, role });
+  const schoolName = workspaceBranding.schoolName;
   const aiAssistantGuard =
     role === "admin" && isTenantAdmin
       ? getFeatureGuard(FEATURE_CODES.AI_ASSISTANT || "ai_assistant")
@@ -132,7 +133,7 @@ function DashboardShellFrame({
     const previousHtmlBackground = document.documentElement.style.backgroundColor;
     const previousBodyBackground = document.body.style.backgroundColor;
 
-    const frameId = window.requestAnimationFrame(() => {
+    const syncDashboardChrome = () => {
       const shellStyles = getComputedStyle(shellElement);
       const surfaceRgb = shellStyles.getPropertyValue("--color-surface").trim();
       const backgroundRgb = shellStyles.getPropertyValue("--color-background").trim();
@@ -148,10 +149,28 @@ function DashboardShellFrame({
       if (appleStatusBarMeta) {
         appleStatusBarMeta.setAttribute("content", "black-translucent");
       }
+    };
+
+    const frameId = window.requestAnimationFrame(syncDashboardChrome);
+    const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const observer = new MutationObserver(syncDashboardChrome);
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-theme-preference"],
     });
+    window.addEventListener("weave:accessibility-preferences-changed", syncDashboardChrome);
+    window.addEventListener("pageshow", syncDashboardChrome);
+    systemThemeQuery?.addEventListener?.("change", syncDashboardChrome);
+    systemThemeQuery?.addListener?.(syncDashboardChrome);
 
     return () => {
       window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+      window.removeEventListener("weave:accessibility-preferences-changed", syncDashboardChrome);
+      window.removeEventListener("pageshow", syncDashboardChrome);
+      systemThemeQuery?.removeEventListener?.("change", syncDashboardChrome);
+      systemThemeQuery?.removeListener?.(syncDashboardChrome);
 
       const themeColorMeta = document.querySelector('meta[name="theme-color"]');
       const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
@@ -350,16 +369,23 @@ function DashboardShellFrame({
         data-pwa-status-fill="true"
         style={{ height: "env(safe-area-inset-top)" }}
       />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-30 hidden bg-background md:hidden"
+        data-pwa-safe-area-fill="true"
+        style={{ height: "calc(env(safe-area-inset-bottom) + 1rem)" }}
+      />
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block",
-          sidebarCollapsed ? "w-[4.25rem]" : "w-[15rem]"
+          sidebarCollapsed ? "w-[4.25rem]" : "w-[13rem] xl:w-[14rem]"
         )}
       >
         <SidebarContent
           role={role}
           collapsed={sidebarCollapsed}
           schoolName={schoolName}
+          schoolLogoUrl={workspaceBranding.logoUrl}
         />
       </aside>
 
@@ -367,13 +393,14 @@ function DashboardShellFrame({
         open={mobileNavOpen}
         role={role}
         schoolName={schoolName}
+        schoolLogoUrl={workspaceBranding.logoUrl}
         onClose={() => setMobileNavOpen(false)}
       />
 
       <div
         className={cn(
           "flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300",
-          sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[15rem]"
+          sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[13rem] xl:pl-[14rem]"
         )}
       >
         <Topbar
@@ -382,6 +409,7 @@ function DashboardShellFrame({
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
           schoolName={schoolName}
+          schoolLogoUrl={workspaceBranding.logoUrl}
         />
         <div
           id="dashboard-scroll-viewport"
@@ -439,7 +467,7 @@ function DashboardShellFrame({
           open={profileModalOpen}
           onClose={() => !onboardingState.required && setProfileModalOpen(false)}
           title={profileMode === "onboarding" ? profileCopy.onboardingTitle : profileCopy.editTitle}
-          description={profileMode === "onboarding" ? profileCopy.onboardingDescription : profileCopy.editDescription}
+          description={profileMode === "onboarding" ? null : profileCopy.editDescription}
           closeOnOverlay={!onboardingState.required}
           showClose={!onboardingState.required}
         >

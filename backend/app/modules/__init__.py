@@ -23,3 +23,7 @@ def import_model_modules() -> None:
     import app.modules.tenant_branding.models  # noqa: F401
     import app.modules.tenant_admins.models  # noqa: F401
     import app.tenant_management.models  # noqa: F401
+
+    from app.modules.metrics.events import register_metrics_cache_invalidation_events
+
+    register_metrics_cache_invalidation_events()

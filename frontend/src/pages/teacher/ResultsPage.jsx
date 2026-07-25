@@ -274,7 +274,7 @@ function TeacherResultsPage() {
         </div>
       </Card>
 
-      <section className="grid gap-3">
+      <section className="mobile-scroll-list grid gap-3">
         {students.length === 0 ? (
           <EmptyState icon={ClipboardList} title="No students found" description="Select an assigned class-subject with enrolled students." />
         ) : (

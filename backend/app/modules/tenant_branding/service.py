@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache.events import flush_cache_invalidation_events
 from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
@@ -550,8 +551,9 @@ class TenantBrandingService:
                     **persisted_values,
                 ),
             )
+            await invalidate_tenant_branding(tenant_id, db=db)
             await db.commit()
-            await invalidate_tenant_branding(tenant_id)
+            await flush_cache_invalidation_events(db)
             return TenantBrandingService._build_admin_response(
                 tenant_id=tenant_id,
                 logo_url=tenant.logo_url,
@@ -587,8 +589,9 @@ class TenantBrandingService:
                 "theme_version": branding.theme_version + 1,
             },
         )
+        await invalidate_tenant_branding(tenant_id, db=db)
         await db.commit()
-        await invalidate_tenant_branding(tenant_id)
+        await flush_cache_invalidation_events(db)
         return TenantBrandingService._build_admin_response(
             tenant_id=tenant_id,
             logo_url=tenant.logo_url,
@@ -638,8 +641,9 @@ class TenantBrandingService:
                 },
             )
 
+        await invalidate_tenant_branding(tenant_id, db=db)
         await db.commit()
-        await invalidate_tenant_branding(tenant_id)
+        await flush_cache_invalidation_events(db)
 
         return TenantBrandingResetResponse(
             branding=TenantBrandingService._build_admin_response(

@@ -4,7 +4,7 @@ from typing import Annotated, TypeAlias
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import require_superadmin
+from app.core.dependencies.route_guards import get_current_superadmin
 from app.core.utils.frontend_urls import resolve_frontend_app_url
 from app.modules.superadmin.models import PlatformControl, SecurityIPBlock, SuperAdmin
 from app.modules.superadmin.platform_control_service import PlatformControlService
@@ -29,7 +29,7 @@ from app.tenant_management.models import Tenant
 from app.tenant_management.schemas import TenantManagementResponse, TenantCreate, TenantStatusUpdate
 
 router = APIRouter(prefix="/superadmin", tags=["Superadmin"])
-SuperadminActor: TypeAlias = Annotated[SuperAdmin, Depends(require_superadmin)]
+SuperadminActor: TypeAlias = Annotated[SuperAdmin, Depends(get_current_superadmin)]
 
 
 @router.post("/tenants", response_model=TenantManagementResponse, status_code=status.HTTP_201_CREATED)

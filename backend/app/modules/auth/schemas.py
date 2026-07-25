@@ -1,22 +1,19 @@
-#======================================#
-#            auth/schemas.py           #
-#======================================#
+"""Authentication request and response schemas."""
+
+from __future__ import annotations
 
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class Token(BaseModel):
-    """Represent the Token type."""
-
     access_token: str
     token_type: str = "bearer"
 
 
 class LoginSessionUser(BaseModel):
-    """Compact authenticated actor payload returned to the frontend."""
-
     id: str | None = None
     tenant_id: str | None = None
     school_name: str | None = None
@@ -35,8 +32,6 @@ class LoginSessionUser(BaseModel):
 
 
 class SessionBootstrapResponse(BaseModel):
-    """Current authenticated browser/session bootstrap payload."""
-
     authenticated: bool = True
     actor_type: str
     account_type: str
@@ -48,53 +43,47 @@ class SessionBootstrapResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """Login request for email/admission-number authentication."""
-
     model_config = ConfigDict(
         populate_by_name=True,
         str_strip_whitespace=True,
         extra="forbid",
     )
 
-    identifier: str = Field(..., alias="email", min_length=1, max_length=255)
+    identifier: str = Field(
+        ...,
+        alias="email",
+        min_length=1,
+        max_length=255,
+    )
     password: str
     remember_me: bool = False
 
 
-class UpdatePassword(BaseModel):
-    """Represent the UpdatePassword type."""
+class MembershipSelectionRequest(BaseModel):
+    """Select one usable tenant membership after global-account login."""
 
+    membership_id: UUID
+    remember_me: bool = False
+
+
+class UpdatePassword(BaseModel):
     email: EmailStr
-    new_password: str
-    reset_token: str
+    new_password: str = Field(min_length=8, max_length=128)
+    reset_token: str = Field(min_length=20, max_length=500)
 
 
 class RequestOTP(BaseModel):
-    """Represent the RequestOTP type."""
-
     email: EmailStr
     purpose: Literal["verification", "password_reset"]
 
 
 class VerifyOTP(BaseModel):
-    """Represent the VerifyOTP type."""
-
     email: EmailStr
-    code: str
+    code: str = Field(min_length=4, max_length=12)
     purpose: Literal["verification", "password_reset"]
 
 
 class TenantActivationRequest(BaseModel):
-    """Pydantic schema for the auth domain."""
-
     email: EmailStr
-    password: str = Field(..., min_length=8, max_length=64)
-    token: str = Field(..., min_length=20)
-
-
-class UserInviteAcceptanceRequest(BaseModel):
-    """Pydantic schema for the auth domain."""
-
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=64)
-    token: str = Field(..., min_length=20)
+    password: str = Field(..., min_length=8, max_length=128)
+    token: str = Field(..., min_length=20, max_length=500)

@@ -41,18 +41,26 @@ export default function SidebarContent({
   onNavigate,
   mobile = false,
   schoolName,
+  schoolLogoUrl,
 }) {
   const location = useLocation();
   const subscription = useSubscription();
   const user = authSession.getUser() || {};
-  const workspaceLogo = resolveWorkspaceLogo(user);
+  const actorType = String(user?.actor_type || "").toLowerCase();
+  const isAccountScope =
+    ["parent_account", "teacher_account"].includes(actorType) &&
+    !user?.tenant_id;
+  const workspaceLogo = schoolLogoUrl || resolveWorkspaceLogo(user);
   const [failedWorkspaceLogo, setFailedWorkspaceLogo] = useState(null);
   const hasCustomWorkspaceLogo = Boolean(workspaceLogo) && failedWorkspaceLogo !== workspaceLogo;
   const workspaceLogoAlt = `${schoolName || "School"} logo`;
   const groups = (navGroups[role] || navGroups.admin)
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !shouldHideNavItem(item, subscription)),
+      items: group.items.filter((item) => {
+        if (isAccountScope && !item.accountScope) return false;
+        return !shouldHideNavItem(item, subscription);
+      }),
     }))
     .filter((group) => group.items.length > 0);
   const navRef = useRef(null);
@@ -91,7 +99,7 @@ export default function SidebarContent({
         )}
       >
         <Link
-          to="/"
+          to={isAccountScope ? `/${role}/schools` : "/"}
           className={cn("flex min-w-0 items-center gap-2.5", collapsed && "justify-center")}
           onClick={() => {
             persistSidebarScroll();
@@ -114,7 +122,7 @@ export default function SidebarContent({
           {!collapsed && (
             <span className="min-w-0">
               <span className="block truncate text-[15px] font-bold leading-tight text-text">
-                {schoolName || "Weave"}
+                {isAccountScope ? "Your schools" : schoolName || "Weave"}
               </span>
               <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
             </span>
@@ -125,7 +133,9 @@ export default function SidebarContent({
       {!collapsed && (
         <div className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
           <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-text-faint">Workspace</p>
-          <p className="mt-1 truncate text-[13px] font-semibold text-text">{schoolName || "School workspace"}</p>
+          <p className="mt-1 truncate text-[13px] font-semibold text-text">
+            {isAccountScope ? "Select a school" : schoolName || "School workspace"}
+          </p>
           <span className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
             {roleLabels[role] || "Workspace"}
           </span>

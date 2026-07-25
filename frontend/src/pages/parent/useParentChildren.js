@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getErrorMessage, isAbortError } from "../../services/api";
 import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { parentService } from "../../services/parentService";
-import { readSelectedChildId, writeSelectedChildId } from "./parentPageUtils";
+import { getParentChildId, readSelectedChildId, writeSelectedChildId } from "./parentPageUtils";
 
 export function useParentChildren() {
   const [children, setChildren] = useState([]);
@@ -63,7 +63,7 @@ export function useParentChildren() {
   }, [reloadChildren]);
 
   const selectedChildRecord =
-    children.find((item) => item.student?.id === selectedChildId) || null;
+    children.find((item) => getParentChildId(item) === selectedChildId) || null;
 
   return {
     children,

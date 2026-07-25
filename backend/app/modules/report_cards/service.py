@@ -130,13 +130,13 @@ class ReportCardService:
                 teacher = await TeacherRepository.get_teacher_by_id(
                     db=db,
                     tenant_id=tenant_id,
-                    teacher_id=teacher_assignment.teacher_id,
+                    teacher_id=teacher_assignment.teacher_membership_id,
                 )
         if teacher is None:
             teacher = await TeacherRepository.get_teacher_by_id(
                 db=db,
                 tenant_id=tenant_id,
-                teacher_id=result.teacher_id,
+                teacher_id=result.teacher_membership_id,
             )
         if teacher is None:
             return None
@@ -507,11 +507,11 @@ class ReportCardService:
         parent: Parent,
         student_id: uuid.UUID,
     ) -> None:
-        link = await StudentParentLinkRepository.get_by_student_and_parent(
+        link = await StudentParentLinkRepository.get_by_student_and_membership(
             db=db,
             tenant_id=parent.tenant_id,
             student_id=student_id,
-            parent_id=parent.id,
+            membership_id=parent.id,
         )
         if link is None:
             raise ForbiddenException("You cannot view report cards for this student.")
@@ -519,7 +519,7 @@ class ReportCardService:
     @staticmethod
     async def _response(db: AsyncSession, card: ReportCard) -> ReportCardResponse:
         student = await StudentRepository.get_student_by_id(db, card.tenant_id, card.student_id)
-        classroom = await ClassRoomRepository.get_classroom_by_id(db, card.tenant_id, card.class_id)
+        classroom = await ClassRoomRepository.get_by_id(db, card.tenant_id, card.class_id)
         session = await StudentAcademicRepository.get_academic_session_by_id(db, card.tenant_id, card.academic_session_id)
         term = await StudentAcademicRepository.get_term_by_id(db, card.tenant_id, card.academic_term_id)
         lines = await ReportCardRepository.list_lines(db, card.tenant_id, card.id)

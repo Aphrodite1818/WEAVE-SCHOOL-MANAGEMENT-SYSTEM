@@ -6,6 +6,19 @@ import Button from "../../components/ui/Button";
 import { authService } from "../../services/auth.service";
 import { parseApiError } from "../../services/api";
 
+const safeInvitationReturnTo = (value) => {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "";
+  }
+  if (
+    value.startsWith("/parent-invitations/") ||
+    value.startsWith("/teacher-invitations/")
+  ) {
+    return value;
+  }
+  return "";
+};
+
 function Message({ type = "info", children }) {
   const isError = type === "error";
   const Icon = isError ? TriangleAlert : CheckCircle2;
@@ -27,6 +40,7 @@ function OTPValidationPage() {
   const location = useLocation();
   const emailParam = searchParams.get("email");
   const purpose = searchParams.get("purpose") || "verification";
+  const returnTo = safeInvitationReturnTo(searchParams.get("returnTo"));
   const email = emailParam || (purpose === "verification" ? authService.getPendingVerificationEmail() || "" : "");
   const notice = location.state?.notice || null;
   const isPasswordResetFlow = purpose === "password_reset";
@@ -39,11 +53,23 @@ function OTPValidationPage() {
 
   useEffect(() => {
     if (!email) {
-      navigate(isPasswordResetFlow ? "/forgot-password" : "/register", { replace: true });
+      if (isPasswordResetFlow) {
+        navigate("/forgot-password", { replace: true });
+      } else if (returnTo.startsWith("/parent-invitations/")) {
+        navigate(`/parent/register?returnTo=${encodeURIComponent(returnTo)}`, {
+          replace: true,
+        });
+      } else if (returnTo.startsWith("/teacher-invitations/")) {
+        navigate(`/teacher/register?returnTo=${encodeURIComponent(returnTo)}`, {
+          replace: true,
+        });
+      } else {
+        navigate("/register", { replace: true });
+      }
       return;
     }
     inputRefs.current[0]?.focus();
-  }, [email, isPasswordResetFlow, navigate]);
+  }, [email, isPasswordResetFlow, navigate, returnTo]);
 
   const handleChange = (index, event) => {
     const value = event.target.value.replace(/\D/g, "");
@@ -87,7 +113,9 @@ function OTPValidationPage() {
         navigate("/forgot-password", { replace: true, state: { email, reset_token: result.reset_token } });
       } else {
         authService.clearPendingVerificationEmail();
-        navigate("/login?verified=true", { replace: true });
+        const query = new URLSearchParams({ verified: "true" });
+        if (returnTo) query.set("returnTo", returnTo);
+        navigate(`/login?${query.toString()}`, { replace: true });
       }
     } catch (err) {
       const apiError = parseApiError(err, "Invalid code. Please try again.");
