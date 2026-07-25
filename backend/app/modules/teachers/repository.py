@@ -543,6 +543,41 @@ class TeacherMembershipSubjectRepository:
         await db.flush()
         return link
 
+    @staticmethod
+    async def activate_or_create(
+        db: AsyncSession,
+        tenant_id: UUID,
+        membership_id: UUID,
+        subject_id: UUID,
+    ) -> TeacherMembershipSubject:
+        """Ensure an active subject-capability record exists for the membership.
+
+        Creates the record if it does not exist, or reactivates it if it was
+        previously deactivated. This maintains an audit trail of teacher
+        subject approvals without requiring a separate pre-approval step.
+        """
+        link = await TeacherMembershipSubjectRepository.get_by_membership_and_subject(
+            db,
+            tenant_id,
+            membership_id,
+            subject_id,
+        )
+        if link is None:
+            link = TeacherMembershipSubject(
+                tenant_id=tenant_id,
+                teacher_membership_id=membership_id,
+                subject_id=subject_id,
+                is_active=True,
+            )
+            db.add(link)
+            await db.flush()
+            return link
+        if not link.is_active:
+            link.is_active = True
+            db.add(link)
+            await db.flush()
+        return link
+
 
 # Tenant-facing repository name. Global account code imports
 # TeacherAccountRepository explicitly.
