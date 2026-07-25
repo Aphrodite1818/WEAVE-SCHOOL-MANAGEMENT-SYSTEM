@@ -13,7 +13,7 @@ from app.modules.students.schemas import (
     StudentAdminProfileUpdate,
     StudentDetailResponse,
 )
-from app.modules.students.service import StudentService
+from app.modules.students.service import StudentService, _profile_status_from_values
 from app.modules.tenant_admins.models import TenantAdmin
 
 
@@ -75,7 +75,11 @@ class StudentAdminContractService:
         for field, value in update_data.items():
             setattr(student, field, value)
 
-        student.profile_status = StudentService._resolve_profile_status(student)
+        student.profile_status = _profile_status_from_values(
+            first_name=student.first_name,
+            last_name=student.last_name,
+            gender=student.gender,
+        )
         await StudentRepository.save(db, student)
         await db.commit()
         await db.refresh(student)
