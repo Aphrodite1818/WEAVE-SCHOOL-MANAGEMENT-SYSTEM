@@ -290,23 +290,9 @@ export const authService = {
       { auth: false, clearAuthOnUnauthorized: false, skipAuthRefresh: true },
     ),
 
-  getInviteStatus: (token) =>
-    api.get(`/auth/invite-status?token=${encodeURIComponent(token)}`, {
-      auth: false,
-      clearAuthOnUnauthorized: false,
-      skipAuthRefresh: true,
-    }),
-
   activateTenant: (email, password, token) =>
     api.post(
       "/auth/activate-tenant",
-      { email, password, token },
-      { auth: false, clearAuthOnUnauthorized: false, skipAuthRefresh: true },
-    ),
-
-  acceptInvite: (email, password, token) =>
-    api.post(
-      "/auth/accept-invite",
       { email, password, token },
       { auth: false, clearAuthOnUnauthorized: false, skipAuthRefresh: true },
     ),
