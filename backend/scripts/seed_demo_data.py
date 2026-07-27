@@ -5,11 +5,12 @@ import asyncio
 import random
 import sys
 import uuid
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from faker import Faker
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
@@ -27,122 +28,306 @@ from app.modules.students.models import (
     StudentProfileStatus,
 )
 from app.modules.subjects.models import Subject
-from app.tenant_management.models import Tenant
+from app.tenant_management.models import (
+    SubscriptionPlan,
+    Tenant,
+    TenantStatus,
+    TenantVerificationStatus,
+)
 
 DEFAULT_PASSWORD = "Test12345!"
-SEED_TAG = "demo-seed"
-DEFAULT_STUDENT_COUNT = 600
 DEFAULT_SEED = 20260727
-
-CLASS_NAMES = ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"]
-ARMS = ["A", "B", "C", "D"]
-SUBJECTS = [
-    ("MTH", "Mathematics"),
-    ("ENG", "English Language"),
-    ("BST", "Basic Science"),
-    ("BTE", "Basic Technology"),
-    ("CMP", "Computer Studies"),
-    ("SOS", "Social Studies"),
-    ("CIV", "Civic Education"),
-    ("BUS", "Business Studies"),
-    ("PHY", "Physics"),
-    ("CHE", "Chemistry"),
-    ("BIO", "Biology"),
-    ("ECO", "Economics"),
-    ("ACC", "Financial Accounting"),
-    ("GOV", "Government"),
-    ("LIT", "Literature in English"),
-    ("CRS", "Christian Religious Studies"),
-]
+SEED_SLUG_PREFIX = "demo-"
 
 fake = Faker("en_NG")
 
 
-def normalize_email(value: str) -> str:
-    return value.strip().lower()
+@dataclass(frozen=True)
+class SchoolProfile:
+    school_name: str
+    slug: str
+    prefix: str
+    email_alias: str
+    phone: str
+    address: str
+    city: str
+    state: str
+    status: TenantStatus
+    plan: SubscriptionPlan
+    student_count: int
+    class_names: tuple[str, ...]
+    arms: tuple[str, ...]
+    subject_codes: tuple[str, ...]
+    max_students: int
+    max_teachers: int
+    branches: tuple[str, ...] | None = None
 
 
-async def resolve_tenant(session, tenant_id: str | None) -> Tenant:
-    if tenant_id:
-        tenant = await session.get(Tenant, uuid.UUID(tenant_id))
-        if tenant is None:
-            raise ValueError(f"Tenant {tenant_id} was not found.")
-        return tenant
+SUBJECT_CATALOG: dict[str, tuple[str, str]] = {
+    "MTH": ("Mathematics", "Numeracy, algebra, geometry and problem solving"),
+    "ENG": ("English Language", "Reading, grammar, comprehension and writing"),
+    "BST": ("Basic Science", "Integrated junior science"),
+    "BTE": ("Basic Technology", "Introductory technology and design"),
+    "CMP": ("Computer Studies", "Digital literacy and computing"),
+    "SOS": ("Social Studies", "Society, culture and civic awareness"),
+    "CIV": ("Civic Education", "Citizenship, rights and responsibilities"),
+    "BUS": ("Business Studies", "Introductory business and entrepreneurship"),
+    "PHY": ("Physics", "Mechanics, energy, waves and electricity"),
+    "CHE": ("Chemistry", "Matter, reactions and laboratory science"),
+    "BIO": ("Biology", "Living systems and ecology"),
+    "ECO": ("Economics", "Markets, production and economic systems"),
+    "ACC": ("Financial Accounting", "Bookkeeping and financial records"),
+    "GOV": ("Government", "Political institutions and governance"),
+    "LIT": ("Literature in English", "Drama, prose and poetry"),
+    "CRS": ("Christian Religious Studies", "Christian faith and moral instruction"),
+}
 
-    tenants = list((await session.execute(select(Tenant).order_by(Tenant.created_at.asc()))).scalars().all())
-    if not tenants:
-        raise ValueError("No tenant exists. Create a school first, then rerun the seeder.")
-    if len(tenants) > 1:
-        raise ValueError("Multiple tenants exist. Pass --tenant-id to select the school to seed.")
-    return tenants[0]
+
+SCHOOL_PROFILES: tuple[SchoolProfile, ...] = (
+    SchoolProfile(
+        school_name="Cedar Grove College",
+        slug="demo-cedar-grove",
+        prefix="CGC",
+        email_alias="cedargrove",
+        phone="+2348031000001",
+        address="14 Admiralty Way",
+        city="Lekki",
+        state="Lagos",
+        status=TenantStatus.ACTIVE,
+        plan=SubscriptionPlan.PROFESSIONAL,
+        student_count=72,
+        class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"),
+        arms=("A", "B"),
+        subject_codes=("MTH", "ENG", "BST", "BTE", "CMP", "SOS", "CIV", "PHY", "CHE", "BIO"),
+        max_students=500,
+        max_teachers=45,
+    ),
+    SchoolProfile(
+        school_name="Northbridge Academy",
+        slug="demo-northbridge-academy",
+        prefix="NBA",
+        email_alias="northbridge",
+        phone="+2348031000002",
+        address="8 Independence Avenue",
+        city="Abuja",
+        state="FCT",
+        status=TenantStatus.TRIAL,
+        plan=SubscriptionPlan.FREE_TRIAL,
+        student_count=38,
+        class_names=("JSS 1", "JSS 2", "JSS 3"),
+        arms=("Gold",),
+        subject_codes=("MTH", "ENG", "BST", "CMP", "SOS", "CIV", "BUS"),
+        max_students=150,
+        max_teachers=20,
+    ),
+    SchoolProfile(
+        school_name="Bright Future Secondary School",
+        slug="demo-bright-future",
+        prefix="BFS",
+        email_alias="brightfuture",
+        phone="+2348031000003",
+        address="22 Ring Road",
+        city="Ibadan",
+        state="Oyo",
+        status=TenantStatus.ACTIVE,
+        plan=SubscriptionPlan.PLUS,
+        student_count=145,
+        class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"),
+        arms=("A", "B", "C"),
+        subject_codes=("MTH", "ENG", "BST", "BTE", "CMP", "SOS", "CIV", "BUS", "BIO", "ECO", "GOV"),
+        max_students=600,
+        max_teachers=55,
+    ),
+    SchoolProfile(
+        school_name="Royal Crest International School",
+        slug="demo-royal-crest",
+        prefix="RCI",
+        email_alias="royalcrest",
+        phone="+2348031000004",
+        address="3 GRA Crescent",
+        city="Port Harcourt",
+        state="Rivers",
+        status=TenantStatus.ACTIVE,
+        plan=SubscriptionPlan.ENTERPRISE,
+        student_count=260,
+        class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"),
+        arms=("A", "B", "C", "D"),
+        subject_codes=tuple(SUBJECT_CATALOG.keys()),
+        max_students=1500,
+        max_teachers=120,
+        branches=("Main Campus", "Annex Campus"),
+    ),
+    SchoolProfile(
+        school_name="Unity Community College",
+        slug="demo-unity-community",
+        prefix="UCC",
+        email_alias="unitycommunity",
+        phone="+2348031000005",
+        address="17 Emir Road",
+        city="Kano",
+        state="Kano",
+        status=TenantStatus.SUSPENDED,
+        plan=SubscriptionPlan.PLUS,
+        student_count=24,
+        class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1"),
+        arms=("A",),
+        subject_codes=("MTH", "ENG", "BST", "CMP", "SOS", "CIV"),
+        max_students=300,
+        max_teachers=30,
+    ),
+)
 
 
-async def purge_seed_data(session, tenant_id: uuid.UUID) -> None:
-    student_ids = list((await session.execute(
-        select(Student.id).where(
-            Student.tenant_id == tenant_id,
-            Student.admission_number.like("DEMO-%"),
+def school_email(profile: SchoolProfile) -> str:
+    return f"taiwoayimora623+{profile.email_alias}@gmail.com"
+
+
+def admission_number(profile: SchoolProfile, index: int) -> str:
+    return f"{profile.prefix}/26/{index:04d}"
+
+
+def student_status(index: int, rng: random.Random) -> tuple[AcademicStatus, bool]:
+    roll = rng.random()
+    if roll < 0.02:
+        return AcademicStatus.WITHDRAWN, False
+    if roll < 0.03:
+        return AcademicStatus.EXPELLED, False
+    if roll < 0.06:
+        return AcademicStatus.SUSPENDED, True
+    if index % 97 == 0:
+        return AcademicStatus.GRADUATED, False
+    return AcademicStatus.ACTIVE, True
+
+
+async def purge_demo_data(session) -> None:
+    tenants = list(
+        (
+            await session.execute(
+                select(Tenant).where(Tenant.slug.in_([profile.slug for profile in SCHOOL_PROFILES]))
+            )
         )
-    )).scalars().all())
+        .scalars()
+        .all()
+    )
+    if not tenants:
+        return
+
+    tenant_ids = [tenant.id for tenant in tenants]
+    student_ids = list(
+        (
+            await session.execute(select(Student.id).where(Student.tenant_id.in_(tenant_ids)))
+        )
+        .scalars()
+        .all()
+    )
 
     if student_ids:
-        await session.execute(delete(AuthIdentity).where(
-            AuthIdentity.actor_type == ActorType.STUDENT,
-            AuthIdentity.actor_id.in_(student_ids),
-        ))
+        await session.execute(
+            delete(AuthIdentity).where(
+                AuthIdentity.actor_type == ActorType.STUDENT,
+                AuthIdentity.actor_id.in_(student_ids),
+            )
+        )
         await session.execute(delete(Student).where(Student.id.in_(student_ids)))
 
-    await session.execute(delete(ClassRoom).where(
-        ClassRoom.tenant_id == tenant_id,
-        ClassRoom.name.in_(CLASS_NAMES),
-    ))
-    await session.execute(delete(Subject).where(
-        Subject.tenant_id == tenant_id,
-        Subject.code.in_([code for code, _ in SUBJECTS]),
-    ))
+    await session.execute(
+        update(ClassRoom)
+        .where(ClassRoom.tenant_id.in_(tenant_ids))
+        .values(next_class_id=None, teacher_membership_id=None)
+    )
+    await session.execute(delete(ClassRoom).where(ClassRoom.tenant_id.in_(tenant_ids)))
+    await session.execute(delete(Subject).where(Subject.tenant_id.in_(tenant_ids)))
+    await session.execute(delete(Tenant).where(Tenant.id.in_(tenant_ids)))
     await session.commit()
+    print(f"Removed {len(tenant_ids)} previously generated demo schools.")
 
 
-async def ensure_subjects(session, tenant_id: uuid.UUID) -> list[Subject]:
-    rows: list[Subject] = []
-    for code, name in SUBJECTS:
-        subject = (await session.execute(select(Subject).where(
-            Subject.tenant_id == tenant_id,
-            Subject.code == code,
-        ))).scalar_one_or_none()
+async def ensure_tenant(session, profile: SchoolProfile) -> Tenant:
+    tenant = (
+        await session.execute(select(Tenant).where(Tenant.slug == profile.slug))
+    ).scalar_one_or_none()
+
+    trial_ends_at = datetime.now(timezone.utc) + timedelta(days=30)
+    if tenant is None:
+        tenant = Tenant(
+            school_name=profile.school_name,
+            slug=profile.slug,
+            admission_number_prefix=profile.prefix,
+            email=school_email(profile),
+            phone=profile.phone,
+            address=profile.address,
+            city=profile.city,
+            state=profile.state,
+            country="Nigeria",
+            status=profile.status,
+            plan=profile.plan,
+            trial_ends_at=trial_ends_at if profile.status == TenantStatus.TRIAL else None,
+            max_students=profile.max_students,
+            max_teachers=profile.max_teachers,
+            feature_flags={
+                "demo_seed": True,
+                "whatsapp_bot": profile.plan in {SubscriptionPlan.PROFESSIONAL, SubscriptionPlan.ENTERPRISE},
+            },
+            timezone="Africa/Lagos",
+            language="en",
+            onboarding_completed=True,
+            branches=list(profile.branches) if profile.branches else None,
+            verification_status=TenantVerificationStatus.ACTIVE,
+        )
+        session.add(tenant)
+        await session.flush()
+    return tenant
+
+
+async def ensure_subjects(session, tenant: Tenant, profile: SchoolProfile) -> list[Subject]:
+    subjects: list[Subject] = []
+    for code in profile.subject_codes:
+        name, description = SUBJECT_CATALOG[code]
+        subject = (
+            await session.execute(
+                select(Subject).where(
+                    Subject.tenant_id == tenant.id,
+                    Subject.code == code,
+                )
+            )
+        ).scalar_one_or_none()
         if subject is None:
             subject = Subject(
-                tenant_id=tenant_id,
+                tenant_id=tenant.id,
                 name=name,
                 code=code,
-                description=f"{name} subject",
+                description=description,
                 is_active=True,
             )
             session.add(subject)
             await session.flush()
-        rows.append(subject)
-    return rows
+        subjects.append(subject)
+    return subjects
 
 
-async def ensure_classes(session, tenant_id: uuid.UUID) -> list[ClassRoom]:
-    rows: list[ClassRoom] = []
+async def ensure_classes(session, tenant: Tenant, profile: SchoolProfile) -> list[ClassRoom]:
+    classes: list[ClassRoom] = []
     previous_by_arm: dict[str, ClassRoom] = {}
 
-    for class_name in CLASS_NAMES:
-        for arm in ARMS:
-            classroom = (await session.execute(select(ClassRoom).where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.name == class_name,
-                ClassRoom.arm == arm,
-            ))).scalar_one_or_none()
+    for class_name in profile.class_names:
+        for arm in profile.arms:
+            classroom = (
+                await session.execute(
+                    select(ClassRoom).where(
+                        ClassRoom.tenant_id == tenant.id,
+                        ClassRoom.name == class_name,
+                        ClassRoom.arm == arm,
+                    )
+                )
+            ).scalar_one_or_none()
 
             if classroom is None:
                 classroom = ClassRoom(
-                    tenant_id=tenant_id,
+                    tenant_id=tenant.id,
                     name=class_name,
                     arm=arm,
                     is_active=True,
-                    is_terminal=class_name == "SS 3",
+                    is_terminal=class_name == profile.class_names[-1] and class_name == "SS 3",
                 )
                 session.add(classroom)
                 await session.flush()
@@ -151,115 +336,160 @@ async def ensure_classes(session, tenant_id: uuid.UUID) -> list[ClassRoom]:
             if previous is not None:
                 previous.next_class_id = classroom.id
             previous_by_arm[arm] = classroom
-            rows.append(classroom)
+            classes.append(classroom)
 
     await session.flush()
-    return rows
+    return classes
 
 
 async def create_students(
     session,
     tenant: Tenant,
+    profile: SchoolProfile,
     classes: list[ClassRoom],
-    count: int,
-) -> None:
-    admission_prefix = (tenant.admission_number_prefix or "DEMO").upper()
+    seed_value: int,
+) -> int:
+    rng = random.Random(seed_value)
+    local_fake = Faker("en_NG")
+    local_fake.seed_instance(seed_value)
+    password_hash = hash_password(DEFAULT_PASSWORD)
+    created = 0
 
-    for index in range(1, count + 1):
-        admission_number = f"DEMO-{admission_prefix}-{index:05d}"
-        exists = (await session.execute(select(Student.id).where(
-            Student.tenant_id == tenant.id,
-            Student.admission_number == admission_number,
-        ))).scalar_one_or_none()
+    for index in range(1, profile.student_count + 1):
+        number = admission_number(profile, index)
+        exists = (
+            await session.execute(
+                select(Student.id).where(
+                    Student.tenant_id == tenant.id,
+                    Student.admission_number == number,
+                )
+            )
+        ).scalar_one_or_none()
         if exists:
             continue
 
-        classroom = classes[(index - 1) % len(classes)]
-        gender = Gender.MALE if index % 2 == 0 else Gender.FEMALE
-        first_name = fake.first_name_male() if gender == Gender.MALE else fake.first_name_female()
-        last_name = fake.last_name()
-
-        status_roll = random.random()
-        status = AcademicStatus.ACTIVE
-        is_active = True
-        if status_roll < 0.015:
-            status = AcademicStatus.SUSPENDED
-        elif status_roll < 0.025:
-            status = AcademicStatus.WITHDRAWN
-            is_active = False
+        classroom = classes[rng.randrange(len(classes))]
+        gender = Gender.MALE if rng.random() < 0.51 else Gender.FEMALE
+        first_name = (
+            local_fake.first_name_male()
+            if gender == Gender.MALE
+            else local_fake.first_name_female()
+        )
+        academic_status, is_active = student_status(index, rng)
+        birth_year = rng.randint(2008, 2016)
 
         student = Student(
             tenant_id=tenant.id,
-            admission_number=admission_number,
-            password_hash=hash_password(DEFAULT_PASSWORD),
+            admission_number=number,
+            password_hash=password_hash,
             first_name=first_name,
-            last_name=last_name,
-            account_status=StudentAccountStatus.ACTIVE,
-            is_verified=True,
+            last_name=local_fake.last_name(),
+            account_status=(
+                StudentAccountStatus.ACTIVE
+                if is_active
+                else StudentAccountStatus.INACTIVE
+            ),
+            is_verified=rng.random() > 0.04,
             is_active=is_active,
-            password_reset_required=False,
-            date_of_birth=date(2010 + (index % 7), 1 + (index % 12), 1 + (index % 27)),
+            password_reset_required=index % 13 == 0,
+            date_of_birth=date(
+                birth_year,
+                rng.randint(1, 12),
+                rng.randint(1, 28),
+            ),
             gender=gender,
-            state_of_origin=fake.state(),
-            class_id=classroom.id,
-            arm=classroom.arm,
-            status=status,
-            profile_status=StudentProfileStatus.COMPLETE,
+            state_of_origin=local_fake.state(),
+            class_id=classroom.id if academic_status != AcademicStatus.GRADUATED else None,
+            arm=classroom.arm if academic_status != AcademicStatus.GRADUATED else None,
+            status=academic_status,
+            profile_status=(
+                StudentProfileStatus.INCOMPLETE
+                if index % 17 == 0
+                else StudentProfileStatus.COMPLETE
+            ),
+            graduation_date=(
+                date(2026, 7, 20)
+                if academic_status == AcademicStatus.GRADUATED
+                else None
+            ),
         )
         session.add(student)
         await session.flush()
 
-        session.add(AuthIdentity(
-            tenant_id=tenant.id,
-            identifier=admission_number,
-            identifier_type=IdentifierType.ADMISSION_NUMBER,
-            actor_type=ActorType.STUDENT,
-            actor_id=student.id,
-            is_active=is_active,
-        ))
+        session.add(
+            AuthIdentity(
+                tenant_id=tenant.id,
+                identifier=number,
+                identifier_type=IdentifierType.ADMISSION_NUMBER,
+                actor_type=ActorType.STUDENT,
+                actor_id=student.id,
+                is_active=is_active,
+            )
+        )
+        created += 1
 
-        if index % 100 == 0:
-            await session.commit()
-            print(f"Created {index}/{count} students...")
+        if created % 100 == 0:
+            await session.flush()
 
-    await session.commit()
+    await session.flush()
+    return created
 
 
-async def seed(tenant_id: str | None, students: int, reset: bool, seed_value: int) -> None:
+async def seed_all(reset: bool, seed_value: int) -> None:
     Faker.seed(seed_value)
     random.seed(seed_value)
 
     async with AsyncSessionLocal() as session:
-        tenant = await resolve_tenant(session, tenant_id)
-        print(f"Seeding tenant: {tenant.school_name} ({tenant.id})")
-
         if reset:
-            await purge_seed_data(session, tenant.id)
+            await purge_demo_data(session)
 
-        subjects = await ensure_subjects(session, tenant.id)
-        classes = await ensure_classes(session, tenant.id)
-        await session.commit()
-
-        await create_students(session, tenant, classes, students)
+        summaries: list[tuple[str, int, int, int]] = []
+        for school_index, profile in enumerate(SCHOOL_PROFILES, start=1):
+            print(f"\n[{school_index}/{len(SCHOOL_PROFILES)}] Seeding {profile.school_name}...")
+            tenant = await ensure_tenant(session, profile)
+            subjects = await ensure_subjects(session, tenant, profile)
+            classes = await ensure_classes(session, tenant, profile)
+            students = await create_students(
+                session,
+                tenant,
+                profile,
+                classes,
+                seed_value + school_index * 1000,
+            )
+            await session.commit()
+            summaries.append((profile.school_name, len(subjects), len(classes), students))
+            print(
+                f"Created/verified {len(subjects)} subjects, "
+                f"{len(classes)} classes and {students} students."
+            )
 
         print("\nDemo seed complete")
-        print(f"Subjects: {len(subjects)}")
-        print(f"Classes: {len(classes)}")
-        print(f"Students requested: {students}")
-        print(f"Student password: {DEFAULT_PASSWORD}")
+        print("-" * 78)
+        for school_name, subject_count, class_count, student_count in summaries:
+            print(
+                f"{school_name:<38} "
+                f"subjects={subject_count:<2} classes={class_count:<2} students={student_count}"
+            )
+        print("-" * 78)
+        print(f"Generic student password: {DEFAULT_PASSWORD}")
+        print("Run again with --reset to remove and regenerate only these five demo schools.")
 
     await engine.dispose()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Seed current-schema Weave demo data.")
-    parser.add_argument("--tenant-id", help="Tenant UUID. Required when the database has multiple tenants.")
-    parser.add_argument("--students", type=int, default=DEFAULT_STUDENT_COUNT)
+    parser = argparse.ArgumentParser(
+        description="Create five sparse, distinct demo schools using the current Weave schema."
+    )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    parser.add_argument("--reset", action="store_true", help="Delete rows created by this seeder before regenerating them.")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Delete and recreate only the five schools generated by this script.",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    asyncio.run(seed(args.tenant_id, args.students, args.reset, args.seed))
+    asyncio.run(seed_all(args.reset, args.seed))
