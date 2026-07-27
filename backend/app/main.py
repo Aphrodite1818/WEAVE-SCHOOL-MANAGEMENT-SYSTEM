@@ -38,6 +38,9 @@ from app.modules.search.router import router as tenant_search_router
 from app.modules.student_academics.assessment_config_router import (
     router as assessment_config_router,
 )
+from app.modules.student_academics.grading_scale_lifecycle_router import (
+    router as grading_scale_lifecycle_router,
+)
 from app.modules.student_academics.router import (
     parent_router as parent_academic_router,
     student_router as student_academic_router,
@@ -149,6 +152,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router, prefix="/api/v1")
     app.include_router(tenant_admin_academic_router, prefix="/api/v1")
     app.include_router(assessment_config_router, prefix="/api/v1")
+    app.include_router(grading_scale_lifecycle_router, prefix="/api/v1")
     app.include_router(teacher_academic_router, prefix="/api/v1")
     app.include_router(student_academic_router, prefix="/api/v1")
     app.include_router(parent_academic_router, prefix="/api/v1")
