@@ -29,6 +29,7 @@ from app.modules.email_outbox.router import router as email_outbox_router
 from app.modules.media.router import router as media_router
 from app.modules.metrics.router import router as metrics_router
 from app.modules.parents.router import router as parent_router
+from app.modules.report_cards.fixed_router import router as fixed_report_card_router
 from app.modules.report_cards.router import (
     parent_router as parent_report_card_router,
     student_router as student_report_card_router,
@@ -156,6 +157,7 @@ def create_app() -> FastAPI:
     app.include_router(teacher_academic_router, prefix="/api/v1")
     app.include_router(student_academic_router, prefix="/api/v1")
     app.include_router(parent_academic_router, prefix="/api/v1")
+    app.include_router(fixed_report_card_router, prefix="/api/v1")
     app.include_router(tenant_admin_report_card_router, prefix="/api/v1")
     app.include_router(student_report_card_router, prefix="/api/v1")
     app.include_router(parent_report_card_router, prefix="/api/v1")
