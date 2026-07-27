@@ -1,0 +1,357 @@
+import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
+import LoadingState from "../../components/shared/LoadingState";
+import { useToast } from "../../hooks/useToast";
+import { academicService } from "../../services/academicService";
+import { getErrorMessage } from "../../services/api";
+import { sessionClosureService } from "../../services/sessionClosureService";
+import TypedConfirmationDialog from "./TypedConfirmationDialog";
+
+const asItems = (response) =>
+  Array.isArray(response)
+    ? response
+    : Array.isArray(response?.items)
+      ? response.items
+      : [];
+
+const runCounts = (run) => [
+  ["Total", run?.total_students || 0],
+  ["Promoted", run?.promoted_students || 0],
+  ["Graduated", run?.graduated_students || 0],
+  ["Skipped", run?.skipped_students || 0],
+  ["Failed", run?.failed_students || 0],
+];
+
+function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
+  const [sessions, setSessions] = useState([]);
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [audit, setAudit] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [confirmation, setConfirmation] = useState(null);
+  const { showSuccess, showError, showWarning } = useToast();
+
+  const selectedSession = useMemo(
+    () => sessions.find((item) => item.id === selectedSessionId) || null,
+    [sessions, selectedSessionId],
+  );
+
+  const loadSessions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await academicService.listSessions({ limit: 100 });
+      const items = asItems(response);
+      setSessions(items);
+      const preferred =
+        items.find((item) => item.status === "closing") ||
+        items.find((item) => item.is_current) ||
+        items.find((item) => item.status === "open") ||
+        null;
+      setSelectedSessionId((current) => current || preferred?.id || "");
+      onContextChange?.({
+        currentSession: items.find((item) => item.is_current) || null,
+      });
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not load academic sessions."));
+    } finally {
+      setLoading(false);
+    }
+  }, [onContextChange, showError]);
+
+  const loadWorkflow = useCallback(async () => {
+    if (!selectedSessionId) {
+      setAudit(null);
+      setStatus(null);
+      return;
+    }
+    try {
+      const current = sessions.find((item) => item.id === selectedSessionId);
+      if (current?.status === "closing") {
+        const response = await sessionClosureService.getStatus(selectedSessionId);
+        setStatus(response);
+        setAudit(response?.audit || null);
+      } else {
+        const response = await sessionClosureService.getAudit(selectedSessionId);
+        setAudit(response);
+        setStatus(null);
+      }
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not load the session closure audit."));
+    }
+  }, [selectedSessionId, sessions, showError]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  useEffect(() => {
+    loadWorkflow();
+  }, [loadWorkflow]);
+
+  useEffect(() => {
+    if (selectedSession?.status !== "closing") return undefined;
+    const timer = window.setInterval(loadWorkflow, 5000);
+    return () => window.clearInterval(timer);
+  }, [loadWorkflow, selectedSession?.status]);
+
+  const startClosing = async () => {
+    if (!selectedSession) return;
+    setBusy("start");
+    try {
+      const response = await sessionClosureService.startClosing(
+        selectedSession.id,
+        `session-closing-${selectedSession.id}`,
+      );
+      setAudit(response?.audit || null);
+      if (!response?.started) {
+        showWarning("The closure audit found items that must be resolved first.");
+        return;
+      }
+      showSuccess("Session moved to closing. Student progression is running in the background.");
+      await loadSessions();
+      await loadWorkflow();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not start session closing."));
+    } finally {
+      setBusy("");
+      setConfirmation(null);
+    }
+  };
+
+  const retryProgression = async () => {
+    if (!selectedSession) return;
+    setBusy("retry");
+    try {
+      const response = await sessionClosureService.retryProgression(selectedSession.id);
+      setStatus(response);
+      setAudit(response?.audit || null);
+      showSuccess("Progression was queued again.");
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not retry progression."));
+    } finally {
+      setBusy("");
+      setConfirmation(null);
+    }
+  };
+
+  const finalizeClose = async () => {
+    if (!selectedSession) return;
+    setBusy("finalize");
+    try {
+      const response = await sessionClosureService.finalizeClose(selectedSession.id);
+      showSuccess(
+        `${response?.closed_session?.name || "Session"} closed and ${response?.opened_session?.name || "the next session"} opened.`,
+      );
+      await loadSessions();
+      setStatus(null);
+      setAudit(null);
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not finalize session closure."));
+    } finally {
+      setBusy("");
+      setConfirmation(null);
+    }
+  };
+
+  if (loading) return <LoadingState label="Loading session lifecycle..." />;
+
+  const run = status?.progression_run;
+  const blockers = audit?.blocker_messages || [];
+  const canStart = selectedSession?.status === "open" && audit?.is_ready;
+  const canRetry = selectedSession?.status === "closing" && run?.status === "failed";
+  const canFinalize = Boolean(status?.can_finalize);
+
+  return (
+    <div className="space-y-5">
+      <Card className="p-4 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="section-title">Session closure workflow</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
+              Run the readiness audit, pause academic writes, process student progression in the background, then finalize closure manually.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="min-h-10 rounded-xl border border-border bg-surface px-3 text-sm text-text"
+              value={selectedSessionId}
+              onChange={(event) => setSelectedSessionId(event.target.value)}
+            >
+              {sessions
+                .filter((item) => ["open", "closing"].includes(item.status))
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.status}
+                  </option>
+                ))}
+            </select>
+            <Button type="button" variant="outline" size="small" onClick={loadWorkflow}>
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
+          </div>
+        </div>
+
+        {selectedSession ? (
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <Badge variant={selectedSession.status === "closing" ? "warning" : "success"}>
+              {selectedSession.status}
+            </Badge>
+            {selectedSession.status === "closing" ? (
+              <Badge variant="warning">Academic writes paused</Badge>
+            ) : null}
+            {run?.status ? <Badge>{run.status}</Badge> : null}
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="p-4 sm:p-6">
+        <div className="flex items-start gap-3">
+          {audit?.is_ready ? (
+            <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />
+          ) : (
+            <AlertTriangle className="mt-0.5 h-5 w-5 text-warning" />
+          )}
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-text">Closure readiness audit</h3>
+            <p className="mt-1 text-sm text-text-muted">
+              {audit?.is_ready
+                ? "Every required closure check currently passes."
+                : "Resolve every blocker below before the session can enter closing."}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2">
+          {(audit?.checked_items || []).map((item) => (
+            <div key={item} className="flex gap-2 rounded-xl border border-border/70 px-3 py-2 text-sm text-text-muted">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+
+        {blockers.length > 0 ? (
+          <div className="mt-4 rounded-2xl border border-warning/40 bg-warning-soft p-4">
+            <p className="font-semibold text-amber-950">Blocking items</p>
+            <ul className="mt-2 grid gap-2 text-sm text-amber-950">
+              {blockers.map((message) => (
+                <li key={message}>• {message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </Card>
+
+      {run ? (
+        <Card className="p-4 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="font-semibold text-text">Background progression</h3>
+              <p className="mt-1 text-sm text-text-muted">
+                The worker promotes eligible students, graduates terminal classes and preserves enrollment history. It never closes the session automatically.
+              </p>
+            </div>
+            <Badge variant={run.status === "completed" ? "success" : run.status === "failed" ? "error" : "warning"}>
+              {run.status}
+            </Badge>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {runCounts(run).map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-border/70 px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+                <p className="mt-1 text-xl font-semibold text-text">{value}</p>
+              </div>
+            ))}
+          </div>
+          {run.failure_reason ? (
+            <p className="mt-4 rounded-xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">
+              {run.failure_reason}
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
+
+      <Card className="p-4 sm:p-6">
+        <div className="flex flex-wrap gap-3">
+          {selectedSession?.status === "open" ? (
+            <Button
+              type="button"
+              variant="danger"
+              disabled={!canStart || Boolean(busy)}
+              onClick={() =>
+                setConfirmation({
+                  type: "start",
+                  title: "Start closing this academic session",
+                  description: "Academic write activities will pause immediately and the progression worker will start.",
+                  confirmationText: "START_SESSION_CLOSING",
+                  confirmLabel: "Start closing",
+                })
+              }
+            >
+              Start closing
+            </Button>
+          ) : null}
+          {canRetry ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                setConfirmation({
+                  type: "retry",
+                  title: "Retry student progression",
+                  description: "Retry the failed background progression after resolving the reported issue.",
+                  confirmationText: "RETRY_SESSION_PROGRESSION",
+                  confirmLabel: "Retry progression",
+                })
+              }
+            >
+              Retry progression
+            </Button>
+          ) : null}
+          {selectedSession?.status === "closing" ? (
+            <Button
+              type="button"
+              variant="success"
+              disabled={!canFinalize || Boolean(busy)}
+              onClick={() =>
+                setConfirmation({
+                  type: "finalize",
+                  title: "Finalize session closure",
+                  description: "This permanently closes the current session, opens the configured next session and opens its first term.",
+                  confirmationText: "FINALIZE_SESSION_CLOSE",
+                  confirmLabel: "Finalize closure",
+                })
+              }
+            >
+              Finalize closure
+            </Button>
+          ) : null}
+        </div>
+      </Card>
+
+      <TypedConfirmationDialog
+        open={Boolean(confirmation)}
+        title={confirmation?.title}
+        description={confirmation?.description}
+        confirmationText={confirmation?.confirmationText || ""}
+        confirmLabel={confirmation?.confirmLabel}
+        variant={confirmation?.type === "finalize" ? "danger" : "primary"}
+        isLoading={Boolean(busy)}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={() => {
+          if (confirmation?.type === "start") startClosing();
+          if (confirmation?.type === "retry") retryProgression();
+          if (confirmation?.type === "finalize") finalizeClose();
+        }}
+      />
+    </div>
+  );
+}
+
+export default SessionLifecycleWorkspace;
