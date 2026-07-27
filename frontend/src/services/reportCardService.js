@@ -15,6 +15,8 @@ const queryString = (params = {}) => {
 export const reportCardService = {
   listAdminReportCards: (params, requestOptions) =>
     api.get(`/tenant-admin/academic/report-cards${queryString(params)}`, requestOptions),
+  getAdminReportCard: (reportCardId, requestOptions) =>
+    api.get(`/tenant-admin/academic/report-cards/${reportCardId}`, requestOptions),
   getClassOverview: (params) =>
     api.get(`/tenant-admin/academic/report-cards/overview${queryString(params)}`),
   generateReportCard: (payload) =>
@@ -26,7 +28,8 @@ export const reportCardService = {
   publishReportCard: (reportCardId) =>
     api.post(`/tenant-admin/academic/report-cards/${reportCardId}/publish`),
 
-  listMyReportCards: (requestOptions) => api.get("/students/me/academic/report-cards", requestOptions),
+  listMyReportCards: (requestOptions) =>
+    api.get("/students/me/academic/report-cards", requestOptions),
   getMyReportCard: (reportCardId, requestOptions) =>
     api.get(`/students/me/academic/report-cards/${reportCardId}`, requestOptions),
   listChildReportCards: (studentId, requestOptions) =>
