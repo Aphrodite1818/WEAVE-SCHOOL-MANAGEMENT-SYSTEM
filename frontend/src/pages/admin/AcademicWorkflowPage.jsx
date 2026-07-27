@@ -7,9 +7,9 @@ import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentC
 import GradingScalesWorkspace from "../../features/academic-admin/GradingScalesWorkspace";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
 import ClassStructureWorkspace from "../../features/academic-admin/ClassStructureWorkspace";
-import ProgressionWorkspace from "../../features/academic-admin/ProgressionWorkspace";
 import ReportCardsWorkspace from "../../features/academic-admin/ReportCardsWorkspace";
 import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
+import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
 import { academicService } from "../../services/academicService";
 
@@ -18,6 +18,7 @@ const workflowAliases = {
   manage: "classes",
   setup: "sessions",
   "class-structure": "classes",
+  progression: "sessions",
 };
 
 const asItems = (response) =>
@@ -81,6 +82,18 @@ function AcademicWorkflowPage() {
     if (workflow === "grading") {
       return <GradingScalesWorkspace key={pageKey} activeTab={activeTab} />;
     }
+    if (
+      workflow === "sessions" &&
+      ["overview", "open", "closing"].includes(activeTab)
+    ) {
+      return (
+        <SessionLifecycleWorkspace
+          key="session-lifecycle-workflow"
+          activeTab={activeTab}
+          onContextChange={updateContext}
+        />
+      );
+    }
     if (["sessions", "terms", "subjects"].includes(workflow)) {
       return (
         <AcademicSetupWorkspace
@@ -120,9 +133,6 @@ function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
-    }
-    if (workflow === "progression") {
-      return <ProgressionWorkspace key={pageKey} activeTab={activeTab} />;
     }
     return <Navigate to="/admin/academic" replace />;
   };
