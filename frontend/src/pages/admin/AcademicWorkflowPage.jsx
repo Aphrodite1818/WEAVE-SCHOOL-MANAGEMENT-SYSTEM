@@ -73,15 +73,18 @@ function AcademicWorkflowPage() {
   }
 
   const renderWorkspace = (activeTab) => {
+    const workspaceKey = `${workflow}:${activeTab}`;
+
     if (workflow === "grading" && activeTab === "assessment-limits") {
-      return <AssessmentConfigWorkspace />;
+      return <AssessmentConfigWorkspace key={workspaceKey} />;
     }
     if (workflow === "grading") {
-      return <GradingScalesWorkspace activeTab={activeTab} />;
+      return <GradingScalesWorkspace key={workspaceKey} activeTab={activeTab} />;
     }
     if (["sessions", "terms", "subjects"].includes(workflow)) {
       return (
         <AcademicSetupWorkspace
+          key={workspaceKey}
           domain={workflow}
           activeTab={activeTab}
           onContextChange={updateContext}
@@ -89,15 +92,21 @@ function AcademicWorkflowPage() {
       );
     }
     if (["classes", "class-subjects"].includes(workflow)) {
-      return <ClassStructureWorkspace domain={workflow} activeTab={activeTab} />;
+      return (
+        <ClassStructureWorkspace
+          key={workspaceKey}
+          domain={workflow}
+          activeTab={activeTab}
+        />
+      );
     }
     if (workflow === "assignments") {
-      return <TeacherAssignmentsWorkspace activeTab={activeTab} />;
+      return <TeacherAssignmentsWorkspace key={workspaceKey} activeTab={activeTab} />;
     }
     if (workflow === "results") {
       return (
         <ResultsWorkspace
-          key="results"
+          key={workspaceKey}
           activeTab={activeTab}
           onContextChange={updateContext}
         />
@@ -106,14 +115,14 @@ function AcademicWorkflowPage() {
     if (workflow === "report-cards") {
       return (
         <ReportCardsWorkspace
-          key="report-cards"
+          key={workspaceKey}
           activeTab={activeTab}
           onContextChange={updateContext}
         />
       );
     }
     if (workflow === "progression") {
-      return <ProgressionWorkspace activeTab={activeTab} />;
+      return <ProgressionWorkspace key={workspaceKey} activeTab={activeTab} />;
     }
     return <Navigate to="/admin/academic" replace />;
   };
