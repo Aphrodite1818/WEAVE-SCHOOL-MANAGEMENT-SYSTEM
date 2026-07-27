@@ -157,7 +157,11 @@ class AcademicProgressionService:
                     classroom.next_class_id,
                     lock=True,
                 )
-                if next_class is None or not next_class.is_active:
+                if (
+                    next_class is None
+                    or not next_class.is_active
+                    or next_class.archived_at is not None
+                ):
                     raise ConflictException(
                         f"The next class configured for {classroom.name} is unavailable."
                     )

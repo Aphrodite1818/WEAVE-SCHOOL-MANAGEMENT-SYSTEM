@@ -190,7 +190,11 @@ class StudentService:
             payload.class_id,
             lock=True,
         )
-        if classroom is None or not classroom.is_active:
+        if (
+            classroom is None
+            or not classroom.is_active
+            or classroom.archived_at is not None
+        ):
             raise NotFoundException("Class not found or inactive.")
 
         session = await AcademicSessionLifecycleRepository.get_current_open(
@@ -783,7 +787,11 @@ class StudentEnrollmentService:
             payload.target_class_id,
             lock=True,
         )
-        if target_class is None or not target_class.is_active:
+        if (
+            target_class is None
+            or not target_class.is_active
+            or target_class.archived_at is not None
+        ):
             raise NotFoundException("Target class not found.")
         session = await AcademicSessionLifecycleRepository.get_by_id(
             db,
@@ -1147,7 +1155,11 @@ class StudentLifecycleService:
             target_class_id,
             lock=True,
         )
-        if classroom is None or not classroom.is_active:
+        if (
+            classroom is None
+            or not classroom.is_active
+            or classroom.archived_at is not None
+        ):
             raise NotFoundException("Target class not found.")
         session = await AcademicSessionLifecycleRepository.get_by_id(
             db,

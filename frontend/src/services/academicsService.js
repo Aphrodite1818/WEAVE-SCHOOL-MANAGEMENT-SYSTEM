@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { filterClasses } from "./classSearch";
 
 const buildQuery = (options = {}, map = {}) => {
   const params = new URLSearchParams();
@@ -29,17 +30,6 @@ const normalizeListResponse = (result) => {
   };
 };
 
-const filterClasses = (items, search) => {
-  const normalizedSearch = String(search || "").trim().toLowerCase();
-  if (!normalizedSearch) return items;
-
-  return items.filter((item) =>
-    [item.name, item.arm]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(normalizedSearch))
-  );
-};
-
 const normalizeClassPayload = (payload = {}) => ({
   ...(payload.name !== undefined ? { name: payload.name } : {}),
   ...(payload.arm !== undefined ? { arm: payload.arm || null } : {}),
@@ -49,6 +39,11 @@ const normalizeClassPayload = (payload = {}) => ({
           payload.teacher_membership_id || payload.teacher_id || null,
       }
     : {}),
+});
+
+const normalizeClassProgressionPayload = (payload = {}) => ({
+  next_class_id: payload.is_terminal ? null : payload.next_class_id || null,
+  is_terminal: Boolean(payload.is_terminal),
 });
 
 export const classService = {
@@ -81,11 +76,26 @@ export const classService = {
   updateClass: (classId, payload) =>
     api.patch(`/classes/${classId}`, normalizeClassPayload(payload)),
 
+  configureClassProgression: (classId, payload) =>
+    api.put(
+      `/classes/${classId}/progression`,
+      normalizeClassProgressionPayload(payload)
+    ),
+
+  clearClassProgression: (classId) =>
+    api.post(`/classes/${classId}/progression/clear`, {
+      confirmation: "CLEAR_CLASS_PROGRESSION",
+    }),
+
   activateClass: (classId) =>
-    api.post(`/classes/${classId}/activate`),
+    api.post(`/classes/${classId}/activate`, {
+      confirmation: "ACTIVATE_CLASSROOM",
+    }),
 
   deactivateClass: (classId) =>
-    api.post(`/classes/${classId}/deactivate`),
+    api.post(`/classes/${classId}/deactivate`, {
+      confirmation: "DEACTIVATE_CLASSROOM",
+    }),
 
   archiveClass: (classId) =>
     api.post(`/classes/${classId}/archive`, {
@@ -98,7 +108,9 @@ export const classService = {
     }),
 
   deleteClass: (classId) =>
-    api.delete(`/classes/${classId}`),
+    api.post(`/classes/${classId}/deactivate`, {
+      confirmation: "DEACTIVATE_CLASSROOM",
+    }),
 };
 
 export const attendanceService = {

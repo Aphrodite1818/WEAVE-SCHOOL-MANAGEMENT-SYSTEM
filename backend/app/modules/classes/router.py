@@ -10,8 +10,13 @@ from app.core.dependencies.route_guards import (
 )
 from app.core.exceptions import NotFoundException
 from app.modules.classes.schemas import (
+    ClassProgressionClearRequest,
+    ClassProgressionConfigureRequest,
+    ClassProgressionResponse,
+    ClassRoomActivateRequest,
     ClassRoomArchiveRequest,
     ClassRoomCreate,
+    ClassRoomDeactivateRequest,
     ClassRoomResponse,
     ClassRoomRestoreRequest,
     ClassRoomUpdate,
@@ -135,15 +140,57 @@ async def update_classroom(
     )
 
 
+@router.put(
+    "/{class_id}/progression",
+    response_model=ClassProgressionResponse,
+)
+async def configure_class_progression(
+    class_id: uuid.UUID,
+    payload: ClassProgressionConfigureRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassProgressionResponse:
+    """Configure the next-class or terminal progression state for a classroom."""
+
+    return await ClassRoomService.configure_class_progression(
+        db=db,
+        actor=current_user,
+        class_id=class_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/{class_id}/progression/clear",
+    response_model=ClassProgressionResponse,
+)
+async def clear_class_progression(
+    class_id: uuid.UUID,
+    payload: ClassProgressionClearRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassProgressionResponse:
+    """Clear the progression configuration for a classroom."""
+
+    return await ClassRoomService.clear_class_progression(
+        db=db,
+        actor=current_user,
+        class_id=class_id,
+        payload=payload,
+    )
+
+
 @router.post(
     "/{class_id}/activate",
     response_model=ClassRoomResponse,
 )
 async def activate_classroom(
     class_id: uuid.UUID,
+    payload: ClassRoomActivateRequest,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
+    _ = payload.confirmation
     classroom = await ClassRoomService.activate_classroom(
         db=db,
         actor=current_user,
@@ -159,11 +206,13 @@ async def activate_classroom(
 )
 async def deactivate_classroom(
     class_id: uuid.UUID,
+    payload: ClassRoomDeactivateRequest,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
     """Soft delete classroom."""
 
+    _ = payload.confirmation
     classroom = await ClassRoomService.deactivate_classroom(
         db=db,
         actor=current_user,
@@ -183,6 +232,7 @@ async def archive_classroom(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
+    _ = payload.confirmation
     classroom = await ClassRoomService.archive_classroom(
         db=db,
         actor=current_user,
@@ -202,6 +252,7 @@ async def restore_classroom(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
+    _ = payload.confirmation
     classroom = await ClassRoomService.restore_classroom(
         db=db,
         actor=current_user,
@@ -217,9 +268,11 @@ async def restore_classroom(
 )
 async def delete_classroom_compat_deactivate(
     class_id: uuid.UUID,
+    payload: ClassRoomDeactivateRequest,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
+    _ = payload.confirmation
     classroom = await ClassRoomService.deactivate_classroom(
         db=db,
         actor=current_user,

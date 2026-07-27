@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
+import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
 import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
@@ -19,12 +20,22 @@ import {
   WorkspaceGrid,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
+import { isAssignableClassTeacher } from "./classTeacherEligibility";
 
 const BLANK_CLASS = {
   name: "",
   arm: "",
   teacher_membership_id: "",
 };
+const BLANK_PROGRESSION = {
+  class_id: "",
+  next_class_id: "",
+  is_terminal: false,
+};
+const CONFIRM_ACTIVATE_CLASSROOM = "ACTIVATE_CLASSROOM";
+const CONFIRM_DEACTIVATE_CLASSROOM = "DEACTIVATE_CLASSROOM";
+const CONFIRM_ARCHIVE_CLASSROOM = "ARCHIVE_CLASSROOM";
+const CONFIRM_RESTORE_CLASSROOM = "RESTORE_CLASSROOM";
 const CONFIRM_ARCHIVE_CLASS_SUBJECT = "ARCHIVE_CLASS_SUBJECT";
 const CONFIRM_RESTORE_CLASS_SUBJECT = "RESTORE_CLASS_SUBJECT";
 
@@ -44,19 +55,60 @@ const teacherLabel = (item) => {
   return name || account.email || item?.teacher_name || item?.staff_id || "Teacher";
 };
 
+const classLifecycleConfirmation = (item, action) => {
+  const config = {
+    activate: {
+      title: "Activate class",
+      confirmationText: CONFIRM_ACTIVATE_CLASSROOM,
+      confirmLabel: "Activate class",
+      variant: "primary",
+    },
+    deactivate: {
+      title: "Deactivate class",
+      confirmationText: CONFIRM_DEACTIVATE_CLASSROOM,
+      confirmLabel: "Deactivate class",
+      variant: "danger",
+    },
+    archive: {
+      title: "Archive class",
+      confirmationText: CONFIRM_ARCHIVE_CLASSROOM,
+      confirmLabel: "Archive class",
+      variant: "danger",
+      description: `${classLabel(item)} must already be inactive. Historical records, results, attendance, and report cards will remain available.`,
+    },
+    restore: {
+      title: "Restore class",
+      confirmationText: CONFIRM_RESTORE_CLASSROOM,
+      confirmLabel: "Restore class",
+      variant: "primary",
+    },
+  }[action];
+
+  return {
+    item,
+    action,
+    description: config.description || classLabel(item),
+    ...config,
+  };
+};
+
 function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [classSearch, setClassSearch] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [mappingSelectedClassByTab, setMappingSelectedClassByTab] = useState({});
   const [classSubjects, setClassSubjects] = useState([]);
   const [classForm, setClassForm] = useState(BLANK_CLASS);
+  const [progressionForm, setProgressionForm] = useState(BLANK_PROGRESSION);
   const [subjectSelection, setSubjectSelection] = useState({
     subject_id: "",
     is_core: true,
   });
   const [editingClassId, setEditingClassId] = useState("");
+  const [viewingClass, setViewingClass] = useState(null);
+  const [pendingClassConfirmation, setPendingClassConfirmation] = useState(null);
   const [pendingMappingConfirmation, setPendingMappingConfirmation] = useState(null);
   const [saving, setSaving] = useState("");
   const [loading, setLoading] = useState(true);
@@ -68,7 +120,11 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     setError(null);
     try {
       const [classResponse, subjectResponse, teacherResponse] = await Promise.all([
-        classService.getClasses({ limit: 100, includeArchived: domain === "classes" }),
+        classService.getClasses({
+          limit: 100,
+          includeArchived: domain === "classes",
+          search: classSearch,
+        }),
         subjectService.getSubjects({ limit: 100, isActive: true }),
         teacherService.listMemberships({ limit: 100 }),
       ]);
@@ -76,9 +132,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       setClasses(nextClasses);
       setSubjects(asItems(subjectResponse));
       setTeachers(
-        asItems(teacherResponse).filter((item) =>
-          ["active", "read_only"].includes(String(item.status || "active").toLowerCase()),
-        ),
+        asItems(teacherResponse).filter(isAssignableClassTeacher),
       );
       if (domain !== "class-subjects") {
         setSelectedClassId((current) => current || nextClasses[0]?.id || "");
@@ -90,7 +144,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     } finally {
       setLoading(false);
     }
-  }, [domain, showError]);
+  }, [classSearch, domain, showError]);
 
   const activeSelectedClassId =
     domain === "class-subjects"
@@ -150,6 +204,18 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes],
   );
+  const activeClassOptions = useMemo(
+    () =>
+      classes
+        .filter((item) => item.is_active && !item.archived_at)
+        .map((item) => ({ value: item.id, label: classLabel(item) })),
+    [classes],
+  );
+  const progressionTargetOptions = useMemo(
+    () =>
+      activeClassOptions.filter((option) => option.value !== progressionForm.class_id),
+    [activeClassOptions, progressionForm.class_id],
+  );
   const teacherOptions = useMemo(
     () => teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })),
     [teachers],
@@ -172,6 +238,15 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const resetClassForm = () => {
     setClassForm(BLANK_CLASS);
     setEditingClassId("");
+  };
+
+  const setProgressionSourceClass = (classId) => {
+    const selectedClass = classes.find((item) => item.id === classId);
+    setProgressionForm({
+      class_id: classId,
+      next_class_id: selectedClass?.next_class_id || "",
+      is_terminal: Boolean(selectedClass?.is_terminal),
+    });
   };
 
   const saveClass = async (event) => {
@@ -233,6 +308,55 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     }
   };
 
+  const saveClassProgression = async (event) => {
+    event.preventDefault();
+    if (!progressionForm.class_id) {
+      showWarning("Select a class before configuring progression.");
+      return;
+    }
+    if (!progressionForm.is_terminal && !progressionForm.next_class_id) {
+      showWarning("Select a next class or mark this class as terminal.");
+      return;
+    }
+
+    setSaving("progression");
+    try {
+      await classService.configureClassProgression(progressionForm.class_id, {
+        next_class_id: progressionForm.next_class_id || null,
+        is_terminal: progressionForm.is_terminal,
+      });
+      showSuccess("Class progression updated.");
+      await loadBase();
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not update class progression."));
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const clearClassProgression = async () => {
+    if (!progressionForm.class_id) {
+      showWarning("Select a class before clearing progression.");
+      return;
+    }
+
+    setSaving("progression-clear");
+    try {
+      await classService.clearClassProgression(progressionForm.class_id);
+      showSuccess("Class progression cleared.");
+      setProgressionForm((current) => ({
+        ...current,
+        next_class_id: "",
+        is_terminal: false,
+      }));
+      await loadBase();
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not clear class progression."));
+    } finally {
+      setSaving("");
+    }
+  };
+
   const updateClassLifecycle = async (item, action) => {
     setSaving(item.id);
     try {
@@ -246,6 +370,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       showError(getErrorMessage(err, `Could not ${action} class.`));
     } finally {
       setSaving("");
+      setPendingClassConfirmation(null);
       setPendingMappingConfirmation(null);
     }
   };
@@ -265,6 +390,82 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       setSaving("");
     }
   };
+
+  const classConfirmationDialog = (
+    <TypedConfirmationDialog
+      open={Boolean(pendingClassConfirmation)}
+      title={pendingClassConfirmation?.title}
+      description={pendingClassConfirmation?.description}
+      confirmationText={pendingClassConfirmation?.confirmationText || ""}
+      confirmLabel={pendingClassConfirmation?.confirmLabel}
+      variant={pendingClassConfirmation?.variant}
+      isLoading={saving === pendingClassConfirmation?.item?.id}
+      onConfirm={() => {
+        if (!pendingClassConfirmation) return;
+        updateClassLifecycle(
+          pendingClassConfirmation.item,
+          pendingClassConfirmation.action,
+        );
+      }}
+      onCancel={() => setPendingClassConfirmation(null)}
+    />
+  );
+
+  const classViewDialog = (
+    <Modal
+      open={Boolean(viewingClass)}
+      title={viewingClass ? classLabel(viewingClass) : "Class"}
+      description="Class details"
+      onClose={() => setViewingClass(null)}
+      footer={
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={() => setViewingClass(null)}>
+            Close
+          </Button>
+        </div>
+      }
+    >
+      {viewingClass ? (
+        <div className="space-y-3 text-sm">
+          <p>
+            <span className="font-semibold text-text">Status:</span>{" "}
+            {viewingClass.archived_at ? "archived" : viewingClass.is_active ? "active" : "inactive"}
+          </p>
+          <p>
+            <span className="font-semibold text-text">Class teacher / homeroom teacher:</span>{" "}
+            {viewingClass.teacher_membership_id
+              ? teacherLabel(teachers.find((teacher) => teacher.id === viewingClass.teacher_membership_id))
+              : "No class teacher / homeroom teacher"}
+          </p>
+          <p>
+            <span className="font-semibold text-text">Progression:</span>{" "}
+            {viewingClass.is_terminal
+              ? "Terminal class"
+              : viewingClass.next_class_id
+                ? `Progresses to ${classLabel(classes.find((entry) => entry.id === viewingClass.next_class_id))}`
+                : "Progression target not configured"}
+          </p>
+        </div>
+      ) : null}
+    </Modal>
+  );
+
+  const withClassConfirmationDialog = (view) => (
+    <>
+      {view}
+      {classConfirmationDialog}
+      {classViewDialog}
+    </>
+  );
+
+  const classSearchControl = (
+    <Input
+      label="Search classes"
+      value={classSearch}
+      onChange={(event) => setClassSearch(event.target.value)}
+      placeholder="Class name or arm"
+    />
+  );
 
   const classesView = (
     <WorkspaceGrid
@@ -292,7 +493,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
               placeholder="A"
             />
             <SelectControl
-              label="Class teacher"
+              label="Class teacher / homeroom teacher"
               value={classForm.teacher_membership_id}
               onChange={(value) =>
                 setClassForm((current) => ({
@@ -301,7 +502,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
                 }))
               }
               options={teacherOptions}
-              placeholder="Optional class teacher"
+              placeholder="Optional class teacher / homeroom teacher"
             />
             <FormActions
               submitting={saving === "class"}
@@ -328,11 +529,12 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
           emptyIcon={Library}
           emptyTitle="No classes"
           emptyDescription="Create the first class before adding students or subject offerings."
+          listClassName="max-h-[32rem] overflow-y-auto overscroll-contain pr-1"
           renderTitle={classLabel}
           renderMeta={(item) =>
             item.teacher_membership_id
               ? teacherLabel(teachers.find((teacher) => teacher.id === item.teacher_membership_id))
-              : "No class teacher"
+              : "No class teacher / homeroom teacher"
           }
           renderDescription={(item) =>
             item.is_terminal
@@ -342,52 +544,80 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
                 : "Progression target not configured"
           }
           renderStatus={(item) => (item.archived_at ? "archived" : item.is_active ? "active" : "inactive")}
+          actions={classSearchControl}
           renderActions={(item) => (
             <>
               {item.archived_at ? (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="outline"
-                  disabled={saving === item.id}
-                  onClick={() => updateClassLifecycle(item, "restore")}
-                >
-                  Restore
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    onClick={() => setViewingClass(item)}
+                  >
+                    View
+                  </Button>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={saving === item.id}
+                    onClick={() =>
+                      setPendingClassConfirmation(
+                        classLifecycleConfirmation(item, "restore"),
+                      )
+                    }
+                  >
+                    Restore
+                  </Button>
+                </>
               ) : item.is_active ? (
                 <Button
                   type="button"
                   size="small"
                   variant="outline"
                   disabled={saving === item.id}
-                  onClick={() => updateClassLifecycle(item, "deactivate")}
+                  onClick={() =>
+                    setPendingClassConfirmation(
+                      classLifecycleConfirmation(item, "deactivate"),
+                    )
+                  }
                 >
                   Deactivate
                 </Button>
               ) : (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="success"
-                  disabled={saving === item.id}
-                  onClick={() => updateClassLifecycle(item, "activate")}
-                >
-                  Activate
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="success"
+                    disabled={saving === item.id}
+                    onClick={() =>
+                      setPendingClassConfirmation(
+                        classLifecycleConfirmation(item, "activate"),
+                      )
+                    }
+                  >
+                    Activate
+                  </Button>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="danger"
+                    disabled={saving === item.id}
+                    onClick={() =>
+                      setPendingClassConfirmation(
+                        classLifecycleConfirmation(item, "archive"),
+                      )
+                    }
+                  >
+                    Archive
+                  </Button>
+                </>
               )}
-              {!item.archived_at ? (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="danger"
-                  disabled={saving === item.id}
-                  onClick={() => updateClassLifecycle(item, "archive")}
-                >
-                  Archive
-                </Button>
-              ) : null}
             </>
           )}
+          canEdit={(item) => !item.archived_at}
           onEdit={(item) => {
             setEditingClassId(item.id);
             setClassForm({
@@ -425,7 +655,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
           placeholder="A"
         />
         <SelectControl
-          label="Class teacher"
+          label="Class teacher / homeroom teacher"
           value={classForm.teacher_membership_id}
           onChange={(value) =>
             setClassForm((current) => ({
@@ -434,7 +664,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
             }))
           }
           options={teacherOptions}
-          placeholder="Optional class teacher"
+          placeholder="Optional class teacher / homeroom teacher"
         />
         <FormActions
           submitting={saving === "class"}
@@ -463,11 +693,12 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       emptyIcon={Library}
       emptyTitle="No classes"
       emptyDescription="Create the first class before adding students or subject offerings."
+      listClassName="max-h-[32rem] overflow-y-auto overscroll-contain pr-1"
       renderTitle={classLabel}
       renderMeta={(item) =>
         item.teacher_membership_id
           ? teacherLabel(teachers.find((teacher) => teacher.id === item.teacher_membership_id))
-          : "No class teacher"
+          : "No class teacher / homeroom teacher"
       }
       renderDescription={(item) =>
         item.is_terminal
@@ -477,52 +708,80 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
             : "Progression target not configured"
       }
       renderStatus={(item) => (item.archived_at ? "archived" : item.is_active ? "active" : "inactive")}
+      actions={classSearchControl}
       renderActions={(item) => (
         <>
           {item.archived_at ? (
-            <Button
-              type="button"
-              size="small"
-              variant="outline"
-              disabled={saving === item.id}
-              onClick={() => updateClassLifecycle(item, "restore")}
-            >
-              Restore
-            </Button>
+            <>
+              <Button
+                type="button"
+                size="small"
+                variant="outline"
+                onClick={() => setViewingClass(item)}
+              >
+                View
+              </Button>
+              <Button
+                type="button"
+                size="small"
+                variant="outline"
+                disabled={saving === item.id}
+                onClick={() =>
+                  setPendingClassConfirmation(
+                    classLifecycleConfirmation(item, "restore"),
+                  )
+                }
+              >
+                Restore
+              </Button>
+            </>
           ) : item.is_active ? (
             <Button
               type="button"
               size="small"
               variant="outline"
               disabled={saving === item.id}
-              onClick={() => updateClassLifecycle(item, "deactivate")}
+              onClick={() =>
+                setPendingClassConfirmation(
+                  classLifecycleConfirmation(item, "deactivate"),
+                )
+              }
             >
               Deactivate
             </Button>
           ) : (
-            <Button
-              type="button"
-              size="small"
-              variant="success"
-              disabled={saving === item.id}
-              onClick={() => updateClassLifecycle(item, "activate")}
-            >
-              Activate
-            </Button>
+            <>
+              <Button
+                type="button"
+                size="small"
+                variant="success"
+                disabled={saving === item.id}
+                onClick={() =>
+                  setPendingClassConfirmation(
+                    classLifecycleConfirmation(item, "activate"),
+                  )
+                }
+              >
+                Activate
+              </Button>
+              <Button
+                type="button"
+                size="small"
+                variant="danger"
+                disabled={saving === item.id}
+                onClick={() =>
+                  setPendingClassConfirmation(
+                    classLifecycleConfirmation(item, "archive"),
+                  )
+                }
+              >
+                Archive
+              </Button>
+            </>
           )}
-          {!item.archived_at ? (
-            <Button
-              type="button"
-              size="small"
-              variant="danger"
-              disabled={saving === item.id}
-              onClick={() => updateClassLifecycle(item, "archive")}
-            >
-              Archive
-            </Button>
-          ) : null}
         </>
       )}
+      canEdit={(item) => !item.archived_at}
       onEdit={(item) => {
         setEditingClassId(item.id);
         setClassForm({
@@ -531,6 +790,103 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
           teacher_membership_id: item.teacher_membership_id || "",
         });
       }}
+    />
+  );
+
+  const progressionView = (
+    <WorkspaceGrid
+      editor={
+        <WorkspacePanel
+          title="Configure progression"
+          description="Choose where students move when this class is promoted, or mark the class as terminal."
+        >
+          <form className="space-y-3" onSubmit={saveClassProgression}>
+            <SelectControl
+              label="Class"
+              value={progressionForm.class_id}
+              onChange={setProgressionSourceClass}
+              options={activeClassOptions}
+              placeholder="Select source class"
+              disabled={activeClassOptions.length === 0}
+              required
+            />
+            <SelectControl
+              label="Next class"
+              value={progressionForm.next_class_id}
+              onChange={(value) =>
+                setProgressionForm((current) => ({
+                  ...current,
+                  next_class_id: value,
+                  is_terminal: value ? false : current.is_terminal,
+                }))
+              }
+              options={progressionTargetOptions}
+              placeholder={
+                progressionForm.is_terminal
+                  ? "Terminal classes do not need a next class"
+                  : "Select progression target"
+              }
+              disabled={
+                progressionForm.is_terminal ||
+                !progressionForm.class_id ||
+                progressionTargetOptions.length === 0
+              }
+            />
+            <CheckboxControl
+              label="Terminal class"
+              checked={progressionForm.is_terminal}
+              onChange={(value) =>
+                setProgressionForm((current) => ({
+                  ...current,
+                  is_terminal: value,
+                  next_class_id: value ? "" : current.next_class_id,
+                }))
+              }
+              disabled={!progressionForm.class_id}
+            />
+            <FormActions
+              submitting={saving === "progression"}
+              submitLabel="Save progression"
+              disabled={!progressionForm.class_id}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!progressionForm.class_id || saving === "progression-clear"}
+              onClick={clearClassProgression}
+            >
+              {saving === "progression-clear" ? "Clearing..." : "Clear progression"}
+            </Button>
+          </form>
+        </WorkspacePanel>
+      }
+      content={
+        <RecordList
+          title="Class progression"
+          description="Active class promotion targets used when an academic session is closed."
+          items={classes.filter((item) => item.is_active && !item.archived_at)}
+          emptyIcon={Library}
+          emptyTitle="No active classes"
+          emptyDescription="Create and activate classes before configuring progression."
+          renderTitle={classLabel}
+          renderMeta={(item) =>
+            item.teacher_membership_id
+              ? teacherLabel(teachers.find((teacher) => teacher.id === item.teacher_membership_id))
+              : "No class teacher / homeroom teacher"
+          }
+          renderDescription={(item) =>
+            item.is_terminal
+              ? "Terminal class"
+              : item.next_class_id
+                ? `Progresses to ${classLabel(classes.find((entry) => entry.id === item.next_class_id))}`
+                : "Progression target not configured"
+          }
+          renderStatus={(item) =>
+            item.is_terminal ? "terminal" : item.next_class_id ? "configured" : "missing"
+          }
+          onEdit={(item) => setProgressionSourceClass(item.id)}
+        />
+      }
     />
   );
 
@@ -753,12 +1109,12 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
                     <p className="font-semibold text-text">{classLabel(item)}</p>
                     <p className="mt-1 text-sm text-text-muted">
                       {item.teacher_membership_id
-                        ? `Class teacher: ${teacherLabel(
+                        ? `Class teacher / homeroom teacher: ${teacherLabel(
                             teachers.find(
                               (teacher) => teacher.id === item.teacher_membership_id,
                             ),
                           )}`
-                        : "No class teacher assigned"}
+                        : "No class teacher / homeroom teacher assigned"}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -816,10 +1172,11 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     return activeTab === "create" ? offeringsView : offeringsView;
   }
   if (activeTab === "create") return classCreateView;
+  if (activeTab === "progression") return progressionView;
   if (activeTab === "offerings") return offeringsView;
   if (activeTab === "review") return reviewView;
-  if (editingClassId) return classesView;
-  return classListView;
+  if (editingClassId) return withClassConfirmationDialog(classesView);
+  return withClassConfirmationDialog(classListView);
 }
 
 export default ClassStructureWorkspace;

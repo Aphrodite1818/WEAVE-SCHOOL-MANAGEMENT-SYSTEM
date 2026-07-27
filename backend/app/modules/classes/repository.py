@@ -153,6 +153,86 @@ class ClassRoomRepository:
         return result.scalar_one()
 
     @staticmethod
+    async def count_assigned_students_by_status(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        status: "AcademicStatus",
+    ) -> int:
+        from app.modules.students.models import Student
+
+        result = await db.execute(
+            select(func.count()).select_from(Student).where(
+                Student.tenant_id == tenant_id,
+                Student.class_id == class_id,
+                Student.status == status,
+                Student.is_archived.is_(False),
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def count_current_enrollments(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+    ) -> int:
+        from app.modules.students.models import StudentEnrollment
+
+        result = await db.execute(
+            select(func.count()).select_from(StudentEnrollment).where(
+                StudentEnrollment.tenant_id == tenant_id,
+                StudentEnrollment.class_id == class_id,
+                StudentEnrollment.is_current.is_(True),
+                StudentEnrollment.ended_on.is_(None),
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def count_active_class_subjects(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+    ) -> int:
+        from app.modules.student_academics.models import ClassSubject
+
+        result = await db.execute(
+            select(func.count()).select_from(ClassSubject).where(
+                ClassSubject.tenant_id == tenant_id,
+                ClassSubject.class_id == class_id,
+                ClassSubject.is_active.is_(True),
+                ClassSubject.archived_at.is_(None),
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def count_active_teacher_assignments(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+    ) -> int:
+        from app.modules.student_academics.models import ClassSubject, TeacherAssignment
+
+        result = await db.execute(
+            select(func.count())
+            .select_from(TeacherAssignment)
+            .where(
+                TeacherAssignment.tenant_id == tenant_id,
+                TeacherAssignment.is_active.is_(True),
+                TeacherAssignment.effective_to.is_(None),
+                TeacherAssignment.class_subject_id.in_(
+                    select(ClassSubject.id).where(
+                        ClassSubject.tenant_id == tenant_id,
+                        ClassSubject.class_id == class_id,
+                    )
+                ),
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
     async def save(db: AsyncSession, classroom: ClassRoom) -> ClassRoom:
         db.add(classroom)
         await db.flush()

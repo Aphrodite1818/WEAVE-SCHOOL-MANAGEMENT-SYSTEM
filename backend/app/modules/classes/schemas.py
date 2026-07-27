@@ -66,6 +66,14 @@ class ClassRoomArchiveRequest(InputBase):
     confirmation: Literal["ARCHIVE_CLASSROOM"]
 
 
+class ClassRoomActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_CLASSROOM"]
+
+
+class ClassRoomDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_CLASSROOM"]
+
+
 class ClassRoomRestoreRequest(InputBase):
     confirmation: Literal["RESTORE_CLASSROOM"]
 

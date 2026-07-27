@@ -9,12 +9,15 @@ from app.core.utils.normalization import normalized_class_arm_key, normalized_cl
 from app.modules.classes.models import ClassRoom
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.classes.schemas import (
+    ClassProgressionClearRequest,
+    ClassProgressionConfigureRequest,
+    ClassProgressionResponse,
     ClassRoomCreate,
     ClassRoomResponse,
     ClassRoomUpdate,
 )
 from app.modules.parents.models import Parent
-from app.modules.students.models import Student
+from app.modules.students.models import AcademicStatus, Student
 from app.modules.students.repository import StudentParentLinkRepository
 from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherMembershipStatus
 from app.modules.teachers.repository import TeacherMembershipRepository
@@ -323,6 +326,201 @@ class ClassRoomService:
             ) from exc
 
     @staticmethod
+    def _build_progression_response(
+        classroom: ClassRoom,
+        next_classroom: ClassRoom | None = None,
+    ) -> ClassProgressionResponse:
+        return ClassProgressionResponse(
+            class_id=classroom.id,
+            class_name=classroom.name,
+            class_arm=classroom.arm,
+            next_class_id=classroom.next_class_id,
+            next_class_name=next_classroom.name if next_classroom is not None else None,
+            next_class_arm=next_classroom.arm if next_classroom is not None else None,
+            is_terminal=classroom.is_terminal,
+            is_active=classroom.is_active,
+        )
+
+    @staticmethod
+    async def _ensure_no_progression_cycle(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        next_class_id: uuid.UUID,
+    ) -> None:
+        current_id: uuid.UUID | None = next_class_id
+        visited: set[uuid.UUID] = set()
+
+        while current_id is not None:
+            if current_id == class_id:
+                raise BadRequestException("Class progression cannot create a circular chain")
+            if current_id in visited:
+                raise BadRequestException("Existing class progression contains a circular chain")
+            visited.add(current_id)
+
+            current = await ClassRoomRepository.get_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                class_id=current_id,
+            )
+            if current is None:
+                return
+            current_id = current.next_class_id
+
+    @staticmethod
+    async def configure_class_progression(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        class_id: uuid.UUID,
+        payload: ClassProgressionConfigureRequest,
+    ) -> ClassProgressionResponse:
+        """Configure the next class or terminal state used by student progression."""
+
+        ClassRoomService._ensure_tenant_admin(actor)
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=class_id,
+        )
+        if classroom is None:
+            raise NotFoundException("Classroom not found")
+        if classroom.archived_at is not None:
+            raise ConflictException(
+                "Archived classrooms cannot be configured. Restore them first."
+            )
+
+        next_classroom: ClassRoom | None = None
+        if payload.next_class_id is not None:
+            if payload.next_class_id == classroom.id:
+                raise BadRequestException("A class cannot progress to itself")
+            next_classroom = await ClassRoomRepository.get_by_id(
+                db=db,
+                tenant_id=actor.tenant_id,
+                class_id=payload.next_class_id,
+            )
+            if next_classroom is None:
+                raise NotFoundException("Next class not found")
+            if not next_classroom.is_active or next_classroom.archived_at is not None:
+                raise BadRequestException("Next class must be active")
+            await ClassRoomService._ensure_no_progression_cycle(
+                db=db,
+                tenant_id=actor.tenant_id,
+                class_id=classroom.id,
+                next_class_id=next_classroom.id,
+            )
+
+        classroom.next_class_id = None if payload.is_terminal else payload.next_class_id
+        classroom.is_terminal = payload.is_terminal
+
+        try:
+            updated_classroom = await ClassRoomRepository.save(
+                db=db,
+                classroom=classroom,
+            )
+            await db.commit()
+            await db.refresh(updated_classroom)
+            return ClassRoomService._build_progression_response(
+                updated_classroom,
+                None if updated_classroom.is_terminal else next_classroom,
+            )
+        except IntegrityError as exc:
+            await db.rollback()
+            raise BadRequestException("Class progression configuration is invalid.") from exc
+
+    @staticmethod
+    async def clear_class_progression(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        class_id: uuid.UUID,
+        payload: ClassProgressionClearRequest,
+    ) -> ClassProgressionResponse:
+        """Clear the next class and terminal state for a classroom."""
+
+        ClassRoomService._ensure_tenant_admin(actor)
+        _ = payload.confirmation
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=class_id,
+        )
+        if classroom is None:
+            raise NotFoundException("Classroom not found")
+        if classroom.archived_at is not None:
+            raise ConflictException(
+                "Archived classrooms cannot be configured. Restore them first."
+            )
+
+        classroom.next_class_id = None
+        classroom.is_terminal = False
+
+        updated_classroom = await ClassRoomRepository.save(db=db, classroom=classroom)
+        await db.commit()
+        await db.refresh(updated_classroom)
+        return ClassRoomService._build_progression_response(updated_classroom)
+
+    @staticmethod
+    async def _ensure_no_live_dependencies(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+    ) -> None:
+        active_students = await ClassRoomRepository.count_assigned_students_by_status(
+            db,
+            tenant_id,
+            class_id,
+            AcademicStatus.ACTIVE,
+        )
+        if active_students > 0:
+            raise ConflictException(
+                "This class still has active students. Move or resolve all students before deactivating the class."
+            )
+
+        suspended_students = await ClassRoomRepository.count_assigned_students_by_status(
+            db,
+            tenant_id,
+            class_id,
+            AcademicStatus.SUSPENDED,
+        )
+        if suspended_students > 0:
+            raise ConflictException(
+                "This class still has suspended students assigned to it. Move or resolve all suspended students before deactivating the class."
+            )
+
+        current_enrollments = await ClassRoomRepository.count_current_enrollments(
+            db,
+            tenant_id,
+            class_id,
+        )
+        if current_enrollments > 0:
+            raise ConflictException(
+                "This class still has current student enrollments. End or move all current enrollments before deactivating the class."
+            )
+
+        active_mappings = await ClassRoomRepository.count_active_class_subjects(
+            db,
+            tenant_id,
+            class_id,
+        )
+        if active_mappings > 0:
+            raise ConflictException(
+                "This class still has active subject mappings. Deactivate or archive all class-subject mappings before deactivating the class."
+            )
+
+        active_assignments = await ClassRoomRepository.count_active_teacher_assignments(
+            db,
+            tenant_id,
+            class_id,
+        )
+        if active_assignments > 0:
+            raise ConflictException(
+                "This class still has active teacher assignments. End all active teacher assignments before deactivating the class."
+            )
+
+    @staticmethod
     async def deactivate_classroom(
         db: AsyncSession,
         actor: TenantAdmin,
@@ -343,6 +541,14 @@ class ClassRoomService:
             raise ConflictException(
                 "Archived records cannot be deactivated. Restore them first."
             )
+        if not classroom.is_active:
+            return ClassRoomResponse.model_validate(classroom)
+
+        await ClassRoomService._ensure_no_live_dependencies(
+            db,
+            tenant_id=actor.tenant_id,
+            class_id=classroom.id,
+        )
 
         classroom.is_active = False
         await ClassRoomRepository.save(db, classroom)
@@ -405,13 +611,17 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
 
-
-
         if classroom.archived_at is not None:
             return ClassRoomResponse.model_validate(classroom)
+        if classroom.is_active:
+            raise ConflictException("Active classes cannot be archived. Deactivate the class first.")
 
+        await ClassRoomService._ensure_no_live_dependencies(
+            db,
+            tenant_id=actor.tenant_id,
+            class_id=classroom.id,
+        )
 
-        classroom.is_active = False
         classroom.archived_at = datetime.now(timezone.utc)
         classroom.archived_by_admin_id = actor.id
 

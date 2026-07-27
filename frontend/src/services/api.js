@@ -676,6 +676,13 @@ export const api = {
       ...options,
     }),
 
+  put: (endpoint, body, options) =>
+    request(endpoint, {
+      method: "PUT",
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...options,
+    }),
+
   delete: (endpoint, options) =>
     request(endpoint, { method: "DELETE", ...options }),
 };

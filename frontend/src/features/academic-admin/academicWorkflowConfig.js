@@ -36,6 +36,7 @@ export const academicWorkflowConfig = {
     tabs: [
       { id: "overview", label: "Overview" },
       { id: "create", label: "Create Class" },
+      { id: "progression", label: "Progression" },
       { id: "active", label: "Active Classes" },
       { id: "inactive", label: "Inactive Classes" },
       { id: "archived", label: "Archived Classes" },

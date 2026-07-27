@@ -404,6 +404,17 @@ class BulkImportService:
                     ),
                 )
                 continue
+            if not classroom.is_active or classroom.archived_at is not None:
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="class_name",
+                    error_code="class_inactive",
+                    error_message=(
+                        f"Class {class_name} {class_arm} is inactive or archived. "
+                        "Use an active class before importing students."
+                    ),
+                )
+                continue
 
             normalized_row["class_id"] = str(classroom.id)
             normalized_row["class_name"] = classroom.name
@@ -442,6 +453,20 @@ class BulkImportService:
             admission_number=admission_number,
         ):
             raise ConflictException(detail="Admission number already exists")
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=student_data.class_id,
+        )
+        if (
+            classroom is None
+            or not classroom.is_active
+            or classroom.archived_at is not None
+        ):
+            raise ConflictException(
+                "Students can only be imported into active classes."
+            )
 
         await AuthIdentityService.ensure_identifier_available(
             db=db,

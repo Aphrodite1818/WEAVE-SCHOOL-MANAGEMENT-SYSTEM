@@ -141,7 +141,9 @@ export function RecordList({
   renderStatus,
   renderActions,
   onEdit,
+  canEdit,
   actions,
+  listClassName,
 }) {
   return (
     <WorkspacePanel title={title} description={description} actions={actions}>
@@ -152,9 +154,15 @@ export function RecordList({
           description={emptyDescription}
         />
       ) : (
-        <div className="mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+        <div
+          className={cn(
+            "mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3",
+            listClassName,
+          )}
+        >
           {items.map((item) => {
             const status = renderStatus?.(item);
+            const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
             return (
               <div
                 key={item.id}
@@ -182,10 +190,10 @@ export function RecordList({
                     {renderDescription(item)}
                   </p>
                 ) : null}
-                {onEdit || renderActions ? (
+                {showEdit || renderActions ? (
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">
                     {renderActions ? renderActions(item) : null}
-                    {onEdit ? (
+                    {showEdit ? (
                     <Button
                       type="button"
                       size="small"
