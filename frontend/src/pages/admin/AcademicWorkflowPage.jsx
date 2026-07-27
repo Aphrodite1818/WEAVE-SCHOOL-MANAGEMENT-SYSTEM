@@ -97,6 +97,7 @@ function AcademicWorkflowPage() {
     if (workflow === "results") {
       return (
         <ResultsWorkspace
+          key={`results-${activeTab}`}
           activeTab={activeTab}
           onContextChange={updateContext}
         />
@@ -105,6 +106,7 @@ function AcademicWorkflowPage() {
     if (workflow === "report-cards") {
       return (
         <ReportCardsWorkspace
+          key={`report-cards-${activeTab}`}
           activeTab={activeTab}
           onContextChange={updateContext}
         />
