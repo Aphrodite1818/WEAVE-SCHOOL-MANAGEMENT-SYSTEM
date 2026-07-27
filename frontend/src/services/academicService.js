@@ -112,6 +112,7 @@ const stripTermCreateOnlyFields = (payload = {}) => {
 const buildTeacherAssignmentPayload = (payload = {}) => ({
   teacher_membership_id:
     payload.teacher_membership_id || payload.teacher_id,
+  ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
 });
 
 const reassignTeacherAssignment = async (classSubjectId, payload) => {
@@ -119,7 +120,10 @@ const reassignTeacherAssignment = async (classSubjectId, payload) => {
     payload.teacher_membership_id || payload.teacher_id;
   return api.post(
     `/tenant-admin/academics/class-subjects/${classSubjectId}/reassign-teacher`,
-    { teacher_membership_id: teacherMembershipId },
+    {
+      teacher_membership_id: teacherMembershipId,
+      ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
+    },
   );
 };
 
@@ -204,6 +208,8 @@ export const academicService = {
 
   listTeacherAssignments: (params) =>
     api.get(`/tenant-admin/academics/teacher-assignments${queryString(params)}`),
+  getTeacherAssignmentDependencies: (assignmentId) =>
+    api.get(`/tenant-admin/academics/teacher-assignments/${assignmentId}/dependencies`),
   createTeacherAssignment: async (payload) => {
     const classSubjectId = await resolveClassSubjectId(
       payload.class_subject_id,

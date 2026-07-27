@@ -6,6 +6,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -27,6 +28,7 @@ from app.modules.student_academics.models import (
     GradingScale,
     StudentSubjectResult,
     TeacherAssignment,
+    TeacherAssignmentLifecycleAudit,
 )
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
@@ -50,6 +52,7 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultUpsert,
     TeacherAssignmentCreate,
     TeacherAssignmentDelete,
+    TeacherAssignmentDependencyPreview,
     TeacherAssignmentEnd,
     TeacherAssignmentReassign,
     TeacherAssignmentResponse,
@@ -403,6 +406,118 @@ class StudentAcademicService:
         ], total
 
     @staticmethod
+    def _build_teacher_assignment_response_from_record(record: dict) -> TeacherAssignmentResponse:
+        assignment = record["assignment"]
+        return TeacherAssignmentResponse(
+            id=assignment.id,
+            tenant_id=assignment.tenant_id,
+            class_subject_id=assignment.class_subject_id,
+            teacher_membership_id=assignment.teacher_membership_id,
+            class_id=record.get("class_id"),
+            class_name=record.get("class_name"),
+            class_arm=record.get("class_arm"),
+            subject_id=record.get("subject_id"),
+            subject_name=record.get("subject_name"),
+            subject_code=record.get("subject_code"),
+            teacher_name=record.get("teacher_name"),
+            teacher_staff_id=record.get("teacher_staff_id"),
+            is_active=assignment.is_active,
+            effective_from=assignment.effective_from,
+            effective_to=assignment.effective_to,
+            created_at=assignment.created_at,
+            updated_at=assignment.updated_at,
+        )
+
+    @staticmethod
+    async def teacher_assignment_dependency_preview(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+    ) -> TeacherAssignmentDependencyPreview:
+        assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+            db,
+            tenant_id,
+            assignment_id,
+        )
+        if assignment is None:
+            raise NotFoundException("Teacher assignment not found.")
+        counts = await StudentAcademicRepository.count_teacher_assignment_dependencies(
+            db,
+            tenant_id,
+            assignment.id,
+        )
+        later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
+            db,
+            tenant_id,
+            assignment.class_subject_id,
+            assignment.effective_from,
+            exclude_id=assignment.id,
+        )
+        counts["later_assignment_history"] = len(later_assignments)
+        blockers: list[str] = []
+        is_current = assignment.is_active and assignment.effective_to is None
+        is_malformed_historical = not assignment.is_active and assignment.effective_to is None
+        if is_malformed_historical:
+            blockers.append("This ended assignment is missing an effective end date and requires administrative repair.")
+        if assignment.is_active:
+            blockers.append("End the teacher assignment before deleting it.")
+        if counts["student_results"] or counts["report_card_references"] or counts["other_academic_records"]:
+            blockers.append("This teacher assignment is referenced by academic records.")
+        if counts["later_assignment_history"]:
+            blockers.append("This teacher assignment has later assignment history.")
+        return TeacherAssignmentDependencyPreview(
+            assignment_id=assignment.id,
+            dependency_counts=counts,
+            can_end=is_current,
+            can_reassign=is_current and counts["later_assignment_history"] == 0,
+            can_delete=(
+                not assignment.is_active
+                and not is_malformed_historical
+                and not any(counts.values())
+            ),
+            blocker_messages=blockers,
+        )
+
+    @staticmethod
+    async def _record_teacher_assignment_audit(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        assignment_id: uuid.UUID | None,
+        class_subject_id: uuid.UUID,
+        action: str,
+        previous_teacher_membership_id: uuid.UUID | None = None,
+        new_teacher_membership_id: uuid.UUID | None = None,
+        previous_state: str | None = None,
+        new_state: str | None = None,
+        previous_effective_from: date | None = None,
+        previous_effective_to: date | None = None,
+        new_effective_from: date | None = None,
+        new_effective_to: date | None = None,
+        acting_admin_id: uuid.UUID | None = None,
+        reason: str | None = None,
+    ) -> None:
+        await StudentAcademicRepository.create_teacher_assignment_lifecycle_audit(
+            db,
+            TeacherAssignmentLifecycleAudit(
+                tenant_id=tenant_id,
+                assignment_id=assignment_id,
+                class_subject_id=class_subject_id,
+                action=action,
+                previous_teacher_membership_id=previous_teacher_membership_id,
+                new_teacher_membership_id=new_teacher_membership_id,
+                previous_state=previous_state,
+                new_state=new_state,
+                previous_effective_from=previous_effective_from,
+                previous_effective_to=previous_effective_to,
+                new_effective_from=new_effective_from,
+                new_effective_to=new_effective_to,
+                acting_admin_id=acting_admin_id,
+                reason=reason,
+            ),
+        )
+
+    @staticmethod
     async def deactivate_class_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -612,6 +727,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         payload: TeacherAssignmentCreate,
         class_subject_id: uuid.UUID | None = None,
+        acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
         resolved_class_subject_id = class_subject_id or payload.class_subject_id
         if resolved_class_subject_id is None:
@@ -620,6 +736,7 @@ class StudentAcademicService:
             db,
             tenant_id,
             resolved_class_subject_id,
+            lock=True,
         )
         if (
             class_subject is None
@@ -670,23 +787,42 @@ class StudentAcademicService:
                 raise ConflictException(
                     "Teacher assignment effective date overlaps existing assignment history."
                 )
-        assignment = await StudentAcademicRepository.create_teacher_assignment(
-            db,
-            TeacherAssignment(
-                tenant_id=tenant_id,
-                class_subject_id=class_subject.id,
-                teacher_membership_id=payload.teacher_membership_id,
-                is_active=True,
-                effective_from=effective_from,
-                effective_to=None,
-            ),
-        )
+        try:
+            assignment = await StudentAcademicRepository.create_teacher_assignment(
+                db,
+                TeacherAssignment(
+                    tenant_id=tenant_id,
+                    class_subject_id=class_subject.id,
+                    teacher_membership_id=payload.teacher_membership_id,
+                    is_active=True,
+                    effective_from=effective_from,
+                    effective_to=None,
+                ),
+            )
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                "An active teacher assignment already exists for this class subject."
+            ) from exc
         await StudentAcademicService._ensure_compatibility_assignment(
             db,
             tenant_id=tenant_id,
             class_subject=class_subject,
             teacher_membership_id=payload.teacher_membership_id,
             is_active=True,
+        )
+        await StudentAcademicService._record_teacher_assignment_audit(
+            db,
+            tenant_id=tenant_id,
+            assignment_id=assignment.id,
+            class_subject_id=class_subject.id,
+            action="assignment_created",
+            new_teacher_membership_id=payload.teacher_membership_id,
+            previous_state=None,
+            new_state="active",
+            new_effective_from=assignment.effective_from,
+            new_effective_to=assignment.effective_to,
+            acting_admin_id=acting_admin_id,
         )
         await db.commit()
         return await StudentAcademicService._build_teacher_assignment_response(
@@ -700,6 +836,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         assignment_id: uuid.UUID,
         payload: TeacherAssignmentEnd,
+        acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
         assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db,
@@ -711,18 +848,8 @@ class StudentAcademicService:
             raise NotFoundException("Teacher assignment not found.")
         if not assignment.is_active:
             if assignment.effective_to is None:
-                effective_to = payload.effective_to or date.today()
-                if effective_to < assignment.effective_from:
-                    raise ConflictException("Assignment end date cannot be before its start date.")
-                assignment.effective_to = effective_to
-                assignment = await StudentAcademicRepository.save_teacher_assignment(
-                    db,
-                    assignment,
-                )
-                await db.commit()
-                return await StudentAcademicService._build_teacher_assignment_response(
-                    db,
-                    assignment,
+                raise ConflictException(
+                    "This historical assignment is missing an effective end date and requires administrative repair."
                 )
             if payload.effective_to is not None and payload.effective_to != assignment.effective_to:
                 raise ConflictException(
@@ -754,6 +881,22 @@ class StudentAcademicService:
                 teacher_membership_id=assignment.teacher_membership_id,
                 is_active=False,
             )
+        await StudentAcademicService._record_teacher_assignment_audit(
+            db,
+            tenant_id=tenant_id,
+            assignment_id=assignment.id,
+            class_subject_id=assignment.class_subject_id,
+            action="assignment_ended",
+            previous_teacher_membership_id=assignment.teacher_membership_id,
+            new_teacher_membership_id=assignment.teacher_membership_id,
+            previous_state="active",
+            new_state="ended",
+            previous_effective_from=assignment.effective_from,
+            previous_effective_to=None,
+            new_effective_from=assignment.effective_from,
+            new_effective_to=assignment.effective_to,
+            acting_admin_id=acting_admin_id,
+        )
         await db.commit()
         return await StudentAcademicService._build_teacher_assignment_response(
             db,
@@ -766,6 +909,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         assignment_id: uuid.UUID,
         payload: TeacherAssignmentReassign,
+        acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
         current = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db,
@@ -821,8 +965,8 @@ class StudentAcademicService:
         if current.teacher_membership_id == payload.teacher_membership_id:
             raise ConflictException("This teacher is already assigned.")
         effective_from = payload.effective_from or date.today()
-        if effective_from <= current.effective_from:
-            raise ConflictException("Replacement effective date must be after the current assignment start date.")
+        if effective_from < current.effective_from:
+            raise ConflictException("Replacement effective date cannot be before the current assignment start date.")
         later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
             db,
             tenant_id,
@@ -835,28 +979,54 @@ class StudentAcademicService:
             raise ConflictException("Cannot reassign because later assignment history already exists.")
 
         current.is_active = False
-        current.effective_to = effective_from - timedelta(days=1)
+        current.effective_to = (
+            effective_from
+            if effective_from == current.effective_from
+            else effective_from - timedelta(days=1)
+        )
         if current.effective_to < current.effective_from:
             raise ConflictException("Replacement effective date creates an invalid assignment range.")
         await StudentAcademicRepository.save_teacher_assignment(db, current)
 
-        replacement = await StudentAcademicRepository.create_teacher_assignment(
-            db,
-            TeacherAssignment(
-                tenant_id=tenant_id,
-                class_subject_id=class_subject.id,
-                teacher_membership_id=payload.teacher_membership_id,
-                is_active=True,
-                effective_from=effective_from,
-                effective_to=None,
-            ),
-        )
+        try:
+            replacement = await StudentAcademicRepository.create_teacher_assignment(
+                db,
+                TeacherAssignment(
+                    tenant_id=tenant_id,
+                    class_subject_id=class_subject.id,
+                    teacher_membership_id=payload.teacher_membership_id,
+                    is_active=True,
+                    effective_from=effective_from,
+                    effective_to=None,
+                ),
+            )
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                "An active teacher assignment already exists for this class subject."
+            ) from exc
         await StudentAcademicService._ensure_compatibility_assignment(
             db,
             tenant_id=tenant_id,
             class_subject=class_subject,
             teacher_membership_id=payload.teacher_membership_id,
             is_active=True,
+        )
+        await StudentAcademicService._record_teacher_assignment_audit(
+            db,
+            tenant_id=tenant_id,
+            assignment_id=replacement.id,
+            class_subject_id=class_subject.id,
+            action="teacher_reassigned",
+            previous_teacher_membership_id=current.teacher_membership_id,
+            new_teacher_membership_id=payload.teacher_membership_id,
+            previous_state="active",
+            new_state="active",
+            previous_effective_from=current.effective_from,
+            previous_effective_to=current.effective_to,
+            new_effective_from=replacement.effective_from,
+            new_effective_to=replacement.effective_to,
+            acting_admin_id=acting_admin_id,
         )
         await db.commit()
         return await StudentAcademicService._build_teacher_assignment_response(
@@ -870,6 +1040,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         assignment_id: uuid.UUID,
         payload: TeacherAssignmentDelete,
+        acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
         assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db,
@@ -881,29 +1052,35 @@ class StudentAcademicService:
             raise NotFoundException("Teacher assignment not found.")
         if assignment.is_active:
             raise ConflictException("End the teacher assignment before deleting it.")
-        if await StudentAcademicRepository.has_teacher_assignment_dependencies(
+        preview = await StudentAcademicService.teacher_assignment_dependency_preview(
             db,
             tenant_id,
             assignment.id,
-        ):
-            raise ConflictException(
-                "This teacher assignment is referenced by academic records and cannot be deleted. End the assignment instead."
-            )
-        later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
-            db,
-            tenant_id,
-            assignment.class_subject_id,
-            assignment.effective_from,
-            exclude_id=assignment.id,
-            lock=True,
         )
-        if later_assignments:
+        if not preview.can_delete:
             raise ConflictException(
-                "This teacher assignment has later assignment history and cannot be deleted."
+                "This teacher assignment has dependencies and cannot be deleted.",
+                payload={
+                    "dependency_counts": preview.dependency_counts,
+                    "blocker_messages": preview.blocker_messages,
+                },
             )
         response = await StudentAcademicService._build_teacher_assignment_response(
             db,
             assignment,
+        )
+        await StudentAcademicService._record_teacher_assignment_audit(
+            db,
+            tenant_id=tenant_id,
+            assignment_id=assignment.id,
+            class_subject_id=assignment.class_subject_id,
+            action="assignment_deleted",
+            previous_teacher_membership_id=assignment.teacher_membership_id,
+            previous_state="ended",
+            new_state="deleted",
+            previous_effective_from=assignment.effective_from,
+            previous_effective_to=assignment.effective_to,
+            acting_admin_id=acting_admin_id,
         )
         await StudentAcademicRepository.delete_teacher_assignment(db, assignment)
         await db.commit()
@@ -916,22 +1093,32 @@ class StudentAcademicService:
         *,
         teacher_id: uuid.UUID | None = None,
         class_id: uuid.UUID | None = None,
-        active_only: bool = False,
+        class_subject_id: uuid.UUID | None = None,
+        subject_id: uuid.UUID | None = None,
+        status: str | None = None,
+        effective_from_from: date | None = None,
+        effective_from_to: date | None = None,
+        search: str | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[list[TeacherAssignmentResponse], int]:
-        rows, total = await StudentAcademicRepository.list_teacher_assignment_rows(
+        records, total = await StudentAcademicRepository.list_teacher_assignment_rows(
             db,
             tenant_id,
             teacher_id=teacher_id,
             class_id=class_id,
-            active_only=active_only,
+            class_subject_id=class_subject_id,
+            subject_id=subject_id,
+            status=status,
+            effective_from_from=effective_from_from,
+            effective_from_to=effective_from_to,
+            search=search,
             skip=skip,
             limit=limit,
         )
         return [
-            await StudentAcademicService._build_teacher_assignment_response(db, row)
-            for row in rows
+            StudentAcademicService._build_teacher_assignment_response_from_record(record)
+            for record in records
         ], total
 
     @staticmethod

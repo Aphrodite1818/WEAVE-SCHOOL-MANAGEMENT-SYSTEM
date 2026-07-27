@@ -310,6 +310,51 @@ class TeacherAssignment(BaseModel):
     )
 
 
+class TeacherAssignmentLifecycleAudit(BaseModel):
+    __tablename__ = "teacher_assignment_lifecycle_audits"
+
+    assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("teacher_assignments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    class_subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("class_subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    action: Mapped[str] = mapped_column(String(60), nullable=False)
+    previous_teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("teacher_memberships.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    new_teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("teacher_memberships.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    previous_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    new_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    previous_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    previous_effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    new_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    new_effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    acting_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    __table_args__ = (
+        Index("ix_teacher_assignment_lifecycle_audits_tenant_assignment", "tenant_id", "assignment_id"),
+        Index("ix_teacher_assignment_lifecycle_audits_tenant_class_subject", "tenant_id", "class_subject_id"),
+    )
+
+
 class StudentProgressionRun(BaseModel):
     __tablename__ = "student_progression_runs"
 

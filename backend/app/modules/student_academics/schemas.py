@@ -306,6 +306,15 @@ class TeacherAssignmentDelete(InputBase):
     confirmation: Literal["DELETE_TEACHER_ASSIGNMENT"]
 
 
+class TeacherAssignmentDependencyPreview(OutputBase):
+    assignment_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    can_end: bool
+    can_reassign: bool
+    can_delete: bool
+    blocker_messages: list[str] = []
+
+
 class TeacherAssignmentResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID

@@ -310,6 +310,26 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
         })),
     [offeredSubjectIds, subjects],
   );
+  const filteredClassSubjects = useMemo(
+    () =>
+      classSubjects.filter((item) =>
+        activeTab === "inactive"
+          ? !item.is_active && !item.archived_at
+          : activeTab === "archived"
+            ? item.archived_at
+            : activeTab === "current" || activeTab === "create"
+              ? item.is_active && !item.archived_at
+              : true,
+      ),
+    [activeTab, classSubjects],
+  );
+
+  const mappingEmptyMessage =
+    activeTab === "inactive"
+      ? "No inactive mappings are attached to this class."
+      : activeTab === "archived"
+        ? "No archived mappings are attached to this class."
+        : "No current mappings are attached to this class.";
 
   const resetClassForm = () => {
     setClassForm(BLANK_CLASS);
@@ -1057,23 +1077,14 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
               disabled={classOptions.length === 0}
             />
           </div>
-          {classSubjects.length === 0 ? (
+          {filteredClassSubjects.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
-              No subjects are attached to this class.
+              {mappingEmptyMessage}
             </p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-              {classSubjects
-                .filter((item) =>
-                  activeTab === "inactive"
-                    ? !item.is_active && !item.archived_at
-                    : activeTab === "archived"
-                      ? item.archived_at
-                      : activeTab === "current" || activeTab === "create"
-                        ? item.is_active && !item.archived_at
-                        : true,
-                )
-                .map((item) => (
+            <div className="max-h-[calc(100vh-18rem)] overflow-y-auto pr-2">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                {filteredClassSubjects.map((item) => (
                 <div
                   key={item.id}
                   className="flex min-h-[8rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
@@ -1190,6 +1201,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           )}
         </WorkspacePanel>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
@@ -40,6 +41,7 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultUpsert,
     TeacherAssignmentCreate,
     TeacherAssignmentDelete,
+    TeacherAssignmentDependencyPreview,
     TeacherAssignmentEnd,
     TeacherAssignmentListResponse,
     TeacherAssignmentReassign,
@@ -323,6 +325,7 @@ async def create_teacher_assignment(
         current_admin.tenant_id,
         payload,
         class_subject_id=class_subject_id,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -335,22 +338,50 @@ async def list_teacher_assignments(
     current_admin: CurrentTenantAdmin,
     teacher_membership_id: UUID | None = Query(default=None),
     class_id: UUID | None = Query(default=None),
+    class_subject_id: UUID | None = Query(default=None),
+    subject_id: UUID | None = Query(default=None),
+    status: str | None = Query(default=None, pattern="^(active|ended)$"),
+    effective_from_from: date | None = Query(default=None),
+    effective_from_to: date | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     active_only: bool = Query(default=False),
     skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=100),
+    limit: int = Query(default=25, ge=1, le=100),
 ) -> TeacherAssignmentListResponse:
+    resolved_status = "active" if active_only and status is None else status
     items, total = (
         await StudentAcademicService.list_teacher_assignment_responses(
             db,
             current_admin.tenant_id,
             teacher_id=teacher_membership_id,
             class_id=class_id,
-            active_only=active_only,
+            class_subject_id=class_subject_id,
+            subject_id=subject_id,
+            status=resolved_status,
+            effective_from_from=effective_from_from,
+            effective_from_to=effective_from_to,
+            search=search,
             skip=skip,
             limit=limit,
         )
     )
     return TeacherAssignmentListResponse(items=items, total=total)
+
+
+@tenant_admin_router.get(
+    "/teacher-assignments/{assignment_id}/dependencies",
+    response_model=TeacherAssignmentDependencyPreview,
+)
+async def teacher_assignment_dependencies(
+    assignment_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherAssignmentDependencyPreview:
+    return await StudentAcademicService.teacher_assignment_dependency_preview(
+        db,
+        current_admin.tenant_id,
+        assignment_id,
+    )
 
 
 @tenant_admin_router.post(
@@ -368,6 +399,7 @@ async def end_teacher_assignment(
         current_admin.tenant_id,
         assignment_id,
         payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -393,6 +425,7 @@ async def reassign_teacher_assignment(
         current_admin.tenant_id,
         active.id,
         payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -411,6 +444,7 @@ async def delete_teacher_assignment(
         current_admin.tenant_id,
         assignment_id,
         payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -506,7 +540,7 @@ async def list_my_assignments(
             db,
             current_teacher.tenant_id,
             teacher_id=current_teacher.id,
-            active_only=True,
+            status="active",
         )
     )
     return TeacherAssignmentListResponse(items=items, total=total)

@@ -9,6 +9,8 @@ from decimal import Decimal
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.classes.models import ClassRoom
+from app.modules.subjects.models import Subject
 from app.modules.student_academics.models import (
     AcademicResultStatus,
     AcademicSession,
@@ -20,7 +22,9 @@ from app.modules.student_academics.models import (
     GradingScale,
     StudentSubjectResult,
     TeacherAssignment,
+    TeacherAssignmentLifecycleAudit,
 )
+from app.modules.teachers.models import TeacherAccount, TeacherMembership
 
 
 FINALIZED_RESULT_STATUSES = (AcademicResultStatus.LOCKED,)
@@ -546,15 +550,16 @@ class StudentAcademicRepository:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         class_subject_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> ClassSubject | None:
-        return (
-            await db.execute(
-                select(ClassSubject).where(
-                    ClassSubject.tenant_id == tenant_id,
-                    ClassSubject.id == class_subject_id,
-                )
-            )
-        ).scalar_one_or_none()
+        query = select(ClassSubject).where(
+            ClassSubject.tenant_id == tenant_id,
+            ClassSubject.id == class_subject_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def get_class_subject_by_class_and_subject(
@@ -860,42 +865,107 @@ class StudentAcademicRepository:
         teacher_id: uuid.UUID | None = None,
         class_id: uuid.UUID | None = None,
         class_subject_id: uuid.UUID | None = None,
-        active_only: bool = False,
+        subject_id: uuid.UUID | None = None,
+        status: str | None = None,
+        effective_from_from: date | None = None,
+        effective_from_to: date | None = None,
+        search: str | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> tuple[list[TeacherAssignment], int]:
-        filters = [TeacherAssignment.tenant_id == tenant_id]
+    ) -> tuple[list[dict], int]:
+        filters = [
+            TeacherAssignment.tenant_id == tenant_id,
+            ClassSubject.tenant_id == tenant_id,
+        ]
         if teacher_id is not None:
             filters.append(TeacherAssignment.teacher_membership_id == teacher_id)
         if class_subject_id is not None:
             filters.append(TeacherAssignment.class_subject_id == class_subject_id)
         if class_id is not None:
-            filters.append(
-                TeacherAssignment.class_subject_id.in_(
-                    select(ClassSubject.id).where(
-                        ClassSubject.tenant_id == tenant_id,
-                        ClassSubject.class_id == class_id,
-                    )
-                )
-            )
-        if active_only:
+            filters.append(ClassSubject.class_id == class_id)
+        if subject_id is not None:
+            filters.append(ClassSubject.subject_id == subject_id)
+        if status == "active":
             filters.append(TeacherAssignment.is_active.is_(True))
             filters.append(TeacherAssignment.effective_to.is_(None))
+        elif status == "ended":
+            filters.append(or_(TeacherAssignment.is_active.is_(False), TeacherAssignment.effective_to.is_not(None)))
+        if effective_from_from is not None:
+            filters.append(TeacherAssignment.effective_from >= effective_from_from)
+        if effective_from_to is not None:
+            filters.append(TeacherAssignment.effective_from <= effective_from_to)
+        if search:
+            pattern = f"%{search.strip()}%"
+            teacher_name = func.concat(
+                func.coalesce(TeacherAccount.first_name, ""),
+                " ",
+                func.coalesce(TeacherAccount.last_name, ""),
+            )
+            filters.append(
+                or_(
+                    teacher_name.ilike(pattern),
+                    TeacherMembership.staff_id.ilike(pattern),
+                    ClassRoom.name.ilike(pattern),
+                    ClassRoom.arm.ilike(pattern),
+                    Subject.name.ilike(pattern),
+                    Subject.code.ilike(pattern),
+                )
+            )
+        base_query = (
+            select(TeacherAssignment)
+            .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+            .join(ClassRoom, ClassRoom.id == ClassSubject.class_id, isouter=True)
+            .join(Subject, Subject.id == ClassSubject.subject_id, isouter=True)
+            .join(TeacherMembership, TeacherMembership.id == TeacherAssignment.teacher_membership_id, isouter=True)
+            .join(TeacherAccount, TeacherAccount.id == TeacherMembership.teacher_account_id, isouter=True)
+            .where(*filters)
+        )
         total = (
             await db.execute(
-                select(func.count()).select_from(TeacherAssignment).where(*filters)
+                select(func.count()).select_from(base_query.subquery())
             )
         ).scalar_one()
         rows = (
             await db.execute(
-                select(TeacherAssignment)
+                select(
+                    TeacherAssignment,
+                    ClassSubject.class_id.label("class_id"),
+                    ClassSubject.subject_id.label("subject_id"),
+                    ClassRoom.name.label("class_name"),
+                    ClassRoom.arm.label("class_arm"),
+                    Subject.name.label("subject_name"),
+                    Subject.code.label("subject_code"),
+                    TeacherMembership.staff_id.label("teacher_staff_id"),
+                    TeacherAccount.first_name.label("teacher_first_name"),
+                    TeacherAccount.last_name.label("teacher_last_name"),
+                )
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .join(ClassRoom, ClassRoom.id == ClassSubject.class_id, isouter=True)
+                .join(Subject, Subject.id == ClassSubject.subject_id, isouter=True)
+                .join(TeacherMembership, TeacherMembership.id == TeacherAssignment.teacher_membership_id, isouter=True)
+                .join(TeacherAccount, TeacherAccount.id == TeacherMembership.teacher_account_id, isouter=True)
                 .where(*filters)
                 .order_by(TeacherAssignment.is_active.desc(), TeacherAssignment.created_at.desc())
                 .offset(skip)
                 .limit(limit)
             )
-        ).scalars().all()
-        return list(rows), int(total)
+        ).all()
+        return [
+            {
+                "assignment": row[0],
+                "class_id": row.class_id,
+                "subject_id": row.subject_id,
+                "class_name": row.class_name,
+                "class_arm": row.class_arm,
+                "subject_name": row.subject_name,
+                "subject_code": row.subject_code,
+                "teacher_staff_id": row.teacher_staff_id,
+                "teacher_name": " ".join(
+                    part for part in [row.teacher_first_name, row.teacher_last_name] if part
+                ) or None,
+            }
+            for row in rows
+        ], int(total)
 
     @staticmethod
     async def save_teacher_assignment(db: AsyncSession, assignment: TeacherAssignment) -> TeacherAssignment:
@@ -915,9 +985,57 @@ class StudentAcademicRepository:
         return result_count > 0
 
     @staticmethod
+    async def count_teacher_assignment_dependencies(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        teacher_assignment_id: uuid.UUID,
+    ) -> dict[str, int]:
+        from app.modules.report_cards.models import ReportCardSubjectLine
+
+        student_results = await StudentAcademicRepository.count_scores_for_teacher_assignment(
+            db,
+            tenant_id,
+            teacher_assignment_id,
+        )
+        report_card_references = (
+            await db.execute(
+                select(func.count())
+                .select_from(ReportCardSubjectLine)
+                .join(
+                    StudentSubjectResult,
+                    StudentSubjectResult.id == ReportCardSubjectLine.student_subject_result_id,
+                )
+                .where(
+                    ReportCardSubjectLine.tenant_id == tenant_id,
+                    StudentSubjectResult.tenant_id == tenant_id,
+                    StudentSubjectResult.teacher_assignment_id == teacher_assignment_id,
+                )
+            )
+        ).scalar_one()
+        return {
+            "student_results": int(student_results),
+            "report_card_references": int(report_card_references),
+            "other_academic_records": 0,
+        }
+
+    @staticmethod
     async def delete_teacher_assignment(db: AsyncSession, assignment: TeacherAssignment) -> None:
         await db.delete(assignment)
         await db.flush()
+
+    @staticmethod
+    async def create_teacher_assignment_lifecycle_audit(
+        db: AsyncSession,
+        audit: TeacherAssignmentLifecycleAudit,
+    ) -> TeacherAssignmentLifecycleAudit:
+        audit_table = (
+            await db.execute(
+                select(func.to_regclass("public.teacher_assignment_lifecycle_audits"))
+            )
+        ).scalar_one()
+        if audit_table is None:
+            return audit
+        return await StudentAcademicRepository._save(db, audit)
 
     @staticmethod
     async def count_scores_for_teacher_assignment(

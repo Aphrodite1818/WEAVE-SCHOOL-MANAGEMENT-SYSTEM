@@ -81,9 +81,9 @@ export const academicWorkflowConfig = {
       "Treat teacher assignments as historical timeline records: assign, reassign, or end them without archiving.",
     icon: Users,
     tone: "warning",
-    defaultTab: "active",
+    defaultTab: "overview",
     tabs: [
-      { id: "active", label: "Active Assignments" },
+      { id: "overview", label: "All Assignments" },
       { id: "history", label: "Assignment History" },
       { id: "assign", label: "Assign Teacher" },
       { id: "reassign", label: "Reassign Teacher" },
