@@ -1,4 +1,4 @@
-import { ClipboardList, GraduationCap, LockKeyhole, Settings2 } from "lucide-react";
+import { ClipboardList, GraduationCap, LockKeyhole } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
@@ -9,11 +9,7 @@ import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { studentService } from "../../services/studentService";
-import {
-  Input,
-  SelectControl,
-  WorkspacePanel,
-} from "./AcademicWorkspacePrimitives";
+import { Input, SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
 const DEFAULT_CONFIG = { test_max: 20, assessment_max: 20, exam_max: 60 };
@@ -45,17 +41,17 @@ const assignmentLabel = (item) =>
 const scoreValue = (value) =>
   value === "" || value === null || value === undefined ? null : Number(value);
 
-const statusTitle = (status) => ({
-  submitted: "Submit result",
-  approved: "Approve result",
-  locked: "Lock result",
-}[status] || "Confirm action");
+const statusTitle = (status) =>
+  ({ submitted: "Submit result", approved: "Approve result", locked: "Lock result" })[
+    status
+  ] || "Confirm action";
 
-const statusDescription = (status, item) => ({
-  submitted: `Submit ${item.student_name || "this student's"} ${item.subject_name || "result"} for administrative review? Scores cannot be edited until the result is reopened.`,
-  approved: `Approve ${item.student_name || "this student's"} ${item.subject_name || "result"}? Confirm that the recorded scores and grade have been reviewed.`,
-  locked: `Lock ${item.student_name || "this student's"} ${item.subject_name || "result"}? This finalizes the result for student, parent, and report-card workflows.`,
-}[status] || "Confirm this lifecycle action.");
+const statusDescription = (status, item) =>
+  ({
+    submitted: `Submit ${item.student_name || "this student's"} ${item.subject_name || "result"} for administrative review?`,
+    approved: `Approve ${item.student_name || "this student's"} ${item.subject_name || "result"} after confirming the scores and grade?`,
+    locked: `Lock ${item.student_name || "this student's"} ${item.subject_name || "result"}? This finalizes it for student, parent, and report-card workflows.`,
+  })[status] || "Confirm this lifecycle action.";
 
 function ResultsWorkspace({ activeTab, onContextChange }) {
   const [sessions, setSessions] = useState([]);
@@ -65,14 +61,11 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   const [students, setStudents] = useState([]);
   const [results, setResults] = useState([]);
   const [assessmentConfig, setAssessmentConfig] = useState(DEFAULT_CONFIG);
-  const [configDraft, setConfigDraft] = useState(DEFAULT_CONFIG);
-  const [editingConfig, setEditingConfig] = useState(false);
   const [filters, setFilters] = useState({
     class_id: "",
     academic_session_id: "",
     academic_term_id: "",
     search: "",
-    status: "",
   });
   const [form, setForm] = useState(BLANK_FORM);
   const [pendingAction, setPendingAction] = useState(null);
@@ -95,18 +88,18 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
           academicService.listTeacherAssignments({ active_only: true, limit: 100 }),
           academicService.getAssessmentConfig(),
         ]);
+
       const nextSessions = asItems(sessionResponse);
       const nextTerms = asItems(termResponse);
       const nextClasses = asItems(classResponse);
       const currentSession = nextSessions.find((item) => item.is_current) || null;
       const currentTerm = nextTerms.find((item) => item.is_current) || null;
-      const nextConfig = configResponse || DEFAULT_CONFIG;
+
       setSessions(nextSessions);
       setTerms(nextTerms);
       setClasses(nextClasses);
       setAssignments(asItems(assignmentResponse).filter((item) => item.is_active));
-      setAssessmentConfig(nextConfig);
-      setConfigDraft(nextConfig);
+      setAssessmentConfig(configResponse || DEFAULT_CONFIG);
       setFilters((current) => ({
         ...current,
         class_id: current.class_id || nextClasses[0]?.id || "",
@@ -116,8 +109,8 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
           current.academic_term_id || currentTerm?.id || nextTerms[0]?.id || "",
       }));
       onContextChange?.({ currentSession, currentTerm });
-    } catch (err) {
-      const message = getErrorMessage(err, "Could not load results workspace.");
+    } catch (requestError) {
+      const message = getErrorMessage(requestError, "Could not load results workspace.");
       setError(message);
       showError(message);
     } finally {
@@ -126,7 +119,10 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   }, [onContextChange, showError]);
 
   const loadClassStudents = useCallback(async () => {
-    if (!filters.class_id) return setStudents([]);
+    if (!filters.class_id) {
+      setStudents([]);
+      return;
+    }
     try {
       const response = await studentService.getAdminStudents({
         classId: filters.class_id,
@@ -134,65 +130,93 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         limit: 100,
       });
       setStudents(asItems(response));
-    } catch (err) {
+    } catch (requestError) {
       setStudents([]);
-      showError(getErrorMessage(err, "Could not load students for this class."));
+      showError(getErrorMessage(requestError, "Could not load students for this class."));
     }
   }, [filters.class_id, showError]);
 
   const loadResults = useCallback(async () => {
     if (!filters.class_id || !filters.academic_session_id || !filters.academic_term_id) {
-      return setResults([]);
+      setResults([]);
+      return;
     }
     try {
       const response = await academicService.listAdminResults({
         class_id: filters.class_id,
         academic_session_id: filters.academic_session_id,
         academic_term_id: filters.academic_term_id,
-        status: filters.status || undefined,
         search: filters.search || undefined,
         limit: 100,
       });
       setResults(asItems(response));
-    } catch (err) {
+    } catch (requestError) {
       setResults([]);
-      showError(getErrorMessage(err, "Could not load results."));
+      showError(getErrorMessage(requestError, "Could not load results."));
     }
   }, [filters, showError]);
 
-  useEffect(() => { loadBase(); }, [loadBase]);
-  useEffect(() => { loadClassStudents(); }, [loadClassStudents]);
-  useEffect(() => { loadResults(); }, [loadResults]);
+  useEffect(() => {
+    loadBase();
+  }, [loadBase]);
 
+  useEffect(() => {
+    loadClassStudents();
+  }, [loadClassStudents]);
+
+  useEffect(() => {
+    loadResults();
+  }, [loadResults]);
+
+  const selectedClass = classes.find((item) => item.id === filters.class_id);
   const selectedSession = sessions.find((item) => item.id === filters.academic_session_id);
   const selectedTerm = terms.find((item) => item.id === filters.academic_term_id);
   const periodEditable = Boolean(
     selectedSession?.status === "open" &&
-    selectedSession?.is_current &&
-    selectedTerm?.status === "open" &&
-    selectedTerm?.is_current &&
-    selectedTerm?.academic_session_id === selectedSession?.id,
+      selectedSession?.is_current &&
+      selectedTerm?.status === "open" &&
+      selectedTerm?.is_current &&
+      selectedTerm?.academic_session_id === selectedSession?.id,
   );
 
   const sessionOptions = sessions.map((item) => ({ value: item.id, label: item.name }));
   const termOptions = terms
-    .filter((item) => !filters.academic_session_id || item.academic_session_id === filters.academic_session_id)
-    .map((item) => ({ value: item.id, label: String(item.name || "").replaceAll("_", " ") }));
+    .filter(
+      (item) =>
+        !filters.academic_session_id ||
+        item.academic_session_id === filters.academic_session_id,
+    )
+    .map((item) => ({
+      value: item.id,
+      label: String(item.name || "").replaceAll("_", " "),
+    }));
   const classOptions = classes.map((item) => ({ value: item.id, label: classLabel(item) }));
   const assignmentOptions = assignments
     .filter((item) => item.class_id === filters.class_id)
     .map((item) => ({ value: item.id, label: assignmentLabel(item) }));
   const studentOptions = students.map((item) => ({ value: item.id, label: studentLabel(item) }));
 
+  const statusCounts = useMemo(
+    () =>
+      results.reduce(
+        (counts, item) => ({ ...counts, [item.status]: (counts[item.status] || 0) + 1 }),
+        { draft: 0, submitted: 0, approved: 0, locked: 0 },
+      ),
+    [results],
+  );
+
   const visibleResults = useMemo(() => {
-    if (["draft", "drafts"].includes(activeTab)) return results.filter((item) => item.status === "draft");
-    if (["submitted", "approved", "locked"].includes(activeTab)) return results.filter((item) => item.status === activeTab);
-    if (activeTab === "review") return results.filter((item) => ["submitted", "approved"].includes(item.status));
+    if (["draft", "submitted", "approved", "locked"].includes(activeTab)) {
+      return results.filter((item) => item.status === activeTab);
+    }
     return results;
   }, [activeTab, results]);
 
-  const scoreTotal = Number(form.test_score || 0) + Number(form.assessment_score || 0) + Number(form.exam_score || 0);
-  const configTotal = Number(configDraft.test_max || 0) + Number(configDraft.assessment_max || 0) + Number(configDraft.exam_max || 0);
+  const scoreTotal =
+    Number(form.test_score || 0) +
+    Number(form.assessment_score || 0) +
+    Number(form.exam_score || 0);
+
   const resetForm = () => setForm(BLANK_FORM);
 
   const validateScores = () => {
@@ -201,9 +225,9 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       ["Assessment", form.assessment_score, assessmentConfig.assessment_max],
       ["Exam", form.exam_score, assessmentConfig.exam_max],
     ];
-    for (const [label, value, max] of checks) {
-      if (value !== "" && (Number(value) < 0 || Number(value) > Number(max))) {
-        showWarning(`${label} must be between 0 and ${max}.`);
+    for (const [label, value, maximum] of checks) {
+      if (value !== "" && (Number(value) < 0 || Number(value) > Number(maximum))) {
+        showWarning(`${label} must be between 0 and ${maximum}.`);
         return false;
       }
     }
@@ -212,9 +236,16 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
 
   const saveDraft = async (event) => {
     event.preventDefault();
-    if (!periodEditable) return showWarning("Results can only be edited in the current open session and term.");
-    if (!form.student_id || !form.teacher_assignment_id) return showWarning("Select a student and subject assignment.");
+    if (!periodEditable) {
+      showWarning("Results can only be edited in the current open session and term.");
+      return;
+    }
+    if (!form.student_id || !form.teacher_assignment_id) {
+      showWarning("Select a student and subject assignment.");
+      return;
+    }
     if (!validateScores()) return;
+
     setSaving("result");
     try {
       await academicService.saveAdminResult({
@@ -230,8 +261,8 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       showSuccess(form.result_id ? "Draft result updated." : "Draft result saved.");
       resetForm();
       await loadResults();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not save result draft."));
+    } catch (requestError) {
+      showError(getErrorMessage(requestError, "Could not save result draft."));
     } finally {
       setSaving("");
     }
@@ -246,8 +277,8 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       showSuccess(`Result moved to ${status}.`);
       setPendingAction(null);
       await loadResults();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not update result status."));
+    } catch (requestError) {
+      showError(getErrorMessage(requestError, "Could not update result status."));
     } finally {
       setSaving("");
     }
@@ -262,97 +293,427 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       setReopenTarget(null);
       setReopenReason("");
       await loadResults();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not reopen result."));
+    } catch (requestError) {
+      showError(getErrorMessage(requestError, "Could not reopen result."));
     } finally {
       setSaving("");
     }
   };
 
-  const saveAssessmentConfig = async () => {
-    if (configTotal !== 100) return showWarning("Assessment component maximums must total 100.");
-    if ([configDraft.test_max, configDraft.assessment_max, configDraft.exam_max].some((value) => Number(value) <= 0)) {
-      return showWarning("Every assessment component maximum must be greater than zero.");
-    }
-    setSaving("config");
-    try {
-      const updated = await academicService.updateAssessmentConfig({
-        test_max: Number(configDraft.test_max),
-        assessment_max: Number(configDraft.assessment_max),
-        exam_max: Number(configDraft.exam_max),
-      });
-      setAssessmentConfig(updated);
-      setConfigDraft(updated);
-      setEditingConfig(false);
-      showSuccess("Assessment score limits updated.");
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not update assessment score limits."));
-    } finally {
-      setSaving("");
-    }
-  };
+  const contextSummary = (
+    <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
+      <span className="font-semibold text-text">Selected context:</span>{" "}
+      {classLabel(selectedClass)} · {selectedSession?.name || "No session"} ·{" "}
+      {String(selectedTerm?.name || "No term").replaceAll("_", " ")}
+    </div>
+  );
+
+  const resultsList = (
+    <WorkspacePanel
+      title={`${activeTab.charAt(0).toUpperCase()}${activeTab.slice(1)} results`}
+      description={`${visibleResults.length} result row${visibleResults.length === 1 ? "" : "s"} in this lifecycle stage.`}
+    >
+      <div className="mb-4">
+        <Input
+          label="Search"
+          value={filters.search}
+          placeholder="Student, admission number, or subject"
+          onChange={(event) =>
+            setFilters((current) => ({ ...current, search: event.target.value }))
+          }
+        />
+      </div>
+      {visibleResults.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border p-6 text-center">
+          <ClipboardList className="mx-auto h-7 w-7 text-text-muted" />
+          <p className="mt-3 text-sm font-semibold text-text">No {activeTab} results</p>
+          <p className="mt-1 text-sm text-text-muted">
+            No records in this stage match the selected context and search.
+          </p>
+        </div>
+      ) : (
+        <div className="mobile-scroll-list grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+          {visibleResults.map((item) => (
+            <div
+              key={item.id}
+              className="flex min-h-[13rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words font-semibold text-text">
+                    {item.student_name || item.admission_number || "Student"}
+                  </p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    {item.subject_name || item.subject_code || "Subject"}
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    item.status === "draft"
+                      ? "warning"
+                      : item.status === "locked"
+                        ? "default"
+                        : "success"
+                  }
+                >
+                  {item.status}
+                </Badge>
+              </div>
+              <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+                {[
+                  ["Test", item.test_score],
+                  ["Assess", item.assessment_score],
+                  ["Exam", item.exam_score],
+                  ["Total", item.total_score],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl bg-surface-muted/40 px-2 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-text-muted">{label}</p>
+                    <p className="mt-1 text-sm font-semibold text-text">{value ?? "–"}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-sm text-text-muted">
+                <GraduationCap className="h-4 w-4" />
+                Grade: {item.grade || "Pending"}
+              </div>
+              {item.status === "locked" ? (
+                <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-muted/40 px-3 py-2 text-xs text-text-muted">
+                  <LockKeyhole className="h-4 w-4" />
+                  Finalized and read-only
+                </div>
+              ) : null}
+              <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                {item.status === "draft" ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="outline"
+                      disabled={!periodEditable}
+                      onClick={() =>
+                        setForm({
+                          result_id: item.id,
+                          student_id: item.student_id || "",
+                          teacher_assignment_id: item.teacher_assignment_id || "",
+                          test_score: item.test_score ?? "",
+                          assessment_score: item.assessment_score ?? "",
+                          exam_score: item.exam_score ?? "",
+                        })
+                      }
+                    >
+                      Edit scores
+                    </Button>
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="success"
+                      disabled={!periodEditable || saving === item.id}
+                      onClick={() => setPendingAction({ item, status: "submitted" })}
+                    >
+                      Submit
+                    </Button>
+                  </>
+                ) : null}
+                {item.status === "submitted" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="success"
+                    disabled={!periodEditable || saving === item.id}
+                    onClick={() => setPendingAction({ item, status: "approved" })}
+                  >
+                    Approve
+                  </Button>
+                ) : null}
+                {item.status === "approved" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="danger"
+                    disabled={!periodEditable || saving === item.id}
+                    onClick={() => setPendingAction({ item, status: "locked" })}
+                  >
+                    Lock
+                  </Button>
+                ) : null}
+                {item.status === "locked" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={!periodEditable || saving === item.id}
+                    onClick={() => {
+                      setReopenTarget(item);
+                      setReopenReason("");
+                    }}
+                  >
+                    Reopen
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </WorkspacePanel>
+  );
 
   if (error && !loading) {
-    return <WorkspacePanel title="Results unavailable"><p className="text-sm text-error">{error}</p><Button type="button" className="mt-4" onClick={loadBase}>Retry</Button></WorkspacePanel>;
+    return (
+      <WorkspacePanel title="Results unavailable">
+        <p className="text-sm text-error">{error}</p>
+        <Button type="button" className="mt-4" onClick={loadBase}>
+          Retry
+        </Button>
+      </WorkspacePanel>
+    );
+  }
+
+  let pageContent;
+
+  if (activeTab === "overview") {
+    pageContent = (
+      <div className="space-y-4">
+        <WorkspacePanel
+          title="Results overview"
+          description="Choose the working academic context, then follow the tabs from score entry through final locking."
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <SelectControl
+              label="Class"
+              value={filters.class_id}
+              onChange={(value) => {
+                setFilters((current) => ({ ...current, class_id: value }));
+                resetForm();
+              }}
+              options={classOptions}
+              required
+            />
+            <SelectControl
+              label="Academic session"
+              value={filters.academic_session_id}
+              onChange={(value) => {
+                const nextTerm = terms.find(
+                  (item) => item.academic_session_id === value && item.is_current,
+                );
+                setFilters((current) => ({
+                  ...current,
+                  academic_session_id: value,
+                  academic_term_id: nextTerm?.id || "",
+                }));
+                resetForm();
+              }}
+              options={sessionOptions}
+              required
+            />
+            <SelectControl
+              label="Academic term"
+              value={filters.academic_term_id}
+              onChange={(value) => {
+                setFilters((current) => ({ ...current, academic_term_id: value }));
+                resetForm();
+              }}
+              options={termOptions}
+              required
+            />
+          </div>
+          <div
+            className={`mt-4 rounded-xl border px-4 py-3 text-sm ${periodEditable ? "border-success/30 bg-success/5 text-success" : "border-warning/30 bg-warning/5 text-warning"}`}
+          >
+            {periodEditable
+              ? "Current period is open. Score entry and lifecycle actions are available."
+              : "The selected period is read-only. Choose the current open session and term to make changes."}
+          </div>
+        </WorkspacePanel>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Draft", statusCounts.draft],
+            ["Submitted", statusCounts.submitted],
+            ["Approved", statusCounts.approved],
+            ["Locked", statusCounts.locked],
+          ].map(([label, count]) => (
+            <div key={label} className="rounded-2xl border border-border/70 bg-surface px-4 py-4">
+              <p className="text-sm text-text-muted">{label}</p>
+              <p className="mt-2 text-2xl font-semibold text-text">{count}</p>
+            </div>
+          ))}
+        </div>
+
+        <WorkspacePanel
+          title="Lifecycle order"
+          description="Use the tabs from left to right so each result moves through the correct administrative workflow."
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {["1. Score entry", "2. Draft", "3. Submitted", "4. Approved", "5. Locked"].map(
+              (step) => (
+                <div key={step} className="rounded-xl bg-surface-muted/40 px-3 py-3 text-sm font-medium text-text">
+                  {step}
+                </div>
+              ),
+            )}
+          </div>
+        </WorkspacePanel>
+      </div>
+    );
+  } else if (activeTab === "entry") {
+    pageContent = (
+      <div className="space-y-4">
+        {contextSummary}
+        <WorkspacePanel
+          title="Score entry"
+          description="Enter scores and save them as a draft. Submission happens later from the Draft tab."
+        >
+          <form className="space-y-3" onSubmit={saveDraft}>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <SelectControl
+                label="Student"
+                value={form.student_id}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, student_id: value }))
+                }
+                options={studentOptions}
+                placeholder="Select student"
+                disabled={!periodEditable}
+                required
+              />
+              <SelectControl
+                label="Subject assignment"
+                value={form.teacher_assignment_id}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, teacher_assignment_id: value }))
+                }
+                options={assignmentOptions}
+                placeholder={
+                  assignmentOptions.length === 0
+                    ? "No active assignments for this class"
+                    : "Select assignment"
+                }
+                disabled={!periodEditable || assignmentOptions.length === 0}
+                required
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Input
+                label={`Test (0–${assessmentConfig.test_max})`}
+                type="number"
+                min="0"
+                max={assessmentConfig.test_max}
+                disabled={!periodEditable}
+                value={form.test_score}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, test_score: event.target.value }))
+                }
+              />
+              <Input
+                label={`Assessment (0–${assessmentConfig.assessment_max})`}
+                type="number"
+                min="0"
+                max={assessmentConfig.assessment_max}
+                disabled={!periodEditable}
+                value={form.assessment_score}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, assessment_score: event.target.value }))
+                }
+              />
+              <Input
+                label={`Exam (0–${assessmentConfig.exam_max})`}
+                type="number"
+                min="0"
+                max={assessmentConfig.exam_max}
+                disabled={!periodEditable}
+                value={form.exam_score}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, exam_score: event.target.value }))
+                }
+              />
+            </div>
+            <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-3 py-2 text-sm text-text-muted">
+              Combined score: <span className="font-semibold text-text">{scoreTotal}</span> / 100
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                disabled={!periodEditable || saving === "result" || assignmentOptions.length === 0}
+              >
+                {saving === "result"
+                  ? "Saving..."
+                  : form.result_id
+                    ? "Update draft"
+                    : "Save draft"}
+              </Button>
+              {form.result_id ? (
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
+          </form>
+        </WorkspacePanel>
+      </div>
+    );
+  } else {
+    pageContent = (
+      <div className="space-y-4">
+        {contextSummary}
+        {resultsList}
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-4">
-      <WorkspacePanel title="1. Academic context" description="Select the class, current session, and current term before working with results.">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <SelectControl label="Class" value={filters.class_id} onChange={(value) => { setFilters((current) => ({ ...current, class_id: value })); resetForm(); }} options={classOptions} required />
-          <SelectControl label="Academic session" value={filters.academic_session_id} onChange={(value) => { const nextTerm = terms.find((item) => item.academic_session_id === value && item.is_current); setFilters((current) => ({ ...current, academic_session_id: value, academic_term_id: nextTerm?.id || "" })); resetForm(); }} options={sessionOptions} required />
-          <SelectControl label="Academic term" value={filters.academic_term_id} onChange={(value) => { setFilters((current) => ({ ...current, academic_term_id: value })); resetForm(); }} options={termOptions} required />
-        </div>
-        <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${periodEditable ? "border-success/30 bg-success/5 text-success" : "border-warning/30 bg-warning/5 text-warning"}`}>
-          {periodEditable ? "Current period is open. Draft entry and lifecycle actions are available." : "Results are read-only because the selected session or term is not the current open period."}
-        </div>
-      </WorkspacePanel>
-
-      <WorkspacePanel title="2. Assessment score limits" description="Configure how the 100 available marks are divided across test, assessment, and examination.">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="grid flex-1 gap-3 sm:grid-cols-3">
-            {[['test_max', 'Test maximum'], ['assessment_max', 'Assessment maximum'], ['exam_max', 'Exam maximum']].map(([field, label]) => (
-              <Input key={field} label={label} type="number" min="1" max="100" disabled={!editingConfig} value={configDraft[field]} onChange={(event) => setConfigDraft((current) => ({ ...current, [field]: event.target.value }))} />
-            ))}
+    <>
+      {pageContent}
+      <TypedConfirmationDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction ? statusTitle(pendingAction.status) : "Confirm action"}
+        description={
+          pendingAction ? statusDescription(pendingAction.status, pendingAction.item) : ""
+        }
+        confirmationText={pendingAction?.status?.toUpperCase() || "CONFIRM"}
+        confirmLabel={pendingAction ? statusTitle(pendingAction.status) : "Confirm"}
+        variant={pendingAction?.status === "locked" ? "danger" : "success"}
+        isLoading={Boolean(pendingAction && saving === pendingAction.item.id)}
+        onConfirm={executeLifecycleAction}
+        onCancel={() => setPendingAction(null)}
+      />
+      <Modal
+        open={Boolean(reopenTarget)}
+        title="Reopen locked result"
+        description="Reopening returns the result to draft and may make generated report cards outdated."
+        onClose={saving ? undefined : () => setReopenTarget(null)}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(saving)}
+              onClick={() => setReopenTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={Boolean(saving) || !reopenReason.trim()}
+              onClick={reopenResult}
+            >
+              {saving ? "Reopening..." : "Reopen result"}
+            </Button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {editingConfig ? <><Button type="button" disabled={saving === "config" || configTotal !== 100} onClick={saveAssessmentConfig}>{saving === "config" ? "Saving..." : "Save limits"}</Button><Button type="button" variant="outline" onClick={() => { setConfigDraft(assessmentConfig); setEditingConfig(false); }}>Cancel</Button></> : <Button type="button" variant="outline" onClick={() => setEditingConfig(true)}><Settings2 className="mr-2 h-4 w-4" />Configure limits</Button>}
-          </div>
-        </div>
-        <p className={`mt-3 text-sm font-medium ${configTotal === 100 ? "text-success" : "text-error"}`}>Current total: {configTotal} / 100</p>
-      </WorkspacePanel>
-
-      {activeTab === "entry" ? (
-        <WorkspacePanel title="3. Enter and save draft" description="Drafts may be incomplete. Submission is a separate confirmed lifecycle action from the result list.">
-          <form className="space-y-3" onSubmit={saveDraft}>
-            <div className="grid gap-3 lg:grid-cols-2">
-              <SelectControl label="Student" value={form.student_id} onChange={(value) => setForm((current) => ({ ...current, student_id: value }))} options={studentOptions} placeholder="Select student" disabled={!periodEditable} required />
-              <SelectControl label="Subject assignment" value={form.teacher_assignment_id} onChange={(value) => setForm((current) => ({ ...current, teacher_assignment_id: value }))} options={assignmentOptions} placeholder={assignmentOptions.length === 0 ? "No active assignments for this class" : "Select assignment"} disabled={!periodEditable || assignmentOptions.length === 0} required />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Input label={`Test (0–${assessmentConfig.test_max})`} type="number" min="0" max={assessmentConfig.test_max} disabled={!periodEditable} value={form.test_score} onChange={(event) => setForm((current) => ({ ...current, test_score: event.target.value }))} />
-              <Input label={`Assessment (0–${assessmentConfig.assessment_max})`} type="number" min="0" max={assessmentConfig.assessment_max} disabled={!periodEditable} value={form.assessment_score} onChange={(event) => setForm((current) => ({ ...current, assessment_score: event.target.value }))} />
-              <Input label={`Exam (0–${assessmentConfig.exam_max})`} type="number" min="0" max={assessmentConfig.exam_max} disabled={!periodEditable} value={form.exam_score} onChange={(event) => setForm((current) => ({ ...current, exam_score: event.target.value }))} />
-            </div>
-            <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-3 py-2 text-sm text-text-muted">Combined score: <span className="font-semibold text-text">{scoreTotal}</span> / 100</div>
-            <div className="flex flex-wrap gap-2"><Button type="submit" disabled={!periodEditable || saving === "result" || assignmentOptions.length === 0}>{saving === "result" ? "Saving..." : form.result_id ? "Update draft" : "Save draft"}</Button>{form.result_id ? <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button> : null}</div>
-          </form>
-        </WorkspacePanel>
-      ) : null}
-
-      <WorkspacePanel title="4. Review and progress results" description="Filter results, inspect scores, then move each record through the valid lifecycle in order.">
-        <div className="mb-4 grid gap-3 md:grid-cols-2">
-          <Input label="Search" value={filters.search} placeholder="Student, admission number, or subject" onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} />
-          <SelectControl label="Lifecycle status" value={filters.status} onChange={(value) => setFilters((current) => ({ ...current, status: value }))} options={[{ value: "", label: "All statuses" }, { value: "draft", label: "Draft" }, { value: "submitted", label: "Submitted" }, { value: "approved", label: "Approved" }, { value: "locked", label: "Locked" }]} />
-        </div>
-        {visibleResults.length === 0 ? <div className="rounded-2xl border border-dashed border-border p-6 text-center"><ClipboardList className="mx-auto h-7 w-7 text-text-muted" /><p className="mt-3 text-sm font-semibold text-text">No matching results</p><p className="mt-1 text-sm text-text-muted">Adjust the context or filters, or save the first draft.</p></div> : <div className="mobile-scroll-list grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{visibleResults.map((item) => <div key={item.id} className="flex min-h-[13rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-words font-semibold text-text">{item.student_name || item.admission_number || "Student"}</p><p className="mt-1 text-xs text-text-muted">{item.subject_name || item.subject_code || "Subject"}</p></div><Badge variant={item.status === "draft" ? "warning" : item.status === "locked" ? "default" : "success"}>{item.status}</Badge></div><div className="mt-4 grid grid-cols-4 gap-2 text-center">{[["Test", item.test_score], ["Assess", item.assessment_score], ["Exam", item.exam_score], ["Total", item.total_score]].map(([label, value]) => <div key={label} className="rounded-xl bg-surface-muted/40 px-2 py-2"><p className="text-[10px] uppercase tracking-wide text-text-muted">{label}</p><p className="mt-1 text-sm font-semibold text-text">{value ?? "–"}</p></div>)}</div><div className="mt-3 flex items-center gap-2 text-sm text-text-muted"><GraduationCap className="h-4 w-4" />Grade: {item.grade || "Pending"}</div>{item.status === "locked" ? <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-muted/40 px-3 py-2 text-xs text-text-muted"><LockKeyhole className="h-4 w-4" />Finalized and read-only</div> : null}<div className="mt-auto flex flex-wrap gap-2 pt-4">{item.status === "draft" ? <><Button type="button" size="small" variant="outline" disabled={!periodEditable} onClick={() => setForm({ result_id: item.id, student_id: item.student_id || "", teacher_assignment_id: item.teacher_assignment_id || "", test_score: item.test_score ?? "", assessment_score: item.assessment_score ?? "", exam_score: item.exam_score ?? "" })}>Edit scores</Button><Button type="button" size="small" variant="success" disabled={!periodEditable || saving === item.id} onClick={() => setPendingAction({ item, status: "submitted" })}>Submit</Button></> : null}{item.status === "submitted" ? <Button type="button" size="small" variant="success" disabled={!periodEditable || saving === item.id} onClick={() => setPendingAction({ item, status: "approved" })}>Approve</Button> : null}{item.status === "approved" ? <Button type="button" size="small" variant="danger" disabled={!periodEditable || saving === item.id} onClick={() => setPendingAction({ item, status: "locked" })}>Lock</Button> : null}{item.status === "locked" ? <Button type="button" size="small" variant="outline" disabled={!periodEditable || saving === item.id} onClick={() => { setReopenTarget(item); setReopenReason(""); }}>Reopen</Button> : null}</div></div>)}</div>}
-      </WorkspacePanel>
-
-      <TypedConfirmationDialog open={Boolean(pendingAction)} title={pendingAction ? statusTitle(pendingAction.status) : "Confirm action"} description={pendingAction ? statusDescription(pendingAction.status, pendingAction.item) : ""} confirmationText={pendingAction?.status?.toUpperCase() || "CONFIRM"} confirmLabel={pendingAction ? statusTitle(pendingAction.status) : "Confirm"} variant={pendingAction?.status === "locked" ? "danger" : "success"} isLoading={Boolean(pendingAction && saving === pendingAction.item.id)} onConfirm={executeLifecycleAction} onCancel={() => setPendingAction(null)} />
-
-      <Modal open={Boolean(reopenTarget)} title="Reopen locked result" description="Reopening returns the result to draft and may make generated report cards outdated." onClose={saving ? undefined : () => setReopenTarget(null)} footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={Boolean(saving)} onClick={() => setReopenTarget(null)}>Cancel</Button><Button type="button" variant="danger" disabled={Boolean(saving) || !reopenReason.trim()} onClick={reopenResult}>{saving ? "Reopening..." : "Reopen result"}</Button></div>}><label className="block text-sm font-medium text-text">Reason for reopening<textarea className="mt-2 min-h-28 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-primary" value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} placeholder="Explain why the finalized result needs correction." /></label></Modal>
-    </div>
+        }
+      >
+        <label className="block text-sm font-medium text-text">
+          Reason for reopening
+          <textarea
+            className="mt-2 min-h-28 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-primary"
+            value={reopenReason}
+            onChange={(event) => setReopenReason(event.target.value)}
+            placeholder="Explain why the finalized result needs correction."
+          />
+        </label>
+      </Modal>
+    </>
   );
 }
 
