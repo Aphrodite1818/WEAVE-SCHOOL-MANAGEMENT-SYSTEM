@@ -7,6 +7,7 @@ import StudentSubjectPerformanceCard from "../../components/student/StudentSubje
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import { academicService } from "../../services/academicService";
+import { assessmentLimitsService } from "../../services/assessmentLimitsService";
 import { getErrorMessage } from "../../services/api";
 import { cleanText } from "../../utils/academicDashboard";
 import { cn } from "../../utils/cn";
@@ -14,6 +15,7 @@ import { cn } from "../../utils/cn";
 function StudentSubjectsPage() {
   const [subjectCards, setSubjectCards] = useState([]);
   const [context, setContext] = useState(null);
+  const [assessmentLimits, setAssessmentLimits] = useState({ is_configured: false });
   const [viewMode, setViewMode] = useState("grid");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -26,13 +28,18 @@ function StudentSubjectsPage() {
       setLoadError(null);
 
       try {
-        const response = await academicService.listMySubjectCards();
+        const [response, limitsResponse] = await Promise.all([
+          academicService.listMySubjectCards(),
+          assessmentLimitsService.getStudentLimits(),
+        ]);
         if (!mounted) return;
         setSubjectCards(response?.items || []);
         setContext(response?.context || null);
+        setAssessmentLimits(limitsResponse || { is_configured: false });
       } catch (error) {
-        if (mounted)
+        if (mounted) {
           setLoadError(getErrorMessage(error, "Failed to load subjects."));
+        }
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -72,7 +79,7 @@ function StudentSubjectsPage() {
       title="Subjects"
       description={academicContextLabel}
       actions={
-        <div className="hidden md:inline-flex rounded-2xl border border-border bg-surface p-1 shadow-sm">
+        <div className="hidden rounded-2xl border border-border bg-surface p-1 shadow-sm md:inline-flex">
           <Button
             type="button"
             variant={isGridView ? "primary" : "ghost"}
@@ -107,46 +114,33 @@ function StudentSubjectsPage() {
                 Subject performance
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-                Review each class subject with score components, grade, status,
-                and assigned teacher in one card.
+                Review each class subject with score components, configured limits, grade, status, and assigned teacher.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:min-w-[18rem]">
               <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-                  Subjects
-                </p>
-                <p className="mt-1 text-lg font-semibold text-text">
-                  {subjectCards.length}
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">Subjects</p>
+                <p className="mt-1 text-lg font-semibold text-text">{subjectCards.length}</p>
               </div>
               <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-                  Session
-                </p>
-                <p className="mt-1 truncate text-sm font-semibold text-text">
-                  {cleanText(context?.academic_session_name, "-")}
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">Session</p>
+                <p className="mt-1 truncate text-sm font-semibold text-text">{cleanText(context?.academic_session_name, "-")}</p>
               </div>
               <div className="rounded-[1rem] border border-border/70 bg-surface-muted/20 px-3 py-2 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-                  Term
-                </p>
-                <p className="mt-1 truncate text-sm font-semibold text-text">
-                  {cleanText(context?.academic_term_name, "-")}
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">Term</p>
+                <p className="mt-1 truncate text-sm font-semibold text-text">{cleanText(context?.academic_term_name, "-")}</p>
               </div>
             </div>
           </div>
         </Card>
 
-        {loadError && (
+        {loadError ? (
           <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
             {loadError}
           </div>
-        )}
+        ) : null}
 
-        {!loadError && subjectCards.length === 0 && (
+        {!loadError && subjectCards.length === 0 ? (
           <Card className="p-5 sm:p-6">
             <EmptyState
               icon={BookOpen}
@@ -158,9 +152,9 @@ function StudentSubjectsPage() {
               }
             />
           </Card>
-        )}
+        ) : null}
 
-        {!loadError && subjectCards.length > 0 && (
+        {!loadError && subjectCards.length > 0 ? (
           <section
             className={cn(
               "grid gap-4 sm:gap-5",
@@ -175,10 +169,11 @@ function StudentSubjectsPage() {
                 card={card}
                 classLabel={classLabel}
                 compact={!isGridView}
+                limits={assessmentLimits}
               />
             ))}
           </section>
-        )}
+        ) : null}
       </section>
     </DashboardLayout>
   );
