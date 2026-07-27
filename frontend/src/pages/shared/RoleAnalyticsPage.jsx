@@ -196,9 +196,9 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
               <DashboardMetricCard key={metric.key} label={metric.label} value={formatMetric(stats[metric.key], metric.suffix)} description="Academic metric" icon={index === 0 ? BarChart3 : index === 1 ? LineChart : PieChart} tone={index === 0 ? "primary" : index === 1 ? "success" : "warning"} />
             ))}
           </section>
-          {trendCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Trend signals" description="Performance movement across academic periods." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-2">{trendCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
-          {distributionCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Breakdowns" description="Grade and status distribution." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-2">{distributionCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
-          {comparisonCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Comparisons" description="Subject and class comparisons." /><div className="grid grid-cols-1 gap-5 xl:grid-cols-2">{comparisonCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
+          {trendCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Trend signals" description="Performance movement across academic periods." /><div className="grid grid-cols-1 gap-5 lg:grid-cols-2">{trendCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
+          {distributionCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Breakdowns" description="Grade and status distribution." /><div className="grid grid-cols-1 gap-5 lg:grid-cols-2">{distributionCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
+          {comparisonCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Comparisons" description="Subject and class comparisons." /><div className="grid grid-cols-1 gap-5 lg:grid-cols-2">{comparisonCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
         </>
       ) : null}
     </DashboardLayout>
