@@ -16,6 +16,7 @@ from app.config.settings import settings
 
 EMAIL_QUEUE_NAME = "weave:queue:email"
 BULK_IMPORT_QUEUE_NAME = "weave:queue:bulk-import"
+SESSION_PROGRESSION_QUEUE_NAME = "weave:queue:session-progression"
 
 DEFAULT_EMAIL_OUTBOX_BATCH_SIZE = 20
 
@@ -97,4 +98,34 @@ async def enqueue_bulk_import_job(
 
     # None means the same import job was already queued.
     # Treat that as safe idempotent behaviour.
+    return job is not None
+
+
+async def enqueue_session_progression_job(
+    *,
+    run_id: str,
+    tenant_id: str,
+    retry: bool = False,
+) -> bool:
+    """Enqueue one progression run on the dedicated serialized queue."""
+
+    redis = await create_pool(
+        get_arq_redis_settings(),
+        default_queue_name=SESSION_PROGRESSION_QUEUE_NAME,
+    )
+    job_id = f"session-progression:{run_id}"
+    if retry:
+        job_id = f"{job_id}:retry"
+
+    try:
+        job = await redis.enqueue_job(
+            "process_session_progression_job",
+            run_id,
+            tenant_id,
+            _queue_name=SESSION_PROGRESSION_QUEUE_NAME,
+            _job_id=job_id,
+        )
+    finally:
+        await redis.close()
+
     return job is not None
