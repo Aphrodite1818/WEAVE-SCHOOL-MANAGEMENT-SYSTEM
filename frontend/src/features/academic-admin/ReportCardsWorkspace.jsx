@@ -8,10 +8,7 @@ import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { reportCardService } from "../../services/reportCardService";
-import {
-  SelectControl,
-  WorkspacePanel,
-} from "./AcademicWorkspacePrimitives";
+import { SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -24,7 +21,11 @@ const classLabel = (item) =>
   [item?.name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
 
 const studentLabel = (item) =>
-  `${item?.student_name || item?.admission_number || "Student"}${item?.admission_number ? ` · ${item.admission_number}` : ""}`;
+  `${item?.student_name || item?.admission_number || "Student"}${
+    item?.admission_number ? ` · ${item.admission_number}` : ""
+  }`;
+
+const listTabs = ["draft", "published", "outdated", "archived"];
 
 function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const [sessions, setSessions] = useState([]);
@@ -39,6 +40,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   });
   const [generationTarget, setGenerationTarget] = useState("class");
   const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [generationSummary, setGenerationSummary] = useState(null);
   const [saving, setSaving] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -51,26 +53,25 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       const [sessionResponse, termResponse, classResponse] = await Promise.all([
         academicService.listSessions({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
-        classService.getClasses({ limit: 100, activeOnly: true }),
+        classService.getClasses({ limit: 100, activeOnly: false }),
       ]);
       const nextSessions = asItems(sessionResponse);
       const nextTerms = asItems(termResponse);
       const nextClasses = asItems(classResponse);
       const currentSession = nextSessions.find((item) => item.is_current) || null;
       const currentTerm = nextTerms.find((item) => item.is_current) || null;
+
       setSessions(nextSessions);
       setTerms(nextTerms);
       setClasses(nextClasses);
-      setFilters((current) => ({
-        class_id: current.class_id || nextClasses[0]?.id || "",
-        academic_session_id:
-          current.academic_session_id || currentSession?.id || nextSessions[0]?.id || "",
-        academic_term_id:
-          current.academic_term_id || currentTerm?.id || nextTerms[0]?.id || "",
-      }));
+      setFilters({
+        class_id: nextClasses[0]?.id || "",
+        academic_session_id: currentSession?.id || nextSessions[0]?.id || "",
+        academic_term_id: currentTerm?.id || "",
+      });
       onContextChange?.({ currentSession, currentTerm });
-    } catch (err) {
-      const message = getErrorMessage(err, "Could not load report-card workspace.");
+    } catch (requestError) {
+      const message = getErrorMessage(requestError, "Could not load report-card setup.");
       setError(message);
       showError(message);
     } finally {
@@ -78,37 +79,43 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     }
   }, [onContextChange, showError]);
 
-  const loadReportData = useCallback(async () => {
-    if (
-      !filters.class_id ||
-      !filters.academic_session_id ||
-      !filters.academic_term_id
-    ) {
+  const loadPageData = useCallback(async () => {
+    if (!filters.class_id || !filters.academic_session_id || !filters.academic_term_id) {
       setOverview(null);
       setCards([]);
       return;
     }
+
     try {
-      const [overviewResponse, cardResponse] = await Promise.all([
-        reportCardService.getClassOverview(filters),
-        reportCardService.listAdminReportCards({ ...filters, limit: 100 }),
-      ]);
-      setOverview(overviewResponse);
-      setCards(asItems(cardResponse));
-    } catch (err) {
+      if (["overview", "ready", "generate"].includes(activeTab)) {
+        const response = await reportCardService.getClassOverview(filters);
+        setOverview(response);
+        setCards([]);
+        return;
+      }
+
+      const params = { ...filters, limit: 100 };
+      if (activeTab === "draft") params.status = "draft";
+      if (activeTab === "published") params.status = "published";
+      if (activeTab === "archived") params.status = "archived";
+      if (activeTab === "outdated") params.is_outdated = true;
+      const response = await reportCardService.listAdminReportCards(params);
+      setCards(asItems(response));
+      setOverview(null);
+    } catch (requestError) {
       setOverview(null);
       setCards([]);
-      showError(getErrorMessage(err, "Could not load report-card data."));
+      showError(getErrorMessage(requestError, "Could not load this report-card page."));
     }
-  }, [filters, showError]);
+  }, [activeTab, filters, showError]);
 
   useEffect(() => {
     loadBase();
   }, [loadBase]);
 
   useEffect(() => {
-    loadReportData();
-  }, [loadReportData]);
+    loadPageData();
+  }, [loadPageData]);
 
   const sessionOptions = useMemo(
     () => sessions.map((item) => ({ value: item.id, label: item.name })),
@@ -132,100 +139,24 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes],
   );
-  const studentOptions = useMemo(
-    () =>
-      (overview?.items || []).map((item) => ({
-        value: item.student_id,
-        label: studentLabel(item),
-      })),
-    [overview?.items],
+
+  const rows = overview?.items || [];
+  const readyRows = rows.filter(
+    (item) => item.expected_count > 0 && item.submitted_count >= item.expected_count,
+  );
+  const selectedStudent = rows.find((item) => item.student_id === selectedStudentId);
+  const selectedStudentReady = Boolean(
+    selectedStudent &&
+      selectedStudent.expected_count > 0 &&
+      selectedStudent.submitted_count >= selectedStudent.expected_count,
   );
 
-  const overviewStats = useMemo(() => {
-    const items = overview?.items || [];
-    return {
-      total: items.length,
-      ready: items.filter(
-        (item) =>
-          item.expected_count > 0 && item.submitted_count >= item.expected_count,
-      ).length,
-      incomplete: items.filter((item) => item.submitted_count < item.expected_count)
-        .length,
-      generated: items.filter((item) => item.report_card_id).length,
-    };
-  }, [overview?.items]);
-
-  const visibleCards = useMemo(() => {
-    if (activeTab === "draft") return cards.filter((item) => item.status === "draft");
-    if (activeTab === "published") return cards.filter((item) => item.status === "published");
-    if (activeTab === "archived") return cards.filter((item) => item.status === "archived");
-    if (activeTab === "outdated") return cards.filter((item) => item.is_outdated);
-    return cards;
-  }, [activeTab, cards]);
-
-  const generate = async () => {
-    if (!filters.academic_session_id || !filters.academic_term_id) {
-      showWarning("Select a session and term first.");
-      return;
-    }
-    if (generationTarget === "student" && !selectedStudentId) {
-      showWarning("Select a student first.");
-      return;
-    }
-    setSaving("generate");
-    try {
-      await reportCardService.generateReportCard({
-        academic_session_id: filters.academic_session_id,
-        academic_term_id: filters.academic_term_id,
-        ...(generationTarget === "class"
-          ? { class_id: filters.class_id, generate_for_class: true }
-          : { student_id: selectedStudentId }),
-      });
-      showSuccess(
-        generationTarget === "class"
-          ? "Class report-card generation completed."
-          : "Student report card generated.",
-      );
-      await loadReportData();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not generate report card."));
-    } finally {
-      setSaving("");
-    }
-  };
-
-  const regenerate = async (card) => {
-    setSaving(card.id);
-    try {
-      await reportCardService.regenerateReportCard(card.id);
-      showSuccess("Report card regenerated.");
-      await loadReportData();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not regenerate report card."));
-    } finally {
-      setSaving("");
-    }
-  };
-
-  const publish = async (card) => {
-    setSaving(card.id);
-    try {
-      await reportCardService.publishReportCard(card.id);
-      showSuccess("Report card published.");
-      await loadReportData();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not publish report card."));
-    } finally {
-      setSaving("");
-    }
-  };
-
-  const filterPanel = (
+  const contextPanel = (
     <WorkspacePanel
-      title="Report-card context"
-      description="Choose the class, academic session, and term."
+      title={listTabs.includes(activeTab) ? "Report-card list filters" : "Report-card context"}
+      description="This context belongs only to the current page and resets when you change tabs."
       actions={
-        <Button type="button" size="small" variant="outline" onClick={loadReportData}>
+        <Button type="button" size="small" variant="outline" onClick={loadPageData}>
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
       }
@@ -234,9 +165,11 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         <SelectControl
           label="Class"
           value={filters.class_id}
-          onChange={(value) =>
-            setFilters((current) => ({ ...current, class_id: value }))
-          }
+          onChange={(value) => {
+            setFilters((current) => ({ ...current, class_id: value }));
+            setSelectedStudentId("");
+            setGenerationSummary(null);
+          }}
           options={classOptions}
           required
         />
@@ -244,14 +177,19 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
           label="Academic session"
           value={filters.academic_session_id}
           onChange={(value) => {
-            const currentTerm = terms.find(
+            const nextTerm = terms.find(
               (item) => item.academic_session_id === value && item.is_current,
             );
             setFilters((current) => ({
               ...current,
               academic_session_id: value,
-              academic_term_id: currentTerm?.id || "",
+              academic_term_id:
+                nextTerm?.id ||
+                terms.find((item) => item.academic_session_id === value)?.id ||
+                "",
             }));
+            setSelectedStudentId("");
+            setGenerationSummary(null);
           }}
           options={sessionOptions}
           required
@@ -259,9 +197,11 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         <SelectControl
           label="Academic term"
           value={filters.academic_term_id}
-          onChange={(value) =>
-            setFilters((current) => ({ ...current, academic_term_id: value }))
-          }
+          onChange={(value) => {
+            setFilters((current) => ({ ...current, academic_term_id: value }));
+            setSelectedStudentId("");
+            setGenerationSummary(null);
+          }}
           options={termOptions}
           required
         />
@@ -271,47 +211,46 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
 
   const overviewPanel = (
     <WorkspacePanel
-      title="Class readiness"
-      description="Each student must have all expected subject results locked before report generation."
+      title="Report-card overview"
+      description="A report card can be generated only when every expected subject result is locked."
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          ["Students", overviewStats.total],
-          ["Ready", overviewStats.ready],
-          ["Incomplete", overviewStats.incomplete],
-          ["Generated", overviewStats.generated],
+          ["Students", rows.length],
+          ["Ready", readyRows.length],
+          ["Incomplete", rows.length - readyRows.length],
+          ["Generated", rows.filter((item) => item.report_card_id).length],
         ].map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3"
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-              {label}
-            </p>
+          <div key={label} className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
             <p className="mt-2 text-xl font-semibold text-text">{value}</p>
           </div>
         ))}
       </div>
+    </WorkspacePanel>
+  );
 
-      <div className="mobile-scroll-list mt-4 space-y-3">
-        {(overview?.items || []).length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
-            No students are available in this class context.
-          </p>
-        ) : (
-          overview.items.map((item) => {
+  const readinessPanel = (
+    <WorkspacePanel
+      title="Student readiness"
+      description="Missing subjects are shown explicitly so the admin can return to Results and lock them."
+    >
+      {rows.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
+          No enrolled students were found for this class and session.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((item) => {
             const ready =
               item.expected_count > 0 && item.submitted_count >= item.expected_count;
             return (
-              <div
-                key={item.student_id}
-                className="rounded-2xl border border-border/70 bg-surface px-4 py-4"
-              >
+              <div key={item.student_id} className="rounded-2xl border border-border/70 bg-surface px-4 py-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="font-semibold text-text">{studentLabel(item)}</p>
                     <p className="mt-1 text-sm text-text-muted">
-                      {item.submitted_count} of {item.expected_count} subjects locked
+                      {item.submitted_count} of {item.expected_count} subject results locked
                     </p>
                     {item.missing_subject_names?.length ? (
                       <p className="mt-2 text-xs leading-5 text-error">
@@ -323,34 +262,71 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                     <Badge variant={ready ? "success" : "warning"}>
                       {ready ? "ready" : "incomplete"}
                     </Badge>
-                    {item.report_card_status ? (
-                      <Badge variant={item.report_card_status === "published" ? "success" : "default"}>
-                        {item.report_card_status}
-                      </Badge>
-                    ) : null}
+                    {item.report_card_status ? <Badge>{item.report_card_status}</Badge> : null}
                     {item.is_outdated ? <Badge variant="error">outdated</Badge> : null}
                   </div>
                 </div>
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
     </WorkspacePanel>
   );
+
+  const generate = async () => {
+    if (generationTarget === "student" && !selectedStudentId) {
+      showWarning("Select a student first.");
+      return;
+    }
+    if (generationTarget === "student" && !selectedStudentReady) {
+      showWarning("The selected student still has missing or unlocked subject results.");
+      return;
+    }
+    if (generationTarget === "class" && readyRows.length === 0) {
+      showWarning("No student in this context is ready for report-card generation.");
+      return;
+    }
+
+    setSaving("generate");
+    setGenerationSummary(null);
+    try {
+      const response = await reportCardService.generateReportCard({
+        academic_session_id: filters.academic_session_id,
+        academic_term_id: filters.academic_term_id,
+        ...(generationTarget === "class"
+          ? { class_id: filters.class_id, generate_for_class: true }
+          : { student_id: selectedStudentId }),
+      });
+      const generated = Array.isArray(response?.generated) ? response.generated : [response];
+      const skipped = Array.isArray(response?.skipped) ? response.skipped : [];
+      setGenerationSummary({ generated, skipped });
+      showSuccess(
+        generationTarget === "class"
+          ? `${generated.length} report card${generated.length === 1 ? "" : "s"} generated.`
+          : "Student report card generated.",
+      );
+      await loadPageData();
+    } catch (requestError) {
+      showError(getErrorMessage(requestError, "Could not generate report card."));
+    } finally {
+      setSaving("");
+    }
+  };
 
   const generatePanel = (
     <WorkspacePanel
       title="Generate report cards"
-      description="Generate for the whole class or one selected student."
+      description="Only students marked ready are eligible. Existing cards are skipped instead of corrupting the batch."
     >
-      <div className="space-y-3">
+      <div className="space-y-4">
         <SelectControl
           label="Generation target"
           value={generationTarget}
           onChange={(value) => {
             setGenerationTarget(value);
             setSelectedStudentId("");
+            setGenerationSummary(null);
           }}
           options={[
             { value: "class", label: "Entire class" },
@@ -362,52 +338,92 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
             label="Student"
             value={selectedStudentId}
             onChange={setSelectedStudentId}
-            options={studentOptions}
+            options={rows.map((item) => ({
+              value: item.student_id,
+              label: `${studentLabel(item)}${
+                item.expected_count > 0 && item.submitted_count >= item.expected_count
+                  ? " · Ready"
+                  : " · Incomplete"
+              }`,
+            }))}
             required
           />
-        ) : null}
-        <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm leading-6 text-amber-800">
-          Incomplete students may be skipped by the backend. Review Class Overview before generating.
-        </div>
+        ) : (
+          <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
+            {readyRows.length} of {rows.length} students are currently ready. Incomplete students will be returned in the skipped summary.
+          </div>
+        )}
         <Button type="button" onClick={generate} disabled={saving === "generate"}>
           {saving === "generate" ? "Generating..." : "Generate report card"}
         </Button>
+
+        {generationSummary ? (
+          <div className="space-y-3 rounded-2xl border border-border/70 p-4">
+            <p className="font-semibold text-text">
+              Generated: {generationSummary.generated.length} · Skipped: {generationSummary.skipped.length}
+            </p>
+            {generationSummary.skipped.length ? (
+              <div className="space-y-2">
+                {generationSummary.skipped.map((item) => (
+                  <div key={`${item.student_id}-${item.reason}`} className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900">
+                    {item.reason}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </WorkspacePanel>
   );
 
+  const publish = async (card) => {
+    setSaving(card.id);
+    try {
+      await reportCardService.publishReportCard(card.id);
+      showSuccess("Report card published.");
+      await loadPageData();
+    } catch (requestError) {
+      showError(getErrorMessage(requestError, "Could not publish report card."));
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const regenerate = async (card) => {
+    setSaving(card.id);
+    try {
+      await reportCardService.regenerateReportCard(card.id);
+      showSuccess("Report card regenerated.");
+      await loadPageData();
+    } catch (requestError) {
+      showError(getErrorMessage(requestError, "Could not regenerate report card."));
+    } finally {
+      setSaving("");
+    }
+  };
+
   const cardsPanel = (
     <WorkspacePanel
-      title="Generated report cards"
-      description={`${visibleCards.length} report card${visibleCards.length === 1 ? "" : "s"} in the selected context.`}
+      title={`${String(activeTab || "").replaceAll("-", " ")} report cards`}
+      description={`${cards.length} matching report card${cards.length === 1 ? "" : "s"} on this page.`}
     >
-      {visibleCards.length === 0 ? (
+      {cards.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-6 text-center">
           <FileText className="mx-auto h-7 w-7 text-text-muted" />
-          <p className="mt-3 text-sm font-semibold text-text">No report cards generated</p>
-          <p className="mt-1 text-sm text-text-muted">
-            Generate report cards after all required results are submitted.
-          </p>
+          <p className="mt-3 text-sm font-semibold text-text">No matching report cards</p>
+          <p className="mt-1 text-sm text-text-muted">Change this page's filters or generate eligible report cards.</p>
         </div>
       ) : (
-        <div className="mobile-scroll-list grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-          {visibleCards.map((card) => (
-            <div
-              key={card.id}
-              className="flex min-h-[14rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
-            >
+        <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+          {cards.map((card) => (
+            <div key={card.id} className="flex min-h-[14rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-text">
-                    {card.student_name || card.admission_number || "Student"}
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted">
-                    Version {card.version || 1}
-                  </p>
+                  <p className="font-semibold text-text">{card.student_name || card.admission_number || "Student"}</p>
+                  <p className="mt-1 text-xs text-text-muted">Version {card.version || 1}</p>
                 </div>
-                <Badge variant={card.status === "published" ? "success" : "warning"}>
-                  {card.status}
-                </Badge>
+                <Badge variant={card.status === "published" ? "success" : "warning"}>{card.status}</Badge>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-surface-muted/40 px-3 py-2">
@@ -416,9 +432,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                 </div>
                 <div className="rounded-xl bg-surface-muted/40 px-3 py-2">
                   <p className="text-[10px] uppercase tracking-wide text-text-muted">Position</p>
-                  <p className="mt-1 font-semibold text-text">
-                    {card.position ? `${card.position}/${card.position_out_of || "–"}` : "–"}
-                  </p>
+                  <p className="mt-1 font-semibold text-text">{card.position ? `${card.position}/${card.position_out_of || "–"}` : "–"}</p>
                 </div>
               </div>
               {card.is_outdated ? (
@@ -429,24 +443,12 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
               ) : null}
               <div className="mt-auto flex flex-wrap gap-2 pt-4">
                 {card.is_outdated && card.status !== "published" ? (
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="outline"
-                    disabled={saving === card.id}
-                    onClick={() => regenerate(card)}
-                  >
+                  <Button type="button" size="small" variant="outline" disabled={saving === card.id} onClick={() => regenerate(card)}>
                     Regenerate
                   </Button>
                 ) : null}
                 {card.status === "draft" ? (
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="success"
-                    disabled={saving === card.id || card.is_outdated}
-                    onClick={() => publish(card)}
-                  >
+                  <Button type="button" size="small" variant="success" disabled={saving === card.id || card.is_outdated} onClick={() => publish(card)}>
                     <CheckCircle2 className="h-4 w-4" />
                     {saving === card.id ? "Publishing..." : "Publish"}
                   </Button>
@@ -463,23 +465,18 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     return (
       <WorkspacePanel title="Report cards unavailable">
         <p className="text-sm text-error">{error}</p>
-        <Button type="button" className="mt-4" onClick={loadBase}>
-          Retry
-        </Button>
+        <Button type="button" className="mt-4" onClick={loadBase}>Retry</Button>
       </WorkspacePanel>
     );
   }
 
   return (
     <div className="space-y-4">
-      {filterPanel}
-      {activeTab === "generate" ? (
-        generatePanel
-      ) : ["draft", "published", "outdated", "archived"].includes(activeTab) ? (
-        cardsPanel
-      ) : (
-        overviewPanel
-      )}
+      {contextPanel}
+      {activeTab === "overview" ? overviewPanel : null}
+      {activeTab === "ready" ? readinessPanel : null}
+      {activeTab === "generate" ? generatePanel : null}
+      {listTabs.includes(activeTab) ? cardsPanel : null}
     </div>
   );
 }
