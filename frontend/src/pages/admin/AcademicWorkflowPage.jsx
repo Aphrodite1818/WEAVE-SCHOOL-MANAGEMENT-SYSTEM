@@ -4,6 +4,7 @@ import { Navigate, useParams } from "react-router-dom";
 import AcademicSetupWorkspace from "../../features/academic-admin/AcademicSetupWorkspace";
 import AcademicWorkflowShell from "../../features/academic-admin/AcademicWorkflowShell";
 import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentConfigWorkspace";
+import GradingScalesWorkspace from "../../features/academic-admin/GradingScalesWorkspace";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
 import ClassStructureWorkspace from "../../features/academic-admin/ClassStructureWorkspace";
 import ProgressionWorkspace from "../../features/academic-admin/ProgressionWorkspace";
@@ -75,7 +76,10 @@ function AcademicWorkflowPage() {
     if (workflow === "grading" && activeTab === "assessment-limits") {
       return <AssessmentConfigWorkspace />;
     }
-    if (["sessions", "terms", "grading", "subjects"].includes(workflow)) {
+    if (workflow === "grading") {
+      return <GradingScalesWorkspace activeTab={activeTab} />;
+    }
+    if (["sessions", "terms", "subjects"].includes(workflow)) {
       return (
         <AcademicSetupWorkspace
           domain={workflow}
