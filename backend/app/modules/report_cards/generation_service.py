@@ -17,7 +17,7 @@ from app.modules.report_cards.schemas import (
 )
 from app.modules.report_cards.service import ReportCardService
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.students.models import Student, StudentEnrollment
+from app.modules.students.models import StudentEnrollment
 from app.modules.students.repository import StudentRepository
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -35,11 +35,15 @@ class EnrollmentReportCardService:
         session = await StudentAcademicRepository.get_academic_session_by_id(
             db, tenant_id, academic_session_id
         )
-        term = await StudentAcademicRepository.get_term_by_id(db, tenant_id, academic_term_id)
+        term = await StudentAcademicRepository.get_term_by_id(
+            db, tenant_id, academic_term_id
+        )
         if session is None:
             raise NotFoundException("Academic session not found.")
         if term is None or term.academic_session_id != academic_session_id:
-            raise BadRequestException("The selected term does not belong to the selected session.")
+            raise BadRequestException(
+                "The selected term does not belong to the selected session."
+            )
 
     @staticmethod
     async def _enrollment_for_student_session(
@@ -120,18 +124,6 @@ class EnrollmentReportCardService:
                 "The student has no enrollment for the selected academic session."
             )
 
-        existing = await ReportCardRepository.get_by_student_period(
-            db,
-            actor.tenant_id,
-            student_id,
-            academic_session_id,
-            academic_term_id,
-        )
-        if existing is not None:
-            raise BadRequestException(
-                "A report card already exists for this student and academic period."
-            )
-
         results = await ReportCardService._finalized_results_for_student(
             db,
             actor.tenant_id,
@@ -142,7 +134,22 @@ class EnrollmentReportCardService:
         if not results:
             raise BadRequestException("No locked scores are available for this student.")
 
-        enrollment_student = SimpleNamespace(id=student.id, class_id=enrollment.class_id)
+        existing = await ReportCardRepository.get_by_student_period(
+            db,
+            actor.tenant_id,
+            student_id,
+            academic_session_id,
+            academic_term_id,
+        )
+        if existing is not None and not existing.is_outdated:
+            raise BadRequestException(
+                "A current report card already exists for this student and academic period."
+            )
+
+        enrollment_student = SimpleNamespace(
+            id=student.id,
+            class_id=enrollment.class_id,
+        )
         card = await ReportCardService._create_card_from_results(
             db,
             actor,
@@ -150,6 +157,7 @@ class EnrollmentReportCardService:
             academic_session_id,
             academic_term_id,
             results,
+            replace_existing=existing if existing is not None else None,
         )
         await ReportCardService._apply_class_positions(
             db,
@@ -212,7 +220,10 @@ class EnrollmentReportCardService:
                 generated.append(card)
             except (BadRequestException, NotFoundException) as exc:
                 skipped.append(
-                    {"student_id": str(enrollment.student_id), "reason": str(exc)}
+                    {
+                        "student_id": str(enrollment.student_id),
+                        "reason": str(exc),
+                    }
                 )
 
         await ReportCardService._apply_class_positions(
@@ -235,23 +246,35 @@ class EnrollmentReportCardService:
         academic_term_id: uuid.UUID,
     ) -> ReportCardClassOverviewResponse:
         await EnrollmentReportCardService._validate_period(
-            db, actor.tenant_id, academic_session_id, academic_term_id
+            db,
+            actor.tenant_id,
+            academic_session_id,
+            academic_term_id,
         )
         expected = await ReportCardService._expected_class_subjects(
             db, actor.tenant_id, class_id
         )
         enrollments = await EnrollmentReportCardService._enrollments_for_class_session(
-            db, actor.tenant_id, class_id, academic_session_id
+            db,
+            actor.tenant_id,
+            class_id,
+            academic_session_id,
         )
         cards = await ReportCardRepository.list_active_cards_for_class_period(
-            db, actor.tenant_id, class_id, academic_session_id, academic_term_id
+            db,
+            actor.tenant_id,
+            class_id,
+            academic_session_id,
+            academic_term_id,
         )
         cards_by_student = {card.student_id: card for card in cards}
 
         rows: list[ReportCardClassOverviewRow] = []
         for enrollment in enrollments:
             student = await StudentRepository.get_student_by_id(
-                db, actor.tenant_id, enrollment.student_id
+                db,
+                actor.tenant_id,
+                enrollment.student_id,
             )
             if student is None:
                 continue
