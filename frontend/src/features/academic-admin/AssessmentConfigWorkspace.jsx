@@ -6,6 +6,7 @@ import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { Input, WorkspacePanel } from "./AcademicWorkspacePrimitives";
+import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
 const DEFAULT_CONFIG = { test_max: 20, assessment_max: 20, exam_max: 60 };
 
@@ -13,6 +14,7 @@ function AssessmentConfigWorkspace() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [draft, setDraft] = useState(DEFAULT_CONFIG);
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { showSuccess, showError, showWarning } = useToast();
@@ -39,16 +41,27 @@ function AssessmentConfigWorkspace() {
     [draft],
   );
 
-  const save = async () => {
+  const validateDraft = () => {
     const values = [draft.test_max, draft.assessment_max, draft.exam_max].map(Number);
     if (values.some((value) => !Number.isFinite(value) || value <= 0)) {
       showWarning("Every assessment component maximum must be greater than zero.");
-      return;
+      return null;
     }
     if (total !== 100) {
       showWarning("Assessment component maximums must total 100.");
-      return;
+      return null;
     }
+    return values;
+  };
+
+  const requestSave = () => {
+    if (!validateDraft()) return;
+    setConfirming(true);
+  };
+
+  const save = async () => {
+    const values = validateDraft();
+    if (!values) return;
 
     setSaving(true);
     try {
@@ -60,6 +73,7 @@ function AssessmentConfigWorkspace() {
       setConfig(updated);
       setDraft(updated);
       setEditing(false);
+      setConfirming(false);
       showSuccess("Assessment score limits updated.");
     } catch (error) {
       showError(getErrorMessage(error, "Could not update assessment score limits."));
@@ -106,8 +120,8 @@ function AssessmentConfigWorkspace() {
             <div className="flex flex-wrap gap-2">
               {editing ? (
                 <>
-                  <Button type="button" disabled={saving || total !== 100} onClick={save}>
-                    {saving ? "Saving..." : "Save limits"}
+                  <Button type="button" disabled={saving || total !== 100} onClick={requestSave}>
+                    Save limits
                   </Button>
                   <Button
                     type="button"
@@ -142,6 +156,18 @@ function AssessmentConfigWorkspace() {
           <div className="rounded-xl bg-surface-muted/40 px-4 py-3"><p className="text-xs uppercase tracking-wide text-text-muted">Exam</p><p className="mt-1 text-xl font-semibold text-text">{config.exam_max}</p></div>
         </div>
       </WorkspacePanel>
+
+      <TypedConfirmationDialog
+        open={confirming}
+        title="Update assessment score limits"
+        description={`Change the school-wide score allocation from ${config.test_max}/${config.assessment_max}/${config.exam_max} to ${draft.test_max}/${draft.assessment_max}/${draft.exam_max}? New score entry will immediately use these maximums.`}
+        confirmationText="UPDATE_ASSESSMENT_LIMITS"
+        confirmLabel="Update limits"
+        variant="danger"
+        isLoading={saving}
+        onConfirm={save}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   );
 }
