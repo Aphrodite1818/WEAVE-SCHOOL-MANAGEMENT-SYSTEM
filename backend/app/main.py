@@ -45,6 +45,9 @@ from app.modules.student_academics.grading_readiness_router import (
 from app.modules.student_academics.grading_scale_lifecycle_router import (
     router as grading_scale_lifecycle_router,
 )
+from app.modules.student_academics.open_session_config_router import (
+    router as open_session_config_router,
+)
 from app.modules.student_academics.result_limits_router import (
     admin_router as result_limits_admin_router,
     student_router as result_limits_student_router,
@@ -176,6 +179,7 @@ def create_app() -> FastAPI:
     app.include_router(result_limits_student_router, prefix="/api/v1")
     app.include_router(grading_readiness_router, prefix="/api/v1")
     app.include_router(student_subject_cards_router, prefix="/api/v1")
+    app.include_router(open_session_config_router, prefix="/api/v1")
     app.include_router(session_closure_router, prefix="/api/v1")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
