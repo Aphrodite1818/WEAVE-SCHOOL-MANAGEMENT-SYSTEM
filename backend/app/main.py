@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.database import engine
@@ -61,6 +61,10 @@ from app.modules.student_academics.router import (
     student_router as student_academic_router,
     teacher_router as teacher_academic_router,
     tenant_admin_router as tenant_admin_academic_router,
+)
+from app.modules.student_academics.write_guard import (
+    ensure_admin_academic_write_window,
+    ensure_teacher_academic_write_window,
 )
 from app.modules.students.router import router as student_router
 from app.modules.subjects.router import router as subject_router
@@ -174,14 +178,37 @@ def create_app() -> FastAPI:
     app.include_router(student_subject_cards_router, prefix="/api/v1")
     app.include_router(session_closure_router, prefix="/api/v1")
 
-    app.include_router(tenant_admin_academic_router, prefix="/api/v1")
-    app.include_router(assessment_config_router, prefix="/api/v1")
-    app.include_router(grading_scale_lifecycle_router, prefix="/api/v1")
-    app.include_router(teacher_academic_router, prefix="/api/v1")
+    admin_write_guard = [Depends(ensure_admin_academic_write_window)]
+    teacher_write_guard = [Depends(ensure_teacher_academic_write_window)]
+
+    app.include_router(
+        tenant_admin_academic_router,
+        prefix="/api/v1",
+        dependencies=admin_write_guard,
+    )
+    app.include_router(
+        assessment_config_router,
+        prefix="/api/v1",
+        dependencies=admin_write_guard,
+    )
+    app.include_router(
+        grading_scale_lifecycle_router,
+        prefix="/api/v1",
+        dependencies=admin_write_guard,
+    )
+    app.include_router(
+        teacher_academic_router,
+        prefix="/api/v1",
+        dependencies=teacher_write_guard,
+    )
     app.include_router(student_academic_router, prefix="/api/v1")
     app.include_router(parent_academic_router, prefix="/api/v1")
     app.include_router(fixed_report_card_router, prefix="/api/v1")
-    app.include_router(tenant_admin_report_card_router, prefix="/api/v1")
+    app.include_router(
+        tenant_admin_report_card_router,
+        prefix="/api/v1",
+        dependencies=admin_write_guard,
+    )
     app.include_router(student_report_card_router, prefix="/api/v1")
     app.include_router(parent_report_card_router, prefix="/api/v1")
     app.include_router(tenant_search_router, prefix="/api/v1")
