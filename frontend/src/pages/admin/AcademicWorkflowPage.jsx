@@ -73,18 +73,18 @@ function AcademicWorkflowPage() {
   }
 
   const renderWorkspace = (activeTab) => {
-    const workspaceKey = `${workflow}:${activeTab}`;
+    const pageKey = `${workflow}:${activeTab}`;
 
     if (workflow === "grading" && activeTab === "assessment-limits") {
-      return <AssessmentConfigWorkspace key={workspaceKey} />;
+      return <AssessmentConfigWorkspace key={pageKey} />;
     }
     if (workflow === "grading") {
-      return <GradingScalesWorkspace key={workspaceKey} activeTab={activeTab} />;
+      return <GradingScalesWorkspace key={pageKey} activeTab={activeTab} />;
     }
     if (["sessions", "terms", "subjects"].includes(workflow)) {
       return (
         <AcademicSetupWorkspace
-          key={workspaceKey}
+          key={pageKey}
           domain={workflow}
           activeTab={activeTab}
           onContextChange={updateContext}
@@ -94,19 +94,19 @@ function AcademicWorkflowPage() {
     if (["classes", "class-subjects"].includes(workflow)) {
       return (
         <ClassStructureWorkspace
-          key={workspaceKey}
+          key={pageKey}
           domain={workflow}
           activeTab={activeTab}
         />
       );
     }
     if (workflow === "assignments") {
-      return <TeacherAssignmentsWorkspace key={workspaceKey} activeTab={activeTab} />;
+      return <TeacherAssignmentsWorkspace key={pageKey} activeTab={activeTab} />;
     }
     if (workflow === "results") {
       return (
         <ResultsWorkspace
-          key={workspaceKey}
+          key="results-workflow"
           activeTab={activeTab}
           onContextChange={updateContext}
         />
@@ -115,14 +115,14 @@ function AcademicWorkflowPage() {
     if (workflow === "report-cards") {
       return (
         <ReportCardsWorkspace
-          key={workspaceKey}
+          key="report-cards-workflow"
           activeTab={activeTab}
           onContextChange={updateContext}
         />
       );
     }
     if (workflow === "progression") {
-      return <ProgressionWorkspace key={workspaceKey} activeTab={activeTab} />;
+      return <ProgressionWorkspace key={pageKey} activeTab={activeTab} />;
     }
     return <Navigate to="/admin/academic" replace />;
   };
