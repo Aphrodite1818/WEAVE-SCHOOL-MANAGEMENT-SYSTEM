@@ -4,6 +4,7 @@ import './styles/mobileDashboard.css'
 import './styles/mobileOverrides.css'
 import './styles/brandAssets.css'
 import './styles/notificationDropdown.css'
+import './styles/studentDashboardCleanup.css'
 import App from './App.jsx'
 import { applyAccessibilityPreferences, getSavedAccessibilityPreferences, syncSystemThemePreference } from './utils/accessibilityPreferences'
 
