@@ -25,7 +25,7 @@ def _session(tenant_id: uuid.UUID) -> AcademicSession:
 
 
 @pytest.mark.asyncio
-async def test_update_academic_session_ignores_nulls_and_preserves_dates() -> None:
+async def test_update_academic_session_allows_explicit_nullable_fields_to_clear() -> None:
     tenant_id = uuid.uuid4()
     session = _session(tenant_id)
     db = AsyncMock()
@@ -54,8 +54,9 @@ async def test_update_academic_session_ignores_nulls_and_preserves_dates() -> No
 
     assert updated is session
     assert session.name == "2026/2027"
-    assert session.start_date == date(2026, 9, 1)
-    assert session.end_date == date(2027, 7, 31)
+    assert session.start_date is None
+    assert session.end_date is None
+    assert session.next_academic_session_id is None
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
@@ -27,6 +28,7 @@ from app.modules.student_academics.models import (
     StudentProgressionRun,
     StudentProgressionRunStatus,
 )
+from app.modules.student_academics.service import StudentAcademicService
 from app.modules.student_academics.schemas import (
     AcademicSessionCloseResponse,
     AcademicSessionResponse,
@@ -75,6 +77,21 @@ class AcademicProgressionService:
                 raise NotFoundException("Academic session not found.")
             if session.status != AcademicSessionStatus.DRAFT:
                 raise ConflictException("Only draft sessions can be opened.")
+            await StudentAcademicService._validate_session_dates(
+                start_date=session.start_date,
+                end_date=session.end_date,
+                require_complete=True,
+            )
+            preview = await StudentAcademicService.academic_session_dependency_preview(
+                db,
+                actor.tenant_id,
+                session.id,
+            )
+            if not preview.can_open:
+                StudentAcademicService._raise_dependency_conflict(
+                    "Academic session has blockers and cannot be opened.",
+                    preview,
+                )
 
             current = await AcademicSessionLifecycleRepository.get_current_open(
                 db,
@@ -86,12 +103,29 @@ class AcademicProgressionService:
                     "Close the current academic session before opening another."
                 )
 
+            previous_status = session.status
             session.status = AcademicSessionStatus.OPEN
             session.is_current = True
             session.closing_started_at = None
             session.closed_at = None
             session.closed_by_admin_id = None
-            await AcademicSessionLifecycleRepository.save(db, session)
+            try:
+                await AcademicSessionLifecycleRepository.save(db, session)
+                await StudentAcademicService._record_academic_lifecycle(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    entity_type="session",
+                    entity_id=session.id,
+                    action="opened",
+                    previous_status=previous_status.value,
+                    new_status=session.status.value,
+                    acting_admin_id=actor.id,
+                )
+            except IntegrityError as exc:
+                await db.rollback()
+                raise ConflictException(
+                    "Close the current academic session before opening another."
+                ) from exc
             await db.commit()
         except Exception:
             await db.rollback()
@@ -396,6 +430,16 @@ class AcademicProgressionService:
                     raise BadRequestException(
                         "Configure next_academic_session_id before closure."
                     )
+                preview = await StudentAcademicService.academic_session_dependency_preview(
+                    db,
+                    actor.tenant_id,
+                    session.id,
+                )
+                if not preview.can_progress:
+                    StudentAcademicService._raise_dependency_conflict(
+                        "Academic session has blockers and cannot be closed.",
+                        preview,
+                    )
 
                 next_session = await AcademicSessionLifecycleRepository.get_by_id(
                     db,
@@ -463,9 +507,21 @@ class AcademicProgressionService:
                     run.initiated_by_admin_id = actor.id
                     await StudentProgressionRepository.save_run(db, run)
 
+                previous_status = session.status
                 session.status = AcademicSessionStatus.CLOSING
                 session.closing_started_at = _utc_now()
                 await AcademicSessionLifecycleRepository.save(db, session)
+                await StudentAcademicService._record_academic_lifecycle(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    entity_type="session",
+                    entity_id=session.id,
+                    action="closing_started",
+                    previous_status=previous_status.value,
+                    new_status=session.status.value,
+                    acting_admin_id=actor.id,
+                    metadata={"progression_run_id": str(run.id)},
+                )
 
                 effective_date = session.end_date or date.today()
                 for enrollment in enrollments:
@@ -488,18 +544,42 @@ class AcademicProgressionService:
                         run.skipped_students += 1
 
                 now = _utc_now()
+                previous_status = session.status
                 session.status = AcademicSessionStatus.CLOSED
                 session.is_current = False
                 session.closed_at = now
                 session.closed_by_admin_id = actor.id
                 await AcademicSessionLifecycleRepository.save(db, session)
+                await StudentAcademicService._record_academic_lifecycle(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    entity_type="session",
+                    entity_id=session.id,
+                    action="closed",
+                    previous_status=previous_status.value,
+                    new_status=session.status.value,
+                    acting_admin_id=actor.id,
+                    metadata={"progression_run_id": str(run.id)},
+                )
 
+                previous_next_status = next_session.status
                 next_session.status = AcademicSessionStatus.OPEN
                 next_session.is_current = True
                 next_session.closing_started_at = None
                 next_session.closed_at = None
                 next_session.closed_by_admin_id = None
                 await AcademicSessionLifecycleRepository.save(db, next_session)
+                await StudentAcademicService._record_academic_lifecycle(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    entity_type="session",
+                    entity_id=next_session.id,
+                    action="opened",
+                    previous_status=previous_next_status.value,
+                    new_status=next_session.status.value,
+                    acting_admin_id=actor.id,
+                    metadata={"opened_by_progression_run_id": str(run.id)},
+                )
 
                 run.status = StudentProgressionRunStatus.COMPLETED
                 run.completed_at = now
@@ -530,7 +610,7 @@ class AcademicProgressionService:
                     session is not None
                     and session.next_academic_session_id is not None
                 ):
-                    await StudentProgressionRepository.add_run(
+                    failed = await StudentProgressionRepository.add_run(
                         db,
                         StudentProgressionRun(
                             tenant_id=actor.tenant_id,
@@ -548,12 +628,36 @@ class AcademicProgressionService:
                             failure_reason=str(exc)[:1000],
                         ),
                     )
+                    await StudentAcademicService._record_academic_lifecycle(
+                        db,
+                        tenant_id=actor.tenant_id,
+                        entity_type="session",
+                        entity_id=session.id,
+                        action="progression_failed",
+                        previous_status=session.status.value,
+                        new_status=session.status.value,
+                        acting_admin_id=actor.id,
+                        reason=str(exc)[:500],
+                        metadata={"progression_run_id": str(failed.id)},
+                    )
             elif failed.status != StudentProgressionRunStatus.COMPLETED:
                 failed.status = StudentProgressionRunStatus.FAILED
                 failed.completed_at = _utc_now()
                 failed.failed_students = max(failed.failed_students, 1)
                 failed.failure_reason = str(exc)[:1000]
                 await StudentProgressionRepository.save_run(db, failed)
+                await StudentAcademicService._record_academic_lifecycle(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    entity_type="session",
+                    entity_id=failed.academic_session_id,
+                    action="progression_failed",
+                    previous_status=None,
+                    new_status=None,
+                    acting_admin_id=actor.id,
+                    reason=str(exc)[:500],
+                    metadata={"progression_run_id": str(failed.id)},
+                )
             await db.commit()
             raise
 

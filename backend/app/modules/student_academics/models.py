@@ -22,6 +22,7 @@ from sqlalchemy import (
     UUID,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
@@ -79,6 +80,28 @@ class StudentProgressionItemAction(str, PyEnum):
     SKIP = "skip"
 
 
+class AcademicLifecycleAudit(BaseModel):
+    __tablename__ = "academic_lifecycle_audits"
+
+    entity_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(60), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    new_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    acting_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (
+        Index("ix_academic_lifecycle_audits_tenant_entity", "tenant_id", "entity_type", "entity_id"),
+        Index("ix_academic_lifecycle_audits_tenant_action", "tenant_id", "action"),
+    )
+
+
 class AcademicSession(BaseModel):
     __tablename__ = "academic_sessions"
 
@@ -134,7 +157,7 @@ class AcademicTerm(BaseModel):
 
     academic_session_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
-        ForeignKey("academic_sessions.id", ondelete="CASCADE"),
+        ForeignKey("academic_sessions.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )

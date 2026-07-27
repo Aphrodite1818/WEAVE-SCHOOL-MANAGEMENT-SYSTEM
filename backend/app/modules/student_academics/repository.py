@@ -9,9 +9,12 @@ from decimal import Decimal
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.bulk_imports.models import ImportJob, ImportJobStatus
 from app.modules.classes.models import ClassRoom
+from app.modules.report_cards.models import ReportCard, ReportCardStatus
 from app.modules.subjects.models import Subject
 from app.modules.student_academics.models import (
+    AcademicLifecycleAudit,
     AcademicResultStatus,
     AcademicSession,
     AcademicSessionStatus,
@@ -20,14 +23,25 @@ from app.modules.student_academics.models import (
     ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
+    StudentProgressionRun,
     StudentSubjectResult,
     TeacherAssignment,
     TeacherAssignmentLifecycleAudit,
 )
+from app.modules.students.models import StudentEnrollment
 from app.modules.teachers.models import TeacherAccount, TeacherMembership
 
 
 FINALIZED_RESULT_STATUSES = (AcademicResultStatus.LOCKED,)
+ACTIVE_IMPORT_STATUSES = (ImportJobStatus.PENDING, ImportJobStatus.PROCESSING)
+
+
+def escape_like(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
 
 
 class StudentAcademicRepository:
@@ -47,15 +61,16 @@ class StudentAcademicRepository:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         academic_session_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> AcademicSession | None:
-        return (
-            await db.execute(
-                select(AcademicSession).where(
-                    AcademicSession.tenant_id == tenant_id,
-                    AcademicSession.id == academic_session_id,
-                )
-            )
-        ).scalar_one_or_none()
+        query = select(AcademicSession).where(
+            AcademicSession.tenant_id == tenant_id,
+            AcademicSession.id == academic_session_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def get_academic_session_by_name(
@@ -93,8 +108,24 @@ class StudentAcademicRepository:
         tenant_id: uuid.UUID,
         skip: int = 0,
         limit: int = 100,
+        *,
+        search: str | None = None,
+        status: AcademicSessionStatus | None = None,
+        is_current: bool | None = None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
     ) -> tuple[list[AcademicSession], int]:
         filters = [AcademicSession.tenant_id == tenant_id]
+        if search:
+            filters.append(AcademicSession.name.ilike(f"%{escape_like(search.strip())}%", escape="\\"))
+        if status is not None:
+            filters.append(AcademicSession.status == status)
+        if is_current is not None:
+            filters.append(AcademicSession.is_current.is_(is_current))
+        if start_date_from is not None:
+            filters.append(AcademicSession.start_date >= start_date_from)
+        if start_date_to is not None:
+            filters.append(AcademicSession.start_date <= start_date_to)
         total = (
             await db.execute(
                 select(func.count()).select_from(AcademicSession).where(*filters)
@@ -127,15 +158,16 @@ class StudentAcademicRepository:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         term_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> AcademicTerm | None:
-        return (
-            await db.execute(
-                select(AcademicTerm).where(
-                    AcademicTerm.tenant_id == tenant_id,
-                    AcademicTerm.id == term_id,
-                )
-            )
-        ).scalar_one_or_none()
+        query = select(AcademicTerm).where(
+            AcademicTerm.tenant_id == tenant_id,
+            AcademicTerm.id == term_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def get_term_by_session_and_name(
@@ -176,6 +208,11 @@ class StudentAcademicRepository:
         skip: int = 0,
         limit: int = 100,
         statuses: set[AcademicTermStatus] | None = None,
+        *,
+        name: str | None = None,
+        is_current: bool | None = None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
     ) -> tuple[list[AcademicTerm], int]:
         return await StudentAcademicRepository._list_terms(
             db,
@@ -183,6 +220,10 @@ class StudentAcademicRepository:
             skip=skip,
             limit=limit,
             statuses=statuses,
+            name=name,
+            is_current=is_current,
+            start_date_from=start_date_from,
+            start_date_to=start_date_to,
         )
 
     @staticmethod
@@ -193,6 +234,11 @@ class StudentAcademicRepository:
         skip: int = 0,
         limit: int = 100,
         statuses: set[AcademicTermStatus] | None = None,
+        *,
+        name: str | None = None,
+        is_current: bool | None = None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
     ) -> tuple[list[AcademicTerm], int]:
         return await StudentAcademicRepository._list_terms(
             db,
@@ -201,6 +247,10 @@ class StudentAcademicRepository:
             skip=skip,
             limit=limit,
             statuses=statuses,
+            name=name,
+            is_current=is_current,
+            start_date_from=start_date_from,
+            start_date_to=start_date_to,
         )
 
     @staticmethod
@@ -210,6 +260,10 @@ class StudentAcademicRepository:
         *,
         academic_session_id: uuid.UUID | None = None,
         statuses: set[AcademicTermStatus] | None = None,
+        name: str | None = None,
+        is_current: bool | None = None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[list[AcademicTerm], int]:
@@ -226,6 +280,14 @@ class StudentAcademicRepository:
             filters.append(AcademicTerm.status != AcademicTermStatus.CLOSED)
         elif statuses:
             filters.append(AcademicTerm.status.in_(statuses))
+        if name is not None:
+            filters.append(AcademicTerm.name == name)
+        if is_current is not None:
+            filters.append(AcademicTerm.is_current.is_(is_current))
+        if start_date_from is not None:
+            filters.append(AcademicTerm.start_date >= start_date_from)
+        if start_date_to is not None:
+            filters.append(AcademicTerm.start_date <= start_date_to)
 
         total = (
             await db.execute(
@@ -253,6 +315,138 @@ class StudentAcademicRepository:
     @staticmethod
     async def save_academic_term(db: AsyncSession, academic_term: AcademicTerm) -> AcademicTerm:
         return await StudentAcademicRepository._save(db, academic_term)
+
+    @staticmethod
+    async def count_academic_terms(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        academic_session_id: uuid.UUID | None = None,
+        statuses: set[AcademicTermStatus] | None = None,
+    ) -> int:
+        filters = [AcademicTerm.tenant_id == tenant_id]
+        if academic_session_id is not None:
+            filters.append(AcademicTerm.academic_session_id == academic_session_id)
+        if statuses is not None:
+            filters.append(AcademicTerm.status.in_(statuses))
+        return int((await db.execute(select(func.count()).select_from(AcademicTerm).where(*filters))).scalar_one())
+
+    @staticmethod
+    async def count_results(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        academic_session_id: uuid.UUID | None = None,
+        academic_term_id: uuid.UUID | None = None,
+        statuses: set[AcademicResultStatus] | None = None,
+    ) -> int:
+        filters = [StudentSubjectResult.tenant_id == tenant_id]
+        if academic_session_id is not None:
+            filters.append(StudentSubjectResult.academic_session_id == academic_session_id)
+        if academic_term_id is not None:
+            filters.append(StudentSubjectResult.academic_term_id == academic_term_id)
+        if statuses is not None:
+            filters.append(StudentSubjectResult.status.in_(statuses))
+        return int((await db.execute(select(func.count()).select_from(StudentSubjectResult).where(*filters))).scalar_one())
+
+    @staticmethod
+    async def count_report_cards(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        academic_session_id: uuid.UUID | None = None,
+        academic_term_id: uuid.UUID | None = None,
+        statuses: set[ReportCardStatus] | None = None,
+    ) -> int:
+        filters = [ReportCard.tenant_id == tenant_id]
+        if academic_session_id is not None:
+            filters.append(ReportCard.academic_session_id == academic_session_id)
+        if academic_term_id is not None:
+            filters.append(ReportCard.academic_term_id == academic_term_id)
+        if statuses is not None:
+            filters.append(ReportCard.status.in_(statuses))
+        return int((await db.execute(select(func.count()).select_from(ReportCard).where(*filters))).scalar_one())
+
+    @staticmethod
+    async def count_enrollments(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+    ) -> int:
+        return int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(StudentEnrollment).where(
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.academic_session_id == academic_session_id,
+                    )
+                )
+            ).scalar_one()
+        )
+
+    @staticmethod
+    async def count_progression_runs(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        academic_session_id: uuid.UUID | None = None,
+        statuses: set | None = None,
+    ) -> int:
+        filters = [StudentProgressionRun.tenant_id == tenant_id]
+        if academic_session_id is not None:
+            filters.append(StudentProgressionRun.academic_session_id == academic_session_id)
+        if statuses is not None:
+            filters.append(StudentProgressionRun.status.in_(statuses))
+        return int((await db.execute(select(func.count()).select_from(StudentProgressionRun).where(*filters))).scalar_one())
+
+    @staticmethod
+    async def count_inbound_next_sessions(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+    ) -> int:
+        return int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(AcademicSession).where(
+                        AcademicSession.tenant_id == tenant_id,
+                        AcademicSession.next_academic_session_id == academic_session_id,
+                    )
+                )
+            ).scalar_one()
+        )
+
+    @staticmethod
+    async def count_pending_import_jobs(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        resource_types: set | None = None,
+    ) -> int:
+        filters = [
+            ImportJob.tenant_id == tenant_id,
+            ImportJob.status.in_(ACTIVE_IMPORT_STATUSES),
+        ]
+        if resource_types:
+            filters.append(ImportJob.resource_type.in_(resource_types))
+        return int((await db.execute(select(func.count()).select_from(ImportJob).where(*filters))).scalar_one())
+
+    @staticmethod
+    async def add_academic_lifecycle_audit(
+        db: AsyncSession,
+        audit: AcademicLifecycleAudit,
+    ) -> AcademicLifecycleAudit:
+        db.add(audit)
+        await db.flush()
+        return audit
+
+    @staticmethod
+    async def delete_academic_session(db: AsyncSession, session: AcademicSession) -> None:
+        await db.delete(session)
+
+    @staticmethod
+    async def delete_academic_term(db: AsyncSession, term: AcademicTerm) -> None:
+        await db.delete(term)
 
     @staticmethod
     async def create_grading_scale(db: AsyncSession, grading_scale: GradingScale) -> GradingScale:

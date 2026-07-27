@@ -14,7 +14,11 @@ from app.modules.student_academics.models import (
     AcademicTermName,
     AcademicTermStatus,
 )
-from app.modules.student_academics.schemas import AcademicTermCreate, AcademicTermUpdate
+from app.modules.student_academics.schemas import (
+    AcademicTermCreate,
+    AcademicTermDependencyPreview,
+    AcademicTermUpdate,
+)
 from app.modules.student_academics.service import StudentAcademicService
 
 
@@ -72,6 +76,10 @@ async def test_create_academic_term_is_always_draft() -> None:
             "app.modules.student_academics.service.StudentAcademicRepository.create_academic_term",
             new=AsyncMock(side_effect=save_term),
         ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
+            new=AsyncMock(),
+        ),
     ):
         created = await StudentAcademicService.create_academic_term(
             db=db,
@@ -87,7 +95,7 @@ async def test_create_academic_term_is_always_draft() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_academic_term_ignores_nulls_and_applies_explicit_values() -> None:
+async def test_update_academic_term_allows_explicit_nullable_dates_to_clear() -> None:
     tenant_id = uuid.uuid4()
     term = _academic_term(tenant_id)
     db = AsyncMock()
@@ -96,6 +104,10 @@ async def test_update_academic_term_ignores_nulls_and_applies_explicit_values() 
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
             new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(return_value=_academic_session(tenant_id)),
         ),
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
@@ -115,8 +127,8 @@ async def test_update_academic_term_ignores_nulls_and_applies_explicit_values() 
 
     assert updated is term
     assert term.name == AcademicTermName.FIRST_TERM
-    assert term.start_date == date(2026, 1, 12)
-    assert term.end_date == date(2026, 4, 10)
+    assert term.start_date is None
+    assert term.end_date is None
     assert term.is_current is False
     assert term.status == AcademicTermStatus.DRAFT
     save_term.assert_awaited_once()
@@ -151,6 +163,9 @@ async def test_update_academic_term_rejects_invalid_effective_date_range() -> No
     with patch(
         "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
         new=AsyncMock(return_value=term),
+    ), patch(
+        "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
+        new=AsyncMock(return_value=_academic_session(tenant_id)),
     ):
         with pytest.raises(BadRequestException):
             await StudentAcademicService.update_academic_term(
@@ -183,8 +198,16 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
             new=AsyncMock(return_value=None),
         ),
         patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.list_terms_by_session",
+            new=AsyncMock(return_value=([term], 1)),
+        ),
+        patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
             new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
+            new=AsyncMock(),
         ),
     ):
         opened = await StudentAcademicService.open_academic_term(
@@ -216,6 +239,23 @@ async def test_close_academic_term_only_accepts_open_terms() -> None:
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
             new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService.academic_term_dependency_preview",
+            new=AsyncMock(
+                return_value=AcademicTermDependencyPreview(
+                    term_id=term.id,
+                    dependency_counts={},
+                    blocker_messages=[],
+                    can_open=False,
+                    can_close=True,
+                    can_delete=False,
+                )
+            ),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
+            new=AsyncMock(),
         ),
     ):
         closed = await StudentAcademicService.close_academic_term(

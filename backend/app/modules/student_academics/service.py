@@ -15,17 +15,22 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
+from app.modules.bulk_imports.models import ImportResourceType
 from app.modules.classes.repository import ClassRoomRepository
+from app.modules.report_cards.models import ReportCardStatus
 from app.modules.parents.models import ParentMembership
 from app.modules.student_academics.models import (
+    AcademicLifecycleAudit,
     AcademicResultStatus,
     AcademicSession,
     AcademicSessionStatus,
     AcademicTerm,
+    AcademicTermName,
     AcademicTermStatus,
     ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
+    StudentProgressionRunStatus,
     StudentSubjectResult,
     TeacherAssignment,
     TeacherAssignmentLifecycleAudit,
@@ -33,8 +38,10 @@ from app.modules.student_academics.models import (
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
     AcademicSessionCreate,
+    AcademicSessionDependencyPreview,
     AcademicSessionUpdate,
     AcademicTermCreate,
+    AcademicTermDependencyPreview,
     AcademicTermUpdate,
     ClassSubjectCreate,
     ClassSubjectResponse,
@@ -82,6 +89,291 @@ class StudentAcademicService:
         AcademicResultStatus.DRAFT,
         AcademicResultStatus.SUBMITTED,
     }
+    _TERM_ORDER = {
+        AcademicTermName.FIRST_TERM: 1,
+        AcademicTermName.SECOND_TERM: 2,
+        AcademicTermName.THIRD_TERM: 3,
+    }
+
+    @staticmethod
+    async def _record_academic_lifecycle(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        entity_type: str,
+        entity_id: uuid.UUID,
+        action: str,
+        previous_status: str | None,
+        new_status: str | None,
+        acting_admin_id: uuid.UUID | None,
+        reason: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        await StudentAcademicRepository.add_academic_lifecycle_audit(
+            db,
+            AcademicLifecycleAudit(
+                tenant_id=tenant_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                action=action,
+                previous_status=previous_status,
+                new_status=new_status,
+                acting_admin_id=acting_admin_id,
+                reason=reason,
+                metadata_json=metadata,
+            ),
+        )
+
+    @staticmethod
+    def _raise_dependency_conflict(message: str, preview) -> None:
+        raise ConflictException(
+            message,
+            payload={
+                "dependency_counts": preview.dependency_counts,
+                "blocker_messages": preview.blocker_messages,
+            },
+        )
+
+    @staticmethod
+    async def _validate_session_dates(
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        require_complete: bool = False,
+    ) -> None:
+        if require_complete and (start_date is None or end_date is None):
+            raise BadRequestException("Session start and end dates are required.")
+        if start_date is not None and end_date is not None and end_date <= start_date:
+            raise BadRequestException("Session end date must be after start date.")
+
+    @staticmethod
+    async def _validate_next_session_link(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        session_id: uuid.UUID,
+        next_academic_session_id: uuid.UUID | None,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> None:
+        if next_academic_session_id is None:
+            return
+        if next_academic_session_id == session_id:
+            raise BadRequestException("A session cannot point to itself.")
+
+        next_session = await StudentAcademicRepository.get_academic_session_by_id(
+            db,
+            tenant_id,
+            next_academic_session_id,
+            lock=True,
+        )
+        if next_session is None:
+            raise NotFoundException("Next academic session not found.")
+        if next_session.start_date is not None:
+            if start_date is not None and next_session.start_date <= start_date:
+                raise BadRequestException("Next academic session must start after this session.")
+            if end_date is not None and next_session.start_date <= end_date:
+                raise BadRequestException("Next academic session must start after this session ends.")
+
+        visited = {session_id}
+        cursor = next_session
+        while cursor.next_academic_session_id is not None:
+            if cursor.next_academic_session_id in visited:
+                raise BadRequestException("Academic session progression links cannot contain cycles.")
+            visited.add(cursor.next_academic_session_id)
+            cursor = await StudentAcademicRepository.get_academic_session_by_id(
+                db,
+                tenant_id,
+                cursor.next_academic_session_id,
+                lock=True,
+            )
+            if cursor is None:
+                raise NotFoundException("Next academic session chain references a missing session.")
+
+    @staticmethod
+    async def _validate_term_dates_and_order(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        session: AcademicSession,
+        name: AcademicTermName,
+        start_date: date | None,
+        end_date: date | None,
+        exclude_term_id: uuid.UUID | None = None,
+    ) -> None:
+        if start_date is not None and end_date is not None and end_date <= start_date:
+            raise BadRequestException("Term end date must be after start date.")
+        if session.start_date is not None and start_date is not None and start_date < session.start_date:
+            raise BadRequestException("Term start date must fall within the session date range.")
+        if session.end_date is not None and end_date is not None and end_date > session.end_date:
+            raise BadRequestException("Term end date must fall within the session date range.")
+        if start_date is None or end_date is None:
+            return
+
+        terms, _ = await StudentAcademicRepository.list_terms_by_session(
+            db,
+            tenant_id,
+            session.id,
+            limit=500,
+            statuses=set(),
+        )
+        for term in terms:
+            if exclude_term_id is not None and term.id == exclude_term_id:
+                continue
+            if start_date is not None and end_date is not None and term.start_date is not None and term.end_date is not None:
+                overlaps = start_date < term.end_date and end_date > term.start_date
+                if overlaps:
+                    raise ConflictException("Academic terms in the same session cannot overlap.")
+            if start_date is not None and end_date is not None and term.start_date is not None and term.end_date is not None:
+                current_order = StudentAcademicService._TERM_ORDER[name]
+                other_order = StudentAcademicService._TERM_ORDER[term.name]
+                if current_order < other_order and start_date >= term.start_date:
+                    raise BadRequestException("Earlier terms must start before later terms.")
+                if current_order > other_order and start_date <= term.start_date:
+                    raise BadRequestException("Later terms must start after earlier terms.")
+
+    @staticmethod
+    async def academic_session_dependency_preview(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        session_id: uuid.UUID,
+    ) -> AcademicSessionDependencyPreview:
+        session = await StudentAcademicRepository.get_academic_session_by_id(db, tenant_id, session_id)
+        if session is None:
+            raise NotFoundException("Academic session not found.")
+        counts = {
+            "terms": await StudentAcademicRepository.count_academic_terms(db, tenant_id, academic_session_id=session_id),
+            "open_terms": await StudentAcademicRepository.count_academic_terms(
+                db, tenant_id, academic_session_id=session_id, statuses={AcademicTermStatus.OPEN}
+            ),
+            "draft_results": await StudentAcademicRepository.count_results(
+                db, tenant_id, academic_session_id=session_id, statuses={AcademicResultStatus.DRAFT}
+            ),
+            "submitted_results": await StudentAcademicRepository.count_results(
+                db, tenant_id, academic_session_id=session_id, statuses={AcademicResultStatus.SUBMITTED}
+            ),
+            "approved_but_unlocked_results": await StudentAcademicRepository.count_results(
+                db, tenant_id, academic_session_id=session_id, statuses={AcademicResultStatus.APPROVED}
+            ),
+            "results": await StudentAcademicRepository.count_results(db, tenant_id, academic_session_id=session_id),
+            "unpublished_report_cards": await StudentAcademicRepository.count_report_cards(
+                db, tenant_id, academic_session_id=session_id, statuses={ReportCardStatus.DRAFT}
+            ),
+            "report_cards": await StudentAcademicRepository.count_report_cards(db, tenant_id, academic_session_id=session_id),
+            "enrollments": await StudentAcademicRepository.count_enrollments(db, tenant_id, session_id),
+            "active_or_pending_progression_runs": await StudentAcademicRepository.count_progression_runs(
+                db,
+                tenant_id,
+                academic_session_id=session_id,
+                statuses={StudentProgressionRunStatus.PENDING, StudentProgressionRunStatus.PROCESSING},
+            ),
+            "progression_runs": await StudentAcademicRepository.count_progression_runs(
+                db, tenant_id, academic_session_id=session_id
+            ),
+            "inbound_next_sessions": await StudentAcademicRepository.count_inbound_next_sessions(
+                db, tenant_id, session_id
+            ),
+            "pending_result_imports": await StudentAcademicRepository.count_pending_import_jobs(
+                db, tenant_id, resource_types={ImportResourceType.ASSESSMENT_RECORDS}
+            ),
+        }
+        blockers: list[str] = []
+        can_open = session.status == AcademicSessionStatus.DRAFT and counts["terms"] > 0
+        if session.status == AcademicSessionStatus.DRAFT and counts["terms"] == 0:
+            blockers.append("Add at least one academic term before opening the session.")
+        if session.status == AcademicSessionStatus.OPEN:
+            if session.next_academic_session_id is None:
+                blockers.append("Configure next_academic_session_id before closure.")
+            if counts["open_terms"]:
+                blockers.append("Close every term in this session before closing the session.")
+            if counts["draft_results"]:
+                blockers.append("Draft results must be submitted, approved, or removed before closure.")
+            if counts["submitted_results"]:
+                blockers.append("Submitted results must be approved or returned before closure.")
+            if counts["approved_but_unlocked_results"]:
+                blockers.append("Approved results must be locked before closure.")
+            if counts["unpublished_report_cards"]:
+                blockers.append("Report cards must be published or archived before closure.")
+            if counts["active_or_pending_progression_runs"]:
+                blockers.append("A progression run is already active or pending for this session.")
+            if counts["pending_result_imports"]:
+                blockers.append("Assessment-record imports are still pending or processing.")
+        can_start_closing = session.status == AcademicSessionStatus.OPEN and not blockers
+        can_delete = (
+            session.status == AcademicSessionStatus.DRAFT
+            and not session.is_current
+            and counts["terms"] == 0
+            and counts["enrollments"] == 0
+            and counts["results"] == 0
+            and counts["report_cards"] == 0
+            and counts["progression_runs"] == 0
+            and counts["inbound_next_sessions"] == 0
+        )
+        return AcademicSessionDependencyPreview(
+            session_id=session_id,
+            dependency_counts=counts,
+            blocker_messages=blockers,
+            can_open=can_open,
+            can_close=can_start_closing,
+            can_start_closing=can_start_closing,
+            can_progress=can_start_closing and session.next_academic_session_id is not None,
+            can_delete=can_delete,
+        )
+
+    @staticmethod
+    async def academic_term_dependency_preview(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+    ) -> AcademicTermDependencyPreview:
+        term = await StudentAcademicRepository.get_term_by_id(db, tenant_id, term_id)
+        if term is None:
+            raise NotFoundException("Academic term not found.")
+        counts = {
+            "draft_results": await StudentAcademicRepository.count_results(
+                db, tenant_id, academic_term_id=term_id, statuses={AcademicResultStatus.DRAFT}
+            ),
+            "submitted_results": await StudentAcademicRepository.count_results(
+                db, tenant_id, academic_term_id=term_id, statuses={AcademicResultStatus.SUBMITTED}
+            ),
+            "approved_but_unlocked_results": await StudentAcademicRepository.count_results(
+                db, tenant_id, academic_term_id=term_id, statuses={AcademicResultStatus.APPROVED}
+            ),
+            "results": await StudentAcademicRepository.count_results(db, tenant_id, academic_term_id=term_id),
+            "unpublished_report_cards": await StudentAcademicRepository.count_report_cards(
+                db, tenant_id, academic_term_id=term_id, statuses={ReportCardStatus.DRAFT}
+            ),
+            "report_cards": await StudentAcademicRepository.count_report_cards(db, tenant_id, academic_term_id=term_id),
+            "pending_result_imports": await StudentAcademicRepository.count_pending_import_jobs(
+                db, tenant_id, resource_types={ImportResourceType.ASSESSMENT_RECORDS}
+            ),
+        }
+        blockers: list[str] = []
+        if term.status == AcademicTermStatus.OPEN:
+            if counts["draft_results"]:
+                blockers.append("Draft results must be submitted, approved, or removed before closing the term.")
+            if counts["submitted_results"]:
+                blockers.append("Submitted results must be approved or returned before closing the term.")
+            if counts["approved_but_unlocked_results"]:
+                blockers.append("Approved results must be locked before closing the term.")
+            if counts["unpublished_report_cards"]:
+                blockers.append("Report cards must be published or archived before closing the term.")
+            if counts["pending_result_imports"]:
+                blockers.append("Assessment-record imports are still pending or processing.")
+        can_delete = (
+            term.status == AcademicTermStatus.DRAFT
+            and not term.is_current
+            and counts["results"] == 0
+            and counts["report_cards"] == 0
+        )
+        return AcademicTermDependencyPreview(
+            term_id=term_id,
+            dependency_counts=counts,
+            blocker_messages=blockers,
+            can_open=term.status == AcademicTermStatus.DRAFT,
+            can_close=term.status == AcademicTermStatus.OPEN and not blockers,
+            can_delete=can_delete,
+        )
 
     @staticmethod
     async def _build_class_subject_response(
@@ -1270,6 +1562,7 @@ class StudentAcademicService:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         payload: AcademicSessionCreate,
+        acting_admin_id: uuid.UUID | None = None,
     ) -> AcademicSession:
         if await StudentAcademicRepository.get_academic_session_by_name(
             db,
@@ -1277,14 +1570,10 @@ class StudentAcademicService:
             payload.name,
         ):
             raise ConflictException("Academic session already exists.")
-        if payload.next_academic_session_id is not None:
-            next_session = await StudentAcademicRepository.get_academic_session_by_id(
-                db,
-                tenant_id,
-                payload.next_academic_session_id,
-            )
-            if next_session is None:
-                raise NotFoundException("Next academic session not found.")
+        await StudentAcademicService._validate_session_dates(
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+        )
         row = await StudentAcademicRepository.create_academic_session(
             db,
             AcademicSession(
@@ -1296,6 +1585,24 @@ class StudentAcademicService:
                 status=AcademicSessionStatus.DRAFT,
                 is_current=False,
             ),
+        )
+        await StudentAcademicService._validate_next_session_link(
+            db,
+            tenant_id=tenant_id,
+            session_id=row.id,
+            next_academic_session_id=payload.next_academic_session_id,
+            start_date=row.start_date,
+            end_date=row.end_date,
+        )
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=tenant_id,
+            entity_type="session",
+            entity_id=row.id,
+            action="created",
+            previous_status=None,
+            new_status=row.status.value,
+            acting_admin_id=acting_admin_id,
         )
         await db.commit()
         return row
@@ -1316,15 +1623,21 @@ class StudentAcademicService:
             raise NotFoundException("Academic session not found.")
         if row.status in {AcademicSessionStatus.CLOSING, AcademicSessionStatus.CLOSED}:
             raise ConflictException("Closing or closed sessions cannot be edited.")
-        update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
+        update_data = payload.model_dump(exclude_unset=True)
+        if update_data.get("name") is None:
+            update_data.pop("name", None)
+        if row.status == AcademicSessionStatus.OPEN:
+            critical = {"name", "start_date", "end_date", "next_academic_session_id"}
+            if critical.intersection(update_data):
+                raise ConflictException(
+                    "Lifecycle-critical session fields cannot be edited after opening."
+                )
         effective_start_date = update_data.get("start_date", row.start_date)
         effective_end_date = update_data.get("end_date", row.end_date)
-        if (
-            effective_start_date is not None
-            and effective_end_date is not None
-            and effective_end_date <= effective_start_date
-        ):
-            raise BadRequestException("Session end date must be after start date.")
+        await StudentAcademicService._validate_session_dates(
+            start_date=effective_start_date,
+            end_date=effective_end_date,
+        )
         if "name" in update_data and update_data["name"] != row.name:
             if await StudentAcademicRepository.get_academic_session_by_name(
                 db,
@@ -1332,15 +1645,15 @@ class StudentAcademicService:
                 update_data["name"],
             ):
                 raise ConflictException("Academic session name already exists.")
-        next_id = update_data.get("next_academic_session_id")
-        if next_id == row.id:
-            raise BadRequestException("A session cannot point to itself.")
-        if next_id is not None and not await StudentAcademicRepository.get_academic_session_by_id(
+        next_id = update_data.get("next_academic_session_id", row.next_academic_session_id)
+        await StudentAcademicService._validate_next_session_link(
             db,
-            tenant_id,
-            next_id,
-        ):
-            raise NotFoundException("Next academic session not found.")
+            tenant_id=tenant_id,
+            session_id=row.id,
+            next_academic_session_id=next_id,
+            start_date=effective_start_date,
+            end_date=effective_end_date,
+        )
         for field, value in update_data.items():
             setattr(row, field, value)
         row = await StudentAcademicRepository.save_academic_session(db, row)
@@ -1353,12 +1666,23 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         skip: int = 0,
         limit: int = 100,
+        *,
+        search: str | None = None,
+        status: AcademicSessionStatus | None = None,
+        is_current: bool | None = None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
     ) -> tuple[list[AcademicSession], int]:
         return await StudentAcademicRepository.list_academic_sessions(
             db,
             tenant_id,
             skip,
             limit,
+            search=search,
+            status=status,
+            is_current=is_current,
+            start_date_from=start_date_from,
+            start_date_to=start_date_to,
         )
 
 
@@ -1367,6 +1691,7 @@ class StudentAcademicService:
     db: AsyncSession,
     tenant_id: uuid.UUID,
     payload: AcademicTermCreate,
+    acting_admin_id: uuid.UUID | None = None,
     ) -> AcademicTerm:
         academic_session = (
             await StudentAcademicRepository.get_academic_session_by_id(
@@ -1401,14 +1726,14 @@ class StudentAcademicService:
                 "Academic term already exists in this session."
             )
 
-        if (
-            payload.start_date is not None
-            and payload.end_date is not None
-            and payload.end_date <= payload.start_date
-        ):
-            raise BadRequestException(
-                "Term end date must be after start date."
-            )
+        await StudentAcademicService._validate_term_dates_and_order(
+            db,
+            tenant_id=tenant_id,
+            session=academic_session,
+            name=payload.name,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+        )
 
         term = AcademicTerm(
             tenant_id=tenant_id,
@@ -1423,6 +1748,16 @@ class StudentAcademicService:
         term = await StudentAcademicRepository.create_academic_term(
             db,
             term,
+        )
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=tenant_id,
+            entity_type="term",
+            entity_id=term.id,
+            action="created",
+            previous_status=None,
+            new_status=term.status.value,
+            acting_admin_id=acting_admin_id,
         )
 
         await db.commit()
@@ -1449,10 +1784,9 @@ class StudentAcademicService:
                 "Only draft academic terms can be edited."
             )
 
-        update_data = payload.model_dump(
-            exclude_unset=True,
-            exclude_none=True,
-        )
+        update_data = payload.model_dump(exclude_unset=True)
+        if update_data.get("name") is None:
+            update_data.pop("name", None)
 
         effective_start_date = update_data.get(
             "start_date",
@@ -1463,14 +1797,22 @@ class StudentAcademicService:
             term.end_date,
         )
 
-        if (
-            effective_start_date is not None
-            and effective_end_date is not None
-            and effective_end_date <= effective_start_date
-        ):
-            raise BadRequestException(
-                "Term end date must be after start date."
-            )
+        academic_session = await StudentAcademicRepository.get_academic_session_by_id(
+            db,
+            tenant_id,
+            term.academic_session_id,
+        )
+        if academic_session is None:
+            raise NotFoundException("Academic session not found.")
+        await StudentAcademicService._validate_term_dates_and_order(
+            db,
+            tenant_id=tenant_id,
+            session=academic_session,
+            name=update_data.get("name", term.name),
+            start_date=effective_start_date,
+            end_date=effective_end_date,
+            exclude_term_id=term.id,
+        )
 
         new_name = update_data.get("name")
 
@@ -1515,7 +1857,8 @@ class StudentAcademicService:
         term = await StudentAcademicRepository.get_term_by_id(
             db,
             tenant_id = tenant_id ,
-            term_id = term_id
+            term_id = term_id,
+            lock=True,
         )
 
         if term is None:
@@ -1531,14 +1874,25 @@ class StudentAcademicService:
         academic_session = await StudentAcademicRepository.get_academic_session_by_id(
             db = db ,
             tenant_id=tenant_id,
-            academic_session_id= term.academic_session_id
+            academic_session_id= term.academic_session_id,
+            lock=True,
         )
 
         if academic_session is None:
             raise NotFoundException("Academic session not found")
 
-        if academic_session.status != AcademicSessionStatus.OPEN:
+        if academic_session.status != AcademicSessionStatus.OPEN or not academic_session.is_current:
             raise ConflictException("The session must be open before a term can be opened")
+
+        await StudentAcademicService._validate_term_dates_and_order(
+            db,
+            tenant_id=tenant_id,
+            session=academic_session,
+            name=term.name,
+            start_date=term.start_date,
+            end_date=term.end_date,
+            exclude_term_id=term.id,
+        )
 
         current_term = await StudentAcademicRepository.get_current_term(
             db = db,
@@ -1553,6 +1907,7 @@ class StudentAcademicService:
 
 
 
+        previous_status = term.status
         term.status = AcademicTermStatus.OPEN
         term.is_current = True
         term.opened_at = datetime.now(timezone.utc)
@@ -1560,10 +1915,24 @@ class StudentAcademicService:
         term.closed_at = None
         term.closed_by_admin_id = None
 
-        term = await StudentAcademicRepository.save_academic_term(
-            db,
-            term,
-        )
+        try:
+            term = await StudentAcademicRepository.save_academic_term(
+                db,
+                term,
+            )
+            await StudentAcademicService._record_academic_lifecycle(
+                db,
+                tenant_id=tenant_id,
+                entity_type="term",
+                entity_id=term.id,
+                action="opened",
+                previous_status=previous_status.value,
+                new_status=term.status.value,
+                acting_admin_id=admin_id,
+            )
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException("Another academic term is currently open. Close it first") from exc
 
         await db.commit()
         return term
@@ -1582,7 +1951,8 @@ class StudentAcademicService:
         term  = await StudentAcademicRepository.get_term_by_id(
             db = db,
             tenant_id= tenant_id,
-            term_id = term_id
+            term_id = term_id,
+            lock=True,
         )
 
 
@@ -1598,6 +1968,18 @@ class StudentAcademicService:
                 "Only an open academic term can be closed"
             )
 
+        preview = await StudentAcademicService.academic_term_dependency_preview(
+            db,
+            tenant_id,
+            term_id,
+        )
+        if not preview.can_close:
+            StudentAcademicService._raise_dependency_conflict(
+                "Academic term has blockers and cannot be closed.",
+                preview,
+            )
+
+        previous_status = term.status
         term.status = AcademicTermStatus.CLOSED
         term.is_current = False
         term.closed_at = datetime.now(timezone.utc)
@@ -1606,6 +1988,16 @@ class StudentAcademicService:
         term = await StudentAcademicRepository.save_academic_term(
             db,
             term,
+        )
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=tenant_id,
+            entity_type="term",
+            entity_id=term.id,
+            action="closed",
+            previous_status=previous_status.value,
+            new_status=term.status.value,
+            acting_admin_id=admin_id,
         )
 
         await db.commit()
@@ -1630,7 +2022,11 @@ class StudentAcademicService:
         skip: int = 0,
         limit: int = 100,
         academic_session_id: uuid.UUID | None = None,
-        statuses : set[AcademicTermStatus] | None = None
+        statuses : set[AcademicTermStatus] | None = None,
+        name: AcademicTermName | None = None,
+        is_current: bool | None = None,
+        start_date_from: date | None = None,
+        start_date_to: date | None = None,
     ) -> tuple[list[AcademicTerm], int]:
         if academic_session_id is None:
             return await StudentAcademicRepository.list_terms(
@@ -1638,7 +2034,11 @@ class StudentAcademicService:
                 tenant_id,
                 skip,
                 limit,
-                statuses = statuses
+                statuses = statuses,
+                name=name,
+                is_current=is_current,
+                start_date_from=start_date_from,
+                start_date_to=start_date_to,
             )
         return await StudentAcademicRepository.list_terms_by_session(
             db,
@@ -1646,8 +2046,123 @@ class StudentAcademicService:
             academic_session_id,
             skip,
             limit,
-            statuses = statuses
+            statuses = statuses,
+            name=name,
+            is_current=is_current,
+            start_date_from=start_date_from,
+            start_date_to=start_date_to,
         )
+
+    @staticmethod
+    async def delete_academic_session(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        *,
+        acting_admin_id: uuid.UUID,
+    ) -> AcademicSession:
+        session = await StudentAcademicRepository.get_academic_session_by_id(
+            db,
+            tenant_id,
+            academic_session_id,
+            lock=True,
+        )
+        if session is None:
+            raise NotFoundException("Academic session not found.")
+        preview = await StudentAcademicService.academic_session_dependency_preview(
+            db,
+            tenant_id,
+            academic_session_id,
+        )
+        if not preview.can_delete:
+            StudentAcademicService._raise_dependency_conflict(
+                "Only unused draft academic sessions can be deleted.",
+                preview,
+            )
+        response = AcademicSession(
+            id=session.id,
+            tenant_id=session.tenant_id,
+            name=session.name,
+            start_date=session.start_date,
+            end_date=session.end_date,
+            status=session.status,
+            is_current=session.is_current,
+            closing_started_at=session.closing_started_at,
+            closed_at=session.closed_at,
+            closed_by_admin_id=session.closed_by_admin_id,
+            next_academic_session_id=session.next_academic_session_id,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=tenant_id,
+            entity_type="session",
+            entity_id=session.id,
+            action="deleted",
+            previous_status=session.status.value,
+            new_status="deleted",
+            acting_admin_id=acting_admin_id,
+        )
+        await StudentAcademicRepository.delete_academic_session(db, session)
+        await db.commit()
+        return response
+
+    @staticmethod
+    async def delete_academic_term(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+        *,
+        acting_admin_id: uuid.UUID,
+    ) -> AcademicTerm:
+        term = await StudentAcademicRepository.get_term_by_id(
+            db,
+            tenant_id,
+            term_id,
+            lock=True,
+        )
+        if term is None:
+            raise NotFoundException("Academic term not found.")
+        preview = await StudentAcademicService.academic_term_dependency_preview(
+            db,
+            tenant_id,
+            term_id,
+        )
+        if not preview.can_delete:
+            StudentAcademicService._raise_dependency_conflict(
+                "Only unused draft academic terms can be deleted.",
+                preview,
+            )
+        response = AcademicTerm(
+            id=term.id,
+            tenant_id=term.tenant_id,
+            academic_session_id=term.academic_session_id,
+            name=term.name,
+            start_date=term.start_date,
+            end_date=term.end_date,
+            status=term.status,
+            is_current=term.is_current,
+            opened_at=term.opened_at,
+            closed_at=term.closed_at,
+            opened_by_admin_id=term.opened_by_admin_id,
+            closed_by_admin_id=term.closed_by_admin_id,
+            created_at=term.created_at,
+            updated_at=term.updated_at,
+        )
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=tenant_id,
+            entity_type="term",
+            entity_id=term.id,
+            action="deleted",
+            previous_status=term.status.value,
+            new_status="deleted",
+            acting_admin_id=acting_admin_id,
+        )
+        await StudentAcademicRepository.delete_academic_term(db, term)
+        await db.commit()
+        return response
 
 
 

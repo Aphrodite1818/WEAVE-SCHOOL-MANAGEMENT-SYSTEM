@@ -30,8 +30,6 @@ const BLANK_TERM = {
   name: "first_term",
   start_date: "",
   end_date: "",
-  is_current: false,
-  is_active: true,
 };
 const BLANK_SCALE = {
   grade: "",
@@ -45,7 +43,10 @@ const CONFIRM_OPEN_SESSION = "OPEN_ACADEMIC_SESSION";
 const CONFIRM_CLOSE_SESSION = "CLOSE_AND_PROGRESS";
 const CONFIRM_OPEN_TERM = "OPEN_ACADEMIC_TERM";
 const CONFIRM_CLOSE_TERM = "CLOSE_ACADEMIC_TERM";
+const CONFIRM_DELETE_SESSION = "DELETE_ACADEMIC_SESSION";
+const CONFIRM_DELETE_TERM = "DELETE_ACADEMIC_TERM";
 const SUBJECT_PAGE_SIZE = 24;
+const ACADEMIC_PAGE_SIZE = 25;
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -74,6 +75,18 @@ const dependencyLabels = {
   active_class_subjects: "Active class-subject mappings",
   active_teacher_links: "Active teacher capability links",
   active_teacher_assignments: "Active teacher assignments",
+  open_terms: "Open terms",
+  draft_results: "Draft results",
+  submitted_results: "Submitted results",
+  approved_but_unlocked_results: "Approved results awaiting lock",
+  unpublished_report_cards: "Unpublished report cards",
+  active_or_pending_progression_runs: "Active progression runs",
+  pending_result_imports: "Pending result imports",
+  terms: "Academic terms",
+  enrollments: "Student enrollments",
+  report_cards: "Report cards",
+  progression_runs: "Progression runs",
+  inbound_next_sessions: "Inbound progression links",
 };
 
 const dependencyCountItems = (counts = {}) =>
@@ -84,6 +97,14 @@ const dependencyCountItems = (counts = {}) =>
       label: dependencyLabels[key] || key.replaceAll("_", " "),
       count,
     }));
+
+const formatDependencyMessage = (preview) => {
+  const messages = preview?.blocker_messages || [];
+  if (messages.length) return messages.join(" ");
+  return dependencyCountItems(preview?.dependency_counts)
+    .map((blocker) => `${blocker.label}: ${blocker.count}`)
+    .join("; ");
+};
 
 function SubjectForm({ form, setForm, saving, editing, onSubmit, onCancel }) {
   return (
@@ -182,6 +203,10 @@ function SubjectActionMenu({ item, busy, onAction }) {
 function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions" }) {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
+  const [sessionTotal, setSessionTotal] = useState(0);
+  const [termTotal, setTermTotal] = useState(0);
+  const [sessionPage, setSessionPage] = useState(1);
+  const [termPage, setTermPage] = useState(1);
   const [scales, setScales] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [subjectTotal, setSubjectTotal] = useState(0);
@@ -205,6 +230,9 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     domain === "subjects" && ["active", "inactive", "archived"].includes(activeTab)
       ? activeTab
       : undefined;
+  const academicStatusFilter = ["draft", "open", "closed"].includes(activeTab)
+    ? activeTab
+    : undefined;
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -212,8 +240,16 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     try {
       const [sessionResponse, termResponse, scaleResponse, subjectResponse] =
         await Promise.all([
-          academicService.listSessions({ limit: 100 }),
-          academicService.listTerms({ limit: 100 }),
+          academicService.listSessions({
+            skip: domain === "sessions" ? (sessionPage - 1) * ACADEMIC_PAGE_SIZE : 0,
+            limit: domain === "sessions" ? ACADEMIC_PAGE_SIZE : 100,
+            status: domain === "sessions" ? academicStatusFilter : undefined,
+          }),
+          academicService.listTerms({
+            skip: domain === "terms" ? (termPage - 1) * ACADEMIC_PAGE_SIZE : 0,
+            limit: domain === "terms" ? ACADEMIC_PAGE_SIZE : 100,
+            status: domain === "terms" ? academicStatusFilter : undefined,
+          }),
           academicService.listGradingScales({ limit: 100 }),
           subjectService.getSubjects({
             skip: domain === "subjects" ? (subjectPage - 1) * SUBJECT_PAGE_SIZE : 0,
@@ -227,6 +263,8 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       const nextTerms = asItems(termResponse);
       setSessions(nextSessions);
       setTerms(nextTerms);
+      setSessionTotal(Number(sessionResponse?.total || nextSessions.length));
+      setTermTotal(Number(termResponse?.total || nextTerms.length));
       setScales(asItems(scaleResponse));
       setSubjects(asItems(subjectResponse));
       setSubjectTotal(Number(subjectResponse?.total || 0));
@@ -247,7 +285,17 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     } finally {
       setLoading(false);
     }
-  }, [domain, onContextChange, showError, subjectLifecycleStatus, subjectPage, subjectSearch]);
+  }, [
+    academicStatusFilter,
+    domain,
+    onContextChange,
+    sessionPage,
+    showError,
+    subjectLifecycleStatus,
+    subjectPage,
+    subjectSearch,
+    termPage,
+  ]);
 
   useEffect(() => {
     loadWorkspace();
@@ -255,7 +303,9 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
 
   useEffect(() => {
     setSubjectPage(1);
-  }, [activeTab, subjectSearch]);
+    setSessionPage(1);
+    setTermPage(1);
+  }, [activeTab, domain, subjectSearch]);
 
   const sessionOptions = useMemo(
     () => sessions.map((item) => ({ value: item.id, label: item.name })),
@@ -343,6 +393,11 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const closeSessionAndProgress = async (item) => {
     setClosingSessionId(item.id);
     try {
+      const preview = await academicService.getSessionDependencies(item.id);
+      if (!preview?.can_progress) {
+        showError(formatDependencyMessage(preview) || "This session cannot be closed yet.");
+        return;
+      }
       await academicService.closeSessionAndProgress(item.id, {
         idempotency_key: `session-close-${item.id}-${Date.now()}`,
       });
@@ -356,6 +411,28 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     }
   };
 
+  const deleteSession = async (item) => {
+    setSaving(item.id);
+    try {
+      const preview = await academicService.getSessionDependencies(item.id);
+      if (!preview?.can_delete) {
+        showError(formatDependencyMessage(preview) || "This session cannot be deleted.");
+        return;
+      }
+      await academicService.deleteSession(item.id);
+      showSuccess("Academic session deleted.");
+      if (sessions.length === 1 && sessionPage > 1) {
+        setSessionPage((current) => Math.max(1, current - 1));
+      }
+      await loadWorkspace();
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not delete academic session."));
+    } finally {
+      setSaving("");
+      setPendingConfirmation(null);
+    }
+  };
+
   const transitionTerm = async (item, transition) => {
     setSaving(item.id);
     try {
@@ -363,12 +440,39 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         await academicService.openTerm(item.id);
         showSuccess("Academic term opened.");
       } else {
+        const preview = await academicService.getTermDependencies(item.id);
+        if (!preview?.can_close) {
+          showError(formatDependencyMessage(preview) || "This term cannot be closed yet.");
+          return;
+        }
         await academicService.closeTerm(item.id);
         showSuccess("Academic term closed.");
       }
       await loadWorkspace();
     } catch (err) {
       showError(getErrorMessage(err, "Could not update academic term lifecycle."));
+    } finally {
+      setSaving("");
+      setPendingConfirmation(null);
+    }
+  };
+
+  const deleteTerm = async (item) => {
+    setSaving(item.id);
+    try {
+      const preview = await academicService.getTermDependencies(item.id);
+      if (!preview?.can_delete) {
+        showError(formatDependencyMessage(preview) || "This term cannot be deleted.");
+        return;
+      }
+      await academicService.deleteTerm(item.id);
+      showSuccess("Academic term deleted.");
+      if (terms.length === 1 && termPage > 1) {
+        setTermPage((current) => Math.max(1, current - 1));
+      }
+      await loadWorkspace();
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not delete academic term."));
     } finally {
       setSaving("");
       setPendingConfirmation(null);
@@ -385,8 +489,16 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       closeSessionAndProgress(pendingConfirmation.item);
       return;
     }
+    if (pendingConfirmation.type === "delete-session") {
+      deleteSession(pendingConfirmation.item);
+      return;
+    }
     if (pendingConfirmation.type === "term-transition") {
       transitionTerm(pendingConfirmation.item, pendingConfirmation.transition);
+      return;
+    }
+    if (pendingConfirmation.type === "delete-term") {
+      deleteTerm(pendingConfirmation.item);
       return;
     }
     if (pendingConfirmation.type === "subject-lifecycle") {
@@ -616,7 +728,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
             <WorkspacePanel
               title="Academic sessions"
             >
-            <div className="space-y-3">
+            <div className="max-h-[32rem] space-y-3 overflow-y-auto overscroll-contain pr-1">
               {visibleSessions.length === 0 ? (
                 <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
                   No academic sessions have been created.
@@ -689,7 +801,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                             {closingSessionId === item.id ? "Closing..." : "Close and progress"}
                           </Button>
                         ) : null}
-                        {!["closing", "closed"].includes(item.status) ? (
+                        {item.status === "draft" ? (
                           <Button
                             type="button"
                             size="small"
@@ -708,12 +820,60 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                             Edit
                           </Button>
                         ) : null}
+                        {item.status === "draft" ? (
+                          <Button
+                            type="button"
+                            size="small"
+                            variant="danger"
+                            onClick={() =>
+                              setPendingConfirmation({
+                                type: "delete-session",
+                                item,
+                                title: "Delete academic session",
+                                description: item.name,
+                                confirmationText: CONFIRM_DELETE_SESSION,
+                                confirmLabel: "Delete session",
+                                variant: "danger",
+                              })
+                            }
+                            disabled={saving === item.id}
+                          >
+                            Delete
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   </div>
                 ))
               )}
             </div>
+            {domain === "sessions" && sessionTotal > ACADEMIC_PAGE_SIZE ? (
+              <div className="mt-4 flex items-center justify-between gap-3 text-sm text-text-muted">
+                <span>
+                  Page {sessionPage} of {Math.max(1, Math.ceil(sessionTotal / ACADEMIC_PAGE_SIZE))}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={sessionPage === 1}
+                    onClick={() => setSessionPage((current) => Math.max(1, current - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={sessionPage >= Math.ceil(sessionTotal / ACADEMIC_PAGE_SIZE)}
+                    onClick={() => setSessionPage((current) => current + 1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             </WorkspacePanel>
           )}
         />
@@ -777,7 +937,32 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
           ) : null}
           content={activeTab === "create" ? null : (
             <RecordList
-              title="Academic terms"
+              title={`Academic terms (${termTotal})`}
+              listClassName="max-h-[32rem] overflow-y-auto overscroll-contain pr-1"
+              actions={
+                termTotal > ACADEMIC_PAGE_SIZE ? (
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="outline"
+                      disabled={termPage === 1}
+                      onClick={() => setTermPage((current) => Math.max(1, current - 1))}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="outline"
+                      disabled={termPage >= Math.ceil(termTotal / ACADEMIC_PAGE_SIZE)}
+                      onClick={() => setTermPage((current) => current + 1)}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : null
+              }
             items={
               activeTab === "draft"
                 ? terms.filter((item) => item.status === "draft")
@@ -797,6 +982,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
             }
             renderDescription={(item) => `${dateLabel(item.start_date)} – ${dateLabel(item.end_date)}`}
             renderStatus={(item) => (item.is_current ? "current" : item.status)}
+            canEdit={(item) => item.status === "draft"}
             onEdit={(item) => {
               setEditing({ type: "term", id: item.id });
               setTermForm({
@@ -806,41 +992,58 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                 end_date: item.end_date || "",
               });
             }}
-            actions={
-              <div className="flex flex-wrap gap-2">
-                {terms
-                  .filter((item) => ["draft", "open"].includes(item.status))
-                  .slice(0, 3)
-                  .map((item) => (
-                    <Button
-                      key={item.id}
-                      type="button"
-                      size="small"
-                      variant="outline"
-                      disabled={saving === item.id}
-                      onClick={() => {
-                        const transition = item.status === "draft" ? "open" : "close";
-                        setPendingConfirmation({
-                          type: "term-transition",
-                          item,
-                          transition,
-                          title: `${transition === "open" ? "Open" : "Close"} academic term`,
-                          description: `${termLabel(item.name)} - ${
-                            sessions.find((session) => session.id === item.academic_session_id)?.name ||
-                            "Unknown session"
-                          }`,
-                          confirmationText:
-                            transition === "open" ? CONFIRM_OPEN_TERM : CONFIRM_CLOSE_TERM,
-                          confirmLabel: transition === "open" ? "Open term" : "Close term",
-                          variant: transition === "open" ? "primary" : "danger",
-                        });
-                      }}
-                    >
-                      {item.status === "draft" ? "Open" : "Close"} {termLabel(item.name)}
-                    </Button>
-                  ))}
-              </div>
-            }
+            renderActions={(item) => (
+              <>
+                {["draft", "open"].includes(item.status) ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={saving === item.id}
+                    onClick={() => {
+                      const transition = item.status === "draft" ? "open" : "close";
+                      setPendingConfirmation({
+                        type: "term-transition",
+                        item,
+                        transition,
+                        title: `${transition === "open" ? "Open" : "Close"} academic term`,
+                        description: `${termLabel(item.name)} - ${
+                          sessions.find((session) => session.id === item.academic_session_id)?.name ||
+                          "Unknown session"
+                        }`,
+                        confirmationText:
+                          transition === "open" ? CONFIRM_OPEN_TERM : CONFIRM_CLOSE_TERM,
+                        confirmLabel: transition === "open" ? "Open term" : "Close term",
+                        variant: transition === "open" ? "primary" : "danger",
+                      });
+                    }}
+                  >
+                    {item.status === "draft" ? "Open" : "Close"} {termLabel(item.name)}
+                  </Button>
+                ) : null}
+                {item.status === "draft" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="danger"
+                    disabled={saving === item.id}
+                    onClick={() =>
+                      setPendingConfirmation({
+                        type: "delete-term",
+                        item,
+                        title: "Delete academic term",
+                        description: termLabel(item.name),
+                        confirmationText: CONFIRM_DELETE_TERM,
+                        confirmLabel: "Delete term",
+                        variant: "danger",
+                      })
+                    }
+                  >
+                    Delete
+                  </Button>
+                ) : null}
+              </>
+            )}
             />
           )}
         />

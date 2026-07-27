@@ -18,13 +18,26 @@ from app.core.dependencies.route_guards import (
 from app.core.exceptions import ForbiddenException, NotFoundException
 from app.modules.parents.models import Parent
 from app.modules.student_academics.repository import StudentAcademicRepository
+from app.modules.student_academics.models import (
+    AcademicSessionStatus,
+    AcademicTermName,
+    AcademicTermStatus,
+)
+from app.modules.student_academics.progression_service import AcademicProgressionService
 from app.modules.student_academics.schemas import (
+    AcademicSessionCloseRequest,
+    AcademicSessionCloseResponse,
     AcademicSessionCreate,
+    AcademicSessionDeleteRequest,
+    AcademicSessionDependencyPreview,
     AcademicSessionListResponse,
+    AcademicSessionOpenRequest,
     AcademicSessionResponse,
     AcademicSessionUpdate,
-    AcademicTermCreate,
     AcademicTermCloseRequest,
+    AcademicTermCreate,
+    AcademicTermDeleteRequest,
+    AcademicTermDependencyPreview,
     AcademicTermListResponse,
     AcademicTermOpenRequest,
     AcademicTermResponse,
@@ -118,6 +131,7 @@ async def create_academic_session(
         db,
         current_admin.tenant_id,
         payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -128,6 +142,11 @@ async def create_academic_session(
 async def list_academic_sessions(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
+    search: str | None = Query(default=None, max_length=100),
+    status_filter: AcademicSessionStatus | None = Query(default=None, alias="status"),
+    is_current: bool | None = Query(default=None),
+    start_date_from: date | None = Query(default=None),
+    start_date_to: date | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> AcademicSessionListResponse:
@@ -136,6 +155,11 @@ async def list_academic_sessions(
         current_admin.tenant_id,
         skip,
         limit,
+        search=search,
+        status=status_filter,
+        is_current=is_current,
+        start_date_from=start_date_from,
+        start_date_to=start_date_to,
     )
     return AcademicSessionListResponse(items=items, total=total)
 
@@ -158,6 +182,78 @@ async def update_academic_session(
     )
 
 
+@tenant_admin_router.get(
+    "/sessions/{session_id}/dependencies",
+    response_model=AcademicSessionDependencyPreview,
+)
+async def academic_session_dependencies(
+    session_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionDependencyPreview:
+    return await StudentAcademicService.academic_session_dependency_preview(
+        db,
+        current_admin.tenant_id,
+        session_id,
+    )
+
+
+@tenant_admin_router.post(
+    "/sessions/{session_id}/open",
+    response_model=AcademicSessionResponse,
+)
+async def open_academic_session(
+    session_id: UUID,
+    payload: AcademicSessionOpenRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionResponse:
+    _ = payload.confirmation
+    return await AcademicProgressionService.open_session(
+        db,
+        actor=current_admin,
+        session_id=session_id,
+    )
+
+
+@tenant_admin_router.post(
+    "/sessions/{session_id}/close-and-progress",
+    response_model=AcademicSessionCloseResponse,
+)
+async def close_academic_session_and_progress(
+    session_id: UUID,
+    payload: AcademicSessionCloseRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionCloseResponse:
+    _ = payload.confirmation
+    return await AcademicProgressionService.close_and_progress(
+        db,
+        actor=current_admin,
+        session_id=session_id,
+        idempotency_key=payload.idempotency_key,
+    )
+
+
+@tenant_admin_router.delete(
+    "/sessions/{session_id}",
+    response_model=AcademicSessionResponse,
+)
+async def delete_academic_session(
+    session_id: UUID,
+    payload: AcademicSessionDeleteRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.delete_academic_session(
+        db,
+        current_admin.tenant_id,
+        session_id,
+        acting_admin_id=current_admin.id,
+    )
+
+
 @tenant_admin_router.post(
     "/terms",
     response_model=AcademicTermResponse,
@@ -173,6 +269,7 @@ async def create_academic_term(
         db,
         current_admin.tenant_id,
         payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -184,6 +281,11 @@ async def list_academic_terms(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
     academic_session_id: UUID | None = Query(default=None),
+    status_filter: AcademicTermStatus | None = Query(default=None, alias="status"),
+    is_current: bool | None = Query(default=None),
+    name: AcademicTermName | None = Query(default=None),
+    start_date_from: date | None = Query(default=None),
+    start_date_to: date | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> AcademicTermListResponse:
@@ -193,6 +295,11 @@ async def list_academic_terms(
         skip=skip,
         limit=limit,
         academic_session_id=academic_session_id,
+        statuses={status_filter} if status_filter is not None else None,
+        name=name,
+        is_current=is_current,
+        start_date_from=start_date_from,
+        start_date_to=start_date_to,
     )
     return AcademicTermListResponse(items=items, total=total)
 
@@ -212,6 +319,22 @@ async def update_academic_term(
         current_admin.tenant_id,
         term_id,
         payload,
+    )
+
+
+@tenant_admin_router.get(
+    "/terms/{term_id}/dependencies",
+    response_model=AcademicTermDependencyPreview,
+)
+async def academic_term_dependencies(
+    term_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermDependencyPreview:
+    return await StudentAcademicService.academic_term_dependency_preview(
+        db,
+        current_admin.tenant_id,
+        term_id,
     )
 
 
@@ -248,6 +371,25 @@ async def close_academic_term(
         current_admin.tenant_id,
         term_id,
         current_admin.id,
+    )
+
+
+@tenant_admin_router.delete(
+    "/terms/{term_id}",
+    response_model=AcademicTermResponse,
+)
+async def delete_academic_term(
+    term_id: UUID,
+    payload: AcademicTermDeleteRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.delete_academic_term(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        acting_admin_id=current_admin.id,
     )
 
 

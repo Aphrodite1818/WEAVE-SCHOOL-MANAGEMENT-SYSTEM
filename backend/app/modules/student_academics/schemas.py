@@ -100,6 +100,10 @@ class AcademicSessionCloseRequest(InputBase):
     confirmation: Literal["CLOSE_AND_PROGRESS"]
 
 
+class AcademicSessionDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_ACADEMIC_SESSION"]
+
+
 class AcademicSessionResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -160,6 +164,10 @@ class AcademicTermOpenRequest(InputBase):
 
 class AcademicTermCloseRequest(InputBase):
     confirmation: Literal["CLOSE_ACADEMIC_TERM"]
+
+
+class AcademicTermDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_ACADEMIC_TERM"]
 
 
 
@@ -313,6 +321,26 @@ class TeacherAssignmentDependencyPreview(OutputBase):
     can_reassign: bool
     can_delete: bool
     blocker_messages: list[str] = []
+
+
+class AcademicSessionDependencyPreview(OutputBase):
+    session_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    blocker_messages: list[str] = []
+    can_open: bool
+    can_close: bool
+    can_start_closing: bool
+    can_progress: bool
+    can_delete: bool
+
+
+class AcademicTermDependencyPreview(OutputBase):
+    term_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    blocker_messages: list[str] = []
+    can_open: bool
+    can_close: bool
+    can_delete: bool
 
 
 class TeacherAssignmentResponse(OutputBase):

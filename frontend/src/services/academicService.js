@@ -141,10 +141,19 @@ export const academicService = {
     api.post(`/tenant-admin/academics/sessions/${sessionId}/open`, {
       confirmation: "OPEN_ACADEMIC_SESSION",
     }),
+  getSessionDependencies: (sessionId) =>
+    api.get(`/tenant-admin/academics/sessions/${sessionId}/dependencies`),
   closeSessionAndProgress: (sessionId, payload) =>
     api.post(`/tenant-admin/academics/sessions/${sessionId}/close-and-progress`, {
       confirmation: "CLOSE_AND_PROGRESS",
       ...payload,
+    }),
+  deleteSession: (sessionId) =>
+    api.delete(`/tenant-admin/academics/sessions/${sessionId}`, {
+      body: JSON.stringify({
+        confirmation: "DELETE_ACADEMIC_SESSION",
+      }),
+      headers: { "Content-Type": "application/json" },
     }),
   listTeacherSessions: (params) =>
     api.get(`/teachers/academics/sessions${queryString(params)}`),
@@ -158,9 +167,18 @@ export const academicService = {
     api.post(`/tenant-admin/academics/terms/${termId}/open`, {
       confirmation: "OPEN_ACADEMIC_TERM",
     }),
+  getTermDependencies: (termId) =>
+    api.get(`/tenant-admin/academics/terms/${termId}/dependencies`),
   closeTerm: (termId) =>
     api.post(`/tenant-admin/academics/terms/${termId}/close`, {
       confirmation: "CLOSE_ACADEMIC_TERM",
+    }),
+  deleteTerm: (termId) =>
+    api.delete(`/tenant-admin/academics/terms/${termId}`, {
+      body: JSON.stringify({
+        confirmation: "DELETE_ACADEMIC_TERM",
+      }),
+      headers: { "Content-Type": "application/json" },
     }),
   listTeacherTerms: (params) =>
     api.get(`/teachers/academics/terms${queryString(params)}`),
