@@ -61,7 +61,9 @@ const mergeClassSubjectPickerOptions = (classId, classSubjectResponse, subjectRe
 };
 
 const activateClassSubject = (classId, classSubjectId) =>
-  api.patch(`/classes/${classId}/subjects/${classSubjectId}/activate`, {});
+  api.patch(`/classes/${classId}/subjects/${classSubjectId}/activate`, {
+    confirmation: "ACTIVATE_CLASS_SUBJECT",
+  });
 
 const resolveExistingClassSubjectId = async (classId, subjectId) => {
   const response = await api.get(`/classes/${classId}/subjects${queryString({ active_only: false, limit: 100 })}`);
@@ -70,9 +72,12 @@ const resolveExistingClassSubjectId = async (classId, subjectId) => {
     throw new Error("Subject is already attached to this class, but the existing class-subject could not be loaded.");
   }
 
-  if (existing.is_active === false) {
-    const activated = await activateClassSubject(classId, existing.id);
-    return activated?.id || existing.id;
+  if (existing.is_active === false || existing.archived_at) {
+    throw new Error(
+      existing.archived_at
+        ? "This class-subject mapping is archived. Restore it before assigning a teacher."
+        : "This class-subject mapping is inactive. Activate it before assigning a teacher.",
+    );
   }
 
   return existing.id;
@@ -176,7 +181,11 @@ export const academicService = {
     api.post(`/classes/${classId}/subjects`, payload),
   activateClassSubject,
   deactivateClassSubject: (classSubjectId) =>
-    api.post(`/class-subjects/${classSubjectId}/deactivate`),
+    api.post(`/class-subjects/${classSubjectId}/deactivate`, {
+      confirmation: "DEACTIVATE_CLASS_SUBJECT",
+    }),
+  updateClassSubject: (classSubjectId, payload) =>
+    api.patch(`/class-subjects/${classSubjectId}`, payload),
   archiveClassSubject: (classSubjectId) =>
     api.post(`/class-subjects/${classSubjectId}/archive`, {
       confirmation: "ARCHIVE_CLASS_SUBJECT",
@@ -184,6 +193,13 @@ export const academicService = {
   restoreClassSubject: (classSubjectId) =>
     api.post(`/class-subjects/${classSubjectId}/restore`, {
       confirmation: "RESTORE_CLASS_SUBJECT",
+    }),
+  deleteClassSubject: (classSubjectId) =>
+    api.delete(`/class-subjects/${classSubjectId}`, {
+      body: JSON.stringify({
+        confirmation: "DELETE_CLASS_SUBJECT",
+      }),
+      headers: { "Content-Type": "application/json" },
     }),
 
   listTeacherAssignments: (params) =>

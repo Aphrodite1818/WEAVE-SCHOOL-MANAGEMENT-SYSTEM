@@ -53,6 +53,7 @@ from app.modules.student_academics.schemas import (
     TeacherAssignmentEnd,
     TeacherAssignmentReassign,
     TeacherAssignmentResponse,
+    ClassSubjectUpdate,
 )
 from app.modules.students.models import Student, StudentParentLinkStatus
 from app.modules.students.repository import StudentParentLinkRepository, StudentRepository
@@ -89,6 +90,37 @@ class StudentAcademicService:
             class_subject.tenant_id,
             class_subject.subject_id,
         )
+        classroom = await ClassRoomRepository.get_by_id(
+            db,
+            class_subject.tenant_id,
+            class_subject.class_id,
+        )
+        lifecycle_status = (
+            "archived"
+            if class_subject.archived_at is not None
+            else "active"
+            if class_subject.is_active
+            else "inactive"
+        )
+        class_is_archived = classroom.archived_at is not None if classroom else None
+        subject_is_archived = subject.archived_at is not None if subject else None
+        class_is_active = classroom.is_active if classroom else None
+        subject_is_active = subject.is_active if subject else None
+        activation_blocker = None
+        if class_subject.archived_at is not None:
+            activation_blocker = "Restore the mapping before activation."
+        elif classroom is None:
+            activation_blocker = "Class not found."
+        elif not classroom.is_active:
+            activation_blocker = "Class must be active before activating this mapping."
+        elif classroom.archived_at is not None:
+            activation_blocker = "Class must be restored before activating this mapping."
+        elif subject is None:
+            activation_blocker = "Subject not found."
+        elif not subject.is_active:
+            activation_blocker = "Subject must be active before activating this mapping."
+        elif subject.archived_at is not None:
+            activation_blocker = "Subject must be restored before activating this mapping."
         return ClassSubjectResponse(
             id=class_subject.id,
             tenant_id=class_subject.tenant_id,
@@ -98,11 +130,77 @@ class StudentAcademicService:
             subject_code=subject.code if subject else None,
             is_core=class_subject.is_core,
             is_active=class_subject.is_active,
+            lifecycle_status=lifecycle_status,
             archived_at=class_subject.archived_at,
             archived_by_admin_id=class_subject.archived_by_admin_id,
+            class_is_active=class_is_active,
+            class_is_archived=class_is_archived,
+            subject_is_active=subject_is_active,
+            subject_is_archived=subject_is_archived,
+            can_activate=activation_blocker is None,
+            activation_blocker=activation_blocker,
             created_at=class_subject.created_at,
             updated_at=class_subject.updated_at,
         )
+
+    @staticmethod
+    async def _set_compatibility_class_subject_teachers_active(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        class_subject_id: uuid.UUID,
+        is_active: bool,
+    ) -> None:
+        rows = await StudentAcademicRepository.list_class_subject_teachers_for_class_subject(
+            db,
+            tenant_id,
+            class_subject_id,
+        )
+        for row in rows:
+            row.is_active = is_active
+            await StudentAcademicRepository.save_class_subject_teacher(db, row)
+
+    @staticmethod
+    async def _class_subject_dependency_counts(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        class_subject_id: uuid.UUID,
+    ) -> dict[str, int]:
+        return {
+            "active_teacher_assignments": await StudentAcademicRepository.count_teacher_assignments_for_class_subject(
+                db,
+                tenant_id,
+                class_subject_id,
+                active_only=True,
+            ),
+            "teacher_assignment_history": await StudentAcademicRepository.count_teacher_assignments_for_class_subject(
+                db,
+                tenant_id,
+                class_subject_id,
+            ),
+            "student_results": await StudentAcademicRepository.count_results_for_class_subject(
+                db,
+                tenant_id,
+                class_subject_id,
+            ),
+            "report_card_lines": await StudentAcademicRepository.count_report_card_lines_for_class_subject(
+                db,
+                tenant_id,
+                class_subject_id,
+            ),
+            "compatibility_teacher_rows": await StudentAcademicRepository.count_class_subject_teachers_for_class_subject(
+                db,
+                tenant_id,
+                class_subject_id,
+            ),
+            "active_compatibility_teacher_rows": await StudentAcademicRepository.count_class_subject_teachers_for_class_subject(
+                db,
+                tenant_id,
+                class_subject_id,
+                active_only=True,
+            ),
+        }
 
     @staticmethod
     async def _validate_teacher_capability(
@@ -253,22 +351,14 @@ class StudentAcademicService:
         if existing is not None:
             if existing.archived_at is not None:
                 raise ConflictException(
-                    "This class subject is archived. Restore it before activation."
+                    "This class-subject mapping is archived. Restore it before creating a new mapping."
                 )
             if existing.is_active:
                 raise ConflictException(
                     "This subject is already offered by the class."
                 )
-            existing.is_active = True
-            existing.is_core = payload.is_core
-            existing = await StudentAcademicRepository.save_class_subject(
-                db,
-                existing,
-            )
-            await db.commit()
-            return await StudentAcademicService._build_class_subject_response(
-                db,
-                existing,
+            raise ConflictException(
+                "This class-subject mapping is inactive. Activate it instead of creating a new mapping."
             )
         row = await StudentAcademicRepository.create_class_subject(
             db,
@@ -293,6 +383,7 @@ class StudentAcademicService:
         class_id: uuid.UUID | None = None,
         active_only: bool = False,
         include_archived: bool = False,
+        lifecycle_status: str | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[list[ClassSubjectResponse], int]:
@@ -302,6 +393,7 @@ class StudentAcademicService:
             class_id=class_id,
             active_only=active_only,
             include_archived=include_archived,
+            lifecycle_status=lifecycle_status,
             skip=skip,
             limit=limit,
         )
@@ -329,8 +421,24 @@ class StudentAcademicService:
             )
         if not row.is_active:
             return await StudentAcademicService._build_class_subject_response(db, row)
+        counts = await StudentAcademicService._class_subject_dependency_counts(
+            db,
+            tenant_id=tenant_id,
+            class_subject_id=row.id,
+        )
+        if counts["active_teacher_assignments"]:
+            raise ConflictException(
+                "Active teacher assignments must be ended before deactivating this class-subject mapping.",
+                payload={"dependency_counts": counts},
+            )
         row.is_active = False
         row = await StudentAcademicRepository.save_class_subject(db, row)
+        await StudentAcademicService._set_compatibility_class_subject_teachers_active(
+            db,
+            tenant_id=tenant_id,
+            class_subject_id=row.id,
+            is_active=False,
+        )
         await db.commit()
         return await StudentAcademicService._build_class_subject_response(db, row)
 
@@ -358,8 +466,27 @@ class StudentAcademicService:
         if row.is_active:
             return await StudentAcademicService._build_class_subject_response(db, row)
         row.is_active = True
-        row.archived_at = None
-        row.archived_by_admin_id = None
+        row = await StudentAcademicRepository.save_class_subject(db, row)
+        await db.commit()
+        return await StudentAcademicService._build_class_subject_response(db, row)
+
+    @staticmethod
+    async def update_class_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_subject_id: uuid.UUID,
+        payload: ClassSubjectUpdate,
+    ) -> ClassSubjectResponse:
+        row = await StudentAcademicRepository.get_class_subject_by_id(
+            db,
+            tenant_id,
+            class_subject_id,
+        )
+        if row is None:
+            raise NotFoundException("Class subject not found.")
+        if row.archived_at is not None:
+            raise ConflictException("Archived class-subject mappings cannot be updated.")
+        row.is_core = payload.is_core
         row = await StudentAcademicRepository.save_class_subject(db, row)
         await db.commit()
         return await StudentAcademicService._build_class_subject_response(db, row)
@@ -379,19 +506,31 @@ class StudentAcademicService:
         if row is None:
             raise NotFoundException("Class subject not found.")
         if row.archived_at is not None:
-            return await StudentAcademicService._build_class_subject_response(db, row)
-        active_assignments = await StudentAcademicRepository.count_teacher_assignments_for_class_subject(
+            raise ConflictException("Class-subject mapping is already archived.")
+        if row.is_active:
+            raise ConflictException(
+                "Active class-subject mappings cannot be archived. Deactivate the mapping first."
+            )
+        counts = await StudentAcademicService._class_subject_dependency_counts(
             db,
-            tenant_id,
-            row.id,
-            active_only=True,
+            tenant_id=tenant_id,
+            class_subject_id=row.id,
         )
-        if active_assignments:
-            raise ConflictException("End active teacher assignments before archiving this class subject.")
+        if counts["active_teacher_assignments"] or counts["active_compatibility_teacher_rows"]:
+            raise ConflictException(
+                "End active teacher state before archiving this class-subject mapping.",
+                payload={"dependency_counts": counts},
+            )
         row.is_active = False
         row.archived_at = datetime.now(timezone.utc)
         row.archived_by_admin_id = admin_id
         row = await StudentAcademicRepository.save_class_subject(db, row)
+        await StudentAcademicService._set_compatibility_class_subject_teachers_active(
+            db,
+            tenant_id=tenant_id,
+            class_subject_id=row.id,
+            is_active=False,
+        )
         await db.commit()
         return await StudentAcademicService._build_class_subject_response(db, row)
 
@@ -414,6 +553,12 @@ class StudentAcademicService:
         row.archived_by_admin_id = None
         row.is_active = False
         row = await StudentAcademicRepository.save_class_subject(db, row)
+        await StudentAcademicService._set_compatibility_class_subject_teachers_active(
+            db,
+            tenant_id=tenant_id,
+            class_subject_id=row.id,
+            is_active=False,
+        )
         await db.commit()
         return await StudentAcademicService._build_class_subject_response(db, row)
 
@@ -430,26 +575,33 @@ class StudentAcademicService:
         )
         if row is None:
             raise NotFoundException("Class subject not found.")
-        result_count = await StudentAcademicRepository.count_results_for_class_subject(
+        if row.is_active:
+            raise ConflictException("Active class-subject mappings cannot be hard-deleted. Deactivate the mapping first.")
+        if row.archived_at is not None:
+            raise ConflictException("Archived class-subject mappings cannot be hard-deleted. Restore them first.")
+        counts = await StudentAcademicService._class_subject_dependency_counts(
             db,
-            tenant_id,
-            row.id,
+            tenant_id=tenant_id,
+            class_subject_id=row.id,
         )
-        assignment_count = await StudentAcademicRepository.count_teacher_assignments_for_class_subject(
-            db,
-            tenant_id,
-            row.id,
-        )
-        report_line_count = await StudentAcademicRepository.count_report_card_lines_for_class_subject(
-            db,
-            tenant_id,
-            row.id,
-        )
-        if result_count or assignment_count or report_line_count:
+        blocking_counts = {
+            "teacher_assignment_history": counts["teacher_assignment_history"],
+            "student_results": counts["student_results"],
+            "report_card_lines": counts["report_card_lines"],
+        }
+        if any(blocking_counts.values()):
             raise ConflictException(
-                "Class subject has academic history. Deactivate or archive it instead."
+                "Class-subject mapping has dependencies and cannot be hard-deleted.",
+                payload={"dependency_counts": counts},
             )
         response = await StudentAcademicService._build_class_subject_response(db, row)
+        compatibility_rows = await StudentAcademicRepository.list_class_subject_teachers_for_class_subject(
+            db,
+            tenant_id,
+            row.id,
+        )
+        for compatibility_row in compatibility_rows:
+            await StudentAcademicRepository.delete_class_subject_teacher(db, compatibility_row)
         await StudentAcademicRepository.delete_class_subject(db, row)
         await db.commit()
         return response

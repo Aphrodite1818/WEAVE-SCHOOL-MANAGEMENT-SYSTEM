@@ -23,7 +23,12 @@ from app.modules.classes.schemas import (
 )
 from app.modules.classes.service import ClassRoomService
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.student_academics.schemas import ClassSubjectCreate, ClassSubjectListResponse, ClassSubjectResponse
+from app.modules.student_academics.schemas import (
+    ClassSubjectActivateRequest,
+    ClassSubjectCreate,
+    ClassSubjectListResponse,
+    ClassSubjectResponse,
+)
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
@@ -292,6 +297,7 @@ async def list_class_subjects(
     current_user: CurrentTenantMember,
     active_only: bool = Query(default=False),
     include_archived: bool = Query(default=False),
+    lifecycle_status: str | None = Query(default=None, pattern="^(active|inactive|archived)$"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> ClassSubjectListResponse:
@@ -301,6 +307,7 @@ async def list_class_subjects(
         class_id=class_id,
         active_only=active_only,
         include_archived=include_archived and isinstance(current_user, TenantAdmin),
+        lifecycle_status=lifecycle_status,
         skip=skip,
         limit=limit,
     )
@@ -338,11 +345,13 @@ async def add_class_subject(
 async def activate_class_subject(
     class_id: uuid.UUID,
     class_subject_id: uuid.UUID,
+    payload: ClassSubjectActivateRequest,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ClassSubjectResponse:
     """Reactivate a soft-deactivated subject link for a class."""
 
+    _ = payload.confirmation
     class_subject = await StudentAcademicRepository.get_class_subject_by_id(
         db=db,
         tenant_id=current_user.tenant_id,

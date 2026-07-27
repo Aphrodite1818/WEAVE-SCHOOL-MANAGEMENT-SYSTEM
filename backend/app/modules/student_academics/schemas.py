@@ -241,6 +241,10 @@ class ClassSubjectCreate(InputBase):
     is_core: bool = False
 
 
+class ClassSubjectUpdate(InputBase):
+    is_core: bool
+
+
 class ClassSubjectResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -250,10 +254,25 @@ class ClassSubjectResponse(OutputBase):
     subject_code: str | None = None
     is_core: bool
     is_active: bool
+    lifecycle_status: Literal["active", "inactive", "archived"]
     archived_at: datetime | None = None
     archived_by_admin_id: uuid.UUID | None = None
+    class_is_active: bool | None = None
+    class_is_archived: bool | None = None
+    subject_is_active: bool | None = None
+    subject_is_archived: bool | None = None
+    can_activate: bool
+    activation_blocker: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class ClassSubjectActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_CLASS_SUBJECT"]
+
+
+class ClassSubjectDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_CLASS_SUBJECT"]
 
 
 class ClassSubjectArchiveRequest(InputBase):
@@ -262,6 +281,10 @@ class ClassSubjectArchiveRequest(InputBase):
 
 class ClassSubjectRestoreRequest(InputBase):
     confirmation: Literal["RESTORE_CLASS_SUBJECT"]
+
+
+class ClassSubjectDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_CLASS_SUBJECT"]
 
 
 class TeacherAssignmentCreate(InputBase):

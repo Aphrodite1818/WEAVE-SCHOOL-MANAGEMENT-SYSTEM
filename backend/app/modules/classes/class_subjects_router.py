@@ -6,9 +6,13 @@ from fastapi import APIRouter, Depends, status
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.modules.student_academics.schemas import (
+    ClassSubjectActivateRequest,
     ClassSubjectArchiveRequest,
+    ClassSubjectDeactivateRequest,
+    ClassSubjectDeleteRequest,
     ClassSubjectResponse,
     ClassSubjectRestoreRequest,
+    ClassSubjectUpdate,
 )
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
@@ -28,9 +32,11 @@ CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenan
 )
 async def activate_class_subject(
     class_subject_id: uuid.UUID,
+    payload: ClassSubjectActivateRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ClassSubjectResponse:
+    _ = payload.confirmation
     return await StudentAcademicService.activate_class_subject(
         db=db,
         tenant_id=current_admin.tenant_id,
@@ -44,9 +50,11 @@ async def activate_class_subject(
 )
 async def deactivate_class_subject(
     class_subject_id: uuid.UUID,
+    payload: ClassSubjectDeactivateRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ClassSubjectResponse:
+    _ = payload.confirmation
     return await StudentAcademicService.deactivate_class_subject(
         db=db,
         tenant_id=current_admin.tenant_id,
@@ -64,6 +72,7 @@ async def archive_class_subject(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ClassSubjectResponse:
+    _ = payload.confirmation
     return await StudentAcademicService.archive_class_subject(
         db=db,
         tenant_id=current_admin.tenant_id,
@@ -82,10 +91,29 @@ async def restore_class_subject(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ClassSubjectResponse:
+    _ = payload.confirmation
     return await StudentAcademicService.restore_class_subject(
         db=db,
         tenant_id=current_admin.tenant_id,
         class_subject_id=class_subject_id,
+    )
+
+
+@router.patch(
+    "/{class_subject_id}",
+    response_model=ClassSubjectResponse,
+)
+async def update_class_subject(
+    class_subject_id: uuid.UUID,
+    payload: ClassSubjectUpdate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> ClassSubjectResponse:
+    return await StudentAcademicService.update_class_subject(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        class_subject_id=class_subject_id,
+        payload=payload,
     )
 
 
@@ -95,9 +123,11 @@ async def restore_class_subject(
 )
 async def delete_class_subject(
     class_subject_id: uuid.UUID,
+    payload: ClassSubjectDeleteRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ClassSubjectResponse:
+    _ = payload.confirmation
     return await StudentAcademicService.delete_class_subject(
         db=db,
         tenant_id=current_admin.tenant_id,

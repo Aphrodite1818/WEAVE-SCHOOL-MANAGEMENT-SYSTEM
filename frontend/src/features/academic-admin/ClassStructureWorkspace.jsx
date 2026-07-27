@@ -1,4 +1,4 @@
-import { BookOpen, Library } from "lucide-react";
+import { Library } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
@@ -7,7 +7,7 @@ import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
 import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
-import { getErrorMessage } from "../../services/api";
+import { getErrorMessage, parseApiError } from "../../services/api";
 import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
@@ -36,8 +36,20 @@ const CONFIRM_ACTIVATE_CLASSROOM = "ACTIVATE_CLASSROOM";
 const CONFIRM_DEACTIVATE_CLASSROOM = "DEACTIVATE_CLASSROOM";
 const CONFIRM_ARCHIVE_CLASSROOM = "ARCHIVE_CLASSROOM";
 const CONFIRM_RESTORE_CLASSROOM = "RESTORE_CLASSROOM";
+const CONFIRM_ACTIVATE_CLASS_SUBJECT = "ACTIVATE_CLASS_SUBJECT";
+const CONFIRM_DEACTIVATE_CLASS_SUBJECT = "DEACTIVATE_CLASS_SUBJECT";
 const CONFIRM_ARCHIVE_CLASS_SUBJECT = "ARCHIVE_CLASS_SUBJECT";
 const CONFIRM_RESTORE_CLASS_SUBJECT = "RESTORE_CLASS_SUBJECT";
+const CONFIRM_DELETE_CLASS_SUBJECT = "DELETE_CLASS_SUBJECT";
+
+const DEPENDENCY_LABELS = {
+  active_teacher_assignments: "active teacher assignments",
+  teacher_assignment_history: "teacher assignment history",
+  student_results: "student results",
+  report_card_lines: "report-card lines",
+  compatibility_teacher_rows: "compatibility teacher rows",
+  active_compatibility_teacher_rows: "active compatibility teacher rows",
+};
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -92,6 +104,65 @@ const classLifecycleConfirmation = (item, action) => {
   };
 };
 
+const formatMappingError = (error, fallback) => {
+  const parsed = parseApiError(error, fallback);
+  const counts = parsed.data?.dependency_counts;
+  if (!counts || typeof counts !== "object") return parsed.message;
+
+  const details = Object.entries(DEPENDENCY_LABELS)
+    .map(([key, label]) => {
+      const value = Number(counts[key] || 0);
+      return value > 0 ? `${label}: ${value}` : null;
+    })
+    .filter(Boolean)
+    .join("; ");
+
+  return details ? `${parsed.message} ${details}.` : parsed.message;
+};
+
+const mappingLifecycleConfirmation = (item, action) => {
+  const name = item.subject_name || "Class-subject mapping";
+  const config = {
+    activate: {
+      title: "Activate class-subject mapping",
+      confirmationText: CONFIRM_ACTIVATE_CLASS_SUBJECT,
+      confirmLabel: "Activate mapping",
+      variant: "primary",
+      description: item.activation_blocker || name,
+    },
+    deactivate: {
+      title: "Deactivate class-subject mapping",
+      confirmationText: CONFIRM_DEACTIVATE_CLASS_SUBJECT,
+      confirmLabel: "Deactivate mapping",
+      variant: "danger",
+      description: name,
+    },
+    archive: {
+      title: "Archive class-subject mapping",
+      confirmationText: CONFIRM_ARCHIVE_CLASS_SUBJECT,
+      confirmLabel: "Archive mapping",
+      variant: "danger",
+      description: `${name} must already be inactive. Academic history will remain available.`,
+    },
+    restore: {
+      title: "Restore class-subject mapping",
+      confirmationText: CONFIRM_RESTORE_CLASS_SUBJECT,
+      confirmLabel: "Restore mapping",
+      variant: "primary",
+      description: name,
+    },
+    delete: {
+      title: "Delete class-subject mapping",
+      confirmationText: CONFIRM_DELETE_CLASS_SUBJECT,
+      confirmLabel: "Delete mapping",
+      variant: "danger",
+      description: `${name} must be inactive, unarchived, and have no academic history.`,
+    },
+  }[action];
+
+  return { item, action, ...config };
+};
+
 function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -110,6 +181,11 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [viewingClass, setViewingClass] = useState(null);
   const [pendingClassConfirmation, setPendingClassConfirmation] = useState(null);
   const [pendingMappingConfirmation, setPendingMappingConfirmation] = useState(null);
+  const [editingMapping, setEditingMapping] = useState(null);
+  const [viewingMapping, setViewingMapping] = useState(null);
+  const [reviewingClass, setReviewingClass] = useState(null);
+  const [reviewClassSubjects, setReviewClassSubjects] = useState([]);
+  const [reviewClassLoading, setReviewClassLoading] = useState(false);
   const [saving, setSaving] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -183,7 +259,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     try {
       const response = await academicService.listOfferedClassSubjects(
         activeSelectedClassId,
-        { active_only: false, limit: 100 },
+        { active_only: false, include_archived: true, limit: 100 },
       );
       setClassSubjects(asItems(response));
     } catch (err) {
@@ -221,7 +297,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     [teachers],
   );
   const offeredSubjectIds = useMemo(
-    () => new Set(classSubjects.filter((item) => item.is_active).map((item) => item.subject_id)),
+    () => new Set(classSubjects.map((item) => item.subject_id)),
     [classSubjects],
   );
   const subjectOptions = useMemo(
@@ -289,20 +365,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       setSubjectSelection({ subject_id: "", is_core: true });
       await loadClassSubjects();
     } catch (err) {
-      showError(getErrorMessage(err, "Could not attach subject to class."));
-    } finally {
-      setSaving("");
-    }
-  };
-
-  const deactivateOffering = async (item) => {
-    setSaving(item.id);
-    try {
-      await academicService.deactivateClassSubject(item.id);
-      showSuccess("Class subject deactivated.");
-      await loadClassSubjects();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not deactivate class subject."));
+      showError(formatMappingError(err, "Could not attach subject to class."));
     } finally {
       setSaving("");
     }
@@ -382,12 +445,50 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       if (action === "deactivate") await academicService.deactivateClassSubject(item.id);
       if (action === "archive") await academicService.archiveClassSubject(item.id);
       if (action === "restore") await academicService.restoreClassSubject(item.id);
+      if (action === "delete") await academicService.deleteClassSubject(item.id);
       showSuccess(`Class-subject mapping ${action}d.`);
       await loadClassSubjects();
     } catch (err) {
-      showError(getErrorMessage(err, `Could not ${action} class-subject mapping.`));
+      showError(formatMappingError(err, `Could not ${action} class-subject mapping.`));
     } finally {
       setSaving("");
+      setPendingMappingConfirmation(null);
+    }
+  };
+
+  const saveMappingEdit = async () => {
+    if (!editingMapping) return;
+    setSaving(editingMapping.id);
+    try {
+      await academicService.updateClassSubject(editingMapping.id, {
+        is_core: editingMapping.is_core,
+      });
+      showSuccess("Class-subject mapping updated.");
+      setEditingMapping(null);
+      await loadClassSubjects();
+    } catch (err) {
+      showError(formatMappingError(err, "Could not update class-subject mapping."));
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const openClassSubjectReview = async (item) => {
+    setReviewingClass(item);
+    setActiveSelectedClassId(item.id);
+    setReviewClassSubjects([]);
+    setReviewClassLoading(true);
+    try {
+      const response = await academicService.listOfferedClassSubjects(item.id, {
+        active_only: false,
+        include_archived: true,
+        limit: 100,
+      });
+      setReviewClassSubjects(asItems(response));
+    } catch (err) {
+      showError(formatMappingError(err, "Could not load subjects for this class."));
+    } finally {
+      setReviewClassLoading(false);
     }
   };
 
@@ -995,67 +1096,97 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
                   </p>
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">
                     {item.archived_at ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        disabled={saving === item.id}
-                        onClick={() =>
-                          setPendingMappingConfirmation({
-                            item,
-                            action: "restore",
-                            title: "Restore class-subject mapping",
-                            description: item.subject_name || "Class-subject mapping",
-                            confirmationText: CONFIRM_RESTORE_CLASS_SUBJECT,
-                            confirmLabel: "Restore mapping",
-                            variant: "primary",
-                          })
-                        }
-                      >
-                        Restore
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outline"
+                          disabled={saving === item.id}
+                          onClick={() => setViewingMapping(item)}
+                        >
+                          View
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outline"
+                          disabled={saving === item.id}
+                          onClick={() =>
+                            setPendingMappingConfirmation(mappingLifecycleConfirmation(item, "restore"))
+                          }
+                        >
+                          Restore
+                        </Button>
+                      </>
                     ) : item.is_active ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        disabled={saving === item.id}
-                        onClick={() => deactivateOffering(item)}
-                      >
-                        {saving === item.id ? "Removing..." : "Deactivate"}
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outline"
+                          disabled={saving === item.id}
+                          onClick={() => setEditingMapping({ ...item })}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outline"
+                          disabled={saving === item.id}
+                          onClick={() =>
+                            setPendingMappingConfirmation(mappingLifecycleConfirmation(item, "deactivate"))
+                          }
+                        >
+                          {saving === item.id ? "Working..." : "Deactivate"}
+                        </Button>
+                      </>
                     ) : (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="success"
-                        disabled={saving === item.id}
-                        onClick={() => updateMappingLifecycle(item, "activate")}
-                      >
-                        Activate
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outline"
+                          disabled={saving === item.id}
+                          onClick={() => setEditingMapping({ ...item })}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="success"
+                          disabled={saving === item.id}
+                          onClick={() =>
+                            setPendingMappingConfirmation(mappingLifecycleConfirmation(item, "activate"))
+                          }
+                        >
+                          Activate
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="danger"
+                          disabled={saving === item.id}
+                          onClick={() =>
+                            setPendingMappingConfirmation(mappingLifecycleConfirmation(item, "archive"))
+                          }
+                        >
+                          Archive
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="danger"
+                          disabled={saving === item.id}
+                          onClick={() =>
+                            setPendingMappingConfirmation(mappingLifecycleConfirmation(item, "delete"))
+                          }
+                        >
+                          Delete
+                        </Button>
+                      </>
                     )}
-                    {!item.archived_at ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="danger"
-                        disabled={saving === item.id}
-                        onClick={() =>
-                          setPendingMappingConfirmation({
-                            item,
-                            action: "archive",
-                            title: "Archive class-subject mapping",
-                            description: item.subject_name || "Class-subject mapping",
-                            confirmationText: CONFIRM_ARCHIVE_CLASS_SUBJECT,
-                            confirmLabel: "Archive mapping",
-                            variant: "danger",
-                          })
-                        }
-                      >
-                        Archive
-                      </Button>
-                    ) : null}
                   </div>
                 </div>
               ))}
@@ -1081,27 +1212,82 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
         }}
         onCancel={() => setPendingMappingConfirmation(null)}
       />
+      <Modal
+        open={Boolean(editingMapping)}
+        title="Edit class-subject mapping"
+        description={editingMapping?.subject_name || "Class-subject mapping"}
+        onClose={() => setEditingMapping(null)}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingMapping(null)}
+              disabled={saving === editingMapping?.id}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={saveMappingEdit}
+              disabled={saving === editingMapping?.id}
+            >
+              {saving === editingMapping?.id ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        }
+      >
+        {editingMapping ? (
+          <CheckboxControl
+            label="Core subject"
+            checked={editingMapping.is_core}
+            onChange={(value) =>
+              setEditingMapping((current) => ({ ...current, is_core: value }))
+            }
+          />
+        ) : null}
+      </Modal>
+      <Modal
+        open={Boolean(viewingMapping)}
+        title={viewingMapping?.subject_name || "Class-subject mapping"}
+        description="Archived mapping"
+        onClose={() => setViewingMapping(null)}
+        footer={
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={() => setViewingMapping(null)}>
+              Close
+            </Button>
+          </div>
+        }
+      >
+        {viewingMapping ? (
+          <div className="space-y-2 text-sm text-text-muted">
+            <p>Status: {viewingMapping.lifecycle_status || "archived"}</p>
+            <p>{viewingMapping.is_core ? "Core subject" : "Elective subject"}</p>
+            {viewingMapping.activation_blocker ? <p>{viewingMapping.activation_blocker}</p> : null}
+          </div>
+        ) : null}
+      </Modal>
     </>
   );
 
   const reviewView = (
     <WorkspacePanel
-      title="Academic structure review"
-      description="A compact view of every class, its teacher, progression state, and offered subjects."
+      title="Class subject mappings"
+      description="Select a class to review the subjects currently attached to it."
     >
-      <div className="space-y-3">
+      <div className="max-h-[calc(100vh-15rem)] space-y-3 overflow-y-auto pr-2">
         {classes.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
             No classes are available for review.
           </p>
         ) : (
           classes.map((item) => {
-            const isSelected = item.id === activeSelectedClassId;
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setActiveSelectedClassId(item.id)}
+                onClick={() => openClassSubjectReview(item)}
                 className="w-full rounded-2xl border border-border/70 bg-surface px-4 py-4 text-left transition hover:border-primary/30 hover:bg-primary-subtle/20"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1119,40 +1305,76 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant={item.is_active ? "success" : "error"}>
-                      {item.is_active ? "active" : "inactive"}
-                    </Badge>
-                    {item.is_terminal ? <Badge variant="warning">terminal</Badge> : null}
-                    {isSelected ? <Badge variant="primary">showing subjects</Badge> : null}
-                  </div>
+                    {item.is_active ? "active" : "inactive"}
+                  </Badge>
+                  {item.is_terminal ? <Badge variant="warning">terminal</Badge> : null}
                 </div>
-              </button>
+              </div>
+            </button>
             );
           })
         )}
       </div>
-      {activeSelectedClassId ? (
-        <div className="mt-5 rounded-2xl border border-border/70 bg-surface-muted/25 p-4">
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-primary" />
-            <p className="font-semibold text-text">
-              {classLabel(classes.find((item) => item.id === activeSelectedClassId))} subjects
+      <Modal
+        open={Boolean(reviewingClass)}
+        title={reviewingClass ? `${classLabel(reviewingClass)} subjects` : "Class subjects"}
+        description="Subjects attached to this class"
+        onClose={() => setReviewingClass(null)}
+        footer={
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={() => setReviewingClass(null)}>
+              Close
+            </Button>
+          </div>
+        }
+      >
+        <div className="max-h-[60vh] overflow-y-auto pr-2">
+          {reviewClassLoading ? (
+            <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
+              Loading subjects...
             </p>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {classSubjects.filter((item) => item.is_active).length === 0 ? (
-              <span className="text-sm text-text-muted">No active subjects attached.</span>
-            ) : (
-              classSubjects
-                .filter((item) => item.is_active)
-                .map((item) => (
-                  <Badge key={item.id} variant={item.is_core ? "primary" : "default"}>
-                    {item.subject_name || "Subject"}
-                  </Badge>
-                ))
-            )}
-          </div>
+          ) : reviewClassSubjects.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
+              No subjects are attached to this class.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {reviewClassSubjects.map((item) => {
+                const status = item.archived_at
+                  ? "archived"
+                  : item.is_active
+                    ? "active"
+                    : "inactive";
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-border/70 bg-surface px-4 py-3"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold text-text">
+                          {item.subject_name || "Subject"}
+                        </p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          {item.subject_code || "No code"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant={status === "active" ? "success" : status === "archived" ? "warning" : "error"}>
+                          {status}
+                        </Badge>
+                        <Badge variant={item.is_core ? "primary" : "default"}>
+                          {item.is_core ? "core" : "elective"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      ) : null}
+      </Modal>
     </WorkspacePanel>
   );
 
