@@ -6,6 +6,7 @@ const buildSubjectQuery = ({
   isActive,
   includeArchived,
   search,
+  lifecycleStatus,
 } = {}) => {
   const params = new URLSearchParams();
 
@@ -22,6 +23,10 @@ const buildSubjectQuery = ({
 
   if (search) {
     params.set("search", search);
+  }
+
+  if (lifecycleStatus) {
+    params.set("lifecycle_status", lifecycleStatus);
   }
 
   return params.toString();
@@ -41,10 +46,14 @@ export const subjectService = {
     api.patch(`/subjects/${subjectId}`, data),
 
   activateSubject: (subjectId) =>
-    api.post(`/subjects/${subjectId}/activate`),
+    api.post(`/subjects/${subjectId}/activate`, {
+      confirmation: "ACTIVATE_SUBJECT",
+    }),
 
   deactivateSubject: (subjectId) =>
-    api.post(`/subjects/${subjectId}/deactivate`),
+    api.post(`/subjects/${subjectId}/deactivate`, {
+      confirmation: "DEACTIVATE_SUBJECT",
+    }),
 
   archiveSubject: (subjectId) =>
     api.post(`/subjects/${subjectId}/archive`, {
@@ -57,5 +66,7 @@ export const subjectService = {
     }),
 
   deleteSubject: (subjectId) =>
-    api.delete(`/subjects/${subjectId}`),
+    api.delete(`/subjects/${subjectId}`, {
+      body: JSON.stringify({ confirmation: "DELETE_SUBJECT" }),
+    }),
 };

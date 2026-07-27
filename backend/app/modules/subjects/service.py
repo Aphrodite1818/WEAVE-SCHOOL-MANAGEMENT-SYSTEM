@@ -46,6 +46,41 @@ class SubjectService:
         return cleaned or None
 
     @staticmethod
+    def _live_dependency_message(counts: dict[str, int]) -> str | None:
+        if counts.get("active_class_subjects", 0) > 0:
+            return (
+                "This subject is still actively offered by one or more classes. "
+                "Deactivate or archive those mappings first."
+            )
+        if counts.get("active_teacher_links", 0) > 0:
+            return (
+                "This subject still has active teacher capability links. "
+                "Remove those capabilities first."
+            )
+        if counts.get("active_teacher_assignments", 0) > 0:
+            return "This subject still has active teacher assignments. End those assignments first."
+        return None
+
+    @staticmethod
+    async def _ensure_no_live_dependencies(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        subject_id: UUID,
+    ) -> None:
+        counts = await SubjectRepository.count_live_subject_dependencies(
+            db=db,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
+        message = SubjectService._live_dependency_message(counts)
+        if message:
+            raise ConflictException(
+                detail=message,
+                payload={"dependency_counts": counts},
+            )
+
+    @staticmethod
     async def create_subject(
         db: AsyncSession,
         actor: TenantAdmin,
@@ -78,7 +113,7 @@ class SubjectService:
             tenant_id=actor.tenant_id,
             name=subject_data.name,
             normalized_name=normalized_name,
-            code=subject_data.code.upper() if subject_data.code else None,
+            code=normalized_code,
             normalized_code=normalized_code,
             description=subject_data.description,
             is_active=True,
@@ -135,6 +170,7 @@ class SubjectService:
         is_active: bool | None = None,
         search: str | None = None,
         include_archived: bool = False,
+        lifecycle_status: str | None = None,
     ) -> tuple[list[Subject], int]:
         """List subjects."""
 
@@ -162,6 +198,7 @@ class SubjectService:
             is_active=is_active,
             search=search,
             include_archived=include_archived,
+            lifecycle_status=lifecycle_status,
         )
 
     @staticmethod
@@ -185,7 +222,7 @@ class SubjectService:
         if subject.archived_at is not None:
             raise ConflictException("Archived subjects cannot be updated. Restore them first.")
 
-        update_data = subject_data.model_dump(exclude_unset=True, exclude_none=True)
+        update_data = subject_data.model_dump(exclude_unset=True)
         if not update_data:
             raise BadRequestException(detail="No update data provided.")
 
@@ -212,7 +249,7 @@ class SubjectService:
                 if existing_code:
                     raise BadRequestException(detail="A subject with this code already exists.")
             update_data["normalized_code"] = normalized_code
-            update_data["code"] = update_data["code"].upper() if update_data["code"] else None
+            update_data["code"] = normalized_code
 
         try:
             for field, value in update_data.items():
@@ -254,15 +291,13 @@ class SubjectService:
 
         if subject.archived_at is not None:
             raise ConflictException(
-                "Archived subjects must be restored before activation"
+                "Archived subjects must be restored before activation."
             )
 
         if subject.is_active:
             return subject
 
         subject.is_active = True
-        subject.archived_at = None
-        subject.archived_by_admin_id = None
         await SubjectRepository.update_subject(db=db, subject=subject)
         await db.commit()
 
@@ -299,7 +334,17 @@ class SubjectService:
         if subject.archived_at is not None:
             return subject
 
-        subject.is_active = False
+        if subject.is_active:
+            raise ConflictException(
+                "Active subjects cannot be archived. Deactivate the subject first."
+            )
+
+        await SubjectService._ensure_no_live_dependencies(
+            db=db,
+            tenant_id=actor.tenant_id,
+            subject_id=subject.id,
+        )
+
         subject.archived_at = datetime.now(timezone.utc)
         subject.archived_by_admin_id = actor.id
 
@@ -335,6 +380,12 @@ class SubjectService:
 
         if not subject.is_active:
             return subject
+
+        await SubjectService._ensure_no_live_dependencies(
+            db=db,
+            tenant_id=actor.tenant_id,
+            subject_id=subject.id,
+        )
 
         subject.is_active = False
         await SubjectRepository.update_subject(db=db, subject=subject)
@@ -404,6 +455,11 @@ class SubjectService:
         if not subject:
             raise NotFoundException(detail="Subject not found.")
 
+        if subject.is_active:
+            raise ConflictException("Active subjects cannot be deleted. Deactivate the subject first.")
+        if subject.archived_at is not None:
+            raise ConflictException("Archived subjects cannot be deleted. Restore them first.")
+
         dependency_counts = await SubjectRepository.count_subject_dependencies(
             db=db,
             tenant_id=actor.tenant_id,
@@ -411,7 +467,8 @@ class SubjectService:
         )
         if any(count > 0 for count in dependency_counts.values()):
             raise ConflictException(
-                detail="Subject has academic history or assignments. Archive it instead."
+                detail="Subject has academic dependencies and cannot be deleted.",
+                payload={"dependency_counts": dependency_counts},
             )
 
         await SubjectRepository.delete_subject(db=db, subject=subject)

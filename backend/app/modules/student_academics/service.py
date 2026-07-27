@@ -1470,8 +1470,20 @@ class StudentAcademicService:
                             class_subject.id,
                         )
                     )
-        if assignment is None or class_subject is None or not class_subject.is_active:
+        if (
+            assignment is None
+            or class_subject is None
+            or not class_subject.is_active
+            or class_subject.archived_at is not None
+        ):
             raise NotFoundException("Active class-subject assignment not found.")
+        subject = await SubjectRepository.get_subject_by_id(
+            db,
+            tenant_id,
+            class_subject.subject_id,
+        )
+        if subject is None or not subject.is_active or subject.archived_at is not None:
+            raise ConflictException("Subject must be active before recording results.")
         if compatibility is None:
             compatibility = await StudentAcademicService._ensure_compatibility_assignment(
                 db,

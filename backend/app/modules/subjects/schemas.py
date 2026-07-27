@@ -108,12 +108,24 @@ class SubjectStatusUpdate(InputBase):
     is_active: bool
 
 
+class SubjectActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_SUBJECT"]
+
+
+class SubjectDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_SUBJECT"]
+
+
 class SubjectArchiveRequest(InputBase):
     confirmation: Literal["ARCHIVE_SUBJECT"]
 
 
 class SubjectRestoreRequest(InputBase):
     confirmation: Literal["RESTORE_SUBJECT"]
+
+
+class SubjectDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_SUBJECT"]
 
 
 class SubjectTeacherResponse(OutputBase):
@@ -137,6 +149,8 @@ class SubjectResponse(OutputBase):
     is_active: bool
     archived_at: datetime | None = None
     archived_by_admin_id: uuid.UUID | None = None
+    can_delete: bool = False
+    dependency_counts: dict[str, int] | None = None
     teachers: list[SubjectTeacherResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

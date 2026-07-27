@@ -1,10 +1,11 @@
-import { BookOpen, CalendarDays, GraduationCap } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, GraduationCap, MoreHorizontal, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
+import Dropdown from "../../components/ui/Dropdown";
 import { useToast } from "../../hooks/useToast";
-import { getErrorMessage } from "../../services/api";
+import { getErrorMessage, parseApiError } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { subjectService } from "../../services/subject.service";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
@@ -44,6 +45,7 @@ const CONFIRM_OPEN_SESSION = "OPEN_ACADEMIC_SESSION";
 const CONFIRM_CLOSE_SESSION = "CLOSE_AND_PROGRESS";
 const CONFIRM_OPEN_TERM = "OPEN_ACADEMIC_TERM";
 const CONFIRM_CLOSE_TERM = "CLOSE_ACADEMIC_TERM";
+const SUBJECT_PAGE_SIZE = 24;
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -60,11 +62,132 @@ const termLabel = (value) =>
 const dateLabel = (value) =>
   value ? new Date(value).toLocaleDateString() : "Date not set";
 
+const subjectStatus = (item) =>
+  item.archived_at ? "archived" : item.is_active === false ? "inactive" : "active";
+
+const dependencyLabels = {
+  class_subjects: "Class-subject mappings",
+  teacher_links: "Teacher capability links",
+  teacher_assignments: "Teacher assignments",
+  results: "Student result rows",
+  report_card_lines: "Report-card subject lines",
+  active_class_subjects: "Active class-subject mappings",
+  active_teacher_links: "Active teacher capability links",
+  active_teacher_assignments: "Active teacher assignments",
+};
+
+const dependencyCountItems = (counts = {}) =>
+  Object.entries(counts)
+    .filter(([, count]) => Number(count) > 0)
+    .map(([key, count]) => ({
+      key,
+      label: dependencyLabels[key] || key.replaceAll("_", " "),
+      count,
+    }));
+
+function SubjectForm({ form, setForm, saving, editing, onSubmit, onCancel }) {
+  return (
+    <form className="space-y-3" onSubmit={onSubmit}>
+      <Input
+        label="Subject name"
+        value={form.name}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, name: event.target.value }))
+        }
+        required
+      />
+      <Input
+        label="Subject code"
+        value={form.code}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, code: event.target.value }))
+        }
+        placeholder="MTH"
+      />
+      <Input
+        label="Description"
+        value={form.description}
+        onChange={(event) =>
+          setForm((current) => ({
+            ...current,
+            description: event.target.value,
+          }))
+        }
+      />
+      <FormActions
+        submitting={saving === "subject"}
+        submitLabel={editing ? "Update subject" : "Create subject"}
+        editing={editing}
+        onCancel={onCancel}
+      />
+    </form>
+  );
+}
+
+function SubjectActionMenu({ item, busy, onAction }) {
+  const [open, setOpen] = useState(false);
+  const status = subjectStatus(item);
+  const actions =
+    status === "archived"
+      ? [{ key: "restore", label: "Restore", tone: "default" }]
+      : status === "inactive"
+        ? [
+            { key: "activate", label: "Restore to active", tone: "success" },
+            { key: "archive", label: "Archive", tone: "danger" },
+            ...(item.can_delete
+              ? [{ key: "delete", label: "Delete", tone: "danger", icon: Trash2 }]
+              : []),
+          ]
+        : [{ key: "deactivate", label: "Deactivate", tone: "default" }];
+
+  return (
+    <Dropdown
+      open={open}
+      onOpenChange={setOpen}
+      align="right"
+      strategy="fixed"
+      className="w-64"
+      trigger={
+        <Button type="button" size="small" variant="outline" disabled={busy}>
+          Actions
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      }
+    >
+      <div className="grid gap-1">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <button
+              key={action.key}
+              type="button"
+              className={`flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition hover:bg-surface-muted ${
+                action.tone === "danger" ? "text-error" : "text-text-soft"
+              }`}
+              onClick={() => {
+                setOpen(false);
+                onAction(item, action.key);
+              }}
+            >
+              {Icon ? <Icon className="h-4 w-4" /> : null}
+              {action.label}
+            </button>
+          );
+        })}
+      </div>
+    </Dropdown>
+  );
+}
+
 function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions" }) {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [scales, setScales] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [subjectTotal, setSubjectTotal] = useState(0);
+  const [subjectPage, setSubjectPage] = useState(1);
+  const [subjectSearchDraft, setSubjectSearchDraft] = useState("");
+  const [subjectSearch, setSubjectSearch] = useState("");
   const [sessionForm, setSessionForm] = useState(BLANK_SESSION);
   const [termForm, setTermForm] = useState(BLANK_TERM);
   const [scaleForm, setScaleForm] = useState(BLANK_SCALE);
@@ -78,6 +201,11 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const [error, setError] = useState(null);
   const { showSuccess, showError } = useToast();
 
+  const subjectLifecycleStatus =
+    domain === "subjects" && ["active", "inactive", "archived"].includes(activeTab)
+      ? activeTab
+      : undefined;
+
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -87,7 +215,13 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
           academicService.listSessions({ limit: 100 }),
           academicService.listTerms({ limit: 100 }),
           academicService.listGradingScales({ limit: 100 }),
-          subjectService.getSubjects({ limit: 100, includeArchived: domain === "subjects" }),
+          subjectService.getSubjects({
+            skip: domain === "subjects" ? (subjectPage - 1) * SUBJECT_PAGE_SIZE : 0,
+            limit: domain === "subjects" ? SUBJECT_PAGE_SIZE : 100,
+            includeArchived: domain === "subjects",
+            search: domain === "subjects" ? subjectSearch : undefined,
+            lifecycleStatus: subjectLifecycleStatus,
+          }),
         ]);
       const nextSessions = asItems(sessionResponse);
       const nextTerms = asItems(termResponse);
@@ -95,6 +229,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       setTerms(nextTerms);
       setScales(asItems(scaleResponse));
       setSubjects(asItems(subjectResponse));
+      setSubjectTotal(Number(subjectResponse?.total || 0));
 
       const currentSession =
         nextSessions.find((item) => item.is_current) || null;
@@ -112,11 +247,15 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     } finally {
       setLoading(false);
     }
-  }, [domain, onContextChange, showError]);
+  }, [domain, onContextChange, showError, subjectLifecycleStatus, subjectPage, subjectSearch]);
 
   useEffect(() => {
     loadWorkspace();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    setSubjectPage(1);
+  }, [activeTab, subjectSearch]);
 
   const sessionOptions = useMemo(
     () => sessions.map((item) => ({ value: item.id, label: item.name })),
@@ -248,6 +387,10 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     }
     if (pendingConfirmation.type === "term-transition") {
       transitionTerm(pendingConfirmation.item, pendingConfirmation.transition);
+      return;
+    }
+    if (pendingConfirmation.type === "subject-lifecycle") {
+      updateSubjectLifecycle(pendingConfirmation.item, pendingConfirmation.action);
     }
   };
 
@@ -285,13 +428,69 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       if (action === "deactivate") await subjectService.deactivateSubject(item.id);
       if (action === "archive") await subjectService.archiveSubject(item.id);
       if (action === "restore") await subjectService.restoreSubject(item.id);
+      if (action === "delete") await subjectService.deleteSubject(item.id);
       showSuccess(`Subject ${action}d.`);
+      if (action === "delete" && subjects.length === 1 && subjectPage > 1) {
+        setSubjectPage((current) => Math.max(1, current - 1));
+      }
       await loadWorkspace();
     } catch (err) {
-      showError(getErrorMessage(err, `Could not ${action} subject.`));
+      const parsed = parseApiError(err, `Could not ${action} subject.`);
+      const blockers = dependencyCountItems(parsed.data?.dependency_counts);
+      const blockerText = blockers.length
+        ? ` ${blockers.map((blocker) => `${blocker.label}: ${blocker.count}`).join("; ")}`
+        : "";
+      showError(`${parsed.message}${blockerText}`);
     } finally {
       setSaving("");
+      setPendingConfirmation(null);
     }
+  };
+
+  const confirmSubjectAction = (item, action) => {
+    const config = {
+      activate: {
+        title: "Restore deactivated subject",
+        confirmationText: "ACTIVATE_SUBJECT",
+        confirmLabel: "Restore to active",
+        variant: "success",
+        description: `${item.name} will become active again and available for new class mappings and assignments.`,
+      },
+      deactivate: {
+        title: "Deactivate subject",
+        confirmationText: "DEACTIVATE_SUBJECT",
+        confirmLabel: "Deactivate subject",
+        variant: "danger",
+        description: `${item.name} will stop being available for new academic workflows.`,
+      },
+      archive: {
+        title: "Archive subject",
+        confirmationText: "ARCHIVE_SUBJECT",
+        confirmLabel: "Archive subject",
+        variant: "danger",
+        description: `${item.name} will be hidden from normal workflows. Historical records are preserved.`,
+      },
+      restore: {
+        title: "Restore subject",
+        confirmationText: "RESTORE_SUBJECT",
+        confirmLabel: "Restore subject",
+        variant: "primary",
+        description: `${item.name} will be restored as inactive. Activate it separately when it is ready for use.`,
+      },
+      delete: {
+        title: "Delete subject",
+        confirmationText: "DELETE_SUBJECT",
+        confirmLabel: "Delete subject",
+        variant: "danger",
+        description: `${item.name} will be permanently deleted. This is only available for unused inactive subjects.`,
+      },
+    }[action];
+    setPendingConfirmation({
+      type: "subject-lifecycle",
+      item,
+      action,
+      ...config,
+    });
   };
 
   const saveScale = async (event) => {
@@ -796,245 +995,155 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     />
   );
 
-  const subjectsView = (
-    <WorkspaceGrid
-      editor={
-        <WorkspacePanel
-          title={editing.type === "subject" ? "Edit subject" : "Create subject"}
-          description="Create each tenant-scoped subject once, then attach it to classes."
+  const subjectPageCount = Math.max(1, Math.ceil(subjectTotal / SUBJECT_PAGE_SIZE));
+  const subjectListItems = subjects;
+  const subjectEmptyTitle =
+    subjectSearch || subjectLifecycleStatus
+      ? "No matching subjects"
+      : "No subjects";
+  const subjectEmptyDescription =
+    subjectSearch || subjectLifecycleStatus
+      ? "Try another search or lifecycle filter."
+      : "Create the first subject in this school workspace.";
+  const subjectSearchControls = (
+    <form
+      className="flex flex-col gap-2 sm:flex-row"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setSubjectPage(1);
+        setSubjectSearch(subjectSearchDraft.trim());
+      }}
+    >
+      <Input
+        label="Search"
+        value={subjectSearchDraft}
+        onChange={(event) => setSubjectSearchDraft(event.target.value)}
+        placeholder="Name, code, or description"
+      />
+      <div className="flex gap-2 sm:items-end">
+        <Button type="submit" variant="outline">
+          <Search className="h-4 w-4" />
+          Search
+        </Button>
+        {subjectSearch ? (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setSubjectSearchDraft("");
+              setSubjectSearch("");
+              setSubjectPage(1);
+            }}
+          >
+            Clear
+          </Button>
+        ) : null}
+      </div>
+    </form>
+  );
+  const subjectPager = (
+    <div className="mt-4 flex flex-col gap-2 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
+      <span>
+        {subjectTotal === 0
+          ? "0 subjects"
+          : `${(subjectPage - 1) * SUBJECT_PAGE_SIZE + 1}-${Math.min(
+              subjectPage * SUBJECT_PAGE_SIZE,
+              subjectTotal,
+            )} of ${subjectTotal} subjects`}
+      </span>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="small"
+          variant="outline"
+          disabled={subjectPage <= 1 || loading}
+          onClick={() => setSubjectPage((current) => Math.max(1, current - 1))}
         >
-          <form className="space-y-3" onSubmit={saveSubject}>
-            <Input
-              label="Subject name"
-              value={subjectForm.name}
-              onChange={(event) =>
-                setSubjectForm((current) => ({ ...current, name: event.target.value }))
-              }
-              required
-            />
-            <Input
-              label="Subject code"
-              value={subjectForm.code}
-              onChange={(event) =>
-                setSubjectForm((current) => ({ ...current, code: event.target.value }))
-              }
-              placeholder="MTH"
-            />
-            <Input
-              label="Description"
-              value={subjectForm.description}
-              onChange={(event) =>
-                setSubjectForm((current) => ({
-                  ...current,
-                  description: event.target.value,
-                }))
-              }
-            />
-            <FormActions
-              submitting={saving === "subject"}
-              submitLabel={editing.type === "subject" ? "Update subject" : "Create subject"}
-              editing={editing.type === "subject"}
-              onCancel={resetSubject}
-            />
-          </form>
-        </WorkspacePanel>
-      }
-      content={
-        <RecordList
-          title="Subject catalog"
-          description="Subjects available for attachment to one or more classes."
-          items={
-            activeTab === "active"
-              ? subjects.filter((item) => item.is_active !== false && !item.archived_at)
-              : activeTab === "inactive"
-                ? subjects.filter((item) => item.is_active === false && !item.archived_at)
-                : activeTab === "archived"
-                  ? subjects.filter((item) => item.archived_at)
-                  : subjects.filter((item) => !item.archived_at)
-          }
-          emptyIcon={BookOpen}
-          emptyTitle="No subjects"
-          emptyDescription="Create the first subject in this school workspace."
-          renderTitle={(item) => item.name}
-          renderMeta={(item) => item.code || "No code"}
-          renderDescription={(item) => item.description || "No description"}
-          renderStatus={(item) => (item.is_active === false ? "inactive" : "active")}
-          renderActions={(item) => (
-            <>
-              {item.archived_at ? (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="outline"
-                  disabled={saving === item.id}
-                  onClick={() => updateSubjectLifecycle(item, "restore")}
-                >
-                  Restore
-                </Button>
-              ) : item.is_active === false ? (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="success"
-                  disabled={saving === item.id}
-                  onClick={() => updateSubjectLifecycle(item, "activate")}
-                >
-                  Activate
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="outline"
-                  disabled={saving === item.id}
-                  onClick={() => updateSubjectLifecycle(item, "deactivate")}
-                >
-                  Deactivate
-                </Button>
-              )}
-              {!item.archived_at ? (
-                <Button
-                  type="button"
-                  size="small"
-                  variant="danger"
-                  disabled={saving === item.id}
-                  onClick={() => updateSubjectLifecycle(item, "archive")}
-                >
-                  Archive
-                </Button>
-              ) : null}
-            </>
-          )}
-          onEdit={(item) => {
-            setEditing({ type: "subject", id: item.id });
-            setSubjectForm({
-              name: item.name || "",
-              code: item.code || "",
-              description: item.description || "",
-            });
-          }}
-        />
-      }
-    />
+          <ChevronLeft className="h-4 w-4" />
+          Previous
+        </Button>
+        <Button
+          type="button"
+          size="small"
+          variant="outline"
+          disabled={subjectPage >= subjectPageCount || loading}
+          onClick={() => setSubjectPage((current) => Math.min(subjectPageCount, current + 1))}
+        >
+          Next
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   );
 
-  const subjectsCreateView = (
+  const subjectEditor = (
     <WorkspacePanel
       title={editing.type === "subject" ? "Edit subject" : "Create subject"}
       description="Create each tenant-scoped subject once, then attach it to classes."
     >
-      <form className="space-y-3" onSubmit={saveSubject}>
-        <Input
-          label="Subject name"
-          value={subjectForm.name}
-          onChange={(event) =>
-            setSubjectForm((current) => ({ ...current, name: event.target.value }))
-          }
-          required
-        />
-        <Input
-          label="Subject code"
-          value={subjectForm.code}
-          onChange={(event) =>
-            setSubjectForm((current) => ({ ...current, code: event.target.value }))
-          }
-          placeholder="MTH"
-        />
-        <Input
-          label="Description"
-          value={subjectForm.description}
-          onChange={(event) =>
-            setSubjectForm((current) => ({
-              ...current,
-              description: event.target.value,
-            }))
-          }
-        />
-        <FormActions
-          submitting={saving === "subject"}
-          submitLabel={editing.type === "subject" ? "Update subject" : "Create subject"}
-          editing={editing.type === "subject"}
-          onCancel={resetSubject}
-        />
-      </form>
+      <SubjectForm
+        form={subjectForm}
+        setForm={setSubjectForm}
+        saving={saving}
+        editing={editing.type === "subject"}
+        onSubmit={saveSubject}
+        onCancel={resetSubject}
+      />
     </WorkspacePanel>
   );
 
-  const subjectListItems =
-    activeTab === "active"
-      ? subjects.filter((item) => item.is_active !== false && !item.archived_at)
-      : activeTab === "inactive"
-        ? subjects.filter((item) => item.is_active === false && !item.archived_at)
-        : activeTab === "archived"
-          ? subjects.filter((item) => item.archived_at)
-          : subjects.filter((item) => !item.archived_at);
-
   const subjectsListView = (
-    <RecordList
-      title="Subject catalog"
-      description="Subjects available for attachment to one or more classes."
-      items={subjectListItems}
-      emptyIcon={BookOpen}
-      emptyTitle="No subjects"
-      emptyDescription="Create the first subject in this school workspace."
-      renderTitle={(item) => item.name}
-      renderMeta={(item) => item.code || "No code"}
-      renderDescription={(item) => item.description || "No description"}
-      renderStatus={(item) => (item.is_active === false ? "inactive" : "active")}
-      renderActions={(item) => (
-        <>
-          {item.archived_at ? (
-            <Button
-              type="button"
-              size="small"
-              variant="outline"
-              disabled={saving === item.id}
-              onClick={() => updateSubjectLifecycle(item, "restore")}
-            >
-              Restore
-            </Button>
-          ) : item.is_active === false ? (
-            <Button
-              type="button"
-              size="small"
-              variant="success"
-              disabled={saving === item.id}
-              onClick={() => updateSubjectLifecycle(item, "activate")}
-            >
-              Activate
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              size="small"
-              variant="outline"
-              disabled={saving === item.id}
-              onClick={() => updateSubjectLifecycle(item, "deactivate")}
-            >
-              Deactivate
-            </Button>
-          )}
-          {!item.archived_at ? (
-            <Button
-              type="button"
-              size="small"
-              variant="danger"
-              disabled={saving === item.id}
-              onClick={() => updateSubjectLifecycle(item, "archive")}
-            >
-              Archive
-            </Button>
-          ) : null}
-        </>
-      )}
-      onEdit={(item) => {
-        setEditing({ type: "subject", id: item.id });
-        setSubjectForm({
-          name: item.name || "",
-          code: item.code || "",
-          description: item.description || "",
-        });
-      }}
+    <div>
+      <RecordList
+        title="Subject catalog"
+        description="Subjects available for attachment to one or more classes."
+        actions={subjectSearchControls}
+        items={subjectListItems}
+        emptyIcon={BookOpen}
+        emptyTitle={subjectEmptyTitle}
+        emptyDescription={subjectEmptyDescription}
+        renderTitle={(item) => item.name}
+        renderMeta={(item) => item.code || "No code"}
+        renderDescription={(item) => item.description || "No description"}
+        renderStatus={subjectStatus}
+        renderActions={(item) => (
+          <SubjectActionMenu
+            item={item}
+            busy={saving === item.id}
+            onAction={confirmSubjectAction}
+          />
+        )}
+        canEdit={(item) => !item.archived_at}
+        onEdit={(item) => {
+          setEditing({ type: "subject", id: item.id });
+          setSubjectForm({
+            name: item.name || "",
+            code: item.code || "",
+            description: item.description || "",
+          });
+        }}
+      />
+      {subjectPager}
+    </div>
+  );
+
+  const subjectsView = (
+    <WorkspaceGrid
+      editor={subjectEditor}
+      content={subjectsListView}
+    />
+  );
+  const subjectConfirmationDialog = (
+    <TypedConfirmationDialog
+      open={pendingConfirmation?.type === "subject-lifecycle"}
+      title={pendingConfirmation?.title}
+      description={pendingConfirmation?.description}
+      confirmationText={pendingConfirmation?.confirmationText || ""}
+      confirmLabel={pendingConfirmation?.confirmLabel}
+      variant={pendingConfirmation?.variant}
+      isLoading={saving === pendingConfirmation?.item?.id}
+      onConfirm={runConfirmedAction}
+      onCancel={() => setPendingConfirmation(null)}
     />
   );
 
@@ -1050,9 +1159,28 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   }
 
   if (domain === "subjects") {
-    if (activeTab === "create") return subjectsCreateView;
-    if (editing.type === "subject") return subjectsView;
-    return subjectsListView;
+    if (activeTab === "create") {
+      return (
+        <>
+          {subjectEditor}
+          {subjectConfirmationDialog}
+        </>
+      );
+    }
+    if (editing.type === "subject") {
+      return (
+        <>
+          {subjectsView}
+          {subjectConfirmationDialog}
+        </>
+      );
+    }
+    return (
+      <>
+        {subjectsListView}
+        {subjectConfirmationDialog}
+      </>
+    );
   }
   if (domain === "grading") {
     return activeTab === "create" || editing.type === "scale"
