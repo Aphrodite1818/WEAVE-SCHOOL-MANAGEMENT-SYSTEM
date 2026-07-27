@@ -233,6 +233,9 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const academicStatusFilter = ["draft", "open", "closed"].includes(activeTab)
     ? activeTab
     : undefined;
+  const editingSession = sessions.find((item) => item.id === editing.id);
+  const configuringOpenSession =
+    editing.type === "session" && editingSession?.status === "open";
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -351,12 +354,18 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     event.preventDefault();
     setSaving("session");
     try {
-      const payload = {
-        name: sessionForm.name,
-        start_date: sessionForm.start_date || null,
-        end_date: sessionForm.end_date || null,
-        next_academic_session_id: sessionForm.next_academic_session_id || null,
-      };
+      const editingSession = sessions.find((item) => item.id === editing.id);
+      const payload =
+        editing.type === "session" && editingSession?.status === "open"
+          ? {
+              next_academic_session_id: sessionForm.next_academic_session_id || null,
+            }
+          : {
+              name: sessionForm.name,
+              start_date: sessionForm.start_date || null,
+              end_date: sessionForm.end_date || null,
+              next_academic_session_id: sessionForm.next_academic_session_id || null,
+            };
       if (editing.type === "session") {
         await academicService.updateSession(editing.id, payload);
       } else {
@@ -665,7 +674,13 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         <WorkspaceGrid
           editor={activeTab === "create" || editing.type === "session" ? (
             <WorkspacePanel
-              title={editing.type === "session" ? "Edit session" : "Create session"}
+              title={
+                configuringOpenSession
+                  ? "Configure session"
+                  : editing.type === "session"
+                    ? "Edit session"
+                    : "Create session"
+              }
             >
             <form className="space-y-3" onSubmit={saveSession}>
               <Input
@@ -678,6 +693,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                 minLength={9}
                 maxLength={9}
                 required
+                disabled={configuringOpenSession}
               />
               <div className="grid gap-3 sm:grid-cols-2">
                 <Input
@@ -690,6 +706,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                       start_date: event.target.value,
                     }))
                   }
+                  disabled={configuringOpenSession}
                 />
                 <Input
                   label="End date"
@@ -701,6 +718,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                       end_date: event.target.value,
                     }))
                   }
+                  disabled={configuringOpenSession}
                 />
               </div>
               <SelectControl
@@ -717,7 +735,13 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
               />
               <FormActions
                 submitting={saving === "session"}
-                submitLabel={editing.type === "session" ? "Update session" : "Create session"}
+                submitLabel={
+                  configuringOpenSession
+                    ? "Save configuration"
+                    : editing.type === "session"
+                      ? "Update session"
+                      : "Create session"
+                }
                 editing={editing.type === "session"}
                 onCancel={resetSession}
               />
@@ -796,12 +820,12 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                                 variant: "danger",
                               })
                             }
-                            disabled={Boolean(closingSessionId) || !item.next_academic_session_id}
+                            disabled={Boolean(closingSessionId)}
                           >
                             {closingSessionId === item.id ? "Closing..." : "Close and progress"}
                           </Button>
                         ) : null}
-                        {item.status === "draft" ? (
+                        {["draft", "open"].includes(item.status) ? (
                           <Button
                             type="button"
                             size="small"
@@ -817,7 +841,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                               });
                             }}
                           >
-                            Edit
+                            {item.status === "open" ? "Configure" : "Edit"}
                           </Button>
                         ) : null}
                         {item.status === "draft" ? (

@@ -12,12 +12,12 @@ import {
 } from "lucide-react";
 
 export const academicWorkflowOrder = [
+  "sessions",
+  "terms",
   "classes",
   "subjects",
   "class-subjects",
   "assignments",
-  "sessions",
-  "terms",
   "grading",
   "results",
   "report-cards",

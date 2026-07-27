@@ -1627,10 +1627,10 @@ class StudentAcademicService:
         if update_data.get("name") is None:
             update_data.pop("name", None)
         if row.status == AcademicSessionStatus.OPEN:
-            critical = {"name", "start_date", "end_date", "next_academic_session_id"}
+            critical = {"name", "start_date", "end_date"}
             if critical.intersection(update_data):
                 raise ConflictException(
-                    "Lifecycle-critical session fields cannot be edited after opening."
+                    "Only progression configuration can be edited after opening."
                 )
         effective_start_date = update_data.get("start_date", row.start_date)
         effective_end_date = update_data.get("end_date", row.end_date)

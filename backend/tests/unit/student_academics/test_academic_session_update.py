@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.exceptions import BadRequestException
+from app.core.exceptions import BadRequestException, ConflictException
 from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus
 from app.modules.student_academics.schemas import AcademicSessionUpdate
 from app.modules.student_academics.service import StudentAcademicService
@@ -105,4 +105,69 @@ async def test_update_academic_session_rejects_invalid_effective_date_range() ->
                 tenant_id=tenant_id,
                 academic_session_id=session.id,
                 payload=AcademicSessionUpdate(start_date=date(2028, 1, 1)),
+            )
+
+
+@pytest.mark.asyncio
+async def test_update_open_academic_session_allows_next_session_configuration() -> None:
+    tenant_id = uuid.uuid4()
+    session = _session(tenant_id)
+    session.status = AcademicSessionStatus.OPEN
+    session.is_current = True
+    next_session = AcademicSession(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        name="2027/2028",
+        start_date=date(2027, 9, 1),
+        end_date=date(2028, 7, 31),
+        status=AcademicSessionStatus.DRAFT,
+        is_current=False,
+    )
+    db = AsyncMock()
+
+    async def get_by_id(_db, _tenant_id, session_id, **_kwargs):
+        if session_id == session.id:
+            return session
+        if session_id == next_session.id:
+            return next_session
+        return None
+
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(side_effect=get_by_id),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.save_academic_session",
+            new=AsyncMock(return_value=session),
+        ),
+    ):
+        updated = await StudentAcademicService.update_academic_session(
+            db=db,
+            tenant_id=tenant_id,
+            academic_session_id=session.id,
+            payload=AcademicSessionUpdate(next_academic_session_id=next_session.id),
+        )
+
+    assert updated.next_academic_session_id == next_session.id
+
+
+@pytest.mark.asyncio
+async def test_update_open_academic_session_rejects_lifecycle_fields() -> None:
+    tenant_id = uuid.uuid4()
+    session = _session(tenant_id)
+    session.status = AcademicSessionStatus.OPEN
+    session.is_current = True
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
+        new=AsyncMock(return_value=session),
+    ):
+        with pytest.raises(ConflictException):
+            await StudentAcademicService.update_academic_session(
+                db=db,
+                tenant_id=tenant_id,
+                academic_session_id=session.id,
+                payload=AcademicSessionUpdate(name="2027/2028"),
             )
