@@ -4,6 +4,12 @@ import { cn } from "../../utils/cn";
 import Badge from "../ui/Badge";
 import Card from "../ui/Card";
 
+const DEFAULT_LIMITS = {
+  test_max: 20,
+  assessment_max: 20,
+  exam_max: 60,
+};
+
 const hasValue = (value) =>
   value !== undefined && value !== null && value !== "";
 
@@ -20,6 +26,25 @@ const formatScore = (value) => {
     ? String(numericValue)
     : numericValue.toFixed(1);
 };
+
+const percentage = (value, maximum) => {
+  const numericValue = Number(value);
+  const numericMaximum = Number(maximum);
+  if (!Number.isFinite(numericValue) || !Number.isFinite(numericMaximum) || numericMaximum <= 0) {
+    return 0;
+  }
+  return Math.min(Math.max((numericValue / numericMaximum) * 100, 0), 100);
+};
+
+const assessmentLimits = (card) => ({
+  test_max: Number(card?.test_max ?? card?.assessment_config?.test_max ?? DEFAULT_LIMITS.test_max),
+  assessment_max: Number(
+    card?.assessment_max ??
+      card?.assessment_config?.assessment_max ??
+      DEFAULT_LIMITS.assessment_max,
+  ),
+  exam_max: Number(card?.exam_max ?? card?.assessment_config?.exam_max ?? DEFAULT_LIMITS.exam_max),
+});
 
 const statusVariant = (status) => {
   const value = String(status || "").toLowerCase();
@@ -56,12 +81,12 @@ const gradeTone = (grade) => {
 const scoreTone = (score) => {
   const value = Number(score);
   if (!Number.isFinite(value)) return "text-primary";
-  if (value >= 30) return "text-emerald-500";
-  if (value >= 20) return "text-amber-500";
+  if (value >= 70) return "text-emerald-500";
+  if (value >= 50) return "text-amber-500";
   return "text-rose-500";
 };
 
-function ScoreRing({ value }) {
+function ScoreRing({ value, maximum }) {
   const score = Number(value);
   const toneClass = scoreTone(score);
 
@@ -72,32 +97,41 @@ function ScoreRing({ value }) {
         toneClass,
       )}
     >
+      <div
+        className="absolute inset-0 rounded-full opacity-90"
+        style={{
+          background: `conic-gradient(currentColor ${percentage(value, maximum) * 3.6}deg, rgba(148, 163, 184, 0.16) 0deg)`,
+        }}
+      />
       <div className="absolute inset-2 rounded-full bg-surface" />
       <div className="relative text-center leading-none">
         <p className="text-lg font-semibold text-text sm:text-2xl">
           {formatScore(value)}
         </p>
         <p className="mt-1 text-[9px] font-medium text-text-muted sm:text-[10px]">
-          Score
+          of {formatScore(maximum)}
         </p>
       </div>
     </div>
   );
 }
 
-function ScoreBar({ label, value }) {
+function ScoreBar({ label, value, maximum }) {
   const hasScoreValue = hasValue(value);
 
   return (
-    <div className="grid grid-cols-[3.4rem_minmax(0,1fr)_2.6rem] items-center gap-2 text-xs sm:grid-cols-[4.75rem_minmax(0,1fr)_3.5rem] sm:text-sm">
+    <div className="grid grid-cols-[3.4rem_minmax(0,1fr)_3.3rem] items-center gap-2 text-xs sm:grid-cols-[4.75rem_minmax(0,1fr)_4rem] sm:text-sm">
       <span className="truncate text-text-muted">{label}</span>
       <span className="h-1.5 overflow-hidden rounded-full bg-surface-muted/50 sm:h-2">
         {hasScoreValue && (
-          <span className="block h-full rounded-full bg-current text-primary" />
+          <span
+            className="block h-full rounded-full bg-current text-primary transition-all"
+            style={{ width: `${percentage(value, maximum)}%` }}
+          />
         )}
       </span>
       <span className="text-right font-semibold text-text">
-        {formatScore(value)}
+        {formatScore(value)}/{formatScore(maximum)}
       </span>
     </div>
   );
@@ -140,6 +174,8 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
   const link = card?.result_id
     ? `/student/subjects/${card.result_id}`
     : undefined;
+  const limits = assessmentLimits(card);
+  const totalMaximum = limits.test_max + limits.assessment_max + limits.exam_max;
 
   return (
     <Card
@@ -164,9 +200,7 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
                 {subjectName}
               </h3>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-muted">
-                <span>
-                  {cleanText(card?.class_name || classLabel, "Class")}
-                </span>
+                <span>{cleanText(card?.class_name || classLabel, "Class")}</span>
                 <Badge
                   variant={statusVariant(card?.status)}
                   className="px-2 py-0.5 text-[11px]"
@@ -188,11 +222,11 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
         <div className="border-t border-dashed border-border/70" />
 
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4">
-          <ScoreRing value={card?.total_score} />
+          <ScoreRing value={card?.total_score} maximum={totalMaximum} />
           <div className="min-w-0 space-y-2">
-            <ScoreBar label="Test" value={card?.test_score} />
-            <ScoreBar label="Assess." value={card?.assessment_score} />
-            <ScoreBar label="Exam" value={card?.exam_score} />
+            <ScoreBar label="Test" value={card?.test_score} maximum={limits.test_max} />
+            <ScoreBar label="Assess." value={card?.assessment_score} maximum={limits.assessment_max} />
+            <ScoreBar label="Exam" value={card?.exam_score} maximum={limits.exam_max} />
           </div>
           <div
             className={cn(
