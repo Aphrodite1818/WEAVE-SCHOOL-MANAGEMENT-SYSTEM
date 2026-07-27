@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime
 import uuid
-from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -26,10 +25,8 @@ from app.core.utils.normalization import (
     normalized_class_arm_key,
     normalized_class_name_key,
 )
+from app.modules.teachers.models import TeacherMembership
 from app.shared.base_model import BaseModel
-
-if TYPE_CHECKING:
-    from app.modules.teachers.models import TeacherMembership
 
 
 class ClassRoom(BaseModel):
@@ -66,7 +63,7 @@ class ClassRoom(BaseModel):
     )
     is_terminal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
-    teacher_membership: Mapped["TeacherMembership | None"] = relationship(
+    teacher_membership: Mapped[TeacherMembership | None] = relationship(
         "TeacherMembership",
         foreign_keys=[teacher_membership_id],
     )
