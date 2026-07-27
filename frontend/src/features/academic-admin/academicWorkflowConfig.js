@@ -164,7 +164,7 @@ export const academicWorkflowConfig = {
     defaultTab: "overview",
     tabs: [
       { id: "overview", label: "Overview" },
-      { id: "ready", label: "Ready to Generate" },
+      { id: "ready", label: "Student Readiness" },
       { id: "generate", label: "Generate" },
       { id: "draft", label: "Draft Cards" },
       { id: "published", label: "Published Cards" },
