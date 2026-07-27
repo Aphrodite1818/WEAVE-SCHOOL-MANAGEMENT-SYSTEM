@@ -1,10 +1,11 @@
 import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import LoadingState from "../../components/shared/LoadingState";
+import Input from "../../components/ui/Input";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
@@ -18,6 +19,13 @@ const asItems = (response) =>
       ? response.items
       : [];
 
+const emptySessionForm = {
+  name: "",
+  start_date: "",
+  end_date: "",
+  next_academic_session_id: "",
+};
+
 const runCounts = (run) => [
   ["Total", run?.total_students || 0],
   ["Promoted", run?.promoted_students || 0],
@@ -29,6 +37,7 @@ const runCounts = (run) => [
 function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [sessionForm, setSessionForm] = useState(emptySessionForm);
   const [audit, setAudit] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +47,14 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
 
   const selectedSession = useMemo(
     () => sessions.find((item) => item.id === selectedSessionId) || null,
+    [sessions, selectedSessionId],
+  );
+
+  const draftNextSessionOptions = useMemo(
+    () =>
+      sessions.filter(
+        (item) => item.status === "draft" && item.id !== selectedSessionId,
+      ),
     [sessions, selectedSessionId],
   );
 
@@ -52,7 +69,9 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
         items.find((item) => item.is_current) ||
         items.find((item) => item.status === "open") ||
         null;
-      setSelectedSessionId((current) => current || preferred?.id || "");
+      setSelectedSessionId((current) =>
+        items.some((item) => item.id === current) ? current : preferred?.id || "",
+      );
       onContextChange?.({
         currentSession: items.find((item) => item.is_current) || null,
       });
@@ -94,10 +113,47 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   }, [loadWorkflow]);
 
   useEffect(() => {
+    if (!selectedSession) {
+      setSessionForm(emptySessionForm);
+      return;
+    }
+    setSessionForm({
+      name: selectedSession.name || "",
+      start_date: selectedSession.start_date || "",
+      end_date: selectedSession.end_date || "",
+      next_academic_session_id: selectedSession.next_academic_session_id || "",
+    });
+  }, [selectedSession]);
+
+  useEffect(() => {
     if (selectedSession?.status !== "closing") return undefined;
     const timer = window.setInterval(loadWorkflow, 5000);
     return () => window.clearInterval(timer);
   }, [loadWorkflow, selectedSession?.status]);
+
+  const updateOpenSession = async (event) => {
+    event.preventDefault();
+    if (!selectedSession || selectedSession.status !== "open") return;
+    setBusy("configure");
+    try {
+      const updated = await academicService.updateSession(selectedSession.id, {
+        name: sessionForm.name,
+        start_date: sessionForm.start_date || null,
+        end_date: sessionForm.end_date || null,
+        next_academic_session_id: sessionForm.next_academic_session_id || null,
+      });
+      setSessions((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      showSuccess("Open academic session configuration updated.");
+      await loadSessions();
+      await loadWorkflow();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not update the open academic session."));
+    } finally {
+      setBusy("");
+    }
+  };
 
   const startClosing = async () => {
     if (!selectedSession) return;
@@ -165,15 +221,16 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   const canStart = selectedSession?.status === "open" && audit?.is_ready;
   const canRetry = selectedSession?.status === "closing" && run?.status === "failed";
   const canFinalize = Boolean(status?.can_finalize);
+  const canConfigure = selectedSession?.status === "open";
 
   return (
     <div className="space-y-5">
       <Card className="p-4 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="section-title">Session closure workflow</h2>
+            <h2 className="section-title">Session lifecycle</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
-              Run the readiness audit, pause academic writes, process student progression in the background, then finalize closure manually.
+              Configure the current open session, run the readiness audit, process student progression in the background, then finalize closure manually.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -208,6 +265,72 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
           </div>
         ) : null}
       </Card>
+
+      {canConfigure ? (
+        <Card className="p-4 sm:p-6">
+          <div>
+            <h3 className="font-semibold text-text">Configure open session</h3>
+            <p className="mt-1 text-sm text-text-muted">
+              Session name, dates, and the next-session target remain editable while the session is open. Lifecycle state is controlled separately.
+            </p>
+          </div>
+          <form className="mt-5 grid gap-4" onSubmit={updateOpenSession}>
+            <Input
+              label="Session name"
+              value={sessionForm.name}
+              onChange={(event) =>
+                setSessionForm((current) => ({ ...current, name: event.target.value }))
+              }
+              minLength={9}
+              maxLength={9}
+              required
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label="Start date"
+                type="date"
+                value={sessionForm.start_date}
+                onChange={(event) =>
+                  setSessionForm((current) => ({ ...current, start_date: event.target.value }))
+                }
+              />
+              <Input
+                label="End date"
+                type="date"
+                value={sessionForm.end_date}
+                onChange={(event) =>
+                  setSessionForm((current) => ({ ...current, end_date: event.target.value }))
+                }
+              />
+            </div>
+            <label className="grid gap-1.5 text-sm font-medium text-text">
+              <span>Next academic session</span>
+              <select
+                className="min-h-11 rounded-xl border border-border bg-surface px-3 text-sm text-text"
+                value={sessionForm.next_academic_session_id}
+                onChange={(event) =>
+                  setSessionForm((current) => ({
+                    ...current,
+                    next_academic_session_id: event.target.value,
+                  }))
+                }
+              >
+                <option value="">Not configured</option>
+                {draftNextSessionOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={Boolean(busy)}>
+                {busy === "configure" ? "Saving..." : "Save session configuration"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
 
       <Card className="p-4 sm:p-6">
         <div className="flex items-start gap-3">
