@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,13 +138,12 @@ class ReportCardRepository:
                     ReportCard.academic_session_id == academic_session_id,
                     ReportCard.academic_term_id == academic_term_id,
                     ReportCard.superseded_at.is_(None),
-                    ReportCard.status == ReportCardStatus.PUBLISHED,
                 )
             )
         ).scalars().all()
         for card in rows:
             card.is_outdated = True
-            await db.flush()
+        await db.flush()
 
     @staticmethod
     async def delete_lines_for_card(

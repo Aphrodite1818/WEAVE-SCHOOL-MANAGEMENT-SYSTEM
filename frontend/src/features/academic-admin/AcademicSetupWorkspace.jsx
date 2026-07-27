@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, GraduationCap, RefreshCw } from "lucide-react";
+import { BookOpen, CalendarDays, GraduationCap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
@@ -7,6 +7,7 @@ import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { subjectService } from "../../services/subject.service";
+import TypedConfirmationDialog from "./TypedConfirmationDialog";
 import {
   CheckboxControl,
   FormActions,
@@ -39,6 +40,10 @@ const BLANK_SCALE = {
   is_active: true,
 };
 const BLANK_SUBJECT = { name: "", code: "", description: "" };
+const CONFIRM_OPEN_SESSION = "OPEN_ACADEMIC_SESSION";
+const CONFIRM_CLOSE_SESSION = "CLOSE_AND_PROGRESS";
+const CONFIRM_OPEN_TERM = "OPEN_ACADEMIC_TERM";
+const CONFIRM_CLOSE_TERM = "CLOSE_ACADEMIC_TERM";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -55,7 +60,7 @@ const termLabel = (value) =>
 const dateLabel = (value) =>
   value ? new Date(value).toLocaleDateString() : "Date not set";
 
-function AcademicSetupWorkspace({ activeTab, onContextChange }) {
+function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions" }) {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [scales, setScales] = useState([]);
@@ -67,6 +72,8 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
   const [editing, setEditing] = useState({ type: "", id: "" });
   const [saving, setSaving] = useState("");
   const [openingSessionId, setOpeningSessionId] = useState("");
+  const [closingSessionId, setClosingSessionId] = useState("");
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { showSuccess, showError } = useToast();
@@ -80,7 +87,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
           academicService.listSessions({ limit: 100 }),
           academicService.listTerms({ limit: 100 }),
           academicService.listGradingScales({ limit: 100 }),
-          subjectService.getSubjects({ limit: 100 }),
+          subjectService.getSubjects({ limit: 100, includeArchived: domain === "subjects" }),
         ]);
       const nextSessions = asItems(sessionResponse);
       const nextTerms = asItems(termResponse);
@@ -105,7 +112,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
     } finally {
       setLoading(false);
     }
-  }, [onContextChange, showError]);
+  }, [domain, onContextChange, showError]);
 
   useEffect(() => {
     loadWorkspace();
@@ -114,6 +121,17 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
   const sessionOptions = useMemo(
     () => sessions.map((item) => ({ value: item.id, label: item.name })),
     [sessions],
+  );
+  const visibleSessions = useMemo(
+    () =>
+      activeTab === "draft"
+        ? sessions.filter((item) => item.status === "draft")
+        : activeTab === "open"
+          ? sessions.filter((item) => item.status === "open")
+          : activeTab === "closed"
+            ? sessions.filter((item) => item.status === "closed")
+            : sessions,
+    [activeTab, sessions],
   );
 
   const resetSession = () => {
@@ -169,16 +187,67 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
     }
   };
 
-  const openSession = async (sessionId) => {
-    setOpeningSessionId(sessionId);
+  const openSession = async (item) => {
+    setOpeningSessionId(item.id);
     try {
-      await academicService.openSession(sessionId);
+      await academicService.openSession(item.id);
       showSuccess("Academic session opened.");
       await loadWorkspace();
     } catch (err) {
       showError(getErrorMessage(err, "Could not open academic session."));
     } finally {
       setOpeningSessionId("");
+      setPendingConfirmation(null);
+    }
+  };
+
+  const closeSessionAndProgress = async (item) => {
+    setClosingSessionId(item.id);
+    try {
+      await academicService.closeSessionAndProgress(item.id, {
+        idempotency_key: `session-close-${item.id}-${Date.now()}`,
+      });
+      showSuccess("Academic session closed and next session opened.");
+      await loadWorkspace();
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not close academic session."));
+    } finally {
+      setClosingSessionId("");
+      setPendingConfirmation(null);
+    }
+  };
+
+  const transitionTerm = async (item, transition) => {
+    setSaving(item.id);
+    try {
+      if (transition === "open") {
+        await academicService.openTerm(item.id);
+        showSuccess("Academic term opened.");
+      } else {
+        await academicService.closeTerm(item.id);
+        showSuccess("Academic term closed.");
+      }
+      await loadWorkspace();
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not update academic term lifecycle."));
+    } finally {
+      setSaving("");
+      setPendingConfirmation(null);
+    }
+  };
+
+  const runConfirmedAction = () => {
+    if (!pendingConfirmation) return;
+    if (pendingConfirmation.type === "open-session") {
+      openSession(pendingConfirmation.item);
+      return;
+    }
+    if (pendingConfirmation.type === "close-session") {
+      closeSessionAndProgress(pendingConfirmation.item);
+      return;
+    }
+    if (pendingConfirmation.type === "term-transition") {
+      transitionTerm(pendingConfirmation.item, pendingConfirmation.transition);
     }
   };
 
@@ -191,8 +260,6 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
         name: termForm.name,
         start_date: termForm.start_date || null,
         end_date: termForm.end_date || null,
-        is_current: termForm.is_current,
-        is_active: termForm.is_active,
       };
       if (editing.type === "term") {
         await academicService.updateTerm(editing.id, payload);
@@ -206,6 +273,22 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
       await loadWorkspace();
     } catch (err) {
       showError(getErrorMessage(err, "Could not save academic term."));
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const updateSubjectLifecycle = async (item, action) => {
+    setSaving(item.id);
+    try {
+      if (action === "activate") await subjectService.activateSubject(item.id);
+      if (action === "deactivate") await subjectService.deactivateSubject(item.id);
+      if (action === "archive") await subjectService.archiveSubject(item.id);
+      if (action === "restore") await subjectService.restoreSubject(item.id);
+      showSuccess(`Subject ${action}d.`);
+      await loadWorkspace();
+    } catch (err) {
+      showError(getErrorMessage(err, `Could not ${action} subject.`));
     } finally {
       setSaving("");
     }
@@ -267,12 +350,12 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
 
   const periodsView = (
     <div className="space-y-4">
-      <WorkspaceGrid
-        editor={
-          <WorkspacePanel
-            title={editing.type === "session" ? "Edit session" : "Create session"}
-            description="Session status is controlled explicitly with Open Session."
-          >
+      {domain === "sessions" ? (
+        <WorkspaceGrid
+          editor={activeTab === "create" || editing.type === "session" ? (
+            <WorkspacePanel
+              title={editing.type === "session" ? "Edit session" : "Create session"}
+            >
             <form className="space-y-3" onSubmit={saveSession}>
               <Input
                 label="Session name"
@@ -328,25 +411,19 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
                 onCancel={resetSession}
               />
             </form>
-          </WorkspacePanel>
-        }
-        content={
-          <WorkspacePanel
-            title="Academic sessions"
-            description="Only one session can be open and current at a time."
-            actions={
-              <Button type="button" variant="outline" size="small" onClick={loadWorkspace}>
-                <RefreshCw className="h-4 w-4" /> Refresh
-              </Button>
-            }
-          >
+            </WorkspacePanel>
+          ) : null}
+          content={activeTab === "create" ? null : (
+            <WorkspacePanel
+              title="Academic sessions"
+            >
             <div className="space-y-3">
-              {sessions.length === 0 ? (
+              {visibleSessions.length === 0 ? (
                 <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
                   No academic sessions have been created.
                 </p>
               ) : (
-                sessions.map((item) => (
+                visibleSessions.map((item) => (
                   <div
                     key={item.id}
                     className="rounded-2xl border border-border/70 bg-surface px-4 py-4"
@@ -362,51 +439,93 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
                         <p className="mt-1 text-xs text-text-muted">
                           {dateLabel(item.start_date)} – {dateLabel(item.end_date)}
                         </p>
+                        {item.next_academic_session_id ? (
+                          <p className="mt-1 text-xs text-text-muted">
+                            Next: {sessions.find((session) => session.id === item.next_academic_session_id)?.name || "Configured session"}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {!item.is_current && item.status !== "closed" ? (
+                        {item.status === "draft" ? (
                           <Button
                             type="button"
                             size="small"
-                            onClick={() => openSession(item.id)}
+                            onClick={() =>
+                              setPendingConfirmation({
+                                type: "open-session",
+                                item,
+                                title: "Open academic session",
+                                description: item.name,
+                                confirmationText: CONFIRM_OPEN_SESSION,
+                                confirmLabel: "Open session",
+                                variant: "primary",
+                              })
+                            }
                             disabled={Boolean(openingSessionId)}
                           >
                             {openingSessionId === item.id ? "Opening..." : "Open session"}
                           </Button>
                         ) : null}
-                        <Button
-                          type="button"
-                          size="small"
-                          variant="outline"
-                          onClick={() => {
-                            setEditing({ type: "session", id: item.id });
-                            setSessionForm({
-                              name: item.name || "",
-                              start_date: item.start_date || "",
-                              end_date: item.end_date || "",
-                              next_academic_session_id:
-                                item.next_academic_session_id || "",
-                            });
-                          }}
-                        >
-                          Edit
-                        </Button>
+                        {item.status === "open" && item.is_current ? (
+                          <Button
+                            type="button"
+                            size="small"
+                            variant="danger"
+                            onClick={() =>
+                              setPendingConfirmation({
+                                type: "close-session",
+                                item,
+                                title: "Close academic session",
+                                description: `${item.name} -> ${
+                                  sessions.find((session) => session.id === item.next_academic_session_id)?.name ||
+                                  "next configured session"
+                                }`,
+                                confirmationText: CONFIRM_CLOSE_SESSION,
+                                confirmLabel: "Close and progress",
+                                variant: "danger",
+                              })
+                            }
+                            disabled={Boolean(closingSessionId) || !item.next_academic_session_id}
+                          >
+                            {closingSessionId === item.id ? "Closing..." : "Close and progress"}
+                          </Button>
+                        ) : null}
+                        {!["closing", "closed"].includes(item.status) ? (
+                          <Button
+                            type="button"
+                            size="small"
+                            variant="outline"
+                            onClick={() => {
+                              setEditing({ type: "session", id: item.id });
+                              setSessionForm({
+                                name: item.name || "",
+                                start_date: item.start_date || "",
+                                end_date: item.end_date || "",
+                                next_academic_session_id:
+                                  item.next_academic_session_id || "",
+                              });
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   </div>
                 ))
               )}
             </div>
-          </WorkspacePanel>
-        }
-      />
+            </WorkspacePanel>
+          )}
+        />
+      ) : null}
 
-      <WorkspaceGrid
-        editor={
-          <WorkspacePanel
-            title={editing.type === "term" ? "Edit term" : "Create term"}
-            description="Terms belong to a specific academic session."
-          >
+      {domain === "terms" ? (
+        <WorkspaceGrid
+          editor={activeTab === "create" || editing.type === "term" ? (
+            <WorkspacePanel
+              title={editing.type === "term" ? "Edit term" : "Create term"}
+            >
             <form className="space-y-3" onSubmit={saveTerm}>
               <SelectControl
                 label="Academic session"
@@ -448,20 +567,6 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
                   }
                 />
               </div>
-              <CheckboxControl
-                label="Current term"
-                checked={termForm.is_current}
-                onChange={(value) =>
-                  setTermForm((current) => ({ ...current, is_current: value }))
-                }
-              />
-              <CheckboxControl
-                label="Active"
-                checked={termForm.is_active}
-                onChange={(value) =>
-                  setTermForm((current) => ({ ...current, is_active: value }))
-                }
-              />
               <FormActions
                 submitting={saving === "term"}
                 submitLabel={editing.type === "term" ? "Update term" : "Create term"}
@@ -469,13 +574,20 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
                 onCancel={resetTerm}
               />
             </form>
-          </WorkspacePanel>
-        }
-        content={
-          <RecordList
-            title="Academic terms"
-            description="Current and historical terms across sessions."
-            items={terms}
+            </WorkspacePanel>
+          ) : null}
+          content={activeTab === "create" ? null : (
+            <RecordList
+              title="Academic terms"
+            items={
+              activeTab === "draft"
+                ? terms.filter((item) => item.status === "draft")
+                : activeTab === "open"
+                  ? terms.filter((item) => item.status === "open")
+                  : activeTab === "closed"
+                    ? terms.filter((item) => item.status === "closed")
+                    : terms
+            }
             emptyIcon={CalendarDays}
             emptyTitle="No academic terms"
             emptyDescription="Create a term after creating an academic session."
@@ -485,7 +597,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
               "Unknown session"
             }
             renderDescription={(item) => `${dateLabel(item.start_date)} – ${dateLabel(item.end_date)}`}
-            renderStatus={(item) => (item.is_current ? "current" : item.is_active ? "active" : "inactive")}
+            renderStatus={(item) => (item.is_current ? "current" : item.status)}
             onEdit={(item) => {
               setEditing({ type: "term", id: item.id });
               setTermForm({
@@ -493,12 +605,64 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
                 name: item.name || "first_term",
                 start_date: item.start_date || "",
                 end_date: item.end_date || "",
-                is_current: Boolean(item.is_current),
-                is_active: item.is_active !== false,
               });
             }}
-          />
+            actions={
+              <div className="flex flex-wrap gap-2">
+                {terms
+                  .filter((item) => ["draft", "open"].includes(item.status))
+                  .slice(0, 3)
+                  .map((item) => (
+                    <Button
+                      key={item.id}
+                      type="button"
+                      size="small"
+                      variant="outline"
+                      disabled={saving === item.id}
+                      onClick={() => {
+                        const transition = item.status === "draft" ? "open" : "close";
+                        setPendingConfirmation({
+                          type: "term-transition",
+                          item,
+                          transition,
+                          title: `${transition === "open" ? "Open" : "Close"} academic term`,
+                          description: `${termLabel(item.name)} - ${
+                            sessions.find((session) => session.id === item.academic_session_id)?.name ||
+                            "Unknown session"
+                          }`,
+                          confirmationText:
+                            transition === "open" ? CONFIRM_OPEN_TERM : CONFIRM_CLOSE_TERM,
+                          confirmLabel: transition === "open" ? "Open term" : "Close term",
+                          variant: transition === "open" ? "primary" : "danger",
+                        });
+                      }}
+                    >
+                      {item.status === "draft" ? "Open" : "Close"} {termLabel(item.name)}
+                    </Button>
+                  ))}
+              </div>
+            }
+            />
+          )}
+        />
+      ) : null}
+
+      <TypedConfirmationDialog
+        open={Boolean(pendingConfirmation)}
+        title={pendingConfirmation?.title}
+        description={pendingConfirmation?.description}
+        confirmationText={pendingConfirmation?.confirmationText || ""}
+        confirmLabel={pendingConfirmation?.confirmLabel}
+        variant={pendingConfirmation?.variant}
+        isLoading={
+          pendingConfirmation?.type === "open-session"
+            ? openingSessionId === pendingConfirmation.item?.id
+            : pendingConfirmation?.type === "close-session"
+              ? closingSessionId === pendingConfirmation.item?.id
+              : saving === pendingConfirmation?.item?.id
         }
+        onConfirm={runConfirmedAction}
+        onCancel={() => setPendingConfirmation(null)}
       />
     </div>
   );
@@ -572,7 +736,13 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
         <RecordList
           title="Grading scales"
           description="The active grade boundaries used when computing results."
-          items={scales}
+          items={
+            activeTab === "active"
+              ? scales.filter((item) => item.is_active)
+              : activeTab === "inactive"
+                ? scales.filter((item) => !item.is_active)
+                : scales
+          }
           emptyIcon={GraduationCap}
           emptyTitle="No grading scales"
           emptyDescription="Add grade boundaries before publishing results."
@@ -592,6 +762,37 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
           }}
         />
       }
+    />
+  );
+
+  const gradingListView = (
+    <RecordList
+      title="Grading scales"
+      description="The grade boundaries used when computing results."
+      items={
+        activeTab === "active"
+          ? scales.filter((item) => item.is_active)
+          : activeTab === "inactive"
+            ? scales.filter((item) => !item.is_active)
+            : scales
+      }
+      emptyIcon={GraduationCap}
+      emptyTitle="No grading scales"
+      emptyDescription="Create grade boundaries before publishing results."
+      renderTitle={(item) => item.grade}
+      renderMeta={(item) => `${item.min_score} - ${item.max_score}`}
+      renderDescription={(item) => item.remark || "No remark"}
+      renderStatus={(item) => (item.is_active ? "active" : "inactive")}
+      onEdit={(item) => {
+        setEditing({ type: "scale", id: item.id });
+        setScaleForm({
+          grade: item.grade || "",
+          min_score: item.min_score ?? "",
+          max_score: item.max_score ?? "",
+          remark: item.remark || "",
+          is_active: item.is_active !== false,
+        });
+      }}
     />
   );
 
@@ -642,7 +843,15 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
         <RecordList
           title="Subject catalog"
           description="Subjects available for attachment to one or more classes."
-          items={subjects}
+          items={
+            activeTab === "active"
+              ? subjects.filter((item) => item.is_active !== false && !item.archived_at)
+              : activeTab === "inactive"
+                ? subjects.filter((item) => item.is_active === false && !item.archived_at)
+                : activeTab === "archived"
+                  ? subjects.filter((item) => item.archived_at)
+                  : subjects.filter((item) => !item.archived_at)
+          }
           emptyIcon={BookOpen}
           emptyTitle="No subjects"
           emptyDescription="Create the first subject in this school workspace."
@@ -650,6 +859,52 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
           renderMeta={(item) => item.code || "No code"}
           renderDescription={(item) => item.description || "No description"}
           renderStatus={(item) => (item.is_active === false ? "inactive" : "active")}
+          renderActions={(item) => (
+            <>
+              {item.archived_at ? (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outline"
+                  disabled={saving === item.id}
+                  onClick={() => updateSubjectLifecycle(item, "restore")}
+                >
+                  Restore
+                </Button>
+              ) : item.is_active === false ? (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="success"
+                  disabled={saving === item.id}
+                  onClick={() => updateSubjectLifecycle(item, "activate")}
+                >
+                  Activate
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outline"
+                  disabled={saving === item.id}
+                  onClick={() => updateSubjectLifecycle(item, "deactivate")}
+                >
+                  Deactivate
+                </Button>
+              )}
+              {!item.archived_at ? (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="danger"
+                  disabled={saving === item.id}
+                  onClick={() => updateSubjectLifecycle(item, "archive")}
+                >
+                  Archive
+                </Button>
+              ) : null}
+            </>
+          )}
           onEdit={(item) => {
             setEditing({ type: "subject", id: item.id });
             setSubjectForm({
@@ -660,6 +915,126 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
           }}
         />
       }
+    />
+  );
+
+  const subjectsCreateView = (
+    <WorkspacePanel
+      title={editing.type === "subject" ? "Edit subject" : "Create subject"}
+      description="Create each tenant-scoped subject once, then attach it to classes."
+    >
+      <form className="space-y-3" onSubmit={saveSubject}>
+        <Input
+          label="Subject name"
+          value={subjectForm.name}
+          onChange={(event) =>
+            setSubjectForm((current) => ({ ...current, name: event.target.value }))
+          }
+          required
+        />
+        <Input
+          label="Subject code"
+          value={subjectForm.code}
+          onChange={(event) =>
+            setSubjectForm((current) => ({ ...current, code: event.target.value }))
+          }
+          placeholder="MTH"
+        />
+        <Input
+          label="Description"
+          value={subjectForm.description}
+          onChange={(event) =>
+            setSubjectForm((current) => ({
+              ...current,
+              description: event.target.value,
+            }))
+          }
+        />
+        <FormActions
+          submitting={saving === "subject"}
+          submitLabel={editing.type === "subject" ? "Update subject" : "Create subject"}
+          editing={editing.type === "subject"}
+          onCancel={resetSubject}
+        />
+      </form>
+    </WorkspacePanel>
+  );
+
+  const subjectListItems =
+    activeTab === "active"
+      ? subjects.filter((item) => item.is_active !== false && !item.archived_at)
+      : activeTab === "inactive"
+        ? subjects.filter((item) => item.is_active === false && !item.archived_at)
+        : activeTab === "archived"
+          ? subjects.filter((item) => item.archived_at)
+          : subjects.filter((item) => !item.archived_at);
+
+  const subjectsListView = (
+    <RecordList
+      title="Subject catalog"
+      description="Subjects available for attachment to one or more classes."
+      items={subjectListItems}
+      emptyIcon={BookOpen}
+      emptyTitle="No subjects"
+      emptyDescription="Create the first subject in this school workspace."
+      renderTitle={(item) => item.name}
+      renderMeta={(item) => item.code || "No code"}
+      renderDescription={(item) => item.description || "No description"}
+      renderStatus={(item) => (item.is_active === false ? "inactive" : "active")}
+      renderActions={(item) => (
+        <>
+          {item.archived_at ? (
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              disabled={saving === item.id}
+              onClick={() => updateSubjectLifecycle(item, "restore")}
+            >
+              Restore
+            </Button>
+          ) : item.is_active === false ? (
+            <Button
+              type="button"
+              size="small"
+              variant="success"
+              disabled={saving === item.id}
+              onClick={() => updateSubjectLifecycle(item, "activate")}
+            >
+              Activate
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              disabled={saving === item.id}
+              onClick={() => updateSubjectLifecycle(item, "deactivate")}
+            >
+              Deactivate
+            </Button>
+          )}
+          {!item.archived_at ? (
+            <Button
+              type="button"
+              size="small"
+              variant="danger"
+              disabled={saving === item.id}
+              onClick={() => updateSubjectLifecycle(item, "archive")}
+            >
+              Archive
+            </Button>
+          ) : null}
+        </>
+      )}
+      onEdit={(item) => {
+        setEditing({ type: "subject", id: item.id });
+        setSubjectForm({
+          name: item.name || "",
+          code: item.code || "",
+          description: item.description || "",
+        });
+      }}
     />
   );
 
@@ -674,6 +1049,18 @@ function AcademicSetupWorkspace({ activeTab, onContextChange }) {
     );
   }
 
+  if (domain === "subjects") {
+    if (activeTab === "create") return subjectsCreateView;
+    if (editing.type === "subject") return subjectsView;
+    return subjectsListView;
+  }
+  if (domain === "grading") {
+    return activeTab === "create" || editing.type === "scale"
+      ? gradingView
+      : gradingListView;
+  }
+  if (domain === "terms") return activeTab === "create" ? periodsView : periodsView;
+  if (domain === "sessions") return periodsView;
   if (activeTab === "grading") return gradingView;
   if (activeTab === "subjects") return subjectsView;
   return periodsView;

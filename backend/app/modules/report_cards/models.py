@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +30,14 @@ class ReportCard(BaseModel):
             "academic_term_id",
             unique=True,
             postgresql_where="superseded_at IS NULL",
+        ),
+        CheckConstraint(
+            "status <> 'published' OR (published_at IS NOT NULL AND published_by IS NOT NULL)",
+            name="ck_report_cards_published_metadata",
+        ),
+        CheckConstraint(
+            "superseded_at IS NULL OR is_outdated = true",
+            name="ck_report_cards_superseded_is_outdated",
         ),
     )
 

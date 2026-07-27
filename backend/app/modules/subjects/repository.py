@@ -184,10 +184,15 @@ class SubjectRepository:
         limit: int = 100,
         is_active: bool | None = None,
         search: str | None = None,
+        include_archived: bool = False,
     ) -> tuple[list[Subject], int]:
         filters = [Subject.tenant_id == tenant_id]
         if is_active is not None:
-            filters.append(Subject.is_active == is_active)
+            filters.append(Subject.is_active.is_(is_active))
+            if is_active:
+                filters.append(Subject.archived_at.is_(None))
+        if not include_archived:
+            filters.append(Subject.archived_at.is_(None))
         if search:
             filters.append(Subject.name.ilike(f"%{search.strip()}%"))
 
@@ -219,12 +224,15 @@ class SubjectRepository:
     ) -> tuple[list[Subject], int]:
         filters = [
             Subject.tenant_id == tenant_id,
+            Subject.archived_at.is_(None),
             TeacherMembershipSubject.tenant_id == tenant_id,
             TeacherMembershipSubject.teacher_membership_id == teacher_id,
             TeacherMembershipSubject.is_active.is_(True),
         ]
         if is_active is not None:
-            filters.append(Subject.is_active == is_active)
+            filters.append(Subject.is_active.is_(is_active))
+            if is_active:
+                filters.append(Subject.archived_at.is_(None))
         if search:
             filters.append(Subject.name.ilike(f"%{search.strip()}%"))
 
@@ -261,3 +269,68 @@ class SubjectRepository:
     async def delete_subject(db: AsyncSession, subject: Subject) -> None:
         await db.delete(subject)
         await db.flush()
+
+    @staticmethod
+    async def count_subject_dependencies(
+        db: AsyncSession,
+        tenant_id: UUID,
+        subject_id: UUID,
+    ) -> dict[str, int]:
+        from app.modules.report_cards.models import ReportCardSubjectLine
+        from app.modules.student_academics.models import (
+            ClassSubject,
+            StudentSubjectResult,
+            TeacherAssignment,
+        )
+
+        class_subject_count = (
+            await db.execute(
+                select(func.count()).select_from(ClassSubject).where(
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        teacher_link_count = (
+            await db.execute(
+                select(func.count()).select_from(TeacherMembershipSubject).where(
+                    TeacherMembershipSubject.tenant_id == tenant_id,
+                    TeacherMembershipSubject.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        teacher_assignment_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(TeacherAssignment)
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        result_count = (
+            await db.execute(
+                select(func.count()).select_from(StudentSubjectResult).where(
+                    StudentSubjectResult.tenant_id == tenant_id,
+                    StudentSubjectResult.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        report_card_line_count = (
+            await db.execute(
+                select(func.count()).select_from(ReportCardSubjectLine).where(
+                    ReportCardSubjectLine.tenant_id == tenant_id,
+                    ReportCardSubjectLine.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        return {
+            "class_subjects": int(class_subject_count),
+            "teacher_links": int(teacher_link_count),
+            "teacher_assignments": int(teacher_assignment_count),
+            "results": int(result_count),
+            "report_card_lines": int(report_card_line_count),
+        }

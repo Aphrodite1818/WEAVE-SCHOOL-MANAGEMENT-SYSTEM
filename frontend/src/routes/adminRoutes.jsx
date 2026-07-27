@@ -45,8 +45,8 @@ export const adminRoutes = (
       <Route path="/admin/students/create" element={protectedWorkflow(<StudentCreatePage />)} />
       <Route path="/admin/parents" element={protectedWorkflow(<ParentsPage />)} />
       <Route path="/admin/parents/links" element={protectedWorkflow(<ParentLinkManagementPage />)} />
-      <Route path="/admin/classes" element={<Navigate to="/admin/academic/class-subjects" replace />} />
-      <Route path="/admin/subjects" element={<Navigate to="/admin/academic/setup?tab=subjects" replace />} />
+      <Route path="/admin/classes" element={<Navigate to="/admin/academic/classes" replace />} />
+      <Route path="/admin/subjects" element={<Navigate to="/admin/academic/subjects" replace />} />
       <Route path="/admin/imports" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route path="/admin/attendance" element={protectedWorkflow(<AttendancePage />)} />
       <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />

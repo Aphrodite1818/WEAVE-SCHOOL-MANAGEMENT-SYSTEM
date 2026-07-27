@@ -49,7 +49,6 @@ const normalizeClassPayload = (payload = {}) => ({
           payload.teacher_membership_id || payload.teacher_id || null,
       }
     : {}),
-  ...(payload.is_active !== undefined ? { is_active: payload.is_active } : {}),
 });
 
 export const classService = {
@@ -57,7 +56,10 @@ export const classService = {
     const { signal, ...queryOptions } = options;
     const result = normalizeListResponse(
       await api.get(
-        `/classes?${buildQuery(queryOptions, { activeOnly: "active_only" })}`,
+        `/classes?${buildQuery(queryOptions, {
+          activeOnly: "active_only",
+          includeArchived: "include_archived",
+        })}`,
         {
           ...requestOptions,
           ...(signal ? { signal } : {}),
@@ -78,6 +80,22 @@ export const classService = {
 
   updateClass: (classId, payload) =>
     api.patch(`/classes/${classId}`, normalizeClassPayload(payload)),
+
+  activateClass: (classId) =>
+    api.post(`/classes/${classId}/activate`),
+
+  deactivateClass: (classId) =>
+    api.post(`/classes/${classId}/deactivate`),
+
+  archiveClass: (classId) =>
+    api.post(`/classes/${classId}/archive`, {
+      confirmation: "ARCHIVE_CLASSROOM",
+    }),
+
+  restoreClass: (classId) =>
+    api.post(`/classes/${classId}/restore`, {
+      confirmation: "RESTORE_CLASSROOM",
+    }),
 
   deleteClass: (classId) =>
     api.delete(`/classes/${classId}`),

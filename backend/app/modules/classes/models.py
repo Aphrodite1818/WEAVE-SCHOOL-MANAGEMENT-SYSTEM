@@ -3,12 +3,14 @@
 # ====================================== #
 from __future__ import annotations
 
+from datetime import datetime
 import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     String,
@@ -40,6 +42,17 @@ class ClassRoom(BaseModel):
     arm: Mapped[str | None] = mapped_column(String(20), nullable=True)
     normalized_arm: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -76,10 +89,19 @@ class ClassRoom(BaseModel):
             "(is_terminal = true AND next_class_id IS NULL) OR is_terminal = false",
             name="ck_classes_terminal_has_no_next_class",
         ),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_classes_archived_requires_inactive",
+        ),
         Index("ix_classes_tenant_teacher_membership", "tenant_id", "teacher_membership_id"),
         Index("ix_classes_tenant_active", "tenant_id", "is_active"),
         Index("ix_classes_tenant_next_class", "tenant_id", "next_class_id"),
         Index("ix_classes_tenant_terminal_active", "tenant_id", "is_terminal", "is_active"),
+        Index(
+            "ix_classes_tenant_archived",
+            "tenant_id",
+            "archived_at",
+        ),
     )
 
 

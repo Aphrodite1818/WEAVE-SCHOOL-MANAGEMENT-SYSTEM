@@ -82,6 +82,7 @@ class ReportCardResponse(OutputBase):
     published_at: datetime | None = None
     published_by: uuid.UUID | None = None
     is_outdated: bool = False
+    superseded_at: datetime | None = None
     status: ReportCardStatus
     lines: list[ReportCardSubjectLineResponse] = []
     created_at: datetime

@@ -364,6 +364,29 @@
     @apply bg-slate-500/15 text-slate-700;
   }
 
+  .mobile-startup-screen {
+    @apply fixed inset-0 z-[9999] hidden min-h-[100dvh] items-center justify-center bg-[#1d4ed8] text-white;
+  }
+
+  .mobile-startup-word {
+    @apply relative z-10 flex items-center justify-center gap-1 text-5xl font-black leading-none tracking-normal text-white;
+  }
+
+  .mobile-startup-word span {
+    animation: mobile-startup-letter 840ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--letter-index) * 80ms);
+  }
+
+  .mobile-startup-loader {
+    @apply absolute bottom-16 left-1/2 z-10 h-1.5 w-24 -translate-x-1/2 overflow-hidden rounded-full bg-white/25;
+  }
+
+  .mobile-startup-loader::before {
+    content: "";
+    @apply absolute inset-y-0 left-0 w-1/2 rounded-full bg-white;
+    animation: mobile-startup-load 1100ms ease-in-out infinite;
+  }
+
   :root[data-theme="dark"] .badge.green {
     @apply text-emerald-300;
   }
@@ -374,6 +397,10 @@
 
   :root[data-theme="dark"] .badge.gray {
     @apply text-slate-300;
+  }
+
+  :root[data-theme="dark"] .mobile-startup-screen {
+    @apply bg-[#172554];
   }
 
   .aw-table-wrap {
@@ -484,6 +511,18 @@
       padding: 9px 12px;
     }
   }
+
+  @media (max-width: 767px) {
+    html[data-standalone-pwa="true"] .mobile-startup-screen {
+      @apply flex;
+    }
+  }
+
+  @media (display-mode: standalone) and (max-width: 767px) {
+    .mobile-startup-screen {
+      @apply flex;
+    }
+  }
 }
 
 @layer utilities {
@@ -507,6 +546,29 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @keyframes mobile-startup-letter {
+    from {
+      opacity: 0;
+      transform: translateY(0.85rem) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes mobile-startup-load {
+    0% {
+      transform: translateX(-120%);
+    }
+    52% {
+      transform: translateX(75%);
+    }
+    100% {
+      transform: translateX(220%);
     }
   }
 
@@ -536,6 +598,11 @@ html[data-theme="dark"][data-contrast="high"] {
 @media (prefers-reduced-motion: reduce) {
   .bottom-nav-indicator {
     transition: none;
+  }
+
+  .mobile-startup-word span,
+  .mobile-startup-loader::before {
+    animation: none;
   }
 }
 

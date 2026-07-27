@@ -179,7 +179,6 @@ def configure_logging() -> None:
     # Enable it manually during a focused diagnostic session instead of by default.
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
-    logging.getLogger("passlib").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     setattr(app_logger, _CONFIGURED_ATTR, True)

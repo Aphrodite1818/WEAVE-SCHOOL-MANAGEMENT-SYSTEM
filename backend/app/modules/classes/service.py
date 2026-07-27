@@ -1,9 +1,10 @@
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
 from app.modules.classes.models import ClassRoom
 from app.modules.classes.repository import ClassRoomRepository
@@ -15,8 +16,8 @@ from app.modules.classes.schemas import (
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.students.repository import StudentParentLinkRepository
-from app.modules.teachers.models import Teacher, TeacherStatus
-from app.modules.teachers.repository import TeacherRepository
+from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherMembershipStatus
+from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.tenant_admins.models import TenantAdmin
 
 
@@ -49,14 +50,19 @@ class ClassRoomService:
         if teacher_membership_id is None:
             return
 
-        teacher = await TeacherRepository.get_teacher_by_id(
-            db=db,
+        teacher = await TeacherMembershipRepository.get_by_id(
+            db,
+            teacher_membership_id,
             tenant_id=tenant_id,
-            teacher_id=teacher_membership_id,
+            load_account=True,
         )
         if teacher is None:
             raise NotFoundException("Teacher not found")
-        if teacher.status != TeacherStatus.ACTIVE:
+        if (
+            teacher.status != TeacherMembershipStatus.ACTIVE
+            or teacher.teacher_account.account_status != TeacherAccountStatus.ACTIVE
+            or not teacher.teacher_account.is_active
+        ):
             raise BadRequestException("Cannot assign an inactive teacher")
 
     @staticmethod
@@ -78,7 +84,9 @@ class ClassRoomService:
             arm=payload.arm,
             normalized_arm=normalized_class_arm_key(payload.arm),
             teacher_membership_id=payload.teacher_membership_id,
-            is_active=payload.is_active,
+            is_active=True,
+            archived_at=None,
+            archived_by_admin_id=None,
         )
 
     @staticmethod
@@ -142,6 +150,8 @@ class ClassRoomService:
         )
         if classroom is None:
             raise NotFoundException("Classroom not found")
+        if not isinstance(actor, TenantAdmin) and classroom.archived_at is not None:
+            raise NotFoundException("Classroom not found")
 
         if isinstance(actor, Teacher) and classroom.teacher_membership_id != actor.id:
             raise ForbiddenException("You do not have access to this classroom")
@@ -171,6 +181,7 @@ class ClassRoomService:
         actor: TenantAdmin | Teacher | Student | Parent,
         skip: int = 0,
         limit: int = 100,
+        include_archived: bool = False,
     ) -> list[ClassRoomResponse]:
         """Get classrooms visible to the current actor."""
 
@@ -183,6 +194,7 @@ class ClassRoomService:
                 tenant_id=actor.tenant_id,
                 offset=skip,
                 limit=limit,
+                include_archived=include_archived,
             )
         elif isinstance(actor, Teacher):
             classrooms = await ClassRoomRepository.list_by_teacher_membership(
@@ -258,6 +270,8 @@ class ClassRoomService:
         )
         if classroom is None:
             raise NotFoundException("Classroom not found")
+        if classroom.archived_at is not None:
+            raise ConflictException("Archived classrooms cannot be updated. Restore them first.")
 
         update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
@@ -314,7 +328,7 @@ class ClassRoomService:
         actor: TenantAdmin,
         class_id: uuid.UUID,
     ) -> ClassRoomResponse:
-        """Soft-delete classroom."""
+        """Deactivate a classroom without archiving or deleting it."""
 
         ClassRoomService._ensure_tenant_admin(actor)
 
@@ -325,9 +339,126 @@ class ClassRoomService:
         )
         if classroom is None:
             raise NotFoundException("Classroom not found")
+        if classroom.archived_at is not None:
+            raise ConflictException(
+                "Archived records cannot be deactivated. Restore them first."
+            )
 
         classroom.is_active = False
         await ClassRoomRepository.save(db, classroom)
+        await db.commit()
+        await db.refresh(classroom)
+        return ClassRoomResponse.model_validate(classroom)
+
+    @staticmethod
+    async def activate_classroom(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        class_id: uuid.UUID,
+    ) -> ClassRoomResponse:
+        ClassRoomService._ensure_tenant_admin(actor)
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=class_id,
+        )
+        if classroom is None:
+            raise NotFoundException("Classroom not found")
+        if classroom.archived_at is not None:
+            raise ConflictException("Archived classrooms must be restored before activation.")
+
+        await ClassRoomService._validate_teacher_assignment(
+            db=db,
+            tenant_id=actor.tenant_id,
+            teacher_membership_id=classroom.teacher_membership_id,
+        )
+
+        if classroom.is_active:
+            return ClassRoomResponse.model_validate(classroom)
+
+        classroom.is_active = True
+        classroom.archived_at = None
+        classroom.archived_by_admin_id = None
+        classroom = await ClassRoomRepository.save(db=db, classroom=classroom)
+        await db.commit()
+        await db.refresh(classroom)
+        return ClassRoomResponse.model_validate(classroom)
+
+
+
+    @staticmethod
+    async def archive_classroom(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        class_id: uuid.UUID,
+    ) -> ClassRoomResponse:
+        ClassRoomService._ensure_tenant_admin(actor)
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=class_id,
+        )
+
+
+        if classroom is None:
+            raise NotFoundException("Classroom not found")
+
+
+
+        if classroom.archived_at is not None:
+            return ClassRoomResponse.model_validate(classroom)
+
+
+        classroom.is_active = False
+        classroom.archived_at = datetime.now(timezone.utc)
+        classroom.archived_by_admin_id = actor.id
+
+        classroom = await ClassRoomRepository.save(
+            db=db,
+            classroom=classroom,
+        )
+
+        await db.commit()
+        await db.refresh(classroom)
+        return ClassRoomResponse.model_validate(classroom)
+
+
+
+
+
+
+
+    @staticmethod
+    async def restore_classroom(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        class_id: uuid.UUID,
+    ) -> ClassRoomResponse:
+        ClassRoomService._ensure_tenant_admin(actor)
+
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=class_id,
+        )
+
+        if classroom is None:
+            raise NotFoundException("Classroom not found")
+
+        if classroom.archived_at is None:
+            return ClassRoomResponse.model_validate(classroom)
+
+        classroom.archived_at = None
+        classroom.archived_by_admin_id = None
+        classroom.is_active = False
+
+
+        classroom = await ClassRoomRepository.save(db=db, classroom=classroom)
+
+
         await db.commit()
         await db.refresh(classroom)
         return ClassRoomResponse.model_validate(classroom)

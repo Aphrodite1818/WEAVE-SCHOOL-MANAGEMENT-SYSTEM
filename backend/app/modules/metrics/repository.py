@@ -21,7 +21,9 @@ from app.modules.subjects.models import Subject
 from app.modules.student_academics.models import (
     AcademicResultStatus,
     AcademicSession,
+    AcademicSessionStatus,
     AcademicTerm,
+    AcademicTermStatus,
     StudentSubjectResult,
     TeacherAssignment,
 )
@@ -231,7 +233,7 @@ class MetricsRepository:
                 select(AcademicSession).where(
                     AcademicSession.tenant_id == tenant_id,
                     AcademicSession.is_current.is_(True),
-                    AcademicSession.is_active.is_(True),
+                    AcademicSession.status == AcademicSessionStatus.OPEN,
                 )
             )
         ).scalar_one_or_none()
@@ -246,7 +248,7 @@ class MetricsRepository:
                 select(AcademicTerm).where(
                     AcademicTerm.tenant_id == tenant_id,
                     AcademicTerm.is_current.is_(True),
-                    AcademicTerm.is_active.is_(True),
+                    AcademicTerm.status == AcademicTermStatus.OPEN,
                 )
             )
         ).scalar_one_or_none()

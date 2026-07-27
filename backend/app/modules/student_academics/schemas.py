@@ -15,6 +15,7 @@ from app.modules.student_academics.models import (
     AcademicResultStatus,
     AcademicSessionStatus,
     AcademicTermName,
+    AcademicTermStatus,
     StudentProgressionItemAction,
     StudentProgressionItemStatus,
     StudentProgressionRunStatus,
@@ -107,7 +108,6 @@ class AcademicSessionResponse(OutputBase):
     end_date: date | None = None
     status: AcademicSessionStatus
     is_current: bool
-    is_active: bool
     closing_started_at: datetime | None = None
     closed_at: datetime | None = None
     closed_by_admin_id: uuid.UUID | None = None
@@ -115,22 +115,53 @@ class AcademicSessionResponse(OutputBase):
     created_at: datetime
     updated_at: datetime
 
-
 class AcademicTermCreate(InputBase):
     academic_session_id: uuid.UUID
     name: AcademicTermName
     start_date: date | None = None
     end_date: date | None = None
-    is_current: bool = False
-    is_active: bool = True
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> AcademicTermCreate:
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date <= self.start_date
+        ):
+            raise ValueError("end_date must be after start_date")
+
+        return self
 
 
 class AcademicTermUpdate(InputBase):
     name: AcademicTermName | None = None
     start_date: date | None = None
     end_date: date | None = None
-    is_current: bool | None = None
-    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_update(self)->AcademicTermUpdate:
+        if not self.model_fields_set:
+            raise ValueError("at least one term field must be provided")
+
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date <= self.start_date
+        ):
+            raise ValueError("end_date must be after start_date")
+
+        return self
+
+
+
+class AcademicTermOpenRequest(InputBase):
+    confirmation: Literal["OPEN_ACADEMIC_TERM"]
+
+
+class AcademicTermCloseRequest(InputBase):
+    confirmation: Literal["CLOSE_ACADEMIC_TERM"]
+
+
 
 
 class AcademicTermResponse(OutputBase):
@@ -140,8 +171,19 @@ class AcademicTermResponse(OutputBase):
     name: AcademicTermName
     start_date: date | None = None
     end_date: date | None = None
+
+    status: AcademicTermStatus
     is_current: bool
-    is_active: bool
+
+    opened_at: datetime | None = None
+    closed_at: datetime | None = None
+    opened_by_admin_id: uuid.UUID | None = None
+    closed_by_admin_id: uuid.UUID | None = None
+
+    created_at: datetime
+    updated_at: datetime
+
+
 
 
 class GradingScaleCreate(InputBase):
@@ -208,17 +250,37 @@ class ClassSubjectResponse(OutputBase):
     subject_code: str | None = None
     is_core: bool
     is_active: bool
+    archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
+class ClassSubjectArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_CLASS_SUBJECT"]
+
+
+class ClassSubjectRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_CLASS_SUBJECT"]
+
+
 class TeacherAssignmentCreate(InputBase):
     teacher_membership_id: uuid.UUID
-    class_subject_id: uuid.UUID
+    class_subject_id: uuid.UUID | None = None
+    effective_from: date | None = None
 
 
 class TeacherAssignmentReassign(InputBase):
     teacher_membership_id: uuid.UUID
+    effective_from: date | None = None
+
+
+class TeacherAssignmentEnd(InputBase):
+    effective_to: date | None = None
+
+
+class TeacherAssignmentDelete(InputBase):
+    confirmation: Literal["DELETE_TEACHER_ASSIGNMENT"]
 
 
 class TeacherAssignmentResponse(OutputBase):
@@ -319,6 +381,10 @@ class StudentSubjectResultStatusUpdate(InputBase):
     status: AcademicResultStatus
 
 
+class StudentSubjectResultReopenRequest(InputBase):
+    reason: str = Field(min_length=3, max_length=1000)
+
+
 class StudentSubjectResultResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -348,6 +414,13 @@ class StudentSubjectResultResponse(OutputBase):
     status: AcademicResultStatus
     recorded_by_actor_type: str
     recorded_by_actor_id: uuid.UUID
+    submitted_at: datetime | None = None
+    submitted_by_actor_type: str | None = None
+    submitted_by_actor_id: uuid.UUID | None = None
+    approved_at: datetime | None = None
+    approved_by_admin_id: uuid.UUID | None = None
+    locked_at: datetime | None = None
+    locked_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

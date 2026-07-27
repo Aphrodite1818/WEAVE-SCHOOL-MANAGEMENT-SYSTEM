@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
+import uuid
 
-from sqlalchemy import Boolean, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.base_model import BaseModel
@@ -24,12 +35,22 @@ class Subject(BaseModel):
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     normalized_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
 
     teacher_links: Mapped[list["TeacherMembershipSubject"]] = relationship(
         "TeacherMembershipSubject",
         back_populates="subject",
         cascade="all, delete-orphan",
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     @property
@@ -41,4 +62,13 @@ class Subject(BaseModel):
         UniqueConstraint("tenant_id", "code", name="uq_subject_tenant_code"),
         UniqueConstraint("tenant_id", "normalized_name", name="uq_subject_tenant_normalized_name"),
         UniqueConstraint("tenant_id", "normalized_code", name="uq_subject_tenant_normalized_code"),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_subjects_archived_requires_inactive",
+        ),
+        Index(
+            "ix_subjects_tenant_archived",
+            "tenant_id",
+            "archived_at",
+        ),
     )

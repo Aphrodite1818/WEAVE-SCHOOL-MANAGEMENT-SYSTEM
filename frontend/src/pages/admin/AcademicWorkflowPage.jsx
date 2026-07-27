@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 
-import AcademicSearchWorkspace from "../../features/academic-admin/AcademicSearchWorkspace";
 import AcademicSetupWorkspace from "../../features/academic-admin/AcademicSetupWorkspace";
 import AcademicWorkflowShell from "../../features/academic-admin/AcademicWorkflowShell";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
 import ClassStructureWorkspace from "../../features/academic-admin/ClassStructureWorkspace";
+import ProgressionWorkspace from "../../features/academic-admin/ProgressionWorkspace";
 import ReportCardsWorkspace from "../../features/academic-admin/ReportCardsWorkspace";
 import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
@@ -13,7 +13,9 @@ import { academicService } from "../../services/academicService";
 
 const workflowAliases = {
   reports: "report-cards",
-  manage: "setup",
+  manage: "classes",
+  setup: "sessions",
+  "class-structure": "classes",
 };
 
 const asItems = (response) =>
@@ -24,7 +26,7 @@ const asItems = (response) =>
       : [];
 
 function AcademicWorkflowPage() {
-  const { workflow: routeWorkflow = "setup" } = useParams();
+  const { workflow: routeWorkflow = "sessions" } = useParams();
   const workflow = workflowAliases[routeWorkflow] || routeWorkflow;
   const [context, setContext] = useState({
     currentSession: null,
@@ -69,16 +71,17 @@ function AcademicWorkflowPage() {
   }
 
   const renderWorkspace = (activeTab) => {
-    if (workflow === "setup") {
+    if (["sessions", "terms", "grading", "subjects"].includes(workflow)) {
       return (
         <AcademicSetupWorkspace
+          domain={workflow}
           activeTab={activeTab}
           onContextChange={updateContext}
         />
       );
     }
-    if (workflow === "class-subjects") {
-      return <ClassStructureWorkspace activeTab={activeTab} />;
+    if (["classes", "class-subjects"].includes(workflow)) {
+      return <ClassStructureWorkspace domain={workflow} activeTab={activeTab} />;
     }
     if (workflow === "assignments") {
       return <TeacherAssignmentsWorkspace activeTab={activeTab} />;
@@ -99,7 +102,10 @@ function AcademicWorkflowPage() {
         />
       );
     }
-    return <AcademicSearchWorkspace />;
+    if (workflow === "progression") {
+      return <ProgressionWorkspace activeTab={activeTab} />;
+    }
+    return <Navigate to="/admin/academic" replace />;
   };
 
   return (

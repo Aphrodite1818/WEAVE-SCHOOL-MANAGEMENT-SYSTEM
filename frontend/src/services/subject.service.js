@@ -4,6 +4,7 @@ const buildSubjectQuery = ({
   skip = 0,
   limit = 100,
   isActive,
+  includeArchived,
   search,
 } = {}) => {
   const params = new URLSearchParams();
@@ -13,6 +14,10 @@ const buildSubjectQuery = ({
 
   if (typeof isActive === "boolean") {
     params.set("is_active", String(isActive));
+  }
+
+  if (typeof includeArchived === "boolean") {
+    params.set("include_archived", String(includeArchived));
   }
 
   if (search) {
@@ -36,10 +41,20 @@ export const subjectService = {
     api.patch(`/subjects/${subjectId}`, data),
 
   activateSubject: (subjectId) =>
-    api.patch(`/subjects/${subjectId}/activate`),
+    api.post(`/subjects/${subjectId}/activate`),
 
   deactivateSubject: (subjectId) =>
-    api.patch(`/subjects/${subjectId}/deactivate`),
+    api.post(`/subjects/${subjectId}/deactivate`),
+
+  archiveSubject: (subjectId) =>
+    api.post(`/subjects/${subjectId}/archive`, {
+      confirmation: "ARCHIVE_SUBJECT",
+    }),
+
+  restoreSubject: (subjectId) =>
+    api.post(`/subjects/${subjectId}/restore`, {
+      confirmation: "RESTORE_SUBJECT",
+    }),
 
   deleteSubject: (subjectId) =>
     api.delete(`/subjects/${subjectId}`),

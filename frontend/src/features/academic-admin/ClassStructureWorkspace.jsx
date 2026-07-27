@@ -1,4 +1,4 @@
-import { BookOpen, Layers3, Library, Users } from "lucide-react";
+import { BookOpen, Library } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
@@ -9,6 +9,7 @@ import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
+import TypedConfirmationDialog from "./TypedConfirmationDialog";
 import {
   CheckboxControl,
   FormActions,
@@ -23,8 +24,9 @@ const BLANK_CLASS = {
   name: "",
   arm: "",
   teacher_membership_id: "",
-  is_active: true,
 };
+const CONFIRM_ARCHIVE_CLASS_SUBJECT = "ARCHIVE_CLASS_SUBJECT";
+const CONFIRM_RESTORE_CLASS_SUBJECT = "RESTORE_CLASS_SUBJECT";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -42,11 +44,12 @@ const teacherLabel = (item) => {
   return name || account.email || item?.teacher_name || item?.staff_id || "Teacher";
 };
 
-function ClassStructureWorkspace({ activeTab }) {
+function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState("");
+  const [mappingSelectedClassByTab, setMappingSelectedClassByTab] = useState({});
   const [classSubjects, setClassSubjects] = useState([]);
   const [classForm, setClassForm] = useState(BLANK_CLASS);
   const [subjectSelection, setSubjectSelection] = useState({
@@ -54,6 +57,7 @@ function ClassStructureWorkspace({ activeTab }) {
     is_core: true,
   });
   const [editingClassId, setEditingClassId] = useState("");
+  const [pendingMappingConfirmation, setPendingMappingConfirmation] = useState(null);
   const [saving, setSaving] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -64,7 +68,7 @@ function ClassStructureWorkspace({ activeTab }) {
     setError(null);
     try {
       const [classResponse, subjectResponse, teacherResponse] = await Promise.all([
-        classService.getClasses({ limit: 100 }),
+        classService.getClasses({ limit: 100, includeArchived: domain === "classes" }),
         subjectService.getSubjects({ limit: 100, isActive: true }),
         teacherService.listMemberships({ limit: 100 }),
       ]);
@@ -76,7 +80,9 @@ function ClassStructureWorkspace({ activeTab }) {
           ["active", "read_only"].includes(String(item.status || "active").toLowerCase()),
         ),
       );
-      setSelectedClassId((current) => current || nextClasses[0]?.id || "");
+      if (domain !== "class-subjects") {
+        setSelectedClassId((current) => current || nextClasses[0]?.id || "");
+      }
     } catch (err) {
       const message = getErrorMessage(err, "Could not load class structure.");
       setError(message);
@@ -84,16 +90,45 @@ function ClassStructureWorkspace({ activeTab }) {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [domain, showError]);
+
+  const activeSelectedClassId =
+    domain === "class-subjects"
+      ? mappingSelectedClassByTab[activeTab] || ""
+      : selectedClassId;
+
+  const setActiveSelectedClassId = useCallback(
+    (value) => {
+      if (domain === "class-subjects") {
+        setMappingSelectedClassByTab((current) => ({
+          ...current,
+          [activeTab]: value,
+        }));
+        return;
+      }
+      setSelectedClassId(value);
+    },
+    [activeTab, domain],
+  );
+
+  useEffect(() => {
+    if (domain !== "class-subjects" || activeSelectedClassId || classes.length === 0) {
+      return;
+    }
+    setMappingSelectedClassByTab((current) => ({
+      ...current,
+      [activeTab]: current[activeTab] || classes[0]?.id || "",
+    }));
+  }, [activeSelectedClassId, activeTab, classes, domain]);
 
   const loadClassSubjects = useCallback(async () => {
-    if (!selectedClassId) {
+    if (!activeSelectedClassId) {
       setClassSubjects([]);
       return;
     }
     try {
       const response = await academicService.listOfferedClassSubjects(
-        selectedClassId,
+        activeSelectedClassId,
         { active_only: false, limit: 100 },
       );
       setClassSubjects(asItems(response));
@@ -101,7 +136,7 @@ function ClassStructureWorkspace({ activeTab }) {
       setClassSubjects([]);
       showError(getErrorMessage(err, "Could not load subjects for this class."));
     }
-  }, [selectedClassId, showError]);
+  }, [activeSelectedClassId, showError]);
 
   useEffect(() => {
     loadBase();
@@ -147,7 +182,6 @@ function ClassStructureWorkspace({ activeTab }) {
         name: classForm.name,
         arm: classForm.arm || null,
         teacher_membership_id: classForm.teacher_membership_id || null,
-        is_active: classForm.is_active,
       };
       if (editingClassId) {
         await classService.updateClass(editingClassId, payload);
@@ -166,13 +200,13 @@ function ClassStructureWorkspace({ activeTab }) {
 
   const attachSubject = async (event) => {
     event.preventDefault();
-    if (!selectedClassId || !subjectSelection.subject_id) {
+    if (!activeSelectedClassId || !subjectSelection.subject_id) {
       showWarning("Select a class and subject first.");
       return;
     }
     setSaving("offering");
     try {
-      await academicService.addClassSubject(selectedClassId, {
+      await academicService.addClassSubject(activeSelectedClassId, {
         subject_id: subjectSelection.subject_id,
         is_core: subjectSelection.is_core,
       });
@@ -194,6 +228,39 @@ function ClassStructureWorkspace({ activeTab }) {
       await loadClassSubjects();
     } catch (err) {
       showError(getErrorMessage(err, "Could not deactivate class subject."));
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const updateClassLifecycle = async (item, action) => {
+    setSaving(item.id);
+    try {
+      if (action === "activate") await classService.activateClass(item.id);
+      if (action === "deactivate") await classService.deactivateClass(item.id);
+      if (action === "archive") await classService.archiveClass(item.id);
+      if (action === "restore") await classService.restoreClass(item.id);
+      showSuccess(`Class ${action}d.`);
+      await loadBase();
+    } catch (err) {
+      showError(getErrorMessage(err, `Could not ${action} class.`));
+    } finally {
+      setSaving("");
+      setPendingMappingConfirmation(null);
+    }
+  };
+
+  const updateMappingLifecycle = async (item, action) => {
+    setSaving(item.id);
+    try {
+      if (action === "activate") await academicService.activateClassSubject(activeSelectedClassId, item.id);
+      if (action === "deactivate") await academicService.deactivateClassSubject(item.id);
+      if (action === "archive") await academicService.archiveClassSubject(item.id);
+      if (action === "restore") await academicService.restoreClassSubject(item.id);
+      showSuccess(`Class-subject mapping ${action}d.`);
+      await loadClassSubjects();
+    } catch (err) {
+      showError(getErrorMessage(err, `Could not ${action} class-subject mapping.`));
     } finally {
       setSaving("");
     }
@@ -236,13 +303,6 @@ function ClassStructureWorkspace({ activeTab }) {
               options={teacherOptions}
               placeholder="Optional class teacher"
             />
-            <CheckboxControl
-              label="Active class"
-              checked={classForm.is_active}
-              onChange={(value) =>
-                setClassForm((current) => ({ ...current, is_active: value }))
-              }
-            />
             <FormActions
               submitting={saving === "class"}
               submitLabel={editingClassId ? "Update class" : "Create class"}
@@ -256,7 +316,15 @@ function ClassStructureWorkspace({ activeTab }) {
         <RecordList
           title="Classes"
           description="Active and inactive classes in this school workspace."
-          items={classes}
+          items={
+            activeTab === "active"
+              ? classes.filter((item) => item.is_active && !item.archived_at)
+              : activeTab === "inactive"
+                ? classes.filter((item) => !item.is_active && !item.archived_at)
+                : activeTab === "archived"
+                  ? classes.filter((item) => item.archived_at)
+                  : classes.filter((item) => !item.archived_at)
+          }
           emptyIcon={Library}
           emptyTitle="No classes"
           emptyDescription="Create the first class before adding students or subject offerings."
@@ -273,14 +341,59 @@ function ClassStructureWorkspace({ activeTab }) {
                 ? `Progresses to ${classLabel(classes.find((entry) => entry.id === item.next_class_id))}`
                 : "Progression target not configured"
           }
-          renderStatus={(item) => (item.is_active ? "active" : "inactive")}
+          renderStatus={(item) => (item.archived_at ? "archived" : item.is_active ? "active" : "inactive")}
+          renderActions={(item) => (
+            <>
+              {item.archived_at ? (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outline"
+                  disabled={saving === item.id}
+                  onClick={() => updateClassLifecycle(item, "restore")}
+                >
+                  Restore
+                </Button>
+              ) : item.is_active ? (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outline"
+                  disabled={saving === item.id}
+                  onClick={() => updateClassLifecycle(item, "deactivate")}
+                >
+                  Deactivate
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="success"
+                  disabled={saving === item.id}
+                  onClick={() => updateClassLifecycle(item, "activate")}
+                >
+                  Activate
+                </Button>
+              )}
+              {!item.archived_at ? (
+                <Button
+                  type="button"
+                  size="small"
+                  variant="danger"
+                  disabled={saving === item.id}
+                  onClick={() => updateClassLifecycle(item, "archive")}
+                >
+                  Archive
+                </Button>
+              ) : null}
+            </>
+          )}
           onEdit={(item) => {
             setEditingClassId(item.id);
             setClassForm({
               name: item.name || "",
               arm: item.arm || "",
               teacher_membership_id: item.teacher_membership_id || "",
-              is_active: item.is_active !== false,
             });
           }}
         />
@@ -288,9 +401,143 @@ function ClassStructureWorkspace({ activeTab }) {
     />
   );
 
+  const classCreateView = (
+    <WorkspacePanel
+      title={editingClassId ? "Edit class" : "Create class"}
+      description="Class level is represented by the class name; no separate level field is used."
+    >
+      <form className="space-y-3" onSubmit={saveClass}>
+        <Input
+          label="Class name"
+          value={classForm.name}
+          onChange={(event) =>
+            setClassForm((current) => ({ ...current, name: event.target.value }))
+          }
+          placeholder="JSS 1"
+          required
+        />
+        <Input
+          label="Arm"
+          value={classForm.arm}
+          onChange={(event) =>
+            setClassForm((current) => ({ ...current, arm: event.target.value }))
+          }
+          placeholder="A"
+        />
+        <SelectControl
+          label="Class teacher"
+          value={classForm.teacher_membership_id}
+          onChange={(value) =>
+            setClassForm((current) => ({
+              ...current,
+              teacher_membership_id: value,
+            }))
+          }
+          options={teacherOptions}
+          placeholder="Optional class teacher"
+        />
+        <FormActions
+          submitting={saving === "class"}
+          submitLabel={editingClassId ? "Update class" : "Create class"}
+          editing={Boolean(editingClassId)}
+          onCancel={resetClassForm}
+        />
+      </form>
+    </WorkspacePanel>
+  );
+
+  const classListItems =
+    activeTab === "active"
+      ? classes.filter((item) => item.is_active && !item.archived_at)
+      : activeTab === "inactive"
+        ? classes.filter((item) => !item.is_active && !item.archived_at)
+        : activeTab === "archived"
+          ? classes.filter((item) => item.archived_at)
+          : classes;
+
+  const classListView = (
+    <RecordList
+      title="Classes"
+      description="Classes in this school workspace."
+      items={classListItems}
+      emptyIcon={Library}
+      emptyTitle="No classes"
+      emptyDescription="Create the first class before adding students or subject offerings."
+      renderTitle={classLabel}
+      renderMeta={(item) =>
+        item.teacher_membership_id
+          ? teacherLabel(teachers.find((teacher) => teacher.id === item.teacher_membership_id))
+          : "No class teacher"
+      }
+      renderDescription={(item) =>
+        item.is_terminal
+          ? "Terminal class"
+          : item.next_class_id
+            ? `Progresses to ${classLabel(classes.find((entry) => entry.id === item.next_class_id))}`
+            : "Progression target not configured"
+      }
+      renderStatus={(item) => (item.archived_at ? "archived" : item.is_active ? "active" : "inactive")}
+      renderActions={(item) => (
+        <>
+          {item.archived_at ? (
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              disabled={saving === item.id}
+              onClick={() => updateClassLifecycle(item, "restore")}
+            >
+              Restore
+            </Button>
+          ) : item.is_active ? (
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              disabled={saving === item.id}
+              onClick={() => updateClassLifecycle(item, "deactivate")}
+            >
+              Deactivate
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="small"
+              variant="success"
+              disabled={saving === item.id}
+              onClick={() => updateClassLifecycle(item, "activate")}
+            >
+              Activate
+            </Button>
+          )}
+          {!item.archived_at ? (
+            <Button
+              type="button"
+              size="small"
+              variant="danger"
+              disabled={saving === item.id}
+              onClick={() => updateClassLifecycle(item, "archive")}
+            >
+              Archive
+            </Button>
+          ) : null}
+        </>
+      )}
+      onEdit={(item) => {
+        setEditingClassId(item.id);
+        setClassForm({
+          name: item.name || "",
+          arm: item.arm || "",
+          teacher_membership_id: item.teacher_membership_id || "",
+        });
+      }}
+    />
+  );
+
   const offeringsView = (
-    <WorkspaceGrid
-      editor={
+    <>
+      <WorkspaceGrid
+      editor={activeTab === "create" ? (
         <WorkspacePanel
           title="Attach subject to class"
           description="A subject must exist in the catalog before it can be offered by a class."
@@ -298,8 +545,8 @@ function ClassStructureWorkspace({ activeTab }) {
           <form className="space-y-3" onSubmit={attachSubject}>
             <SelectControl
               label="Class"
-              value={selectedClassId}
-              onChange={setSelectedClassId}
+              value={activeSelectedClassId}
+              onChange={setActiveSelectedClassId}
               options={classOptions}
               required
             />
@@ -333,23 +580,43 @@ function ClassStructureWorkspace({ activeTab }) {
             </Button>
           </form>
         </WorkspacePanel>
-      }
-      content={
+      ) : null}
+      content={activeTab === "create" ? null : (
         <WorkspacePanel
           title="Offered subjects"
           description={
-            selectedClassId
-              ? `Subjects attached to ${classLabel(classes.find((item) => item.id === selectedClassId))}.`
+            activeSelectedClassId
+              ? `Subjects attached to ${classLabel(classes.find((item) => item.id === activeSelectedClassId))}.`
               : "Select a class to review its subjects."
           }
         >
+          <div className="mb-4 max-w-md">
+            <SelectControl
+              label="Class"
+              value={activeSelectedClassId}
+              onChange={setActiveSelectedClassId}
+              options={classOptions}
+              placeholder="Select class"
+              disabled={classOptions.length === 0}
+            />
+          </div>
           {classSubjects.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
               No subjects are attached to this class.
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-              {classSubjects.map((item) => (
+              {classSubjects
+                .filter((item) =>
+                  activeTab === "inactive"
+                    ? !item.is_active && !item.archived_at
+                    : activeTab === "archived"
+                      ? item.archived_at
+                      : activeTab === "current" || activeTab === "create"
+                        ? item.is_active && !item.archived_at
+                        : true,
+                )
+                .map((item) => (
                 <div
                   key={item.id}
                   className="flex min-h-[8rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
@@ -370,25 +637,95 @@ function ClassStructureWorkspace({ activeTab }) {
                   <p className="mt-3 text-sm text-text-muted">
                     {item.is_core ? "Core subject" : "Elective subject"}
                   </p>
-                  {item.is_active ? (
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="outline"
-                      className="mt-auto self-start"
-                      disabled={saving === item.id}
-                      onClick={() => deactivateOffering(item)}
-                    >
-                      {saving === item.id ? "Removing..." : "Remove from class"}
-                    </Button>
-                  ) : null}
+                  <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                    {item.archived_at ? (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outline"
+                        disabled={saving === item.id}
+                        onClick={() =>
+                          setPendingMappingConfirmation({
+                            item,
+                            action: "restore",
+                            title: "Restore class-subject mapping",
+                            description: item.subject_name || "Class-subject mapping",
+                            confirmationText: CONFIRM_RESTORE_CLASS_SUBJECT,
+                            confirmLabel: "Restore mapping",
+                            variant: "primary",
+                          })
+                        }
+                      >
+                        Restore
+                      </Button>
+                    ) : item.is_active ? (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outline"
+                        disabled={saving === item.id}
+                        onClick={() => deactivateOffering(item)}
+                      >
+                        {saving === item.id ? "Removing..." : "Deactivate"}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="success"
+                        disabled={saving === item.id}
+                        onClick={() => updateMappingLifecycle(item, "activate")}
+                      >
+                        Activate
+                      </Button>
+                    )}
+                    {!item.archived_at ? (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="danger"
+                        disabled={saving === item.id}
+                        onClick={() =>
+                          setPendingMappingConfirmation({
+                            item,
+                            action: "archive",
+                            title: "Archive class-subject mapping",
+                            description: item.subject_name || "Class-subject mapping",
+                            confirmationText: CONFIRM_ARCHIVE_CLASS_SUBJECT,
+                            confirmLabel: "Archive mapping",
+                            variant: "danger",
+                          })
+                        }
+                      >
+                        Archive
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </WorkspacePanel>
-      }
-    />
+      )}
+      />
+      <TypedConfirmationDialog
+        open={Boolean(pendingMappingConfirmation)}
+        title={pendingMappingConfirmation?.title}
+        description={pendingMappingConfirmation?.description}
+        confirmationText={pendingMappingConfirmation?.confirmationText || ""}
+        confirmLabel={pendingMappingConfirmation?.confirmLabel}
+        variant={pendingMappingConfirmation?.variant}
+        isLoading={saving === pendingMappingConfirmation?.item?.id}
+        onConfirm={() => {
+          if (!pendingMappingConfirmation) return;
+          updateMappingLifecycle(
+            pendingMappingConfirmation.item,
+            pendingMappingConfirmation.action,
+          );
+        }}
+        onCancel={() => setPendingMappingConfirmation(null)}
+      />
+    </>
   );
 
   const reviewView = (
@@ -403,12 +740,12 @@ function ClassStructureWorkspace({ activeTab }) {
           </p>
         ) : (
           classes.map((item) => {
-            const isSelected = item.id === selectedClassId;
+            const isSelected = item.id === activeSelectedClassId;
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setSelectedClassId(item.id)}
+                onClick={() => setActiveSelectedClassId(item.id)}
                 className="w-full rounded-2xl border border-border/70 bg-surface px-4 py-4 text-left transition hover:border-primary/30 hover:bg-primary-subtle/20"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -437,12 +774,12 @@ function ClassStructureWorkspace({ activeTab }) {
           })
         )}
       </div>
-      {selectedClassId ? (
+      {activeSelectedClassId ? (
         <div className="mt-5 rounded-2xl border border-border/70 bg-surface-muted/25 p-4">
           <div className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-primary" />
             <p className="font-semibold text-text">
-              {classLabel(classes.find((item) => item.id === selectedClassId))} subjects
+              {classLabel(classes.find((item) => item.id === activeSelectedClassId))} subjects
             </p>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -474,9 +811,15 @@ function ClassStructureWorkspace({ activeTab }) {
     );
   }
 
+  if (domain === "class-subjects") {
+    if (activeTab === "review") return reviewView;
+    return activeTab === "create" ? offeringsView : offeringsView;
+  }
+  if (activeTab === "create") return classCreateView;
   if (activeTab === "offerings") return offeringsView;
   if (activeTab === "review") return reviewView;
-  return classesView;
+  if (editingClassId) return classesView;
+  return classListView;
 }
 
 export default ClassStructureWorkspace;

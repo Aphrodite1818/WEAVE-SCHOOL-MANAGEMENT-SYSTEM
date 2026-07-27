@@ -1,5 +1,5 @@
 import { ArrowLeft, ChevronRight } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Badge from "../../components/ui/Badge";
@@ -28,14 +28,24 @@ function AcademicWorkflowShell({
   actions,
 }) {
   const config = academicWorkflowConfig[workflow];
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = normalizeTab(workflow, searchParams.get("tab"));
+  const activeTab = normalizeTab(
+    workflow,
+    searchParams.get("view") || searchParams.get("tab"),
+  );
   const Icon = config.icon;
 
   const selectTab = (tabId) => {
     const next = new URLSearchParams(searchParams);
-    next.set("tab", tabId);
+    next.set("view", tabId);
+    next.delete("tab");
     setSearchParams(next, { replace: true });
+  };
+
+  const selectWorkflow = (nextWorkflow) => {
+    if (!nextWorkflow || nextWorkflow === workflow) return;
+    navigate(`/admin/academic/${nextWorkflow}`);
   };
 
   return (
@@ -45,8 +55,8 @@ function AcademicWorkflowShell({
       description={config.description}
       actions={actions}
     >
-      <section className="grid gap-4 xl:grid-cols-[15.5rem_minmax(0,1fr)]">
-        <Card className="h-fit overflow-hidden p-3 xl:sticky xl:top-24">
+      <section className="grid gap-4 xl:grid-cols-[14.25rem_minmax(0,1fr)]">
+        <Card className="h-fit overflow-hidden p-3 max-xl:hidden xl:sticky xl:top-24">
           <Link
             to="/admin/academic"
             className="mb-3 flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-primary-subtle/40"
@@ -66,7 +76,7 @@ function AcademicWorkflowShell({
                   key={key}
                   to={`/admin/academic/${key}`}
                   className={cn(
-                    "flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition",
+                    "flex min-h-10 items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition",
                     active
                       ? "bg-primary text-white shadow-sm"
                       : "text-text-muted hover:bg-surface-muted hover:text-text",
@@ -82,6 +92,35 @@ function AcademicWorkflowShell({
         </Card>
 
         <div className="min-w-0 space-y-4">
+          <Card className="p-3 xl:hidden">
+            <Link
+              to="/admin/academic"
+              className="mb-3 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Academic Hub
+            </Link>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
+                Workspace
+              </span>
+              <select
+                value={workflow}
+                onChange={(event) => selectWorkflow(event.target.value)}
+                className="input-base"
+              >
+                {academicWorkflowOrder.map((key) => {
+                  const item = academicWorkflowConfig[key];
+                  return (
+                    <option key={key} value={key}>
+                      {item.title}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          </Card>
+
           <Card className="overflow-hidden p-4 sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="flex min-w-0 items-start gap-3">
@@ -114,25 +153,27 @@ function AcademicWorkflowShell({
             </div>
           </Card>
 
-          <div className="overflow-x-auto pb-1">
-            <div className="inline-flex min-w-full gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:min-w-0">
-              {config.tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => selectTab(tab.id)}
-                  className={cn(
-                    "min-h-11 flex-1 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition sm:flex-none",
-                    activeTab === tab.id
-                      ? "bg-surface text-primary shadow-sm"
-                      : "text-text-muted hover:bg-surface/60 hover:text-text",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
+          {config.tabs.length > 1 ? (
+            <div className="overflow-x-auto pb-1">
+              <div className="inline-flex min-w-full gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:min-w-0">
+                {config.tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => selectTab(tab.id)}
+                    className={cn(
+                      "min-h-11 flex-1 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition sm:flex-none",
+                      activeTab === tab.id
+                        ? "bg-surface text-primary shadow-sm"
+                        : "text-text-muted hover:bg-surface/60 hover:text-text",
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {children(activeTab)}
         </div>

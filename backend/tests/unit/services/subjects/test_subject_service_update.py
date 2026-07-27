@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.core.exceptions import ConflictException
 from app.modules.subjects.models import Subject
 from app.modules.subjects.schemas import SubjectUpdate
 from app.modules.subjects.service import SubjectService
@@ -105,3 +106,57 @@ async def test_update_subject_applies_explicit_values() -> None:
 
     assert updated.name == "Further Mathematics"
     assert updated.normalized_name == "further mathematics"
+
+
+@pytest.mark.asyncio
+async def test_update_subject_rejects_archived_subject() -> None:
+    tenant_id = uuid.uuid4()
+    subject = _subject(tenant_id)
+    subject.is_active = False
+    subject.archived_at = datetime.now(timezone.utc)
+    subject.archived_by_admin_id = uuid.uuid4()
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
+        new=AsyncMock(return_value=subject),
+    ):
+        with pytest.raises(ConflictException):
+            await SubjectService.update_subject(
+                db=db,
+                actor=_actor(tenant_id),
+                subject_id=subject.id,
+                subject_data=SubjectUpdate(name="Further Mathematics"),
+            )
+
+
+@pytest.mark.asyncio
+async def test_delete_subject_with_dependencies_requires_archive() -> None:
+    tenant_id = uuid.uuid4()
+    subject = _subject(tenant_id)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
+            new=AsyncMock(return_value=subject),
+        ),
+        patch(
+            "app.modules.subjects.service.SubjectRepository.count_subject_dependencies",
+            new=AsyncMock(
+                return_value={
+                    "class_subjects": 1,
+                    "teacher_links": 0,
+                    "teacher_assignments": 0,
+                    "results": 0,
+                    "report_card_lines": 0,
+                }
+            ),
+        ),
+    ):
+        with pytest.raises(ConflictException):
+            await SubjectService.delete_subject(
+                db=db,
+                actor=_actor(tenant_id),
+                subject_id=subject.id,
+            )

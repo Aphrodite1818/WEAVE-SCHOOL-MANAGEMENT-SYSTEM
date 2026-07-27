@@ -10,8 +10,10 @@ from app.core.dependencies.route_guards import (
 )
 from app.core.exceptions import NotFoundException
 from app.modules.classes.schemas import (
+    ClassRoomArchiveRequest,
     ClassRoomCreate,
     ClassRoomResponse,
+    ClassRoomRestoreRequest,
     ClassRoomUpdate,
 )
 from app.modules.classes.service import ClassRoomService
@@ -73,8 +75,10 @@ async def get_all_classrooms(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     active_only: bool = Query(default=False),
+    include_archived: bool = Query(default=False),
 ) -> list[ClassRoomResponse]:
     """Get classrooms visible to the current actor."""
+    include_archived = include_archived and isinstance(current_user, TenantAdmin)
 
     if active_only:
         return await ClassRoomService.get_active_classrooms(
@@ -89,6 +93,7 @@ async def get_all_classrooms(
         actor=current_user,
         skip=skip,
         limit=limit,
+        include_archived=include_archived,
     )
 
 
@@ -130,8 +135,26 @@ async def update_classroom(
     )
 
 
-@router.delete(
-    "/{class_id}",
+@router.post(
+    "/{class_id}/activate",
+    response_model=ClassRoomResponse,
+)
+async def activate_classroom(
+    class_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassRoomResponse:
+    classroom = await ClassRoomService.activate_classroom(
+        db=db,
+        actor=current_user,
+        class_id=class_id,
+    )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return classroom
+
+
+@router.post(
+    "/{class_id}/deactivate",
     response_model=ClassRoomResponse,
 )
 async def deactivate_classroom(
@@ -150,6 +173,62 @@ async def deactivate_classroom(
     return classroom
 
 
+@router.post(
+    "/{class_id}/archive",
+    response_model=ClassRoomResponse,
+)
+async def archive_classroom(
+    class_id: uuid.UUID,
+    payload: ClassRoomArchiveRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassRoomResponse:
+    classroom = await ClassRoomService.archive_classroom(
+        db=db,
+        actor=current_user,
+        class_id=class_id,
+    )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return classroom
+
+
+@router.post(
+    "/{class_id}/restore",
+    response_model=ClassRoomResponse,
+)
+async def restore_classroom(
+    class_id: uuid.UUID,
+    payload: ClassRoomRestoreRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassRoomResponse:
+    classroom = await ClassRoomService.restore_classroom(
+        db=db,
+        actor=current_user,
+        class_id=class_id,
+    )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return classroom
+
+
+@router.delete(
+    "/{class_id}",
+    response_model=ClassRoomResponse,
+)
+async def delete_classroom_compat_deactivate(
+    class_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ClassRoomResponse:
+    classroom = await ClassRoomService.deactivate_classroom(
+        db=db,
+        actor=current_user,
+        class_id=class_id,
+    )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return classroom
+
+
 @router.get(
     "/{class_id}/subjects",
     response_model=ClassSubjectListResponse,
@@ -159,6 +238,7 @@ async def list_class_subjects(
     db: DbSession,
     current_user: CurrentTenantMember,
     active_only: bool = Query(default=False),
+    include_archived: bool = Query(default=False),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> ClassSubjectListResponse:
@@ -167,6 +247,7 @@ async def list_class_subjects(
         tenant_id=current_user.tenant_id,
         class_id=class_id,
         active_only=active_only,
+        include_archived=include_archived and isinstance(current_user, TenantAdmin),
         skip=skip,
         limit=limit,
     )
@@ -217,11 +298,8 @@ async def activate_class_subject(
     if class_subject is None or class_subject.class_id != class_id:
         raise NotFoundException("Class subject not found.")
 
-    class_subject.is_active = True
-    saved = await StudentAcademicRepository.save_class_subject(db=db, class_subject=class_subject)
-    await db.commit()
-
-    return await StudentAcademicService._build_class_subject_response(
+    return await StudentAcademicService.activate_class_subject(
         db=db,
-        class_subject=saved,
+        tenant_id=current_user.tenant_id,
+        class_subject_id=class_subject_id,
     )

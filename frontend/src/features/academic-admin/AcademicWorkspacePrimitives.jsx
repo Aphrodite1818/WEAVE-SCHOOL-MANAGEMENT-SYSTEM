@@ -8,6 +8,14 @@ import Input from "../../components/ui/Input";
 import { cn } from "../../utils/cn";
 
 export function WorkspaceGrid({ editor, content, wide = false }) {
+  if (!editor || !content) {
+    return (
+      <section className="grid gap-4">
+        <div className="min-w-0">{editor || content}</div>
+      </section>
+    );
+  }
+
   return (
     <section
       className={cn(
@@ -33,7 +41,7 @@ export function WorkspacePanel({ title, description, children, actions }) {
             <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p>
           ) : null}
         </div>
-        {actions ? <div className="shrink-0">{actions}</div> : null}
+        {actions ? <div className="w-full sm:w-auto sm:max-w-xs sm:shrink-0">{actions}</div> : null}
       </div>
       <div className="mt-4">{children}</div>
     </Card>
@@ -131,6 +139,7 @@ export function RecordList({
   renderMeta,
   renderDescription,
   renderStatus,
+  renderActions,
   onEdit,
   actions,
 }) {
@@ -173,8 +182,10 @@ export function RecordList({
                     {renderDescription(item)}
                   </p>
                 ) : null}
-                {onEdit ? (
-                  <div className="mt-auto pt-4">
+                {onEdit || renderActions ? (
+                  <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                    {renderActions ? renderActions(item) : null}
+                    {onEdit ? (
                     <Button
                       type="button"
                       size="small"
@@ -184,6 +195,7 @@ export function RecordList({
                       <Edit3 className="h-4 w-4" />
                       Edit
                     </Button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

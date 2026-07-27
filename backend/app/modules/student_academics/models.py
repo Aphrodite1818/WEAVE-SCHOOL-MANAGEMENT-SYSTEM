@@ -37,9 +37,19 @@ class AcademicTermName(str, PyEnum):
     THIRD_TERM = "third_term"
 
 
+
+
+class AcademicTermStatus(str, PyEnum):
+    DRAFT = "draft"
+    OPEN = "open"
+    CLOSED = "closed"
+
+
 class AcademicResultStatus(str, PyEnum):
     DRAFT = "draft"
     SUBMITTED = "submitted"
+    APPROVED = "approved"
+    LOCKED = "locked"
 
 
 class AcademicSessionStatus(str, PyEnum):
@@ -82,7 +92,6 @@ class AcademicSession(BaseModel):
         server_default=AcademicSessionStatus.DRAFT.value,
     )
     is_current: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     closing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -102,7 +111,8 @@ class AcademicSession(BaseModel):
             "uq_academic_sessions_current_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text("is_current = true AND is_active = true AND status = 'open'"),
+            postgresql_where=text(
+                "is_current = true AND status = 'open'"),
         ),
         Index("ix_academic_sessions_tenant_status", "tenant_id", "status"),
         Index("ix_academic_sessions_tenant_next", "tenant_id", "next_academic_session_id"),
@@ -128,22 +138,102 @@ class AcademicTerm(BaseModel):
         nullable=False,
         index=True,
     )
+
     name: Mapped[AcademicTermName] = mapped_column(
-        SQLEnum(AcademicTermName, name="academic_term_name", schema=PUBLIC_SCHEMA, values_callable=enum_values),
+        SQLEnum(
+            AcademicTermName,
+            name="academic_term_name",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
         nullable=False,
     )
-    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    is_current: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+
+    start_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    end_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    status: Mapped[AcademicTermStatus] = mapped_column(
+        SQLEnum(
+            AcademicTermStatus,
+            name="academic_term_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+        default=AcademicTermStatus.DRAFT,
+        server_default=AcademicTermStatus.DRAFT.value,
+    )
+
+    is_current: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+
+    opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    opened_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    closed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "academic_session_id", "name", name="uq_academic_term_tenant_session_name"),
+        UniqueConstraint(
+            "tenant_id",
+            "academic_session_id",
+            "name",
+            name="uq_academic_term_tenant_session_name",
+        ),
         Index(
             "uq_academic_terms_current_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text("is_current = true AND is_active = true"),
+            postgresql_where=text(
+                "is_current = true AND status = 'open'"
+            ),
+        ),
+        CheckConstraint(
+            """
+            (status = 'draft'
+                AND opened_at IS NULL
+                AND closed_at IS NULL)
+            OR
+            (status = 'open'
+                AND opened_at IS NOT NULL
+                AND closed_at IS NULL)
+            OR
+            (status = 'closed'
+                AND opened_at IS NOT NULL
+                AND closed_at IS NOT NULL)
+            """,
+            name="ck_academic_term_status_timestamps",
+        ),
+        CheckConstraint(
+            "is_current = false OR status = 'open'",
+            name="ck_academic_term_current_requires_open",
         ),
     )
 
@@ -169,9 +259,20 @@ class ClassSubject(BaseModel):
     subject_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False, index=True)
     is_core: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "class_id", "subject_id", name="uq_class_subject_tenant_class_subject"),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_class_subjects_archived_requires_inactive",
+        ),
+        Index("ix_class_subjects_tenant_archived", "tenant_id", "archived_at"),
     )
 
 
@@ -202,6 +303,10 @@ class TeacherAssignment(BaseModel):
             postgresql_where=text("is_active = true"),
         ),
         Index("ix_teacher_assignments_tenant_membership", "tenant_id", "teacher_membership_id"),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to >= effective_from",
+            name="ck_teacher_assignments_effective_range",
+        ),
     )
 
 
@@ -328,6 +433,21 @@ class StudentSubjectResult(BaseModel):
     )
     recorded_by_actor_type: Mapped[str] = mapped_column(String(50), nullable=False)
     recorded_by_actor_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_by_actor_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    submitted_by_actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -345,4 +465,21 @@ class StudentSubjectResult(BaseModel):
         Index("ix_student_subject_results_student_period", "tenant_id", "student_id", "academic_session_id", "academic_term_id"),
         Index("ix_student_subject_results_class_period_status", "tenant_id", "class_id", "academic_session_id", "academic_term_id", "status"),
         Index("ix_student_subject_results_teacher_period", "tenant_id", "teacher_membership_id", "academic_session_id", "academic_term_id"),
+        CheckConstraint(
+            """
+            status = 'draft'
+            OR (submitted_at IS NOT NULL
+                AND submitted_by_actor_type IS NOT NULL
+                AND submitted_by_actor_id IS NOT NULL)
+            """,
+            name="ck_student_subject_results_submitted_metadata",
+        ),
+        CheckConstraint(
+            "status NOT IN ('approved', 'locked') OR (approved_at IS NOT NULL AND approved_by_admin_id IS NOT NULL)",
+            name="ck_student_subject_results_approved_metadata",
+        ),
+        CheckConstraint(
+            "status <> 'locked' OR (locked_at IS NOT NULL AND locked_by_admin_id IS NOT NULL)",
+            name="ck_student_subject_results_locked_metadata",
+        ),
     )

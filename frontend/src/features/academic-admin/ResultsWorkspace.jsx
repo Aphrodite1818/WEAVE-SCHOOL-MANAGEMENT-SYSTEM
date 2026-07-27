@@ -11,7 +11,6 @@ import { studentService } from "../../services/studentService";
 import {
   Input,
   SelectControl,
-  WorkspaceGrid,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
 
@@ -43,6 +42,15 @@ const assignmentLabel = (item) =>
 
 const scoreValue = (value) =>
   value === "" || value === null || value === undefined ? null : Number(value);
+
+const resultsTitle = (activeTab) => {
+  if (activeTab === "draft" || activeTab === "drafts") return "Draft results";
+  if (activeTab === "submitted") return "Submitted results";
+  if (activeTab === "approved") return "Approved results";
+  if (activeTab === "locked") return "Locked results";
+  if (activeTab === "review") return "Review queue";
+  return "Results in selected context";
+};
 
 function ResultsWorkspace({ activeTab, onContextChange }) {
   const [sessions, setSessions] = useState([]);
@@ -186,11 +194,20 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     [students],
   );
   const visibleResults = useMemo(() => {
-    if (activeTab === "drafts") {
+    if (activeTab === "draft" || activeTab === "drafts") {
       return results.filter((item) => item.status === "draft");
     }
     if (activeTab === "submitted") {
       return results.filter((item) => item.status === "submitted");
+    }
+    if (activeTab === "approved") {
+      return results.filter((item) => item.status === "approved");
+    }
+    if (activeTab === "locked") {
+      return results.filter((item) => item.status === "locked");
+    }
+    if (activeTab === "review") {
+      return results.filter((item) => ["submitted", "approved"].includes(item.status));
     }
     return results;
   }, [activeTab, results]);
@@ -248,10 +265,27 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     setSaving(item.id);
     try {
       await academicService.updateResultStatus(item.id, { status });
-      showSuccess(status === "submitted" ? "Result submitted." : "Result reopened as draft.");
+      showSuccess(`Result moved to ${status}.`);
       await loadResults();
     } catch (err) {
       showError(getErrorMessage(err, "Could not update result status."));
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const reopenResult = async (item) => {
+    const reason = window.prompt(
+      "Why is this result being reopened? Existing report cards may become outdated.",
+    );
+    if (!reason) return;
+    setSaving(item.id);
+    try {
+      await academicService.reopenResult(item.id, { reason });
+      showSuccess("Result reopened for correction.");
+      await loadResults();
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not reopen result."));
     } finally {
       setSaving("");
     }
@@ -389,13 +423,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
 
   const resultsList = (
     <WorkspacePanel
-      title={
-        activeTab === "drafts"
-          ? "Draft results"
-          : activeTab === "submitted"
-            ? "Submitted results"
-            : "Results in selected context"
-      }
+      title={resultsTitle(activeTab)}
       description={`${visibleResults.length} result row${visibleResults.length === 1 ? "" : "s"} found.`}
     >
       {visibleResults.length === 0 ? (
@@ -422,7 +450,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
                     {item.subject_name || item.subject_code || "Subject"}
                   </p>
                 </div>
-                <Badge variant={item.status === "submitted" ? "success" : "warning"}>
+                <Badge variant={item.status === "draft" ? "warning" : item.status === "locked" ? "default" : "success"}>
                   {item.status}
                 </Badge>
               </div>
@@ -444,39 +472,70 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
                 Grade: {item.grade || "Pending"}
               </div>
               <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                <Button
-                  type="button"
-                  size="small"
-                  variant="outline"
-                  onClick={() =>
-                    setForm({
-                      result_id: item.id,
-                      student_id: item.student_id || "",
-                      teacher_assignment_id: item.teacher_assignment_id || "",
-                      test_score: item.test_score ?? "",
-                      assessment_score: item.assessment_score ?? "",
-                      exam_score: item.exam_score ?? "",
-                      status: item.status || "draft",
-                    })
-                  }
-                >
-                  Edit scores
-                </Button>
-                <Button
-                  type="button"
-                  size="small"
-                  variant={item.status === "submitted" ? "outline" : "success"}
-                  disabled={saving === item.id}
-                  onClick={() =>
-                    updateStatus(item, item.status === "submitted" ? "draft" : "submitted")
-                  }
-                >
-                  {saving === item.id
-                    ? "Saving..."
-                    : item.status === "submitted"
-                      ? "Reopen"
-                      : "Submit"}
-                </Button>
+                {item.status === "draft" ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="outline"
+                      onClick={() =>
+                        setForm({
+                          result_id: item.id,
+                          student_id: item.student_id || "",
+                          teacher_assignment_id: item.teacher_assignment_id || "",
+                          test_score: item.test_score ?? "",
+                          assessment_score: item.assessment_score ?? "",
+                          exam_score: item.exam_score ?? "",
+                          status: item.status || "draft",
+                        })
+                      }
+                    >
+                      Edit scores
+                    </Button>
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="success"
+                      disabled={saving === item.id}
+                      onClick={() => updateStatus(item, "submitted")}
+                    >
+                      {saving === item.id ? "Saving..." : "Submit"}
+                    </Button>
+                  </>
+                ) : null}
+                {item.status === "submitted" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="success"
+                    disabled={saving === item.id}
+                    onClick={() => updateStatus(item, "approved")}
+                  >
+                    {saving === item.id ? "Approving..." : "Approve"}
+                  </Button>
+                ) : null}
+                {item.status === "approved" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="danger"
+                    disabled={saving === item.id}
+                    onClick={() => updateStatus(item, "locked")}
+                  >
+                    {saving === item.id ? "Locking..." : "Lock"}
+                  </Button>
+                ) : null}
+                {["submitted", "approved", "locked"].includes(item.status) ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={saving === item.id}
+                    onClick={() => reopenResult(item)}
+                  >
+                    Reopen
+                  </Button>
+                ) : null}
               </div>
             </div>
           ))}
@@ -505,7 +564,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         {contextFilters}
       </WorkspacePanel>
       {activeTab === "entry" ? (
-        <WorkspaceGrid editor={resultEditor} content={resultsList} wide />
+        resultEditor
       ) : (
         resultsList
       )}

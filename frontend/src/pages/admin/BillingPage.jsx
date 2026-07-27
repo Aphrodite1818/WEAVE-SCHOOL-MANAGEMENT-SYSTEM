@@ -147,8 +147,6 @@ function BillingPage() {
 
         <section className="dashboard-grid xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <Card className="dashboard-welcome-blue relative overflow-hidden border-0 p-5 shadow-premium sm:p-7 lg:p-8">
-            <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-[linear-gradient(135deg,transparent_0%,rgba(255,255,255,0.12)_48%,transparent_49%,transparent_100%)]" />
-            <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-white/25" />
             <div className="relative grid gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:items-stretch">
               <div className="flex min-w-0 flex-col justify-between gap-6">
                 <div>

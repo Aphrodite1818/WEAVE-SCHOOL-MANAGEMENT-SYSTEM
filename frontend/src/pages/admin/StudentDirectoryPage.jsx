@@ -8,6 +8,7 @@ import {
   ChevronRight,
   GraduationCap,
   MoreHorizontal,
+  PlusCircle,
   RotateCcw,
   ShieldOff,
   Trash2,
@@ -595,6 +596,17 @@ function StudentDirectoryPage() {
           {error}
         </div>
       ) : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="section-title">Students</h2>
+          <p className="mt-1 text-sm text-text-muted">Create and manage student records.</p>
+        </div>
+        <Button type="button" onClick={() => navigate("/admin/students/create")}>
+          <PlusCircle className="h-4 w-4" />
+          Create student
+        </Button>
+      </div>
 
       <Card className="p-4 sm:p-5">
         <form onSubmit={applyFilters} className="grid gap-3 md:grid-cols-4 xl:grid-cols-5">

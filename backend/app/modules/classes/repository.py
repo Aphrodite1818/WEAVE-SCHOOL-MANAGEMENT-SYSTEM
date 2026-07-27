@@ -62,10 +62,17 @@ class ClassRoomRepository:
         active_only: bool = False,
         offset: int = 0,
         limit: int = 100,
+        include_archived: bool = False,
     ) -> list[ClassRoom]:
         query = select(ClassRoom).where(ClassRoom.tenant_id == tenant_id)
         if active_only:
-            query = query.where(ClassRoom.is_active.is_(True))
+            query = query.where(
+                ClassRoom.is_active.is_(True),
+                ClassRoom.archived_at.is_(None),
+            )
+
+        if not include_archived:
+            query = query.where(ClassRoom.archived_at.is_(None))
         result = await db.execute(
             query.order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
             .offset(offset)
@@ -80,11 +87,14 @@ class ClassRoomRepository:
         teacher_membership_id: uuid.UUID,
         *,
         lock: bool = False,
+        include_archived: bool = False,
     ) -> list[ClassRoom]:
         query = select(ClassRoom).where(
             ClassRoom.tenant_id == tenant_id,
             ClassRoom.teacher_membership_id == teacher_membership_id,
         ).order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+        if not include_archived:
+            query = query.where(ClassRoom.archived_at.is_(None))
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)
@@ -97,6 +107,7 @@ class ClassRoomRepository:
         class_ids: list[uuid.UUID],
         *,
         lock: bool = False,
+        include_archived: bool = False,
     ) -> list[ClassRoom]:
         if not class_ids:
             return []
@@ -104,6 +115,8 @@ class ClassRoomRepository:
             ClassRoom.tenant_id == tenant_id,
             ClassRoom.id.in_(class_ids),
         )
+        if not include_archived:
+            query = query.where(ClassRoom.archived_at.is_(None))
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)
@@ -119,6 +132,7 @@ class ClassRoomRepository:
         query = select(ClassRoom).where(
             ClassRoom.tenant_id == tenant_id,
             ClassRoom.is_active.is_(True),
+            ClassRoom.archived_at.is_(None),
         ).order_by(ClassRoom.id)
         if lock:
             query = query.with_for_update()

@@ -6,37 +6,99 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.modules.student_academics.models import AcademicTerm, AcademicTermName
-from app.modules.student_academics.schemas import AcademicTermUpdate
-from app.modules.student_academics.service_impl import StudentAcademicService
+from app.core.exceptions import BadRequestException, ConflictException
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicSessionStatus,
+    AcademicTerm,
+    AcademicTermName,
+    AcademicTermStatus,
+)
+from app.modules.student_academics.schemas import AcademicTermCreate, AcademicTermUpdate
+from app.modules.student_academics.service import StudentAcademicService
 
 
-def _academic_term(tenant_id: uuid.UUID) -> AcademicTerm:
+def _academic_session(
+    tenant_id: uuid.UUID,
+    *,
+    status: AcademicSessionStatus = AcademicSessionStatus.OPEN,
+) -> AcademicSession:
+    return AcademicSession(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        name="2026/2027",
+        status=status,
+        is_current=status == AcademicSessionStatus.OPEN,
+    )
+
+
+def _academic_term(
+    tenant_id: uuid.UUID,
+    *,
+    academic_session_id: uuid.UUID | None = None,
+    status: AcademicTermStatus = AcademicTermStatus.DRAFT,
+) -> AcademicTerm:
     return AcademicTerm(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        academic_session_id=uuid.uuid4(),
+        academic_session_id=academic_session_id or uuid.uuid4(),
         name=AcademicTermName.FIRST_TERM,
         start_date=date(2026, 1, 12),
         end_date=date(2026, 4, 10),
-        is_current=True,
-        is_active=True,
+        status=status,
+        is_current=status == AcademicTermStatus.OPEN,
     )
 
 
 @pytest.mark.asyncio
-async def test_update_academic_term_ignores_nulls_and_updates_explicit_values() -> None:
+async def test_create_academic_term_is_always_draft() -> None:
+    tenant_id = uuid.uuid4()
+    session = _academic_session(tenant_id)
+    db = AsyncMock()
+
+    async def save_term(_db, term):
+        return term
+
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_session_and_name",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.create_academic_term",
+            new=AsyncMock(side_effect=save_term),
+        ),
+    ):
+        created = await StudentAcademicService.create_academic_term(
+            db=db,
+            tenant_id=tenant_id,
+            payload=AcademicTermCreate(
+                academic_session_id=session.id,
+                name=AcademicTermName.FIRST_TERM,
+            ),
+        )
+
+    assert created.status == AcademicTermStatus.DRAFT
+    assert created.is_current is False
+
+
+@pytest.mark.asyncio
+async def test_update_academic_term_ignores_nulls_and_applies_explicit_values() -> None:
     tenant_id = uuid.uuid4()
     term = _academic_term(tenant_id)
     db = AsyncMock()
 
     with (
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.get_term_by_id",
+            "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
             new=AsyncMock(return_value=term),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.save_academic_term",
+            "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
             new=AsyncMock(return_value=term),
         ) as save_term,
     ):
@@ -48,8 +110,6 @@ async def test_update_academic_term_ignores_nulls_and_updates_explicit_values() 
                 name=None,
                 start_date=None,
                 end_date=None,
-                is_current=None,
-                is_active=False,
             ),
         )
 
@@ -57,7 +117,135 @@ async def test_update_academic_term_ignores_nulls_and_updates_explicit_values() 
     assert term.name == AcademicTermName.FIRST_TERM
     assert term.start_date == date(2026, 1, 12)
     assert term.end_date == date(2026, 4, 10)
-    assert term.is_current is True
-    assert term.is_active is False
+    assert term.is_current is False
+    assert term.status == AcademicTermStatus.DRAFT
     save_term.assert_awaited_once()
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_academic_term_rejects_open_term() -> None:
+    tenant_id = uuid.uuid4()
+    term = _academic_term(tenant_id, status=AcademicTermStatus.OPEN)
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
+        new=AsyncMock(return_value=term),
+    ):
+        with pytest.raises(ConflictException):
+            await StudentAcademicService.update_academic_term(
+                db=db,
+                tenant_id=tenant_id,
+                term_id=term.id,
+                payload=AcademicTermUpdate(start_date=date(2026, 1, 15)),
+            )
+
+
+@pytest.mark.asyncio
+async def test_update_academic_term_rejects_invalid_effective_date_range() -> None:
+    tenant_id = uuid.uuid4()
+    term = _academic_term(tenant_id)
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
+        new=AsyncMock(return_value=term),
+    ):
+        with pytest.raises(BadRequestException):
+            await StudentAcademicService.update_academic_term(
+                db=db,
+                tenant_id=tenant_id,
+                term_id=term.id,
+                payload=AcademicTermUpdate(start_date=date(2026, 4, 11)),
+            )
+
+
+@pytest.mark.asyncio
+async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    session = _academic_session(tenant_id)
+    term = _academic_term(tenant_id, academic_session_id=session.id)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
+            new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_current_term",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
+            new=AsyncMock(return_value=term),
+        ),
+    ):
+        opened = await StudentAcademicService.open_academic_term(
+            db=db,
+            tenant_id=tenant_id,
+            term_id=term.id,
+            admin_id=admin_id,
+        )
+
+    assert opened.status == AcademicTermStatus.OPEN
+    assert opened.is_current is True
+    assert opened.opened_by_admin_id == admin_id
+    assert opened.opened_at is not None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_close_academic_term_only_accepts_open_terms() -> None:
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    term = _academic_term(tenant_id, status=AcademicTermStatus.OPEN)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
+            new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
+            new=AsyncMock(return_value=term),
+        ),
+    ):
+        closed = await StudentAcademicService.close_academic_term(
+            db=db,
+            tenant_id=tenant_id,
+            term_id=term.id,
+            admin_id=admin_id,
+        )
+
+    assert closed.status == AcademicTermStatus.CLOSED
+    assert closed.is_current is False
+    assert closed.closed_by_admin_id == admin_id
+    assert closed.closed_at is not None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_close_academic_term_rejects_closed_terms() -> None:
+    tenant_id = uuid.uuid4()
+    term = _academic_term(tenant_id, status=AcademicTermStatus.CLOSED)
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
+        new=AsyncMock(return_value=term),
+    ):
+        with pytest.raises(ConflictException):
+            await StudentAcademicService.close_academic_term(
+                db=db,
+                tenant_id=tenant_id,
+                term_id=term.id,
+                admin_id=uuid.uuid4(),
+            )

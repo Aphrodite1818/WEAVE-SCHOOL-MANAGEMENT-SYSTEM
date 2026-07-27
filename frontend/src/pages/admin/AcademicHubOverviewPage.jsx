@@ -1,27 +1,26 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  ArrowRight,
   BarChart3,
   BookOpen,
-  CheckCircle2,
-  FileSearch,
+  CalendarDays,
   FileText,
+  GitBranch,
   GraduationCap,
   Layers3,
-  Pencil,
+  Ruler,
+  School,
   Users,
 } from "lucide-react";
 
 import {
-  DashboardListCard,
   DashboardMetricCard,
-  DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
-import { isAbortError } from "../../services/api";
+import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
+import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import {
   getCachedDashboardBundle,
@@ -34,95 +33,40 @@ const ACADEMIC_HUB_CACHE_KEY = getDashboardSessionCacheKey(
   "admin:academic-hub-overview",
 );
 
+const domainIcons = {
+  classes: School,
+  subjects: BookOpen,
+  "class-subjects": Layers3,
+  assignments: Users,
+  sessions: CalendarDays,
+  terms: CalendarDays,
+  grading: Ruler,
+  results: BarChart3,
+  "report-cards": FileText,
+  progression: GitBranch,
+};
+
+const domains = [
+  "classes",
+  "subjects",
+  "class-subjects",
+  "assignments",
+  "sessions",
+  "terms",
+  "grading",
+  "results",
+  "report-cards",
+  "progression",
+].map((key) => ({
+  key,
+  ...academicWorkflowConfig[key],
+  icon: domainIcons[key] || academicWorkflowConfig[key].icon,
+  to: `/admin/academic/${key}`,
+}));
+
 const metricNumber = (value, fallback = "-") => {
   const nextValue = Number(value);
   return Number.isFinite(nextValue) ? nextValue : fallback;
-};
-
-const workflowGroups = [
-  {
-    key: "foundation",
-    eyebrow: "1. Foundation",
-    title: "Build the academic structure",
-    description:
-      "Set the active academic period, grading rules, classes, and subject offerings before operational work begins.",
-    tone: "primary",
-    items: [
-      {
-        title: "Academic Setup",
-        description: "Sessions, terms, grading scales, and the subject catalog.",
-        to: "/admin/academic/setup",
-        icon: BookOpen,
-      },
-      {
-        title: "Class Structure",
-        description: "Classes, class teachers, progression visibility, and offered subjects.",
-        to: "/admin/academic/class-subjects",
-        icon: Layers3,
-      },
-    ],
-  },
-  {
-    key: "teaching",
-    eyebrow: "2. Teaching",
-    title: "Connect teachers to subjects",
-    description:
-      "Assign active teacher memberships to the class-subject records they are permitted to teach and score.",
-    tone: "warning",
-    items: [
-      {
-        title: "Teacher Assignments",
-        description: "Create, reassign, activate, or end class-subject assignments.",
-        to: "/admin/academic/assignments",
-        icon: Users,
-      },
-    ],
-  },
-  {
-    key: "assessment",
-    eyebrow: "3. Assessment",
-    title: "Record and publish academic performance",
-    description:
-      "Enter validated scores, submit complete results, generate report cards, and publish final records.",
-    tone: "accent",
-    items: [
-      {
-        title: "Results Management",
-        description: "Score entry, draft review, submission, correction, and reopening.",
-        to: "/admin/academic/results",
-        icon: Pencil,
-      },
-      {
-        title: "Report Cards",
-        description: "Readiness review, generation, regeneration, and publication.",
-        to: "/admin/academic/report-cards",
-        icon: FileText,
-      },
-    ],
-  },
-  {
-    key: "records",
-    eyebrow: "4. Records",
-    title: "Find academic information quickly",
-    description:
-      "Search school records without moving through every workflow manually.",
-    tone: "success",
-    items: [
-      {
-        title: "Academic Search",
-        description: "Find students, classes, subjects, report cards, and related records.",
-        to: "/admin/academic/search",
-        icon: FileSearch,
-      },
-    ],
-  },
-];
-
-const toneStyles = {
-  primary: "bg-primary-soft text-primary",
-  success: "bg-success-soft text-success",
-  warning: "bg-warning-soft text-amber-900",
-  accent: "bg-accent-soft text-accent",
 };
 
 function scheduleBackgroundTask(callback) {
@@ -136,8 +80,27 @@ function scheduleBackgroundTask(callback) {
 }
 
 function AcademicHubOverviewPage() {
+  const navigate = useNavigate();
   const [analytics, setAnalytics] = useState(null);
+  const [metricsError, setMetricsError] = useState(null);
+  const [selectedDomain, setSelectedDomain] = useState("classes");
   const [isMetricsRefreshing, setIsMetricsRefreshing] = useState(false);
+  const [orbitRotation, setOrbitRotation] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const orbitRotationRef = useRef(0);
+  const orbitDragRef = useRef({
+    active: false,
+    dragged: false,
+    domainKey: "",
+    pointerType: "",
+    startRotation: 0,
+    currentRotation: 0,
+    lastX: 0,
+    lastY: 0,
+    lastTime: 0,
+    velocity: 0,
+  });
+  const spinFrameRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -146,6 +109,7 @@ function AcademicHubOverviewPage() {
     const cancelIdleTask = scheduleBackgroundTask(async () => {
       if (!mounted) return;
       setIsMetricsRefreshing(true);
+      setMetricsError(null);
       try {
         const data = await getCachedDashboardBundle(ACADEMIC_HUB_CACHE_KEY, () =>
           dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
@@ -154,7 +118,7 @@ function AcademicHubOverviewPage() {
         setAnalytics(data);
       } catch (err) {
         if (!mounted || isAbortError(err)) return;
-        setAnalytics(null);
+        setMetricsError(getErrorMessage(err, "Academic metrics could not be loaded."));
       } finally {
         if (mounted) setIsMetricsRefreshing(false);
       }
@@ -169,243 +133,272 @@ function AcademicHubOverviewPage() {
 
   const stats = analytics?.stats || {};
   const hasMetrics = Boolean(analytics?.stats);
-  const resultCompletion = metricNumber(stats.result_completion_percent);
-  const reportCardsPublished = metricNumber(stats.report_cards_published);
-  const reportCardsGenerated = metricNumber(stats.report_cards_generated);
-  const incompleteProfiles = Number(stats.student_profiles_incomplete || 0);
-  const needsSetup =
-    hasMetrics &&
-    (!stats.active_academic_session || !stats.active_academic_term);
 
-  const attentionItems = [
-    needsSetup
-      ? {
-          key: "setup",
-          title: "Academic period needs setup",
-          description:
-            "Open an academic session and set the current term before recording results.",
-          icon: BookOpen,
-          tone: "warning",
-          to: "/admin/academic/setup",
-        }
-      : null,
-    incompleteProfiles > 0
-      ? {
-          key: "profiles",
-          title: "Incomplete student profiles",
-          description: `${incompleteProfiles} student profile${incompleteProfiles === 1 ? "" : "s"} need updates.`,
-          icon: GraduationCap,
-          tone: "warning",
-          to: "/admin/students",
-          value: incompleteProfiles,
-        }
-      : null,
-    Number(reportCardsGenerated) > Number(reportCardsPublished)
-      ? {
-          key: "reports",
-          title: "Report cards pending publication",
-          description: `${reportCardsPublished} published from ${reportCardsGenerated} generated.`,
-          icon: FileText,
-          tone: "warning",
-          to: "/admin/academic/report-cards?tab=publish",
-        }
-      : null,
-  ].filter(Boolean);
+  const orbitDomains = useMemo(
+    () =>
+      domains.map((domain, index) => ({
+        ...domain,
+        style: {
+          "--orbit-index": index,
+          "--orbit-count": domains.length,
+          "--orbit-angle": `${(360 / domains.length) * index}deg`,
+          "--orbit-angle-counter": `${(-360 / domains.length) * index}deg`,
+        },
+      })),
+    [],
+  );
+
+  const updateOrbitRotation = (value) => {
+    orbitRotationRef.current = value;
+    setOrbitRotation(value);
+  };
+
+  const getDragRotationDelta = (event, previousX, previousY) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
+    const dx = event.clientX - previousX;
+    const dy = event.clientY - previousY;
+    const relativeX = previousX - centerX;
+    const relativeY = previousY - centerY;
+    const distance = Math.hypot(relativeX, relativeY);
+
+    if (distance < bounds.width * 0.14) {
+      return dx * 0.42;
+    }
+
+    const tangentX = -relativeY / distance;
+    const tangentY = relativeX / distance;
+    const tangentMovement = dx * tangentX + dy * tangentY;
+    return (tangentMovement / Math.max(distance, 1)) * (180 / Math.PI);
+  };
+
+  useEffect(
+    () => () => {
+      if (spinFrameRef.current) window.cancelAnimationFrame(spinFrameRef.current);
+    },
+    [],
+  );
+
+  const startOrbitSpin = (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const domainButton = event.target.closest?.("[data-academic-domain-key]");
+    if (spinFrameRef.current) {
+      window.cancelAnimationFrame(spinFrameRef.current);
+      spinFrameRef.current = 0;
+    }
+    orbitDragRef.current = {
+      active: true,
+      dragged: false,
+      domainKey: domainButton?.dataset?.academicDomainKey || "",
+      pointerType: event.pointerType,
+      startRotation: orbitRotationRef.current,
+      currentRotation: orbitRotationRef.current,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      lastTime: performance.now(),
+      velocity: 0,
+    };
+    setIsSpinning(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const spinOrbit = (event) => {
+    const drag = orbitDragRef.current;
+    if (!drag.active) return;
+    event.preventDefault();
+    const now = performance.now();
+    const elapsed = Math.max(now - drag.lastTime, 16);
+    const delta = getDragRotationDelta(event, drag.lastX, drag.lastY);
+    const nextRotation = drag.currentRotation + delta;
+    if (Math.abs(nextRotation - drag.startRotation) > 3) {
+      drag.dragged = true;
+    }
+    drag.velocity = delta / elapsed;
+    drag.currentRotation = nextRotation;
+    drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
+    drag.lastTime = now;
+    updateOrbitRotation(nextRotation);
+  };
+
+  const coastOrbit = (initialRotation, initialVelocity) => {
+    let velocity = initialVelocity * 16;
+    let rotation = initialRotation;
+    const step = () => {
+      velocity *= 0.94;
+      rotation += velocity;
+      updateOrbitRotation(rotation);
+      if (Math.abs(velocity) > 0.05) {
+        spinFrameRef.current = window.requestAnimationFrame(step);
+      } else {
+        spinFrameRef.current = 0;
+      }
+    };
+    spinFrameRef.current = window.requestAnimationFrame(step);
+  };
+
+  const stopOrbitSpin = (event) => {
+    const drag = orbitDragRef.current;
+    drag.active = false;
+    setIsSpinning(false);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (drag.dragged) {
+      coastOrbit(orbitRotationRef.current, drag.velocity);
+      return;
+    }
+
+    if (drag.domainKey) {
+      const domain = domains.find((item) => item.key === drag.domainKey);
+      if (domain) navigate(domain.to);
+    }
+  };
+
+  const openDomain = (domain) => {
+    if (orbitDragRef.current.dragged) {
+      orbitDragRef.current.dragged = false;
+      return;
+    }
+    navigate(domain.to);
+  };
 
   return (
     <DashboardLayout
       role="admin"
-      title="Academic Hub"
-      description="Manage the complete academic lifecycle in a clear operational sequence."
     >
-      <DashboardWelcomePanel
-        eyebrow="Academic operations"
-        title="Move from setup to published records without losing context"
-        description="Each workflow is now independent, URL-addressable, and designed for desktop and installed mobile PWA use."
-        chips={[
-          {
-            label: "Session",
-            value: cleanText(
-              stats.active_academic_session,
-              hasMetrics ? "Not set" : "Loading",
-            ),
-            tone: stats.active_academic_session ? "success" : "warning",
-          },
-          {
-            label: "Term",
-            value: cleanText(
-              stats.active_academic_term,
-              hasMetrics ? "Not set" : "Loading",
-            ),
-            tone: stats.active_academic_term ? "primary" : "warning",
-          },
-          isMetricsRefreshing
-            ? { label: "Metrics", value: "Refreshing", tone: "primary" }
-            : null,
-        ].filter(Boolean)}
-      />
-
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <DashboardMetricCard
-          label="Students"
-          value={metricNumber(stats.total_students)}
-          description="Active learner records"
-          icon={GraduationCap}
-          tone="primary"
-          to="/admin/students"
-        />
-        <DashboardMetricCard
-          label="Subjects"
-          value={metricNumber(stats.total_subjects)}
-          description="Tenant-scoped catalog items"
-          icon={BookOpen}
-          tone="success"
-          to="/admin/academic/setup?tab=subjects"
-        />
-        <DashboardMetricCard
-          label="Result completion"
-          value={
-            Number.isFinite(Number(resultCompletion))
-              ? `${resultCompletion}%`
-              : "-"
-          }
-          description="Submitted result rows"
-          icon={BarChart3}
-          tone={
-            Number(resultCompletion) >= 80
-              ? "success"
-              : Number(resultCompletion) > 0
-                ? "warning"
-                : "neutral"
-          }
-          to="/admin/academic/results?tab=submitted"
-        />
-        <DashboardMetricCard
-          label="Report cards"
-          value={reportCardsPublished}
-          description={
-            hasMetrics ? `${reportCardsGenerated} generated` : "Published records"
-          }
-          icon={FileText}
-          tone={
-            Number(reportCardsGenerated) > Number(reportCardsPublished)
-              ? "warning"
-              : "success"
-          }
-          to="/admin/academic/report-cards?tab=publish"
-        />
-      </section>
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="section-title">Academic operating flow</h2>
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            Follow the sequence for first-time setup, or open any module directly for daily operations.
-          </p>
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          {workflowGroups.map((group) => (
-            <WorkflowGroup key={group.key} {...group} />
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
-        <Card className="p-4 sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-success-soft text-success">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="section-title">Recommended setup order</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">
-                These dependencies prevent empty selectors and invalid academic records.
-              </p>
-            </div>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {[
-              "Create and open an academic session",
-              "Create the current academic term",
-              "Create grading scales and subjects",
-              "Create classes and attach subjects",
-              "Invite teachers and assign memberships",
-              "Create students with class enrollment",
-              "Enter and submit complete results",
-              "Generate and publish report cards",
-            ].map((step, index) => (
-              <div
-                key={step}
-                className="flex items-start gap-3 rounded-2xl border border-border/70 bg-surface-muted/20 px-4 py-3"
+      <section className="academic-hub-domain-shell">
+        <Card className="academic-hub-selector-card overflow-hidden p-4 sm:p-6">
+          <div className="academic-hub-selector-top min-w-0">
+            <h2 className="max-w-3xl text-2xl font-semibold leading-tight sm:text-3xl">
+              Academic Hub
+            </h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge
+                className="academic-hub-status-badge"
+                variant={stats.active_academic_session ? "success" : "warning"}
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                  {index + 1}
-                </span>
-                <p className="text-sm leading-6 text-text-soft">{step}</p>
+                Session: {cleanText(stats.active_academic_session, hasMetrics ? "Not set" : "Loading")}
+              </Badge>
+              <Badge
+                className="academic-hub-status-badge"
+                variant={stats.active_academic_term ? "primary" : "warning"}
+              >
+                Term: {cleanText(stats.active_academic_term, hasMetrics ? "Not set" : "Loading")}
+              </Badge>
+              {isMetricsRefreshing ? (
+                <Badge className="academic-hub-status-badge" variant="primary">
+                  Metrics refreshing
+                </Badge>
+              ) : null}
+              {metricsError ? (
+                <Badge className="academic-hub-status-badge" variant="error">
+                  Metrics unavailable
+                </Badge>
+              ) : null}
+            </div>
+            {metricsError ? (
+              <p className="mt-3 max-w-2xl text-sm font-medium">
+                {metricsError}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="academic-orbit-wrap mt-4">
+            <div
+              className={cn("academic-orbit", isSpinning ? "is-spinning" : "")}
+              style={{
+                "--orbit-rotation": `${orbitRotation}deg`,
+                "--orbit-rotation-counter": `${-orbitRotation}deg`,
+              }}
+              aria-label="Academic Hub domains"
+              onPointerDown={startOrbitSpin}
+              onPointerMove={spinOrbit}
+              onPointerUp={stopOrbitSpin}
+              onPointerCancel={stopOrbitSpin}
+            >
+              <div className="academic-orbit-ring academic-orbit-ring-outer" />
+              <div className="academic-orbit-ring academic-orbit-ring-inner" />
+              <div className="academic-orbit-core">
+                <GraduationCap className="h-9 w-9 text-primary" />
+                <span>Academic Hub</span>
               </div>
-            ))}
+              {orbitDomains.map((domain) => {
+                const Icon = domain.icon;
+                const active = selectedDomain === domain.key;
+                return (
+                  <button
+                    key={domain.key}
+                    type="button"
+                    data-academic-domain-key={domain.key}
+                    style={domain.style}
+                    onMouseEnter={() => setSelectedDomain(domain.key)}
+                    onFocus={() => setSelectedDomain(domain.key)}
+                    onClick={() => openDomain(domain)}
+                    onDragStart={(event) => event.preventDefault()}
+                    className={cn(
+                      "academic-orbit-node group",
+                      active ? "is-active" : "",
+                    )}
+                    aria-label={`Open ${domain.title}`}
+                  >
+                    <span className="academic-orbit-icon">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span className="academic-orbit-label">{domain.shortTitle}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </Card>
 
-        <DashboardListCard
-          title="Needs attention"
-          description={
-            hasMetrics
-              ? "Academic blockers and follow-ups stay visible here."
-              : "Metrics refresh quietly while workflows remain usable."
-          }
-          items={attentionItems}
-          emptyTitle={
-            hasMetrics ? "Academic operations look ready" : "Open a workflow now"
-          }
-          emptyDescription={
-            hasMetrics
-              ? "No active setup, profile, or publication issue is currently showing."
-              : "You do not need to wait for metrics before using the Academic Hub."
-          }
-        />
+        <div className="academic-hub-wave" aria-hidden="true" />
+
+        <div className="academic-hub-kpi-grid grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <DashboardMetricCard
+            compact
+            label="Students"
+            value={metricNumber(stats.total_students)}
+            description="Learner records"
+            icon={Users}
+            tone="primary"
+            to="/admin/students"
+          />
+          <DashboardMetricCard
+            compact
+            label="Subjects"
+            value={metricNumber(stats.total_subjects)}
+            description="Catalog records"
+            icon={BookOpen}
+            tone="success"
+            to="/admin/academic/subjects"
+          />
+          <DashboardMetricCard
+            compact
+            label="Result completion"
+            value={
+              Number.isFinite(Number(stats.result_completion_percent))
+                ? `${stats.result_completion_percent}%`
+                : "-"
+            }
+            description="Submitted rows"
+            icon={BarChart3}
+            tone="warning"
+            to="/admin/academic/results?view=submitted"
+          />
+          <DashboardMetricCard
+            compact
+            label="Report cards"
+            value={metricNumber(stats.report_cards_published)}
+            description={`${metricNumber(stats.report_cards_generated)} generated`}
+            icon={FileText}
+            tone="primary"
+            to="/admin/academic/report-cards?view=published"
+          />
+        </div>
+
       </section>
     </DashboardLayout>
-  );
-}
-
-function WorkflowGroup({ eyebrow, title, description, items, tone }) {
-  return (
-    <Card className="flex h-full flex-col p-4 sm:p-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={tone === "accent" ? "accent" : tone}>{eyebrow}</Badge>
-      </div>
-      <h3 className="mt-3 text-lg font-semibold text-text">{title}</h3>
-      <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p>
-      <div className="mt-4 grid flex-1 gap-3 sm:grid-cols-2">
-        {items.map((item) => (
-          <WorkflowLink key={item.to} {...item} tone={tone} />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function WorkflowLink({ to, icon: Icon, title, description, tone }) {
-  return (
-    <Link
-      to={to}
-      className="group flex min-h-[9.5rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4 transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary-subtle/20 hover:shadow-sm"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <span
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
-            toneStyles[tone] || toneStyles.primary,
-          )}
-        >
-          <Icon className="h-5 w-5" />
-        </span>
-        <ArrowRight className="h-4 w-4 text-text-muted transition group-hover:translate-x-0.5 group-hover:text-primary" />
-      </div>
-      <p className="mt-4 font-semibold text-text">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p>
-    </Link>
   );
 }
 

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.core.exceptions import ConflictException
 from app.modules.classes.models import ClassRoom
 from app.modules.classes.schemas import ClassRoomUpdate
 from app.modules.classes.service import ClassRoomService
@@ -66,7 +67,6 @@ async def test_update_classroom_ignores_explicit_null_values() -> None:
                 name=None,
                 arm=None,
                 teacher_membership_id=None,
-                is_active=None,
             ),
         )
 
@@ -101,11 +101,33 @@ async def test_update_classroom_applies_explicit_values() -> None:
             db=db,
             actor=_admin(tenant_id),
             class_id=classroom.id,
-            payload=ClassRoomUpdate(name="Primary 2", is_active=False),
+            payload=ClassRoomUpdate(name="Primary 2"),
         )
 
     assert classroom.name == "PRIMARY2"
     assert classroom.normalized_name == "PRIMARY2"
     assert classroom.arm == "A"
-    assert classroom.is_active is False
+    assert classroom.is_active is True
     assert response.name == "PRIMARY2"
+
+
+@pytest.mark.asyncio
+async def test_update_classroom_rejects_archived_classroom() -> None:
+    tenant_id = uuid.uuid4()
+    classroom = _classroom(tenant_id)
+    classroom.is_active = False
+    classroom.archived_at = datetime.now(timezone.utc)
+    classroom.archived_by_admin_id = uuid.uuid4()
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.classes.service.ClassRoomRepository.get_by_id",
+        new=AsyncMock(return_value=classroom),
+    ):
+        with pytest.raises(ConflictException):
+            await ClassRoomService.update_classroom(
+                db=db,
+                actor=_admin(tenant_id),
+                class_id=classroom.id,
+                payload=ClassRoomUpdate(name="Primary 2"),
+            )

@@ -9,7 +9,7 @@ import pytest
 from app.core.exceptions import BadRequestException
 from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus
 from app.modules.student_academics.schemas import AcademicSessionUpdate
-from app.modules.student_academics.service_impl import StudentAcademicService
+from app.modules.student_academics.service import StudentAcademicService
 
 
 def _session(tenant_id: uuid.UUID) -> AcademicSession:
@@ -21,7 +21,6 @@ def _session(tenant_id: uuid.UUID) -> AcademicSession:
         end_date=date(2027, 7, 31),
         status=AcademicSessionStatus.DRAFT,
         is_current=False,
-        is_active=True,
     )
 
 
@@ -33,11 +32,11 @@ async def test_update_academic_session_ignores_nulls_and_preserves_dates() -> No
 
     with (
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.get_academic_session_by_id",
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
             new=AsyncMock(return_value=session),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.save_academic_session",
+            "app.modules.student_academics.service.StudentAcademicRepository.save_academic_session",
             new=AsyncMock(return_value=session),
         ),
     ):
@@ -67,15 +66,15 @@ async def test_update_academic_session_applies_explicit_values() -> None:
 
     with (
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.get_academic_session_by_id",
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
             new=AsyncMock(return_value=session),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.get_academic_session_by_name",
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_name",
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.save_academic_session",
+            "app.modules.student_academics.service.StudentAcademicRepository.save_academic_session",
             new=AsyncMock(return_value=session),
         ),
     ):
@@ -96,7 +95,7 @@ async def test_update_academic_session_rejects_invalid_effective_date_range() ->
     db = AsyncMock()
 
     with patch(
-        "app.modules.student_academics.service_impl.StudentAcademicRepository.get_academic_session_by_id",
+        "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
         new=AsyncMock(return_value=session),
     ):
         with pytest.raises(BadRequestException):

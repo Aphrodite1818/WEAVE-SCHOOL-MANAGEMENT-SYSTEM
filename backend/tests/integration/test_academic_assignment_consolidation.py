@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -13,14 +13,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.security import create_access_token, hash_password
 from app.core.dependencies.db import get_db
 from app.main import app
+from app.modules.auth.models import AuthSession, AuthSessionActorType
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
 from app.modules.classes.models import ClassRoom
-from app.modules.parents.models import Parent, ParentAccountStatus
+from app.modules.parents.models import (
+    Parent,
+    ParentAccount,
+    ParentAccountStatus,
+    ParentMembershipStatus,
+)
 from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.models import (
+    AcademicResultStatus,
     AcademicSession,
+    AcademicSessionStatus,
     AcademicTerm,
     AcademicTermName,
+    AcademicTermStatus,
     ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
@@ -29,6 +38,7 @@ from app.modules.student_academics.models import (
 )
 from app.modules.students.models import (
     Gender,
+    ParentLinkVerifiedByType,
     Student,
     StudentAccountStatus,
     StudentParentLink,
@@ -36,7 +46,12 @@ from app.modules.students.models import (
     StudentProfileStatus,
 )
 from app.modules.subjects.models import Subject
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherStatus
+from app.modules.teachers.models import (
+    Teacher,
+    TeacherAccount,
+    TeacherAccountStatus,
+    TeacherMembershipStatus,
+)
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.tenant_management.models import SubscriptionPlan, Tenant, TenantStatus, TenantVerificationStatus
 
@@ -55,17 +70,37 @@ async def api_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, No
     app.dependency_overrides.clear()
 
 
-def auth_headers(*, actor_id, actor_type: str, role: str, email: str, tenant_id=None) -> dict[str, str]:
+async def auth_headers(
+    db_session: AsyncSession,
+    *,
+    actor_id,
+    actor_type: AuthSessionActorType,
+    role: str,
+    email: str,
+    tenant_id=None,
+) -> dict[str, str]:
+    session_jti = f"test-{actor_type.value}-{actor_id}"
+    db_session.add(
+        AuthSession(
+            tenant_id=tenant_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            session_jti=session_jti,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    )
+    await db_session.flush()
+
     payload = {
         "sub": str(actor_id),
-        "actor_type": actor_type,
-        "account_type": actor_type,
+        "actor_type": actor_type.value,
+        "account_type": actor_type.value,
         "role": role,
         "email": email,
     }
     if tenant_id is not None:
         payload["tenant_id"] = str(tenant_id)
-    return {"Authorization": f"Bearer {create_access_token(data=payload)}"}
+    return {"Authorization": f"Bearer {create_access_token(data=payload, session_jti=session_jti)}"}
 
 
 async def create_auth_identity(
@@ -98,7 +133,7 @@ async def create_tenant(db_session: AsyncSession, *, suffix: str) -> Tenant:
         admission_number_prefix=f"WVS{suffix.upper()[:6]}",
         email=f"school-{suffix}@example.com",
         country="Nigeria",
-        plan=SubscriptionPlan.FREE,
+        plan=SubscriptionPlan.FREE_TRIAL,
         status=TenantStatus.ACTIVE,
         verification_status=TenantVerificationStatus.ACTIVE,
         onboarding_completed=True,
@@ -134,16 +169,22 @@ async def create_tenant_admin(db_session: AsyncSession, *, tenant: Tenant, email
 
 
 async def create_teacher(db_session: AsyncSession, *, tenant: Tenant, email: str, first_name: str, last_name: str) -> Teacher:
-    teacher = Teacher(
-        tenant_id=tenant.id,
+    account = TeacherAccount(
         email=email,
         password_hash=hash_password("TeacherPass123"),
         first_name=first_name,
         last_name=last_name,
         account_status=TeacherAccountStatus.ACTIVE,
-        status=TeacherStatus.ACTIVE,
         is_verified=True,
         is_active=True,
+    )
+    db_session.add(account)
+    await db_session.flush()
+    teacher = Teacher(
+        tenant_id=tenant.id,
+        teacher_account_id=account.id,
+        status=TeacherMembershipStatus.ACTIVE,
+        joined_at=datetime.now(timezone.utc),
     )
     db_session.add(teacher)
     await db_session.flush()
@@ -227,8 +268,7 @@ async def create_student(
 
 
 async def create_parent(db_session: AsyncSession, *, tenant: Tenant, email: str) -> Parent:
-    parent = Parent(
-        tenant_id=tenant.id,
+    parent_account = ParentAccount(
         email=email,
         password_hash=hash_password("ParentPass123"),
         first_name="Bola",
@@ -236,6 +276,15 @@ async def create_parent(db_session: AsyncSession, *, tenant: Tenant, email: str)
         account_status=ParentAccountStatus.ACTIVE,
         is_verified=True,
         is_active=True,
+    )
+    db_session.add(parent_account)
+    await db_session.flush()
+
+    parent = Parent(
+        tenant_id=tenant.id,
+        parent_account_id=parent_account.id,
+        status=ParentMembershipStatus.ACTIVE,
+        joined_at=datetime.now(timezone.utc),
     )
     db_session.add(parent)
     await db_session.flush()
@@ -257,8 +306,8 @@ async def create_session_and_term(db_session: AsyncSession, *, tenant: Tenant) -
         name="2025/2026",
         start_date=date(2025, 9, 1),
         end_date=date(2026, 7, 31),
+        status=AcademicSessionStatus.OPEN,
         is_current=True,
-        is_active=True,
     )
     db_session.add(academic_session)
     await db_session.flush()
@@ -270,8 +319,9 @@ async def create_session_and_term(db_session: AsyncSession, *, tenant: Tenant) -
         name=AcademicTermName.FIRST_TERM,
         start_date=date(2025, 9, 1),
         end_date=date(2025, 12, 15),
+        status=AcademicTermStatus.OPEN,
         is_current=True,
-        is_active=True,
+        opened_at=datetime.now(timezone.utc),
     )
     db_session.add(academic_term)
     await db_session.flush()
@@ -354,6 +404,8 @@ async def test_teacher_assignment_reassignment_stays_canonical(
             is_primary_contact=True,
             receives_academic_updates=True,
             receives_fee_updates=True,
+            verified_by_type=ParentLinkVerifiedByType.TENANT_ADMIN,
+            verified_by_id=admin.id,
         )
     )
     await create_session_and_term(db_session, tenant=tenant)
@@ -362,46 +414,50 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     await create_grading_scale(db_session, tenant=tenant)
     await db_session.commit()
 
-    admin_headers = auth_headers(
+    admin_headers = await auth_headers(
+        db_session,
         actor_id=admin.id,
-        actor_type="tenant_admin",
+        actor_type=AuthSessionActorType.TENANT_ADMIN,
         role="admin",
         email=admin.email,
         tenant_id=tenant.id,
     )
-    teacher_a_headers = auth_headers(
+    teacher_a_headers = await auth_headers(
+        db_session,
         actor_id=teacher_a.id,
-        actor_type="teacher",
+        actor_type=AuthSessionActorType.TEACHER,
         role="teacher",
-        email=teacher_a.email,
+        email="teacher-a@example.com",
         tenant_id=tenant.id,
     )
-    teacher_b_headers = auth_headers(
+    teacher_b_headers = await auth_headers(
+        db_session,
         actor_id=teacher_b.id,
-        actor_type="teacher",
+        actor_type=AuthSessionActorType.TEACHER,
         role="teacher",
-        email=teacher_b.email,
+        email="teacher-b@example.com",
         tenant_id=tenant.id,
     )
-    student_headers = auth_headers(
+    student_headers = await auth_headers(
+        db_session,
         actor_id=student.id,
-        actor_type="student",
+        actor_type=AuthSessionActorType.STUDENT,
         role="student",
         email=student.admission_number,
         tenant_id=tenant.id,
     )
-    parent_headers = auth_headers(
+    parent_headers = await auth_headers(
+        db_session,
         actor_id=parent.id,
-        actor_type="parent",
+        actor_type=AuthSessionActorType.PARENT,
         role="parent",
-        email=parent.email,
+        email="parent-consistency@example.com",
         tenant_id=tenant.id,
     )
 
     create_response = await api_client.post(
-        "/api/v1/tenant-admin/academic/teacher-assignments",
+        f"/api/v1/tenant-admin/academics/class-subjects/{class_subject.id}/teacher-assignments",
         json={
-            "class_subject_id": str(class_subject.id),
             "teacher_membership_id": str(teacher_a.id),
         },
         headers=admin_headers,
@@ -412,7 +468,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert created_assignment["teacher_membership_id"] == str(teacher_a.id)
 
     teacher_a_assignments = await api_client.get(
-        "/api/v1/teachers/me/academic/assignments",
+        "/api/v1/teachers/academics/assignments",
         headers=teacher_a_headers,
     )
     assert teacher_a_assignments.status_code == 200
@@ -420,8 +476,11 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert teacher_a_assignments.json()["items"][0]["teacher_membership_id"] == str(teacher_a.id)
 
     reassign_response = await api_client.post(
-        f"/api/v1/tenant-admin/academic/teacher-assignments/{assignment_a_id}/reassign",
-        json={"teacher_membership_id": str(teacher_b.id)},
+        f"/api/v1/tenant-admin/academics/class-subjects/{class_subject.id}/reassign-teacher",
+        json={
+            "teacher_membership_id": str(teacher_b.id),
+            "effective_from": str(date.today() + timedelta(days=1)),
+        },
         headers=admin_headers,
     )
     assert reassign_response.status_code == 200
@@ -431,14 +490,14 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert reassigned_assignment["is_active"] is True
 
     teacher_a_assignments = await api_client.get(
-        "/api/v1/teachers/me/academic/assignments",
+        "/api/v1/teachers/academics/assignments",
         headers=teacher_a_headers,
     )
     assert teacher_a_assignments.status_code == 200
     assert teacher_a_assignments.json()["items"] == []
 
     teacher_b_assignments = await api_client.get(
-        "/api/v1/teachers/me/academic/assignments",
+        "/api/v1/teachers/academics/assignments",
         headers=teacher_b_headers,
     )
     assert teacher_b_assignments.status_code == 200
@@ -447,7 +506,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert teacher_b_items[0]["teacher_membership_id"] == str(teacher_b.id)
 
     admin_assignments = await api_client.get(
-        "/api/v1/tenant-admin/academic/teacher-assignments",
+        "/api/v1/tenant-admin/academics/teacher-assignments",
         params={"active_only": "true"},
         headers=admin_headers,
     )
@@ -457,7 +516,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert admin_items[0]["teacher_membership_id"] == str(teacher_b.id)
 
     result_response = await api_client.post(
-        "/api/v1/teachers/me/academic/results",
+        "/api/v1/teachers/academics/results",
         json={
             "student_id": str(student.id),
             "teacher_assignment_id": str(assignment_b_id),
@@ -475,6 +534,21 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert result_payload["teacher_membership_id"] == str(teacher_b.id)
     assert result_payload["teacher_name"] == "Teacher Beta"
     assert result_payload["teacher_assignment_id"] == assignment_b_id
+    result_id = result_payload["id"]
+
+    approve_result = await api_client.patch(
+        f"/api/v1/tenant-admin/academics/results/{result_id}/status",
+        json={"status": "approved"},
+        headers=admin_headers,
+    )
+    assert approve_result.status_code == 200
+
+    lock_result = await api_client.patch(
+        f"/api/v1/tenant-admin/academics/results/{result_id}/status",
+        json={"status": "locked"},
+        headers=admin_headers,
+    )
+    assert lock_result.status_code == 200
 
     report_card_response = await api_client.post(
         "/api/v1/tenant-admin/academic/report-cards/generate",
@@ -490,7 +564,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert report_card_payload["lines"][0]["teacher_name"] == "Teacher Beta"
 
     student_results = await api_client.get(
-        "/api/v1/students/me/academic/results",
+        "/api/v1/students/academics/results",
         headers=student_headers,
     )
     assert student_results.status_code == 200
@@ -499,7 +573,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert student_result_items[0]["teacher_name"] == "Teacher Beta"
 
     parent_results = await api_client.get(
-        f"/api/v1/parents/me/children/{student.id}/academic/results",
+        f"/api/v1/parents/academics/students/{student.id}/results",
         headers=parent_headers,
     )
     assert parent_results.status_code == 200
@@ -512,14 +586,14 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         headers=student_headers,
     )
     assert student_cards.status_code == 200
-    assert student_cards.json()["items"][0]["lines"][0]["teacher_name"] == "Teacher Beta"
+    assert student_cards.json()["items"] == []
 
     parent_cards = await api_client.get(
         f"/api/v1/parents/me/children/{student.id}/academic/report-cards",
         headers=parent_headers,
     )
     assert parent_cards.status_code == 200
-    assert parent_cards.json()["items"][0]["lines"][0]["teacher_name"] == "Teacher Beta"
+    assert parent_cards.json()["items"] == []
 
     active_assignment_count = (
         await db_session.execute(
@@ -556,6 +630,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     assert persisted_result.teacher_assignment_id == uuid.UUID(assignment_b_id)
     assert persisted_result.teacher_membership_id == teacher_b.id
     assert persisted_result.class_subject_teacher_id == legacy_assignment.id
+    assert persisted_result.status == AcademicResultStatus.LOCKED
 
     persisted_cards = (
         await db_session.execute(
@@ -605,41 +680,42 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     await create_grading_scale(db_session, tenant=tenant)
     await db_session.commit()
 
-    admin_headers = auth_headers(
+    admin_headers = await auth_headers(
+        db_session,
         actor_id=admin.id,
-        actor_type="tenant_admin",
+        actor_type=AuthSessionActorType.TENANT_ADMIN,
         role="admin",
         email=admin.email,
         tenant_id=tenant.id,
     )
-    teacher_headers = auth_headers(
+    teacher_headers = await auth_headers(
+        db_session,
         actor_id=teacher.id,
-        actor_type="teacher",
+        actor_type=AuthSessionActorType.TEACHER,
         role="teacher",
-        email=teacher.email,
+        email="teacher-subjects@example.com",
         tenant_id=tenant.id,
     )
-    student_headers = auth_headers(
+    student_headers = await auth_headers(
+        db_session,
         actor_id=student.id,
-        actor_type="student",
+        actor_type=AuthSessionActorType.STUDENT,
         role="student",
         email=student.admission_number,
         tenant_id=tenant.id,
     )
 
     math_assignment = await api_client.post(
-        "/api/v1/tenant-admin/academic/teacher-assignments",
+        f"/api/v1/tenant-admin/academics/class-subjects/{class_subject_math.id}/teacher-assignments",
         json={
-            "class_subject_id": str(class_subject_math.id),
             "teacher_membership_id": str(teacher.id),
         },
         headers=admin_headers,
     )
     assert math_assignment.status_code == 201
     english_assignment = await api_client.post(
-        "/api/v1/tenant-admin/academic/teacher-assignments",
+        f"/api/v1/tenant-admin/academics/class-subjects/{class_subject_english.id}/teacher-assignments",
         json={
-            "class_subject_id": str(class_subject_english.id),
             "teacher_membership_id": str(teacher.id),
         },
         headers=admin_headers,
@@ -647,7 +723,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     assert english_assignment.status_code == 201
 
     partial_result = await api_client.post(
-        "/api/v1/teachers/me/academic/results",
+        "/api/v1/teachers/academics/results",
         json={
             "student_id": str(student.id),
             "teacher_assignment_id": math_assignment.json()["id"],
@@ -668,7 +744,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     assert partial_payload["exam_score"] is None
 
     rejected_submit = await api_client.post(
-        "/api/v1/teachers/me/academic/results",
+        "/api/v1/teachers/academics/results",
         json={
             "student_id": str(student.id),
             "teacher_assignment_id": math_assignment.json()["id"],
@@ -684,7 +760,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     assert rejected_submit.status_code == 422
 
     student_subjects = await api_client.get(
-        "/api/v1/students/me/academic/subjects",
+        "/api/v1/students/academics/subjects",
         headers=student_headers,
     )
     assert student_subjects.status_code == 200
@@ -695,26 +771,24 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     math_card = by_subject_code["MTH"]
     english_card = by_subject_code["ENG"]
 
-    assert math_card["result_id"] == partial_payload["id"]
-    assert float(math_card["test_score"]) == 18.0
-    assert float(math_card["assessment_score"]) == 0.0
-    assert float(math_card["exam_score"]) == 0.0
+    assert math_card["result_id"] is None
+    assert math_card["test_score"] is None
+    assert math_card["assessment_score"] is None
+    assert math_card["exam_score"] is None
     assert math_card["grade"] is None
-    assert math_card["status"] == "draft"
+    assert math_card["status"] == "pending"
 
     assert english_card["result_id"] is None
-    assert float(english_card["test_score"]) == 0.0
-    assert float(english_card["assessment_score"]) == 0.0
-    assert float(english_card["exam_score"]) == 0.0
+    assert english_card["test_score"] is None
+    assert english_card["assessment_score"] is None
+    assert english_card["exam_score"] is None
     assert english_card["grade"] is None
     assert english_card["status"] == "pending"
 
     student_results = await api_client.get(
-        "/api/v1/students/me/academic/results",
+        "/api/v1/students/academics/results",
         headers=student_headers,
     )
     assert student_results.status_code == 200
     result_items = student_results.json()["items"]
-    assert len(result_items) == 1
-    assert result_items[0]["grade"] is None
-    assert float(result_items[0]["total_score"]) == 18.0
+    assert result_items == []

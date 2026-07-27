@@ -10,7 +10,6 @@ import { getErrorMessage } from "../../services/api";
 import { reportCardService } from "../../services/reportCardService";
 import {
   SelectControl,
-  WorkspaceGrid,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
 
@@ -162,6 +161,14 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       generated: items.filter((item) => item.report_card_id).length,
     };
   }, [overview?.items]);
+
+  const visibleCards = useMemo(() => {
+    if (activeTab === "draft") return cards.filter((item) => item.status === "draft");
+    if (activeTab === "published") return cards.filter((item) => item.status === "published");
+    if (activeTab === "archived") return cards.filter((item) => item.status === "archived");
+    if (activeTab === "outdated") return cards.filter((item) => item.is_outdated);
+    return cards;
+  }, [activeTab, cards]);
 
   const generate = async () => {
     if (!filters.academic_session_id || !filters.academic_term_id) {
@@ -379,9 +386,9 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const cardsPanel = (
     <WorkspacePanel
       title="Generated report cards"
-      description={`${cards.length} report card${cards.length === 1 ? "" : "s"} in the selected context.`}
+      description={`${visibleCards.length} report card${visibleCards.length === 1 ? "" : "s"} in the selected context.`}
     >
-      {cards.length === 0 ? (
+      {visibleCards.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-6 text-center">
           <FileText className="mx-auto h-7 w-7 text-text-muted" />
           <p className="mt-3 text-sm font-semibold text-text">No report cards generated</p>
@@ -391,7 +398,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         </div>
       ) : (
         <div className="mobile-scroll-list grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-          {cards.map((card) => (
+          {visibleCards.map((card) => (
             <div
               key={card.id}
               className="flex min-h-[14rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
@@ -428,7 +435,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                 </div>
               ) : null}
               <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                {card.is_outdated ? (
+                {card.is_outdated && card.status !== "published" ? (
                   <Button
                     type="button"
                     size="small"
@@ -439,7 +446,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                     Regenerate
                   </Button>
                 ) : null}
-                {card.status !== "published" ? (
+                {card.status === "draft" ? (
                   <Button
                     type="button"
                     size="small"
@@ -474,8 +481,8 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     <div className="space-y-4">
       {filterPanel}
       {activeTab === "generate" ? (
-        <WorkspaceGrid editor={generatePanel} content={overviewPanel} />
-      ) : activeTab === "publish" ? (
+        generatePanel
+      ) : ["draft", "published", "outdated", "archived"].includes(activeTab) ? (
         cardsPanel
       ) : (
         overviewPanel

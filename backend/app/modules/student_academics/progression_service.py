@@ -88,7 +88,6 @@ class AcademicProgressionService:
 
             session.status = AcademicSessionStatus.OPEN
             session.is_current = True
-            session.is_active = True
             session.closing_started_at = None
             session.closed_at = None
             session.closed_by_admin_id = None
@@ -493,7 +492,6 @@ class AcademicProgressionService:
 
                 next_session.status = AcademicSessionStatus.OPEN
                 next_session.is_current = True
-                next_session.is_active = True
                 next_session.closing_started_at = None
                 next_session.closed_at = None
                 next_session.closed_by_admin_id = None
