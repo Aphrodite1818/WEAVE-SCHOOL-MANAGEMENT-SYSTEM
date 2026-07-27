@@ -62,40 +62,6 @@ CurrentParent: TypeAlias = Annotated[Parent, Depends(get_current_parent)]
 CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_onboarded_student)]
 
 
-@tenant_admin_router.post(
-    "/generate",
-    status_code=status.HTTP_201_CREATED,
-)
-async def generate_report_card(
-    payload: ReportCardGenerateRequest,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> ReportCardResponse | ReportCardBulkGenerateResponse:
-    await SubscriptionFeatureService.ensure_feature_enabled(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        feature=FeatureCode.REPORT_CARDS,
-    )
-    return await ReportCardService.generate(db, current_admin, payload)
-
-
-@tenant_admin_router.get("/overview", response_model=ReportCardClassOverviewResponse)
-async def report_card_class_overview(
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-    class_id: UUID = Query(...),
-    academic_session_id: UUID = Query(...),
-    academic_term_id: UUID = Query(...),
-) -> ReportCardClassOverviewResponse:
-    return await ReportCardService.class_overview(
-        db,
-        current_admin,
-        class_id=class_id,
-        academic_session_id=academic_session_id,
-        academic_term_id=academic_term_id,
-    )
-
-
 @tenant_admin_router.get("", response_model=ReportCardListResponse)
 async def list_report_cards(
     db: DbSession,
