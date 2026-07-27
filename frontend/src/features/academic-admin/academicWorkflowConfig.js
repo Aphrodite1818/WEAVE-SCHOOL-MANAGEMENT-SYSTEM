@@ -36,10 +36,10 @@ export const academicWorkflowConfig = {
     tabs: [
       { id: "overview", label: "Overview" },
       { id: "create", label: "Create Class" },
-      { id: "progression", label: "Progression" },
       { id: "active", label: "Active Classes" },
       { id: "inactive", label: "Inactive Classes" },
       { id: "archived", label: "Archived Classes" },
+      { id: "progression", label: "Progression" },
     ],
   },
   subjects: {
@@ -65,10 +65,11 @@ export const academicWorkflowConfig = {
       "Attach subjects to classes and manage mapping lifecycle with dependency-aware actions.",
     icon: Layers3,
     tone: "accent",
-    defaultTab: "current",
+    defaultTab: "overview",
     tabs: [
-      { id: "current", label: "Current Mappings" },
+      { id: "overview", label: "Overview" },
       { id: "create", label: "Create Mapping" },
+      { id: "current", label: "Current Mappings" },
       { id: "inactive", label: "Inactive Mappings" },
       { id: "archived", label: "Archived Mappings" },
       { id: "review", label: "Mapping Details" },
@@ -83,11 +84,11 @@ export const academicWorkflowConfig = {
     tone: "warning",
     defaultTab: "overview",
     tabs: [
-      { id: "overview", label: "All Assignments" },
-      { id: "history", label: "Assignment History" },
+      { id: "overview", label: "Overview" },
       { id: "assign", label: "Assign Teacher" },
       { id: "reassign", label: "Reassign Teacher" },
       { id: "end", label: "End Assignment" },
+      { id: "history", label: "Assignment History" },
     ],
   },
   sessions: {
@@ -98,7 +99,7 @@ export const academicWorkflowConfig = {
     tone: "primary",
     defaultTab: "overview",
     tabs: [
-      { id: "overview", label: "Sessions" },
+      { id: "overview", label: "Overview" },
       { id: "create", label: "Create Session" },
       { id: "draft", label: "Draft Sessions" },
       { id: "open", label: "Open Session" },
@@ -121,15 +122,16 @@ export const academicWorkflowConfig = {
     ],
   },
   grading: {
-    title: "Grading Scales",
+    title: "Grading Configuration",
     shortTitle: "Grading",
     description:
-      "Create and maintain active grading rules while the backend remains source of truth for range conflicts.",
+      "Configure assessment score limits and maintain grading rules used when results are calculated.",
     icon: Ruler,
     tone: "warning",
-    defaultTab: "all",
+    defaultTab: "overview",
     tabs: [
-      { id: "all", label: "All Scales" },
+      { id: "overview", label: "Overview" },
+      { id: "assessment-limits", label: "Assessment Limits" },
       { id: "create", label: "Create Rule" },
       { id: "active", label: "Active Rules" },
       { id: "inactive", label: "Inactive Rules" },
@@ -139,18 +141,17 @@ export const academicWorkflowConfig = {
     title: "Results Management",
     shortTitle: "Results",
     description:
-      "Select an academic context, enter scores, and manage draft or submitted result rows.",
+      "Enter scores and move result records through draft, submission, approval, and final locking.",
     icon: Pencil,
     tone: "accent",
     defaultTab: "overview",
     tabs: [
       { id: "overview", label: "Overview" },
+      { id: "entry", label: "Score Entry" },
       { id: "draft", label: "Draft" },
       { id: "submitted", label: "Submitted" },
       { id: "approved", label: "Approved" },
       { id: "locked", label: "Locked" },
-      { id: "review", label: "Review Queue" },
-      { id: "entry", label: "Score Entry" },
     ],
   },
   "report-cards": {
@@ -164,11 +165,11 @@ export const academicWorkflowConfig = {
     tabs: [
       { id: "overview", label: "Overview" },
       { id: "ready", label: "Ready to Generate" },
+      { id: "generate", label: "Generate" },
       { id: "draft", label: "Draft Cards" },
       { id: "published", label: "Published Cards" },
       { id: "outdated", label: "Outdated Cards" },
       { id: "archived", label: "Archived Versions" },
-      { id: "generate", label: "Generate" },
     ],
   },
   progression: {
