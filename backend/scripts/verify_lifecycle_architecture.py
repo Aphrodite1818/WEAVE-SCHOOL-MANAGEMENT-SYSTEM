@@ -13,14 +13,14 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.main import app
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 from app.modules.parents.models import Parent, ParentMembership
 from app.modules.teachers.models import Teacher, TeacherMembership
 from app.shared.base_model import Base
 
 
 def verify_mappers_and_foreign_keys() -> None:
-    import_model_modules()
+    
     configure_mappers()
 
     table_names = set(Base.metadata.tables)

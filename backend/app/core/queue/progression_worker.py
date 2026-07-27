@@ -6,9 +6,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 
-import_model_modules()
+
 
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402
 from app.core.queue.arq import (  # noqa: E402

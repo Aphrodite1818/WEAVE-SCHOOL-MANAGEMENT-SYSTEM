@@ -16,7 +16,7 @@ from typing import Sequence
 from alembic import op
 from sqlalchemy.orm import configure_mappers
 
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 from app.shared.base_model import Base
 
 revision: str = "20260711_initial_schema"
@@ -28,7 +28,7 @@ depends_on: str | Sequence[str] | None = None
 def _load_schema_metadata() -> None:
     """Import all models and validate ORM mappings before running DDL."""
 
-    import_model_modules()
+    
     configure_mappers()
 
 

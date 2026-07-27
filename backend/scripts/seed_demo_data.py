@@ -18,6 +18,9 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.config.database import AsyncSessionLocal, engine
 from app.config.security import hash_password
+import app.models  # noqa: F401
+from sqlalchemy.orm import configure_mappers
+
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
 from app.modules.classes.models import ClassRoom
 from app.modules.students.models import (
@@ -95,11 +98,11 @@ SCHOOL_PROFILES: tuple[SchoolProfile, ...] = (
         state="Lagos",
         status=TenantStatus.ACTIVE,
         plan=SubscriptionPlan.PROFESSIONAL,
-        student_count=72,
+        student_count=500,
         class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"),
         arms=("A", "B"),
         subject_codes=("MTH", "ENG", "BST", "BTE", "CMP", "SOS", "CIV", "PHY", "CHE", "BIO"),
-        max_students=500,
+        max_students=600,
         max_teachers=45,
     ),
     SchoolProfile(
@@ -113,11 +116,11 @@ SCHOOL_PROFILES: tuple[SchoolProfile, ...] = (
         state="FCT",
         status=TenantStatus.TRIAL,
         plan=SubscriptionPlan.FREE_TRIAL,
-        student_count=38,
+        student_count=500,
         class_names=("JSS 1", "JSS 2", "JSS 3"),
         arms=("Gold",),
         subject_codes=("MTH", "ENG", "BST", "CMP", "SOS", "CIV", "BUS"),
-        max_students=150,
+        max_students=600,
         max_teachers=20,
     ),
     SchoolProfile(
@@ -131,7 +134,7 @@ SCHOOL_PROFILES: tuple[SchoolProfile, ...] = (
         state="Oyo",
         status=TenantStatus.ACTIVE,
         plan=SubscriptionPlan.PLUS,
-        student_count=145,
+        student_count=500,
         class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"),
         arms=("A", "B", "C"),
         subject_codes=("MTH", "ENG", "BST", "BTE", "CMP", "SOS", "CIV", "BUS", "BIO", "ECO", "GOV"),
@@ -149,7 +152,7 @@ SCHOOL_PROFILES: tuple[SchoolProfile, ...] = (
         state="Rivers",
         status=TenantStatus.ACTIVE,
         plan=SubscriptionPlan.ENTERPRISE,
-        student_count=260,
+        student_count=500,
         class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"),
         arms=("A", "B", "C", "D"),
         subject_codes=tuple(SUBJECT_CATALOG.keys()),
@@ -168,11 +171,11 @@ SCHOOL_PROFILES: tuple[SchoolProfile, ...] = (
         state="Kano",
         status=TenantStatus.SUSPENDED,
         plan=SubscriptionPlan.PLUS,
-        student_count=24,
+        student_count=500,
         class_names=("JSS 1", "JSS 2", "JSS 3", "SS 1"),
         arms=("A",),
         subject_codes=("MTH", "ENG", "BST", "CMP", "SOS", "CIV"),
-        max_students=300,
+        max_students=600,
         max_teachers=30,
     ),
 )
@@ -292,10 +295,13 @@ async def ensure_subjects(session, tenant: Tenant, profile: SchoolProfile) -> li
             )
         ).scalar_one_or_none()
         if subject is None:
+            from app.modules.subjects.service import SubjectService
             subject = Subject(
                 tenant_id=tenant.id,
                 name=name,
+                normalized_name=SubjectService.normalize_subject_name(name),
                 code=code,
+                normalized_code=SubjectService.normalize_subject_code(code),
                 description=description,
                 is_active=True,
             )
@@ -311,21 +317,27 @@ async def ensure_classes(session, tenant: Tenant, profile: SchoolProfile) -> lis
 
     for class_name in profile.class_names:
         for arm in profile.arms:
+            from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
+            norm_name = normalized_class_name_key(class_name)
+            norm_arm = normalized_class_arm_key(arm)
             classroom = (
                 await session.execute(
                     select(ClassRoom).where(
                         ClassRoom.tenant_id == tenant.id,
-                        ClassRoom.name == class_name,
-                        ClassRoom.arm == arm,
+                        ClassRoom.normalized_name == norm_name,
+                        ClassRoom.normalized_arm == norm_arm,
                     )
                 )
             ).scalar_one_or_none()
 
             if classroom is None:
+                from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
                 classroom = ClassRoom(
                     tenant_id=tenant.id,
                     name=class_name,
+                    normalized_name=normalized_class_name_key(class_name),
                     arm=arm,
+                    normalized_arm=normalized_class_arm_key(arm),
                     is_active=True,
                     is_terminal=class_name == profile.class_names[-1] and class_name == "SS 3",
                 )
@@ -399,8 +411,8 @@ async def create_students(
             ),
             gender=gender,
             state_of_origin=local_fake.state(),
-            class_id=classroom.id if academic_status != AcademicStatus.GRADUATED else None,
-            arm=classroom.arm if academic_status != AcademicStatus.GRADUATED else None,
+            class_id=classroom.id if academic_status not in {AcademicStatus.GRADUATED, AcademicStatus.WITHDRAWN, AcademicStatus.EXPELLED} else None,
+            arm=classroom.arm if academic_status not in {AcademicStatus.GRADUATED, AcademicStatus.WITHDRAWN, AcademicStatus.EXPELLED} else None,
             status=academic_status,
             profile_status=(
                 StudentProfileStatus.INCOMPLETE
@@ -436,6 +448,7 @@ async def create_students(
 
 
 async def seed_all(reset: bool, seed_value: int) -> None:
+    configure_mappers()
     Faker.seed(seed_value)
     random.seed(seed_value)
 

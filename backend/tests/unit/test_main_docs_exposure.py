@@ -14,7 +14,7 @@ def _build_app(is_development: bool):
 
     with patch.object(main_module, "settings", stub_settings), patch.object(
         main_module,
-        "import_model_modules",
+        "register_metrics_cache_invalidation_events",
         new=lambda: None,
     ):
         return main_module.create_app()

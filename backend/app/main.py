@@ -14,7 +14,8 @@ from app.core.exception_handlers import register_exception_handlers
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
-from app.modules import import_model_modules
+import app.models  # noqa: F401
+from app.modules.metrics.events import register_metrics_cache_invalidation_events
 from app.modules.announcements.router import (
     feed_router as announcement_feed_router,
     superadmin_router as superadmin_announcement_router,
@@ -98,7 +99,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
-    import_model_modules()
+    register_metrics_cache_invalidation_events()
     app = FastAPI(
         title="Weave Assistant",
         description="School management and academic workflow API",

@@ -42,7 +42,7 @@ from app.config.database import AsyncSessionLocal, engine
 from app.config.security import hash_auth_secret, hash_password
 from app.config.settings import settings
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 from app.modules.announcements.models import (
     Announcement,
     AnnouncementActorType,
@@ -1262,7 +1262,7 @@ def arguments() -> argparse.Namespace:
 async def main() -> None:
     args = arguments()
     enforce_safety(args)
-    import_model_modules()
+    
 
     if args.dry_run:
         print(json.dumps({

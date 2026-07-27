@@ -2,6 +2,10 @@
 #              models.py                 #
 # ====================================== #
 from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.modules.teachers.models import TeacherMembership
 
 from datetime import datetime
 import uuid
@@ -25,7 +29,6 @@ from app.core.utils.normalization import (
     normalized_class_arm_key,
     normalized_class_name_key,
 )
-from app.modules.teachers.models import TeacherMembership
 from app.shared.base_model import BaseModel
 
 

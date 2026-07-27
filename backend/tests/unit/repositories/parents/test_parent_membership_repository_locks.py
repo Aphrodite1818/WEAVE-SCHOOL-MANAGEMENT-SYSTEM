@@ -5,7 +5,7 @@ import uuid
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 from app.modules.parents.repository import ParentMembershipRepository
 
 
@@ -25,7 +25,7 @@ class _CapturingSession:
 
 @pytest.mark.asyncio
 async def test_account_tenant_lock_targets_parent_memberships_only() -> None:
-    import_model_modules()
+    
     db = _CapturingSession()
 
     await ParentMembershipRepository.get_by_account_and_tenant(

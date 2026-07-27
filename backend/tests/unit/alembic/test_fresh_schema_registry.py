@@ -2,7 +2,7 @@
 
 from sqlalchemy.orm import configure_mappers
 
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 from app.shared.base_model import Base
 
 
@@ -28,7 +28,7 @@ CRITICAL_TABLES = {
 def test_model_registry_contains_critical_fresh_schema_tables() -> None:
     """Ensure the baseline imports every critical SQLAlchemy model module."""
 
-    import_model_modules()
+    
     configure_mappers()
 
     registered_table_names = {table.name for table in Base.metadata.tables.values()}
@@ -43,7 +43,7 @@ def test_model_registry_contains_critical_fresh_schema_tables() -> None:
 def test_model_registry_has_unique_table_keys() -> None:
     """Guard against duplicate table registrations before migration execution."""
 
-    import_model_modules()
+    
     configure_mappers()
 
     table_keys = list(Base.metadata.tables)

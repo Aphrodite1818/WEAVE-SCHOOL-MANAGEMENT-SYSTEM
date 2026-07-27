@@ -12,7 +12,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from app.config.settings import settings  # noqa: E402
-from app.modules import import_model_modules  # noqa: E402
+import app.models  # noqa: F401  # noqa: E402
 from app.shared.base_model import Base  # noqa: E402
 
 config = context.config
@@ -20,7 +20,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-import_model_modules()
+
 target_metadata = Base.metadata
 
 

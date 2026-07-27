@@ -9,10 +9,10 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 
 
-import_model_modules()
+
 
 
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402

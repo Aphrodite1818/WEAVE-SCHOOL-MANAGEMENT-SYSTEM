@@ -10,10 +10,10 @@ from typing import Any
 
 from arq import cron
 
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 
 
-import_model_modules()
+
 
 
 from app.config.database import engine  # noqa: E402
