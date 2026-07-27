@@ -198,6 +198,13 @@ export const academicService = {
     api.post(`/tenant-admin/academics/grading-scales/${scaleId}/activate`, {}),
   deactivateGradingScale: (scaleId) =>
     api.post(`/tenant-admin/academics/grading-scales/${scaleId}/deactivate`, {}),
+  getGradingScaleDependencies: (scaleId) =>
+    api.get(`/tenant-admin/academics/grading-scales/${scaleId}/dependencies`),
+  deleteGradingScale: (scaleId) =>
+    api.delete(`/tenant-admin/academics/grading-scales/${scaleId}`, {
+      body: JSON.stringify({ confirmation: "DELETE_GRADING_SCALE" }),
+      headers: { "Content-Type": "application/json" },
+    }),
   getGradingReadiness: () =>
     api.get("/tenant-admin/academics/grading-scales/readiness-preview"),
 
