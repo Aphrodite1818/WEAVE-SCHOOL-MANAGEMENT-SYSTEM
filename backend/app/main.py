@@ -50,6 +50,9 @@ from app.modules.student_academics.result_limits_router import (
     student_router as result_limits_student_router,
     teacher_router as result_limits_teacher_router,
 )
+from app.modules.student_academics.session_closure_router import (
+    router as session_closure_router,
+)
 from app.modules.student_academics.student_subject_cards_router import (
     router as student_subject_cards_router,
 )
@@ -163,13 +166,13 @@ def create_app() -> FastAPI:
     app.include_router(announcement_feed_router, prefix="/api/v1")
     app.include_router(metrics_router, prefix="/api/v1")
 
-    # Register canonical override routes before the legacy academic routers so
-    # FastAPI resolves duplicate method/path pairs to the stricter handlers.
+    # Register canonical override routes before legacy academic routers.
     app.include_router(result_limits_admin_router, prefix="/api/v1")
     app.include_router(result_limits_teacher_router, prefix="/api/v1")
     app.include_router(result_limits_student_router, prefix="/api/v1")
     app.include_router(grading_readiness_router, prefix="/api/v1")
     app.include_router(student_subject_cards_router, prefix="/api/v1")
+    app.include_router(session_closure_router, prefix="/api/v1")
 
     app.include_router(tenant_admin_academic_router, prefix="/api/v1")
     app.include_router(assessment_config_router, prefix="/api/v1")
