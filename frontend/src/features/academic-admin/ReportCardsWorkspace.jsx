@@ -64,11 +64,13 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       setSessions(nextSessions);
       setTerms(nextTerms);
       setClasses(nextClasses);
-      setFilters({
-        class_id: nextClasses[0]?.id || "",
-        academic_session_id: currentSession?.id || nextSessions[0]?.id || "",
-        academic_term_id: currentTerm?.id || "",
-      });
+      setFilters((current) => ({
+        class_id: current.class_id || nextClasses[0]?.id || "",
+        academic_session_id:
+          current.academic_session_id || currentSession?.id || nextSessions[0]?.id || "",
+        academic_term_id:
+          current.academic_term_id || currentTerm?.id || "",
+      }));
       onContextChange?.({ currentSession, currentTerm });
     } catch (requestError) {
       const message = getErrorMessage(requestError, "Could not load report-card setup.");
@@ -85,7 +87,6 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       setCards([]);
       return;
     }
-
     try {
       if (["overview", "ready", "generate"].includes(activeTab)) {
         const response = await reportCardService.getClassOverview(filters);
@@ -93,7 +94,6 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         setCards([]);
         return;
       }
-
       const params = { ...filters, limit: 100 };
       if (activeTab === "draft") params.status = "draft";
       if (activeTab === "published") params.status = "published";
@@ -116,6 +116,11 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   useEffect(() => {
     loadPageData();
   }, [loadPageData]);
+
+  useEffect(() => {
+    setGenerationSummary(null);
+    if (activeTab !== "generate") setSelectedStudentId("");
+  }, [activeTab]);
 
   const sessionOptions = useMemo(
     () => sessions.map((item) => ({ value: item.id, label: item.name })),
@@ -140,6 +145,11 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     [classes],
   );
 
+  const selectedClass = classes.find((item) => item.id === filters.class_id);
+  const selectedSession = sessions.find(
+    (item) => item.id === filters.academic_session_id,
+  );
+  const selectedTerm = terms.find((item) => item.id === filters.academic_term_id);
   const rows = overview?.items || [];
   const readyRows = rows.filter(
     (item) => item.expected_count > 0 && item.submitted_count >= item.expected_count,
@@ -151,10 +161,28 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       selectedStudent.submitted_count >= selectedStudent.expected_count,
   );
 
+  const resetGenerationState = () => {
+    setSelectedStudentId("");
+    setGenerationSummary(null);
+  };
+
+  const contextSummary = (
+    <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
+      <span>
+        <span className="font-semibold text-text">Selected report context:</span>{" "}
+        {classLabel(selectedClass)} · {selectedSession?.name || "No session"} ·{" "}
+        {String(selectedTerm?.name || "No term").replaceAll("_", " ")}
+      </span>
+      <Button type="button" size="small" variant="outline" onClick={loadPageData}>
+        <RefreshCw className="h-4 w-4" /> Refresh
+      </Button>
+    </div>
+  );
+
   const contextPanel = (
     <WorkspacePanel
-      title={listTabs.includes(activeTab) ? "Report-card list filters" : "Report-card context"}
-      description="This context belongs only to the current page and resets when you change tabs."
+      title="Report-card context"
+      description="Choose the class and academic period once. Every report-card page uses this context until you change it here."
       actions={
         <Button type="button" size="small" variant="outline" onClick={loadPageData}>
           <RefreshCw className="h-4 w-4" /> Refresh
@@ -167,8 +195,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
           value={filters.class_id}
           onChange={(value) => {
             setFilters((current) => ({ ...current, class_id: value }));
-            setSelectedStudentId("");
-            setGenerationSummary(null);
+            resetGenerationState();
           }}
           options={classOptions}
           required
@@ -188,8 +215,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                 terms.find((item) => item.academic_session_id === value)?.id ||
                 "",
             }));
-            setSelectedStudentId("");
-            setGenerationSummary(null);
+            resetGenerationState();
           }}
           options={sessionOptions}
           required
@@ -199,8 +225,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
           value={filters.academic_term_id}
           onChange={(value) => {
             setFilters((current) => ({ ...current, academic_term_id: value }));
-            setSelectedStudentId("");
-            setGenerationSummary(null);
+            resetGenerationState();
           }}
           options={termOptions}
           required
@@ -233,17 +258,16 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const readinessPanel = (
     <WorkspacePanel
       title="Student readiness"
-      description="Missing subjects are shown explicitly so the admin can return to Results and lock them."
+      description="Review which students have every expected result locked before generation."
     >
       {rows.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-border p-5 text-sm text-text-muted">
-          No enrolled students were found for this class and session.
+          No enrolled students were found for the selected class and session.
         </p>
       ) : (
         <div className="space-y-3">
           {rows.map((item) => {
-            const ready =
-              item.expected_count > 0 && item.submitted_count >= item.expected_count;
+            const ready = item.expected_count > 0 && item.submitted_count >= item.expected_count;
             return (
               <div key={item.student_id} className="rounded-2xl border border-border/70 bg-surface px-4 py-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -287,7 +311,6 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       showWarning("No student in this context is ready for report-card generation.");
       return;
     }
-
     setSaving("generate");
     setGenerationSummary(null);
     try {
@@ -317,7 +340,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const generatePanel = (
     <WorkspacePanel
       title="Generate report cards"
-      description="Only students marked ready are eligible. Existing cards are skipped instead of corrupting the batch."
+      description="Generation uses the class and period selected on Overview. Choose only the generation target here."
     >
       <div className="space-y-4">
         <SelectControl
@@ -325,8 +348,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
           value={generationTarget}
           onChange={(value) => {
             setGenerationTarget(value);
-            setSelectedStudentId("");
-            setGenerationSummary(null);
+            resetGenerationState();
           }}
           options={[
             { value: "class", label: "Entire class" },
@@ -356,21 +378,16 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         <Button type="button" onClick={generate} disabled={saving === "generate"}>
           {saving === "generate" ? "Generating..." : "Generate report card"}
         </Button>
-
         {generationSummary ? (
           <div className="space-y-3 rounded-2xl border border-border/70 p-4">
             <p className="font-semibold text-text">
               Generated: {generationSummary.generated.length} · Skipped: {generationSummary.skipped.length}
             </p>
-            {generationSummary.skipped.length ? (
-              <div className="space-y-2">
-                {generationSummary.skipped.map((item) => (
-                  <div key={`${item.student_id}-${item.reason}`} className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900">
-                    {item.reason}
-                  </div>
-                ))}
+            {generationSummary.skipped.map((item) => (
+              <div key={`${item.student_id}-${item.reason}`} className="rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900">
+                {item.reason}
               </div>
-            ) : null}
+            ))}
           </div>
         ) : null}
       </div>
@@ -406,13 +423,13 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const cardsPanel = (
     <WorkspacePanel
       title={`${String(activeTab || "").replaceAll("-", " ")} report cards`}
-      description={`${cards.length} matching report card${cards.length === 1 ? "" : "s"} on this page.`}
+      description={`${cards.length} report card${cards.length === 1 ? "" : "s"} in the selected Overview context.`}
     >
       {cards.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-6 text-center">
           <FileText className="mx-auto h-7 w-7 text-text-muted" />
           <p className="mt-3 text-sm font-semibold text-text">No matching report cards</p>
-          <p className="mt-1 text-sm text-text-muted">Change this page's filters or generate eligible report cards.</p>
+          <p className="mt-1 text-sm text-text-muted">Generate eligible report cards for the selected class and period.</p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
@@ -472,7 +489,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
 
   return (
     <div className="space-y-4">
-      {contextPanel}
+      {activeTab === "overview" ? contextPanel : contextSummary}
       {activeTab === "overview" ? overviewPanel : null}
       {activeTab === "ready" ? readinessPanel : null}
       {activeTab === "generate" ? generatePanel : null}
