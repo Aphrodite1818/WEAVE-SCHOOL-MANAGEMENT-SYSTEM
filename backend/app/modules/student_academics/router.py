@@ -670,6 +670,7 @@ async def list_admin_results(
     academic_session_id: UUID | None = Query(default=None),
     academic_term_id: UUID | None = Query(default=None),
     status: AcademicResultStatus | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     is_complete: bool | None = Query(default=None),
     has_grade: bool | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
@@ -688,6 +689,7 @@ async def list_admin_results(
         academic_session_id=academic_session_id,
         academic_term_id=academic_term_id,
         status=status,
+        search=search,
         is_complete=is_complete,
         has_grade=has_grade,
     )

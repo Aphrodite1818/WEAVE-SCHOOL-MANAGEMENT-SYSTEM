@@ -33,6 +33,7 @@ const DRAWER_VERTICAL_TOLERANCE = 70;
 const DRAWER_CENTER_START_MIN = 0.28;
 const DRAWER_CENTER_START_MAX = 0.72;
 const GESTURE_ACTIVATION_DISTANCE = 12;
+const AI_CHAT_LAUNCHER_VISIBLE = false;
 
 function getDefaultPageMeta(role, onboardingModalEnabled = true) {
   return {
@@ -107,6 +108,7 @@ function DashboardShellFrame({
       : { allowed: true, pending: false };
   const showAiLauncher =
     role !== "admin" || !isTenantAdmin ? true : Boolean(entitlements) && aiAssistantGuard.allowed;
+  const shouldRenderAiLauncher = AI_CHAT_LAUNCHER_VISIBLE && showAiLauncher;
   const {
     onboardingState,
     profileModalOpen,
@@ -437,7 +439,7 @@ function DashboardShellFrame({
             id="dashboard-content"
             className={cn(
               "mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pt-4 sm:gap-6 sm:px-5 sm:pt-6 lg:px-8",
-              showAiLauncher ? "pb-36 sm:pb-24 lg:pb-28" : "pb-28 sm:pb-12"
+              shouldRenderAiLauncher ? "pb-36 sm:pb-24 lg:pb-28" : "pb-28 sm:pb-12"
             )}
           >
             {(title || description || actions) && (
@@ -481,7 +483,7 @@ function DashboardShellFrame({
         </Modal>
       ) : null}
 
-      {showAiLauncher ? <AiChatLauncher role={role} /> : null}
+      {shouldRenderAiLauncher ? <AiChatLauncher role={role} /> : null}
     </div>
   );
 }

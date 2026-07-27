@@ -28,7 +28,7 @@ from app.modules.student_academics.models import (
     TeacherAssignment,
     TeacherAssignmentLifecycleAudit,
 )
-from app.modules.students.models import StudentEnrollment
+from app.modules.students.models import Student, StudentEnrollment
 from app.modules.teachers.models import TeacherAccount, TeacherMembership
 
 
@@ -708,6 +708,7 @@ class StudentAcademicRepository:
         academic_session_id: uuid.UUID | None = None,
         academic_term_id: uuid.UUID | None = None,
         status: AcademicResultStatus | None = None,
+        search: str | None = None,
         is_complete: bool | None = None,
         has_grade: bool | None = None,
         finalized_only: bool = False,
@@ -731,6 +732,22 @@ class StudentAcademicRepository:
             filters.append(StudentSubjectResult.status == status)
         if finalized_only:
             filters.append(StudentSubjectResult.status.in_(FINALIZED_RESULT_STATUSES))
+        search_term = search.strip() if search else ""
+        if search_term:
+            pattern = f"%{escape_like(search_term)}%"
+            student_name = func.concat(
+                func.coalesce(Student.first_name, ""),
+                " ",
+                func.coalesce(Student.last_name, ""),
+            )
+            filters.append(
+                or_(
+                    student_name.ilike(pattern, escape="\\"),
+                    Student.admission_number.ilike(pattern, escape="\\"),
+                    Subject.name.ilike(pattern, escape="\\"),
+                    Subject.code.ilike(pattern, escape="\\"),
+                )
+            )
         if is_complete is not None:
             if is_complete:
                 filters.append(
@@ -755,14 +772,21 @@ class StudentAcademicRepository:
                 filters.append(StudentSubjectResult.grade.is_not(None))
             else:
                 filters.append(StudentSubjectResult.grade.is_(None))
-        total = (
-            await db.execute(
-                select(func.count()).select_from(StudentSubjectResult).where(*filters)
+        count_query = select(func.count()).select_from(StudentSubjectResult)
+        rows_query = select(StudentSubjectResult)
+        if search_term:
+            count_query = count_query.join(Student, Student.id == StudentSubjectResult.student_id).join(
+                Subject,
+                Subject.id == StudentSubjectResult.subject_id,
             )
-        ).scalar_one()
+            rows_query = rows_query.join(Student, Student.id == StudentSubjectResult.student_id).join(
+                Subject,
+                Subject.id == StudentSubjectResult.subject_id,
+            )
+        total = (await db.execute(count_query.where(*filters))).scalar_one()
         rows = (
             await db.execute(
-                select(StudentSubjectResult)
+                rows_query
                 .where(*filters)
                 .order_by(StudentSubjectResult.created_at.desc())
                 .offset(skip)

@@ -91,17 +91,10 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     try {
       const [overviewResponse, cardResponse] = await Promise.all([
         reportCardService.getClassOverview(filters),
-        reportCardService.listAdminReportCards({ limit: 100 }),
+        reportCardService.listAdminReportCards({ ...filters, limit: 100 }),
       ]);
       setOverview(overviewResponse);
-      setCards(
-        asItems(cardResponse).filter(
-          (item) =>
-            item.class_id === filters.class_id &&
-            item.academic_session_id === filters.academic_session_id &&
-            item.academic_term_id === filters.academic_term_id,
-        ),
-      );
+      setCards(asItems(cardResponse));
     } catch (err) {
       setOverview(null);
       setCards([]);
@@ -279,7 +272,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const overviewPanel = (
     <WorkspacePanel
       title="Class readiness"
-      description="Each student must have all expected subject results submitted before report generation."
+      description="Each student must have all expected subject results locked before report generation."
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -318,7 +311,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                   <div>
                     <p className="font-semibold text-text">{studentLabel(item)}</p>
                     <p className="mt-1 text-sm text-text-muted">
-                      {item.submitted_count} of {item.expected_count} subjects submitted
+                      {item.submitted_count} of {item.expected_count} subjects locked
                     </p>
                     {item.missing_subject_names?.length ? (
                       <p className="mt-2 text-xs leading-5 text-error">

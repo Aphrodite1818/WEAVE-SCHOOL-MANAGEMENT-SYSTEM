@@ -608,6 +608,11 @@ class ReportCardService:
         actor: TenantAdmin | Parent | Student,
         *,
         student_id: uuid.UUID | None = None,
+        class_id: uuid.UUID | None = None,
+        academic_session_id: uuid.UUID | None = None,
+        academic_term_id: uuid.UUID | None = None,
+        status: ReportCardStatus | None = None,
+        is_outdated: bool | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[list[ReportCardResponse], int]:
@@ -625,6 +630,11 @@ class ReportCardService:
             skip=skip,
             limit=min(limit, 100),
             student_id=student_id,
+            class_id=class_id,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+            status=status,
+            is_outdated=is_outdated,
             published_only=published_only,
         )
         return [await ReportCardService._response(db, card) for card in cards], total

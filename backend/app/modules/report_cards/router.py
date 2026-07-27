@@ -19,6 +19,7 @@ from app.modules.report_cards.schemas import (
     ReportCardListResponse,
     ReportCardResponse,
 )
+from app.modules.report_cards.models import ReportCardStatus
 from app.modules.report_cards.service import ReportCardService
 from app.modules.students.models import Student
 from app.modules.subscriptions.service import SubscriptionFeatureService
@@ -101,6 +102,11 @@ async def list_report_cards(
     current_admin: CurrentTenantAdmin,
     response: Response,
     student_id: UUID | None = Query(default=None),
+    class_id: UUID | None = Query(default=None),
+    academic_session_id: UUID | None = Query(default=None),
+    academic_term_id: UUID | None = Query(default=None),
+    status: ReportCardStatus | None = Query(default=None),
+    is_outdated: bool | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> ReportCardListResponse:
@@ -109,6 +115,11 @@ async def list_report_cards(
         db,
         current_admin,
         student_id=student_id,
+        class_id=class_id,
+        academic_session_id=academic_session_id,
+        academic_term_id=academic_term_id,
+        status=status,
+        is_outdated=is_outdated,
         skip=skip,
         limit=limit,
     )

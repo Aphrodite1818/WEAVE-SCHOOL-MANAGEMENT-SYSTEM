@@ -2978,6 +2978,7 @@ class StudentAcademicService:
         academic_session_id: uuid.UUID | None = None,
         academic_term_id: uuid.UUID | None = None,
         status: AcademicResultStatus | None = None,
+        search: str | None = None,
         is_complete: bool | None = None,
         has_grade: bool | None = None,
     ) -> tuple[list[StudentSubjectResultResponse], int]:
@@ -3014,6 +3015,7 @@ class StudentAcademicService:
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
             status=status,
+            search=search,
             is_complete=is_complete,
             has_grade=has_grade,
             finalized_only=finalized_only,

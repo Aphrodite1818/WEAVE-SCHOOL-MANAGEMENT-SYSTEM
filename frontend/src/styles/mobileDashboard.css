@@ -418,8 +418,7 @@
   margin-inline: -0.75rem;
   margin-top: -1rem;
   padding-inline: 0;
-  background:
-    linear-gradient(#1d4ed8 0 calc(100% - 8.5rem), rgb(var(--color-surface)) calc(100% - 8.5rem) 100%);
+  background: rgb(var(--color-background));
 }
 
 .academic-hub-selector-card {
@@ -455,8 +454,8 @@
   height: 6rem;
   margin-top: -1.5rem;
   background:
-    radial-gradient(115% 5.7rem at 19% -1.15rem, transparent 49%, rgb(var(--color-surface)) 50%),
-    radial-gradient(92% 4.95rem at 77% -0.75rem, transparent 49%, rgb(var(--color-surface)) 50%),
+    radial-gradient(115% 5.7rem at 19% -1.15rem, transparent 49%, rgb(var(--color-background)) 50%),
+    radial-gradient(92% 4.95rem at 77% -0.75rem, transparent 49%, rgb(var(--color-background)) 50%),
     #1d4ed8;
 }
 
@@ -466,7 +465,7 @@
   width: min(100% - 2rem, 72rem);
   margin: -2.5rem auto 0;
   border-radius: 1.5rem 1.5rem 0 0;
-  background: rgb(var(--color-surface));
+  background: rgb(var(--color-background));
   padding: 0.25rem 0 0;
 }
 
@@ -589,8 +588,7 @@
 }
 
 :root[data-theme="dark"] .academic-hub-domain-shell {
-  background:
-    linear-gradient(#172554 0 calc(100% - 8.5rem), rgb(var(--color-surface)) calc(100% - 8.5rem) 100%);
+  background: rgb(var(--color-background));
 }
 
 :root[data-theme="dark"] .academic-hub-selector-top,
@@ -607,8 +605,8 @@
 
 :root[data-theme="dark"] .academic-hub-wave {
   background:
-    radial-gradient(115% 5.7rem at 19% -1.15rem, transparent 49%, rgb(var(--color-surface)) 50%),
-    radial-gradient(92% 4.95rem at 77% -0.75rem, transparent 49%, rgb(var(--color-surface)) 50%),
+    radial-gradient(115% 5.7rem at 19% -1.15rem, transparent 49%, rgb(var(--color-background)) 50%),
+    radial-gradient(92% 4.95rem at 77% -0.75rem, transparent 49%, rgb(var(--color-background)) 50%),
     #172554;
 }
 
