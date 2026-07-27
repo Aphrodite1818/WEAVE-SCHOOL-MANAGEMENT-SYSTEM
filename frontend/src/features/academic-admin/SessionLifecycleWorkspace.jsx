@@ -6,6 +6,7 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
@@ -26,6 +27,9 @@ const emptySessionForm = {
   next_academic_session_id: "",
 };
 
+const dateLabel = (value) =>
+  value ? new Date(value).toLocaleDateString() : "Not configured";
+
 const runCounts = (run) => [
   ["Total", run?.total_students || 0],
   ["Promoted", run?.promoted_students || 0],
@@ -38,6 +42,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
+  const [configureOpen, setConfigureOpen] = useState(false);
   const [audit, setAudit] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,9 +50,16 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   const [confirmation, setConfirmation] = useState(null);
   const { showSuccess, showError, showWarning } = useToast();
 
+  const isClosingPage = activeTab === "closing";
+
   const selectedSession = useMemo(
     () => sessions.find((item) => item.id === selectedSessionId) || null,
     [sessions, selectedSessionId],
+  );
+
+  const currentSession = useMemo(
+    () => sessions.find((item) => item.is_current) || null,
+    [sessions],
   );
 
   const draftNextSessionOptions = useMemo(
@@ -64,11 +76,15 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
       const response = await academicService.listSessions({ limit: 100 });
       const items = asItems(response);
       setSessions(items);
-      const preferred =
-        items.find((item) => item.status === "closing") ||
-        items.find((item) => item.is_current) ||
-        items.find((item) => item.status === "open") ||
-        null;
+
+      const preferred = isClosingPage
+        ? items.find((item) => item.status === "closing") ||
+          items.find((item) => item.status === "open" && item.is_current) ||
+          null
+        : items.find((item) => item.is_current) ||
+          items.find((item) => item.status === "open") ||
+          null;
+
       setSelectedSessionId((current) =>
         items.some((item) => item.id === current) ? current : preferred?.id || "",
       );
@@ -80,14 +96,15 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     } finally {
       setLoading(false);
     }
-  }, [onContextChange, showError]);
+  }, [isClosingPage, onContextChange, showError]);
 
-  const loadWorkflow = useCallback(async () => {
-    if (!selectedSessionId) {
+  const loadClosingWorkflow = useCallback(async () => {
+    if (!isClosingPage || !selectedSessionId) {
       setAudit(null);
       setStatus(null);
       return;
     }
+
     try {
       const current = sessions.find((item) => item.id === selectedSessionId);
       if (current?.status === "closing") {
@@ -102,15 +119,15 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     } catch (error) {
       showError(getErrorMessage(error, "Could not load the session closure audit."));
     }
-  }, [selectedSessionId, sessions, showError]);
+  }, [isClosingPage, selectedSessionId, sessions, showError]);
 
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
 
   useEffect(() => {
-    loadWorkflow();
-  }, [loadWorkflow]);
+    loadClosingWorkflow();
+  }, [loadClosingWorkflow]);
 
   useEffect(() => {
     if (!selectedSession) {
@@ -126,28 +143,38 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   }, [selectedSession]);
 
   useEffect(() => {
-    if (selectedSession?.status !== "closing") return undefined;
-    const timer = window.setInterval(loadWorkflow, 5000);
+    if (!isClosingPage || selectedSession?.status !== "closing") return undefined;
+    const timer = window.setInterval(loadClosingWorkflow, 5000);
     return () => window.clearInterval(timer);
-  }, [loadWorkflow, selectedSession?.status]);
+  }, [isClosingPage, loadClosingWorkflow, selectedSession?.status]);
+
+  const openConfiguration = (session) => {
+    setSelectedSessionId(session.id);
+    setSessionForm({
+      name: session.name || "",
+      start_date: session.start_date || "",
+      end_date: session.end_date || "",
+      next_academic_session_id: session.next_academic_session_id || "",
+    });
+    setConfigureOpen(true);
+  };
 
   const updateOpenSession = async (event) => {
     event.preventDefault();
     if (!selectedSession || selectedSession.status !== "open") return;
+
     setBusy("configure");
     try {
-      const updated = await academicService.updateSession(selectedSession.id, {
+      await academicService.updateSession(selectedSession.id, {
         name: sessionForm.name,
         start_date: sessionForm.start_date || null,
         end_date: sessionForm.end_date || null,
         next_academic_session_id: sessionForm.next_academic_session_id || null,
       });
-      setSessions((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
       showSuccess("Open academic session configuration updated.");
+      setConfigureOpen(false);
       await loadSessions();
-      await loadWorkflow();
+      if (isClosingPage) await loadClosingWorkflow();
     } catch (error) {
       showError(getErrorMessage(error, "Could not update the open academic session."));
     } finally {
@@ -170,7 +197,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
       }
       showSuccess("Session moved to closing. Student progression is running in the background.");
       await loadSessions();
-      await loadWorkflow();
+      await loadClosingWorkflow();
     } catch (error) {
       showError(getErrorMessage(error, "Could not start session closing."));
     } finally {
@@ -214,23 +241,151 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     }
   };
 
-  if (loading) return <LoadingState label="Loading session lifecycle..." />;
+  if (loading) return <LoadingState label="Loading academic sessions..." />;
 
   const run = status?.progression_run;
   const blockers = audit?.blocker_messages || [];
   const canStart = selectedSession?.status === "open" && audit?.is_ready;
   const canRetry = selectedSession?.status === "closing" && run?.status === "failed";
   const canFinalize = Boolean(status?.can_finalize);
-  const canConfigure = selectedSession?.status === "open";
+
+  const configureModal = (
+    <Modal
+      open={configureOpen}
+      title="Configure open session"
+      description="Update the session name, dates, or next academic session. Lifecycle state is managed separately."
+      onClose={busy ? undefined : () => setConfigureOpen(false)}
+      closeOnOverlay={!busy}
+      footer={null}
+    >
+      <form className="grid gap-4" onSubmit={updateOpenSession}>
+        <Input
+          label="Session name"
+          value={sessionForm.name}
+          onChange={(event) =>
+            setSessionForm((current) => ({ ...current, name: event.target.value }))
+          }
+          minLength={9}
+          maxLength={9}
+          required
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Start date"
+            type="date"
+            value={sessionForm.start_date}
+            onChange={(event) =>
+              setSessionForm((current) => ({ ...current, start_date: event.target.value }))
+            }
+          />
+          <Input
+            label="End date"
+            type="date"
+            value={sessionForm.end_date}
+            onChange={(event) =>
+              setSessionForm((current) => ({ ...current, end_date: event.target.value }))
+            }
+          />
+        </div>
+        <label className="grid gap-1.5 text-sm font-medium text-text">
+          <span>Next academic session</span>
+          <select
+            className="min-h-11 rounded-xl border border-border bg-surface px-3 text-sm text-text"
+            value={sessionForm.next_academic_session_id}
+            onChange={(event) =>
+              setSessionForm((current) => ({
+                ...current,
+                next_academic_session_id: event.target.value,
+              }))
+            }
+          >
+            <option value="">Not configured</option>
+            {draftNextSessionOptions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={Boolean(busy)}
+            onClick={() => setConfigureOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={Boolean(busy)}>
+            {busy === "configure" ? "Saving..." : "Save changes"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+
+  if (!isClosingPage) {
+    return (
+      <div className="space-y-5">
+        <Card className="p-4 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                Current active session
+              </p>
+              {currentSession ? (
+                <>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <h2 className="section-title">{currentSession.name}</h2>
+                    <Badge variant="success">{currentSession.status}</Badge>
+                  </div>
+                  <div className="mt-4 grid gap-3 text-sm text-text-muted sm:grid-cols-3">
+                    <div>
+                      <p className="font-medium text-text">Start date</p>
+                      <p>{dateLabel(currentSession.start_date)}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-text">End date</p>
+                      <p>{dateLabel(currentSession.end_date)}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-text">Next session</p>
+                      <p>
+                        {sessions.find(
+                          (item) => item.id === currentSession.next_academic_session_id,
+                        )?.name || "Not configured"}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-text-muted">No active academic session.</p>
+              )}
+            </div>
+            {currentSession?.status === "open" ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => openConfiguration(currentSession)}
+              >
+                Configure
+              </Button>
+            ) : null}
+          </div>
+        </Card>
+        {configureModal}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
       <Card className="p-4 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="section-title">Session lifecycle</h2>
+            <h2 className="section-title">Close academic session</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
-              Configure the current open session, run the readiness audit, process student progression in the background, then finalize closure manually.
+              Review closure readiness, start background progression, and finalize only after the worker completes successfully.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -247,9 +402,24 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                   </option>
                 ))}
             </select>
-            <Button type="button" variant="outline" size="small" onClick={loadWorkflow}>
+            <Button
+              type="button"
+              variant="outline"
+              size="small"
+              onClick={loadClosingWorkflow}
+            >
               <RefreshCw className="h-4 w-4" /> Refresh
             </Button>
+            {selectedSession?.status === "open" ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="small"
+                onClick={() => openConfiguration(selectedSession)}
+              >
+                Configure
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -265,72 +435,6 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
           </div>
         ) : null}
       </Card>
-
-      {canConfigure ? (
-        <Card className="p-4 sm:p-6">
-          <div>
-            <h3 className="font-semibold text-text">Configure open session</h3>
-            <p className="mt-1 text-sm text-text-muted">
-              Session name, dates, and the next-session target remain editable while the session is open. Lifecycle state is controlled separately.
-            </p>
-          </div>
-          <form className="mt-5 grid gap-4" onSubmit={updateOpenSession}>
-            <Input
-              label="Session name"
-              value={sessionForm.name}
-              onChange={(event) =>
-                setSessionForm((current) => ({ ...current, name: event.target.value }))
-              }
-              minLength={9}
-              maxLength={9}
-              required
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="Start date"
-                type="date"
-                value={sessionForm.start_date}
-                onChange={(event) =>
-                  setSessionForm((current) => ({ ...current, start_date: event.target.value }))
-                }
-              />
-              <Input
-                label="End date"
-                type="date"
-                value={sessionForm.end_date}
-                onChange={(event) =>
-                  setSessionForm((current) => ({ ...current, end_date: event.target.value }))
-                }
-              />
-            </div>
-            <label className="grid gap-1.5 text-sm font-medium text-text">
-              <span>Next academic session</span>
-              <select
-                className="min-h-11 rounded-xl border border-border bg-surface px-3 text-sm text-text"
-                value={sessionForm.next_academic_session_id}
-                onChange={(event) =>
-                  setSessionForm((current) => ({
-                    ...current,
-                    next_academic_session_id: event.target.value,
-                  }))
-                }
-              >
-                <option value="">Not configured</option>
-                {draftNextSessionOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex justify-end">
-              <Button type="submit" disabled={Boolean(busy)}>
-                {busy === "configure" ? "Saving..." : "Save session configuration"}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      ) : null}
 
       <Card className="p-4 sm:p-6">
         <div className="flex items-start gap-3">
@@ -351,7 +455,10 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
 
         <div className="mt-4 grid gap-2">
           {(audit?.checked_items || []).map((item) => (
-            <div key={item} className="flex gap-2 rounded-xl border border-border/70 px-3 py-2 text-sm text-text-muted">
+            <div
+              key={item}
+              className="flex gap-2 rounded-xl border border-border/70 px-3 py-2 text-sm text-text-muted"
+            >
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <span>{item}</span>
             </div>
@@ -376,17 +483,27 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
             <div>
               <h3 className="font-semibold text-text">Background progression</h3>
               <p className="mt-1 text-sm text-text-muted">
-                The worker promotes eligible students, graduates terminal classes and preserves enrollment history. It never closes the session automatically.
+                The worker promotes eligible students, graduates terminal classes, and preserves enrollment history. It never closes the session automatically.
               </p>
             </div>
-            <Badge variant={run.status === "completed" ? "success" : run.status === "failed" ? "error" : "warning"}>
+            <Badge
+              variant={
+                run.status === "completed"
+                  ? "success"
+                  : run.status === "failed"
+                    ? "error"
+                    : "warning"
+              }
+            >
               {run.status}
             </Badge>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
             {runCounts(run).map(([label, value]) => (
               <div key={label} className="rounded-xl border border-border/70 px-3 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  {label}
+                </p>
                 <p className="mt-1 text-xl font-semibold text-text">{value}</p>
               </div>
             ))}
@@ -410,7 +527,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                 setConfirmation({
                   type: "start",
                   title: "Start closing this academic session",
-                  description: "Academic write activities will pause immediately and the progression worker will start.",
+                  description:
+                    "Academic write activities will pause immediately and the progression worker will start.",
                   confirmationText: "START_SESSION_CLOSING",
                   confirmLabel: "Start closing",
                 })
@@ -428,7 +546,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                 setConfirmation({
                   type: "retry",
                   title: "Retry student progression",
-                  description: "Retry the failed background progression after resolving the reported issue.",
+                  description:
+                    "Retry the failed background progression after resolving the reported issue.",
                   confirmationText: "RETRY_SESSION_PROGRESSION",
                   confirmLabel: "Retry progression",
                 })
@@ -446,7 +565,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                 setConfirmation({
                   type: "finalize",
                   title: "Finalize session closure",
-                  description: "This permanently closes the current session, opens the configured next session and opens its first term.",
+                  description:
+                    "This permanently closes the current session, opens the configured next session, and opens its first term.",
                   confirmationText: "FINALIZE_SESSION_CLOSE",
                   confirmLabel: "Finalize closure",
                 })
@@ -458,6 +578,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
         </div>
       </Card>
 
+      {configureModal}
       <TypedConfirmationDialog
         open={Boolean(confirmation)}
         title={confirmation?.title}
