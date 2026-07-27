@@ -183,12 +183,23 @@ export const academicService = {
   listTeacherTerms: (params) =>
     api.get(`/teachers/academics/terms${queryString(params)}`),
 
+  getAssessmentConfig: () =>
+    api.get("/tenant-admin/academics/assessment-config"),
+  updateAssessmentConfig: (payload) =>
+    api.patch("/tenant-admin/academics/assessment-config", payload),
+
   listGradingScales: (params) =>
     api.get(`/tenant-admin/academics/grading-scales${queryString(params)}`),
   createGradingScale: (payload) =>
     api.post("/tenant-admin/academics/grading-scales", payload),
   updateGradingScale: (scaleId, payload) =>
     api.patch(`/tenant-admin/academics/grading-scales/${scaleId}`, payload),
+  activateGradingScale: (scaleId) =>
+    api.post(`/tenant-admin/academics/grading-scales/${scaleId}/activate`, {}),
+  deactivateGradingScale: (scaleId) =>
+    api.post(`/tenant-admin/academics/grading-scales/${scaleId}/deactivate`, {}),
+  getGradingReadiness: () =>
+    api.get("/tenant-admin/academics/grading-scales/readiness-preview"),
 
   listClassSubjects: async (classId, params) => {
     const [classSubjectResponse, subjectResponse] = await Promise.all([
