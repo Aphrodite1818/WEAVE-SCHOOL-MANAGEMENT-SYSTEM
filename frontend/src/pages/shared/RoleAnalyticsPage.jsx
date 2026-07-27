@@ -75,7 +75,7 @@ const formatMetric = (value, suffix = "") =>
 const periodLabel = (result) =>
   `${result.academic_session_name || "Session"} / ${String(result.academic_term_name || "Term").replaceAll("_", " ")}`;
 
-const buildStudentFallback = (items = []) => {
+const buildStudentAnalytics = (items = []) => {
   const finalized = items.filter((item) => item.status === "locked");
   const pending = items.filter((item) => item.status !== "locked");
   const average = finalized.length
@@ -117,12 +117,12 @@ const buildStudentFallback = (items = []) => {
 function renderChart(chart, charts) {
   const data = chartData(charts, chart.key);
   if (chart.kind === "donut") {
-    return <AnalyticsDonutChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No data is available for this chart yet." />;
+    return <AnalyticsDonutChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No finalized result data is available for this chart yet." />;
   }
   if (chart.kind === "line") {
-    return <AnalyticsLineChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No trend data is available yet." />;
+    return <AnalyticsLineChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No finalized result trend is available yet." />;
   }
-  return <AnalyticsBarChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No chart data is available yet." />;
+  return <AnalyticsBarChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No finalized result data is available for this chart yet." />;
 }
 
 export default function RoleAnalyticsPage({ role = "admin" }) {
@@ -140,31 +140,16 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
     async function loadAnalytics() {
       setError(null);
       try {
-        let data = await copy.load({ signal: controller.signal });
-        if (role === "student") {
-          const hasStudentData =
-            Number(data?.stats?.published_results || 0) > 0 ||
-            Object.values(data?.charts || {}).some((value) => Array.isArray(value) && value.length > 0);
-          if (!hasStudentData) {
-            const resultResponse = await academicService.listMyResults({ signal: controller.signal });
-            data = buildStudentFallback(resultResponse?.items || []);
-          }
-        }
+        const data = role === "student"
+          ? buildStudentAnalytics(
+              (await academicService.listMyResults({ signal: controller.signal }))?.items || [],
+            )
+          : await copy.load({ signal: controller.signal });
+
         if (!mounted || controller.signal.aborted) return;
         setAnalytics(data);
       } catch (err) {
         if (!mounted || isAbortError(err)) return;
-        if (role === "student") {
-          try {
-            const resultResponse = await academicService.listMyResults({ signal: controller.signal });
-            if (mounted && !controller.signal.aborted) {
-              setAnalytics(buildStudentFallback(resultResponse?.items || []));
-              return;
-            }
-          } catch {
-            // Preserve the original analytics error below.
-          }
-        }
         setError(getErrorMessage(err, "Failed to load analytics."));
       }
     }
