@@ -229,6 +229,67 @@ class GradingScaleUpdate(InputBase):
         if value is None:
             return None
         normalized = normalize_grade(value)
+
+
+
+
+class AcademicTermResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    name: AcademicTermName
+    start_date: date | None = None
+    end_date: date | None = None
+
+    status: AcademicTermStatus
+    is_current: bool
+
+    opened_at: datetime | None = None
+    closed_at: datetime | None = None
+    opened_by_admin_id: uuid.UUID | None = None
+    closed_by_admin_id: uuid.UUID | None = None
+
+    created_at: datetime
+    updated_at: datetime
+
+
+
+
+class GradingScaleCreate(InputBase):
+    min_score: Decimal = Field(ge=0, le=100)
+    max_score: Decimal = Field(ge=0, le=100)
+    grade: str = Field(min_length=1, max_length=10)
+    remark: str | None = Field(default=None, max_length=100)
+    is_active: bool = True
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str) -> str:
+        normalized = normalize_grade(value)
+        if normalized is None:
+            raise ValueError("grade cannot be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.min_score > self.max_score:
+            raise ValueError("minimum score cannot exceed maximum score")
+        return self
+
+
+class GradingScaleUpdate(InputBase):
+    min_score: Decimal | None = Field(default=None, ge=0, le=100)
+    max_score: Decimal | None = Field(default=None, ge=0, le=100)
+    grade: str | None = Field(default=None, min_length=1, max_length=10)
+    remark: str | None = Field(default=None, max_length=100)
+    is_active: bool | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_grade(value)
         if normalized is None:
             raise ValueError("grade cannot be empty")
         return normalized
@@ -242,6 +303,21 @@ class GradingScaleResponse(OutputBase):
     grade: str
     remark: str | None = None
     is_active: bool
+
+
+class GradingScaleDependencyPreview(OutputBase):
+    scale_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    can_deactivate: bool
+    can_delete: bool
+    blocker_messages: list[str] = []
+
+
+class GradingScaleReadiness(OutputBase):
+    is_ready: bool
+    missing_coverage: list[str] = []
+    overlaps: list[str] = []
+    messages: list[str] = []
 
 
 class ClassSubjectCreate(InputBase):
@@ -402,29 +478,15 @@ class StudentSubjectResultUpsert(InputBase):
     class_subject_teacher_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
-    test_score: Decimal | None = Field(default=None, ge=0, le=100)
-    assessment_score: Decimal | None = Field(default=None, ge=0, le=100)
-    exam_score: Decimal | None = Field(default=None, ge=0, le=100)
+    test_score: Decimal | None = Field(default=None, ge=0)
+    assessment_score: Decimal | None = Field(default=None, ge=0)
+    exam_score: Decimal | None = Field(default=None, ge=0)
     status: AcademicResultStatus = AcademicResultStatus.DRAFT
 
     @model_validator(mode="after")
     def validate_result(self):
         if self.teacher_assignment_id is None and self.class_subject_teacher_id is None:
             raise ValueError("an assignment reference is required")
-        total = sum(
-            (
-                score
-                for score in (
-                    self.test_score,
-                    self.assessment_score,
-                    self.exam_score,
-                )
-                if score is not None
-            ),
-            Decimal("0"),
-        )
-        if total > 100:
-            raise ValueError("combined score cannot exceed 100")
         if self.status == AcademicResultStatus.SUBMITTED and any(
             score is None
             for score in (
@@ -439,6 +501,15 @@ class StudentSubjectResultUpsert(InputBase):
 
 class StudentSubjectResultStatusUpdate(InputBase):
     status: AcademicResultStatus
+
+
+class StudentSubjectResultFilter(InputBase):
+    subject_id: uuid.UUID | None = None
+    status: AcademicResultStatus | None = None
+    search: str | None = None
+    is_complete: bool | None = None
+    has_grade: bool | None = None
+    teacher_assignment_id: uuid.UUID | None = None
 
 
 class StudentSubjectResultReopenRequest(InputBase):

@@ -19,6 +19,7 @@ from app.core.exceptions import ForbiddenException, NotFoundException
 from app.modules.parents.models import Parent
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.models import (
+    AcademicResultStatus,
     AcademicSessionStatus,
     AcademicTermName,
     AcademicTermStatus,
@@ -44,6 +45,7 @@ from app.modules.student_academics.schemas import (
     AcademicTermUpdate,
     GradingScaleCreate,
     GradingScaleListResponse,
+    GradingScaleReadiness,
     GradingScaleResponse,
     GradingScaleUpdate,
     StudentSubjectCardListResponse,
@@ -451,6 +453,53 @@ async def update_grading_scale(
 
 
 @tenant_admin_router.post(
+    "/grading-scales/{scale_id}/activate",
+    response_model=GradingScaleResponse,
+)
+async def activate_grading_scale(
+    scale_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> GradingScaleResponse:
+    return await StudentAcademicService.activate_grading_scale(
+        db,
+        current_admin.tenant_id,
+        scale_id,
+    )
+
+
+@tenant_admin_router.post(
+    "/grading-scales/{scale_id}/deactivate",
+    response_model=GradingScaleResponse,
+)
+async def deactivate_grading_scale(
+    scale_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> GradingScaleResponse:
+    return await StudentAcademicService.deactivate_grading_scale(
+        db,
+        current_admin.tenant_id,
+        scale_id,
+    )
+
+
+@tenant_admin_router.get(
+    "/grading-scales/readiness-preview",
+    response_model=GradingScaleReadiness,
+)
+async def preview_grading_scale_readiness(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> GradingScaleReadiness:
+    return await StudentAcademicService.preview_grading_scale_readiness(
+        db,
+        current_admin.tenant_id,
+    )
+
+
+
+@tenant_admin_router.post(
     "/class-subjects/{class_subject_id}/teacher-assignments",
     response_model=TeacherAssignmentResponse,
     status_code=status.HTTP_201_CREATED,
@@ -615,8 +664,14 @@ async def list_admin_results(
     current_admin: CurrentTenantAdmin,
     student_id: UUID | None = Query(default=None),
     class_id: UUID | None = Query(default=None),
+    teacher_id: UUID | None = Query(default=None),
+    subject_id: UUID | None = Query(default=None),
+    teacher_assignment_id: UUID | None = Query(default=None),
     academic_session_id: UUID | None = Query(default=None),
     academic_term_id: UUID | None = Query(default=None),
+    status: AcademicResultStatus | None = Query(default=None),
+    is_complete: bool | None = Query(default=None),
+    has_grade: bool | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> StudentSubjectResultListResponse:
@@ -627,8 +682,14 @@ async def list_admin_results(
         limit=limit,
         student_id=student_id,
         class_id=class_id,
+        teacher_id=teacher_id,
+        subject_id=subject_id,
+        teacher_assignment_id=teacher_assignment_id,
         academic_session_id=academic_session_id,
         academic_term_id=academic_term_id,
+        status=status,
+        is_complete=is_complete,
+        has_grade=has_grade,
     )
     return StudentSubjectResultListResponse(items=items, total=total)
 

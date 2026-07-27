@@ -679,18 +679,19 @@ class StudentAcademicRepository:
         class_subject_teacher_id: uuid.UUID,
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> StudentSubjectResult | None:
-        return (
-            await db.execute(
-                select(StudentSubjectResult).where(
-                    StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.student_id == student_id,
-                    StudentSubjectResult.class_subject_teacher_id == class_subject_teacher_id,
-                    StudentSubjectResult.academic_session_id == academic_session_id,
-                    StudentSubjectResult.academic_term_id == academic_term_id,
-                )
-            )
-        ).scalar_one_or_none()
+        query = select(StudentSubjectResult).where(
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.student_id == student_id,
+            StudentSubjectResult.class_subject_teacher_id == class_subject_teacher_id,
+            StudentSubjectResult.academic_session_id == academic_session_id,
+            StudentSubjectResult.academic_term_id == academic_term_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def list_results(
@@ -702,8 +703,13 @@ class StudentAcademicRepository:
         student_id: uuid.UUID | None = None,
         class_id: uuid.UUID | None = None,
         teacher_id: uuid.UUID | None = None,
+        subject_id: uuid.UUID | None = None,
+        teacher_assignment_id: uuid.UUID | None = None,
         academic_session_id: uuid.UUID | None = None,
         academic_term_id: uuid.UUID | None = None,
+        status: AcademicResultStatus | None = None,
+        is_complete: bool | None = None,
+        has_grade: bool | None = None,
         finalized_only: bool = False,
     ) -> tuple[list[StudentSubjectResult], int]:
         filters = [StudentSubjectResult.tenant_id == tenant_id]
@@ -713,12 +719,42 @@ class StudentAcademicRepository:
             filters.append(StudentSubjectResult.class_id == class_id)
         if teacher_id is not None:
             filters.append(StudentSubjectResult.teacher_membership_id == teacher_id)
+        if subject_id is not None:
+            filters.append(StudentSubjectResult.subject_id == subject_id)
+        if teacher_assignment_id is not None:
+            filters.append(StudentSubjectResult.teacher_assignment_id == teacher_assignment_id)
         if academic_session_id is not None:
             filters.append(StudentSubjectResult.academic_session_id == academic_session_id)
         if academic_term_id is not None:
             filters.append(StudentSubjectResult.academic_term_id == academic_term_id)
+        if status is not None:
+            filters.append(StudentSubjectResult.status == status)
         if finalized_only:
             filters.append(StudentSubjectResult.status.in_(FINALIZED_RESULT_STATUSES))
+        if is_complete is not None:
+            if is_complete:
+                filters.append(
+                    and_(
+                        StudentSubjectResult.test_score.is_not(None),
+                        StudentSubjectResult.assessment_score.is_not(None),
+                        StudentSubjectResult.exam_score.is_not(None),
+                        StudentSubjectResult.grade.is_not(None),
+                    )
+                )
+            else:
+                filters.append(
+                    or_(
+                        StudentSubjectResult.test_score.is_(None),
+                        StudentSubjectResult.assessment_score.is_(None),
+                        StudentSubjectResult.exam_score.is_(None),
+                        StudentSubjectResult.grade.is_(None),
+                    )
+                )
+        if has_grade is not None:
+            if has_grade:
+                filters.append(StudentSubjectResult.grade.is_not(None))
+            else:
+                filters.append(StudentSubjectResult.grade.is_(None))
         total = (
             await db.execute(
                 select(func.count()).select_from(StudentSubjectResult).where(*filters)

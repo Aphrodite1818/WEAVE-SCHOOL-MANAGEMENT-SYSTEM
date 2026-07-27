@@ -275,6 +275,22 @@ class GradingScale(BaseModel):
     )
 
 
+class SchoolAssessmentConfig(BaseModel):
+    __tablename__ = "school_assessment_configs"
+
+    test_max: Mapped[int] = mapped_column(Integer, default=20, server_default="20", nullable=False)
+    assessment_max: Mapped[int] = mapped_column(Integer, default=20, server_default="20", nullable=False)
+    exam_max: Mapped[int] = mapped_column(Integer, default=60, server_default="60", nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_school_assessment_config_tenant"),
+        CheckConstraint(
+            "test_max + assessment_max + exam_max = 100",
+            name="ck_school_assessment_config_total",
+        ),
+    )
+
+
 class ClassSubject(BaseModel):
     __tablename__ = "class_subjects"
 
@@ -485,8 +501,10 @@ class StudentSubjectResult(BaseModel):
     )
     class_subject_teacher_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("class_subject_teachers.id", ondelete="RESTRICT"), nullable=False, index=True)
     teacher_assignment_id: Mapped[uuid.UUID | None] = mapped_column(UUID, ForeignKey("teacher_assignments.id", ondelete="RESTRICT"), nullable=True, index=True)
+    student_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(UUID, ForeignKey("student_enrollments.id", ondelete="RESTRICT"), nullable=True, index=True)
     academic_session_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("academic_sessions.id", ondelete="RESTRICT"), nullable=False, index=True)
     academic_term_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("academic_terms.id", ondelete="RESTRICT"), nullable=False, index=True)
+    grading_scale_id: Mapped[uuid.UUID | None] = mapped_column(UUID, ForeignKey("grading_scales.id", ondelete="RESTRICT"), nullable=True, index=True)
     test_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     assessment_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     exam_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
@@ -541,6 +559,15 @@ class StudentSubjectResult(BaseModel):
                 AND submitted_by_actor_id IS NOT NULL)
             """,
             name="ck_student_subject_results_submitted_metadata",
+        ),
+        CheckConstraint(
+            """
+            status = 'draft'
+            OR (total_score IS NOT NULL 
+                AND grade IS NOT NULL 
+                AND grading_scale_id IS NOT NULL)
+            """,
+            name="ck_student_subject_results_completeness",
         ),
         CheckConstraint(
             "status NOT IN ('approved', 'locked') OR (approved_at IS NOT NULL AND approved_by_admin_id IS NOT NULL)",
