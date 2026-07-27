@@ -3,7 +3,6 @@ import {
   BookOpen,
   CalendarDays,
   FileText,
-  GitBranch,
   Layers3,
   Pencil,
   Ruler,
@@ -21,7 +20,6 @@ export const academicWorkflowOrder = [
   "grading",
   "results",
   "report-cards",
-  "progression",
 ];
 
 export const academicWorkflowConfig = {
@@ -94,7 +92,8 @@ export const academicWorkflowConfig = {
   sessions: {
     title: "Academic Sessions",
     shortTitle: "Sessions",
-    description: "Create, edit, open, and close academic sessions with progression.",
+    description:
+      "Audit readiness, pause writes, run background progression, and finalize closure from one controlled workflow.",
     icon: CalendarDays,
     tone: "primary",
     defaultTab: "overview",
@@ -103,6 +102,7 @@ export const academicWorkflowConfig = {
       { id: "create", label: "Create Session" },
       { id: "draft", label: "Draft Sessions" },
       { id: "open", label: "Open Session" },
+      { id: "closing", label: "Closing" },
       { id: "closed", label: "Closed Sessions" },
     ],
   },
@@ -170,22 +170,6 @@ export const academicWorkflowConfig = {
       { id: "published", label: "Published Cards" },
       { id: "outdated", label: "Outdated Cards" },
       { id: "archived", label: "Archived Versions" },
-    ],
-  },
-  progression: {
-    title: "Student Progression",
-    shortTitle: "Progression",
-    description:
-      "Plan and review session progression using PROMOTE, REPEAT, GRADUATE, and SKIP outcomes.",
-    icon: GitBranch,
-    tone: "accent",
-    defaultTab: "overview",
-    tabs: [
-      { id: "overview", label: "Overview" },
-      { id: "plan", label: "Plan Progression" },
-      { id: "completed", label: "Completed Runs" },
-      { id: "failed", label: "Failed Runs" },
-      { id: "outcomes", label: "Student Outcomes" },
     ],
   },
 };
