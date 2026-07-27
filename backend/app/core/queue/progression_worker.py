@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from app.modules import import_model_modules
@@ -13,6 +14,13 @@ from app.config.database import AsyncSessionLocal, engine  # noqa: E402
 from app.core.queue.arq import (  # noqa: E402
     SESSION_PROGRESSION_QUEUE_NAME,
     get_arq_redis_settings,
+)
+from app.modules.announcements.models import AnnouncementPriority  # noqa: E402
+from app.modules.student_academics.lifecycle_repository import (  # noqa: E402
+    StudentProgressionRepository,
+)
+from app.modules.student_academics.models import (  # noqa: E402
+    StudentProgressionRunStatus,
 )
 from app.modules.student_academics.session_closure_service import (  # noqa: E402
     SessionClosureService,
@@ -39,16 +47,46 @@ async def process_session_progression_job(
     """
 
     _ = ctx
+    parsed_run_id = uuid.UUID(run_id)
+    parsed_tenant_id = uuid.UUID(tenant_id)
     async with AsyncSessionLocal() as db:
         try:
             return await SessionClosureService.process_progression_run(
                 db,
-                tenant_id=uuid.UUID(tenant_id),
-                run_id=uuid.UUID(run_id),
+                tenant_id=parsed_tenant_id,
+                run_id=parsed_run_id,
             )
-        except Exception:
+        except Exception as exc:
             await db.rollback()
-            raise
+
+    # Persist terminal worker failure outside the rolled-back processing transaction.
+    async with AsyncSessionLocal() as failure_db:
+        run = await StudentProgressionRepository.get_run_by_id(
+            failure_db,
+            parsed_tenant_id,
+            parsed_run_id,
+            lock=True,
+        )
+        if run is not None and run.status != StudentProgressionRunStatus.COMPLETED:
+            run.status = StudentProgressionRunStatus.FAILED
+            run.completed_at = datetime.now(timezone.utc)
+            run.failed_students = max(run.failed_students, 1)
+            run.failure_reason = str(exc)[:1000]
+            await StudentProgressionRepository.save_run(failure_db, run)
+            if run.initiated_by_admin_id is not None:
+                await SessionClosureService._broadcast(
+                    failure_db,
+                    tenant_id=parsed_tenant_id,
+                    actor_id=run.initiated_by_admin_id,
+                    title="Academic session progression failed",
+                    body=(
+                        "The session remains in closing and academic writes remain paused. "
+                        f"Review the progression status before retrying. Reason: {str(exc)[:500]}"
+                    ),
+                    priority=AnnouncementPriority.URGENT,
+                )
+            await failure_db.commit()
+        raise exc
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
