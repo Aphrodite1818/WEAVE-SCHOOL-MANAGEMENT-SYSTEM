@@ -11,7 +11,9 @@ from typing import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from alembic import context
 from sqlalchemy.dialects import postgresql
+from sqlalchemy import inspect
 
 revision: str = "20260728_school_calendar"
 down_revision: str | Sequence[str] | None = "270287aab63d"
@@ -24,17 +26,31 @@ def _create_enum(name: str, values: tuple[str, ...]) -> postgresql.ENUM:
     return postgresql.ENUM(*values, name=name, schema="public", create_type=False)
 
 
+def _table_exists(table_name: str) -> bool:
+    if context.is_offline_mode():
+        return True
+    return inspect(op.get_bind()).has_table(table_name, schema="public")
+
+
+def _column_exists(table_name: str, column_name: str) -> bool:
+    if context.is_offline_mode():
+        return True
+    inspector = inspect(op.get_bind())
+    return any(column["name"] == column_name for column in inspector.get_columns(table_name, schema="public"))
+
+
 def upgrade() -> None:
     # PostgreSQL cannot use a newly-added enum label in later DDL in the same
     # transaction on older supported versions. Add it outside the migration
     # transaction before constraints reference the value.
     with op.get_context().autocommit_block():
         op.execute("ALTER TYPE public.academic_term_status ADD VALUE IF NOT EXISTS 'closing'")
-    op.add_column(
-        "academic_terms",
-        sa.Column("closing_started_at", sa.DateTime(timezone=True), nullable=True),
-        schema="public",
-    )
+    if not _column_exists("academic_terms", "closing_started_at"):
+        op.add_column(
+            "academic_terms",
+            sa.Column("closing_started_at", sa.DateTime(timezone=True), nullable=True),
+            schema="public",
+        )
     op.drop_constraint("ck_academic_term_status_timestamps", "academic_terms", schema="public", type_="check")
     op.execute(
         """
@@ -83,6 +99,9 @@ def upgrade() -> None:
         """,
         schema="public",
     )
+
+    if _table_exists("school_calendar_configurations"):
+        return
 
     calendar_status = _create_enum("school_calendar_status", ("draft", "active", "archived"))
     day_type = _create_enum(
@@ -280,21 +299,26 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_school_calendar_lifecycle_audits_tenant_entity", table_name="school_calendar_lifecycle_audits", schema="public")
-    op.drop_index("ix_school_calendar_lifecycle_audits_tenant_action", table_name="school_calendar_lifecycle_audits", schema="public")
-    op.drop_table("school_calendar_lifecycle_audits", schema="public")
-    op.drop_index("ix_school_calendar_events_tenant_status_start", table_name="school_calendar_events", schema="public")
-    op.drop_table("school_calendar_events", schema="public")
-    op.drop_index("ix_public_school_calendar_days_calendar_id", table_name="school_calendar_days", schema="public")
-    op.drop_index("ix_school_calendar_days_tenant_term_date", table_name="school_calendar_days", schema="public")
-    op.drop_index("ix_school_calendar_days_tenant_date", table_name="school_calendar_days", schema="public")
-    op.drop_table("school_calendar_days", schema="public")
-    op.drop_index("uq_school_calendars_active_term", table_name="school_calendars", schema="public")
-    op.drop_index("ix_public_school_calendars_academic_term_id", table_name="school_calendars", schema="public")
-    op.drop_index("ix_public_school_calendars_academic_session_id", table_name="school_calendars", schema="public")
-    op.drop_index("ix_school_calendars_tenant_status", table_name="school_calendars", schema="public")
-    op.drop_table("school_calendars", schema="public")
-    op.drop_table("school_calendar_configurations", schema="public")
+    if _table_exists("school_calendar_lifecycle_audits"):
+        op.execute("DROP INDEX IF EXISTS public.ix_school_calendar_lifecycle_audits_tenant_entity")
+        op.execute("DROP INDEX IF EXISTS public.ix_school_calendar_lifecycle_audits_tenant_action")
+        op.drop_table("school_calendar_lifecycle_audits", schema="public")
+    if _table_exists("school_calendar_events"):
+        op.execute("DROP INDEX IF EXISTS public.ix_school_calendar_events_tenant_status_start")
+        op.drop_table("school_calendar_events", schema="public")
+    if _table_exists("school_calendar_days"):
+        op.execute("DROP INDEX IF EXISTS public.ix_public_school_calendar_days_calendar_id")
+        op.execute("DROP INDEX IF EXISTS public.ix_school_calendar_days_tenant_term_date")
+        op.execute("DROP INDEX IF EXISTS public.ix_school_calendar_days_tenant_date")
+        op.drop_table("school_calendar_days", schema="public")
+    if _table_exists("school_calendars"):
+        op.execute("DROP INDEX IF EXISTS public.uq_school_calendars_active_term")
+        op.execute("DROP INDEX IF EXISTS public.ix_public_school_calendars_academic_term_id")
+        op.execute("DROP INDEX IF EXISTS public.ix_public_school_calendars_academic_session_id")
+        op.execute("DROP INDEX IF EXISTS public.ix_school_calendars_tenant_status")
+        op.drop_table("school_calendars", schema="public")
+    if _table_exists("school_calendar_configurations"):
+        op.drop_table("school_calendar_configurations", schema="public")
     for enum_name in (
         "school_calendar_event_status",
         "school_calendar_event_audience",
@@ -315,6 +339,7 @@ def downgrade() -> None:
         """,
         schema="public",
     )
-    op.drop_column("academic_terms", "closing_started_at", schema="public")
+    if _column_exists("academic_terms", "closing_started_at"):
+        op.drop_column("academic_terms", "closing_started_at", schema="public")
     # PostgreSQL cannot remove enum values safely without recreating the type;
     # leave 'closing' in place on downgrade to avoid corrupting existing data.

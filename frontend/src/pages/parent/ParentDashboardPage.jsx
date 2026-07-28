@@ -29,6 +29,7 @@ import useParentChildren from "./useParentChildren";
 function ParentDashboardPage() {
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Parent";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
   const {
     children,
     selectedChildId,
@@ -271,7 +272,7 @@ function ParentDashboardPage() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <DashboardCalendarPanel role="parent" />
+            <DashboardCalendarPanel role="parent" actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
             <DashboardListCard
               title="Family calendar"
               description="Parent-visible events and school day status."

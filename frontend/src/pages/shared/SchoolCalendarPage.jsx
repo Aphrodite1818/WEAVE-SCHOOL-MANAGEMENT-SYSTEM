@@ -14,7 +14,7 @@ import {
   dayTypeLabel,
   formatCalendarDate,
 } from "../../features/schoolCalendar/utils/calendarDisplay";
-import { getErrorMessage, isAbortError } from "../../services/api";
+import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 
 const asItems = (response) => (Array.isArray(response?.items) ? response.items : []);
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -64,6 +64,8 @@ function SchoolCalendarPage({ role = "student" }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const copy = titles[role] || titles.student;
+  const user = authSession.getUser() || {};
+  const calendarScope = `${role}:${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
 
   const loadCalendar = useCallback(async ({ signal, quiet = false, startDate = rangeStart, endDate = rangeEnd } = {}) => {
     if (quiet) setRefreshing(true);
@@ -104,7 +106,7 @@ function SchoolCalendarPage({ role = "student" }) {
     const controller = new AbortController();
     loadCalendar({ signal: controller.signal });
     return () => controller.abort();
-  }, [loadCalendar]);
+  }, [calendarScope, loadCalendar]);
 
   return (
     <DashboardLayout

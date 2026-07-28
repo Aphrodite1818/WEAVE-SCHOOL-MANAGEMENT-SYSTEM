@@ -12,6 +12,7 @@ from app.modules.school_calendar.calendar_enums import SchoolCalendarDaySource, 
 from app.modules.school_calendar.models import SchoolCalendar, SchoolCalendarDay
 from app.modules.school_calendar.schemas import (
     SchoolCalendarConfigurationCreate,
+    SchoolCalendarConfigurationUpdate,
     SchoolCalendarDayUpdate,
     SchoolCalendarEmergencyClosureRequest,
     SchoolCalendarGenerateRequest,
@@ -31,6 +32,11 @@ from app.modules.student_academics.models import (
 def test_calendar_configuration_rejects_duplicate_weekdays() -> None:
     with pytest.raises(ValueError):
         SchoolCalendarConfigurationCreate(instructional_weekdays=[0, 1, 1, 2])
+
+
+def test_calendar_configuration_rejects_invalid_timezone() -> None:
+    with pytest.raises(ValueError, match="invalid timezone"):
+        SchoolCalendarConfigurationUpdate(timezone="Not/AZone")
 
 
 def test_calendar_day_update_blocks_impossible_attendance_combination() -> None:
@@ -240,6 +246,47 @@ async def test_calendar_activation_preview_blocks_outdated_configuration() -> No
     assert preview.can_activate is False
     assert preview.configuration_outdated is True
     assert "CONFIGURATION_OUTDATED" in preview.blocker_codes
+
+
+@pytest.mark.asyncio
+async def test_configuration_revision_does_not_increment_for_noop_save() -> None:
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    config = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        timezone="Africa/Lagos",
+        instructional_weekdays=[0, 1, 2, 3, 4],
+        default_open_time=time(8, 0),
+        default_close_time=time(15, 0),
+        default_student_attendance_required=True,
+        default_workforce_attendance_required=True,
+        revision=3,
+        created_at=now,
+        updated_at=now,
+    )
+
+    with (
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_configuration", new=AsyncMock(return_value=config)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.update_configuration", new=AsyncMock()) as update_config,
+    ):
+        response = await SchoolCalendarService.upsert_configuration(
+            AsyncMock(),
+            tenant_id=tenant_id,
+            payload=SchoolCalendarConfigurationUpdate(
+                timezone="Africa/Lagos",
+                instructional_weekdays=[0, 1, 2, 3, 4],
+                default_open_time=time(8, 0),
+                default_close_time=time(15, 0),
+                default_student_attendance_required=True,
+                default_workforce_attendance_required=True,
+            ),
+            acting_admin_id=admin_id,
+        )
+
+    update_config.assert_not_awaited()
+    assert response.revision == 3
 
 
 @pytest.mark.asyncio
@@ -650,3 +697,116 @@ async def test_calendar_generation_serializes_slotted_counts() -> None:
     assert response.instructional_days == 5
     assert response.generated_days_created == 5
     assert audit_records[0].metadata_json["counts"]["total_days"] == 5
+
+
+@pytest.mark.asyncio
+async def test_regeneration_keeps_calendar_outdated_when_generated_days_are_skipped() -> None:
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    term_id = uuid.uuid4()
+    calendar_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    db = AsyncMock()
+    session = AcademicSession(
+        id=session_id,
+        tenant_id=tenant_id,
+        name="2026/2027",
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+    )
+    term = AcademicTerm(
+        id=term_id,
+        tenant_id=tenant_id,
+        academic_session_id=session_id,
+        name=AcademicTermName.FIRST_TERM,
+        start_date=date(2026, 1, 5),
+        end_date=date(2026, 1, 5),
+        status=AcademicTermStatus.DRAFT,
+        is_current=False,
+    )
+    calendar = SchoolCalendar(
+        id=calendar_id,
+        tenant_id=tenant_id,
+        academic_session_id=session_id,
+        academic_term_id=term_id,
+        status=SchoolCalendarStatus.DRAFT,
+        generated_at=now,
+        generated_from_configuration_revision=1,
+        created_at=now,
+        updated_at=now,
+    )
+    existing_day = SchoolCalendarDay(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        calendar_id=calendar_id,
+        academic_session_id=session_id,
+        academic_term_id=term_id,
+        calendar_date=date(2026, 1, 5),
+        day_type=SchoolCalendarDayType.INSTRUCTIONAL_DAY,
+        school_open=True,
+        student_activity_allowed=True,
+        student_attendance_required=True,
+        workforce_attendance_required=True,
+        source=SchoolCalendarDaySource.GENERATED,
+        is_manual_override=False,
+        created_at=now,
+        updated_at=now,
+    )
+    calendar_response = SchoolCalendarResponse(
+        id=calendar_id,
+        tenant_id=tenant_id,
+        academic_session_id=session_id,
+        academic_term_id=term_id,
+        status=SchoolCalendarStatus.DRAFT,
+        generated_at=now,
+        generated_from_configuration_revision=1,
+        activated_at=None,
+        activated_by_admin_id=None,
+        archived_at=None,
+        archived_by_admin_id=None,
+        configuration_outdated=True,
+        created_at=now,
+        updated_at=now,
+    )
+
+    with (
+        patch("app.modules.school_calendar.generation_service.StudentAcademicRepository.get_academic_session_by_id", new=AsyncMock(return_value=session)),
+        patch("app.modules.school_calendar.generation_service.StudentAcademicRepository.get_term_by_id", new=AsyncMock(return_value=term)),
+        patch(
+            "app.modules.school_calendar.generation_service.SchoolCalendarRepository.get_configuration",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    revision=2,
+                    instructional_weekdays=[0, 1, 2, 3, 4],
+                    default_open_time=time(8, 0),
+                    default_close_time=time(15, 0),
+                    default_student_attendance_required=True,
+                    default_workforce_attendance_required=True,
+                )
+            ),
+        ),
+        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.get_calendar_by_term", new=AsyncMock(return_value=calendar)),
+        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.save_calendar", new=AsyncMock(return_value=calendar)),
+        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.list_days_by_range", new=AsyncMock(return_value=[existing_day])),
+        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.bulk_insert_days", new=AsyncMock(return_value=[])),
+        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.add_audit", new=AsyncMock()),
+        patch("app.modules.school_calendar.service.SchoolCalendarService.build_calendar_response", new=AsyncMock(return_value=calendar_response)),
+    ):
+        response = await SchoolCalendarGenerationService.generate(
+            db,
+            tenant_id=tenant_id,
+            payload=SchoolCalendarGenerateRequest(
+                academic_session_id=session_id,
+                academic_term_id=term_id,
+                overwrite_generated_days=False,
+            ),
+            acting_admin_id=admin_id,
+        )
+
+    assert response.generated_days_updated == 0
+    assert calendar.generated_from_configuration_revision == 1
+    assert response.calendar.configuration_outdated is True
+    assert response.warnings

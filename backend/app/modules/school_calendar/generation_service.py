@@ -83,6 +83,7 @@ class SchoolCalendarGenerationService:
 
         calendar = await SchoolCalendarRepository.get_calendar_by_term(db, tenant_id, term.id)
         now = _utc_now()
+        configuration_revision = getattr(config, "revision", 1)
         if calendar is None:
             calendar = await SchoolCalendarRepository.save_calendar(
                 db,
@@ -92,14 +93,13 @@ class SchoolCalendarGenerationService:
                     academic_term_id=term.id,
                     status=SchoolCalendarStatus.DRAFT,
                     generated_at=now,
-                    generated_from_configuration_revision=getattr(config, "revision", 1),
+                    generated_from_configuration_revision=configuration_revision,
                 ),
             )
         elif calendar.status != SchoolCalendarStatus.DRAFT:
             raise ConflictException("Only draft calendars can be regenerated.")
         else:
             calendar.generated_at = now
-            calendar.generated_from_configuration_revision = getattr(config, "revision", 1)
             await SchoolCalendarRepository.save_calendar(db, calendar)
 
         existing_days = {
@@ -116,6 +116,7 @@ class SchoolCalendarGenerationService:
         counts = GenerationCounts()
         new_days: list[SchoolCalendarDay] = []
         warnings: list[str] = []
+        generated_days_skipped = 0
 
         for target_date in SchoolCalendarGenerationService._iter_dates(term.start_date, term.end_date):
             is_instructional = target_date.weekday() in set(config.instructional_weekdays)
@@ -136,6 +137,7 @@ class SchoolCalendarGenerationService:
                 counts.manual_days_preserved += 1
                 continue
             if existing is not None and not payload.overwrite_generated_days:
+                generated_days_skipped += 1
                 continue
             if existing is not None:
                 existing.day_type = day_type
@@ -172,6 +174,13 @@ class SchoolCalendarGenerationService:
 
         if new_days:
             await SchoolCalendarRepository.bulk_insert_days(db, new_days)
+        if generated_days_skipped:
+            warnings.append(
+                "Generated days were skipped because overwrite_generated_days is false; regenerate with overwrite to make the calendar current."
+            )
+        else:
+            calendar.generated_from_configuration_revision = configuration_revision
+            await SchoolCalendarRepository.save_calendar(db, calendar)
         count_payload = asdict(counts)
 
         await SchoolCalendarRepository.add_audit(

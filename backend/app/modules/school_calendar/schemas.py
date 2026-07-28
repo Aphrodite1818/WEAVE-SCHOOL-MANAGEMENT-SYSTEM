@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, time
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -36,6 +37,14 @@ def _validate_weekdays(values: list[int]) -> list[int]:
     return sorted(values)
 
 
+def _validate_timezone(value: str) -> str:
+    try:
+        ZoneInfo(value)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError("invalid timezone") from exc
+    return value
+
+
 class SchoolCalendarConfigurationCreate(CalendarInputBase):
     timezone: str = Field(default="Africa/Lagos", min_length=3, max_length=80)
     instructional_weekdays: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
@@ -48,6 +57,11 @@ class SchoolCalendarConfigurationCreate(CalendarInputBase):
     @classmethod
     def validate_weekdays(cls, values: list[int]) -> list[int]:
         return _validate_weekdays(values)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return _validate_timezone(value)
 
     @model_validator(mode="after")
     def validate_times(self):
@@ -68,6 +82,11 @@ class SchoolCalendarConfigurationUpdate(CalendarInputBase):
     @classmethod
     def validate_weekdays(cls, values: list[int] | None) -> list[int] | None:
         return None if values is None else _validate_weekdays(values)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        return None if value is None else _validate_timezone(value)
 
     @model_validator(mode="after")
     def validate_update(self):

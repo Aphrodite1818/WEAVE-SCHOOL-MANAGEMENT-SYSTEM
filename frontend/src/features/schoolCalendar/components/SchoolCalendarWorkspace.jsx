@@ -66,6 +66,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [configForm, setConfigForm] = useState({
+    timezone: "Africa/Lagos",
     instructional_weekdays: [0, 1, 2, 3, 4],
     default_open_time: "08:00",
     default_close_time: "15:00",
@@ -88,6 +89,8 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
     location: "",
   });
   const [eventStatus, setEventStatus] = useState("");
+  const [eventAudience, setEventAudience] = useState("");
+  const [editingEventId, setEditingEventId] = useState("");
   const [editingDay, setEditingDay] = useState(null);
   const [dayForm, setDayForm] = useState({
     day_type: "instructional_day",
@@ -151,6 +154,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
       });
       if (configResponse) {
         setConfigForm({
+          timezone: configResponse.timezone || "Africa/Lagos",
           instructional_weekdays: configResponse.instructional_weekdays || [0, 1, 2, 3, 4],
           default_open_time: configResponse.default_open_time || "08:00",
           default_close_time: configResponse.default_close_time || "15:00",
@@ -184,6 +188,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
           start_date: rangeStart,
           end_date: rangeEnd,
           status: eventStatus || undefined,
+          audience: eventAudience || undefined,
         }),
       ]);
       setDays(asItems(dayResponse));
@@ -193,7 +198,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
     } finally {
       setDetailsLoading(false);
     }
-  }, [eventStatus, rangeEnd, rangeStart, selectedCalendarId]);
+  }, [eventAudience, eventStatus, rangeEnd, rangeStart, selectedCalendarId]);
 
   useEffect(() => {
     load();
@@ -245,13 +250,24 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   };
 
   const generateCalendar = () => {
+    const isRegeneration = Boolean(selectedCalendar?.generated_at);
+    if (isRegeneration) {
+      const generatedDays = days.filter((day) => !day.is_manual_override).length;
+      const manualOverrides = days.filter((day) => day.is_manual_override).length;
+      const fromRevision = selectedCalendar.generated_from_configuration_revision || "none";
+      const toRevision = configuration?.revision || "current";
+      const confirmed = window.confirm(
+        `Regenerate Calendar?\n\nGenerated days to update: ${generatedDays}\nManual overrides preserved: ${manualOverrides}\nConfiguration revision change: ${fromRevision} -> ${toRevision}`,
+      );
+      if (!confirmed) return;
+    }
     runAction(
       "generate",
       () =>
         schoolCalendarService.generateCalendar({
           academic_session_id: selectedSessionId,
           academic_term_id: selectedTermId,
-          overwrite_generated_days: Boolean(selectedCalendar?.generated_at),
+          overwrite_generated_days: isRegeneration,
         }),
       generationResultMessage,
     );
@@ -272,17 +288,52 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
 
   const createEvent = (event) => {
     event.preventDefault();
+    const eventPayload = {
+      ...eventForm,
+      starts_at: new Date(eventForm.starts_at).toISOString(),
+      ends_at: new Date(eventForm.ends_at).toISOString(),
+    };
+    if (editingEventId) {
+      runAction(
+        "event",
+        () => schoolCalendarService.updateEvent(editingEventId, eventPayload),
+        "Calendar event updated.",
+      ).then(() => setEditingEventId(""));
+      return;
+    }
     runAction(
       "event",
-      () =>
-        schoolCalendarService.createEvent({
-          ...eventForm,
-          calendar_id: selectedCalendarId,
-          starts_at: new Date(eventForm.starts_at).toISOString(),
-          ends_at: new Date(eventForm.ends_at).toISOString(),
-        }),
+      () => schoolCalendarService.createEvent({ ...eventPayload, calendar_id: selectedCalendarId }),
       "Calendar event created as draft.",
     );
+  };
+
+  const startEventEdit = (item) => {
+    setEditingEventId(item.id);
+    setEventForm({
+      title: item.title || "",
+      description: item.description || "",
+      event_type: item.event_type || "academic",
+      audience: item.audience || "all",
+      is_all_day: Boolean(item.is_all_day),
+      starts_at: String(item.starts_at || "").slice(0, 16),
+      ends_at: String(item.ends_at || "").slice(0, 16),
+      location: item.location || "",
+    });
+  };
+
+  const resetEventForm = () => {
+    setEditingEventId("");
+    setEventForm({
+      title: "",
+      description: "",
+      event_type: "academic",
+      audience: "all",
+      is_all_day: false,
+      starts_at: `${todayIso()}T08:00`,
+      ends_at: `${todayIso()}T09:00`,
+      location: "",
+    });
   };
 
   const openDayEditor = (day) => {
@@ -345,6 +396,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
           selectedSession={selectedSession}
           selectedTerm={selectedTerm}
           selectedCalendar={selectedCalendar}
+          days={days}
           configForm={configForm}
           configuration={configuration}
           busy={busy}
@@ -402,13 +454,18 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
           events={events}
           eventForm={eventForm}
           eventStatus={eventStatus}
+          eventAudience={eventAudience}
+          editingEventId={editingEventId}
           selectedCalendarId={selectedCalendarId}
           busy={busy}
           saving={saving}
           onCalendarChange={setSelectedCalendarId}
           onEventChange={setEventForm}
           onStatusChange={setEventStatus}
+          onAudienceChange={setEventAudience}
           onCreate={createEvent}
+          onEdit={startEventEdit}
+          onCancelEdit={resetEventForm}
           onPublish={(eventId) =>
             runAction("event-action", () => schoolCalendarService.publishEvent(eventId), "Calendar event published.")
           }
@@ -464,6 +521,7 @@ function SetupTab({
   selectedSession,
   selectedTerm,
   selectedCalendar,
+  days,
   configForm,
   configuration,
   busy,
@@ -484,6 +542,9 @@ function SetupTab({
     ["Activate calendar", false],
     ["Open term", selectedCalendar?.status === "active"],
   ];
+  const isRegeneration = Boolean(selectedCalendar?.generated_at);
+  const generatedDays = days.filter((day) => !day.is_manual_override).length;
+  const manualOverrides = days.filter((day) => day.is_manual_override).length;
 
   return (
     <WorkspacePanel title="Calendar Setup">
@@ -524,13 +585,20 @@ function SetupTab({
             })}
           </div>
 
+          {isRegeneration ? (
+            <div className="rounded-lg border border-warning/40 bg-warning-soft px-3 py-3 text-sm font-medium text-amber-950">
+              Regeneration will update {generatedDays} generated day{generatedDays === 1 ? "" : "s"}, preserve {manualOverrides} manual override{manualOverrides === 1 ? "" : "s"}, and move revision {selectedCalendar.generated_from_configuration_revision || "none"} to {configuration?.revision || "current"} after confirmation.
+            </div>
+          ) : null}
+
           <Button type="button" onClick={onGenerate} disabled={busy || !selectedSessionId || !selectedTermId}>
             <RefreshCw className="h-4 w-4" />
-            {saving === "generate" ? "Generating..." : "Generate Calendar"}
+            {saving === "generate" ? "Generating..." : isRegeneration ? "Regenerate Calendar" : "Generate Calendar"}
           </Button>
         </div>
 
         <form className="space-y-4" onSubmit={onSave}>
+          <Input label="Timezone" value={configForm.timezone || ""} onChange={(event) => onConfigChange((current) => ({ ...current, timezone: event.target.value }))} />
           <WeekdayPicker
             value={configForm.instructional_weekdays}
             onChange={(instructional_weekdays) => onConfigChange((current) => ({ ...current, instructional_weekdays }))}
@@ -704,19 +772,24 @@ function EventsTab({
   events,
   eventForm,
   eventStatus,
+  eventAudience,
+  editingEventId,
   selectedCalendarId,
   busy,
   saving,
   onCalendarChange,
   onEventChange,
   onStatusChange,
+  onAudienceChange,
   onCreate,
+  onEdit,
+  onCancelEdit,
   onPublish,
   onCancel,
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.85fr)_minmax(0,1.35fr)]">
-      <WorkspacePanel title="Create Event" description="Create a draft calendar event for the selected generated calendar.">
+      <WorkspacePanel title={editingEventId ? "Edit Event" : "Create Event"} description="Create or edit calendar events for the selected generated calendar.">
         <form className="space-y-4" onSubmit={onCreate}>
           <SelectControl
             label="Calendar"
@@ -734,14 +807,17 @@ function EventsTab({
             <Input label="Ends" type="datetime-local" value={eventForm.ends_at} onChange={(event) => onEventChange((current) => ({ ...current, ends_at: event.target.value }))} />
           </div>
           <Input label="Location" value={eventForm.location} onChange={(event) => onEventChange((current) => ({ ...current, location: event.target.value }))} />
-          <Button type="submit" disabled={busy || !selectedCalendarId || !eventForm.title}>
-            {saving === "event" ? "Adding..." : "Add Event"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={busy || !selectedCalendarId || !eventForm.title}>
+              {saving === "event" ? "Saving..." : editingEventId ? "Save Event" : "Add Event"}
+            </Button>
+            {editingEventId ? <Button type="button" variant="outline" onClick={onCancelEdit} disabled={busy}>Cancel Edit</Button> : null}
+          </div>
         </form>
       </WorkspacePanel>
 
       <WorkspacePanel title="Event List" description="Review events in the currently selected calendar range.">
-        <div className="mb-4 max-w-xs">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <SelectControl
             label="Status"
             value={eventStatus}
@@ -753,12 +829,26 @@ function EventsTab({
               { value: "cancelled", label: "Cancelled" },
             ]}
           />
+          <SelectControl
+            label="Audience"
+            value={eventAudience}
+            onChange={onAudienceChange}
+            options={[
+              { value: "", label: "All audiences" },
+              { value: "all", label: "All" },
+              { value: "tenant_admins", label: "Admins" },
+              { value: "teachers", label: "Teachers" },
+              { value: "parents", label: "Parents" },
+              { value: "students", label: "Students" },
+            ]}
+          />
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           {events.length ? events.map((event) => (
             <div key={event.id} className="space-y-2">
               <CalendarEventCard event={event} compact />
               <div className="flex flex-wrap gap-2">
+                {event.status !== "cancelled" ? <Button type="button" size="small" variant="outline" onClick={() => onEdit(event)} disabled={busy}>Edit</Button> : null}
                 {event.status === "draft" ? <Button type="button" size="small" onClick={() => onPublish(event.id)} disabled={busy}>Publish</Button> : null}
                 {event.status !== "cancelled" ? <Button type="button" size="small" variant="outline" onClick={() => onCancel(event.id)} disabled={busy}>Cancel</Button> : null}
               </div>

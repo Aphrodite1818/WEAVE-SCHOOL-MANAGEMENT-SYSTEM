@@ -33,6 +33,7 @@ function TeacherDashboardPage() {
   const [loadError, setLoadError] = useState(null);
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Teacher";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
 
   useEffect(() => {
     let mounted = true;
@@ -175,7 +176,7 @@ function TeacherDashboardPage() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <DashboardCalendarPanel role="teacher" />
+            <DashboardCalendarPanel role="teacher" actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
             <DashboardListCard
               title="Calendar notes"
               description="Read-only school schedule context for planning."

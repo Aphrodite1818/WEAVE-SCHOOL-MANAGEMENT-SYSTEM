@@ -48,6 +48,7 @@ function AdminDashboardPage() {
   const { getFeatureGuard, planCode } = useSubscription();
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
   const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
   const bulkImportGuard = getFeatureGuard(FEATURE_CODES.BULK_IMPORT);
   const canShowBulkImport = bulkImportGuard.allowed && String(planCode || "").toLowerCase() !== "free_trial";
@@ -240,7 +241,7 @@ function AdminDashboardPage() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <DashboardCalendarPanel role="admin" admin />
+            <DashboardCalendarPanel role="admin" admin actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
             <DashboardListCard
               title="Calendar quick actions"
               description="Use backend blockers and capability states before changing lifecycle."

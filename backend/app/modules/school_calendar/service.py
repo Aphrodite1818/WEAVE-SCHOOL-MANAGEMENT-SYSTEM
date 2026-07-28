@@ -58,10 +58,25 @@ def _utc_now() -> datetime:
 
 
 def _safe_zoneinfo(value: str | None) -> ZoneInfo:
+    # Runtime fallback is only for missing/legacy persisted configuration.
     try:
         return ZoneInfo(value or "Africa/Lagos")
     except ZoneInfoNotFoundError:
         return ZoneInfo("Africa/Lagos")
+
+
+CONFIGURATION_REVISION_FIELDS = {
+    "instructional_weekdays",
+    "timezone",
+    "default_open_time",
+    "default_close_time",
+    "default_student_attendance_required",
+    "default_workforce_attendance_required",
+}
+
+
+def _configuration_values(config: SchoolCalendarConfiguration) -> dict[str, object]:
+    return {field: getattr(config, field) for field in CONFIGURATION_REVISION_FIELDS}
 
 
 class LifecycleReadinessContribution(dict):
@@ -173,9 +188,17 @@ class SchoolCalendarService:
                 acting_admin_id=acting_admin_id,
             )
         previous = SchoolCalendarConfigurationResponse.model_validate(config).model_dump(mode="json")
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        before_revision_values = _configuration_values(config)
+        update_data = payload.model_dump(exclude_unset=True)
+        changed = False
+        for field, value in update_data.items():
+            if getattr(config, field) != value:
+                changed = True
             setattr(config, field, value)
-        config.revision += 1
+        if not changed:
+            return SchoolCalendarConfigurationResponse.model_validate(config)
+        if any(before_revision_values[field] != getattr(config, field) for field in CONFIGURATION_REVISION_FIELDS):
+            config.revision += 1
         config = await SchoolCalendarRepository.update_configuration(db, config)
         await SchoolCalendarService._audit(
             db,
