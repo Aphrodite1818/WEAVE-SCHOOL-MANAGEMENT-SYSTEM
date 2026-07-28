@@ -5,6 +5,7 @@ import StudentChangePasswordPage from "../pages/student/StudentChangePasswordPag
 import StudentDashboardPage from "../pages/student/StudentDashboardPage";
 import StudentParentLinkingPage from "../pages/student/StudentParentLinkingPage";
 import StudentReportCardsPage from "../pages/student/StudentReportCardsPage";
+import StudentAttendancePage from "../pages/student/StudentAttendancePage";
 import StudentSubjectDetailsPage from "../pages/student/StudentSubjectDetailsPage";
 import StudentSubjectsPage from "../pages/student/StudentSubjectsPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
@@ -26,6 +27,7 @@ export const studentRoutes = (
       <Route path="/student/subjects/:subjectResultId" element={<StudentSubjectDetailsPage />} />
       <Route path="/student/parent-linking" element={<StudentParentLinkingPage />} />
       <Route path="/student/report-cards" element={<StudentReportCardsPage />} />
+      <Route path="/student/attendance" element={<StudentAttendancePage />} />
       <Route path="/student/calendar" element={<SchoolCalendarPage role="student" />} />
       <Route path="/student/timetable" element={<SchoolCalendarPage role="student" />} />
       <Route path="/student/assignments" element={<StaticModulePage role="student" title="Assignments" description="Track assigned work and due dates." />} />

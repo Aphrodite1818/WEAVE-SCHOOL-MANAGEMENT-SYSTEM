@@ -17,6 +17,7 @@ from app.config.settings import settings
 EMAIL_QUEUE_NAME = "weave:queue:email"
 BULK_IMPORT_QUEUE_NAME = "weave:queue:bulk-import"
 SESSION_PROGRESSION_QUEUE_NAME = "weave:queue:session-progression"
+ATTENDANCE_QUEUE_NAME = "weave:queue:attendance"
 
 DEFAULT_EMAIL_OUTBOX_BATCH_SIZE = 20
 
@@ -124,6 +125,26 @@ async def enqueue_session_progression_job(
             tenant_id,
             _queue_name=SESSION_PROGRESSION_QUEUE_NAME,
             _job_id=job_id,
+        )
+    finally:
+        await redis.close()
+
+    return job is not None
+
+
+async def enqueue_attendance_retention_job(*, tenant_id: str | None = None) -> bool:
+    """Enqueue attendance privacy-retention cleanup."""
+
+    redis = await create_pool(
+        get_arq_redis_settings(),
+        default_queue_name=ATTENDANCE_QUEUE_NAME,
+    )
+
+    try:
+        job = await redis.enqueue_job(
+            "process_attendance_retention_job",
+            tenant_id,
+            _queue_name=ATTENDANCE_QUEUE_NAME,
         )
     finally:
         await redis.close()

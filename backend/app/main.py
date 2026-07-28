@@ -23,6 +23,12 @@ from app.modules.announcements.router import (
     tenant_admin_router as tenant_admin_announcement_router,
 )
 from app.modules.auth.router import router as auth_router
+from app.modules.attendance.router import (
+    parent_router as parent_attendance_router,
+    student_router as student_attendance_router,
+    teacher_router as teacher_attendance_router,
+    tenant_admin_router as tenant_admin_attendance_router,
+)
 from app.modules.bulk_imports.router import router as bulk_import_router
 from app.modules.classes.class_subjects_router import router as class_subjects_router
 from app.modules.classes.router import router as class_router
@@ -186,6 +192,10 @@ def create_app() -> FastAPI:
     app.include_router(session_closure_router, prefix="/api/v1")
     app.include_router(school_calendar_admin_router, prefix="/api/v1")
     app.include_router(school_calendar_shared_router, prefix="/api/v1")
+    app.include_router(tenant_admin_attendance_router, prefix="/api/v1")
+    app.include_router(teacher_attendance_router, prefix="/api/v1")
+    app.include_router(student_attendance_router, prefix="/api/v1")
+    app.include_router(parent_attendance_router, prefix="/api/v1")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
     teacher_write_guard = [Depends(ensure_teacher_academic_write_window)]

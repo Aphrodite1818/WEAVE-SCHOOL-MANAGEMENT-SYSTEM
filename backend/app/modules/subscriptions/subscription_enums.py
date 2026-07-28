@@ -10,6 +10,8 @@ class FeatureCode(StrEnum):
     ACADEMIC_SETUP = "academic_setup"
     REPORT_CARDS = "report_cards"
     ANNOUNCEMENTS = "announcements"
+    ATTENDANCE = "attendance"
+    GEOFENCING = "geofencing"
     ADVANCED_ANALYTICS = "advanced_analytics"
     AI_ASSISTANT = "ai_assistant"
     BULK_IMPORT = "bulk_import"
