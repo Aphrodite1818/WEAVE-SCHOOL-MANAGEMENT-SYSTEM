@@ -36,12 +36,15 @@ from app.modules.student_academics.schemas import (
     AcademicSessionResponse,
     AcademicSessionUpdate,
     AcademicTermCloseRequest,
+    AcademicTermCancelClosureRequest,
     AcademicTermCreate,
     AcademicTermDeleteRequest,
     AcademicTermDependencyPreview,
+    AcademicTermFinalizeCloseRequest,
     AcademicTermListResponse,
     AcademicTermOpenRequest,
     AcademicTermResponse,
+    AcademicTermStartClosingRequest,
     AcademicTermUpdate,
     GradingScaleCreate,
     GradingScaleListResponse,
@@ -373,6 +376,64 @@ async def close_academic_term(
         current_admin.tenant_id,
         term_id,
         current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/start-closing",
+    response_model=AcademicTermResponse,
+)
+async def start_academic_term_closing(
+    term_id: UUID,
+    payload: AcademicTermStartClosingRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.start_academic_term_closure(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/finalize-close",
+    response_model=AcademicTermResponse,
+)
+async def finalize_academic_term_close(
+    term_id: UUID,
+    payload: AcademicTermFinalizeCloseRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.finalize_academic_term_closure(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/cancel-closure",
+    response_model=AcademicTermResponse,
+)
+async def cancel_academic_term_closure(
+    term_id: UUID,
+    payload: AcademicTermCancelClosureRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.cancel_academic_term_closure(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+        reason=payload.reason,
     )
 
 

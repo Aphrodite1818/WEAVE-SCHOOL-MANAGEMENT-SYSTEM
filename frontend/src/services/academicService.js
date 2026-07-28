@@ -173,6 +173,19 @@ export const academicService = {
     api.post(`/tenant-admin/academics/terms/${termId}/close`, {
       confirmation: "CLOSE_ACADEMIC_TERM",
     }),
+  startTermClosing: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/start-closing`, {
+      confirmation: "START_TERM_CLOSING",
+    }),
+  finalizeTermClose: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/finalize-close`, {
+      confirmation: "FINALIZE_TERM_CLOSE",
+    }),
+  cancelTermClosure: (termId, reason) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/cancel-closure`, {
+      confirmation: "CANCEL_TERM_CLOSURE",
+      reason,
+    }),
   deleteTerm: (termId) =>
     api.delete(`/tenant-admin/academics/terms/${termId}`, {
       body: JSON.stringify({

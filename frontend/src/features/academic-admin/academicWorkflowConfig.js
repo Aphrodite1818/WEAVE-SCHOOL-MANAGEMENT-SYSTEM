@@ -20,6 +20,7 @@ export const academicWorkflowOrder = [
   "grading",
   "results",
   "report-cards",
+  "school-calendar",
 ];
 
 export const academicWorkflowConfig = {
@@ -118,6 +119,7 @@ export const academicWorkflowConfig = {
       { id: "create", label: "Create Term" },
       { id: "draft", label: "Draft Terms" },
       { id: "open", label: "Open Term" },
+      { id: "closing", label: "Closing Terms" },
       { id: "closed", label: "Closed Terms" },
     ],
   },
@@ -172,6 +174,21 @@ export const academicWorkflowConfig = {
       { id: "archived", label: "Archived Versions" },
     ],
   },
+  "school-calendar": {
+    title: "School Calendar",
+    shortTitle: "Calendar",
+    description:
+      "Configure term calendars, operating days, events, holidays, closures, and lifecycle readiness.",
+    icon: CalendarDays,
+    tone: "success",
+    defaultTab: "manage",
+    tabs: [
+      { id: "manage", label: "Manage Calendar" },
+      { id: "setup", label: "Setup" },
+      { id: "events", label: "Events" },
+      { id: "closures", label: "Closures" },
+    ],
+  },
 };
 
 export const academicToneStyles = {
@@ -212,5 +229,11 @@ export const academicWorkflowSummaryCards = [
     description: "Scores and submission status",
     to: "/admin/academic/results",
     icon: BarChart3,
+  },
+  {
+    label: "Calendar",
+    description: "Term days and school events",
+    to: "/admin/academic/school-calendar",
+    icon: CalendarDays,
   },
 ];

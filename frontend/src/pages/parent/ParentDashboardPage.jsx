@@ -10,6 +10,7 @@ import {
   DashboardQuickActions,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { cn } from "../../utils/cn";
 import { academicService } from "../../services/academicService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
@@ -266,6 +267,17 @@ function ParentDashboardPage() {
               items={attentionItems}
               emptyTitle="Everything looks calm"
               emptyDescription="No unread notices, linking issues, or report-card actions need attention right now."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="parent" />
+            <DashboardListCard
+              title="Family calendar"
+              description="Parent-visible events and school day status."
+              items={[]}
+              emptyTitle="No parent action needed"
+              emptyDescription="Published holidays, meetings, closures, and school events will appear in the calendar card."
             />
           </section>
 

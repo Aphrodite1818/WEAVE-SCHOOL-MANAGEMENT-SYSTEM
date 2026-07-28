@@ -43,6 +43,7 @@ class AcademicTermName(str, PyEnum):
 class AcademicTermStatus(str, PyEnum):
     DRAFT = "draft"
     OPEN = "open"
+    CLOSING = "closing"
     CLOSED = "closed"
 
 
@@ -206,6 +207,11 @@ class AcademicTerm(BaseModel):
         nullable=True,
     )
 
+    closing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -242,14 +248,22 @@ class AcademicTerm(BaseModel):
             """
             (status = 'draft'
                 AND opened_at IS NULL
+                AND closing_started_at IS NULL
                 AND closed_at IS NULL)
             OR
             (status = 'open'
                 AND opened_at IS NOT NULL
+                AND closing_started_at IS NULL
+                AND closed_at IS NULL)
+            OR
+            (status = 'closing'
+                AND opened_at IS NOT NULL
+                AND closing_started_at IS NOT NULL
                 AND closed_at IS NULL)
             OR
             (status = 'closed'
                 AND opened_at IS NOT NULL
+                AND closing_started_at IS NOT NULL
                 AND closed_at IS NOT NULL)
             """,
             name="ck_academic_term_status_timestamps",

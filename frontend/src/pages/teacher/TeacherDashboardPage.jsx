@@ -13,6 +13,7 @@ import {
   DashboardSectionHeader,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
@@ -170,6 +171,17 @@ function TeacherDashboardPage() {
               items={attentionItems}
               emptyTitle="No score task needs attention"
               emptyDescription="There are no editable draft or pending score rows right now."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="teacher" />
+            <DashboardListCard
+              title="Calendar notes"
+              description="Read-only school schedule context for planning."
+              items={[]}
+              emptyTitle="No extra calendar action"
+              emptyDescription="Calendar setup and lifecycle controls are managed by tenant admins."
             />
           </section>
 

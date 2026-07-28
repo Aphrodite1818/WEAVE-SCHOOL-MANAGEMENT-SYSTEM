@@ -28,7 +28,6 @@ from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
     AcademicTerm,
-    AcademicTermStatus,
     StudentProgressionItem,
     StudentProgressionItemAction,
     StudentProgressionItemStatus,
@@ -636,39 +635,14 @@ class SessionClosureService:
         session.closed_by_admin_id = actor.id
         await AcademicSessionLifecycleRepository.save(db, session)
 
-        next_session.status = AcademicSessionStatus.OPEN
-        next_session.is_current = True
-        next_session.closing_started_at = None
-        next_session.closed_at = None
-        next_session.closed_by_admin_id = None
-        await AcademicSessionLifecycleRepository.save(db, next_session)
+        from app.modules.school_calendar.service import SchoolCalendarService
 
-        next_terms = list(
-            (
-                await db.execute(
-                    select(AcademicTerm)
-                    .where(
-                        AcademicTerm.tenant_id == actor.tenant_id,
-                        AcademicTerm.academic_session_id == next_session.id,
-                    )
-                    .order_by(
-                        AcademicTerm.start_date.asc().nulls_last(),
-                        AcademicTerm.created_at.asc(),
-                    )
-                    .with_for_update()
-                )
-            ).scalars().all()
+        await SchoolCalendarService.archive_session_calendars(
+            db,
+            tenant_id=actor.tenant_id,
+            academic_session_id=session.id,
+            acting_admin_id=actor.id,
         )
-        if not next_terms:
-            raise ConflictException("The next session has no term to open.")
-        first_term = next_terms[0]
-        if first_term.status == AcademicTermStatus.DRAFT:
-            first_term.status = AcademicTermStatus.OPEN
-            first_term.is_current = True
-            first_term.opened_at = now
-            first_term.closed_at = None
-            first_term.opened_by_admin_id = actor.id
-            db.add(first_term)
 
         await StudentAcademicService._record_academic_lifecycle(
             db,
@@ -686,9 +660,9 @@ class SessionClosureService:
             tenant_id=actor.tenant_id,
             entity_type="session",
             entity_id=next_session.id,
-            action="opened_after_progression",
-            previous_status=AcademicSessionStatus.DRAFT.value,
-            new_status=AcademicSessionStatus.OPEN.value,
+            action="retained_draft_after_progression",
+            previous_status=next_session.status.value,
+            new_status=next_session.status.value,
             acting_admin_id=actor.id,
             metadata={"progression_run_id": str(run.id)},
         )
@@ -696,10 +670,10 @@ class SessionClosureService:
             db,
             tenant_id=actor.tenant_id,
             actor_id=actor.id,
-            title=f"{next_session.name} academic session has begun",
+            title=f"{session.name} academic session has closed",
             body=(
-                f"{session.name} has been closed. {next_session.name} is now active and "
-                "the first configured term has opened. Academic write activities have resumed."
+                f"{session.name} has been closed. {next_session.name} remains in draft "
+                "for calendar setup and a separate opening step."
             ),
             priority=AnnouncementPriority.HIGH,
         )
@@ -708,7 +682,7 @@ class SessionClosureService:
         await db.refresh(next_session)
         return SessionClosureFinalizeResponse(
             closed_session=AcademicSessionResponse.model_validate(session),
-            opened_session=AcademicSessionResponse.model_validate(next_session),
+            next_session=AcademicSessionResponse.model_validate(next_session),
             progression_run=await SessionClosureService._run_detail(
                 db, tenant_id=actor.tenant_id, run=run
             ),

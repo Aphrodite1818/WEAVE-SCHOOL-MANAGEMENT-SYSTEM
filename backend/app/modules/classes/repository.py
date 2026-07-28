@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
 from app.modules.classes.models import ClassRoom
+
+if TYPE_CHECKING:
+    from app.modules.students.models import AcademicStatus
 
 
 class ClassRoomRepository:

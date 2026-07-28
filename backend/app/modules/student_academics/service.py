@@ -248,6 +248,9 @@ class StudentAcademicService:
             "open_terms": await StudentAcademicRepository.count_academic_terms(
                 db, tenant_id, academic_session_id=session_id, statuses={AcademicTermStatus.OPEN}
             ),
+            "closing_terms": await StudentAcademicRepository.count_academic_terms(
+                db, tenant_id, academic_session_id=session_id, statuses={AcademicTermStatus.CLOSING}
+            ),
             "draft_results": await StudentAcademicRepository.count_results(
                 db, tenant_id, academic_session_id=session_id, statuses={AcademicResultStatus.DRAFT}
             ),
@@ -288,6 +291,8 @@ class StudentAcademicService:
                 blockers.append("Configure next_academic_session_id before closure.")
             if counts["open_terms"]:
                 blockers.append("Close every term in this session before closing the session.")
+            if counts["closing_terms"]:
+                blockers.append("Finalize every closing term before closing the session.")
             if counts["draft_results"]:
                 blockers.append("Draft results must be submitted, approved, or removed before closure.")
             if counts["submitted_results"]:
@@ -300,6 +305,30 @@ class StudentAcademicService:
                 blockers.append("A progression run is already active or pending for this session.")
             if counts["pending_result_imports"]:
                 blockers.append("Assessment-record imports are still pending or processing.")
+            from app.modules.school_calendar.service import SchoolCalendarService
+
+            terms, _ = await StudentAcademicRepository.list_terms_by_session(
+                db,
+                tenant_id,
+                session_id,
+                limit=500,
+                statuses=set(),
+            )
+            calendar_history_missing = 0
+            calendar_history_incomplete = 0
+            for term in terms:
+                contribution = await SchoolCalendarService.inspect_term_closure_readiness(
+                    db,
+                    tenant_id=tenant_id,
+                    term_id=term.id,
+                )
+                if contribution.get("calendar_id") is None:
+                    calendar_history_missing += 1
+                calendar_counts = contribution.get("counts", {})
+                calendar_history_incomplete += int(calendar_counts.get("missing_calendar_dates", 0) or 0)
+                blockers.extend(contribution.get("blockers", []))
+            counts["calendar_history_missing_terms"] = calendar_history_missing
+            counts["missing_calendar_dates"] = calendar_history_incomplete
         can_start_closing = session.status == AcademicSessionStatus.OPEN and not blockers
         can_delete = (
             session.status == AcademicSessionStatus.DRAFT
@@ -351,7 +380,7 @@ class StudentAcademicService:
             ),
         }
         blockers: list[str] = []
-        if term.status == AcademicTermStatus.OPEN:
+        if term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}:
             if counts["draft_results"]:
                 blockers.append("Draft results must be submitted, approved, or removed before closing the term.")
             if counts["submitted_results"]:
@@ -362,18 +391,31 @@ class StudentAcademicService:
                 blockers.append("Report cards must be published or archived before closing the term.")
             if counts["pending_result_imports"]:
                 blockers.append("Assessment-record imports are still pending or processing.")
+            from app.modules.school_calendar.service import SchoolCalendarService
+
+            contribution = await SchoolCalendarService.inspect_term_closure_readiness(
+                db,
+                tenant_id=tenant_id,
+                term_id=term_id,
+            )
+            counts.update(contribution.get("counts", {}))
+            blockers.extend(contribution.get("blockers", []))
         can_delete = (
             term.status == AcademicTermStatus.DRAFT
             and not term.is_current
             and counts["results"] == 0
             and counts["report_cards"] == 0
         )
+        can_close = term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING} and not blockers
         return AcademicTermDependencyPreview(
             term_id=term_id,
             dependency_counts=counts,
             blocker_messages=blockers,
             can_open=term.status == AcademicTermStatus.DRAFT,
-            can_close=term.status == AcademicTermStatus.OPEN and not blockers,
+            can_close=can_close,
+            can_start_closing=term.status == AcademicTermStatus.OPEN and can_close,
+            can_finalize_close=term.status == AcademicTermStatus.CLOSING and can_close,
+            can_cancel_closure=term.status == AcademicTermStatus.CLOSING,
             can_delete=can_delete,
         )
 
@@ -1907,6 +1949,23 @@ class StudentAcademicService:
                 "Another academic term is currently open. Close it first"
             )
 
+        from app.modules.school_calendar.service import SchoolCalendarService
+
+        calendar_readiness = await SchoolCalendarService.term_calendar_readiness(
+            db,
+            tenant_id=tenant_id,
+            term_id=term.id,
+        )
+        if calendar_readiness.get("blockers"):
+            raise ConflictException(
+                "Academic term cannot be opened until its calendar is ready.",
+                payload={
+                    "blocker_messages": calendar_readiness.get("blockers", []),
+                    "dependency_counts": calendar_readiness.get("counts", {}),
+                    "calendar_id": calendar_readiness.get("calendar_id"),
+                },
+            )
+
 
 
         previous_status = term.status
@@ -1914,6 +1973,7 @@ class StudentAcademicService:
         term.is_current = True
         term.opened_at = datetime.now(timezone.utc)
         term.opened_by_admin_id = admin_id
+        term.closing_started_at = None
         term.closed_at = None
         term.closed_by_admin_id = None
 
@@ -1944,7 +2004,7 @@ class StudentAcademicService:
 
 
     @staticmethod
-    async def close_academic_term(
+    async def start_academic_term_closure(
         db: AsyncSession,
         tenant_id : uuid.UUID,
         term_id : uuid.UUID,
@@ -1965,9 +2025,12 @@ class StudentAcademicService:
 
 
 
+        if term.status == AcademicTermStatus.CLOSING:
+            return term
+
         if term.status != AcademicTermStatus.OPEN:
             raise ConflictException(
-                "Only an open academic term can be closed"
+                "Only an open academic term can start closing"
             )
 
         preview = await StudentAcademicService.academic_term_dependency_preview(
@@ -1977,14 +2040,70 @@ class StudentAcademicService:
         )
         if not preview.can_close:
             StudentAcademicService._raise_dependency_conflict(
-                "Academic term has blockers and cannot be closed.",
+                "Academic term has blockers and cannot start closing.",
                 preview,
             )
 
         previous_status = term.status
+        now = datetime.now(timezone.utc)
+        term.status = AcademicTermStatus.CLOSING
+        term.closing_started_at = now
+        term = await StudentAcademicRepository.save_academic_term(db, term)
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=tenant_id,
+            entity_type="term",
+            entity_id=term.id,
+            action="closing_started",
+            previous_status=previous_status.value,
+            new_status=term.status.value,
+            acting_admin_id=admin_id,
+        )
+        await db.commit()
+        return term
+
+
+    @staticmethod
+    async def finalize_academic_term_closure(
+        db: AsyncSession,
+        tenant_id : uuid.UUID,
+        term_id : uuid.UUID,
+        admin_id : uuid.UUID
+    ) -> AcademicTerm:
+        term  = await StudentAcademicRepository.get_term_by_id(
+            db = db,
+            tenant_id= tenant_id,
+            term_id = term_id,
+            lock=True,
+        )
+
+        if term is None:
+            raise NotFoundException(
+                "Academic term not found"
+            )
+
+        if term.status != AcademicTermStatus.CLOSING:
+            raise ConflictException(
+                "Only a closing academic term can be finalized"
+            )
+
+        preview = await StudentAcademicService.academic_term_dependency_preview(
+            db,
+            tenant_id,
+            term_id,
+        )
+        if not preview.can_close:
+            StudentAcademicService._raise_dependency_conflict(
+                "Academic term has blockers and cannot be finalized.",
+                preview,
+            )
+
+        previous_status = term.status
+        now = datetime.now(timezone.utc)
         term.status = AcademicTermStatus.CLOSED
         term.is_current = False
-        term.closed_at = datetime.now(timezone.utc)
+        term.closing_started_at = term.closing_started_at or now
+        term.closed_at = now
         term.closed_by_admin_id = admin_id
 
         term = await StudentAcademicRepository.save_academic_term(
@@ -2002,8 +2121,81 @@ class StudentAcademicService:
             acting_admin_id=admin_id,
         )
 
+        from app.modules.school_calendar.service import SchoolCalendarService
+
+        await SchoolCalendarService.archive_term_calendar(
+            db,
+            tenant_id=tenant_id,
+            academic_term_id=term.id,
+            acting_admin_id=admin_id,
+        )
+
         await db.commit()
         return term
+
+
+    @staticmethod
+    async def cancel_academic_term_closure(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+        admin_id: uuid.UUID,
+        *,
+        reason: str,
+    ) -> AcademicTerm:
+        term = await StudentAcademicRepository.get_term_by_id(
+            db,
+            tenant_id=tenant_id,
+            term_id=term_id,
+            lock=True,
+        )
+        if term is None:
+            raise NotFoundException("Academic term not found")
+        if term.status != AcademicTermStatus.CLOSING:
+            raise ConflictException("Only a closing academic term can have closure cancelled.")
+
+        current_term = await StudentAcademicRepository.get_current_term(
+            db,
+            tenant_id=tenant_id,
+        )
+        if current_term is not None and current_term.id != term.id:
+            raise ConflictException("Another academic term is currently open.")
+
+        previous_status = term.status
+        term.status = AcademicTermStatus.OPEN
+        term.is_current = True
+        term.closing_started_at = None
+        term.closed_at = None
+        term.closed_by_admin_id = None
+        term = await StudentAcademicRepository.save_academic_term(db, term)
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=tenant_id,
+            entity_type="term",
+            entity_id=term.id,
+            action="closure_cancelled",
+            previous_status=previous_status.value,
+            new_status=term.status.value,
+            acting_admin_id=admin_id,
+            reason=reason,
+        )
+        await db.commit()
+        return term
+
+
+    @staticmethod
+    async def close_academic_term(
+        db: AsyncSession,
+        tenant_id : uuid.UUID,
+        term_id : uuid.UUID,
+        admin_id : uuid.UUID
+    ) -> AcademicTerm:
+        return await StudentAcademicService.start_academic_term_closure(
+            db,
+            tenant_id,
+            term_id,
+            admin_id,
+        )
 
 
 
@@ -2146,6 +2338,7 @@ class StudentAcademicService:
             status=term.status,
             is_current=term.is_current,
             opened_at=term.opened_at,
+            closing_started_at=term.closing_started_at,
             closed_at=term.closed_at,
             opened_by_admin_id=term.opened_by_admin_id,
             closed_by_admin_id=term.closed_by_admin_id,

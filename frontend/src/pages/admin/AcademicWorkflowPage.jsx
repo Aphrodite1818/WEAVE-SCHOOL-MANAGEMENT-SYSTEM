@@ -12,6 +12,7 @@ import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
 import { academicService } from "../../services/academicService";
+import SchoolCalendarWorkspace from "../../features/schoolCalendar/components/SchoolCalendarWorkspace";
 
 const workflowAliases = {
   reports: "report-cards",
@@ -133,6 +134,9 @@ function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
+    }
+    if (workflow === "school-calendar") {
+      return <SchoolCalendarWorkspace key="school-calendar-workflow" activeTab={activeTab} />;
     }
     return <Navigate to="/admin/academic" replace />;
   };

@@ -21,6 +21,7 @@ import TeachersPage from "../pages/admin/TeachersPage";
 import UsagePage from "../pages/admin/UsagePage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
+import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
 import BulkImportRouteGuard from "./BulkImportRouteGuard";
@@ -39,6 +40,7 @@ export const adminRoutes = (
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
       <Route path="/admin/search/:resultKey" element={<AdminSearchDetailPage />} />
       <Route path="/admin/analytics" element={<RoleAnalyticsPage role="admin" />} />
+      <Route path="/admin/calendar" element={<SchoolCalendarPage role="admin" />} />
       <Route path="/admin/invitations/:role" element={protectedWorkflow(<AdminInvitationPage />)} />
       <Route path="/admin/teachers" element={protectedWorkflow(<TeachersPage />)} />
       <Route path="/admin/students" element={protectedWorkflow(<StudentsPage />)} />

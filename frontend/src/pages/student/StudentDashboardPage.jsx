@@ -24,6 +24,7 @@ import {
   DashboardSectionHeader,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { academicService } from "../../services/academicService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
@@ -355,6 +356,17 @@ function StudentDashboardPage() {
               items={attentionItems}
               emptyTitle="You are all caught up"
               emptyDescription="No pending parent link, report, or school notice needs attention right now."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="student" />
+            <DashboardListCard
+              title="Student calendar"
+              description="Published student-visible dates and school status."
+              items={[]}
+              emptyTitle="No calendar action needed"
+              emptyDescription="Exams, holidays, closures, and student events will appear in the calendar card."
             />
           </section>
 

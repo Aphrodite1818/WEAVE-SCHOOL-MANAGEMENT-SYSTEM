@@ -6,6 +6,7 @@ import ParentResultsPage from "../pages/parent/ParentResultsPage";
 import ParentStudentLinkingPage from "../pages/parent/ParentStudentLinkingPage";
 import ParentReportCardsPage from "../pages/parent/ParentReportCardsPage";
 import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import SchoolSwitchPage from "../pages/shared/SchoolSwitchPage";
 import StaticModulePage from "../pages/shared/StaticModulePage";
@@ -24,6 +25,7 @@ export const parentRoutes = (
         <Route path="/parent/student-linking" element={<ParentStudentLinkingPage />} />
         <Route path="/parent/report-cards" element={<ParentReportCardsPage />} />
         <Route path="/parent/attendance" element={<StaticModulePage role="parent" title="Attendance" description="Review attendance summaries for your children." />} />
+        <Route path="/parent/calendar" element={<SchoolCalendarPage role="parent" />} />
         <Route path="/parent/results" element={<ParentResultsPage />} />
         <Route path="/parent/notices" element={<AnnouncementsWorkspacePage mode="parent" />} />
         <Route path="/parent/fees" element={<StaticModulePage role="parent" title="Fees" description="Fee statements, payment status, and due dates." />} />

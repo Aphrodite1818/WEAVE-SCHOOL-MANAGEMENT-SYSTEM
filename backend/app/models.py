@@ -22,6 +22,7 @@ import app.modules.media.models
 import app.modules.parents.models
 import app.modules.report_cards.models
 import app.modules.results.models
+import app.modules.school_calendar.models
 import app.modules.students.models
 import app.modules.student_academics.models
 import app.modules.subjects.models

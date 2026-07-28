@@ -37,6 +37,8 @@ from app.modules.report_cards.router import (
     tenant_admin_router as tenant_admin_report_card_router,
 )
 from app.modules.search.router import router as tenant_search_router
+from app.modules.school_calendar.admin_router import router as school_calendar_admin_router
+from app.modules.school_calendar.shared_router import router as school_calendar_shared_router
 from app.modules.student_academics.assessment_config_router import (
     router as assessment_config_router,
 )
@@ -182,6 +184,8 @@ def create_app() -> FastAPI:
     app.include_router(student_subject_cards_router, prefix="/api/v1")
     app.include_router(open_session_config_router, prefix="/api/v1")
     app.include_router(session_closure_router, prefix="/api/v1")
+    app.include_router(school_calendar_admin_router, prefix="/api/v1")
+    app.include_router(school_calendar_shared_router, prefix="/api/v1")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
     teacher_write_guard = [Depends(ensure_teacher_academic_write_window)]
