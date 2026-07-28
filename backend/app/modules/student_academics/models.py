@@ -269,7 +269,7 @@ class AcademicTerm(BaseModel):
             name="ck_academic_term_status_timestamps",
         ),
         CheckConstraint(
-            "is_current = false OR status = 'open'",
+            "is_current = false OR status IN ('open', 'closing')",
             name="ck_academic_term_current_requires_open",
         ),
     )

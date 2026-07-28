@@ -65,18 +65,18 @@ function SchoolCalendarPage({ role = "student" }) {
   const [error, setError] = useState("");
   const copy = titles[role] || titles.student;
 
-  const loadCalendar = useCallback(async ({ signal, quiet = false } = {}) => {
+  const loadCalendar = useCallback(async ({ signal, quiet = false, startDate = rangeStart, endDate = rangeEnd } = {}) => {
     if (quiet) setRefreshing(true);
     else setLoading(true);
     setError("");
     try {
       const [rangeResponse, eventResponse] = await Promise.all([
         schoolCalendarService.getRange(
-          { start_date: rangeStart, end_date: rangeEnd },
+          { start_date: startDate, end_date: endDate },
           { signal },
         ),
         schoolCalendarService.getEvents(
-          { start_date: rangeStart, end_date: rangeEnd },
+          { start_date: startDate, end_date: endDate },
           { signal },
         ),
       ]);
@@ -91,6 +91,14 @@ function SchoolCalendarPage({ role = "student" }) {
       setRefreshing(false);
     }
   }, [rangeEnd, rangeStart]);
+
+  const showTodayRange = () => {
+    const today = todayIso();
+    const endDate = addDays(today, 34);
+    setRangeStart(today);
+    setRangeEnd(endDate);
+    loadCalendar({ quiet: true, startDate: today, endDate });
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,11 +143,7 @@ function SchoolCalendarPage({ role = "student" }) {
                   type="button"
                   variant="outline"
                   className="w-full sm:w-auto"
-                  onClick={() => {
-                    const today = todayIso();
-                    setRangeStart(today);
-                    setRangeEnd(addDays(today, 34));
-                  }}
+                  onClick={showTodayRange}
                 >
                   Today
                 </Button>

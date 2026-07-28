@@ -43,6 +43,7 @@ const domainIcons = {
   grading: Ruler,
   results: BarChart3,
   "report-cards": FileText,
+  "school-calendar": CalendarDays,
   progression: GitBranch,
 };
 
@@ -56,6 +57,7 @@ const domains = [
   "grading",
   "results",
   "report-cards",
+  "school-calendar",
   "progression",
 ].map((key) => ({
   key,

@@ -31,6 +31,11 @@ export const schoolCalendarService = {
       .get(`/school-calendar/events${queryString(params)}`, options)
       .then(normalizeList),
 
+  getAdminEvents: (params = {}, options = {}) =>
+    api
+      .get(`/tenant-admin/school-calendar/events${queryString(params)}`, options)
+      .then(normalizeList),
+
   getUpcoming: (params = {}, options = {}) =>
     api.get(`/school-calendar/upcoming${queryString(params)}`, options),
 

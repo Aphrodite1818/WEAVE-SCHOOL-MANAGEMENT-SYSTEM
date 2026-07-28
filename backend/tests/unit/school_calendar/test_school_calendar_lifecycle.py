@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.exceptions import ConflictException, NotFoundException
-from app.modules.school_calendar.calendar_enums import SchoolCalendarDayType, SchoolCalendarStatus
+from app.modules.school_calendar.calendar_enums import SchoolCalendarDaySource, SchoolCalendarDayType, SchoolCalendarStatus
 from app.modules.school_calendar.models import SchoolCalendar, SchoolCalendarDay
 from app.modules.school_calendar.schemas import (
     SchoolCalendarConfigurationCreate,
@@ -119,8 +119,20 @@ async def test_calendar_activation_preview_blocks_closed_session() -> None:
             new=AsyncMock(return_value=90),
         ),
         patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_extra_dates",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_duplicate_dates",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_invalid_days",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
             "app.modules.school_calendar.service.SchoolCalendarRepository.get_configuration",
-            new=AsyncMock(return_value=object()),
+            new=AsyncMock(return_value=SimpleNamespace(revision=1)),
         ),
     ):
         preview = await SchoolCalendarService.calendar_dependency_preview(
@@ -130,7 +142,8 @@ async def test_calendar_activation_preview_blocks_closed_session() -> None:
         )
 
     assert preview.can_activate is False
-    assert "Academic session must be open before calendar activation." in preview.blocker_messages
+    assert "Academic session must be open and current before calendar activation." in preview.blocker_messages
+    assert "SESSION_NOT_OPEN_CURRENT" in preview.blocker_codes
     assert preview.dependency_counts["missing_dates"] == 90
 
 
@@ -158,6 +171,12 @@ async def test_build_calendar_response_merges_preview_without_duplicate_kwargs()
         can_edit=True,
         can_regenerate=True,
         blocker_messages=[],
+        blocker_codes=[],
+        missing_dates=0,
+        extra_dates=0,
+        duplicate_dates=0,
+        invalid_days=0,
+        configuration_outdated=False,
         dependency_counts={"days": 5, "missing_dates": 0, "unresolved_days": 0},
     )
 
@@ -172,6 +191,107 @@ async def test_build_calendar_response_merges_preview_without_duplicate_kwargs()
     assert response.can_edit is True
     assert response.can_regenerate is True
     assert response.dependency_counts["days"] == 5
+
+
+@pytest.mark.asyncio
+async def test_calendar_activation_preview_blocks_outdated_configuration() -> None:
+    tenant_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    term_id = uuid.uuid4()
+    calendar = SchoolCalendar(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        academic_session_id=session_id,
+        academic_term_id=term_id,
+        status=SchoolCalendarStatus.DRAFT,
+        generated_from_configuration_revision=1,
+    )
+    session = AcademicSession(
+        id=session_id,
+        tenant_id=tenant_id,
+        name="2026/2027",
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+    )
+    term = AcademicTerm(
+        id=term_id,
+        tenant_id=tenant_id,
+        academic_session_id=session_id,
+        name=AcademicTermName.FIRST_TERM,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 5),
+        status=AcademicTermStatus.DRAFT,
+    )
+
+    with (
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_calendar_by_id", new=AsyncMock(return_value=calendar)),
+        patch("app.modules.school_calendar.service.StudentAcademicRepository.get_academic_session_by_id", new=AsyncMock(return_value=session)),
+        patch("app.modules.school_calendar.service.StudentAcademicRepository.get_term_by_id", new=AsyncMock(return_value=term)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_configuration", new=AsyncMock(return_value=SimpleNamespace(revision=2))),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_days", new=AsyncMock(return_value=5)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_unresolved_days", new=AsyncMock(return_value=0)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_duplicate_dates", new=AsyncMock(return_value=0)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_invalid_days", new=AsyncMock(return_value=0)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_missing_dates", new=AsyncMock(return_value=0)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_extra_dates", new=AsyncMock(return_value=0)),
+    ):
+        preview = await SchoolCalendarService.calendar_dependency_preview(AsyncMock(), tenant_id, calendar.id)
+
+    assert preview.can_activate is False
+    assert preview.configuration_outdated is True
+    assert "CONFIGURATION_OUTDATED" in preview.blocker_codes
+
+
+@pytest.mark.asyncio
+async def test_update_day_allows_selected_draft_calendar_day() -> None:
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    calendar_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    calendar = SchoolCalendar(
+        id=calendar_id,
+        tenant_id=tenant_id,
+        academic_session_id=uuid.uuid4(),
+        academic_term_id=uuid.uuid4(),
+        status=SchoolCalendarStatus.DRAFT,
+        created_at=now,
+        updated_at=now,
+    )
+    day = SchoolCalendarDay(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        calendar_id=calendar_id,
+        academic_session_id=calendar.academic_session_id,
+        academic_term_id=calendar.academic_term_id,
+        calendar_date=date(2026, 9, 2),
+        day_type=SchoolCalendarDayType.INSTRUCTIONAL_DAY,
+        school_open=True,
+        student_activity_allowed=True,
+        student_attendance_required=True,
+        workforce_attendance_required=True,
+        source=SchoolCalendarDaySource.GENERATED,
+        is_manual_override=False,
+        created_at=now,
+        updated_at=now,
+    )
+
+    with (
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_calendar_by_id", new=AsyncMock(return_value=calendar)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_day_by_date", new=AsyncMock(return_value=day)),
+        patch("app.modules.school_calendar.service.SchoolCalendarService.tenant_today", new=AsyncMock(return_value=date(2026, 9, 1))),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.update_day", new=AsyncMock(return_value=day)),
+        patch("app.modules.school_calendar.service.SchoolCalendarRepository.add_audit", new=AsyncMock()),
+    ):
+        response = await SchoolCalendarService.update_day(
+            AsyncMock(),
+            tenant_id=tenant_id,
+            calendar_date=day.calendar_date,
+            payload=SchoolCalendarDayUpdate(calendar_id=calendar_id, day_type=SchoolCalendarDayType.PUBLIC_HOLIDAY, school_open=False, student_activity_allowed=False, student_attendance_required=False),
+            acting_admin_id=admin_id,
+        )
+
+    assert response.day_type == SchoolCalendarDayType.PUBLIC_HOLIDAY
+    assert response.is_manual_override is True
 
 
 @pytest.mark.asyncio
@@ -243,6 +363,10 @@ async def test_emergency_closure_updates_only_active_calendar_range() -> None:
         patch(
             "app.modules.school_calendar.service.SchoolCalendarRepository.add_audit",
             new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarService.tenant_today",
+            new=AsyncMock(return_value=date(2026, 1, 1)),
         ),
     ):
         response = await SchoolCalendarService.emergency_closure(
@@ -345,6 +469,10 @@ async def test_emergency_closure_requires_selected_active_calendar_to_match_rang
             "app.modules.school_calendar.service.SchoolCalendarRepository.get_active_calendar_for_date",
             new=AsyncMock(return_value=range_calendar),
         ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarService.tenant_today",
+            new=AsyncMock(return_value=date(2026, 1, 1)),
+        ),
     ):
         with pytest.raises(ConflictException):
             await SchoolCalendarService.emergency_closure(
@@ -367,6 +495,9 @@ async def test_emergency_closure_requires_active_calendar_range() -> None:
     with patch(
         "app.modules.school_calendar.service.SchoolCalendarRepository.get_active_calendar_for_date",
         new=AsyncMock(return_value=None),
+    ), patch(
+        "app.modules.school_calendar.service.SchoolCalendarService.tenant_today",
+        new=AsyncMock(return_value=date(2026, 1, 1)),
     ):
         with pytest.raises(NotFoundException):
             await SchoolCalendarService.emergency_closure(
@@ -376,6 +507,25 @@ async def test_emergency_closure_requires_active_calendar_range() -> None:
                     start_date=date(2026, 2, 2),
                     end_date=date(2026, 2, 3),
                     reason="Flood warning",
+                ),
+                acting_admin_id=uuid.uuid4(),
+            )
+
+
+@pytest.mark.asyncio
+async def test_emergency_closure_rejects_past_dates() -> None:
+    with patch(
+        "app.modules.school_calendar.service.SchoolCalendarService.tenant_today",
+        new=AsyncMock(return_value=date(2026, 9, 10)),
+    ):
+        with pytest.raises(ConflictException):
+            await SchoolCalendarService.emergency_closure(
+                AsyncMock(),
+                tenant_id=uuid.uuid4(),
+                payload=SchoolCalendarEmergencyClosureRequest(
+                    start_date=date(2026, 9, 1),
+                    end_date=date(2026, 9, 2),
+                    reason="Already happened",
                 ),
                 acting_admin_id=uuid.uuid4(),
             )

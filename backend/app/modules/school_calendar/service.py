@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 from typing import Protocol
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +55,13 @@ from app.modules.student_academics.repository import StudentAcademicRepository
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _safe_zoneinfo(value: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(value or "Africa/Lagos")
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("Africa/Lagos")
 
 
 class LifecycleReadinessContribution(dict):
@@ -167,6 +175,7 @@ class SchoolCalendarService:
         previous = SchoolCalendarConfigurationResponse.model_validate(config).model_dump(mode="json")
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(config, field, value)
+        config.revision += 1
         config = await SchoolCalendarRepository.update_configuration(db, config)
         await SchoolCalendarService._audit(
             db,
@@ -201,6 +210,12 @@ class SchoolCalendarService:
                 "can_edit",
                 "can_regenerate",
                 "blocker_messages",
+                "blocker_codes",
+                "missing_dates",
+                "extra_dates",
+                "duplicate_dates",
+                "invalid_days",
+                "configuration_outdated",
                 "dependency_counts",
             }
         )
@@ -211,8 +226,19 @@ class SchoolCalendarService:
             can_edit=preview.can_edit,
             can_regenerate=preview.can_regenerate,
             blocker_messages=preview.blocker_messages,
+            blocker_codes=preview.blocker_codes,
+            missing_dates=preview.missing_dates,
+            extra_dates=preview.extra_dates,
+            duplicate_dates=preview.duplicate_dates,
+            invalid_days=preview.invalid_days,
+            configuration_outdated=preview.configuration_outdated,
             dependency_counts=preview.dependency_counts,
         )
+
+    @staticmethod
+    async def tenant_today(db: AsyncSession, tenant_id: uuid.UUID) -> date:
+        config = await SchoolCalendarRepository.get_configuration(db, tenant_id)
+        return datetime.now(_safe_zoneinfo(config.timezone if config else None)).date()
 
     @staticmethod
     async def list_calendars(
@@ -257,21 +283,34 @@ class SchoolCalendarService:
             db, tenant_id, calendar.academic_session_id
         )
         term = await StudentAcademicRepository.get_term_by_id(db, tenant_id, calendar.academic_term_id)
+        config = await SchoolCalendarRepository.get_configuration(db, tenant_id)
         counts = {
             "days": await SchoolCalendarRepository.count_days(db, tenant_id, calendar.id),
             "unresolved_days": await SchoolCalendarRepository.count_unresolved_days(db, tenant_id, calendar.id),
             "missing_dates": 0,
+            "extra_dates": 0,
+            "duplicate_dates": await SchoolCalendarRepository.count_duplicate_dates(db, tenant_id, calendar.id),
+            "invalid_days": await SchoolCalendarRepository.count_invalid_days(db, tenant_id, calendar.id),
         }
         blockers: list[str] = []
+        blocker_codes: list[str] = []
+        def block(code: str, message: str) -> None:
+            blocker_codes.append(code)
+            blockers.append(message)
+
         if session is None:
-            blockers.append("Academic session is missing.")
-        elif session.status != AcademicSessionStatus.OPEN:
-            blockers.append("Academic session must be open before calendar activation.")
+            block("SESSION_MISSING", "Academic session is missing.")
+        elif session.status != AcademicSessionStatus.OPEN or not session.is_current:
+            block("SESSION_NOT_OPEN_CURRENT", "Academic session must be open and current before calendar activation.")
         if term is None:
-            blockers.append("Academic term is missing.")
+            block("TERM_MISSING", "Academic term is missing.")
         else:
+            if session is not None and term.academic_session_id != session.id:
+                block("TERM_SESSION_MISMATCH", "Academic term does not belong to the calendar session.")
+            if term.status != AcademicTermStatus.DRAFT:
+                block("TERM_NOT_DRAFT", "Academic term must be draft before calendar activation.")
             if term.start_date is None or term.end_date is None:
-                blockers.append("Academic term dates are incomplete.")
+                block("TERM_DATES_INCOMPLETE", "Academic term dates are incomplete.")
             else:
                 counts["missing_dates"] = await SchoolCalendarRepository.count_missing_dates(
                     db,
@@ -280,12 +319,27 @@ class SchoolCalendarService:
                     start_date=term.start_date,
                     end_date=term.end_date,
                 )
+                counts["extra_dates"] = await SchoolCalendarRepository.count_extra_dates(
+                    db,
+                    tenant_id,
+                    calendar.id,
+                    start_date=term.start_date,
+                    end_date=term.end_date,
+                )
                 if counts["missing_dates"]:
-                    blockers.append("Calendar does not cover every date in the term.")
-        if await SchoolCalendarRepository.get_configuration(db, tenant_id) is None:
-            blockers.append("School calendar configuration is missing.")
+                    block("MISSING_DATES", "Calendar does not cover every date in the term.")
+                if counts["extra_dates"]:
+                    block("EXTRA_DATES", "Calendar contains dates outside the term.")
+        if config is None:
+            block("CONFIGURATION_MISSING", "School calendar configuration is missing.")
+        elif calendar.generated_from_configuration_revision != config.revision:
+            block("CONFIGURATION_OUTDATED", "Calendar was generated from an older configuration revision.")
         if counts["unresolved_days"]:
-            blockers.append("Calendar has unresolved days.")
+            block("UNRESOLVED_DAYS", "Calendar has unresolved days.")
+        if counts["duplicate_dates"]:
+            block("DUPLICATE_DATES", "Calendar contains duplicate dates.")
+        if counts["invalid_days"]:
+            block("INVALID_DAYS", "Calendar contains invalid operational flags or hours.")
         can_activate = calendar.status == SchoolCalendarStatus.DRAFT and not blockers
         can_archive = calendar.status == SchoolCalendarStatus.ACTIVE and (
             term is not None
@@ -298,10 +352,16 @@ class SchoolCalendarService:
             calendar_id=calendar.id,
             dependency_counts=counts,
             blocker_messages=blockers,
+            blocker_codes=blocker_codes,
             can_activate=can_activate,
             can_archive=can_archive,
             can_edit=calendar.status in {SchoolCalendarStatus.DRAFT, SchoolCalendarStatus.ACTIVE},
             can_regenerate=calendar.status == SchoolCalendarStatus.DRAFT,
+            missing_dates=counts["missing_dates"],
+            extra_dates=counts["extra_dates"],
+            duplicate_dates=counts["duplicate_dates"],
+            invalid_days=counts["invalid_days"],
+            configuration_outdated="CONFIGURATION_OUTDATED" in blocker_codes,
         )
 
     @staticmethod
@@ -580,14 +640,23 @@ class SchoolCalendarService:
         payload: SchoolCalendarDayUpdate,
         acting_admin_id: uuid.UUID,
     ) -> SchoolCalendarDayResponse:
-        calendar = await SchoolCalendarRepository.get_active_calendar_for_date(db, tenant_id, calendar_date)
+        if payload.calendar_id is not None:
+            calendar = await SchoolCalendarRepository.get_calendar_by_id(db, tenant_id, payload.calendar_id)
+        else:
+            calendar = await SchoolCalendarRepository.get_active_calendar_for_date(db, tenant_id, calendar_date)
         if calendar is None:
-            raise NotFoundException("No active calendar covers this date.")
+            raise NotFoundException("No calendar covers this date.")
+        if calendar.status not in {SchoolCalendarStatus.DRAFT, SchoolCalendarStatus.ACTIVE}:
+            raise ConflictException("Archived calendar days cannot be edited.")
         day = await SchoolCalendarRepository.get_day_by_date(db, tenant_id, calendar.id, calendar_date, lock=True)
         if day is None:
             raise NotFoundException("Calendar day not found.")
-        if calendar_date < date.today() and (not payload.historical_correction_confirmed or not payload.reason):
+        today = await SchoolCalendarService.tenant_today(db, tenant_id)
+        significant_fields = {"day_type", "school_open", "student_activity_allowed", "student_attendance_required", "workforce_attendance_required"}
+        if calendar_date < today and (not payload.historical_correction_confirmed or not payload.reason):
             raise ConflictException("Past calendar corrections require confirmation and a reason.")
+        if calendar.status == SchoolCalendarStatus.ACTIVE and calendar_date >= today and significant_fields.intersection(payload.model_fields_set) and not payload.reason:
+            raise ConflictException("Active calendar operational changes require a reason.")
         previous = SchoolCalendarDayResponse.model_validate(day).model_dump(mode="json")
         SchoolCalendarService._apply_day_update(day, payload, acting_admin_id)
         day = await SchoolCalendarRepository.update_day(db, day)
@@ -614,7 +683,8 @@ class SchoolCalendarService:
         acting_admin_id: uuid.UUID,
         calendar_id: uuid.UUID | None = None,
     ) -> SchoolCalendarRangeResponse:
-        if payload.start_date < date.today() and not payload.historical_correction_confirmed:
+        today = await SchoolCalendarService.tenant_today(db, tenant_id)
+        if payload.start_date < today and (not payload.historical_correction_confirmed or not payload.reason):
             raise ConflictException("Past calendar corrections require confirmation.")
         days = await SchoolCalendarRepository.list_days_by_range(
             db,
@@ -666,6 +736,9 @@ class SchoolCalendarService:
                 raise NotFoundException("School calendar not found.")
             if selected_calendar.status != SchoolCalendarStatus.ACTIVE:
                 raise ConflictException("Emergency closure can only be applied to an active calendar.")
+        today = await SchoolCalendarService.tenant_today(db, tenant_id)
+        if payload.start_date < today:
+            raise ConflictException("Emergency closure cannot be applied to past dates. Use a historical correction instead.")
         start_calendar = await SchoolCalendarRepository.get_active_calendar_for_date(
             db,
             tenant_id,
@@ -745,6 +818,7 @@ class SchoolCalendarService:
         calendar_id: uuid.UUID | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
+        status: SchoolCalendarEventStatus | None = None,
         audience: set[SchoolCalendarEventAudience] | None = None,
         actor_facing: bool = False,
         skip: int = 0,
@@ -756,7 +830,7 @@ class SchoolCalendarService:
             calendar_id=calendar_id,
             start_date=start_date,
             end_date=end_date,
-            status=SchoolCalendarEventStatus.PUBLISHED if actor_facing else None,
+            status=SchoolCalendarEventStatus.PUBLISHED if actor_facing else status,
             audience=audience,
             skip=skip,
             limit=limit,

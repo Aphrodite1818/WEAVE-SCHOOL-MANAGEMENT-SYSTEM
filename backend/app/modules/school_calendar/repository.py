@@ -277,6 +277,63 @@ class SchoolCalendarRepository:
         return max(expected - existing, 0)
 
     @staticmethod
+    async def count_extra_dates(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        calendar_id: uuid.UUID,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> int:
+        return int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(SchoolCalendarDay).where(
+                        SchoolCalendarDay.tenant_id == tenant_id,
+                        SchoolCalendarDay.calendar_id == calendar_id,
+                        (
+                            (SchoolCalendarDay.calendar_date < start_date)
+                            | (SchoolCalendarDay.calendar_date > end_date)
+                        ),
+                    )
+                )
+            ).scalar_one()
+        )
+
+    @staticmethod
+    async def count_duplicate_dates(db: AsyncSession, tenant_id: uuid.UUID, calendar_id: uuid.UUID) -> int:
+        duplicate_groups = (
+            select(SchoolCalendarDay.calendar_date)
+            .where(
+                SchoolCalendarDay.tenant_id == tenant_id,
+                SchoolCalendarDay.calendar_id == calendar_id,
+            )
+            .group_by(SchoolCalendarDay.calendar_date)
+            .having(func.count(SchoolCalendarDay.id) > 1)
+            .subquery()
+        )
+        return int((await db.execute(select(func.count()).select_from(duplicate_groups))).scalar_one())
+
+    @staticmethod
+    async def count_invalid_days(db: AsyncSession, tenant_id: uuid.UUID, calendar_id: uuid.UUID) -> int:
+        return int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(SchoolCalendarDay).where(
+                        SchoolCalendarDay.tenant_id == tenant_id,
+                        SchoolCalendarDay.calendar_id == calendar_id,
+                        (
+                            (SchoolCalendarDay.school_open.is_(True) & (SchoolCalendarDay.opens_at.is_(None) | SchoolCalendarDay.closes_at.is_(None)))
+                            | (SchoolCalendarDay.school_open.is_(True) & (SchoolCalendarDay.closes_at <= SchoolCalendarDay.opens_at))
+                            | (SchoolCalendarDay.student_attendance_required.is_(True) & SchoolCalendarDay.student_activity_allowed.is_(False))
+                            | (SchoolCalendarDay.student_attendance_required.is_(True) & SchoolCalendarDay.school_open.is_(False))
+                        ),
+                    )
+                )
+            ).scalar_one()
+        )
+
+    @staticmethod
     async def update_day(db: AsyncSession, day: SchoolCalendarDay) -> SchoolCalendarDay:
         return await SchoolCalendarRepository._save(db, day)
 

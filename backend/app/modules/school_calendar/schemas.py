@@ -87,6 +87,7 @@ class SchoolCalendarConfigurationResponse(CalendarOutputBase):
     default_close_time: time | None
     default_student_attendance_required: bool
     default_workforce_attendance_required: bool
+    revision: int
     created_at: datetime
     updated_at: datetime
 
@@ -108,6 +109,7 @@ class SchoolCalendarArchiveRequest(CalendarInputBase):
 
 
 class SchoolCalendarDayUpdate(CalendarInputBase):
+    calendar_id: uuid.UUID | None = None
     day_type: SchoolCalendarDayType | None = None
     title: str | None = Field(default=None, max_length=150)
     description: str | None = Field(default=None, max_length=1000)
@@ -240,6 +242,9 @@ class SchoolCalendarDayResponse(CalendarOutputBase):
     is_manual_override: bool
     created_by_admin_id: uuid.UUID | None
     updated_by_admin_id: uuid.UUID | None
+    can_edit: bool = False
+    requires_historical_correction: bool = False
+    requires_reason: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -251,6 +256,7 @@ class SchoolCalendarResponse(CalendarOutputBase):
     academic_term_id: uuid.UUID
     status: SchoolCalendarStatus
     generated_at: datetime | None
+    generated_from_configuration_revision: int | None = None
     activated_at: datetime | None
     activated_by_admin_id: uuid.UUID | None
     archived_at: datetime | None
@@ -260,6 +266,12 @@ class SchoolCalendarResponse(CalendarOutputBase):
     can_edit: bool = False
     can_regenerate: bool = False
     blocker_messages: list[str] = []
+    blocker_codes: list[str] = []
+    missing_dates: int = 0
+    extra_dates: int = 0
+    duplicate_dates: int = 0
+    invalid_days: int = 0
+    configuration_outdated: bool = False
     dependency_counts: dict[str, int] = {}
     created_at: datetime
     updated_at: datetime
@@ -274,10 +286,16 @@ class SchoolCalendarDependencyPreview(CalendarOutputBase):
     calendar_id: uuid.UUID
     dependency_counts: dict[str, int]
     blocker_messages: list[str] = []
+    blocker_codes: list[str] = []
     can_activate: bool
     can_archive: bool
     can_edit: bool
     can_regenerate: bool
+    missing_dates: int = 0
+    extra_dates: int = 0
+    duplicate_dates: int = 0
+    invalid_days: int = 0
+    configuration_outdated: bool = False
 
 
 class SchoolCalendarGeneratePreview(CalendarOutputBase):

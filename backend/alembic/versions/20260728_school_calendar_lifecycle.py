@@ -56,9 +56,21 @@ def upgrade() -> None:
         """
         UPDATE public.academic_terms
         SET is_current = false
-        WHERE status <> 'open'
+        WHERE status NOT IN ('open', 'closing')
           AND is_current = true
         """
+    )
+    op.execute(
+        """
+        ALTER TABLE public.academic_terms
+        DROP CONSTRAINT IF EXISTS ck_academic_term_current_requires_open
+        """
+    )
+    op.create_check_constraint(
+        "ck_academic_term_current_requires_open",
+        "academic_terms",
+        "is_current = false OR status IN ('open', 'closing')",
+        schema="public",
     )
     op.create_check_constraint(
         "ck_academic_term_status_timestamps",
@@ -106,6 +118,7 @@ def upgrade() -> None:
         sa.Column("default_close_time", sa.Time(), nullable=True),
         sa.Column("default_student_attendance_required", sa.Boolean(), server_default="true", nullable=False),
         sa.Column("default_workforce_attendance_required", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("revision", sa.Integer(), server_default="1", nullable=False),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
@@ -129,6 +142,7 @@ def upgrade() -> None:
         sa.Column("academic_term_id", sa.UUID(), nullable=False),
         sa.Column("status", calendar_status, server_default="draft", nullable=False),
         sa.Column("generated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("generated_from_configuration_revision", sa.Integer(), nullable=True),
         sa.Column("activated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("activated_by_admin_id", sa.UUID(), nullable=True),
         sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),

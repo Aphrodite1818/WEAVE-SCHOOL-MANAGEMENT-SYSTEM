@@ -181,12 +181,14 @@ export const academicWorkflowConfig = {
       "Configure term calendars, operating days, events, holidays, closures, and lifecycle readiness.",
     icon: CalendarDays,
     tone: "success",
-    defaultTab: "manage",
+    defaultTab: "overview",
     tabs: [
-      { id: "manage", label: "Manage Calendar" },
+      { id: "overview", label: "Overview" },
       { id: "setup", label: "Setup" },
+      { id: "calendar", label: "Calendar" },
       { id: "events", label: "Events" },
       { id: "closures", label: "Closures" },
+      { id: "history", label: "History" },
     ],
   },
 };

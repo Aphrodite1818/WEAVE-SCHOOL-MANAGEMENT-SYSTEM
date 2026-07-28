@@ -55,10 +55,11 @@ async def today(
 ) -> ResolvedSchoolDayResponse:
     await _ensure_academic_setup(db, current_actor.tenant_id)
     service = SchoolDayPolicyService()
+    resolved_date = target_date or await SchoolCalendarService.tenant_today(db, current_actor.tenant_id)
     return await service.resolve_day(
         db,
         tenant_id=current_actor.tenant_id,
-        target_date=target_date or date.today(),
+        target_date=resolved_date,
         audience=_audiences_for(current_actor),
     )
 
@@ -113,7 +114,7 @@ async def upcoming(
     limit: int = Query(default=10, ge=1, le=50),
 ) -> SchoolCalendarUpcomingResponse:
     await _ensure_academic_setup(db, current_actor.tenant_id)
-    resolved_start = start_date or date.today()
+    resolved_start = start_date or await SchoolCalendarService.tenant_today(db, current_actor.tenant_id)
     return await SchoolCalendarService.upcoming(
         db,
         current_actor.tenant_id,

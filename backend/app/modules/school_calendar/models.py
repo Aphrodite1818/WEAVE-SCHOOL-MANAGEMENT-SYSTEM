@@ -45,6 +45,7 @@ class SchoolCalendarConfiguration(BaseModel):
     default_close_time: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
     default_student_attendance_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     default_workforce_attendance_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_school_calendar_configurations_tenant"),
@@ -69,6 +70,7 @@ class SchoolCalendar(BaseModel):
         server_default=SchoolCalendarStatus.DRAFT.value,
     )
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    generated_from_configuration_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

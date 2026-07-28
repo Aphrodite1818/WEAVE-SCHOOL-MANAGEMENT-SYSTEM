@@ -5,7 +5,7 @@ import { getErrorMessage, isAbortError } from "../../../services/api";
 import { schoolCalendarService } from "../api/schoolCalendarService";
 import TodaySchoolStatusCard from "./TodaySchoolStatusCard";
 
-function DashboardCalendarPanel({ role = "student", admin = false }) {
+function DashboardCalendarPanel({ role = "student", admin = false, actorId = "", membershipId = "", tenantId = "" }) {
   const [today, setToday] = useState(null);
   const [upcoming, setUpcoming] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -39,7 +39,7 @@ function DashboardCalendarPanel({ role = "student", admin = false }) {
       mounted = false;
       controller.abort();
     };
-  }, []);
+  }, [actorId, membershipId, role, tenantId]);
 
   if (loading) {
     return <LoadingState label="Loading school calendar..." />;

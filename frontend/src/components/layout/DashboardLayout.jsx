@@ -81,6 +81,7 @@ function DashboardShellFrame({
   const user = authSession.getUser() || {};
   const location = useLocation();
   const role = getRole(user, roleProp);
+  const academicHubActive = location.pathname.startsWith("/admin/academic");
   const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
@@ -121,6 +122,12 @@ function DashboardShellFrame({
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (!academicHubActive) return;
+    setSidebarCollapsed(true);
+    setMobileNavOpen(false);
+  }, [academicHubActive, location.pathname]);
 
   useEffect(() => {
     scrollDashboardViewportToTop("auto");

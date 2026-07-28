@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.school_calendar.calendar_enums import SchoolCalendarStatus
+from app.modules.school_calendar.calendar_enums import SchoolCalendarEventStatus, SchoolCalendarStatus
 from app.modules.school_calendar.generation_service import SchoolCalendarGenerationService
 from app.modules.school_calendar.schemas import (
     SchoolCalendarActivationRequest,
@@ -208,6 +208,7 @@ async def list_events(
     calendar_id: UUID | None = Query(default=None),
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
+    status_filter: SchoolCalendarEventStatus | None = Query(default=None, alias="status"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> SchoolCalendarEventListResponse:
@@ -218,6 +219,7 @@ async def list_events(
         calendar_id=calendar_id,
         start_date=start_date,
         end_date=end_date,
+        status=status_filter,
         skip=skip,
         limit=limit,
     )

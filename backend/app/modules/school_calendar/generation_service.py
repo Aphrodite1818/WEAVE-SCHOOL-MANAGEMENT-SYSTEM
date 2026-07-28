@@ -92,12 +92,14 @@ class SchoolCalendarGenerationService:
                     academic_term_id=term.id,
                     status=SchoolCalendarStatus.DRAFT,
                     generated_at=now,
+                    generated_from_configuration_revision=getattr(config, "revision", 1),
                 ),
             )
         elif calendar.status != SchoolCalendarStatus.DRAFT:
             raise ConflictException("Only draft calendars can be regenerated.")
         else:
             calendar.generated_at = now
+            calendar.generated_from_configuration_revision = getattr(config, "revision", 1)
             await SchoolCalendarRepository.save_calendar(db, calendar)
 
         existing_days = {
@@ -134,7 +136,6 @@ class SchoolCalendarGenerationService:
                 counts.manual_days_preserved += 1
                 continue
             if existing is not None and not payload.overwrite_generated_days:
-                counts.generated_days_updated += 0
                 continue
             if existing is not None:
                 existing.day_type = day_type
