@@ -17,6 +17,7 @@ from app.core.exception_handlers import register_exception_handlers
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
+from app.core.middleware.trusted_proxy import TrustedProxyHeadersMiddleware
 from app.modules.announcements.router import (
     feed_router as announcement_feed_router,
     superadmin_router as superadmin_announcement_router,
@@ -134,6 +135,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestTimingMiddleware)
     app.add_middleware(SecurityHeadersMiddleware, allow_docs_cdn=settings.is_development)
     app.add_middleware(CORSMiddleware, **middleware_options)
+    # Added last so forwarding headers are normalized before every other middleware.
+    app.add_middleware(TrustedProxyHeadersMiddleware)
     register_exception_handlers(app)
 
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
