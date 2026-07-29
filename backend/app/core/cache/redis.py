@@ -1,7 +1,8 @@
-#==========================#
-#        core.redis        #
-#==========================#
-"""this file is responsible for redis cache connection and operations"""
+# ========================== #
+#        core.redis          #
+# ========================== #
+
+"""Redis cache connection and health operations."""
 
 from __future__ import annotations
 
@@ -16,20 +17,18 @@ _redis_client: Redis | None = None
 
 
 async def connect_redis() -> None:
-    """
-    Create and verify the Redis connection.
-
-    This should run once when the FastAPI app starts.
-    """
+    """Create and verify the shared Redis connection."""
 
     global _redis_client
 
     if not settings.CACHE_ENABLED:
-        logger.info("Cache is disabled. Redis connection skipped.")
+        logger.info("Cache is disabled. Shared Redis cache connection skipped.")
         return
-
     if not settings.REDIS_URL:
-        logger.warning("Cache enabled but Redis URL is not set. Redis connection skipped.")
+        message = "Cache is enabled but REDIS_URL is not set."
+        if settings.is_production_like:
+            raise RuntimeError(message)
+        logger.warning(message)
         return
 
     _redis_client = Redis.from_url(
@@ -44,28 +43,37 @@ async def connect_redis() -> None:
     try:
         await _redis_client.ping()
         logger.info("Successfully connected to Redis.")
-    except Exception:
-        logger.error("Failed to connect to Redis. Please check the Redis server and configuration.")
+    except Exception as exc:
+        logger.exception("Failed to connect to Redis.")
         await close_redis()
+        if settings.is_production_like:
+            raise RuntimeError("Redis is unavailable during application startup.") from exc
+
+
+async def create_redis_health_client() -> Redis | None:
+    """Return a temporary Redis client for readiness checks."""
+
+    if not settings.REDIS_URL:
+        return None
+    return Redis.from_url(
+        settings.REDIS_URL,
+        encoding="utf-8",
+        decode_responses=True,
+        socket_timeout=2,
+        socket_connect_timeout=2,
+    )
 
 
 def get_redis() -> Redis | None:
-    """
-    Return the active Redis client.
+    """Return the active shared Redis client, when cache is enabled."""
 
-    Returns None when cache is disabled or Redis failed to connect.
-    """
     return _redis_client
 
 
 async def close_redis() -> None:
-    """
-    Close the Redis connection.
+    """Close the shared Redis connection."""
 
-    This should run once when the FastAPI app shuts down.
-    """
     global _redis_client
-
     if _redis_client is None:
         return
 
@@ -75,18 +83,22 @@ async def close_redis() -> None:
 
 
 async def redis_health_check() -> bool:
-    """
-    Check the health of the Redis connection.
+    """Check Redis even when the optional shared cache client is disabled."""
 
-    Returns True if Redis is healthy, False otherwise.
-    """
-    if _redis_client is None:
-        logger.warning("Redis client is not initialized.")
-        return False
+    client = _redis_client
+    temporary_client = False
+    if client is None:
+        client = await create_redis_health_client()
+        temporary_client = client is not None
+    if client is None:
+        return not settings.is_production_like
 
     try:
-        await _redis_client.ping()
+        await client.ping()
         return True
-    except Exception as e:
-        logger.error(f"Redis health check failed: {e}")
+    except Exception:
+        logger.exception("Redis health check failed.")
         return False
+    finally:
+        if temporary_client:
+            await client.aclose()
