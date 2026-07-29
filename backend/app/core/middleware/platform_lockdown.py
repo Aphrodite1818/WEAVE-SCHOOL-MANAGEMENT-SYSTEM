@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-
-from fastapi import Request, Response, status
+from fastapi import Request, status
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config.database import AsyncSessionLocal
 from app.config.logging import get_logger
@@ -47,7 +46,7 @@ class PlatformLockdownMiddleware:
 
     _last_known_lockdown_state: dict[str, object] | None = None
 
-    def __init__(self, app: Callable[[Request], Awaitable[Response]]) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     @staticmethod
@@ -87,8 +86,8 @@ class PlatformLockdownMiddleware:
             },
         )
 
-    async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
-        if scope.get("type") != "http":
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
