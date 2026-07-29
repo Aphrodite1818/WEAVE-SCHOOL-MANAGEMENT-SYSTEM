@@ -20,7 +20,18 @@ def test_trusted_proxy_uses_client_before_configured_proxy_hops(monkeypatch) -> 
         _scope("203.0.113.9, 198.51.100.10")
     )
 
-    assert resolved == "198.51.100.10"
+    assert resolved == "203.0.113.9"
+
+
+def test_multiple_trusted_hops_are_skipped_from_the_right(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRUST_PROXY_HEADERS", True)
+    monkeypatch.setattr(settings, "TRUSTED_PROXY_HOPS", 2)
+
+    resolved = TrustedProxyHeadersMiddleware._resolved_ip(
+        _scope("203.0.113.9, 198.51.100.10, 192.0.2.20")
+    )
+
+    assert resolved == "203.0.113.9"
 
 
 def test_untrusted_forwarding_header_is_ignored(monkeypatch) -> None:
