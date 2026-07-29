@@ -77,7 +77,7 @@ def _has_values_beyond_headers(*, headers: list[str], values: Sequence[Any]) -> 
 
     if len(values) <= len(headers):
         return False
-    for value in values[len(headers):]:
+    for value in values[len(headers) :]:
         serialized_value = _to_serializable_value(value)
         if serialized_value is not None and str(serialized_value).strip() != "":
             return True

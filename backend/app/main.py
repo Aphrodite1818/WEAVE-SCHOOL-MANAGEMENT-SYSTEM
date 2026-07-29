@@ -48,12 +48,18 @@ from app.modules.report_cards.router import (
 from app.modules.school_calendar.admin_router import router as school_calendar_admin_router
 from app.modules.school_calendar.shared_router import router as school_calendar_shared_router
 from app.modules.search.router import router as tenant_search_router
-from app.modules.student_academics.assessment_config_router import router as assessment_config_router
-from app.modules.student_academics.grading_readiness_router import router as grading_readiness_router
+from app.modules.student_academics.assessment_config_router import (
+    router as assessment_config_router,
+)
+from app.modules.student_academics.grading_readiness_router import (
+    router as grading_readiness_router,
+)
 from app.modules.student_academics.grading_scale_lifecycle_router import (
     router as grading_scale_lifecycle_router,
 )
-from app.modules.student_academics.open_session_config_router import router as open_session_config_router
+from app.modules.student_academics.open_session_config_router import (
+    router as open_session_config_router,
+)
 from app.modules.student_academics.result_limits_router import (
     admin_router as result_limits_admin_router,
     student_router as result_limits_student_router,
@@ -66,7 +72,9 @@ from app.modules.student_academics.router import (
     tenant_admin_router as tenant_admin_academic_router,
 )
 from app.modules.student_academics.session_closure_router import router as session_closure_router
-from app.modules.student_academics.student_subject_cards_router import router as student_subject_cards_router
+from app.modules.student_academics.student_subject_cards_router import (
+    router as student_subject_cards_router,
+)
 from app.modules.student_academics.write_guard import (
     ensure_admin_academic_write_window,
     ensure_teacher_academic_write_window,

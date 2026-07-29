@@ -71,9 +71,7 @@ def test_expired_legacy_plaintext_setup_code_is_not_revealed() -> None:
         "row_number": 2,
         "status": "created",
         "setup_code": "12345678",
-        "access_code_expires_at": (
-            datetime.now(timezone.utc) - timedelta(minutes=1)
-        ).isoformat(),
+        "access_code_expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
     }
 
     revealed = reveal_result_row(row)

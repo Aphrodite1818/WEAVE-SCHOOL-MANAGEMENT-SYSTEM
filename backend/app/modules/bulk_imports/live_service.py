@@ -25,7 +25,11 @@ from app.modules.bulk_imports.repository import (
     ImportRowErrorRepository,
     ImportStagedRowRepository,
 )
-from app.modules.bulk_imports.schemas import ImportJobDetailResponse, ImportJobUpdate, ImportRowErrorCreate
+from app.modules.bulk_imports.schemas import (
+    ImportJobDetailResponse,
+    ImportJobUpdate,
+    ImportRowErrorCreate,
+)
 from app.modules.bulk_imports.service import (
     BulkImportService,
     build_failed_result_row,
@@ -215,7 +219,9 @@ class BulkImportLiveService:
                     ),
                 )
                 await db.commit()
-            raise BadRequestException(detail="Could not queue the background import worker.") from exc
+            raise BadRequestException(
+                detail="Could not queue the background import worker."
+            ) from exc
 
         refreshed_job = await ImportJobRepository.get_job_by_id(
             db=db,
@@ -456,7 +462,9 @@ class BulkImportLiveService:
                         )
                     except IntegrityError:
                         processing_failed_count += 1
-                        error_message = "Row failed because of a duplicate or invalid database value."
+                        error_message = (
+                            "Row failed because of a duplicate or invalid database value."
+                        )
                         chunk_errors.append(
                             _build_processing_error_item(
                                 import_job_id=job_id,

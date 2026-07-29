@@ -22,12 +22,10 @@ SCHEMA = "public"
 
 def _constraint_names(inspector, table_name: str) -> set[str]:
     names = {
-        item.get("name")
-        for item in inspector.get_check_constraints(table_name, schema=SCHEMA)
+        item.get("name") for item in inspector.get_check_constraints(table_name, schema=SCHEMA)
     }
     names.update(
-        item.get("name")
-        for item in inspector.get_unique_constraints(table_name, schema=SCHEMA)
+        item.get("name") for item in inspector.get_unique_constraints(table_name, schema=SCHEMA)
     )
     return {name for name in names if name}
 
@@ -173,9 +171,7 @@ def _ensure_student_result_constraints(inspector) -> None:
             "student_subject_results must exist before applying revision 270287aab63d"
         )
 
-    columns = {
-        item["name"] for item in inspector.get_columns(table_name, schema=SCHEMA)
-    }
+    columns = {item["name"] for item in inspector.get_columns(table_name, schema=SCHEMA)}
     required_columns = {
         "tenant_id",
         "student_id",
@@ -197,8 +193,7 @@ def _ensure_student_result_constraints(inspector) -> None:
     missing_columns = sorted(required_columns - columns)
     if missing_columns:
         raise RuntimeError(
-            "student_subject_results is missing required columns: "
-            + ", ".join(missing_columns)
+            "student_subject_results is missing required columns: " + ", ".join(missing_columns)
         )
 
     constraints = _constraint_names(inspector, table_name)
@@ -245,8 +240,7 @@ def _ensure_student_result_constraints(inspector) -> None:
         op.create_check_constraint(
             "ck_student_subject_results_locked_metadata",
             table_name,
-            "status <> 'locked' OR "
-            "(locked_at IS NOT NULL AND locked_by_admin_id IS NOT NULL)",
+            "status <> 'locked' OR (locked_at IS NOT NULL AND locked_by_admin_id IS NOT NULL)",
             schema=SCHEMA,
         )
 
@@ -282,9 +276,7 @@ def downgrade() -> None:
         ):
             if constraint_name in constraint_names:
                 constraint_type = (
-                    "unique"
-                    if constraint_name == "uq_student_subject_result_scope"
-                    else "check"
+                    "unique" if constraint_name == "uq_student_subject_result_scope" else "check"
                 )
                 op.drop_constraint(
                     constraint_name,

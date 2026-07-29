@@ -215,7 +215,9 @@ async def download_bulk_import_result(
 
     if result_format == "slip":
         if resource_type != ImportResourceType.STUDENTS:
-            raise BadRequestException(detail="Printable slips are only available for student imports.")
+            raise BadRequestException(
+                detail="Printable slips are only available for student imports."
+            )
         result_rows = [reveal_result_row(row) for row in stored_rows]
         tenant = await TenantRepository.get_by_id(db=db, tenant_id=current_user.tenant_id)
         result_file = create_student_access_slip_report(

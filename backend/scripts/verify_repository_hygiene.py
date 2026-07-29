@@ -49,11 +49,7 @@ def tracked_files() -> list[Path]:
         check=True,
         capture_output=True,
     )
-    return [
-        REPOSITORY_ROOT / item.decode("utf-8")
-        for item in result.stdout.split(b"\0")
-        if item
-    ]
+    return [REPOSITORY_ROOT / item.decode("utf-8") for item in result.stdout.split(b"\0") if item]
 
 
 def path_is_forbidden(path: Path) -> bool:

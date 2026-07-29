@@ -19,10 +19,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 BASE_ENV_VALUES = dotenv_values(BASE_DIR / ".env")
 ACTIVE_ENV = (
-    os.getenv("ENV")
-    or os.getenv("APP_ENV")
-    or BASE_ENV_VALUES.get("ENV")
-    or "dev"
+    os.getenv("ENV") or os.getenv("APP_ENV") or BASE_ENV_VALUES.get("ENV") or "dev"
 ).lower()
 
 ENV_FILE_BY_NAME = {
@@ -189,21 +186,30 @@ class Settings(BaseSettings):
             return self
 
         if len(self.SECRET_KEY.strip()) < 48:
-            raise ValueError("SECRET_KEY must contain at least 48 characters in staging/production.")
+            raise ValueError(
+                "SECRET_KEY must contain at least 48 characters in staging/production."
+            )
         if not self.REDIS_URL:
-            raise ValueError("REDIS_URL is required in staging/production for queues and rate limiting.")
+            raise ValueError(
+                "REDIS_URL is required in staging/production for queues and rate limiting."
+            )
         if self.RATE_LIMIT_ENABLED and not (self.RATE_LIMIT_REDIS_URL or self.REDIS_URL):
             raise ValueError("Redis must be configured when production rate limiting is enabled.")
-        if not self.BULK_IMPORT_RESULT_ENCRYPTION_KEY or len(
-            self.BULK_IMPORT_RESULT_ENCRYPTION_KEY.strip()
-        ) < 32:
+        if (
+            not self.BULK_IMPORT_RESULT_ENCRYPTION_KEY
+            or len(self.BULK_IMPORT_RESULT_ENCRYPTION_KEY.strip()) < 32
+        ):
             raise ValueError(
                 "BULK_IMPORT_RESULT_ENCRYPTION_KEY must contain at least 32 characters in staging/production."
             )
         if not self.TRUST_PROXY_HEADERS:
-            raise ValueError("TRUST_PROXY_HEADERS must be enabled behind the staging/production reverse proxy.")
+            raise ValueError(
+                "TRUST_PROXY_HEADERS must be enabled behind the staging/production reverse proxy."
+            )
         if not self.ALLOWED_ORIGINS:
-            raise ValueError("ALLOWED_ORIGINS must contain explicit HTTPS origins in staging/production.")
+            raise ValueError(
+                "ALLOWED_ORIGINS must contain explicit HTTPS origins in staging/production."
+            )
         if "*" in self.ALLOWED_ORIGINS:
             raise ValueError("Wildcard CORS origins are forbidden in staging/production.")
         for origin in self.ALLOWED_ORIGINS:
@@ -213,12 +219,12 @@ class Settings(BaseSettings):
 
         frontend_url = urlparse(self.FRONTEND_APP_URL)
         if frontend_url.scheme != "https" or not frontend_url.netloc:
-            raise ValueError("FRONTEND_APP_URL must be an absolute HTTPS URL in staging/production.")
+            raise ValueError(
+                "FRONTEND_APP_URL must be an absolute HTTPS URL in staging/production."
+            )
 
         app_script_configured = bool(self.APP_SCRIPT_URL)
-        smtp_configured = all(
-            [self.SMTP_HOST, self.SMTP_FROM_EMAIL, self.SMTP_PASSWORD]
-        )
+        smtp_configured = all([self.SMTP_HOST, self.SMTP_FROM_EMAIL, self.SMTP_PASSWORD])
         if not app_script_configured and not smtp_configured:
             raise ValueError(
                 "Configure APP_SCRIPT_URL or complete SMTP settings before staging/production startup."
@@ -226,11 +232,15 @@ class Settings(BaseSettings):
         if self.APP_SCRIPT_URL:
             app_script_url = urlparse(self.APP_SCRIPT_URL)
             if app_script_url.scheme != "https" or not app_script_url.netloc:
-                raise ValueError("APP_SCRIPT_URL must be an absolute HTTPS URL in staging/production.")
+                raise ValueError(
+                    "APP_SCRIPT_URL must be an absolute HTTPS URL in staging/production."
+                )
 
         if self.ENV == EnvironmentType.PRODUCTION:
             if self.MEDIA_STORAGE_PROVIDER != "r2":
-                raise ValueError("Production media storage must use R2; local Railway storage is ephemeral.")
+                raise ValueError(
+                    "Production media storage must use R2; local Railway storage is ephemeral."
+                )
             required_r2_values = {
                 "R2_ACCOUNT_ID": self.R2_ACCOUNT_ID,
                 "R2_ACCESS_KEY_ID": self.R2_ACCESS_KEY_ID,

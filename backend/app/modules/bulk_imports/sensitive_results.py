@@ -68,17 +68,15 @@ def protect_result_row(row: dict[str, Any]) -> dict[str, Any]:
 
     now = _utc_now()
     access_code_expires_at = _parse_datetime(protected.get(ACCESS_CODE_EXPIRES_AT_FIELD))
-    retention_expires_at = now + timedelta(
-        hours=settings.BULK_IMPORT_SETUP_CODE_RETENTION_HOURS
-    )
+    retention_expires_at = now + timedelta(hours=settings.BULK_IMPORT_SETUP_CODE_RETENTION_HOURS)
     available_until = min(
         access_code_expires_at or retention_expires_at,
         retention_expires_at,
     )
 
-    protected[SETUP_CODE_CIPHERTEXT_FIELD] = _fernet().encrypt(
-        str(setup_code).encode("utf-8")
-    ).decode("ascii")
+    protected[SETUP_CODE_CIPHERTEXT_FIELD] = (
+        _fernet().encrypt(str(setup_code).encode("utf-8")).decode("ascii")
+    )
     protected[SETUP_CODE_PROTECTED_AT_FIELD] = now.isoformat()
     protected[SETUP_CODE_AVAILABLE_UNTIL_FIELD] = available_until.isoformat()
     return protected
@@ -93,8 +91,7 @@ def protect_import_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] |
     result_rows = protected.get("result_rows")
     if isinstance(result_rows, list):
         protected["result_rows"] = [
-            protect_result_row(row) if isinstance(row, dict) else row
-            for row in result_rows
+            protect_result_row(row) if isinstance(row, dict) else row for row in result_rows
         ]
     return protected
 
@@ -115,9 +112,11 @@ def reveal_result_row(row: dict[str, Any]) -> dict[str, Any]:
         return revealed
 
     try:
-        revealed[SETUP_CODE_FIELD] = _fernet().decrypt(
-            str(revealed[SETUP_CODE_CIPHERTEXT_FIELD]).encode("ascii")
-        ).decode("utf-8")
+        revealed[SETUP_CODE_FIELD] = (
+            _fernet()
+            .decrypt(str(revealed[SETUP_CODE_CIPHERTEXT_FIELD]).encode("ascii"))
+            .decode("utf-8")
+        )
     except (InvalidToken, ValueError, UnicodeDecodeError):
         revealed.pop(SETUP_CODE_FIELD, None)
     return revealed
@@ -127,12 +126,8 @@ def redact_result_row(row: dict[str, Any]) -> dict[str, Any]:
     """Remove setup-code material from normal API and spreadsheet responses."""
 
     redacted = dict(row)
-    redacted["setup_code_available"] = (
-        _ciphertext_is_available(redacted)
-        or (
-            redacted.get(SETUP_CODE_FIELD) not in {None, ""}
-            and _plaintext_is_available(redacted)
-        )
+    redacted["setup_code_available"] = _ciphertext_is_available(redacted) or (
+        redacted.get(SETUP_CODE_FIELD) not in {None, ""} and _plaintext_is_available(redacted)
     )
     for field in (
         SETUP_CODE_FIELD,
@@ -155,7 +150,6 @@ def sanitize_import_metadata_for_response(
     result_rows = sanitized.get("result_rows")
     if isinstance(result_rows, list):
         sanitized["result_rows"] = [
-            redact_result_row(row) if isinstance(row, dict) else row
-            for row in result_rows
+            redact_result_row(row) if isinstance(row, dict) else row for row in result_rows
         ]
     return sanitized

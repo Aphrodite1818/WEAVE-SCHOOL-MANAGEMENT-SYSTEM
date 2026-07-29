@@ -65,13 +65,9 @@ def verify_routes() -> None:
                 continue
             route_keys.append((method, path))
 
-    duplicates = [
-        route_key for route_key, count in Counter(route_keys).items() if count > 1
-    ]
+    duplicates = [route_key for route_key, count in Counter(route_keys).items() if count > 1]
     if duplicates:
-        raise AssertionError(
-            f"Duplicate method/path registrations detected: {duplicates}"
-        )
+        raise AssertionError(f"Duplicate method/path registrations detected: {duplicates}")
 
 
 def main() -> None:
