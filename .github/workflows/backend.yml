@@ -73,6 +73,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Repository hygiene
+        run: python scripts/verify_repository_hygiene.py
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
