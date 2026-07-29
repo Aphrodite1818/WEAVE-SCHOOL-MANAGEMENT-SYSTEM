@@ -25,6 +25,16 @@ import LoadingState from "../../components/shared/LoadingState";
 import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../services/api";
 import { bulkImportService } from "../../services/bulkImport.service";
+import {
+  HISTORY_NEXT_LABEL,
+  getActualParentInvitationsQueued,
+  getExpectedParentInvitationCount,
+  getNextHistoryRequest,
+  getPreviousHistoryRequest,
+  getResultRows,
+  getStatusChangeHistoryRequest,
+  loadImportHistoryPage,
+} from "./bulkImportPageLogic";
 
 const ACTIVE_IMPORT_JOB_STORAGE_KEY = "weave:active-import-job";
 const VALID_STEPS = new Set(["upload", "validate", "review", "process", "history"]);
@@ -98,7 +108,6 @@ const percent = (value, total) => {
   return Math.min(100, Math.round((Number(value || 0) / safeTotal) * 100));
 };
 
-const getResultRows = (job) => (Array.isArray(job?.metadata_json?.result_rows) ? job.metadata_json.result_rows : []);
 const getFailedResultRows = (job) =>
   getResultRows(job).filter((row) => String(row?.status || "").toLowerCase() === "failed" || row?.error_message);
 const inferErrorFieldName = (item) => {
@@ -233,35 +242,29 @@ function BulkImportPage() {
     return job;
   }, []);
 
-  const loadJobs = useCallback(async ({ skip = historySkip, status = historyStatus } = {}) => {
-    setHistoryLoading(true);
-    try {
-      const response = await bulkImportService.listJobs({ skip, limit: 20, status: status || undefined });
-      const items = Array.isArray(response?.items) ? response.items : [];
-      setJobs(items);
-      setJobsTotal(Number(response?.total || items.length));
-      setHistorySkip(skip);
-      return items;
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [historySkip, historyStatus]);
+  const loadJobs = useCallback(({ skip, status }) => loadImportHistoryPage({
+    listJobs: bulkImportService.listJobs,
+    skip,
+    status,
+    setJobs,
+    setJobsTotal,
+    setHistorySkip,
+    setHistoryLoading,
+  }), []);
 
   const refresh = useCallback(async () => {
     try {
-      const items = await loadJobs();
+      if (step === "history") return;
       const targetJobId = jobId || window.sessionStorage.getItem(ACTIVE_IMPORT_JOB_STORAGE_KEY);
       if (targetJobId) {
         await loadJob(targetJobId);
-      } else if (step !== "upload" && step !== "history" && items[0]?.id) {
-        await loadJob(items[0].id);
       }
     } catch (error) {
       showError(getErrorMessage(error, "Could not load import jobs."));
     } finally {
       setPageLoading(false);
     }
-  }, [jobId, loadJob, loadJobs, showError, step]);
+  }, [jobId, loadJob, showError, step]);
 
   useEffect(() => {
     if (!VALID_STEPS.has(routeStep || "upload")) {
@@ -270,6 +273,29 @@ function BulkImportPage() {
     }
     refresh();
   }, [navigateSmooth, refresh, routeStep]);
+
+  useEffect(() => {
+    if (step !== "history") return undefined;
+
+    let mounted = true;
+    loadJobs({ skip: historySkip, status: historyStatus }).catch((error) => {
+      if (mounted) showError(getErrorMessage(error, "Could not load import history."));
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [historySkip, historyStatus, loadJobs, showError, step]);
+
+  const handleRefresh = useCallback(() => {
+    if (step === "history") {
+      loadJobs({ skip: historySkip, status: historyStatus }).catch((error) => {
+        showError(getErrorMessage(error, "Could not load import history."));
+      });
+      return;
+    }
+    refresh();
+  }, [historySkip, historyStatus, loadJobs, refresh, showError, step]);
 
   useEffect(() => {
     if (step === displayStep) return undefined;
@@ -319,12 +345,12 @@ function BulkImportPage() {
     ].some((value) => String(value || "").toLowerCase().includes(query)));
   }, [currentJob, errorSearch, errors]);
 
-  const parentInvitationCount = useMemo(
-    () => Number(
-      currentJob?.metadata_json?.new_parent_invitations_expected
-      ?? currentJob?.metadata_json?.parent_emails_supplied
-      ?? getResultRows(currentJob).reduce((total, row) => total + Number(row.parent_invitations_queued || 0), 0),
-    ),
+  const expectedParentInvitationCount = useMemo(
+    () => getExpectedParentInvitationCount(currentJob),
+    [currentJob],
+  );
+  const actualParentInvitationsQueued = useMemo(
+    () => getActualParentInvitationsQueued(currentJob),
     [currentJob],
   );
   const filteredJobs = useMemo(() => {
@@ -354,7 +380,7 @@ function BulkImportPage() {
       window.sessionStorage.setItem(ACTIVE_IMPORT_JOB_STORAGE_KEY, job.id);
       const errorResponse = await bulkImportService.getErrors(job.id).catch(() => ({ items: [] }));
       setErrors(Array.isArray(errorResponse?.items) ? errorResponse.items : []);
-      await loadJobs();
+      await loadJobs({ skip: historySkip, status: historyStatus });
       showSuccess(Number(job.failed_rows || 0) ? "Validation finished with errors." : "Validation passed.");
       navigateSmooth(`/admin/imports/validate/${job.id}`);
     } catch (error) {
@@ -371,7 +397,7 @@ function BulkImportPage() {
       const job = await bulkImportService.confirm(currentJob.id);
       setCurrentJob(job);
       setConfirmOpen(false);
-      await loadJobs();
+      await loadJobs({ skip: historySkip, status: historyStatus });
       showSuccess("Student import queued for background processing.");
       navigateSmooth(`/admin/imports/process/${job.id}`);
     } catch (error) {
@@ -418,7 +444,7 @@ function BulkImportPage() {
         setCurrentJob(null);
         navigateSmooth("/admin/imports/history");
       }
-      await loadJobs();
+      await loadJobs({ skip: historySkip, status: historyStatus });
     } catch (error) {
       showError(getErrorMessage(error, "Could not delete this import job."));
     } finally {
@@ -607,7 +633,7 @@ function BulkImportPage() {
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="Students to create" value={currentJob.successful_rows} variant="success" />
           <MetricCard label="Rows blocked" value={currentJob.failed_rows} variant="error" />
-          <MetricCard label="Parent invitations expected" value={parentInvitationCount} />
+          <MetricCard label="Parent invitations expected" value={expectedParentInvitationCount} />
           <MetricCard label="Total rows" value={currentJob.total_rows} />
         </div>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-between">
@@ -657,7 +683,7 @@ function BulkImportPage() {
             <MetricCard label="Processed" value={currentJob.processed_rows} />
             <MetricCard label="Created" value={currentJob.successful_rows} variant="success" />
             <MetricCard label="Failed" value={currentJob.failed_rows} variant="error" />
-            <MetricCard label="Parent emails queued" value={parentInvitationCount} />
+            <MetricCard label="Parent emails queued" value={actualParentInvitationsQueued} />
           </div>
           <div className="mt-4 grid gap-3 text-sm text-text-muted sm:grid-cols-2 lg:grid-cols-4">
             <span>Created: {formatDate(currentJob.created_at)}</span>
@@ -712,10 +738,9 @@ function BulkImportPage() {
         <select
           value={historyStatus}
           onChange={(event) => {
-            setHistoryStatus(event.target.value);
-            loadJobs({ skip: 0, status: event.target.value }).catch((error) => {
-              showError(getErrorMessage(error, "Could not filter import history."));
-            });
+            const request = getStatusChangeHistoryRequest(event.target.value);
+            setHistoryStatus(request.status);
+            setHistorySkip(request.skip);
           }}
           className="input-base"
           aria-label="Filter import status"
@@ -764,9 +789,7 @@ function BulkImportPage() {
             variant="outline"
             size="sm"
             disabled={historySkip === 0 || historyLoading}
-            onClick={() => loadJobs({ skip: Math.max(0, historySkip - 20), status: historyStatus }).catch((error) => {
-              showError(getErrorMessage(error, "Could not load the previous page."));
-            })}
+            onClick={() => setHistorySkip(getPreviousHistoryRequest(historySkip, historyStatus).skip)}
           >
             Previous
           </Button>
@@ -774,11 +797,9 @@ function BulkImportPage() {
             variant="outline"
             size="sm"
             disabled={historySkip + jobs.length >= jobsTotal || historyLoading}
-            onClick={() => loadJobs({ skip: historySkip + 20, status: historyStatus }).catch((error) => {
-              showError(getErrorMessage(error, "Could not load more import history."));
-            })}
+            onClick={() => setHistorySkip(getNextHistoryRequest(historySkip, historyStatus).skip)}
           >
-            Load more
+            {HISTORY_NEXT_LABEL}
           </Button>
         </div>
       </div>
@@ -799,7 +820,7 @@ function BulkImportPage() {
       title="Import Students"
       description="Download the official template, validate the upload, review the dry run, then process in the background."
       actions={(
-        <Button variant="outline" onClick={refresh} disabled={Boolean(busy)}>
+        <Button variant="outline" onClick={handleRefresh} disabled={Boolean(busy)}>
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
       )}
@@ -836,7 +857,7 @@ function BulkImportPage() {
       >
         <div className="space-y-3 text-sm text-text-muted">
           <p>Students to create: <strong className="text-text">{currentJob?.successful_rows || 0}</strong></p>
-          <p>Parent invitation emails expected: <strong className="text-text">{parentInvitationCount}</strong></p>
+          <p>Parent invitation emails expected: <strong className="text-text">{expectedParentInvitationCount}</strong></p>
           <p>Processing happens in the bulk-import worker. This page will poll until the job reaches a final status.</p>
         </div>
       </Modal>

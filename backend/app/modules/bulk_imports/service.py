@@ -466,9 +466,11 @@ class BulkImportService:
             "parent_emails_supplied": 0,
             "existing_parent_accounts": 0,
             "new_parent_invitations_expected": 0,
-            "existing_pending_invitations": 0,
             "parent_links_expected_after_acceptance": 0,
         }
+
+        email_slots: list[tuple[ImportRowValidationResult, str, str]] = []
+        unique_parent_emails: dict[str, str] = {}
 
         for validation_result in validation_results:
             if validation_result.errors:
@@ -481,31 +483,51 @@ class BulkImportService:
                     continue
 
                 summary["parent_emails_supplied"] += 1
-                try:
-                    normalized_email = await AccountEmailGuard.ensure_available_for_invitation_role(
-                        db=db,
-                        email=str(email),
-                        invited_actor_type=ActorType.PARENT_ACCOUNT,
-                    )
-                except ConflictException as exc:
-                    append_validation_error(
-                        validation_result=validation_result,
-                        field_name=email_field,
-                        error_code="parent_email_role_conflict",
-                        error_message=str(exc.detail if hasattr(exc, "detail") else exc),
-                    )
-                    continue
+                normalized_email = AccountEmailGuard._normalize_email(str(email))
+                email_slots.append((validation_result, email_field, normalized_email))
+                unique_parent_emails.setdefault(normalized_email, normalized_email)
 
-                validation_result.normalized_row[email_field] = normalized_email
+        preflight_by_email: dict[str, dict[str, object]] = {}
+        for normalized_email in unique_parent_emails:
+            try:
+                checked_email = await AccountEmailGuard.ensure_available_for_invitation_role(
+                    db=db,
+                    email=normalized_email,
+                    invited_actor_type=ActorType.PARENT_ACCOUNT,
+                )
                 existing_parent = await ParentAccountRepository.get_by_email(
                     db,
-                    normalized_email,
+                    checked_email,
                 )
-                if existing_parent is not None:
-                    summary["existing_parent_accounts"] += 1
+                preflight_by_email[normalized_email] = {
+                    "normalized_email": checked_email,
+                    "existing_parent": existing_parent,
+                    "error": None,
+                }
+            except ConflictException as exc:
+                preflight_by_email[normalized_email] = {
+                    "normalized_email": normalized_email,
+                    "existing_parent": None,
+                    "error": str(exc.detail if hasattr(exc, "detail") else exc),
+                }
 
-                summary["new_parent_invitations_expected"] += 1
-                summary["parent_links_expected_after_acceptance"] += 1
+        for validation_result, email_field, normalized_email in email_slots:
+            preflight = preflight_by_email[normalized_email]
+            if preflight["error"]:
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name=email_field,
+                    error_code="parent_email_role_conflict",
+                    error_message=str(preflight["error"]),
+                )
+                continue
+
+            validation_result.normalized_row[email_field] = str(preflight["normalized_email"])
+            if preflight["existing_parent"] is not None:
+                summary["existing_parent_accounts"] += 1
+
+            summary["new_parent_invitations_expected"] += 1
+            summary["parent_links_expected_after_acceptance"] += 1
 
         return summary
 

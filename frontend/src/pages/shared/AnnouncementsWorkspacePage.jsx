@@ -306,7 +306,7 @@ function AnnouncementList({ items, mode, onPublish, onArchive, onDelete }) {
   );
 }
 
-function AnnouncementFeed({ items, onRead, onAcknowledge }) {
+function AnnouncementFeed({ items, onRead, onAcknowledge, onDeleteRead }) {
   if (!items.length) {
     return (
       <EmptyState
@@ -344,6 +344,12 @@ function AnnouncementFeed({ items, onRead, onAcknowledge }) {
               {!item.is_acknowledged && (
                 <Button type="button" size="sm" onClick={() => onAcknowledge(item.id)}>
                   Acknowledge
+                </Button>
+              )}
+              {item.is_read && (
+                <Button type="button" size="sm" variant="outline" onClick={() => onDeleteRead(item.id)}>
+                  <Trash2 className="h-4 w-4" />
+                  Delete
                 </Button>
               )}
             </div>
@@ -511,6 +517,16 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
     }
   };
 
+  const deleteReadNotification = async (id) => {
+    try {
+      await announcementService.deleteReadNotification(id);
+      await load();
+      showSuccess("Notification deleted.");
+    } catch (deleteError) {
+      showError(getErrorMessage(deleteError, "Unable to delete notification."));
+    }
+  };
+
   return (
     <DashboardLayout role={role} title={copy.title} description={copy.description}>
       <div className="space-y-5">
@@ -532,7 +548,12 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
         {isLoading ? (
           <LoadingState label="Loading announcements" />
         ) : isFeed ? (
-          <AnnouncementFeed items={items} onRead={markRead} onAcknowledge={acknowledge} />
+          <AnnouncementFeed
+            items={items}
+            onRead={markRead}
+            onAcknowledge={acknowledge}
+            onDeleteRead={deleteReadNotification}
+          />
         ) : (
           <AnnouncementList
             items={items}

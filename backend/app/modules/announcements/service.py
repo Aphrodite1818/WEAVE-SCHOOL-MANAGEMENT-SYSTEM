@@ -121,6 +121,10 @@ class AnnouncementService:
         return None
 
     @staticmethod
+    def _actor_feed_started_at(actor: TenantAdmin | Teacher | Parent | Student) -> datetime | None:
+        return getattr(actor, "created_at", None)
+
+    @staticmethod
     def _actor_cache_type(actor: SuperAdmin | TenantAdmin | Teacher | Parent | Student) -> str:
         if isinstance(actor, SuperAdmin):
             return AnnouncementActorType.SUPERADMIN.value
@@ -817,6 +821,20 @@ class AnnouncementService:
         tenant_id = actor.tenant_id
         filters = AnnouncementService._base_feed_filters(tenant_id)
         recipient_type = AnnouncementService._recipient_type(actor)
+        feed_started_at = AnnouncementService._actor_feed_started_at(actor)
+        if feed_started_at is not None:
+            filters.append(func.coalesce(Announcement.publish_at, Announcement.created_at) >= feed_started_at)
+        if recipient_type is not None:
+            filters.append(
+                Announcement.id.not_in(
+                    select(AnnouncementRead.announcement_id).where(
+                        AnnouncementRead.tenant_id == tenant_id,
+                        AnnouncementRead.actor_type == recipient_type,
+                        AnnouncementRead.actor_id == actor.id,
+                        AnnouncementRead.status == AnnouncementReadStatus.DELETED,
+                    )
+                )
+            )
 
         if isinstance(actor, TenantAdmin):
             filters.append(Announcement.created_by_actor_type == AnnouncementActorType.SUPERADMIN)
@@ -902,6 +920,22 @@ class AnnouncementService:
         return base, tenant_id, recipient_type
 
     @staticmethod
+    async def _visible_feed_announcement(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin | Teacher | Parent | Student,
+        announcement_id: uuid.UUID,
+    ) -> Announcement | None:
+        base, _, recipient_type = await AnnouncementService._feed_base_query(db, actor)
+        if recipient_type is None:
+            raise ForbiddenException("Unsupported announcement recipient")
+        return (
+            await db.execute(
+                base.where(Announcement.id == announcement_id).limit(1)
+            )
+        ).scalars().unique().first()
+
+    @staticmethod
     async def feed_summary(
         db: AsyncSession,
         *,
@@ -939,8 +973,12 @@ class AnnouncementService:
         announcement_id: uuid.UUID,
         status: AnnouncementReadStatus,
     ) -> AnnouncementRead:
-        feed = await AnnouncementService.feed(db, actor=actor, limit=100, offset=0)
-        if announcement_id not in {item.id for item in feed.items}:
+        visible_announcement = await AnnouncementService._visible_feed_announcement(
+            db,
+            actor=actor,
+            announcement_id=announcement_id,
+        )
+        if visible_announcement is None:
             raise NotFoundException("Announcement not found")
         actor_type = AnnouncementService._recipient_type(actor)
         if actor_type is None:
@@ -952,6 +990,51 @@ class AnnouncementService:
             actor_type=actor_type,
             actor_id=actor.id,
             status=status,
+        )
+        await AnnouncementService._invalidate_after_read(db, actor)
+        await db.commit()
+        await flush_cache_invalidation_events(db)
+        return read
+
+    @staticmethod
+    async def delete_read_notification(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin | Teacher | Parent | Student,
+        announcement_id: uuid.UUID,
+    ) -> AnnouncementRead:
+        visible_announcement = await AnnouncementService._visible_feed_announcement(
+            db,
+            actor=actor,
+            announcement_id=announcement_id,
+        )
+        if visible_announcement is None:
+            raise NotFoundException("Announcement not found")
+
+        actor_type = AnnouncementService._recipient_type(actor)
+        if actor_type is None:
+            raise ForbiddenException("Unsupported announcement recipient")
+
+        read_state = await AnnouncementReadRepository.get_read_state(
+            db,
+            tenant_id=actor.tenant_id,
+            announcement_id=announcement_id,
+            actor_type=actor_type,
+            actor_id=actor.id,
+        )
+        if read_state is None or read_state.status not in {
+            AnnouncementReadStatus.READ,
+            AnnouncementReadStatus.ACKNOWLEDGED,
+        }:
+            raise BadRequestException("Only read notifications can be deleted")
+
+        read = await AnnouncementReadRepository.upsert_read_state(
+            db,
+            tenant_id=actor.tenant_id,
+            announcement_id=announcement_id,
+            actor_type=actor_type,
+            actor_id=actor.id,
+            status=AnnouncementReadStatus.DELETED,
         )
         await AnnouncementService._invalidate_after_read(db, actor)
         await db.commit()

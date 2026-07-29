@@ -180,6 +180,7 @@ class AnnouncementReadRepository:
         if status in {
             AnnouncementReadStatus.READ,
             AnnouncementReadStatus.ACKNOWLEDGED,
+            AnnouncementReadStatus.DELETED,
         }:
             existing.read_at = existing.read_at or now
 

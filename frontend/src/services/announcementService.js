@@ -22,6 +22,8 @@ const markRead = (id) => api.post(`/announcements/${id}/read`, {});
 
 const acknowledge = (id) => api.post(`/announcements/${id}/acknowledge`, {});
 
+const deleteReadNotification = (id) => api.delete(`/announcements/${id}/read`);
+
 export const announcementService = {
   listSuperadminAnnouncements: (params) =>
     api.get(withQuery("/superadmin/announcements", params)),
@@ -71,4 +73,5 @@ export const announcementService = {
     api.get(withQuery("/announcements/feed", params)),
   markRead,
   acknowledge,
+  deleteReadNotification,
 };

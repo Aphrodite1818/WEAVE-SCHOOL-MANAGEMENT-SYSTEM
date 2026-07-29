@@ -89,6 +89,7 @@ class AnnouncementReadStatus(str, PyEnum):
     UNREAD = "unread"
     READ = "read"
     ACKNOWLEDGED = "acknowledged"
+    DELETED = "deleted"
 
 
 class Announcement(BaseModel):

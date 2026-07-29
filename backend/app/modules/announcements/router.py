@@ -357,3 +357,17 @@ async def acknowledge_announcement(
         status=AnnouncementReadStatus.ACKNOWLEDGED,
     )
     return AnnouncementReadResponse.model_validate(read)
+
+
+@feed_router.delete("/{announcement_id}/read", response_model=AnnouncementReadResponse)
+async def delete_read_notification(
+    announcement_id: uuid.UUID,
+    db: DbSession,
+    current_actor: CurrentTenantMember,
+) -> AnnouncementReadResponse:
+    read = await AnnouncementService.delete_read_notification(
+        db,
+        actor=current_actor,
+        announcement_id=announcement_id,
+    )
+    return AnnouncementReadResponse.model_validate(read)

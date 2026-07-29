@@ -1,4 +1,4 @@
-import { Bell, Building2, ChevronDown, FileText, LogOut, Menu, Moon, Settings, Sparkles, Sun, UserRound } from "lucide-react";
+import { Bell, Building2, ChevronDown, FileText, LogOut, Menu, Moon, Settings, Sparkles, Sun, Trash2, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -161,6 +161,16 @@ export default function Topbar({
     setThemeHint(nextTheme);
   };
 
+  const deleteReadNotification = async (id) => {
+    try {
+      await announcementService.deleteReadNotification(id);
+      setNotifications((current) => current.filter((item) => item.id !== id));
+      setNotificationRefreshKey((value) => value + 1);
+    } catch {
+      setNotificationsError("Could not delete notification.");
+    }
+  };
+
   return (
     <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-border bg-surface pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex h-[3.75rem] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:gap-2 sm:px-5 md:h-16 md:px-4 lg:px-5">
@@ -250,7 +260,19 @@ export default function Topbar({
                 ) : notifications.length > 0 ? (
                   notifications.map((item) => (
                     <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2">
-                      <p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
+                      <div className="flex items-start gap-2">
+                        <p className="min-w-0 flex-1 line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
+                        {item.is_read ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-faint transition hover:bg-error-soft hover:text-error"
+                            aria-label="Delete notification"
+                            onClick={() => deleteReadNotification(item.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
                       <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.body}</p>
                       <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</p>
                     </div>
