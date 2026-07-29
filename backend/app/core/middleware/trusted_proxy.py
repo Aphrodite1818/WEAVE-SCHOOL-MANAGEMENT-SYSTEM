@@ -26,7 +26,10 @@ class TrustedProxyHeadersMiddleware:
         if settings.TRUST_PROXY_HEADERS and forwarded_for:
             chain = [part.strip() for part in forwarded_for.split(",") if part.strip()]
             if chain:
-                index = max(len(chain) - settings.TRUSTED_PROXY_HOPS, 0)
+                # X-Forwarded-For is ordered client -> proxies. Skip the
+                # configured trusted proxies from the right and select the
+                # address immediately before them.
+                index = max(len(chain) - settings.TRUSTED_PROXY_HOPS - 1, 0)
                 candidate = chain[index]
                 try:
                     return str(ip_address(candidate))
