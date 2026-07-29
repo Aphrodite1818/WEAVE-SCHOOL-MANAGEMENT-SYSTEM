@@ -12,15 +12,14 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.main import app
-import app.models  # noqa: F401
-from app.modules.parents.models import Parent, ParentMembership
-from app.modules.teachers.models import Teacher, TeacherMembership
-from app.shared.base_model import Base
+from app import models as _model_registry  # noqa: E402,F401
+from app.main import app as fastapi_app  # noqa: E402
+from app.modules.parents.models import Parent, ParentMembership  # noqa: E402
+from app.modules.teachers.models import Teacher, TeacherMembership  # noqa: E402
+from app.shared.base_model import Base  # noqa: E402
 
 
 def verify_mappers_and_foreign_keys() -> None:
-    
     configure_mappers()
 
     table_names = set(Base.metadata.tables)
@@ -34,9 +33,7 @@ def verify_mappers_and_foreign_keys() -> None:
     }
     unexpected = table_names.intersection(forbidden_tables)
     if unexpected:
-        raise AssertionError(
-            f"Legacy actor tables remain mapped: {sorted(unexpected)}"
-        )
+        raise AssertionError(f"Legacy actor tables remain mapped: {sorted(unexpected)}")
 
     for table in Base.metadata.sorted_tables:
         for foreign_key in table.foreign_keys:
@@ -58,7 +55,7 @@ def verify_actor_aliases() -> None:
 
 def verify_routes() -> None:
     route_keys: list[tuple[str, str]] = []
-    for route in app.routes:
+    for route in fastapi_app.routes:
         methods = getattr(route, "methods", None) or set()
         path = getattr(route, "path", None)
         if path is None:
@@ -69,9 +66,7 @@ def verify_routes() -> None:
             route_keys.append((method, path))
 
     duplicates = [
-        route_key
-        for route_key, count in Counter(route_keys).items()
-        if count > 1
+        route_key for route_key, count in Counter(route_keys).items() if count > 1
     ]
     if duplicates:
         raise AssertionError(
