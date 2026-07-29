@@ -1,0 +1,63 @@
+name: Format production hardening
+
+on:
+  push:
+    branches:
+      - Attendance
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-production-hardening-attendance
+  cancel-in-progress: true
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      FORMAT_BASELINE_SHA: 6a434994d2b2397d45c6716d89c6f1a3eda8ea0f
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: Attendance
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Format audited Python changes
+        shell: bash
+        working-directory: backend
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$FORMAT_BASELINE_SHA"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No Python files changed since the production-hardening baseline."
+            exit 0
+          fi
+          uv run --with ruff ruff format "${files[@]}"
+
+      - name: Commit formatting
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Ruff made no changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend
+          git commit -m "style: format production hardening changes"
+          git push origin HEAD:Attendance
