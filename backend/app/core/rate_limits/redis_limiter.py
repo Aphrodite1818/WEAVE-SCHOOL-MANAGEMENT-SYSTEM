@@ -52,9 +52,24 @@ def _log_redis_fallback(error: Exception) -> None:
         return
 
     _last_redis_error_log_at = now
-    logger.warning(
-        "Redis rate limiter unavailable; using in-memory fallback.",
-        extra={"error": str(error)},
+    log_message = (
+        "Redis rate limiter unavailable; denying security-sensitive requests."
+        if settings.is_production_like
+        else "Redis rate limiter unavailable; using in-memory fallback."
+    )
+    logger.error(log_message, extra={"error": str(error)})
+
+
+def _redis_failure_result(*, limit: int, window_seconds: int) -> RateLimitResult:
+    """Fail closed when the shared production limiter is unavailable."""
+
+    return RateLimitResult(
+        allowed=False,
+        limit=limit,
+        remaining=0,
+        retry_after=max(min(window_seconds, 60), 1),
+        reset_after=max(min(window_seconds, 60), 1),
+        current=limit + 1,
     )
 
 
@@ -64,8 +79,6 @@ def _prune_fallback_records(
     now: float,
     window_seconds: int,
 ) -> list[float]:
-    """Return unexpired local fallback hits for a key."""
-
     records = [
         timestamp
         for timestamp in _fallback_records[key]
@@ -81,8 +94,6 @@ def _fallback_status(
     limit: int,
     window_seconds: int,
 ) -> RateLimitResult:
-    """Return local fallback state without consuming a hit."""
-
     now = time.time()
 
     with _fallback_lock:
@@ -116,8 +127,6 @@ def _fallback_consume(
     limit: int,
     window_seconds: int,
 ) -> RateLimitResult:
-    """Consume one hit in the local fallback limiter."""
-
     now = time.time()
 
     with _fallback_lock:
@@ -131,7 +140,6 @@ def _fallback_consume(
 
         current = len(records)
         allowed = current <= limit
-
         reset_after = max(int(window_seconds - (now - records[0])), 1)
         retry_after = reset_after if not allowed else 0
 
@@ -146,8 +154,6 @@ def _fallback_consume(
 
 
 def _fallback_clear(keys: Iterable[str]) -> None:
-    """Clear local fallback counters."""
-
     key_list = [key for key in keys if key]
     if not key_list:
         return
@@ -178,12 +184,17 @@ async def get_rate_limit_redis_client() -> Redis:
         health_check_interval=30,
     )
 
-    await _rate_limit_redis_client.ping()
+    try:
+        await _rate_limit_redis_client.ping()
+    except Exception:
+        await _rate_limit_redis_client.aclose()
+        _rate_limit_redis_client = None
+        raise
     return _rate_limit_redis_client
 
 
 class RedisFixedWindowRateLimiter:
-    """Fixed-window Redis limiter with in-memory fallback during Redis outages."""
+    """Fixed-window Redis limiter with development-only local fallback."""
 
     async def status(
         self,
@@ -192,11 +203,8 @@ class RedisFixedWindowRateLimiter:
         limit: int,
         window_seconds: int,
     ) -> RateLimitResult:
-        """Return current bucket state without consuming a hit."""
-
         try:
             client = await get_rate_limit_redis_client()
-
             raw_current = await client.get(key)
             current = int(raw_current or 0)
 
@@ -205,7 +213,6 @@ class RedisFixedWindowRateLimiter:
                 ttl = window_seconds if current > 0 else 0
 
             allowed = current < limit
-
             return RateLimitResult(
                 allowed=allowed,
                 limit=limit,
@@ -216,6 +223,8 @@ class RedisFixedWindowRateLimiter:
             )
         except Exception as exc:
             _log_redis_fallback(exc)
+            if settings.is_production_like:
+                return _redis_failure_result(limit=limit, window_seconds=window_seconds)
             return _fallback_status(
                 key,
                 limit=limit,
@@ -229,8 +238,6 @@ class RedisFixedWindowRateLimiter:
         limit: int,
         window_seconds: int,
     ) -> RateLimitResult:
-        """Consume one hit from a rate-limit bucket."""
-
         try:
             client = await get_rate_limit_redis_client()
             current, ttl = await client.eval(
@@ -246,7 +253,6 @@ class RedisFixedWindowRateLimiter:
                 ttl = window_seconds
 
             allowed = current <= limit
-
             return RateLimitResult(
                 allowed=allowed,
                 limit=limit,
@@ -257,6 +263,8 @@ class RedisFixedWindowRateLimiter:
             )
         except Exception as exc:
             _log_redis_fallback(exc)
+            if settings.is_production_like:
+                return _redis_failure_result(limit=limit, window_seconds=window_seconds)
             return _fallback_consume(
                 key,
                 limit=limit,
@@ -264,13 +272,12 @@ class RedisFixedWindowRateLimiter:
             )
 
     async def clear(self, keys: Iterable[str]) -> None:
-        """Delete rate-limit counters."""
-
         key_list = [key for key in keys if key]
         if not key_list:
             return
 
-        _fallback_clear(key_list)
+        if not settings.is_production_like:
+            _fallback_clear(key_list)
 
         try:
             client = await get_rate_limit_redis_client()
