@@ -27,67 +27,47 @@ from app.modules.bulk_imports.schemas import (
     ImportRowErrorListResponse,
     ImportTemplateResponse,
 )
+from app.modules.bulk_imports.sensitive_results import redact_result_row, reveal_result_row
 from app.modules.bulk_imports.service import BulkImportService
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
 
-router = APIRouter(
-    prefix="/imports",
-    tags=["Bulk Imports"],
-)
-
+router = APIRouter(prefix="/imports", tags=["Bulk Imports"])
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 ResultDownloadFormat: TypeAlias = Literal["spreadsheet", "slip"]
 
 
-@router.get(
-    "/templates",
-    response_model=list[ImportTemplateResponse],
-)
+@router.get("/templates", response_model=list[ImportTemplateResponse])
 async def list_import_templates(
     current_user: CurrentTenantAdmin,
 ) -> list[ImportTemplateResponse]:
-    """List supported XLSX import templates."""
-
     _ = current_user
     return BulkImportService.list_templates()
 
 
-@router.get(
-    "/templates/{resource_type}",
-    response_model=ImportTemplateResponse,
-)
+@router.get("/templates/{resource_type}", response_model=ImportTemplateResponse)
 async def get_import_template(
     resource_type: ImportResourceType,
     current_user: CurrentTenantAdmin,
 ) -> ImportTemplateResponse:
-    """Return one supported XLSX import template description."""
-
     _ = current_user
     return BulkImportService.get_template(resource_type=resource_type)
 
 
-@router.get(
-    "/templates/{resource_type}/download",
-)
+@router.get("/templates/{resource_type}/download")
 async def download_import_template(
     resource_type: ImportResourceType,
     current_user: CurrentTenantAdmin,
 ) -> Response:
-    """Download a signed backend-generated XLSX import template file."""
-
     template = BulkImportService.generate_template_file(
         tenant_id=current_user.tenant_id,
         resource_type=resource_type,
     )
-
     return Response(
         content=template.content_bytes,
         media_type=template.content_type,
-        headers={
-            "Content-Disposition": f'attachment; filename="{template.filename}"',
-        },
+        headers={"Content-Disposition": f'attachment; filename="{template.filename}"'},
     )
 
 
@@ -103,8 +83,6 @@ async def dry_run_bulk_import(
     file: UploadFile = File(...),
     notify_on_completion: bool = Form(default=True),
 ) -> ImportJobDetailResponse:
-    """Validate and stage a bulk import XLSX file without creating records."""
-
     return await BulkImportService.create_dry_run_from_upload(
         db=db,
         actor=current_user,
@@ -114,18 +92,13 @@ async def dry_run_bulk_import(
     )
 
 
-@router.post(
-    "/{job_id}/confirm",
-    response_model=ImportJobDetailResponse,
-)
+@router.post("/{job_id}/confirm", response_model=ImportJobDetailResponse)
 async def confirm_bulk_import(
     job_id: UUID,
     db: DbSession,
     current_user: CurrentTenantAdmin,
     notify_on_completion: bool = Query(default=True),
 ) -> ImportJobDetailResponse:
-    """Confirm a staged dry-run import and queue background processing."""
-
     return await BulkImportLiveService.queue_confirmed_import(
         db=db,
         actor=current_user,
@@ -147,11 +120,6 @@ async def upload_bulk_import(
     dry_run: bool = Form(default=False),
     notify_on_completion: bool = Form(default=True),
 ) -> ImportJobDetailResponse:
-    """Backward-compatible dry-run upload endpoint.
-
-    Real imports now require confirming the returned dry-run import job.
-    """
-
     return await BulkImportService.create_import_from_upload(
         db=db,
         actor=current_user,
@@ -162,10 +130,7 @@ async def upload_bulk_import(
     )
 
 
-@router.get(
-    "",
-    response_model=ImportJobListResponse,
-)
+@router.get("", response_model=ImportJobListResponse)
 async def list_bulk_import_jobs(
     db: DbSession,
     current_user: CurrentTenantAdmin,
@@ -174,8 +139,6 @@ async def list_bulk_import_jobs(
     resource_type: ImportResourceType | None = Query(default=None),
     status_filter: ImportJobStatus | None = Query(default=None, alias="status"),
 ) -> ImportJobListResponse:
-    """List import jobs for the current tenant."""
-
     return await BulkImportService.list_jobs(
         db=db,
         actor=current_user,
@@ -186,28 +149,16 @@ async def list_bulk_import_jobs(
     )
 
 
-@router.get(
-    "/{job_id}",
-    response_model=ImportJobDetailResponse,
-)
+@router.get("/{job_id}", response_model=ImportJobDetailResponse)
 async def get_bulk_import_job(
     job_id: UUID,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ImportJobDetailResponse:
-    """Return one import job."""
-
-    return await BulkImportService.get_job(
-        db=db,
-        actor=current_user,
-        job_id=job_id,
-    )
+    return await BulkImportService.get_job(db=db, actor=current_user, job_id=job_id)
 
 
-@router.get(
-    "/{job_id}/errors",
-    response_model=ImportRowErrorListResponse,
-)
+@router.get("/{job_id}/errors", response_model=ImportRowErrorListResponse)
 async def list_bulk_import_errors(
     job_id: UUID,
     db: DbSession,
@@ -215,8 +166,6 @@ async def list_bulk_import_errors(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> ImportRowErrorListResponse:
-    """List row-level errors for one import job."""
-
     return await BulkImportService.list_job_errors(
         db=db,
         actor=current_user,
@@ -226,37 +175,24 @@ async def list_bulk_import_errors(
     )
 
 
-@router.delete(
-    "/{job_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_bulk_import_job(
     job_id: UUID,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> Response:
-    """Delete one completed import job from tenant-visible history."""
-
-    await BulkImportService.delete_job_history(
-        db=db,
-        actor=current_user,
-        job_id=job_id,
-    )
+    await BulkImportService.delete_job_history(db=db, actor=current_user, job_id=job_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get(
-    "/{job_id}/result",
-)
+@router.get("/{job_id}/result")
 async def download_bulk_import_result(
     job_id: UUID,
     db: DbSession,
     current_user: CurrentTenantAdmin,
     result_format: ResultDownloadFormat = Query(default="spreadsheet", alias="format"),
 ) -> Response:
-    """Download a spreadsheet result report or student access-code slip report."""
-
-    resource_type, result_rows = await BulkImportService.get_result_rows(
+    resource_type, stored_rows = await BulkImportService.get_result_rows(
         db=db,
         actor=current_user,
         job_id=job_id,
@@ -265,13 +201,14 @@ async def download_bulk_import_result(
     if result_format == "slip":
         if resource_type != ImportResourceType.STUDENTS:
             raise BadRequestException(detail="Printable slips are only available for student imports.")
-
+        result_rows = [reveal_result_row(row) for row in stored_rows]
         tenant = await TenantRepository.get_by_id(db=db, tenant_id=current_user.tenant_id)
         result_file = create_student_access_slip_report(
             result_rows=result_rows,
             school_name=tenant.school_name if tenant is not None else None,
         )
     else:
+        result_rows = [redact_result_row(row) for row in stored_rows]
         result_file = create_result_report(
             resource_type=resource_type,
             result_rows=result_rows,
@@ -293,25 +230,18 @@ async def download_bulk_import_result(
     )
 
 
-@router.get(
-    "/{job_id}/errors/download",
-)
+@router.get("/{job_id}/errors/download")
 async def download_bulk_import_errors(
     job_id: UUID,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> Response:
-    """Download a tenant-scoped CSV report of row validation errors."""
-
     resource_type, row_errors = await BulkImportService.get_error_report_rows(
         db=db,
         actor=current_user,
         job_id=job_id,
     )
-    result_file = create_error_report(
-        resource_type=resource_type,
-        row_errors=row_errors,
-    )
+    result_file = create_error_report(resource_type=resource_type, row_errors=row_errors)
     return Response(
         content=result_file.content_bytes,
         media_type=result_file.content_type,
