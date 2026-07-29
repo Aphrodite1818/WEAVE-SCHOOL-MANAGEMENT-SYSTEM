@@ -1,5 +1,5 @@
 import { Library } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -167,6 +167,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [classSearchDraft, setClassSearchDraft] = useState("");
   const [classSearch, setClassSearch] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [mappingSelectedClassByTab, setMappingSelectedClassByTab] = useState({});
@@ -189,38 +190,56 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [saving, setSaving] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const classLoadSequence = useRef(0);
   const { showSuccess, showError, showWarning } = useToast();
 
-  const loadBase = useCallback(async () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextSearch = classSearchDraft.trim();
+      setClassSearch((current) => (current === nextSearch ? current : nextSearch));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [classSearchDraft]);
+
+  const loadClasses = useCallback(async () => {
+    const requestId = classLoadSequence.current + 1;
+    classLoadSequence.current = requestId;
     setLoading(true);
     setError(null);
     try {
-      const [classResponse, subjectResponse, teacherResponse] = await Promise.all([
-        classService.getClasses({
-          limit: 100,
-          includeArchived: domain === "classes",
-          search: classSearch,
-        }),
-        subjectService.getSubjects({ limit: 100, isActive: true }),
-        teacherService.listMemberships({ limit: 100 }),
-      ]);
+      const classResponse = await classService.getClasses({
+        limit: 100,
+        includeArchived: domain === "classes",
+        search: classSearch || undefined,
+      });
+      if (classLoadSequence.current !== requestId) return;
       const nextClasses = asItems(classResponse);
       setClasses(nextClasses);
-      setSubjects(asItems(subjectResponse));
-      setTeachers(
-        asItems(teacherResponse).filter(isAssignableClassTeacher),
-      );
       if (domain !== "class-subjects") {
         setSelectedClassId((current) => current || nextClasses[0]?.id || "");
       }
     } catch (err) {
+      if (classLoadSequence.current !== requestId) return;
       const message = getErrorMessage(err, "Could not load class structure.");
       setError(message);
       showError(message);
     } finally {
-      setLoading(false);
+      if (classLoadSequence.current === requestId) setLoading(false);
     }
   }, [classSearch, domain, showError]);
+
+  const loadLookups = useCallback(async () => {
+    try {
+      const [subjectResponse, teacherResponse] = await Promise.all([
+        subjectService.getSubjects({ limit: 100, isActive: true }),
+        teacherService.listMemberships({ limit: 100 }),
+      ]);
+      setSubjects(asItems(subjectResponse));
+      setTeachers(asItems(teacherResponse).filter(isAssignableClassTeacher));
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not load class structure lookups."));
+    }
+  }, [showError]);
 
   const activeSelectedClassId =
     domain === "class-subjects"
@@ -269,8 +288,12 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   }, [activeSelectedClassId, showError]);
 
   useEffect(() => {
-    loadBase();
-  }, [loadBase]);
+    loadLookups();
+  }, [loadLookups]);
+
+  useEffect(() => {
+    loadClasses();
+  }, [loadClasses]);
 
   useEffect(() => {
     loadClassSubjects();
@@ -361,7 +384,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       }
       showSuccess(editingClassId ? "Class updated." : "Class created.");
       resetClassForm();
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, "Could not save class."));
     } finally {
@@ -409,7 +432,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
         is_terminal: progressionForm.is_terminal,
       });
       showSuccess("Class progression updated.");
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, "Could not update class progression."));
     } finally {
@@ -432,7 +455,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
         next_class_id: "",
         is_terminal: false,
       }));
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, "Could not clear class progression."));
     } finally {
@@ -448,7 +471,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       if (action === "archive") await classService.archiveClass(item.id);
       if (action === "restore") await classService.restoreClass(item.id);
       showSuccess(`Class ${action}d.`);
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, `Could not ${action} class.`));
     } finally {
@@ -582,8 +605,8 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const classSearchControl = (
     <Input
       label="Search classes"
-      value={classSearch}
-      onChange={(event) => setClassSearch(event.target.value)}
+      value={classSearchDraft}
+      onChange={(event) => setClassSearchDraft(event.target.value)}
       placeholder="Class name or arm"
     />
   );
@@ -1394,7 +1417,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     return (
       <WorkspacePanel title="Class structure unavailable">
         <p className="text-sm text-error">{error}</p>
-        <Button type="button" className="mt-4" onClick={loadBase}>
+        <Button type="button" className="mt-4" onClick={loadClasses}>
           Retry
         </Button>
       </WorkspacePanel>

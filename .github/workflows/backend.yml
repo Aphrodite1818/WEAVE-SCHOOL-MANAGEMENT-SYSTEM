@@ -8,6 +8,7 @@ on:
       - "docker-compose.yml"
   push:
     branches:
+      - Attendance
       - staging
       - master
     paths:
@@ -73,11 +74,9 @@ jobs:
 
       - name: Format check
         run: uv run --with ruff ruff format --check .
-        continue-on-error: true
 
       - name: Type check
         run: uv run --with pyright pyright
-        continue-on-error: true
 
       - name: Unit tests
         run: uv run pytest tests/unit
@@ -90,7 +89,6 @@ jobs:
 
       - name: Alembic check
         run: uv run --with alembic alembic check
-        continue-on-error: true
 
       - name: Application import check
         run: uv run python -c "from app.main import app; print(app.title)"

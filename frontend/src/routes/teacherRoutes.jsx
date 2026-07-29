@@ -1,4 +1,4 @@
-import { Navigate, Route } from "react-router-dom";
+import { Route } from "react-router-dom";
 
 import { DashboardShell } from "../components/layout/DashboardLayout";
 import TeacherAttendancePage from "../pages/teacher/AttendancePage";
@@ -12,7 +12,6 @@ import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import SchoolSwitchPage from "../pages/shared/SchoolSwitchPage";
-import StaticModulePage from "../pages/shared/StaticModulePage";
 import MembershipScopeGuard from "./MembershipScopeGuard";
 import RoleGuard from "./RoleGuard";
 
@@ -30,12 +29,8 @@ export const teacherRoutes = (
         <Route path="/teacher/students" element={<TeacherStudentsPage />} />
         <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />
         <Route path="/teacher/attendance" element={<TeacherAttendancePage />} />
-        <Route path="/teacher/exams" element={<Navigate to="/teacher/score-entry" replace />} />
-        <Route path="/teacher/results" element={<Navigate to="/teacher/score-entry" replace />} />
         <Route path="/teacher/score-entry" element={<TeacherResultsPage />} />
-        <Route path="/teacher/assignments" element={<StaticModulePage role="teacher" title="Assignments" description="Create, review, and track classroom assignments." />} />
         <Route path="/teacher/calendar" element={<SchoolCalendarPage role="teacher" />} />
-        <Route path="/teacher/timetable" element={<Navigate to="/teacher/calendar" replace />} />
         <Route path="/teacher/notices" element={<AnnouncementsWorkspacePage mode="teacher" variant="received-notices" />} />
         <Route path="/teacher/announcements" element={<AnnouncementsWorkspacePage mode="teacher" />} />
         <Route path="/teacher/settings" element={<RoleSettingsPage role="teacher" />} />

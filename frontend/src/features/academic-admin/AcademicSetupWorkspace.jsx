@@ -83,7 +83,6 @@ const dependencyLabels = {
   approved_but_unlocked_results: "Approved results awaiting lock",
   unpublished_report_cards: "Unpublished report cards",
   active_or_pending_progression_runs: "Active progression runs",
-  pending_result_imports: "Pending result imports",
   terms: "Academic terms",
   enrollments: "Student enrollments",
   report_cards: "Report cards",

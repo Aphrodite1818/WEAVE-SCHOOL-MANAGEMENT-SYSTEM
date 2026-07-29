@@ -929,9 +929,24 @@ function CalendarMonthView({ days, onDayClick }) {
   if (!days.length) {
     return <EmptyState icon={CalendarDays} title="No days in range" />;
   }
+  const orderedDays = [...days].sort((left, right) =>
+    String(left.calendar_date).localeCompare(String(right.calendar_date)),
+  );
+  const firstDate = new Date(`${String(orderedDays[0]?.calendar_date).slice(0, 10)}T00:00:00`);
+  const leadingBlankDays = Number.isNaN(firstDate.getTime())
+    ? 0
+    : (firstDate.getDay() + 6) % 7;
+
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-      {days.map((day) => (
+      {Array.from({ length: leadingBlankDays }).map((_, index) => (
+        <div
+          key={`calendar-leading-blank-${index}`}
+          aria-hidden="true"
+          className="hidden min-h-24 xl:block"
+        />
+      ))}
+      {orderedDays.map((day) => (
         <button key={day.id} type="button" onClick={() => onDayClick(day)} className="min-h-24 rounded-lg border border-border/70 bg-surface px-3 py-3 text-left transition hover:border-primary/50">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-semibold text-text">{formatCalendarDate(day.calendar_date)}</p>

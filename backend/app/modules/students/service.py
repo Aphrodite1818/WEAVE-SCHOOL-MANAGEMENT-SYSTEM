@@ -21,6 +21,7 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
+from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth.models import AuthSession, AuthSessionActorType
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
@@ -651,6 +652,11 @@ class ParentInvitationService:
         relationship_type,
         created_by_admin_id: UUID,
     ) -> ParentInvitation:
+        normalized_email = await AccountEmailGuard.ensure_available_for_invitation_role(
+            db=db,
+            email=normalized_email,
+            invited_actor_type=ActorType.PARENT_ACCOUNT,
+        )
         existing = (
             await ParentInvitationRepository.get_pending_for_student_email(
                 db,
@@ -678,35 +684,6 @@ class ParentInvitationService:
         invitation = await ParentInvitationRepository.add(db, invitation)
         invitation.raw_token = raw_token
         return invitation
-
-    @staticmethod
-    async def create_for_student(
-        db: AsyncSession,
-        *,
-        actor: TenantAdmin,
-        student_id: UUID,
-        normalized_email: str,
-        relationship_type,
-    ) -> ParentInvitation:
-        student = await StudentRepository.get_by_id(
-            db,
-            actor.tenant_id,
-            student_id,
-            lock=True,
-        )
-        if student is None:
-            raise NotFoundException("Student not found.")
-        invitation = await ParentInvitationService._create_invitation_record(
-            db,
-            tenant_id=actor.tenant_id,
-            student=student,
-            normalized_email=normalized_email.casefold(),
-            relationship_type=relationship_type,
-            created_by_admin_id=actor.id,
-        )
-        await db.commit()
-        return invitation
-
 
 class StudentEnrollmentService:
     @staticmethod

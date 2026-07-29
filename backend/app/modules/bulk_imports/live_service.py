@@ -457,14 +457,6 @@ class BulkImportLiveService:
                 except Exception:
                     pass
 
-            if successful_rows > 0 and import_job.resource_type in {ImportResourceType.TEACHERS, ImportResourceType.PARENTS}:
-                try:
-                    from app.core.queue.arq import enqueue_email_outbox_batch
-
-                    await enqueue_email_outbox_batch()
-                except Exception:
-                    pass
-
             return {
                 "status": final_status.value,
                 "processed": int(import_job.processed_rows or 0),

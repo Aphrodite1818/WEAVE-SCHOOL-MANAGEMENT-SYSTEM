@@ -1,4 +1,4 @@
-import { Navigate, Route } from "react-router-dom";
+import { Route } from "react-router-dom";
 
 import { DashboardShell } from "../components/layout/DashboardLayout";
 import PullRefreshBoundary from "../components/layout/PullRefreshBoundary";
@@ -9,10 +9,8 @@ import AdminInvitationPage from "../pages/admin/AdminInvitationPage";
 import AdminSearchDetailPage from "../pages/admin/AdminSearchDetailPage";
 import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
-import FeesPage from "../pages/admin/FeesPage";
 import ParentLinkManagementPage from "../pages/admin/ParentLinkManagementPage";
 import ParentsPage from "../pages/admin/ParentsPage";
-import PaymentsPage from "../pages/admin/PaymentsPage";
 import StudentCreatePage from "../pages/admin/StudentCreatePage";
 import StudentsPage from "../pages/admin/StudentsPage";
 import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
@@ -23,7 +21,6 @@ import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePa
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
-import StaticModulePage from "../pages/shared/StaticModulePage";
 import BulkImportRouteGuard from "./BulkImportRouteGuard";
 import RoleGuard from "./RoleGuard";
 
@@ -47,23 +44,15 @@ export const adminRoutes = (
       <Route path="/admin/students/create" element={protectedWorkflow(<StudentCreatePage />)} />
       <Route path="/admin/parents" element={protectedWorkflow(<ParentsPage />)} />
       <Route path="/admin/parents/links" element={protectedWorkflow(<ParentLinkManagementPage />)} />
-      <Route path="/admin/classes" element={<Navigate to="/admin/academic/classes" replace />} />
-      <Route path="/admin/subjects" element={<Navigate to="/admin/academic/subjects" replace />} />
       <Route path="/admin/imports" element={protectedWorkflow(<BulkImportRouteGuard />)} />
+      <Route path="/admin/imports/:step" element={protectedWorkflow(<BulkImportRouteGuard />)} />
+      <Route path="/admin/imports/:step/:jobId" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route path="/admin/attendance" element={protectedWorkflow(<AttendancePage />)} />
-      <Route path="/admin/exams" element={<Navigate to="/admin/academic" replace />} />
-      <Route path="/admin/results" element={<Navigate to="/admin/academic/results" replace />} />
       <Route path="/admin/academic" element={<AcademicHubOverviewPage />} />
-      <Route path="/admin/academic/manage" element={<Navigate to="/admin/academic" replace />} />
       <Route path="/admin/academic/:workflow" element={protectedWorkflow(<AcademicWorkflowPage />)} />
-      <Route path="/admin/fees" element={protectedWorkflow(<FeesPage />)} />
-      <Route path="/admin/payments" element={protectedWorkflow(<PaymentsPage />)} />
       <Route path="/admin/billing" element={<BillingPage />} />
       <Route path="/admin/usage" element={<UsagePage />} />
-      <Route path="/admin/timetable" element={<StaticModulePage role="admin" title="Timetable" description="Professional schedule grid and class timetable planning." type="timetable" />} />
       <Route path="/admin/announcements" element={<AnnouncementsWorkspacePage mode="tenant-admin" />} />
-      <Route path="/admin/messages" element={<AnnouncementsWorkspacePage mode="tenant-admin" variant="messages" />} />
-      <Route path="/admin/reports" element={<StaticModulePage role="admin" title="Reports" description="Operational reports will appear here when backend reporting endpoints are available." type="settings" />} />
       <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
     </Route>
   </Route>

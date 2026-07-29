@@ -67,6 +67,9 @@ export default function Topbar({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
+  const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
   const [failedSchoolLogoUrl, setFailedSchoolLogoUrl] = useState("");
   const [themeHint, setThemeHint] = useState(() =>
     typeof document === "undefined"
@@ -76,6 +79,7 @@ export default function Topbar({
   const userName = getUserLabel(user);
   const avatarSrc = getUserAvatarSrc(user);
   const canSearchWorkspace = !isAccountScope && workspaceSearchRoles.has(role);
+  const isSuperadmin = role === "superadmin";
   const notificationPath = isAccountScope
     ? schoolSwitchPaths[role] || "/profile"
     : announcementPaths[role] || "/profile";
@@ -97,25 +101,33 @@ export default function Topbar({
   useEffect(() => {
     let mounted = true;
 
-    if (isAccountScope) {
+    // Superadmin announcements are managed separately; this feed is tenant-member scoped.
+    if (isAccountScope || isSuperadmin) {
       setNotifications([]);
       setUnreadCount(0);
+      setNotificationsError("");
+      setNotificationsLoading(false);
       return () => {
         mounted = false;
       };
     }
 
     async function loadNotificationPreview() {
+      setNotificationsLoading(true);
+      setNotificationsError("");
       try {
         const response = await announcementService.getFeed({ limit: 5 });
         if (!mounted) return;
         const items = response?.items || [];
         setNotifications(items.slice(0, 5));
-        setUnreadCount(items.filter((item) => !item.is_read).length);
+        setUnreadCount(Number(response?.unread_count || 0));
       } catch {
         if (!mounted) return;
         setNotifications([]);
         setUnreadCount(0);
+        setNotificationsError("Could not load notifications.");
+      } finally {
+        if (mounted) setNotificationsLoading(false);
       }
     }
 
@@ -124,7 +136,7 @@ export default function Topbar({
     return () => {
       mounted = false;
     };
-  }, [isAccountScope, role]);
+  }, [isAccountScope, isSuperadmin, notificationRefreshKey, role]);
 
   useEffect(() => {
     const syncThemeHint = () => {
@@ -221,7 +233,7 @@ export default function Topbar({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {!isAccountScope ? (
+          {!isAccountScope && !isSuperadmin ? (
             <Dropdown
               align="right"
               className="notification-dropdown-panel w-80 max-w-[calc(100vw-1rem)]"
@@ -241,11 +253,18 @@ export default function Topbar({
                   <p className="text-sm font-semibold text-text">Notifications</p>
                   <Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>View all</Link>
                 </div>
-                {notifications.length > 0 ? (
+                {notificationsLoading ? (
+                  <p className="rounded-xl border border-border px-3 py-4 text-sm text-text-muted">Loading notifications...</p>
+                ) : notificationsError ? (
+                  <div className="rounded-xl border border-error/30 bg-error-soft px-3 py-4 text-sm text-error">
+                    <p>{notificationsError}</p>
+                    <button type="button" className="mt-2 text-xs font-semibold underline" onClick={() => setNotificationRefreshKey((value) => value + 1)}>Retry</button>
+                  </div>
+                ) : notifications.length > 0 ? (
                   notifications.map((item) => (
                     <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2">
                       <p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.message}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.body}</p>
                       <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</p>
                     </div>
                   ))

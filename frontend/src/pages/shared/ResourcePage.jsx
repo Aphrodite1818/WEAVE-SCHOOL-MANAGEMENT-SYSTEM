@@ -4,7 +4,6 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import MultiSelect from "../../components/ui/MultiSelect";
-import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage, parseApiError } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
@@ -124,7 +123,6 @@ function ResourcePage({ config }) {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [isUnavailable, setIsUnavailable] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const contextRef = useRef(context);
@@ -181,7 +179,6 @@ function ResourcePage({ config }) {
     ) => {
       setIsLoading(true);
       setError(null);
-      setIsUnavailable(false);
 
       try {
         const result = await config.fetchItems(activeFilters, activeContext);
@@ -193,13 +190,7 @@ function ResourcePage({ config }) {
           `Failed to load ${config.pluralLabel}.`
         );
 
-        if (config.allowUnavailable && parsed.status === 404) {
-          setItems([]);
-          setTotal(0);
-          setIsUnavailable(true);
-        } else {
-          setError(parsed.message);
-        }
+        setError(parsed.message);
       } finally {
         setHasLoadedOnce(true);
         setIsLoading(false);
@@ -221,13 +212,7 @@ function ResourcePage({ config }) {
         if (isMounted) {
           const parsed = parseApiError(err, "Failed to load page data.");
 
-          if (config.allowUnavailable && parsed.status === 404) {
-            setItems([]);
-            setTotal(0);
-            setIsUnavailable(true);
-          } else {
-            setError(parsed.message);
-          }
+          setError(parsed.message);
           setHasLoadedOnce(true);
           setIsLoading(false);
         }
@@ -239,7 +224,7 @@ function ResourcePage({ config }) {
     return () => {
       isMounted = false;
     };
-  }, [config.allowUnavailable, filters, loadContext, loadItems]);
+  }, [filters, loadContext, loadItems]);
 
   const updateFormValue = (name, nextValue) => {
     setFormData((current) => ({ ...current, [name]: nextValue }));
@@ -367,12 +352,8 @@ function ResourcePage({ config }) {
   const sheetFilterFields = filterFields.filter((field) => field.name !== "search");
   const hasNonSearchFilters = sheetFilterFields.length > 0;
 
-  const showForm =
-    !isUnavailable && (config.canCreate || (config.canUpdate && editingItem));
-  const unavailableMessage =
-    config.unavailableMessage ||
-    `${config.pluralLabel} are not available yet.`;
-  const isInitialLoading = isLoading && !hasLoadedOnce && !error && !isUnavailable;
+  const showForm = config.canCreate || (config.canUpdate && editingItem);
+  const isInitialLoading = isLoading && !hasLoadedOnce && !error;
 
   if (isInitialLoading) {
     return <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} fullPage />;
@@ -434,14 +415,7 @@ function ResourcePage({ config }) {
             </div>
           </div>
 
-          {isUnavailable ? (
-            <div className="mt-5">
-              <EmptyState
-                title="Not available"
-                description={unavailableMessage}
-              />
-            </div>
-          ) : filterFields.length > 0 && (
+          {filterFields.length > 0 && (
             <>
               <div className="mt-5 flex items-end gap-2 md:hidden">
                 {searchableField ? (
@@ -497,8 +471,7 @@ function ResourcePage({ config }) {
             </>
           )}
 
-          {!isUnavailable && (
-            <>
+          <>
             <div className="resource-page-mobile-list mobile-scroll-list mt-5 grid gap-2 md:hidden">
               {items.length === 0 ? (
                 <div className="rounded-xl border border-border bg-surface-muted/30 px-4 py-5 text-sm text-text-muted">
@@ -628,8 +601,7 @@ function ResourcePage({ config }) {
                 </tbody>
               </table>
             </div>
-            </>
-          )}
+          </>
         </Card>
       </div>
 

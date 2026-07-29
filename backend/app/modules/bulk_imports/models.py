@@ -36,13 +36,6 @@ class ImportResourceType(str, PyEnum):
     """Supported resource types for tenant bulk imports."""
 
     STUDENTS = "students"
-    TEACHERS = "teachers"
-    PARENTS = "parents"
-    CLASSES = "classes"
-    SUBJECTS = "subjects"
-    CLASS_SUBJECTS = "class_subjects"
-    TEACHER_SUBJECTS = "teacher_subjects"
-    ASSESSMENT_RECORDS = "assessment_records"
 
 
 class ImportFileType(str, PyEnum):

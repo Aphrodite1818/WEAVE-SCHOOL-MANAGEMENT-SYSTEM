@@ -242,7 +242,7 @@ function StudentDashboardPage() {
           description: `${dashboardData.pendingResults.length} result row${dashboardData.pendingResults.length === 1 ? "" : "s"} still pending.`,
           icon: ClipboardList,
           tone: "warning",
-          to: "/student/results",
+          to: "/student/report-cards",
         }
       : null,
     !dashboardData.latestReportCard
@@ -322,7 +322,7 @@ function StudentDashboardPage() {
               description={`${dashboardData.pendingResults.length} pending`}
               icon={ClipboardList}
               tone={dashboardData.pendingResults.length > 0 ? "warning" : "success"}
-              to="/student/results"
+              to="/student/report-cards"
             />
             <DashboardMetricCard
               label="Parent links"

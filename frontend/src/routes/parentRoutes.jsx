@@ -10,7 +10,6 @@ import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePa
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import SchoolSwitchPage from "../pages/shared/SchoolSwitchPage";
-import StaticModulePage from "../pages/shared/StaticModulePage";
 import MembershipScopeGuard from "./MembershipScopeGuard";
 import RoleGuard from "./RoleGuard";
 
@@ -29,7 +28,6 @@ export const parentRoutes = (
         <Route path="/parent/calendar" element={<SchoolCalendarPage role="parent" />} />
         <Route path="/parent/results" element={<ParentResultsPage />} />
         <Route path="/parent/notices" element={<AnnouncementsWorkspacePage mode="parent" />} />
-        <Route path="/parent/fees" element={<StaticModulePage role="parent" title="Fees" description="Fee statements, payment status, and due dates." />} />
         <Route path="/parent/settings" element={<RoleSettingsPage role="parent" />} />
       </Route>
     </Route>

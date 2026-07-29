@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarClock, CalendarDays, RefreshCw } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -24,6 +24,11 @@ const addDays = (isoDate, days) => {
   return date.toISOString().slice(0, 10);
 };
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const mondayGridOffset = (value) => {
+  const date = new Date(`${String(value || "").slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return 0;
+  return (date.getDay() + 6) % 7;
+};
 const dayNumber = (value) => {
   if (!value) return "-";
   const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
@@ -66,6 +71,17 @@ function SchoolCalendarPage({ role = "student" }) {
   const copy = titles[role] || titles.student;
   const user = authSession.getUser() || {};
   const calendarScope = `${role}:${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
+  const orderedDays = useMemo(
+    () =>
+      [...days].sort((left, right) =>
+        String(left.calendar_date || left.date).localeCompare(String(right.calendar_date || right.date)),
+      ),
+    [days],
+  );
+  const leadingBlankDays = useMemo(
+    () => mondayGridOffset(orderedDays[0]?.calendar_date || orderedDays[0]?.date),
+    [orderedDays],
+  );
 
   const loadCalendar = useCallback(async ({ signal, quiet = false, startDate = rangeStart, endDate = rangeEnd } = {}) => {
     if (quiet) setRefreshing(true);
@@ -196,9 +212,16 @@ function SchoolCalendarPage({ role = "student" }) {
           <div className="p-3 sm:p-4">
             {loading ? (
               <LoadingState label="Loading calendar days..." />
-            ) : days.length ? (
+            ) : orderedDays.length ? (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-7">
-                {days.map((day) => (
+                {Array.from({ length: leadingBlankDays }).map((_, index) => (
+                  <div
+                    key={`calendar-leading-blank-${index}`}
+                    aria-hidden="true"
+                    className="hidden min-h-32 md:block"
+                  />
+                ))}
+                {orderedDays.map((day) => (
                   <CalendarDayTile
                     key={day.id || day.date || day.calendar_date}
                     day={day}

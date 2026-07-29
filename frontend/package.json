@@ -12,10 +12,7 @@
     "lint": "eslint .",
     "lint-fix": "eslint . --fix",
     "preview": "vite preview",
-    "test": "node -e \"console.log('No frontend test runner configured yet')\"",
-    "test-watch": "node -e \"console.log('No frontend test runner configured yet')\"",
-    "test-coverage": "node -e \"console.log('No frontend test runner configured yet')\"",
-    "check": "npm run lint && npm run test && npm run build"
+    "check": "npm run lint && npm run build"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

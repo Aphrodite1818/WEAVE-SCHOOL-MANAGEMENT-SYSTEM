@@ -1,4 +1,4 @@
-import { api, authSession } from "./api";
+import { api } from "./api";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
 
@@ -15,93 +15,12 @@ const withQuery = (endpoint, params = {}) => {
   return queryString ? `${endpoint}?${queryString}` : endpoint;
 };
 
-const getCurrentRole = () =>
-  String(authSession.getUser()?.role || authSession.getRole() || "").toLowerCase();
+const createTenantAdminAnnouncement = (payload) =>
+  api.post("/tenant-admin/announcements", payload);
 
-const isDirectTeacherMessagePayload = (payload = {}) =>
-  Array.isArray(payload.targets) &&
-  payload.targets.length > 0 &&
-  payload.targets.every((target) => target?.target_type === "specific_teacher" && target?.teacher_id);
+const markRead = (id) => api.post(`/announcements/${id}/read`, {});
 
-const createdAtMs = (item) => {
-  const date = new Date(item?.created_at || item?.publish_at || 0);
-  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-};
-
-const mergeFeedResponses = (primary = {}, secondary = {}, limit = 50) => {
-  const byId = new Map();
-
-  [...(primary.items || []), ...(secondary.items || [])].forEach((item) => {
-    if (item?.id) byId.set(item.id, item);
-  });
-
-  const items = Array.from(byId.values())
-    .sort((left, right) => createdAtMs(right) - createdAtMs(left))
-    .slice(0, clampLimit(limit));
-
-  return {
-    ...primary,
-    items,
-    total: Math.max(Number(primary.total || 0), 0) + Math.max(Number(secondary.total || 0), 0),
-    unread_count: items.filter((item) => !item.is_read).length,
-  };
-};
-
-const createTenantAdminAnnouncement = async (payload) => {
-  const created = await api.post("/tenant-admin/announcements", payload);
-
-  if (isDirectTeacherMessagePayload(payload) && created?.id) {
-    return api.post(`/tenant-admin/announcements/${created.id}/publish`, {});
-  }
-
-  return created;
-};
-
-const getTeacherFeed = async (params = {}) => {
-  const limit = params?.limit ?? 50;
-  const noticeParams = { ...params, delivery_kind: params?.delivery_kind || undefined };
-
-  if (params?.delivery_kind === "message") {
-    return api.get(withQuery("/teachers/me/messages", { skip: params.skip, limit }));
-  }
-
-  if (params?.delivery_kind === "notice") {
-    const [notices, messages] = await Promise.all([
-      api.get(withQuery("/announcements/feed", noticeParams)),
-      api.get(withQuery("/teachers/me/messages", { skip: params.skip, limit })),
-    ]);
-    return mergeFeedResponses(notices, messages, limit);
-  }
-
-  const [feed, messages] = await Promise.all([
-    api.get(withQuery("/announcements/feed", params)),
-    api.get(withQuery("/teachers/me/messages", { skip: params.skip, limit })),
-  ]);
-
-  return mergeFeedResponses(feed, messages, limit);
-};
-
-const markRead = async (id) => {
-  try {
-    return await api.post(`/announcements/${id}/read`, {});
-  } catch (error) {
-    if (getCurrentRole() === "teacher" && error?.response?.status === 404) {
-      return api.post(`/teachers/me/messages/${id}/read`, {});
-    }
-    throw error;
-  }
-};
-
-const acknowledge = async (id) => {
-  try {
-    return await api.post(`/announcements/${id}/acknowledge`, {});
-  } catch (error) {
-    if (getCurrentRole() === "teacher" && error?.response?.status === 404) {
-      return api.post(`/teachers/me/messages/${id}/acknowledge`, {});
-    }
-    throw error;
-  }
-};
+const acknowledge = (id) => api.post(`/announcements/${id}/acknowledge`, {});
 
 export const announcementService = {
   listSuperadminAnnouncements: (params) =>
@@ -148,13 +67,8 @@ export const announcementService = {
   deleteTeacherAnnouncement: (id) =>
     api.delete(`/teachers/me/announcements/${id}`),
 
-  listTeacherMessages: (params) =>
-    api.get(withQuery("/teachers/me/messages", params)),
-
   getFeed: (params) =>
-    getCurrentRole() === "teacher"
-      ? getTeacherFeed(params)
-      : api.get(withQuery("/announcements/feed", params)),
+    api.get(withQuery("/announcements/feed", params)),
   markRead,
   acknowledge,
 };

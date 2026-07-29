@@ -200,7 +200,7 @@ function AdminDashboardPage() {
               description="Academic groups"
               icon={BookOpen}
               tone="warning"
-              to="/admin/classes"
+              to="/admin/academic/classes"
             />
             <DashboardMetricCard
               label="Parents"

@@ -14,6 +14,7 @@ import LoadingState from "../../../components/shared/LoadingState";
 import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import Input from "../../../components/ui/Input";
+import Modal from "../../../components/ui/Modal";
 import { classService } from "../../../services/academicsService";
 import { getErrorMessage, isAbortError } from "../../../services/api";
 import { parentService } from "../../../services/parentService";
@@ -63,8 +64,11 @@ function Stat({ label, value }) {
   );
 }
 
-function SheetCard({ sheet, onSubmit, onApprove, onLock }) {
+function SheetCard({ sheet, onSubmit, onApprove, onLock, actionBusy }) {
   const totals = countRecords(sheet);
+  const submitBusy = actionBusy === `submit:${sheet.id}`;
+  const approveBusy = actionBusy === `approve:${sheet.id}`;
+  const lockBusy = actionBusy === `lock:${sheet.id}`;
   return (
     <Card className="p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -81,26 +85,54 @@ function SheetCard({ sheet, onSubmit, onApprove, onLock }) {
         </div>
         <div className="flex flex-wrap gap-2">
           {onSubmit ? (
-            <Button size="sm" variant="success" onClick={() => onSubmit(sheet.id)}>
+            <Button size="sm" variant="success" onClick={() => onSubmit(sheet.id)} disabled={Boolean(actionBusy)}>
               <CheckCircle2 size={16} />
-              Submit
+              {submitBusy ? "Submitting..." : "Submit"}
             </Button>
           ) : null}
           {onApprove ? (
-            <Button size="sm" variant="outline" onClick={() => onApprove(sheet.id)}>
+            <Button size="sm" variant="outline" onClick={() => onApprove(sheet.id)} disabled={Boolean(actionBusy)}>
               <ClipboardCheck size={16} />
-              Approve
+              {approveBusy ? "Approving..." : "Approve"}
             </Button>
           ) : null}
           {onLock ? (
-            <Button size="sm" variant="outline" onClick={() => onLock(sheet.id)}>
+            <Button size="sm" variant="outline" onClick={() => onLock(sheet.id)} disabled={Boolean(actionBusy)}>
               <Lock size={16} />
-              Lock
+              {lockBusy ? "Locking..." : "Lock"}
             </Button>
           ) : null}
         </div>
       </div>
     </Card>
+  );
+}
+
+function ActionConfirmModal({ action, actionBusy, onCancel, onConfirm }) {
+  return (
+    <Modal
+      open={Boolean(action)}
+      title={action?.title || "Confirm action"}
+      description={action?.description}
+      onClose={onCancel}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={Boolean(actionBusy)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant={action?.variant || "primary"}
+            onClick={onConfirm}
+            disabled={Boolean(actionBusy)}
+          >
+            {actionBusy ? action?.busyLabel || "Working..." : action?.confirmLabel || "Confirm"}
+          </Button>
+        </div>
+      }
+    >
+      {action?.body ? <p className="text-sm text-text-muted">{action.body}</p> : null}
+    </Modal>
   );
 }
 
@@ -117,7 +149,7 @@ function RecordsTable({ records }) {
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70 bg-surface">
+    <div className="max-h-[560px] overflow-auto overscroll-contain rounded-lg border border-border/70 bg-surface">
       <table className="min-w-[720px] w-full text-left text-sm">
         <thead className="bg-surface-muted text-xs uppercase text-text-muted">
           <tr>
@@ -150,6 +182,8 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionBusy, setActionBusy] = useState("");
+  const [pendingAction, setPendingAction] = useState(null);
   const [geofenceForm, setGeofenceForm] = useState({
     name: "",
     latitude: "",
@@ -189,6 +223,7 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
   }, [load]);
 
   const createGeofence = async () => {
+    setActionBusy("geofence:create");
     setError("");
     try {
       await attendanceService.admin.createGeofence({
@@ -196,21 +231,41 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
         radius_m: Number(geofenceForm.radius_m),
       });
       setGeofenceForm({ name: "", latitude: "", longitude: "", radius_m: "150", is_primary: true });
-      load();
+      await load();
     } catch (err) {
       setError(getErrorMessage(err, "Could not save geofence."));
+    } finally {
+      setActionBusy("");
     }
   };
 
   const toggleGeofenceRequirement = async () => {
+    setActionBusy("settings:geofence");
     setError("");
     try {
       await attendanceService.admin.updateSettings({
         require_geofence_for_workforce: !settings?.require_geofence_for_workforce,
       });
-      load();
+      await load();
     } catch (err) {
       setError(getErrorMessage(err, "Could not update attendance settings."));
+    } finally {
+      setActionBusy("");
+      setPendingAction(null);
+    }
+  };
+
+  const runSheetAction = async (key, fallback, request) => {
+    setActionBusy(key);
+    setError("");
+    try {
+      await request();
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err, fallback));
+    } finally {
+      setActionBusy("");
+      setPendingAction(null);
     }
   };
 
@@ -231,9 +286,28 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
             <p className="text-sm font-semibold text-text">Workforce geofencing</p>
             <p className="text-xs text-text-muted">Server-side location evaluation is evidence only.</p>
           </div>
-          <Button variant="outline" size="sm" onClick={toggleGeofenceRequirement}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={Boolean(actionBusy)}
+            onClick={() =>
+              setPendingAction({
+                title: settings?.require_geofence_for_workforce
+                  ? "Make workforce geofence optional"
+                  : "Require workforce geofence",
+                description: "This changes how teacher and staff workforce attendance is evaluated.",
+                confirmLabel: settings?.require_geofence_for_workforce ? "Make optional" : "Require geofence",
+                busyLabel: "Updating...",
+                onConfirm: toggleGeofenceRequirement,
+              })
+            }
+          >
             <MapPin size={16} />
-            {settings?.require_geofence_for_workforce ? "Make optional" : "Require for workforce"}
+            {actionBusy === "settings:geofence"
+              ? "Updating..."
+              : settings?.require_geofence_for_workforce
+                ? "Make optional"
+                : "Require for workforce"}
           </Button>
         </div>
       </Card>
@@ -256,25 +330,55 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
             <Input label="Latitude" value={geofenceForm.latitude} onChange={(event) => setGeofenceForm((current) => ({ ...current, latitude: event.target.value }))} />
             <Input label="Longitude" value={geofenceForm.longitude} onChange={(event) => setGeofenceForm((current) => ({ ...current, longitude: event.target.value }))} />
             <Input label="Radius m" type="number" value={geofenceForm.radius_m} onChange={(event) => setGeofenceForm((current) => ({ ...current, radius_m: event.target.value }))} />
-            <Button className="w-full" onClick={createGeofence}>
+            <Button className="w-full" onClick={createGeofence} disabled={Boolean(actionBusy)}>
               <MapPin size={16} />
-              Save geofence
+              {actionBusy === "geofence:create" ? "Saving..." : "Save geofence"}
             </Button>
           </div>
         </div>
       </Card>
-      <div className="space-y-3">
+      <div className="max-h-[560px] space-y-3 overflow-y-auto overscroll-contain pr-1">
         {sheets.length ? sheets.map((sheet) => (
           <SheetCard
             key={sheet.id}
             sheet={sheet}
-            onApprove={(id) => attendanceService.admin.approveSheet(id).then(load).catch((err) => setError(getErrorMessage(err, "Could not approve sheet.")))}
-            onLock={(id) => attendanceService.admin.lockSheet(id).then(load).catch((err) => setError(getErrorMessage(err, "Could not lock sheet.")))}
+            actionBusy={actionBusy}
+            onApprove={(id) =>
+              setPendingAction({
+                title: "Approve attendance sheet",
+                description: "Approved sheets move forward for administrative control.",
+                confirmLabel: "Approve sheet",
+                busyLabel: "Approving...",
+                onConfirm: () =>
+                  runSheetAction(`approve:${id}`, "Could not approve sheet.", () =>
+                    attendanceService.admin.approveSheet(id),
+                  ),
+              })
+            }
+            onLock={(id) =>
+              setPendingAction({
+                title: "Lock attendance sheet",
+                description: "Locked attendance sheets should be treated as final records.",
+                confirmLabel: "Lock sheet",
+                busyLabel: "Locking...",
+                variant: "danger",
+                onConfirm: () =>
+                  runSheetAction(`lock:${id}`, "Could not lock sheet.", () =>
+                    attendanceService.admin.lockSheet(id),
+                  ),
+              })
+            }
           />
         )) : (
           <Card className="p-5"><EmptyState icon={ClipboardCheck} title="No student sheets" description="No class attendance sheets exist for this range." /></Card>
         )}
       </div>
+      <ActionConfirmModal
+        action={pendingAction}
+        actionBusy={actionBusy}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => pendingAction?.onConfirm?.()}
+      />
     </section>
   );
 }
@@ -285,7 +389,8 @@ function TeacherAttendance({ rangeStart, rangeEnd }) {
   const [sheets, setSheets] = useState([]);
   const [workforce, setWorkforce] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [pendingAction, setPendingAction] = useState(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -315,7 +420,7 @@ function TeacherAttendance({ rangeStart, rangeEnd }) {
 
   const openSheet = async () => {
     if (!classId) return;
-    setBusy(true);
+    setBusy("open");
     setError("");
     try {
       await attendanceService.teacher.openSheet({ class_id: classId, attendance_date: todayIso() });
@@ -323,12 +428,12 @@ function TeacherAttendance({ rangeStart, rangeEnd }) {
     } catch (err) {
       setError(getErrorMessage(err, "Could not open attendance sheet."));
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   };
 
   const workforceAction = async (action) => {
-    setBusy(true);
+    setBusy(`workforce:${action}`);
     setError("");
     try {
       const location = await getBrowserLocation();
@@ -338,7 +443,21 @@ function TeacherAttendance({ rangeStart, rangeEnd }) {
     } catch (err) {
       setError(getErrorMessage(err, err.message || "Could not complete attendance action."));
     } finally {
-      setBusy(false);
+      setBusy("");
+    }
+  };
+
+  const submitSheet = async (id) => {
+    setBusy(`submit:${id}`);
+    setError("");
+    try {
+      await attendanceService.teacher.submitSheet(id);
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not submit sheet."));
+    } finally {
+      setBusy("");
+      setPendingAction(null);
     }
   };
 
@@ -355,17 +474,17 @@ function TeacherAttendance({ rangeStart, rangeEnd }) {
               {classes.map((item) => <option key={item.id} value={item.id}>{className(item)}</option>)}
             </select>
           </label>
-          <Button onClick={openSheet} disabled={busy || !classId}>
+          <Button onClick={openSheet} disabled={Boolean(busy) || !classId}>
             <ClipboardCheck size={16} />
-            Open today
+            {busy === "open" ? "Opening..." : "Open today"}
           </Button>
-          <Button variant="success" onClick={() => workforceAction("in")} disabled={busy}>
+          <Button variant="success" onClick={() => workforceAction("in")} disabled={Boolean(busy)}>
             <MapPin size={16} />
-            Check in
+            {busy === "workforce:in" ? "Checking in..." : "Check in"}
           </Button>
-          <Button variant="outline" onClick={() => workforceAction("out")} disabled={busy}>
+          <Button variant="outline" onClick={() => workforceAction("out")} disabled={Boolean(busy)}>
             <Clock3 size={16} />
-            Check out
+            {busy === "workforce:out" ? "Checking out..." : "Check out"}
           </Button>
         </div>
       </Card>
@@ -374,17 +493,32 @@ function TeacherAttendance({ rangeStart, rangeEnd }) {
         <Stat label="Workforce days" value={workforce.length} />
         <Stat label="Today" value={todayIso()} />
       </div>
-      <div className="space-y-3">
+      <div className="max-h-[560px] space-y-3 overflow-y-auto overscroll-contain pr-1">
         {sheets.length ? sheets.map((sheet) => (
           <SheetCard
             key={sheet.id}
             sheet={sheet}
-            onSubmit={(id) => attendanceService.teacher.submitSheet(id).then(load).catch((err) => setError(getErrorMessage(err, "Could not submit sheet.")))}
+            actionBusy={busy}
+            onSubmit={(id) =>
+              setPendingAction({
+                title: "Submit attendance sheet",
+                description: "Submitted sheets are sent forward for admin review.",
+                confirmLabel: "Submit sheet",
+                busyLabel: "Submitting...",
+                onConfirm: () => submitSheet(id),
+              })
+            }
           />
         )) : (
           <Card className="p-5"><EmptyState icon={ClipboardCheck} title="No sheets" description="Open a class sheet to begin marking attendance." /></Card>
         )}
       </div>
+      <ActionConfirmModal
+        action={pendingAction}
+        actionBusy={busy}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => pendingAction?.onConfirm?.()}
+      />
     </section>
   );
 }
@@ -457,7 +591,7 @@ function ParentAttendance({ rangeStart, rangeEnd }) {
 const copyByRole = {
   admin: {
     title: "Attendance",
-    description: "Manage student sheets, workforce attendance, geofences, corrections, and readiness.",
+    description: "Review student sheets, manage workforce attendance settings, and maintain geofences.",
   },
   teacher: {
     title: "Attendance",

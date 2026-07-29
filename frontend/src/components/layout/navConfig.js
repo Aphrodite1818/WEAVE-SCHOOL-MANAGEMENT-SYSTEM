@@ -14,8 +14,6 @@ import {
   Home,
   Library,
   Link2,
-  MessageSquare,
-  Receipt,
   Settings,
   Shield,
   UploadCloud,
@@ -32,7 +30,7 @@ export const roleLabels = {
   superadmin: "Platform admin",
 };
 
-export const workspaceSearchRoles = new Set(["admin", "teacher", "student"]);
+export const workspaceSearchRoles = new Set(["admin", "teacher"]);
 export const tenantNameFallbackRoles = new Set(["admin", "teacher", "student", "parent"]);
 
 export const announcementPaths = {
@@ -92,9 +90,8 @@ export const navGroups = {
         { label: "Teachers", to: "/admin/teachers", icon: Users },
         { label: "Parents", to: "/admin/parents", icon: Users },
         { label: "Bulk Imports", to: "/admin/imports", icon: UploadCloud, featureCode: FEATURE_CODES.BULK_IMPORT },
-        { label: "Classes", to: "/admin/classes", icon: Library },
-        { label: "Subjects", to: "/admin/subjects", icon: BookOpen },
-        { label: "Timetable", to: "/admin/timetable", icon: CalendarDays },
+        { label: "Classes", to: "/admin/academic/classes", icon: Library },
+        { label: "Subjects", to: "/admin/academic/subjects", icon: BookOpen },
         { label: "Attendance", to: "/admin/attendance", icon: CheckSquare },
       ],
     },
@@ -102,15 +99,12 @@ export const navGroups = {
       label: "Communication",
       items: [
         { label: "Notices", to: "/admin/announcements", icon: FileText },
-        { label: "Messages", to: "/admin/messages", icon: MessageSquare },
       ],
     },
     {
       label: "Operations",
       items: [
-        { label: "Reports", to: "/admin/reports", icon: BarChart3 },
-        { label: "Fees", to: "/admin/fees", icon: Receipt },
-        { label: "Payments", to: "/admin/payments", icon: CreditCard },
+        { label: "Reports", to: "/admin/academic/report-cards", icon: BarChart3 },
         { label: "Billing", to: "/admin/billing", icon: CreditCard },
         { label: "Usage", to: "/admin/usage", icon: Activity },
         { label: "Settings", to: "/admin/settings", icon: Settings },
@@ -127,7 +121,6 @@ export const navGroups = {
         { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen },
         { label: "Score Entry", to: "/teacher/score-entry", icon: BarChart3 },
         { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
-        { label: "Assignments", to: "/teacher/assignments", icon: ClipboardList },
         { label: "Notices", to: "/teacher/notices", icon: Bell },
       ],
     },
@@ -152,8 +145,6 @@ export const navGroups = {
         { label: "Parent Linking", to: "/student/parent-linking", icon: Link2 },
         { label: "Report Cards", to: "/student/report-cards", icon: FileText },
         { label: "Calendar", to: "/student/calendar", icon: CalendarDays },
-        { label: "Assignments", to: "/student/assignments", icon: ClipboardList },
-        { label: "Results", to: "/student/results", icon: BarChart3 },
         { label: "Notices", to: "/student/notices", icon: FileText },
         { label: "Settings", to: "/student/settings", icon: Settings },
       ],
@@ -170,7 +161,6 @@ export const navGroups = {
         { label: "Attendance", to: "/parent/attendance", icon: CheckSquare },
         { label: "Calendar", to: "/parent/calendar", icon: CalendarDays },
         { label: "Notices", to: "/parent/notices", icon: FileText },
-        { label: "Fees", to: "/parent/fees", icon: CreditCard },
         { label: "Switch School", to: "/parent/schools", icon: Building2, accountScope: true },
         { label: "Settings", to: "/parent/settings", icon: Settings },
       ],

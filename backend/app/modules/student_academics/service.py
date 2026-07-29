@@ -15,7 +15,6 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-from app.modules.bulk_imports.models import ImportResourceType
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.report_cards.models import ReportCardStatus
 from app.modules.parents.models import ParentMembership
@@ -278,9 +277,6 @@ class StudentAcademicService:
             "inbound_next_sessions": await StudentAcademicRepository.count_inbound_next_sessions(
                 db, tenant_id, session_id
             ),
-            "pending_result_imports": await StudentAcademicRepository.count_pending_import_jobs(
-                db, tenant_id, resource_types={ImportResourceType.ASSESSMENT_RECORDS}
-            ),
         }
         blockers: list[str] = []
         can_open = session.status == AcademicSessionStatus.DRAFT and counts["terms"] > 0
@@ -303,8 +299,6 @@ class StudentAcademicService:
                 blockers.append("Report cards must be published or archived before closure.")
             if counts["active_or_pending_progression_runs"]:
                 blockers.append("A progression run is already active or pending for this session.")
-            if counts["pending_result_imports"]:
-                blockers.append("Assessment-record imports are still pending or processing.")
             from app.modules.school_calendar.service import SchoolCalendarService
 
             terms, _ = await StudentAcademicRepository.list_terms_by_session(
@@ -375,9 +369,6 @@ class StudentAcademicService:
                 db, tenant_id, academic_term_id=term_id, statuses={ReportCardStatus.DRAFT}
             ),
             "report_cards": await StudentAcademicRepository.count_report_cards(db, tenant_id, academic_term_id=term_id),
-            "pending_result_imports": await StudentAcademicRepository.count_pending_import_jobs(
-                db, tenant_id, resource_types={ImportResourceType.ASSESSMENT_RECORDS}
-            ),
         }
         blockers: list[str] = []
         if term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}:
@@ -389,8 +380,6 @@ class StudentAcademicService:
                 blockers.append("Approved results must be locked before closing the term.")
             if counts["unpublished_report_cards"]:
                 blockers.append("Report cards must be published or archived before closing the term.")
-            if counts["pending_result_imports"]:
-                blockers.append("Assessment-record imports are still pending or processing.")
             from app.modules.school_calendar.service import SchoolCalendarService
 
             contribution = await SchoolCalendarService.inspect_term_closure_readiness(

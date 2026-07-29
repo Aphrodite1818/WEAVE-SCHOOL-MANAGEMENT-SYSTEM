@@ -9,7 +9,6 @@ from decimal import Decimal
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.bulk_imports.models import ImportJob, ImportJobStatus
 from app.modules.classes.models import ClassRoom
 from app.modules.report_cards.models import ReportCard, ReportCardStatus
 from app.modules.subjects.models import Subject
@@ -33,9 +32,6 @@ from app.modules.teachers.models import TeacherAccount, TeacherMembership
 
 
 FINALIZED_RESULT_STATUSES = (AcademicResultStatus.LOCKED,)
-ACTIVE_IMPORT_STATUSES = (ImportJobStatus.PENDING, ImportJobStatus.PROCESSING)
-
-
 def escape_like(value: str) -> str:
     return (
         value.replace("\\", "\\\\")
@@ -415,21 +411,6 @@ class StudentAcademicRepository:
                 )
             ).scalar_one()
         )
-
-    @staticmethod
-    async def count_pending_import_jobs(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        *,
-        resource_types: set | None = None,
-    ) -> int:
-        filters = [
-            ImportJob.tenant_id == tenant_id,
-            ImportJob.status.in_(ACTIVE_IMPORT_STATUSES),
-        ]
-        if resource_types:
-            filters.append(ImportJob.resource_type.in_(resource_types))
-        return int((await db.execute(select(func.count()).select_from(ImportJob).where(*filters))).scalar_one())
 
     @staticmethod
     async def add_academic_lifecycle_audit(

@@ -222,6 +222,25 @@ async def list_bulk_import_errors(
     )
 
 
+@router.delete(
+    "/{job_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_bulk_import_job(
+    job_id: UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> Response:
+    """Delete one completed import job from tenant-visible history."""
+
+    await BulkImportService.delete_job_history(
+        db=db,
+        actor=current_user,
+        job_id=job_id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get(
     "/{job_id}/result",
 )
@@ -259,5 +278,12 @@ async def download_bulk_import_result(
         media_type=result_file.content_type,
         headers={
             "Content-Disposition": f'attachment; filename="{result_file.filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": (
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+            ),
         },
     )

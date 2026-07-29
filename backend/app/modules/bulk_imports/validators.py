@@ -13,6 +13,7 @@ from datetime import date, datetime
 from typing import Any
 
 from app.modules.bulk_imports.models import ImportResourceType
+from app.modules.students.models import ParentRelationship
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -129,13 +130,9 @@ class BulkImportValidator:
 
     REQUIRED_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {
         ImportResourceType.STUDENTS: ("first_name", "last_name", "date_of_birth"),
-        ImportResourceType.TEACHERS: ("email",),
-        ImportResourceType.PARENTS: ("email",),
     }
 
     DUPLICATE_CHECK_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {
-        ImportResourceType.TEACHERS: ("email", "staff_id"),
-        ImportResourceType.PARENTS: ("email",),
     }
 
     @staticmethod
@@ -243,14 +240,24 @@ class BulkImportValidator:
             )
 
         date_of_birth = normalized_row.get("date_of_birth")
-        if not _is_blank(date_of_birth) and _parse_date(date_of_birth) is None:
-            _add_error(
-                errors=errors,
-                row_number=row_number,
-                field_name="date_of_birth",
-                error_code="invalid_date",
-                error_message="date_of_birth must be a valid date.",
-            )
+        if not _is_blank(date_of_birth):
+            parsed_date_of_birth = _parse_date(date_of_birth)
+            if parsed_date_of_birth is None:
+                _add_error(
+                    errors=errors,
+                    row_number=row_number,
+                    field_name="date_of_birth",
+                    error_code="invalid_date",
+                    error_message="date_of_birth must be a valid date.",
+                )
+            elif parsed_date_of_birth >= date.today():
+                _add_error(
+                    errors=errors,
+                    row_number=row_number,
+                    field_name="date_of_birth",
+                    error_code="date_not_before_today",
+                    error_message="date_of_birth must be before today.",
+                )
 
         class_id = normalized_row.get("class_id")
         if not _is_blank(class_id) and _parse_uuid(class_id) is None:
@@ -262,37 +269,65 @@ class BulkImportValidator:
                 error_message="class_id must be a valid UUID.",
             )
 
-    @staticmethod
-    def _validate_teacher_fields(
-        *,
-        row_number: int,
-        normalized_row: dict[str, Any],
-        errors: list[ImportValidationErrorItem],
-    ) -> None:
-        """Validate teacher-specific fields."""
-
-        BulkImportValidator._validate_email(
-            row_number=row_number,
-            field_name="email",
-            normalized_row=normalized_row,
-            errors=errors,
+        parent_pairs = (
+            ("parent_email_1", "parent_relationship_1"),
+            ("parent_email_2", "parent_relationship_2"),
         )
+        allowed_relationships = {item.value for item in ParentRelationship}
+        parent_emails: list[str] = []
 
-    @staticmethod
-    def _validate_parent_fields(
-        *,
-        row_number: int,
-        normalized_row: dict[str, Any],
-        errors: list[ImportValidationErrorItem],
-    ) -> None:
-        """Validate parent-specific fields."""
+        for email_field, relationship_field in parent_pairs:
+            email = normalized_row.get(email_field)
+            relationship = normalized_row.get(relationship_field)
 
-        BulkImportValidator._validate_email(
-            row_number=row_number,
-            field_name="email",
-            normalized_row=normalized_row,
-            errors=errors,
-        )
+            BulkImportValidator._validate_email(
+                row_number=row_number,
+                field_name=email_field,
+                normalized_row=normalized_row,
+                errors=errors,
+            )
+
+            if not _is_blank(email) and _is_blank(relationship):
+                _add_error(
+                    errors=errors,
+                    row_number=row_number,
+                    field_name=relationship_field,
+                    error_code="required_with_parent_email",
+                    error_message=f"{relationship_field} is required when {email_field} is supplied.",
+                )
+
+            if _is_blank(email) and not _is_blank(relationship):
+                _add_error(
+                    errors=errors,
+                    row_number=row_number,
+                    field_name=email_field,
+                    error_code="required_with_parent_relationship",
+                    error_message=f"{email_field} is required when {relationship_field} is supplied.",
+                )
+
+            if not _is_blank(relationship) and str(relationship) not in allowed_relationships:
+                _add_error(
+                    errors=errors,
+                    row_number=row_number,
+                    field_name=relationship_field,
+                    error_code="invalid_parent_relationship",
+                    error_message=(
+                        f"{relationship_field} must be one of: "
+                        f"{', '.join(sorted(allowed_relationships))}."
+                    ),
+                )
+
+            if not _is_blank(email):
+                parent_emails.append(str(email).strip().casefold())
+
+        if len(parent_emails) != len(set(parent_emails)):
+            _add_error(
+                errors=errors,
+                row_number=row_number,
+                field_name="parent_email_2",
+                error_code="duplicate_parent_email",
+                error_message="Parent or guardian emails for the same student must be unique.",
+            )
 
     @staticmethod
     def _validate_duplicates_within_file(
@@ -367,18 +402,6 @@ class BulkImportValidator:
 
         if resource_type == ImportResourceType.STUDENTS:
             BulkImportValidator._validate_student_fields(
-                row_number=row_number,
-                normalized_row=normalized_row,
-                errors=validation_result.errors,
-            )
-        elif resource_type == ImportResourceType.TEACHERS:
-            BulkImportValidator._validate_teacher_fields(
-                row_number=row_number,
-                normalized_row=normalized_row,
-                errors=validation_result.errors,
-            )
-        elif resource_type == ImportResourceType.PARENTS:
-            BulkImportValidator._validate_parent_fields(
                 row_number=row_number,
                 normalized_row=normalized_row,
                 errors=validation_result.errors,

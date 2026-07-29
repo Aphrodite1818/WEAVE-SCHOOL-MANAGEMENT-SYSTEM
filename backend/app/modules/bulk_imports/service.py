@@ -6,8 +6,7 @@
 
 from __future__ import annotations
 
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -16,10 +15,8 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.security import hash_auth_secret, hash_password
 from app.config.settings import settings
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
-from app.core.utils.normalization import normalize_staff_id
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
@@ -61,28 +58,24 @@ from app.modules.bulk_imports.validators import (
 )
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.email_outbox.service import EmailOutboxService
+from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
 from app.modules.students.models import (
     AcademicStatus,
+    ParentRelationship,
     Student,
-    StudentAccessCode,
     StudentAccessCodePurpose,
     StudentAccountStatus,
+    StudentEnrollment,
+    StudentEnrollmentOutcome,
     StudentProfileStatus,
 )
-from app.modules.students.repository import StudentRepository
-from app.modules.students.schemas import StudentCreate
-from app.modules.students.service import StudentService
+from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
+from app.modules.students.schemas import StudentCreate, StudentParentInvitationInput
+from app.modules.students.service import ParentInvitationService, StudentAccessCodeService, StudentService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLimitCode
-from app.modules.teachers.models import TeacherInvitation, TeacherInvitationStatus
-from app.modules.teachers.repository import TeacherInvitationRepository, TeacherMembershipRepository
-from app.modules.teachers.service import TeacherInvitationService
-from app.modules.teachers.schemas import TeacherCreate
 from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.identifier_service import (
-    TenantIdentifierKind,
-    TenantIdentifierService,
-)
+from app.tenant_management.identifier_service import TenantIdentifierKind, TenantIdentifierService
 from app.tenant_management.repository import TenantRepository
 
 
@@ -176,6 +169,35 @@ def append_validation_error(
     )
 
 
+def _format_class_reference(class_name: Any, class_arm: Any) -> str:
+    """Build a concise class label for validation messages."""
+
+    parts = [str(part).strip() for part in (class_name, class_arm) if not _is_blank(part)]
+    return " ".join(parts) or "the supplied class"
+
+
+def build_parent_invitations_from_row(
+    normalized_row: dict[str, Any],
+) -> list[StudentParentInvitationInput]:
+    """Build student parent invitations from the two supported spreadsheet slots."""
+
+    invitations: list[StudentParentInvitationInput] = []
+    for index in (1, 2):
+        email = normalized_row.get(f"parent_email_{index}")
+        relationship = normalized_row.get(f"parent_relationship_{index}")
+        if _is_blank(email) and _is_blank(relationship):
+            continue
+
+        invitations.append(
+            StudentParentInvitationInput(
+                email=str(email),
+                relationship_type=ParentRelationship(str(relationship)),
+            )
+        )
+
+    return invitations
+
+
 class BulkImportService:
     """Coordinate parsing, validation, creation, results, and notifications."""
 
@@ -194,7 +216,6 @@ class BulkImportService:
 
         return {
             ImportResourceType.STUDENTS: ResourceLimitCode.STUDENTS,
-            ImportResourceType.TEACHERS: ResourceLimitCode.TEACHERS,
         }[resource_type]
 
     @staticmethod
@@ -377,21 +398,13 @@ class BulkImportService:
                 )
                 continue
 
-            if _is_blank(class_arm):
-                append_validation_error(
-                    validation_result=validation_result,
-                    field_name="class_arm",
-                    error_code="required_with_class_name",
-                    error_message="class_arm is required when class_name is supplied.",
-                )
-                continue
-
             classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
                 db=db,
                 tenant_id=tenant_id,
                 class_name=str(class_name),
-                class_arm=str(class_arm),
+                class_arm=None if _is_blank(class_arm) else str(class_arm),
             )
+            class_reference = _format_class_reference(class_name, class_arm)
 
             if classroom is None:
                 append_validation_error(
@@ -399,7 +412,7 @@ class BulkImportService:
                     field_name="class_name",
                     error_code="class_not_found",
                     error_message=(
-                        f"Class {class_name} {class_arm} does not exist. "
+                        f"Class {class_reference} does not exist. "
                         "Create the class first before importing students."
                     ),
                 )
@@ -410,7 +423,7 @@ class BulkImportService:
                     field_name="class_name",
                     error_code="class_inactive",
                     error_message=(
-                        f"Class {class_name} {class_arm} is inactive or archived. "
+                        f"Class {class_reference} is inactive or archived. "
                         "Use an active class before importing students."
                     ),
                 )
@@ -431,7 +444,6 @@ class BulkImportService:
         """Create one student using manual creation semantics without committing."""
 
         student_data = StudentCreate(
-            admission_number=None,
             first_name=normalized_row.get("first_name"),
             last_name=normalized_row.get("last_name"),
             date_of_birth=BulkImportValidator.parse_date(normalized_row.get("date_of_birth")),
@@ -439,25 +451,20 @@ class BulkImportService:
             class_id=BulkImportValidator.parse_uuid(normalized_row.get("class_id")),
             arm=normalized_row.get("arm") or normalized_row.get("class_arm"),
             state_of_origin=normalized_row.get("state_of_origin"),
-            status=AcademicStatus.ACTIVE,
+            parents=build_parent_invitations_from_row(normalized_row),
         )
 
-        admission_number = await StudentService.generate_admission_number(
-            db=db,
+        tenant = await TenantIdentifierService.require_completed_onboarding(
+            db,
             tenant_id=actor.tenant_id,
+            lock=True,
         )
-
-        if await StudentRepository.admission_number_exists(
-            db=db,
-            tenant_id=actor.tenant_id,
-            admission_number=admission_number,
-        ):
-            raise ConflictException(detail="Admission number already exists")
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,
             tenant_id=actor.tenant_id,
             class_id=student_data.class_id,
+            lock=True,
         )
         if (
             classroom is None
@@ -468,10 +475,20 @@ class BulkImportService:
                 "Students can only be imported into active classes."
             )
 
-        await AuthIdentityService.ensure_identifier_available(
-            db=db,
-            identifier=admission_number,
-            identifier_type=IdentifierType.ADMISSION_NUMBER,
+        session = await AcademicSessionLifecycleRepository.get_current_open(
+            db,
+            actor.tenant_id,
+            lock=True,
+        )
+        if session is None:
+            raise BadRequestException(
+                "An open academic session is required before importing students."
+            )
+
+        admission_number = await TenantIdentifierService.generate_identifier(
+            db,
+            tenant=tenant,
+            kind=TenantIdentifierKind.STUDENT,
         )
 
         student = Student(
@@ -483,11 +500,11 @@ class BulkImportService:
             date_of_birth=student_data.date_of_birth,
             gender=student_data.gender,
             passport_photo_url=None,
-            admission_date=StudentService._get_default_admission_date(),
+            admission_date=datetime.now(timezone.utc).date(),
             graduation_date=None,
             class_id=student_data.class_id,
-            arm=student_data.arm,
-            status=student_data.status,
+            arm=classroom.arm,
+            status=AcademicStatus.ACTIVE,
             account_status=StudentAccountStatus.ACTIVE,
             is_verified=True,
             is_active=True,
@@ -499,6 +516,20 @@ class BulkImportService:
         student.profile_status = StudentService._resolve_profile_status(student)
 
         created_student = await StudentRepository.create_student(db=db, student=student)
+        await StudentEnrollmentRepository.add(
+            db,
+            StudentEnrollment(
+                tenant_id=actor.tenant_id,
+                student_id=created_student.id,
+                class_id=classroom.id,
+                academic_session_id=session.id,
+                started_on=datetime.now(timezone.utc).date(),
+                is_current=True,
+                outcome=StudentEnrollmentOutcome.ENROLLED,
+                reason="Initial admission",
+                changed_by_admin_id=actor.id,
+            ),
+        )
 
         await AuthIdentityService.create_for_actor(
             db=db,
@@ -512,100 +543,59 @@ class BulkImportService:
             ),
         )
 
-        setup_code, access_code = await StudentService._create_student_access_code(
-            db=db,
-            tenant_id=actor.tenant_id,
-            student_id=created_student.id,
+        access_response = await StudentAccessCodeService._create_code(
+            db,
+            student=created_student,
             purpose=StudentAccessCodePurpose.INITIAL_SETUP,
             created_by_admin_id=actor.id,
+            revoke_existing=False,
         )
+
+        school_name = tenant.school_name if tenant is not None else "your school"
+        student_name = " ".join(
+            part for part in [created_student.first_name, created_student.last_name] if part
+        ) or "Student"
+
+        for parent in student_data.parents:
+            normalized_email = str(parent.email).casefold()
+            invitation = await ParentInvitationService._create_invitation_record(
+                db,
+                tenant_id=actor.tenant_id,
+                student=created_student,
+                normalized_email=normalized_email,
+                relationship_type=parent.relationship_type,
+                created_by_admin_id=actor.id,
+            )
+            raw_token = getattr(invitation, "raw_token", None)
+            if not raw_token:
+                raise RuntimeError("Parent invitation token was not generated.")
+
+            await EmailOutboxService.queue_parent_invitation_email(
+                db=db,
+                tenant_id=actor.tenant_id,
+                email=normalized_email,
+                school_name=school_name,
+                student_name=student_name,
+                invite_link=(
+                    f"{settings.FRONTEND_APP_URL.rstrip('/')}"
+                    f"/parent-invitations/{raw_token}"
+                ),
+                admission_number=created_student.admission_number,
+                metadata_json={
+                    "source": "bulk_import",
+                    "actor_type": "parent",
+                    "student_id": str(created_student.id),
+                    "invitation_id": str(invitation.id),
+                    "relationship_type": parent.relationship_type.value,
+                },
+            )
 
         return {
             "student": created_student,
-            "setup_code": setup_code,
-            "access_code": access_code,
+            "setup_code": access_response.access_code,
+            "access_code_expires_at": access_response.expires_at,
+            "parent_invitation_count": len(student_data.parents),
         }
-
-    @staticmethod
-    async def create_teacher_from_row(
-        db: AsyncSession,
-        *,
-        actor: TenantAdmin,
-        normalized_row: dict[str, Any],
-        school_name: str,
-    ) -> dict[str, Any]:
-        """Create one canonical teacher invitation and queue email without committing."""
-
-        teacher_data = TeacherCreate(**normalized_row)
-        normalized_email = str(teacher_data.email).strip().lower()
-
-        pending = await TeacherInvitationRepository.get_pending_for_email(
-            db,
-            actor.tenant_id,
-            normalized_email,
-            lock=True,
-        )
-        if pending is not None:
-            raise ConflictException(
-                detail="A pending invitation already exists for this teacher."
-            )
-
-        tenant = await TenantIdentifierService.require_completed_onboarding(
-            db,
-            tenant_id=actor.tenant_id,
-            lock=True,
-        )
-
-        if teacher_data.staff_id is not None:
-            staff_id = normalize_staff_id(teacher_data.staff_id)
-            staff_id_exists = await TeacherMembershipRepository.staff_id_exists(
-                db,
-                actor.tenant_id,
-                staff_id,
-            )
-            if staff_id_exists:
-                raise ConflictException(detail="A teacher with this staff ID already exists")
-        else:
-            staff_id = await TenantIdentifierService.generate_identifier(
-                db,
-                tenant=tenant,
-                kind=TenantIdentifierKind.TEACHER,
-            )
-
-        raw_token = secrets.token_urlsafe(48)
-        invitation = TeacherInvitation(
-            tenant_id=actor.tenant_id,
-            invited_email=normalized_email,
-            token_digest=hash_auth_secret(raw_token),
-            staff_id=staff_id,
-            job_title=teacher_data.specialization,
-            department=teacher_data.qualification,
-            employment_type=None,
-            status=TeacherInvitationStatus.PENDING,
-            expires_at=utc_now()
-            + timedelta(days=TeacherInvitationService.INVITATION_DAYS),
-            created_by_admin_id=actor.id,
-        )
-        invitation = await TeacherInvitationRepository.add(db, invitation)
-        invite_link = (
-            f"{settings.FRONTEND_APP_URL.rstrip('/')}"
-            f"/teacher-invitations/{raw_token}"
-        )
-
-        await EmailOutboxService.queue_teacher_invitation_email(
-            db=db,
-            tenant_id=actor.tenant_id,
-            email=normalized_email,
-            school_name=school_name,
-            invite_link=invite_link,
-            metadata_json={
-                "source": "bulk_import",
-                "actor_type": "teacher",
-                "invitation_id": str(invitation.id),
-            },
-        )
-
-        return {"invitation": invitation, "invite_status": "queued"}
 
     @staticmethod
     async def process_valid_row(
@@ -625,7 +615,6 @@ class BulkImportService:
                 normalized_row=validation_result.normalized_row,
             )
             student: Student = created["student"]
-            access_code: StudentAccessCode = created["access_code"]
             return {
                 "row_number": validation_result.row_number,
                 "status": "created",
@@ -635,26 +624,8 @@ class BulkImportService:
                 "class_name": validation_result.normalized_row.get("class_name"),
                 "class_arm": validation_result.normalized_row.get("class_arm"),
                 "setup_code": created["setup_code"],
-                "access_code_expires_at": access_code.expires_at.isoformat(),
-                "error_message": "",
-            }
-
-        if resource_type == ImportResourceType.TEACHERS:
-            created = await BulkImportService.create_teacher_from_row(
-                db=db,
-                actor=actor,
-                normalized_row=validation_result.normalized_row,
-                school_name=school_name,
-            )
-            invitation: TeacherInvitation = created["invitation"]
-            return {
-                "row_number": validation_result.row_number,
-                "status": "created",
-                "invite_status": created["invite_status"],
-                "email": invitation.invited_email,
-                "first_name": validation_result.normalized_row.get("first_name"),
-                "last_name": validation_result.normalized_row.get("last_name"),
-                "staff_id": invitation.staff_id,
+                "access_code_expires_at": created["access_code_expires_at"].isoformat(),
+                "parent_invitations_queued": created["parent_invitation_count"],
                 "error_message": "",
             }
 
@@ -1092,14 +1063,6 @@ class BulkImportService:
         await db.commit()
         await AuthIdentityService.invalidate_after_commit(db)
 
-        if successful_rows > 0 and import_job.resource_type == ImportResourceType.TEACHERS:
-            try:
-                from app.core.queue.arq import enqueue_email_outbox_batch
-
-                await enqueue_email_outbox_batch(batch_size=50)
-            except Exception:
-                pass
-
         refreshed_job = await ImportJobRepository.get_job_by_id(
             db=db,
             tenant_id=actor.tenant_id,
@@ -1156,6 +1119,30 @@ class BulkImportService:
             raise NotFoundException(detail="Import job not found")
 
         return ImportJobDetailResponse.model_validate(import_job)
+
+    @staticmethod
+    async def delete_job_history(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        job_id: UUID,
+    ) -> None:
+        """Delete one non-active import job from tenant-visible history."""
+
+        import_job = await ImportJobRepository.get_job_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            job_id=job_id,
+            lock=True,
+        )
+        if import_job is None:
+            raise NotFoundException(detail="Import job not found")
+
+        if import_job.status in {ImportJobStatus.PENDING, ImportJobStatus.PROCESSING}:
+            raise BadRequestException(detail="Active import jobs cannot be deleted.")
+
+        await ImportJobRepository.delete_job(db=db, import_job=import_job)
+        await db.commit()
 
     @staticmethod
     async def list_job_errors(
