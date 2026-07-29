@@ -33,11 +33,7 @@ database_url = settings.DATABASE_URL
 if not database_url:
     raise ValueError("DATABASE_URL must be set for the active environment.")
 
-connect_args = (
-    {"statement_cache_size": 0}
-    if _uses_pgbouncer(database_url)
-    else {}
-)
+connect_args = {"statement_cache_size": 0} if _uses_pgbouncer(database_url) else {}
 
 engine = create_async_engine(
     database_url,
