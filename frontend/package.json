@@ -11,8 +11,9 @@
     "build:production": "vite build --mode production",
     "lint": "eslint .",
     "lint-fix": "eslint . --fix",
+    "test": "node --test",
     "preview": "vite preview",
-    "check": "npm run lint && npm run build"
+    "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
