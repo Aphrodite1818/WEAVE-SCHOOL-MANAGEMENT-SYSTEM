@@ -6,7 +6,6 @@ from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 
 from app.config.database import AsyncSessionLocal
-
 from app.config.logging import get_logger
 from app.modules.superadmin.platform_control_service import (
     DEFAULT_MAINTENANCE_MESSAGE,
@@ -19,6 +18,8 @@ logger = get_logger(__name__)
 
 _ALLOWED_EXACT_PATHS = {
     "/health",
+    "/health/live",
+    "/health/ready",
     "/api/v1/auth/login",
     "/api/v1/auth/refresh",
     "/api/v1/auth/logout",
@@ -124,14 +125,10 @@ class PlatformLockdownMiddleware:
                 },
                 exc_info=True,
             )
-            # Preserve availability when there is no prior signal, but keep a
-            # known active lockdown enforced during temporary control-store
-            # failures so the emergency control does not silently fail open.
             if last_known_state is not None and last_known_state.get("lockdown_enabled"):
                 response = self._maintenance_response(last_known_state)
                 await response(scope, receive, send)
                 return
-
             await self.app(scope, receive, send)
             return
 
