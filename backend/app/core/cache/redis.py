@@ -16,43 +16,7 @@ logger = get_logger(__name__)
 _redis_client: Redis | None = None
 
 
-async def connect_redis() -> None:
-    """Create and verify the shared Redis connection."""
-
-    global _redis_client
-
-    if not settings.CACHE_ENABLED:
-        logger.info("Cache is disabled. Shared Redis cache connection skipped.")
-        return
-    if not settings.REDIS_URL:
-        message = "Cache is enabled but REDIS_URL is not set."
-        if settings.is_production_like:
-            raise RuntimeError(message)
-        logger.warning(message)
-        return
-
-    _redis_client = Redis.from_url(
-        settings.REDIS_URL,
-        encoding="utf-8",
-        decode_responses=True,
-        socket_timeout=2,
-        socket_connect_timeout=2,
-        health_check_interval=30,
-    )
-
-    try:
-        await _redis_client.ping()
-        logger.info("Successfully connected to Redis.")
-    except Exception as exc:
-        logger.exception("Failed to connect to Redis.")
-        await close_redis()
-        if settings.is_production_like:
-            raise RuntimeError("Redis is unavailable during application startup.") from exc
-
-
-async def create_redis_health_client() -> Redis | None:
-    """Return a temporary Redis client for readiness checks."""
-
+def _build_redis_client() -> Redis | None:
     if not settings.REDIS_URL:
         return None
     return Redis.from_url(
@@ -61,7 +25,45 @@ async def create_redis_health_client() -> Redis | None:
         decode_responses=True,
         socket_timeout=2,
         socket_connect_timeout=2,
+        health_check_interval=30,
     )
+
+
+async def connect_redis() -> None:
+    """Verify Redis and retain a shared client when caching is enabled."""
+
+    global _redis_client
+
+    client = _build_redis_client()
+    if client is None:
+        message = "REDIS_URL is not set."
+        if settings.is_production_like:
+            raise RuntimeError(message)
+        logger.warning(message)
+        return
+
+    try:
+        await client.ping()
+    except Exception as exc:
+        await client.aclose()
+        logger.exception("Failed to connect to Redis.")
+        if settings.is_production_like:
+            raise RuntimeError("Redis is unavailable during application startup.") from exc
+        return
+
+    if settings.CACHE_ENABLED:
+        _redis_client = client
+        logger.info("Successfully connected to Redis cache.")
+        return
+
+    await client.aclose()
+    logger.info("Redis verified; shared application cache is disabled.")
+
+
+async def create_redis_health_client() -> Redis | None:
+    """Return a temporary Redis client for readiness checks."""
+
+    return _build_redis_client()
 
 
 def get_redis() -> Redis | None:
