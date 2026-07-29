@@ -134,7 +134,6 @@ def run_migrations_online() -> None:
     config.set_main_option("sqlalchemy.url", database_url)
 
     def do_run_migrations(sync_connection: Any) -> None:
-        sync_connection.execute(sa.text("SET search_path TO public"))
         _configure_context(connection=sync_connection)
         with context.begin_transaction():
             context.run_migrations()
