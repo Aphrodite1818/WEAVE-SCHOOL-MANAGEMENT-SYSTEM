@@ -19,6 +19,9 @@ def test_setup_codes_are_encrypted_before_metadata_persistence() -> None:
                     "status": "created",
                     "admission_number": "STU-001",
                     "setup_code": "12345678",
+                    "access_code_expires_at": (
+                        datetime.now(timezone.utc) + timedelta(hours=48)
+                    ).isoformat(),
                 }
             ]
         }
@@ -32,14 +35,25 @@ def test_setup_codes_are_encrypted_before_metadata_persistence() -> None:
 
 def test_authorized_slip_path_can_reveal_non_expired_setup_code() -> None:
     protected = protect_import_metadata(
-        {"result_rows": [{"row_number": 2, "status": "created", "setup_code": "12345678"}]}
+        {
+            "result_rows": [
+                {
+                    "row_number": 2,
+                    "status": "created",
+                    "setup_code": "12345678",
+                    "access_code_expires_at": (
+                        datetime.now(timezone.utc) + timedelta(hours=48)
+                    ).isoformat(),
+                }
+            ]
+        }
     )
 
     revealed = reveal_result_row(protected["result_rows"][0])
     assert revealed["setup_code"] == "12345678"
 
 
-def test_expired_setup_code_is_not_revealed() -> None:
+def test_expired_encrypted_setup_code_is_not_revealed() -> None:
     protected = protect_import_metadata(
         {"result_rows": [{"row_number": 2, "status": "created", "setup_code": "12345678"}]}
     )
@@ -50,6 +64,21 @@ def test_expired_setup_code_is_not_revealed() -> None:
 
     revealed = reveal_result_row(row)
     assert "setup_code" not in revealed
+
+
+def test_expired_legacy_plaintext_setup_code_is_not_revealed() -> None:
+    row = {
+        "row_number": 2,
+        "status": "created",
+        "setup_code": "12345678",
+        "access_code_expires_at": (
+            datetime.now(timezone.utc) - timedelta(minutes=1)
+        ).isoformat(),
+    }
+
+    revealed = reveal_result_row(row)
+    assert "setup_code" not in revealed
+    assert redact_result_row(row)["setup_code_available"] is False
 
 
 def test_normal_responses_redact_plaintext_and_ciphertext() -> None:
