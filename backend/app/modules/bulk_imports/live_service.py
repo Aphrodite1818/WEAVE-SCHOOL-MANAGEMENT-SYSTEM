@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -13,10 +14,11 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.settings import settings
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.bulk_imports.chunking import chunk_import_items
-from app.modules.bulk_imports.models import ImportJob, ImportJobStatus, ImportResourceType
+from app.modules.bulk_imports.models import ImportJob, ImportJobStatus
 from app.modules.bulk_imports.notification_service import BulkImportNotificationService
 from app.modules.bulk_imports.repository import (
     ImportJobRepository,
@@ -39,12 +41,46 @@ from app.tenant_management.repository import TenantRepository
 
 LIVE_IMPORT_CHUNK_SIZE = 25
 ACTIVE_IMPORT_STATUSES = {ImportJobStatus.PENDING, ImportJobStatus.PROCESSING}
+TERMINAL_ROW_STATUSES = {"created", "failed"}
 
 
 def _sorted_result_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Sort result rows by source row number."""
-
     return sorted(rows, key=lambda row: int(row.get("row_number") or 0))
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _job_is_stale(import_job: ImportJob, metadata_json: dict[str, Any]) -> bool:
+    reference = (
+        _parse_timestamp(metadata_json.get("last_progress_at"))
+        or _parse_timestamp(metadata_json.get("background_import_started_at"))
+        or import_job.updated_at
+        or import_job.started_at
+    )
+    if reference is None:
+        return True
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    return utc_now() - reference >= timedelta(minutes=settings.BULK_IMPORT_STALE_AFTER_MINUTES)
+
+
+def _terminal_result_rows(metadata_json: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = metadata_json.get("result_rows") or []
+    return [
+        dict(row)
+        for row in rows
+        if isinstance(row, dict) and str(row.get("status") or "").lower() in TERMINAL_ROW_STATUSES
+    ]
 
 
 def _build_processing_error_item(
@@ -54,8 +90,6 @@ def _build_processing_error_item(
     error_code: str,
     error_message: str,
 ) -> ImportRowErrorCreate:
-    """Build a row-level processing error."""
-
     return ImportRowErrorCreate(
         import_job_id=import_job_id,
         row_number=validation_result.row_number,
@@ -68,8 +102,6 @@ def _build_processing_error_item(
 
 
 def _validation_result_from_staged_row(staged_row) -> ImportRowValidationResult:
-    """Build a validation-result-like object from a staged row."""
-
     return ImportRowValidationResult(
         row_number=staged_row.row_number,
         raw_row=staged_row.raw_row,
@@ -78,7 +110,7 @@ def _validation_result_from_staged_row(staged_row) -> ImportRowValidationResult:
 
 
 class BulkImportLiveService:
-    """Queue and process confirmed dry-run imports with live DB progress."""
+    """Queue, resume, and process confirmed dry-run imports."""
 
     @staticmethod
     async def queue_confirmed_import(
@@ -88,8 +120,6 @@ class BulkImportLiveService:
         job_id: UUID,
         notify_on_completion: bool = True,
     ) -> ImportJobDetailResponse:
-        """Confirm a dry-run job, enqueue background processing, and return immediately."""
-
         await SubscriptionFeatureService.ensure_feature_enabled(
             db=db,
             tenant_id=actor.tenant_id,
@@ -195,7 +225,68 @@ class BulkImportLiveService:
         )
         if refreshed_job is None:
             raise NotFoundException(detail="Import job not found after queueing confirmation.")
+        return ImportJobDetailResponse.model_validate(refreshed_job)
 
+    @staticmethod
+    async def retry_stale_import(
+        db: AsyncSession,
+        *,
+        actor,
+        job_id: UUID,
+    ) -> ImportJobDetailResponse:
+        """Requeue a stale processing job without replaying committed rows."""
+
+        import_job = await ImportJobRepository.get_job_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            job_id=job_id,
+            lock=True,
+        )
+        if import_job is None:
+            raise NotFoundException(detail="Import job not found")
+        if import_job.status != ImportJobStatus.PROCESSING:
+            raise BadRequestException(detail="Only processing import jobs can be retried.")
+
+        metadata_json = dict(import_job.metadata_json or {})
+        if not _job_is_stale(import_job, metadata_json):
+            raise ConflictException(
+                detail=(
+                    "This import is still active. Retry is available only after progress has been stale for "
+                    f"{settings.BULK_IMPORT_STALE_AFTER_MINUTES} minutes."
+                )
+            )
+
+        retry_attempt = int(metadata_json.get("retry_attempt") or 0) + 1
+        metadata_json["retry_attempt"] = retry_attempt
+        metadata_json["retry_requested_at"] = utc_now().isoformat()
+        metadata_json.pop("background_import_started_at", None)
+        await ImportJobRepository.update_job(
+            db=db,
+            import_job=import_job,
+            job_update=ImportJobUpdate(metadata_json=metadata_json, error_message=None),
+        )
+        await db.commit()
+
+        from app.core.queue.arq import enqueue_bulk_import_job
+
+        queued = await enqueue_bulk_import_job(
+            job_id=str(import_job.id),
+            tenant_id=str(actor.tenant_id),
+            actor_id=str(actor.id),
+            notify_on_completion=bool(metadata_json.get("notify_on_completion", True)),
+            retry_attempt=retry_attempt,
+        )
+        if not queued:
+            raise ConflictException(detail="This stale import retry is already queued.")
+
+        refreshed_job = await ImportJobRepository.get_job_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            job_id=job_id,
+            include_children=True,
+        )
+        if refreshed_job is None:
+            raise NotFoundException(detail="Import job not found after retry queueing.")
         return ImportJobDetailResponse.model_validate(refreshed_job)
 
     @staticmethod
@@ -205,8 +296,6 @@ class BulkImportLiveService:
         import_job: ImportJob,
         error_message: str,
     ) -> None:
-        """Mark a live import job as failed."""
-
         metadata_json = dict(import_job.metadata_json or {})
         metadata_json["background_import_failed_at"] = utc_now().isoformat()
         metadata_json["background_import_error"] = error_message
@@ -231,8 +320,6 @@ class BulkImportLiveService:
         job_id: UUID,
         notify_on_completion: bool = True,
     ) -> dict[str, int | str]:
-        """Process one confirmed import job while updating counters after every chunk."""
-
         import_job = await ImportJobRepository.get_job_by_id(
             db=db,
             tenant_id=tenant_id,
@@ -251,7 +338,8 @@ class BulkImportLiveService:
                 "failed": int(import_job.failed_rows or 0),
             }
 
-        if metadata_json.get("background_import_started_at"):
+        already_started = bool(metadata_json.get("background_import_started_at"))
+        if already_started and not _job_is_stale(import_job, metadata_json):
             return {
                 "status": "already_started",
                 "processed": int(import_job.processed_rows or 0),
@@ -259,8 +347,12 @@ class BulkImportLiveService:
                 "failed": int(import_job.failed_rows or 0),
             }
 
+        if already_started:
+            metadata_json["background_import_recovered_at"] = utc_now().isoformat()
+            metadata_json["recovery_count"] = int(metadata_json.get("recovery_count") or 0) + 1
         metadata_json["background_import_started_at"] = utc_now().isoformat()
-        await ImportJobRepository.update_job(
+        metadata_json["last_progress_at"] = utc_now().isoformat()
+        import_job = await ImportJobRepository.update_job(
             db=db,
             import_job=import_job,
             job_update=ImportJobUpdate(metadata_json=metadata_json),
@@ -300,17 +392,27 @@ class BulkImportLiveService:
 
         metadata_json = dict(import_job.metadata_json or {})
         invalid_rows = int(metadata_json.get("invalid_rows") or 0)
-        existing_result_rows = list(metadata_json.get("result_rows") or [])
-        invalid_result_rows = [row for row in existing_result_rows if row.get("status") == "failed"]
+        result_rows = _terminal_result_rows(metadata_json)
+        completed_row_numbers = {
+            int(row.get("row_number") or 0)
+            for row in result_rows
+            if int(row.get("row_number") or 0) > 0
+        }
+        created_count = sum(1 for row in result_rows if row.get("status") == "created")
+        processing_failed_count = sum(1 for row in result_rows if row.get("status") == "failed")
 
-        created_count = 0
-        processing_failed_count = 0
-        result_rows: list[dict[str, Any]] = list(invalid_result_rows)
-
-        validation_results = [_validation_result_from_staged_row(row) for row in staged_rows]
+        remaining_staged_rows = [
+            row for row in staged_rows if row.row_number not in completed_row_numbers
+        ]
+        validation_results = [
+            _validation_result_from_staged_row(row) for row in remaining_staged_rows
+        ]
 
         try:
-            for chunk in chunk_import_items(items=validation_results, chunk_size=LIVE_IMPORT_CHUNK_SIZE):
+            for chunk in chunk_import_items(
+                items=validation_results,
+                chunk_size=LIVE_IMPORT_CHUNK_SIZE,
+            ):
                 chunk_errors: list[ImportRowErrorCreate] = []
 
                 for validation_result in chunk.items:
@@ -325,8 +427,12 @@ class BulkImportLiveService:
                             )
                         created_count += 1
                         result_rows.append(result_row)
-
-                    except (BadRequestException, ConflictException, NotFoundException, ValidationError) as exc:
+                    except (
+                        BadRequestException,
+                        ConflictException,
+                        NotFoundException,
+                        ValidationError,
+                    ) as exc:
                         processing_failed_count += 1
                         error_message = (
                             compact_validation_error(exc)
@@ -348,7 +454,6 @@ class BulkImportLiveService:
                                 error_message=error_message,
                             )
                         )
-
                     except IntegrityError:
                         processing_failed_count += 1
                         error_message = "Row failed because of a duplicate or invalid database value."
@@ -407,6 +512,7 @@ class BulkImportLiveService:
             metadata_json = dict(import_job.metadata_json or {})
             metadata_json["result_rows"] = _sorted_result_rows(result_rows)
             metadata_json["background_import_completed_at"] = utc_now().isoformat()
+            metadata_json["last_progress_at"] = utc_now().isoformat()
             metadata_json["processed_valid_rows"] = len(staged_rows)
 
             import_job = await ImportJobRepository.update_job(
@@ -463,7 +569,6 @@ class BulkImportLiveService:
                 "created": successful_rows,
                 "failed": failed_rows,
             }
-
         except Exception as exc:
             AuthIdentityService.discard_pending_invalidations(db)
             latest_job = await ImportJobRepository.get_job_by_id(
@@ -478,4 +583,9 @@ class BulkImportLiveService:
                     import_job=latest_job,
                     error_message=str(exc),
                 )
-            return {"status": "failed", "processed": created_count + processing_failed_count, "created": created_count, "failed": processing_failed_count + 1}
+            return {
+                "status": "failed",
+                "processed": created_count + processing_failed_count,
+                "created": created_count,
+                "failed": processing_failed_count + 1,
+            }
