@@ -37,8 +37,6 @@ ACTIVE_ENV_FILE = ENV_FILE_BY_NAME.get(ACTIVE_ENV, f".env.{ACTIVE_ENV}")
 
 
 class EnvironmentType(str, Enum):
-    """Supported application environments."""
-
     DEVELOPMENT = "dev"
     PRODUCTION = "prod"
     STAGING = "stg"
@@ -48,10 +46,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=(
-            BASE_DIR / ".env",
-            BASE_DIR / ACTIVE_ENV_FILE,
-        ),
+        env_file=(BASE_DIR / ".env", BASE_DIR / ACTIVE_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=True,
@@ -59,62 +54,59 @@ class Settings(BaseSettings):
 
     ENV: EnvironmentType = EnvironmentType.DEVELOPMENT
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] | None = None
-
     APP_NAME: str = "School Management System"
     API_V1_PREFIX: str = "/api/v1"
 
     SECRET_KEY: str = Field(..., min_length=32)
-    ALGORITHM: str = Field(default="HS256", description="JWT signing algorithm")
+    ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 5
     DEFAULT_SESSION_DAYS: int = Field(default=7, gt=0)
     REMEMBER_ME_SESSION_DAYS: int = Field(default=30, gt=0)
 
-    DATABASE_URL: str | None = Field(default=None, description="PostgreSQL connection URL")
+    DATABASE_URL: str | None = None
     DB_POOL_SIZE: int = Field(default=5, ge=1, le=50)
     DB_MAX_OVERFLOW: int = Field(default=5, ge=0, le=100)
     DB_POOL_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=120)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=60)
 
-    GEMINI_API_KEY: str | None = Field(default=None, description="Api Key for Gemini")
+    GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
-    OPENAI_API_KEY: str | None = Field(default=None, description="Api Key for OpenAI")
+    OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
-    ANTHROPIC_API_KEY: str | None = Field(default=None, description="Api Key for Anthropic")
+    ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_MODEL: str = "claude-sonnet-4-5"
     LLM_MAX_TOKENS: int = 1024
 
     ALLOWED_ORIGINS: list[str] = Field(default_factory=list)
+    TRUST_PROXY_HEADERS: bool = False
+    TRUSTED_PROXY_HOPS: int = Field(default=1, ge=1, le=5)
 
-    TWILIO_ACCOUNT_SID: str | None = Field(default=None, description="Twilio account SID")
-    TWILIO_AUTH_TOKEN: str | None = Field(default=None, description="Twilio auth token")
-    TWILIO_WHATSAPP_FROM: str | None = Field(default=None, description="Twilio WhatsApp number")
+    TWILIO_ACCOUNT_SID: str | None = None
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_WHATSAPP_FROM: str | None = None
 
-    SMTP_HOST: str | None = Field(default=None, description="SMTP Server Host")
-    SMTP_PORT: int = Field(default=587, description="SMTP Server Port")
-    SMTP_PASSWORD: str | None = Field(default=None, description="SMTP Password")
-    SMTP_FROM_EMAIL: str | None = Field(default=None, description="Sender Email Address")
-
-    SECURITY_ALERTS_ENABLED: bool = Field(default=True)
-    SECURITY_ALERT_EMAIL: str | None = Field(default=None)
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = Field(default=587, ge=1, le=65535)
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM_EMAIL: str | None = None
+    SECURITY_ALERTS_ENABLED: bool = True
+    SECURITY_ALERT_EMAIL: str | None = None
 
     OTP_EXPIRATION_MINUTES: int = 10
     TENANT_ACTIVATION_EXPIRATION_HOURS: int = 48
 
-    FRONTEND_APP_URL: str = Field(..., description="Frontend application URL")
-    EMAIL_BRAND_LOGO_URL: str | None = Field(default=None)
+    FRONTEND_APP_URL: str = Field(...)
+    EMAIL_BRAND_LOGO_URL: str | None = None
     STUDENT_ACCESS_CODE_EXPIRY_HOURS: int = 48
     STUDENT_ACCESS_CODE_LENGTH: int = 8
 
-    BULK_IMPORT_RESULT_ENCRYPTION_KEY: str | None = Field(
-        default=None,
-        description="Dedicated secret used to encrypt temporary imported student setup codes.",
-    )
+    BULK_IMPORT_RESULT_ENCRYPTION_KEY: str | None = None
     BULK_IMPORT_SETUP_CODE_RETENTION_HOURS: int = Field(default=24, ge=1, le=168)
     BULK_IMPORT_STALE_AFTER_MINUTES: int = Field(default=20, ge=5, le=180)
 
-    APP_SCRIPT_URL: str | None = Field(default=None)
+    APP_SCRIPT_URL: str | None = None
 
-    PAYSTACK_SECRET_KEY: str | None = Field(default=None)
+    PAYSTACK_SECRET_KEY: str | None = None
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
     PAYSTACK_CALLBACK_URL: str | None = None
     PAYSTACK_PLUS_MONTHLY_PLAN_CODE: str | None = None
@@ -124,10 +116,10 @@ class Settings(BaseSettings):
     PAYSTACK_PROFESSIONAL_MONTHLY_AMOUNT_KOBO: int | None = Field(default=3500000, ge=0)
     PAYSTACK_ENTERPRISE_MONTHLY_AMOUNT_KOBO: int | None = Field(default=8000000, ge=0)
 
-    REDIS_URL: str | None = Field(default=None, description="Redis connection URL")
-    CACHE_ENABLED: bool = Field(default=False)
-    RATE_LIMIT_ENABLED: bool = Field(default=True)
-    RATE_LIMIT_REDIS_URL: str | None = Field(default=None)
+    REDIS_URL: str | None = None
+    CACHE_ENABLED: bool = False
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_REDIS_URL: str | None = None
 
     LOGIN_IP_LIMIT_5M: int = Field(default=20, gt=0)
     LOGIN_IP_LIMIT_1H: int = Field(default=100, gt=0)
@@ -165,8 +157,6 @@ class Settings(BaseSettings):
     )
     @classmethod
     def parse_cache_ttl(cls, value: object) -> int:
-        """Allow cache TTL values to be supplied as plain seconds in env files."""
-
         if value is None or value == "":
             raise ValueError("Cache TTL values cannot be empty.")
         if isinstance(value, timedelta):
@@ -182,14 +172,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
-        """Fail fast when runtime configuration is unsafe or incomplete."""
-
         if not self.DATABASE_URL:
             raise ValueError("DATABASE_URL must be set for the active environment.")
-
         if self.CACHE_ENABLED and not self.REDIS_URL:
             raise ValueError("REDIS_URL must be set when CACHE_ENABLED is true.")
-
         if not (
             self.CACHE_SHORT_TTL_SECONDS
             <= self.CACHE_DEFAULT_TTL_SECONDS
@@ -199,7 +185,6 @@ class Settings(BaseSettings):
                 "CACHE_TTL values must satisfy CACHE_SHORT_TTL_SECONDS <= "
                 "CACHE_DEFAULT_TTL_SECONDS <= CACHE_LONG_TTL_SECONDS."
             )
-
         if not self.is_production_like:
             return self
 
@@ -215,6 +200,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "BULK_IMPORT_RESULT_ENCRYPTION_KEY must contain at least 32 characters in staging/production."
             )
+        if not self.TRUST_PROXY_HEADERS:
+            raise ValueError("TRUST_PROXY_HEADERS must be enabled behind the staging/production reverse proxy.")
         if not self.ALLOWED_ORIGINS:
             raise ValueError("ALLOWED_ORIGINS must contain explicit HTTPS origins in staging/production.")
         if "*" in self.ALLOWED_ORIGINS:
@@ -222,12 +209,38 @@ class Settings(BaseSettings):
         for origin in self.ALLOWED_ORIGINS:
             parsed = urlparse(origin)
             if parsed.scheme != "https" or not parsed.netloc:
-                raise ValueError(
-                    f"Production CORS origin must be an absolute HTTPS URL: {origin}"
-                )
+                raise ValueError(f"Production CORS origin must be an absolute HTTPS URL: {origin}")
+
         frontend_url = urlparse(self.FRONTEND_APP_URL)
         if frontend_url.scheme != "https" or not frontend_url.netloc:
             raise ValueError("FRONTEND_APP_URL must be an absolute HTTPS URL in staging/production.")
+
+        app_script_configured = bool(self.APP_SCRIPT_URL)
+        smtp_configured = all(
+            [self.SMTP_HOST, self.SMTP_FROM_EMAIL, self.SMTP_PASSWORD]
+        )
+        if not app_script_configured and not smtp_configured:
+            raise ValueError(
+                "Configure APP_SCRIPT_URL or complete SMTP settings before staging/production startup."
+            )
+        if self.APP_SCRIPT_URL:
+            app_script_url = urlparse(self.APP_SCRIPT_URL)
+            if app_script_url.scheme != "https" or not app_script_url.netloc:
+                raise ValueError("APP_SCRIPT_URL must be an absolute HTTPS URL in staging/production.")
+
+        if self.ENV == EnvironmentType.PRODUCTION:
+            if self.MEDIA_STORAGE_PROVIDER != "r2":
+                raise ValueError("Production media storage must use R2; local Railway storage is ephemeral.")
+            required_r2_values = {
+                "R2_ACCOUNT_ID": self.R2_ACCOUNT_ID,
+                "R2_ACCESS_KEY_ID": self.R2_ACCESS_KEY_ID,
+                "R2_SECRET_ACCESS_KEY": self.R2_SECRET_ACCESS_KEY,
+                "R2_ENDPOINT_URL": self.R2_ENDPOINT_URL,
+                "R2_PUBLIC_URL": self.R2_PUBLIC_URL,
+            }
+            missing = [name for name, value in required_r2_values.items() if not value]
+            if missing:
+                raise ValueError(f"Missing production R2 settings: {', '.join(missing)}")
 
         return self
 
