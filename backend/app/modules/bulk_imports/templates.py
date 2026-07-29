@@ -25,7 +25,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v3",
+    ImportResourceType.STUDENTS: "students_v4",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -114,9 +114,9 @@ def create_student_template() -> ImportTemplateDefinition:
             create_template_column(
                 name="class_name",
                 label="Class Name",
-                required=False,
+                required=True,
                 example="JSS1",
-                description="Optional. Use the class name visible to admins, for example JSS1 or Primary 4.",
+                description="Required. Use the class name visible to admins, for example JSS1 or Primary 4.",
             ),
             create_template_column(
                 name="class_arm",
@@ -159,7 +159,8 @@ def create_student_template() -> ImportTemplateDefinition:
             "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
-            "Use class_name and class_arm for student class placement. Do not enter internal class UUIDs.",
+            "Class name is required. Class arm is optional for classes without an arm.",
+            "Use class_name and optional class_arm for student class placement. Do not enter internal class UUIDs.",
             "The backend resolves class_name + class_arm to the real active class during dry-run.",
             "Parent or guardian emails are optional in the current student-creation workflow. If an email is supplied, its matching relationship column is required.",
             "A maximum of two parents or guardians is supported per imported student.",

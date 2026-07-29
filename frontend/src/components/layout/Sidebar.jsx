@@ -1,4 +1,4 @@
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -42,6 +42,7 @@ export default function SidebarContent({
   mobile = false,
   schoolName,
   schoolLogoUrl,
+  onToggleSidebar,
 }) {
   const location = useLocation();
   const subscription = useSubscription();
@@ -89,6 +90,20 @@ export default function SidebarContent({
     window.sessionStorage.setItem(scrollStorageKey, String(navElement.scrollTop));
   };
 
+  const logoMark = hasCustomWorkspaceLogo ? (
+    <img
+      src={workspaceLogo}
+      alt={workspaceLogoAlt}
+      className={cn(
+        "h-10 w-10 shrink-0 rounded-xl border border-border/70 bg-surface object-contain p-1 shadow-sm",
+        collapsed && "h-11 w-11"
+      )}
+      onError={() => setFailedWorkspaceLogo(workspaceLogo)}
+    />
+  ) : (
+    <WeaveIcon className={cn("h-11 w-11 shrink-0", collapsed && "h-12 w-12")} />
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
@@ -98,36 +113,48 @@ export default function SidebarContent({
           collapsed ? "justify-center px-2" : mobile ? "gap-2 px-4" : "gap-2 px-3"
         )}
       >
-        <Link
-          to={isAccountScope ? `/${role}/schools` : "/"}
-          className={cn("flex min-w-0 items-center gap-2.5", collapsed && "justify-center")}
-          onClick={() => {
-            persistSidebarScroll();
-            onNavigate?.();
-          }}
-        >
-          {hasCustomWorkspaceLogo ? (
-            <img
-              src={workspaceLogo}
-              alt={workspaceLogoAlt}
-              className={cn(
-                "h-10 w-10 shrink-0 rounded-xl border border-border/70 bg-surface object-contain p-1 shadow-sm",
-                collapsed && "h-11 w-11"
-              )}
-              onError={() => setFailedWorkspaceLogo(workspaceLogo)}
-            />
-          ) : (
-            <WeaveIcon className={cn("h-11 w-11 shrink-0", collapsed && "h-12 w-12")} />
-          )}
-          {!collapsed && (
+        {collapsed && onToggleSidebar ? (
+          <button
+            type="button"
+            className="group relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-surface text-text-muted shadow-sm transition hover:border-primary/35 hover:bg-surface-muted focus:outline-none focus:ring-4 focus:ring-primary/15"
+            onClick={onToggleSidebar}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center transition duration-150 group-hover:scale-75 group-hover:opacity-0">
+              {logoMark}
+            </span>
+            <PanelLeftOpen className="h-4 w-4 opacity-0 transition duration-150 group-hover:opacity-100" />
+          </button>
+        ) : (
+          <Link
+            to={isAccountScope ? `/${role}/schools` : "/"}
+            className="flex min-w-0 flex-1 items-center gap-2.5"
+            onClick={() => {
+              persistSidebarScroll();
+              onNavigate?.();
+            }}
+          >
+            {logoMark}
             <span className="min-w-0">
               <span className="block truncate text-[15px] font-bold leading-tight text-text">
                 {isAccountScope ? "Your schools" : schoolName || "Weave"}
               </span>
               <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
             </span>
-          )}
-        </Link>
+          </Link>
+        )}
+        {!collapsed && !mobile && onToggleSidebar ? (
+          <button
+            type="button"
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-surface text-text-muted shadow-sm transition hover:border-primary/35 hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-4 focus:ring-primary/15"
+            onClick={onToggleSidebar}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
 
       {!collapsed && (

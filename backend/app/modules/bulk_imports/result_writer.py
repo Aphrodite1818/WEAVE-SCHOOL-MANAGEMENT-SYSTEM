@@ -21,6 +21,7 @@ from app.modules.bulk_imports.models import ImportResourceType
 
 SPREADSHEET_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 HTML_CONTENT_TYPE = "text/html; charset=utf-8"
+FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 
 @dataclass(frozen=True)
@@ -72,9 +73,14 @@ def convert_value_for_csv(value: Any) -> str:
         return ""
 
     if isinstance(value, dict | list):
+        value = str(value)
+
+    if not isinstance(value, str):
         return str(value)
 
-    return str(value)
+    if value.startswith(FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
 
 
 def write_csv_bytes(
@@ -109,6 +115,7 @@ def write_xlsx_bytes(
 
     workbook = Workbook()
     sheet = workbook.active
+    assert sheet is not None
     sheet.title = title[:31]
 
     header_fill = PatternFill("solid", fgColor="1F2937")
@@ -305,13 +312,12 @@ def create_student_access_slip_report(
           }}
           .toolbar h1 {{ margin: 0; font-size: 1rem; }}
           .toolbar p {{ margin: 0.25rem 0 0; color: var(--muted); font-size: 0.8rem; }}
-          button {{
-            border: 0;
+          .print-instruction {{
             border-radius: 999px;
-            background: var(--brand);
-            color: white;
-            cursor: pointer;
-            font-weight: 700;
+            background: var(--brand-soft);
+            color: var(--brand);
+            font-size: 0.84rem;
+            font-weight: 800;
             padding: 0.75rem 1rem;
           }}
           main {{ padding: 1rem; }}
@@ -410,7 +416,7 @@ def create_student_access_slip_report(
             <h1>{safe_school_name} — Student Access Slips</h1>
             <p>{len(slip_rows)} printable slips · Generated {generated_at}</p>
           </div>
-          <button type="button" onclick="window.print()">Print slips</button>
+          <p class="print-instruction">Use your browser print command to print slips.</p>
         </div>
         <main>
           <section class="sheet">

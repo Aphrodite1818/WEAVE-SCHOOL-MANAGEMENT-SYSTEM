@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.bulk_imports.chunking import chunk_import_items
 from app.modules.bulk_imports.models import ImportJob, ImportJobStatus, ImportResourceType
 from app.modules.bulk_imports.notification_service import BulkImportNotificationService
@@ -105,19 +106,15 @@ class BulkImportLiveService:
             raise NotFoundException(detail="Import job not found")
 
         metadata_json = dict(import_job.metadata_json or {})
-        if not metadata_json.get("dry_run"):
-            raise BadRequestException(detail="Only dry-run import jobs can be confirmed.")
-
-        if metadata_json.get("confirmed_at"):
-            raise BadRequestException(detail="This import job has already been confirmed.")
-
         staged_rows = await ImportStagedRowRepository.list_by_job(
             db=db,
             tenant_id=actor.tenant_id,
             import_job_id=import_job.id,
         )
-        if not staged_rows:
-            raise BadRequestException(detail="This dry-run job has no valid staged rows to confirm.")
+        BulkImportService.validate_dry_run_confirmation_contract(
+            import_job=import_job,
+            staged_row_count=len(staged_rows),
+        )
 
         await SubscriptionFeatureService.ensure_resource_limit_available(
             db=db,
@@ -397,6 +394,8 @@ class BulkImportLiveService:
                     ),
                 )
                 await db.commit()
+                if created_count > 0:
+                    await AuthIdentityService.invalidate_after_commit(db)
 
             successful_rows = created_count
             failed_rows = invalid_rows + processing_failed_count
@@ -446,6 +445,7 @@ class BulkImportLiveService:
             await db.commit()
 
             if successful_rows > 0:
+                await AuthIdentityService.invalidate_after_commit(db)
                 try:
                     from app.modules.metrics.cache import (
                         invalidate_superadmin_dashboard_cache,
@@ -465,6 +465,7 @@ class BulkImportLiveService:
             }
 
         except Exception as exc:
+            AuthIdentityService.discard_pending_invalidations(db)
             latest_job = await ImportJobRepository.get_job_by_id(
                 db=db,
                 tenant_id=tenant_id,

@@ -395,6 +395,7 @@ function DashboardShellFrame({
           collapsed={sidebarCollapsed}
           schoolName={schoolName}
           schoolLogoUrl={workspaceBranding.logoUrl}
+          onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
         />
       </aside>
 
@@ -415,8 +416,6 @@ function DashboardShellFrame({
         <Topbar
           role={role}
           onOpenMobileNav={() => setMobileNavOpen(true)}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
           schoolName={schoolName}
           schoolLogoUrl={workspaceBranding.logoUrl}
         />

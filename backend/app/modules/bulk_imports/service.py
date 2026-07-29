@@ -15,13 +15,12 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.settings import settings
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
-from app.modules.auth_identity.models import ActorType, IdentifierType
-from app.modules.auth_identity.schemas import AuthIdentityCreate
+from app.modules.auth.account_email_guard import AccountEmailGuard
+from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.bulk_imports.chunking import chunk_import_items
-from app.modules.bulk_imports.models import ImportFileType, ImportJobStatus, ImportResourceType
+from app.modules.bulk_imports.models import ImportFileType, ImportJob, ImportJobStatus, ImportResourceType
 from app.modules.bulk_imports.normalizers import BulkImportNormalizer, SUPPORTED_IMPORT_RESOURCE_TYPES
 from app.modules.bulk_imports.notification_service import BulkImportNotificationService
 from app.modules.bulk_imports.parsers import BulkImportParser, ParsedImportFile
@@ -57,25 +56,16 @@ from app.modules.bulk_imports.validators import (
     ImportValidationErrorItem,
 )
 from app.modules.classes.repository import ClassRoomRepository
-from app.modules.email_outbox.service import EmailOutboxService
-from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
+from app.modules.parents.repository import ParentAccountRepository
 from app.modules.students.models import (
-    AcademicStatus,
     ParentRelationship,
     Student,
-    StudentAccessCodePurpose,
-    StudentAccountStatus,
-    StudentEnrollment,
-    StudentEnrollmentOutcome,
-    StudentProfileStatus,
 )
-from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.students.schemas import StudentCreate, StudentParentInvitationInput
-from app.modules.students.service import ParentInvitationService, StudentAccessCodeService, StudentService
+from app.modules.students.service import StudentCreationWorkflowResult, StudentService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLimitCode
 from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.identifier_service import TenantIdentifierKind, TenantIdentifierService
 from app.tenant_management.repository import TenantRepository
 
 
@@ -227,6 +217,36 @@ class BulkImportService:
         if successful_rows > 0:
             return ImportJobStatus.PARTIALLY_COMPLETED
         return ImportJobStatus.FAILED
+
+    @staticmethod
+    def validate_dry_run_confirmation_contract(
+        *,
+        import_job: ImportJob,
+        staged_row_count: int,
+    ) -> None:
+        """Enforce the backend dry-run to confirmed-import contract."""
+
+        metadata_json = dict(import_job.metadata_json or {})
+        if import_job.status in {ImportJobStatus.PENDING, ImportJobStatus.PROCESSING}:
+            raise ConflictException(detail="This import job is already pending or processing.")
+        if not metadata_json.get("dry_run"):
+            raise BadRequestException(detail="Only dry-run import jobs can be confirmed.")
+        if not metadata_json.get("confirmation_required"):
+            raise BadRequestException(detail="This dry-run job does not require confirmation.")
+        if metadata_json.get("confirmed_at"):
+            raise ConflictException(detail="This import job has already been confirmed.")
+        if import_job.status != ImportJobStatus.COMPLETED or import_job.completed_at is None:
+            raise BadRequestException(detail="The dry run must complete successfully before confirmation.")
+        if int(import_job.failed_rows or 0) != 0:
+            raise BadRequestException(detail="All rows must pass validation before confirmation.")
+        if int(import_job.successful_rows or 0) <= 0:
+            raise BadRequestException(detail="This dry-run job has no valid rows to confirm.")
+        if staged_row_count <= 0:
+            raise BadRequestException(detail="This dry-run job has no valid staged rows to confirm.")
+        if staged_row_count != int(import_job.total_rows or 0):
+            raise ConflictException(
+                detail="The number of staged valid rows does not match the dry-run total rows."
+            )
 
     @staticmethod
     def validate_exact_headers(
@@ -435,167 +455,98 @@ class BulkImportService:
             normalized_row["arm"] = classroom.arm
 
     @staticmethod
+    async def preflight_student_parent_invitations(
+        db: AsyncSession,
+        *,
+        validation_results: list[ImportRowValidationResult],
+    ) -> dict[str, int]:
+        """Validate invitation-safe parent email state without creating records."""
+
+        summary = {
+            "parent_emails_supplied": 0,
+            "existing_parent_accounts": 0,
+            "new_parent_invitations_expected": 0,
+            "existing_pending_invitations": 0,
+            "parent_links_expected_after_acceptance": 0,
+        }
+
+        for validation_result in validation_results:
+            if validation_result.errors:
+                continue
+
+            for index in (1, 2):
+                email_field = f"parent_email_{index}"
+                email = validation_result.normalized_row.get(email_field)
+                if _is_blank(email):
+                    continue
+
+                summary["parent_emails_supplied"] += 1
+                try:
+                    normalized_email = await AccountEmailGuard.ensure_available_for_invitation_role(
+                        db=db,
+                        email=str(email),
+                        invited_actor_type=ActorType.PARENT_ACCOUNT,
+                    )
+                except ConflictException as exc:
+                    append_validation_error(
+                        validation_result=validation_result,
+                        field_name=email_field,
+                        error_code="parent_email_role_conflict",
+                        error_message=str(exc.detail if hasattr(exc, "detail") else exc),
+                    )
+                    continue
+
+                validation_result.normalized_row[email_field] = normalized_email
+                existing_parent = await ParentAccountRepository.get_by_email(
+                    db,
+                    normalized_email,
+                )
+                if existing_parent is not None:
+                    summary["existing_parent_accounts"] += 1
+
+                summary["new_parent_invitations_expected"] += 1
+                summary["parent_links_expected_after_acceptance"] += 1
+
+        return summary
+
+    @staticmethod
     async def create_student_from_row(
         db: AsyncSession,
         *,
         actor: TenantAdmin,
         normalized_row: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> StudentCreationWorkflowResult:
         """Create one student using manual creation semantics without committing."""
 
+        first_name = normalized_row.get("first_name")
+        last_name = normalized_row.get("last_name")
+        date_of_birth = BulkImportValidator.parse_date(normalized_row.get("date_of_birth"))
+        class_id = BulkImportValidator.parse_uuid(normalized_row.get("class_id"))
+        if (
+            _is_blank(first_name)
+            or _is_blank(last_name)
+            or date_of_birth is None
+            or class_id is None
+        ):
+            raise BadRequestException(detail="Validated student row is missing required fields.")
+
         student_data = StudentCreate(
-            first_name=normalized_row.get("first_name"),
-            last_name=normalized_row.get("last_name"),
-            date_of_birth=BulkImportValidator.parse_date(normalized_row.get("date_of_birth")),
+            first_name=str(first_name),
+            last_name=str(last_name),
+            date_of_birth=date_of_birth,
             gender=normalized_row.get("gender"),
-            class_id=BulkImportValidator.parse_uuid(normalized_row.get("class_id")),
+            class_id=class_id,
             arm=normalized_row.get("arm") or normalized_row.get("class_arm"),
             state_of_origin=normalized_row.get("state_of_origin"),
             parents=build_parent_invitations_from_row(normalized_row),
         )
 
-        tenant = await TenantIdentifierService.require_completed_onboarding(
+        return await StudentService._create_student_with_lifecycle(
             db,
-            tenant_id=actor.tenant_id,
-            lock=True,
+            actor=actor,
+            payload=student_data,
+            invitation_source="bulk_import",
         )
-
-        classroom = await ClassRoomRepository.get_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            class_id=student_data.class_id,
-            lock=True,
-        )
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
-            raise ConflictException(
-                "Students can only be imported into active classes."
-            )
-
-        session = await AcademicSessionLifecycleRepository.get_current_open(
-            db,
-            actor.tenant_id,
-            lock=True,
-        )
-        if session is None:
-            raise BadRequestException(
-                "An open academic session is required before importing students."
-            )
-
-        admission_number = await TenantIdentifierService.generate_identifier(
-            db,
-            tenant=tenant,
-            kind=TenantIdentifierKind.STUDENT,
-        )
-
-        student = Student(
-            tenant_id=actor.tenant_id,
-            admission_number=admission_number,
-            password_hash=None,
-            first_name=student_data.first_name,
-            last_name=student_data.last_name,
-            date_of_birth=student_data.date_of_birth,
-            gender=student_data.gender,
-            passport_photo_url=None,
-            admission_date=datetime.now(timezone.utc).date(),
-            graduation_date=None,
-            class_id=student_data.class_id,
-            arm=classroom.arm,
-            status=AcademicStatus.ACTIVE,
-            account_status=StudentAccountStatus.ACTIVE,
-            is_verified=True,
-            is_active=True,
-            password_reset_required=True,
-            last_login_at=None,
-            profile_status=StudentProfileStatus.INCOMPLETE,
-            state_of_origin=student_data.state_of_origin,
-        )
-        student.profile_status = StudentService._resolve_profile_status(student)
-
-        created_student = await StudentRepository.create_student(db=db, student=student)
-        await StudentEnrollmentRepository.add(
-            db,
-            StudentEnrollment(
-                tenant_id=actor.tenant_id,
-                student_id=created_student.id,
-                class_id=classroom.id,
-                academic_session_id=session.id,
-                started_on=datetime.now(timezone.utc).date(),
-                is_current=True,
-                outcome=StudentEnrollmentOutcome.ENROLLED,
-                reason="Initial admission",
-                changed_by_admin_id=actor.id,
-            ),
-        )
-
-        await AuthIdentityService.create_for_actor(
-            db=db,
-            tenant_id=actor.tenant_id,
-            payload=AuthIdentityCreate(
-                identifier=admission_number,
-                identifier_type=IdentifierType.ADMISSION_NUMBER,
-                actor_type=ActorType.STUDENT,
-                actor_id=created_student.id,
-                is_active=True,
-            ),
-        )
-
-        access_response = await StudentAccessCodeService._create_code(
-            db,
-            student=created_student,
-            purpose=StudentAccessCodePurpose.INITIAL_SETUP,
-            created_by_admin_id=actor.id,
-            revoke_existing=False,
-        )
-
-        school_name = tenant.school_name if tenant is not None else "your school"
-        student_name = " ".join(
-            part for part in [created_student.first_name, created_student.last_name] if part
-        ) or "Student"
-
-        for parent in student_data.parents:
-            normalized_email = str(parent.email).casefold()
-            invitation = await ParentInvitationService._create_invitation_record(
-                db,
-                tenant_id=actor.tenant_id,
-                student=created_student,
-                normalized_email=normalized_email,
-                relationship_type=parent.relationship_type,
-                created_by_admin_id=actor.id,
-            )
-            raw_token = getattr(invitation, "raw_token", None)
-            if not raw_token:
-                raise RuntimeError("Parent invitation token was not generated.")
-
-            await EmailOutboxService.queue_parent_invitation_email(
-                db=db,
-                tenant_id=actor.tenant_id,
-                email=normalized_email,
-                school_name=school_name,
-                student_name=student_name,
-                invite_link=(
-                    f"{settings.FRONTEND_APP_URL.rstrip('/')}"
-                    f"/parent-invitations/{raw_token}"
-                ),
-                admission_number=created_student.admission_number,
-                metadata_json={
-                    "source": "bulk_import",
-                    "actor_type": "parent",
-                    "student_id": str(created_student.id),
-                    "invitation_id": str(invitation.id),
-                    "relationship_type": parent.relationship_type.value,
-                },
-            )
-
-        return {
-            "student": created_student,
-            "setup_code": access_response.access_code,
-            "access_code_expires_at": access_response.expires_at,
-            "parent_invitation_count": len(student_data.parents),
-        }
 
     @staticmethod
     async def process_valid_row(
@@ -614,7 +565,7 @@ class BulkImportService:
                 actor=actor,
                 normalized_row=validation_result.normalized_row,
             )
-            student: Student = created["student"]
+            student: Student = created.student
             return {
                 "row_number": validation_result.row_number,
                 "status": "created",
@@ -623,9 +574,9 @@ class BulkImportService:
                 "admission_number": student.admission_number,
                 "class_name": validation_result.normalized_row.get("class_name"),
                 "class_arm": validation_result.normalized_row.get("class_arm"),
-                "setup_code": created["setup_code"],
-                "access_code_expires_at": created["access_code_expires_at"].isoformat(),
-                "parent_invitations_queued": created["parent_invitation_count"],
+                "setup_code": created.setup_code,
+                "access_code_expires_at": created.access_code_expires_at.isoformat(),
+                "parent_invitations_queued": created.parent_invitation_count,
                 "error_message": "",
             }
 
@@ -805,6 +756,14 @@ class BulkImportService:
                 tenant_id=actor.tenant_id,
                 validation_results=validation_results,
             )
+            parent_preflight_summary = (
+                await BulkImportService.preflight_student_parent_invitations(
+                    db=db,
+                    validation_results=validation_results,
+                )
+            )
+        else:
+            parent_preflight_summary = {}
 
         invalid_results = [result for result in validation_results if not result.is_valid]
         valid_results = [result for result in validation_results if result.is_valid]
@@ -852,6 +811,7 @@ class BulkImportService:
         metadata_json["invalid_rows"] = len(invalid_results)
         metadata_json["staged_valid_rows"] = len(valid_results)
         metadata_json["dry_run_completed_at"] = utc_now().isoformat()
+        metadata_json.update(parent_preflight_summary)
 
         import_job = await ImportJobRepository.update_job(
             db=db,
@@ -935,19 +895,15 @@ class BulkImportService:
             raise NotFoundException(detail="Import job not found")
 
         metadata_json = dict(import_job.metadata_json or {})
-        if not metadata_json.get("dry_run"):
-            raise BadRequestException(detail="Only dry-run import jobs can be confirmed.")
-
-        if metadata_json.get("confirmed_at"):
-            raise BadRequestException(detail="This import job has already been confirmed.")
-
         staged_rows = await ImportStagedRowRepository.list_by_job(
             db=db,
             tenant_id=actor.tenant_id,
             import_job_id=import_job.id,
         )
-        if not staged_rows:
-            raise BadRequestException(detail="This dry-run job has no valid staged rows to confirm.")
+        BulkImportService.validate_dry_run_confirmation_contract(
+            import_job=import_job,
+            staged_row_count=len(staged_rows),
+        )
 
         tenant = await TenantRepository.get_by_id(db=db, tenant_id=actor.tenant_id)
         if tenant is None:
@@ -1194,6 +1150,48 @@ class BulkImportService:
         result_rows = metadata_json.get("result_rows") or []
 
         return import_job.resource_type, list(result_rows)
+
+    @staticmethod
+    async def get_error_report_rows(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        job_id: UUID,
+    ) -> tuple[ImportResourceType, list[dict[str, Any]]]:
+        """Return tenant-scoped row errors for a downloadable error report."""
+
+        import_job = await ImportJobRepository.get_job_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            job_id=job_id,
+        )
+        if import_job is None:
+            raise NotFoundException(detail="Import job not found")
+
+        row_errors, _ = await ImportRowErrorRepository.list_errors_by_job(
+            db=db,
+            tenant_id=actor.tenant_id,
+            import_job_id=job_id,
+            skip=0,
+            limit=5000,
+        )
+        return import_job.resource_type, [
+            {
+                "row_number": row_error.row_number,
+                "student_name": " ".join(
+                    part
+                    for part in [
+                        (row_error.normalized_row or {}).get("first_name"),
+                        (row_error.normalized_row or {}).get("last_name"),
+                    ]
+                    if part
+                ),
+                "field_name": row_error.field_name,
+                "error_code": row_error.error_code,
+                "error_message": row_error.error_message,
+            }
+            for row_error in row_errors
+        ]
 
     @staticmethod
     def list_templates(*, file_type: ImportFileType = ImportFileType.XLSX):

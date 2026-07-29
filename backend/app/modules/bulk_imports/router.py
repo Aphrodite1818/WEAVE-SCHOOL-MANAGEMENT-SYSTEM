@@ -16,7 +16,11 @@ from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.core.exceptions import BadRequestException
 from app.modules.bulk_imports.live_service import BulkImportLiveService
 from app.modules.bulk_imports.models import ImportJobStatus, ImportResourceType
-from app.modules.bulk_imports.result_writer import create_result_report, create_student_access_slip_report
+from app.modules.bulk_imports.result_writer import (
+    create_error_report,
+    create_result_report,
+    create_student_access_slip_report,
+)
 from app.modules.bulk_imports.schemas import (
     ImportJobDetailResponse,
     ImportJobListResponse,
@@ -273,6 +277,41 @@ async def download_bulk_import_result(
             result_rows=result_rows,
         )
 
+    return Response(
+        content=result_file.content_bytes,
+        media_type=result_file.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{result_file.filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": (
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+            ),
+        },
+    )
+
+
+@router.get(
+    "/{job_id}/errors/download",
+)
+async def download_bulk_import_errors(
+    job_id: UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> Response:
+    """Download a tenant-scoped CSV report of row validation errors."""
+
+    resource_type, row_errors = await BulkImportService.get_error_report_rows(
+        db=db,
+        actor=current_user,
+        job_id=job_id,
+    )
+    result_file = create_error_report(
+        resource_type=resource_type,
+        row_errors=row_errors,
+    )
     return Response(
         content=result_file.content_bytes,
         media_type=result_file.content_type,

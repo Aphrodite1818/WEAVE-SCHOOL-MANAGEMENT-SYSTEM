@@ -49,7 +49,7 @@ from app.modules.metrics.cache import (
 )
 from app.modules.classes.models import ClassRoom
 from app.modules.parents.models import Parent
-from app.modules.students.models import Student, StudentParentLink
+from app.modules.students.models import Student, StudentParentLink, StudentParentLinkStatus
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
@@ -672,6 +672,13 @@ class AnnouncementService:
                 select(StudentParentLink.student_id).where(
                     StudentParentLink.tenant_id == parent.tenant_id,
                     StudentParentLink.parent_membership_id == parent.id,
+                    StudentParentLink.status.in_(
+                        [
+                            StudentParentLinkStatus.ACTIVE,
+                            StudentParentLinkStatus.READ_ONLY,
+                            StudentParentLinkStatus.ALUMNI_READ_ONLY,
+                        ]
+                    ),
                 )
             )
         ).scalars().all()
@@ -714,7 +721,33 @@ class AnnouncementService:
                 actor,
                 delivery_kind=delivery_kind,
             )
+            if recipient_type is None:
+                raise ForbiddenException("Unsupported announcement recipient")
             total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+            unread_base = base.with_only_columns(Announcement.id).order_by(None).subquery()
+            unread_count = (
+                await db.execute(
+                    select(func.count())
+                    .select_from(
+                        unread_base.outerjoin(
+                            AnnouncementRead,
+                            and_(
+                                AnnouncementRead.tenant_id == tenant_id,
+                                AnnouncementRead.actor_type == recipient_type,
+                                AnnouncementRead.actor_id == actor.id,
+                                AnnouncementRead.announcement_id == unread_base.c.id,
+                                AnnouncementRead.status.in_(
+                                    [
+                                        AnnouncementReadStatus.READ,
+                                        AnnouncementReadStatus.ACKNOWLEDGED,
+                                    ]
+                                ),
+                            ),
+                        )
+                    )
+                    .where(AnnouncementRead.id.is_(None))
+                )
+            ).scalar_one()
             announcements = (
                 await db.execute(
                     base.order_by(Announcement.is_pinned.desc(), Announcement.created_at.desc())
@@ -738,7 +771,6 @@ class AnnouncementService:
                 read_by_id = {read.announcement_id: read for read in reads}
 
             items = []
-            unread_count = 0
             for announcement in announcements:
                 read = read_by_id.get(announcement.id)
                 is_read = read is not None and read.status in {
@@ -746,8 +778,6 @@ class AnnouncementService:
                     AnnouncementReadStatus.ACKNOWLEDGED,
                 }
                 is_acknowledged = read is not None and read.status == AnnouncementReadStatus.ACKNOWLEDGED
-                if not is_read:
-                    unread_count += 1
                 items.append(
                     AnnouncementFeedItemResponse(
                         **{
@@ -913,6 +943,8 @@ class AnnouncementService:
         if announcement_id not in {item.id for item in feed.items}:
             raise NotFoundException("Announcement not found")
         actor_type = AnnouncementService._recipient_type(actor)
+        if actor_type is None:
+            raise ForbiddenException("Unsupported announcement recipient")
         read = await AnnouncementReadRepository.upsert_read_state(
             db,
             tenant_id=actor.tenant_id,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
@@ -27,6 +28,7 @@ from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.repository import ClassRoomRepository
+from app.modules.email_outbox.service import EmailOutboxService
 from app.modules.parents.models import (
     ParentInvitation,
     ParentInvitationStatus,
@@ -87,10 +89,24 @@ from app.modules.students.schemas import (
 )
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
+from app.tenant_management.identifier_service import (
+    TenantIdentifierKind,
+    TenantIdentifierService,
+)
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+@dataclass(frozen=True)
+class StudentCreationWorkflowResult:
+    """Result from the shared no-commit student creation workflow."""
+
+    student: Student
+    setup_code: str
+    access_code_expires_at: datetime
+    parent_invitation_count: int
 
 
 class StudentService:
@@ -185,18 +201,62 @@ class StudentService:
         """Create student, enrollment, access code, and invitations atomically."""
 
         tenant_id = StudentService._require_tenant_admin(actor)
+        try:
+            created = await StudentService._create_student_with_lifecycle(
+                db,
+                actor=actor,
+                payload=payload,
+                invitation_source="student_creation",
+            )
+            await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
+        except Exception:
+            await db.rollback()
+            AuthIdentityService.discard_pending_invalidations(db)
+            raise
+
+        await db.refresh(created.student)
+        detail = await StudentService._build_detail_response(db, created.student)
+        return detail.model_copy(
+            update={
+                "setup_code": created.setup_code,
+                "access_code_expires_at": created.access_code_expires_at,
+            }
+        )
+
+    @staticmethod
+    async def _create_student_with_lifecycle(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        payload: StudentCreate,
+        invitation_source: str,
+    ) -> StudentCreationWorkflowResult:
+        """Create a student lifecycle graph without committing.
+
+        The caller owns the transaction. This keeps manual creation and bulk
+        import on the same atomic workflow while preserving their commit rules.
+        """
+
+        tenant_id = StudentService._require_tenant_admin(actor)
         classroom = await ClassRoomRepository.get_by_id(
-            db,
-            tenant_id,
-            payload.class_id,
+            db=db,
+            tenant_id=tenant_id,
+            class_id=payload.class_id,
             lock=True,
         )
         if (
             classroom is None
             or not classroom.is_active
-            or classroom.archived_at is not None
+            or getattr(classroom, "archived_at", None) is not None
         ):
             raise NotFoundException("Class not found or inactive.")
+
+        tenant = await TenantIdentifierService.require_completed_onboarding(
+            db,
+            tenant_id=tenant_id,
+            lock=True,
+        )
 
         session = await AcademicSessionLifecycleRepository.get_current_open(
             db,
@@ -208,10 +268,12 @@ class StudentService:
                 "An open academic session is required before creating students."
             )
 
-        admission_number = await StudentService._generate_admission_number(
+        admission_number = await TenantIdentifierService.generate_identifier(
             db,
-            tenant_id=tenant_id,
+            tenant=tenant,
+            kind=TenantIdentifierKind.STUDENT,
         )
+        today = date.today()
         student = Student(
             tenant_id=tenant_id,
             admission_number=admission_number,
@@ -220,8 +282,9 @@ class StudentService:
             last_name=payload.last_name,
             date_of_birth=payload.date_of_birth,
             gender=payload.gender,
-            state_of_origin=payload.state_of_origin,
-            admission_date=date.today(),
+            passport_photo_url=None,
+            admission_date=today,
+            graduation_date=None,
             class_id=classroom.id,
             arm=classroom.arm,
             status=AcademicStatus.ACTIVE,
@@ -229,70 +292,90 @@ class StudentService:
             is_verified=True,
             is_active=True,
             password_reset_required=True,
-            profile_status=(
-                StudentProfileStatus.COMPLETE
-                if payload.gender is not None
-                else StudentProfileStatus.INCOMPLETE
+            last_login_at=None,
+            profile_status=StudentProfileStatus.INCOMPLETE,
+            state_of_origin=payload.state_of_origin,
+        )
+        student.profile_status = StudentService._resolve_profile_status(student)
+
+        created_student = await StudentRepository.add(db, student)
+        await StudentEnrollmentRepository.add(
+            db,
+            StudentEnrollment(
+                tenant_id=tenant_id,
+                student_id=created_student.id,
+                class_id=classroom.id,
+                academic_session_id=session.id,
+                started_on=today,
+                is_current=True,
+                outcome=StudentEnrollmentOutcome.ENROLLED,
+                reason="Initial admission",
+                changed_by_admin_id=actor.id,
             ),
         )
+        await AuthIdentityService.create_for_actor(
+            db,
+            tenant_id=tenant_id,
+            payload=AuthIdentityCreate(
+                identifier=created_student.admission_number,
+                identifier_type=IdentifierType.ADMISSION_NUMBER,
+                actor_type=ActorType.STUDENT,
+                actor_id=created_student.id,
+                is_active=True,
+            ),
+        )
+        access_response = await StudentAccessCodeService._create_code(
+            db,
+            student=created_student,
+            purpose=StudentAccessCodePurpose.INITIAL_SETUP,
+            created_by_admin_id=actor.id,
+            revoke_existing=False,
+        )
 
-        try:
-            student = await StudentRepository.add(db, student)
-            await StudentEnrollmentRepository.add(
-                db,
-                StudentEnrollment(
-                    tenant_id=tenant_id,
-                    student_id=student.id,
-                    class_id=classroom.id,
-                    academic_session_id=session.id,
-                    started_on=date.today(),
-                    is_current=True,
-                    outcome=StudentEnrollmentOutcome.ENROLLED,
-                    reason="Initial admission",
-                    changed_by_admin_id=actor.id,
-                ),
-            )
-            await AuthIdentityService.create_for_actor(
+        school_name = tenant.school_name if tenant is not None else "your school"
+        student_name = " ".join(
+            part for part in [created_student.first_name, created_student.last_name] if part
+        ) or "Student"
+
+        for parent in payload.parents:
+            normalized_email = str(parent.email).casefold()
+            invitation = await ParentInvitationService._create_invitation_record(
                 db,
                 tenant_id=tenant_id,
-                payload=AuthIdentityCreate(
-                    identifier=student.admission_number,
-                    identifier_type=IdentifierType.ADMISSION_NUMBER,
-                    actor_type=ActorType.STUDENT,
-                    actor_id=student.id,
-                    is_active=True,
-                ),
-            )
-            access_response = await StudentAccessCodeService._create_code(
-                db,
-                student=student,
-                purpose=StudentAccessCodePurpose.INITIAL_SETUP,
+                student=created_student,
+                normalized_email=normalized_email,
+                relationship_type=parent.relationship_type,
                 created_by_admin_id=actor.id,
-                revoke_existing=False,
             )
-            for parent in payload.parents:
-                await ParentInvitationService._create_invitation_record(
-                    db,
-                    tenant_id=tenant_id,
-                    student=student,
-                    normalized_email=str(parent.email).casefold(),
-                    relationship_type=parent.relationship_type,
-                    created_by_admin_id=actor.id,
-                )
-            await db.commit()
-            await AuthIdentityService.invalidate_after_commit(db)
-        except Exception:
-            await db.rollback()
-            AuthIdentityService.discard_pending_invalidations(db)
-            raise
+            raw_token = getattr(invitation, "raw_token", None)
+            if not raw_token:
+                raise RuntimeError("Parent invitation token was not generated.")
 
-        await db.refresh(student)
-        detail = await StudentService._build_detail_response(db, student)
-        return detail.model_copy(
-            update={
-                "setup_code": access_response.access_code,
-                "access_code_expires_at": access_response.expires_at,
-            }
+            await EmailOutboxService.queue_parent_invitation_email(
+                db,
+                tenant_id=tenant_id,
+                email=normalized_email,
+                school_name=school_name,
+                student_name=student_name,
+                invite_link=(
+                    f"{settings.FRONTEND_APP_URL.rstrip('/')}"
+                    f"/parent-invitations/{raw_token}"
+                ),
+                admission_number=created_student.admission_number,
+                metadata_json={
+                    "source": invitation_source,
+                    "actor_type": "parent",
+                    "student_id": str(created_student.id),
+                    "invitation_id": str(invitation.id),
+                    "relationship_type": parent.relationship_type.value,
+                },
+            )
+
+        return StudentCreationWorkflowResult(
+            student=created_student,
+            setup_code=access_response.access_code,
+            access_code_expires_at=access_response.expires_at,
+            parent_invitation_count=len(payload.parents),
         )
 
     @staticmethod

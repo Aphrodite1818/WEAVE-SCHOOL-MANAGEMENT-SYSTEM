@@ -10,7 +10,6 @@ import { announcementService } from "../../services/announcementService";
 import { classService } from "../../services/academicsService";
 import { parentService } from "../../services/parentService";
 import { studentService } from "../../services/studentService";
-import { teacherService } from "../../services/teacherService";
 import { getErrorMessage } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
 
@@ -67,7 +66,6 @@ const emptyForm = {
   classId: "",
   studentId: "",
   parentId: "",
-  teacherId: "",
   isPinned: false,
 };
 
@@ -87,7 +85,6 @@ function buildTarget(form) {
   if (["class", "parents_of_class"].includes(form.targetType)) target.class_id = form.classId;
   if (["specific_student", "parents_of_student"].includes(form.targetType)) target.student_id = form.studentId;
   if (form.targetType === "specific_parent") target.parent_membership_id = form.parentId;
-  if (form.targetType === "specific_teacher") target.teacher_membership_id = form.teacherId;
 
   return target;
 }
@@ -100,7 +97,6 @@ function validateForm(form, mode) {
   if (["class", "parents_of_class"].includes(form.targetType) && !form.classId) return "Choose a class.";
   if (["specific_student", "parents_of_student"].includes(form.targetType) && !form.studentId) return "Choose a student.";
   if (form.targetType === "specific_parent" && !form.parentId) return "Choose a parent.";
-  if (form.targetType === "specific_teacher" && !form.teacherId) return "Choose a teacher.";
   return null;
 }
 
@@ -235,14 +231,6 @@ function AnnouncementForm({ mode, options, onSubmit, isSubmitting }) {
           </SelectField>
         )}
 
-        {!isSuperadmin && form.targetType === "specific_teacher" && (
-          <SelectField label="Teacher" value={form.teacherId} onChange={(value) => update("teacherId", value)}>
-            <option value="">Select teacher</option>
-            {options.teachers.map((item) => (
-              <option key={item.id} value={item.id}>{displayName(item, item.email)}</option>
-            ))}
-          </SelectField>
-        )}
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -374,7 +362,7 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
     mode === "student" ||
     (mode === "teacher" && isReceivedNotices);
   const [items, setItems] = useState([]);
-  const [options, setOptions] = useState({ classes: [], students: [], parents: [], teachers: [] });
+  const [options, setOptions] = useState({ classes: [], students: [], parents: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -423,7 +411,7 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
     setIsLoading(true);
     setError("");
     try {
-      const [announcementResponse, classes, students, parents, teachers] = await Promise.all([
+      const [announcementResponse, classes, students, parents] = await Promise.all([
         listAnnouncements(),
         isFeed ? Promise.resolve({ items: [] }) : classService.getClasses({ limit: 100 }),
         mode === "superadmin" || isFeed
@@ -432,7 +420,6 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
             ? studentService.getStudents({ limit: 100 })
             : studentService.getAdminStudents({ limit: 100 }),
         mode === "tenant-admin" ? parentService.getParents({ limit: 100 }) : Promise.resolve({ items: [] }),
-        mode === "tenant-admin" ? teacherService.getTeachers({ limit: 100 }) : Promise.resolve({ items: [] }),
       ]);
 
       setItems(normalizeItems(announcementResponse));
@@ -440,7 +427,6 @@ function AnnouncementsWorkspacePage({ mode, variant = "notices" }) {
         classes: normalizeItems(classes),
         students: normalizeItems(students),
         parents: normalizeItems(parents),
-        teachers: normalizeItems(teachers),
       });
     } catch (loadError) {
       setError(getErrorMessage(loadError, "Unable to load announcements."));

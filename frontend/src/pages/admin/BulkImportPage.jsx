@@ -56,6 +56,26 @@ const statusVariants = {
   failed: "error",
   cancelled: "default",
 };
+const historyStatusOptions = [
+  { value: "", label: "All statuses" },
+  { value: "pending", label: "Queued" },
+  { value: "processing", label: "Processing" },
+  { value: "completed", label: "Completed" },
+  { value: "partially_completed", label: "Completed with errors" },
+  { value: "failed", label: "Failed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+const errorSuggestions = {
+  required: "Enter a value in this column.",
+  invalid_date: "Use a supported date format such as YYYY-MM-DD.",
+  date_not_before_today: "Enter a date earlier than today.",
+  invalid_email: "Enter a valid email address.",
+  class_not_found: "Use the name and optional arm of an existing class.",
+  class_inactive: "Choose an active, non-archived class.",
+  invalid_parent_relationship: "Use father, mother, guardian, sponsor, or other.",
+  duplicate_parent_email: "Use two different parent email addresses.",
+  parent_email_role_conflict: "Use an email that is not already registered under another role.",
+};
 
 const formatDate = (value) => {
   if (!value) return "--";
@@ -172,6 +192,10 @@ function BulkImportPage() {
   const [currentJob, setCurrentJob] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [jobsTotal, setJobsTotal] = useState(0);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("");
+  const [historySkip, setHistorySkip] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [errors, setErrors] = useState([]);
   const [errorSearch, setErrorSearch] = useState("");
   const [busy, setBusy] = useState("");
@@ -209,13 +233,19 @@ function BulkImportPage() {
     return job;
   }, []);
 
-  const loadJobs = useCallback(async () => {
-    const response = await bulkImportService.listJobs();
-    const items = Array.isArray(response?.items) ? response.items : [];
-    setJobs(items);
-    setJobsTotal(Number(response?.total || items.length));
-    return items;
-  }, []);
+  const loadJobs = useCallback(async ({ skip = historySkip, status = historyStatus } = {}) => {
+    setHistoryLoading(true);
+    try {
+      const response = await bulkImportService.listJobs({ skip, limit: 20, status: status || undefined });
+      const items = Array.isArray(response?.items) ? response.items : [];
+      setJobs(items);
+      setJobsTotal(Number(response?.total || items.length));
+      setHistorySkip(skip);
+      return items;
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historySkip, historyStatus]);
 
   const refresh = useCallback(async () => {
     try {
@@ -290,9 +320,18 @@ function BulkImportPage() {
   }, [currentJob, errorSearch, errors]);
 
   const parentInvitationCount = useMemo(
-    () => getResultRows(currentJob).reduce((total, row) => total + Number(row.parent_invitations_queued || 0), 0),
+    () => Number(
+      currentJob?.metadata_json?.new_parent_invitations_expected
+      ?? currentJob?.metadata_json?.parent_emails_supplied
+      ?? getResultRows(currentJob).reduce((total, row) => total + Number(row.parent_invitations_queued || 0), 0),
+    ),
     [currentJob],
   );
+  const filteredJobs = useMemo(() => {
+    const query = historySearch.trim().toLowerCase();
+    if (!query) return jobs;
+    return jobs.filter((job) => String(job.original_filename || "").toLowerCase().includes(query));
+  }, [historySearch, jobs]);
 
   const handleDownloadTemplate = async () => {
     setBusy("template");
@@ -355,6 +394,19 @@ function BulkImportPage() {
     }
   };
 
+  const handleDownloadErrors = async () => {
+    if (!currentJob?.id) return;
+    setBusy("errors");
+    try {
+      await bulkImportService.downloadErrors(currentJob.id);
+      showSuccess("Validation error report downloaded.");
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not download the error report."));
+    } finally {
+      setBusy("");
+    }
+  };
+
   const handleDeleteJob = async () => {
     if (!deleteJob?.id) return;
     setBusy("delete");
@@ -408,7 +460,7 @@ function BulkImportPage() {
         </Button>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">Required: first name, last name, date of birth, class name and arm.</div>
+        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">Required: first name, last name, date of birth, and class name. Class arm is optional for classes without an arm.</div>
         <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">One or two parent or guardian emails can be supplied with matching relationship fields.</div>
         <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">Validation checks the template signature, version, headers, classes, dates, emails, and duplicates.</div>
       </div>
@@ -500,6 +552,12 @@ function BulkImportPage() {
             aria-label="Search validation errors"
           />
         </label>
+        {currentJob?.id && (
+          <Button variant="outline" onClick={handleDownloadErrors} disabled={Boolean(busy)}>
+            {busy === "errors" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Download error report
+          </Button>
+        )}
       </div>
       {filteredErrors.length === 0 && (
         <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-text">
@@ -507,13 +565,15 @@ function BulkImportPage() {
         </div>
       )}
       <div className="mt-4 max-h-[420px] overflow-auto rounded-lg border border-border">
-        <table className="min-w-[760px] w-full text-left text-sm">
+        <table className="min-w-[980px] w-full text-left text-sm">
           <thead className="sticky top-0 border-b border-border bg-surface text-xs uppercase text-text-muted">
             <tr>
               <th className="py-2 pl-3 pr-4">Row</th>
               <th className="py-2 pr-4">Student</th>
               <th className="py-2 pr-4">Column</th>
-              <th className="py-2 pr-4">Error</th>
+              <th className="py-2 pr-4">Code</th>
+              <th className="py-2 pr-4">Message</th>
+              <th className="py-2 pr-4">Suggested correction</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -522,7 +582,9 @@ function BulkImportPage() {
                 <td className="py-3 pl-3 pr-4 font-semibold">{item.row_number}</td>
                 <td className="py-3 pr-4">{[item.normalized_row?.first_name, item.normalized_row?.last_name].filter(Boolean).join(" ") || "--"}</td>
                 <td className="py-3 pr-4">{item.field_name || "--"}</td>
+                <td className="py-3 pr-4 font-mono text-xs">{item.error_code || "--"}</td>
                 <td className="py-3 pr-4 text-error">{item.error_message}</td>
+                <td className="py-3 pr-4 text-text-muted">{errorSuggestions[item.error_code] || "Review this value and match the template instructions."}</td>
               </tr>
             ))}
           </tbody>
@@ -632,13 +694,49 @@ function BulkImportPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-text">Job History</h2>
-          <p className="mt-1 text-sm text-text-muted">{jobsTotal} recent import jobs. The list scrolls internally so the page stays usable.</p>
+          <p className="mt-1 text-sm text-text-muted">{jobsTotal} import job{jobsTotal === 1 ? "" : "s"} match the selected status.</p>
         </div>
         <Button onClick={() => go("upload")}><UploadCloud className="h-4 w-4" /> New student import</Button>
       </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          <input
+            value={historySearch}
+            onChange={(event) => setHistorySearch(event.target.value)}
+            className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            placeholder="Search filenames on this page"
+            aria-label="Search import filenames"
+          />
+        </label>
+        <select
+          value={historyStatus}
+          onChange={(event) => {
+            setHistoryStatus(event.target.value);
+            loadJobs({ skip: 0, status: event.target.value }).catch((error) => {
+              showError(getErrorMessage(error, "Could not filter import history."));
+            });
+          }}
+          className="input-base"
+          aria-label="Filter import status"
+        >
+          {historyStatusOptions.map((option) => (
+            <option key={option.value || "all"} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+      {historyLoading && (
+        <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading import history...
+        </div>
+      )}
       <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto pr-1">
-        {jobs.length === 0 && <EmptyState title="No imports yet" description="Student import jobs will appear here after validation." />}
-        {jobs.map((job) => (
+        {jobs.length === 0 && !historyLoading && <EmptyState title="No imports found" description="Student import jobs will appear here after validation." />}
+        {jobs.length > 0 && filteredJobs.length === 0 && (
+          <EmptyState title="No matching filenames" description="Clear the search or load another page of history." />
+        )}
+        {filteredJobs.map((job) => (
           <div key={job.id} className="rounded-lg border border-border bg-surface p-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <button type="button" onClick={() => openHistoryJob(job.id)} className="min-w-0 text-left">
@@ -658,6 +756,31 @@ function BulkImportPage() {
             </div>
           </div>
         ))}
+      </div>
+      <div className="mt-4 flex flex-col gap-2 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
+        <span>Showing {jobs.length ? historySkip + 1 : 0}-{historySkip + jobs.length} of {jobsTotal}</span>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={historySkip === 0 || historyLoading}
+            onClick={() => loadJobs({ skip: Math.max(0, historySkip - 20), status: historyStatus }).catch((error) => {
+              showError(getErrorMessage(error, "Could not load the previous page."));
+            })}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={historySkip + jobs.length >= jobsTotal || historyLoading}
+            onClick={() => loadJobs({ skip: historySkip + 20, status: historyStatus }).catch((error) => {
+              showError(getErrorMessage(error, "Could not load more import history."));
+            })}
+          >
+            Load more
+          </Button>
+        </div>
       </div>
     </Card>
   );

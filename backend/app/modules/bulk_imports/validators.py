@@ -129,7 +129,7 @@ class BulkImportValidator:
     """Validate normalized import rows against manual-create-compatible rules."""
 
     REQUIRED_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {
-        ImportResourceType.STUDENTS: ("first_name", "last_name", "date_of_birth"),
+        ImportResourceType.STUDENTS: ("first_name", "last_name", "date_of_birth", "class_name"),
     }
 
     DUPLICATE_CHECK_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {

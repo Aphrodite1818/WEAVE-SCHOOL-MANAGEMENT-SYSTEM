@@ -70,6 +70,26 @@ def test_student_import_dry_run_rejects_future_date_of_birth() -> None:
     )
 
 
+def test_student_import_requires_class_name() -> None:
+    validation_result = BulkImportValidator.validate_row(
+        resource_type=ImportResourceType.STUDENTS,
+        row_number=2,
+        raw_row={},
+        normalized_row={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "date_of_birth": "2018-01-01",
+        },
+        ignored_fields=[],
+    )
+
+    assert not validation_result.is_valid
+    assert any(
+        error.field_name == "class_name" and error.error_code == "required"
+        for error in validation_result.errors
+    )
+
+
 @pytest.mark.asyncio
 async def test_student_import_resolves_uppercase_class_reference(monkeypatch) -> None:
     tenant_id = uuid4()

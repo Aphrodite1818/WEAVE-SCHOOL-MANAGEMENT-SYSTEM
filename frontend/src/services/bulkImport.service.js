@@ -88,7 +88,14 @@ export const bulkImportService = {
 
   getJob: (jobId, requestOptions) => api.get(`/tenant-admin/imports/${jobId}`, requestOptions),
 
-  listJobs: (requestOptions) => api.get("/tenant-admin/imports?limit=20", requestOptions),
+  listJobs: ({ skip = 0, limit = 20, status, signal } = {}) => {
+    const params = new URLSearchParams({
+      skip: String(skip),
+      limit: String(limit),
+    });
+    if (status) params.set("status", status);
+    return api.get(`/tenant-admin/imports?${params.toString()}`, { signal });
+  },
 
   deleteJob: async (jobId, requestOptions = {}) => {
     const result = await api.delete(`/tenant-admin/imports/${jobId}`, requestOptions);
@@ -111,4 +118,11 @@ export const bulkImportService = {
       signal,
     );
   },
+
+  downloadErrors: (jobId, { signal } = {}) =>
+    downloadBlob(
+      `/tenant-admin/imports/${jobId}/errors/download`,
+      `students_${jobId}_errors.csv`,
+      signal,
+    ),
 };

@@ -1,4 +1,4 @@
-import { Bell, Building2, ChevronDown, FileText, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Sun, UserRound } from "lucide-react";
+import { Bell, Building2, ChevronDown, FileText, LogOut, Menu, Moon, Settings, Sparkles, Sun, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -51,8 +51,6 @@ const schoolSwitchPaths = {
 export default function Topbar({
   role,
   onOpenMobileNav,
-  sidebarCollapsed = false,
-  onToggleSidebar,
   schoolName,
   schoolLogoUrl = "",
 }) {
@@ -189,17 +187,6 @@ export default function Topbar({
               {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
             </p>
           </div>
-          {onToggleSidebar ? (
-            <button
-              type="button"
-              className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-surface text-text-muted shadow-sm transition hover:border-primary/35 hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-4 focus:ring-primary/15 md:inline-flex"
-              onClick={onToggleSidebar}
-              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
-            </button>
-          ) : null}
           {hasSchoolLogo ? (
             <img
               src={resolvedSchoolLogoUrl}
