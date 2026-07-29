@@ -107,6 +107,21 @@ async def confirm_bulk_import(
     )
 
 
+@router.post("/{job_id}/retry", response_model=ImportJobDetailResponse)
+async def retry_stale_bulk_import(
+    job_id: UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ImportJobDetailResponse:
+    """Requeue a stale import and resume from its last committed chunk."""
+
+    return await BulkImportLiveService.retry_stale_import(
+        db=db,
+        actor=current_user,
+        job_id=job_id,
+    )
+
+
 @router.post(
     "/{resource_type}",
     response_model=ImportJobDetailResponse,
