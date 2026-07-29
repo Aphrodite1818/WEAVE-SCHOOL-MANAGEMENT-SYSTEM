@@ -31,3 +31,6 @@ import app.modules.superadmin.models
 import app.modules.teachers.models
 import app.modules.tenant_admins.models
 import app.modules.tenant_branding.models
+
+# Model event registrations must be imported after mapped classes.
+import app.modules.bulk_imports.model_events  # noqa: E402,F401
