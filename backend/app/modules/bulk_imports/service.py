@@ -511,6 +511,12 @@ class BulkImportService:
                     "error": str(exc.detail if hasattr(exc, "detail") else exc),
                 }
 
+        summary["existing_parent_accounts"] = sum(
+            1
+            for preflight in preflight_by_email.values()
+            if preflight["existing_parent"] is not None
+        )
+
         for validation_result, email_field, normalized_email in email_slots:
             preflight = preflight_by_email[normalized_email]
             if preflight["error"]:
@@ -523,9 +529,6 @@ class BulkImportService:
                 continue
 
             validation_result.normalized_row[email_field] = str(preflight["normalized_email"])
-            if preflight["existing_parent"] is not None:
-                summary["existing_parent_accounts"] += 1
-
             summary["new_parent_invitations_expected"] += 1
             summary["parent_links_expected_after_acceptance"] += 1
 
