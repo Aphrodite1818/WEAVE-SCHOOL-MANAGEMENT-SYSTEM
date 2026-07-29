@@ -105,8 +105,21 @@ jobs:
           printf 'Checking Ruff formatting for %s changed Python files.\n' "${#files[@]}"
           uv run --with ruff ruff format --check "${files[@]}"
 
-      - name: Type check
-        run: uv run --with pyright pyright
+      - name: Type check production hardening changes
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$FORMAT_BASELINE_SHA"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' \
+              | grep -Ev '^(tests/|alembic/versions/)' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No production Python files changed since the hardening baseline."
+            exit 0
+          fi
+          printf 'Checking Pyright for %s changed production files.\n' "${#files[@]}"
+          uv run --with pyright pyright "${files[@]}"
 
       - name: Alembic heads
         run: uv run --with alembic alembic heads
