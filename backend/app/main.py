@@ -1,11 +1,12 @@
 """FastAPI application factory and router registration."""
 
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
-from fastapi import Depends, FastAPI, status
+from fastapi import APIRouter, Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from sqlalchemy import text
 
 import app.models  # noqa: F401
@@ -90,6 +91,51 @@ from app.tenant_management.router import router as tenant_router
 
 logger = get_logger(__name__)
 
+RouteKey = tuple[str, str]
+_TENANT_ADMIN_ACADEMIC_OVERRIDES: set[RouteKey] = {
+    ("POST", "/tenant-admin/academics/results"),
+    ("PATCH", "/tenant-admin/academics/results/{result_id}/status"),
+    ("GET", "/tenant-admin/academics/grading-scales/readiness-preview"),
+    ("PATCH", "/tenant-admin/academics/sessions/{session_id}"),
+    ("POST", "/tenant-admin/academics/sessions/{session_id}/close-and-progress"),
+}
+_TEACHER_ACADEMIC_OVERRIDES: set[RouteKey] = {
+    ("POST", "/teachers/academics/results"),
+}
+_STUDENT_ACADEMIC_OVERRIDES: set[RouteKey] = {
+    ("GET", "/students/academics/subjects"),
+}
+
+
+def _exclude_overridden_routes(router: APIRouter, overrides: set[RouteKey]) -> None:
+    """Remove legacy handlers superseded by dedicated canonical routers."""
+
+    router.routes[:] = [
+        route
+        for route in router.routes
+        if not (
+            isinstance(route, APIRoute)
+            and any((method, route.path) in overrides for method in route.methods)
+        )
+    ]
+
+
+def _prepare_academic_routers() -> None:
+    """Ensure aggregate academic routers do not duplicate canonical handlers."""
+
+    _exclude_overridden_routes(
+        tenant_admin_academic_router,
+        _TENANT_ADMIN_ACADEMIC_OVERRIDES,
+    )
+    _exclude_overridden_routes(
+        teacher_academic_router,
+        _TEACHER_ACADEMIC_OVERRIDES,
+    )
+    _exclude_overridden_routes(
+        student_academic_router,
+        _STUDENT_ACADEMIC_OVERRIDES,
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -120,6 +166,8 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
     register_metrics_cache_invalidation_events()
+    _prepare_academic_routers()
+
     app = FastAPI(
         title="Weave Assistant",
         description="School management and academic workflow API",
@@ -130,7 +178,7 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if settings.is_development else None,
     )
 
-    middleware_options = {
+    middleware_options: dict[str, Any] = {
         "allow_origins": settings.ALLOWED_ORIGINS,
         "allow_credentials": True,
         "allow_methods": ["*"],
@@ -246,6 +294,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import logging
+
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
