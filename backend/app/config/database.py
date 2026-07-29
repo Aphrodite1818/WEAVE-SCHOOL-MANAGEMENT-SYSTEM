@@ -6,15 +6,12 @@
 
 from __future__ import annotations
 
-import logging
-
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
-from app.config.logging import is_development, resolve_log_level
 from app.config.settings import settings
 
 
@@ -36,9 +33,6 @@ database_url = settings.DATABASE_URL
 if not database_url:
     raise ValueError("DATABASE_URL must be set for the active environment.")
 
-# asyncpg's prepared-statement cache improves repeated-query performance for a
-# normal PostgreSQL connection. It must only be disabled when PgBouncer is used
-# in transaction/statement mode, where backend connections are reassigned.
 connect_args = (
     {"statement_cache_size": 0}
     if _uses_pgbouncer(database_url)
@@ -47,12 +41,12 @@ connect_args = (
 
 engine = create_async_engine(
     database_url,
-    echo= False , #is_development() or resolve_log_level() <= logging.DEBUG,
+    echo=False,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    pool_timeout=10,
-    pool_recycle=1800,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT_SECONDS,
+    pool_recycle=settings.DB_POOL_RECYCLE_SECONDS,
     pool_use_lifo=True,
     connect_args=connect_args,
 )
