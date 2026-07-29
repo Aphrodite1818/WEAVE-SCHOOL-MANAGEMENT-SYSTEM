@@ -39,12 +39,9 @@ def _compare_type(
     """Ignore schema-only differences for otherwise identical PostgreSQL enums."""
 
     _ = migration_context, inspected_column, metadata_column
-    if isinstance(inspected_type, postgresql.ENUM) and isinstance(
-        metadata_type, postgresql.ENUM
-    ):
-        if (
-            inspected_type.name == metadata_type.name
-            and tuple(inspected_type.enums or ()) == tuple(metadata_type.enums or ())
+    if isinstance(inspected_type, postgresql.ENUM) and isinstance(metadata_type, postgresql.ENUM):
+        if inspected_type.name == metadata_type.name and tuple(inspected_type.enums or ()) == tuple(
+            metadata_type.enums or ()
         ):
             return False
     return None
@@ -55,8 +52,7 @@ def _foreign_key_signature(constraint: sa.ForeignKeyConstraint) -> tuple[Any, ..
 
     local_columns = tuple(column.name for column in constraint.columns)
     remote_columns = tuple(
-        element.target_fullname.removeprefix("public.")
-        for element in constraint.elements
+        element.target_fullname.removeprefix("public.") for element in constraint.elements
     )
     ondelete = tuple((element.ondelete or "").upper() for element in constraint.elements)
     onupdate = tuple((element.onupdate or "").upper() for element in constraint.elements)
@@ -83,9 +79,7 @@ def _include_object(
 
     if type_ == "unique_constraint" and isinstance(obj, sa.UniqueConstraint):
         columns = tuple(column.name for column in obj.columns)
-        primary_key_columns = tuple(
-            column.name for column in obj.table.primary_key.columns
-        )
+        primary_key_columns = tuple(column.name for column in obj.table.primary_key.columns)
         if columns == ("id",) and primary_key_columns == ("id",):
             return False
 
