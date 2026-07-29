@@ -64,7 +64,7 @@ async def test_parent_invitation_preflight_rejects_incompatible_role(monkeypatch
 @pytest.mark.asyncio
 async def test_parent_invitation_preflight_queries_repeated_emails_once(monkeypatch) -> None:
     ensure_available = AsyncMock(side_effect=lambda db, email, *, invited_actor_type: str(email).casefold())
-    get_parent_account = AsyncMock(return_value=None)
+    get_parent_account = AsyncMock(return_value=SimpleNamespace(id="parent-account"))
     monkeypatch.setattr(
         AccountEmailGuard,
         "ensure_available_for_invitation_role",
@@ -101,6 +101,7 @@ async def test_parent_invitation_preflight_queries_repeated_emails_once(monkeypa
     assert first_result.normalized_row["parent_email_1"] == "parent@example.com"
     assert second_result.normalized_row["parent_email_1"] == "parent@example.com"
     assert summary["parent_emails_supplied"] == 2
+    assert summary["existing_parent_accounts"] == 1
     assert summary["new_parent_invitations_expected"] == 2
 
 
