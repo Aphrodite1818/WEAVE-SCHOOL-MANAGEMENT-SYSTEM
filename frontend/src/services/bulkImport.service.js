@@ -56,6 +56,11 @@ const downloadBlob = async (endpoint, filename, signal) => {
   window.URL.revokeObjectURL(url);
 };
 
+const invalidateImportRelatedCaches = () => {
+  clearDashboardMetricsCache();
+  window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
+};
+
 export const bulkImportService = {
   listTemplates: (requestOptions) => api.get("/tenant-admin/imports/templates", requestOptions),
 
@@ -81,8 +86,13 @@ export const bulkImportService = {
 
   confirm: async (jobId, requestOptions = {}) => {
     const result = await api.post(`/tenant-admin/imports/${jobId}/confirm`, undefined, requestOptions);
-    clearDashboardMetricsCache();
-    window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
+    invalidateImportRelatedCaches();
+    return result;
+  },
+
+  retry: async (jobId, requestOptions = {}) => {
+    const result = await api.post(`/tenant-admin/imports/${jobId}/retry`, undefined, requestOptions);
+    invalidateImportRelatedCaches();
     return result;
   },
 
@@ -99,8 +109,7 @@ export const bulkImportService = {
 
   deleteJob: async (jobId, requestOptions = {}) => {
     const result = await api.delete(`/tenant-admin/imports/${jobId}`, requestOptions);
-    clearDashboardMetricsCache();
-    window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
+    invalidateImportRelatedCaches();
     return result;
   },
 
