@@ -133,7 +133,11 @@ def create_app() -> FastAPI:
 
     app.add_middleware(PlatformLockdownMiddleware)
     app.add_middleware(RequestTimingMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware, allow_docs_cdn=settings.is_development)
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        allow_docs_cdn=settings.is_development,
+        strict_transport_security=settings.is_production_like,
+    )
     app.add_middleware(CORSMiddleware, **middleware_options)
     # Added last so forwarding headers are normalized before every other middleware.
     app.add_middleware(TrustedProxyHeadersMiddleware)
