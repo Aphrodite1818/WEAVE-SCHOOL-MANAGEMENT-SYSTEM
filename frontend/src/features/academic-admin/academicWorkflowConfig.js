@@ -150,6 +150,7 @@ export const academicWorkflowConfig = {
     tabs: [
       { id: "overview", label: "Overview" },
       { id: "entry", label: "Score Entry" },
+      { id: "bulk-actions", label: "Bulk Actions" },
       { id: "draft", label: "Draft" },
       { id: "submitted", label: "Submitted" },
       { id: "approved", label: "Approved" },
@@ -168,6 +169,7 @@ export const academicWorkflowConfig = {
       { id: "overview", label: "Overview" },
       { id: "ready", label: "Student Readiness" },
       { id: "generate", label: "Generate" },
+      { id: "bulk-actions", label: "Bulk Actions" },
       { id: "draft", label: "Draft Cards" },
       { id: "published", label: "Published Cards" },
       { id: "outdated", label: "Outdated Cards" },
