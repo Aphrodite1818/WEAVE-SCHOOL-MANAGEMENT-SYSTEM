@@ -8,19 +8,31 @@ from __future__ import annotations
 
 import app.models  # noqa: F401
 from app.main import app
+from app.modules.communications.models import NotificationDelivery
+from app.modules.report_cards.models import ReportCard
+from app.modules.school_calendar.models import SchoolCalendar
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicTerm,
+    StudentSubjectResult,
+)
+from app.modules.subscriptions.models import (
+    SubscriptionPlanChange,
+    TenantSubscription,
+)
 from app.shared.base_model import Base
 
 
-REQUIRED_TABLES = {
-    "academic_sessions",
-    "academic_terms",
-    "student_subject_results",
-    "report_cards",
-    "tenant_subscriptions",
-    "subscription_plan_changes",
-    "communication_notification_deliveries",
-    "school_calendars",
-}
+REQUIRED_MODELS = (
+    AcademicSession,
+    AcademicTerm,
+    StudentSubjectResult,
+    ReportCard,
+    TenantSubscription,
+    SubscriptionPlanChange,
+    NotificationDelivery,
+    SchoolCalendar,
+)
 
 REQUIRED_ROUTES = {
     "/api/v1/subscriptions/payments",
@@ -33,30 +45,28 @@ REQUIRED_ROUTES = {
 
 
 def main() -> None:
-    registered_tables = set(Base.metadata.tables)
-    normalized_tables = {name.rsplit(".", 1)[-1] for name in registered_tables}
-    missing_tables = REQUIRED_TABLES - normalized_tables
-    if missing_tables:
-        raise SystemExit(f"Lifecycle models are not registered: {sorted(missing_tables)}")
+    unregistered_models = [
+        model.__name__
+        for model in REQUIRED_MODELS
+        if model.__table__.metadata is not Base.metadata
+    ]
+    if unregistered_models:
+        raise SystemExit(
+            f"Lifecycle models are not centrally registered: {unregistered_models}"
+        )
 
     route_paths = {route.path for route in app.routes}
     missing_routes = REQUIRED_ROUTES - route_paths
     if missing_routes:
         raise SystemExit(f"Lifecycle routes are not registered: {sorted(missing_routes)}")
 
-    plan_change_table = Base.metadata.tables.get("public.subscription_plan_changes")
-    if plan_change_table is None:
-        plan_change_table = Base.metadata.tables.get("subscription_plan_changes")
-    if plan_change_table is None:
-        raise SystemExit("subscription_plan_changes table metadata is unavailable")
-
-    index_names = {index.name for index in plan_change_table.indexes}
+    index_names = {index.name for index in SubscriptionPlanChange.__table__.indexes}
     if "uq_subscription_plan_changes_open_per_tenant" not in index_names:
         raise SystemExit("Open plan changes are not protected by the expected unique index")
 
     print(
         "Lifecycle architecture verified:",
-        f"{len(REQUIRED_TABLES)} models,",
+        f"{len(REQUIRED_MODELS)} models,",
         f"{len(REQUIRED_ROUTES)} routes.",
     )
 
