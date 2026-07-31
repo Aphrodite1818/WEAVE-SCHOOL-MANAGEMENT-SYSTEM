@@ -29,6 +29,7 @@ def _features(
     advanced_analytics: bool = False,
     ai_assistant: bool = False,
     bulk_import: bool = False,
+    bulk_academic_operations: bool = False,
 ) -> dict[FeatureCode, bool]:
     return {
         FeatureCode.STUDENT_MANAGEMENT: student_management,
@@ -42,6 +43,7 @@ def _features(
         FeatureCode.ADVANCED_ANALYTICS: advanced_analytics,
         FeatureCode.AI_ASSISTANT: ai_assistant,
         FeatureCode.BULK_IMPORT: bulk_import,
+        FeatureCode.BULK_ACADEMIC_OPERATIONS: bulk_academic_operations,
     }
 
 
@@ -52,6 +54,7 @@ def _paid_features() -> dict[FeatureCode, bool]:
         advanced_analytics=True,
         ai_assistant=True,
         bulk_import=True,
+        bulk_academic_operations=True,
     )
 
 
