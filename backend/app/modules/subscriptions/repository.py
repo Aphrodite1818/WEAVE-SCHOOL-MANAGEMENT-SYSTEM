@@ -61,15 +61,14 @@ class SubscriptionRepository:
         tenant.trial_ends_at = trial_ends_at
         tenant.subscription_ends_at = current_period_end
         if tenant.verification_status == TenantVerificationStatus.ACTIVE:
-            if subscription_status == SubscriptionStatus.TRIALING:
-                tenant.status = TenantStatus.TRIAL
-            elif subscription_status in {
-                SubscriptionStatus.EXPIRED,
-                SubscriptionStatus.CANCELLED,
-            }:
-                tenant.status = TenantStatus.EXPIRED
-            else:
-                tenant.status = TenantStatus.ACTIVE
+            # Tenant account activity and subscription activity are separate.
+            # Expired billing must keep Billing and historical records accessible;
+            # subscription guards decide which writes remain available.
+            tenant.status = (
+                TenantStatus.TRIAL
+                if subscription_status == SubscriptionStatus.TRIALING
+                else TenantStatus.ACTIVE
+            )
         return await SubscriptionRepository.save_tenant(db, tenant)
 
     @staticmethod
