@@ -8,7 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_teacher, get_current_tenant_admin
+from app.core.dependencies.route_guards import (
+    get_current_teacher,
+    get_current_tenant_admin,
+)
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.report_cards.service import ReportCardService
 from app.modules.student_academics.models import (
@@ -85,7 +88,11 @@ class BulkResultLifecycleService:
     }
 
     @staticmethod
-    async def _validate_period(db: DbSession, tenant_id: uuid.UUID, payload: ResultBulkScope) -> None:
+    async def _validate_period(
+        db: DbSession,
+        tenant_id: uuid.UUID,
+        payload: ResultBulkScope,
+    ) -> None:
         session = await StudentAcademicRepository.get_academic_session_by_id(
             db,
             tenant_id,
@@ -99,9 +106,13 @@ class BulkResultLifecycleService:
         if session is None or term is None or term.academic_session_id != session.id:
             raise NotFoundException("Academic session or term is invalid.")
         if not session.is_current or session.status != AcademicSessionStatus.OPEN:
-            raise ConflictException("Results can only be changed in the current open session.")
+            raise ConflictException(
+                "Results can only be changed in the current open session."
+            )
         if not term.is_current or term.status != AcademicTermStatus.OPEN:
-            raise ConflictException("Results can only be changed in the current open term.")
+            raise ConflictException(
+                "Results can only be changed in the current open term."
+            )
 
     @staticmethod
     async def _load_scope(
@@ -109,19 +120,21 @@ class BulkResultLifecycleService:
         *,
         tenant_id: uuid.UUID,
         payload: ResultBulkScope,
-        status: AcademicResultStatus,
+        result_status: AcademicResultStatus,
         teacher_id: uuid.UUID | None = None,
     ) -> list[StudentSubjectResult]:
         filters = [
             StudentSubjectResult.tenant_id == tenant_id,
             StudentSubjectResult.class_id == payload.class_id,
-            StudentSubjectResult.academic_session_id == payload.academic_session_id,
+            StudentSubjectResult.academic_session_id
+            == payload.academic_session_id,
             StudentSubjectResult.academic_term_id == payload.academic_term_id,
-            StudentSubjectResult.status == status,
+            StudentSubjectResult.status == result_status,
         ]
         if payload.teacher_assignment_id is not None:
             filters.append(
-                StudentSubjectResult.teacher_assignment_id == payload.teacher_assignment_id
+                StudentSubjectResult.teacher_assignment_id
+                == payload.teacher_assignment_id
             )
         if teacher_id is not None:
             filters.append(StudentSubjectResult.teacher_membership_id == teacher_id)
@@ -166,14 +179,18 @@ class BulkResultLifecycleService:
         actor: TenantAdmin,
         payload: AdminBulkTransitionRequest,
     ) -> BulkResultActionResponse:
-        await BulkResultLifecycleService._validate_period(db, actor.tenant_id, payload)
+        await BulkResultLifecycleService._validate_period(
+            db,
+            actor.tenant_id,
+            payload,
+        )
         target = AcademicResultStatus(payload.target_status)
         source = BulkResultLifecycleService._PREVIOUS_STATUS[target]
         results = await BulkResultLifecycleService._load_scope(
             db,
             tenant_id=actor.tenant_id,
             payload=payload,
-            status=source,
+            result_status=source,
         )
         processed = 0
         skipped: list[BulkSkippedItem] = []
@@ -182,32 +199,47 @@ class BulkResultLifecycleService:
             AcademicResultStatus.APPROVED: "bulk_approve",
             AcademicResultStatus.LOCKED: "bulk_lock",
         }[target]
+
         for result in results:
             try:
-                StudentAcademicService._ensure_forward_result_transition(result.status, target)
-                if target == AcademicResultStatus.SUBMITTED:
-                    StudentAcademicService._ensure_result_complete(result)
-                if target in {AcademicResultStatus.APPROVED, AcademicResultStatus.LOCKED} and not result.grade:
-                    raise ConflictException("Result must have a grade before approval or locking.")
-                previous = result.status
-                result.status = target
-                StudentAcademicService._apply_result_lifecycle_metadata(
-                    result,
-                    actor=actor,
-                    next_status=target,
-                )
-                await StudentAcademicRepository.upsert_result(db, result)
-                await BulkResultLifecycleService._audit(
-                    db,
-                    result=result,
-                    action=action,
-                    previous_status=previous,
-                    new_status=target,
-                    acting_admin_id=actor.id,
-                )
+                async with db.begin_nested():
+                    StudentAcademicService._ensure_forward_result_transition(
+                        result.status,
+                        target,
+                    )
+                    if target == AcademicResultStatus.SUBMITTED:
+                        StudentAcademicService._ensure_result_complete(result)
+                    if (
+                        target
+                        in {
+                            AcademicResultStatus.APPROVED,
+                            AcademicResultStatus.LOCKED,
+                        }
+                        and not result.grade
+                    ):
+                        raise ConflictException(
+                            "Result must have a grade before approval or locking."
+                        )
+                    previous = result.status
+                    result.status = target
+                    StudentAcademicService._apply_result_lifecycle_metadata(
+                        result,
+                        actor=actor,
+                        next_status=target,
+                    )
+                    await StudentAcademicRepository.upsert_result(db, result)
+                    await BulkResultLifecycleService._audit(
+                        db,
+                        result=result,
+                        action=action,
+                        previous_status=previous,
+                        new_status=target,
+                        acting_admin_id=actor.id,
+                    )
                 processed += 1
             except Exception as exc:
                 skipped.append(BulkSkippedItem(id=result.id, reason=str(exc)))
+
         await db.commit()
         return BulkResultActionResponse(
             matched=len(results),
@@ -221,38 +253,45 @@ class BulkResultLifecycleService:
         actor: TeacherMembership,
         payload: TeacherBulkSubmitRequest,
     ) -> BulkResultActionResponse:
-        await BulkResultLifecycleService._validate_period(db, actor.tenant_id, payload)
+        await BulkResultLifecycleService._validate_period(
+            db,
+            actor.tenant_id,
+            payload,
+        )
         results = await BulkResultLifecycleService._load_scope(
             db,
             tenant_id=actor.tenant_id,
             payload=payload,
-            status=AcademicResultStatus.DRAFT,
+            result_status=AcademicResultStatus.DRAFT,
             teacher_id=actor.id,
         )
         processed = 0
         skipped: list[BulkSkippedItem] = []
+
         for result in results:
             try:
-                StudentAcademicService._ensure_result_complete(result)
-                previous = result.status
-                result.status = AcademicResultStatus.SUBMITTED
-                StudentAcademicService._apply_result_lifecycle_metadata(
-                    result,
-                    actor=actor,
-                    next_status=AcademicResultStatus.SUBMITTED,
-                )
-                await StudentAcademicRepository.upsert_result(db, result)
-                await BulkResultLifecycleService._audit(
-                    db,
-                    result=result,
-                    action="bulk_submit",
-                    previous_status=previous,
-                    new_status=AcademicResultStatus.SUBMITTED,
-                    acting_admin_id=None,
-                )
+                async with db.begin_nested():
+                    StudentAcademicService._ensure_result_complete(result)
+                    previous = result.status
+                    result.status = AcademicResultStatus.SUBMITTED
+                    StudentAcademicService._apply_result_lifecycle_metadata(
+                        result,
+                        actor=actor,
+                        next_status=AcademicResultStatus.SUBMITTED,
+                    )
+                    await StudentAcademicRepository.upsert_result(db, result)
+                    await BulkResultLifecycleService._audit(
+                        db,
+                        result=result,
+                        action="bulk_submit",
+                        previous_status=previous,
+                        new_status=AcademicResultStatus.SUBMITTED,
+                        acting_admin_id=None,
+                    )
                 processed += 1
             except Exception as exc:
                 skipped.append(BulkSkippedItem(id=result.id, reason=str(exc)))
+
         await db.commit()
         return BulkResultActionResponse(
             matched=len(results),
@@ -266,46 +305,53 @@ class BulkResultLifecycleService:
         actor: TenantAdmin,
         payload: AdminBulkReopenRequest,
     ) -> BulkResultActionResponse:
-        await BulkResultLifecycleService._validate_period(db, actor.tenant_id, payload)
+        await BulkResultLifecycleService._validate_period(
+            db,
+            actor.tenant_id,
+            payload,
+        )
         results = await BulkResultLifecycleService._load_scope(
             db,
             tenant_id=actor.tenant_id,
             payload=payload,
-            status=AcademicResultStatus.LOCKED,
+            result_status=AcademicResultStatus.LOCKED,
         )
         processed = 0
         skipped: list[BulkSkippedItem] = []
+
         for result in results:
             try:
-                await ReportCardService.mark_outdated_for_score_change(
-                    db,
-                    result.tenant_id,
-                    result.student_id,
-                    result.academic_session_id,
-                    result.academic_term_id,
-                )
-                previous = result.status
-                result.status = AcademicResultStatus.DRAFT
-                result.submitted_at = None
-                result.submitted_by_actor_type = None
-                result.submitted_by_actor_id = None
-                result.approved_at = None
-                result.approved_by_admin_id = None
-                result.locked_at = None
-                result.locked_by_admin_id = None
-                await StudentAcademicRepository.upsert_result(db, result)
-                await BulkResultLifecycleService._audit(
-                    db,
-                    result=result,
-                    action="bulk_reopen",
-                    previous_status=previous,
-                    new_status=AcademicResultStatus.DRAFT,
-                    acting_admin_id=actor.id,
-                    reason=payload.reason,
-                )
+                async with db.begin_nested():
+                    await ReportCardService.mark_outdated_for_score_change(
+                        db,
+                        result.tenant_id,
+                        result.student_id,
+                        result.academic_session_id,
+                        result.academic_term_id,
+                    )
+                    previous = result.status
+                    result.status = AcademicResultStatus.DRAFT
+                    result.submitted_at = None
+                    result.submitted_by_actor_type = None
+                    result.submitted_by_actor_id = None
+                    result.approved_at = None
+                    result.approved_by_admin_id = None
+                    result.locked_at = None
+                    result.locked_by_admin_id = None
+                    await StudentAcademicRepository.upsert_result(db, result)
+                    await BulkResultLifecycleService._audit(
+                        db,
+                        result=result,
+                        action="bulk_reopen",
+                        previous_status=previous,
+                        new_status=AcademicResultStatus.DRAFT,
+                        acting_admin_id=actor.id,
+                        reason=payload.reason,
+                    )
                 processed += 1
             except Exception as exc:
                 skipped.append(BulkSkippedItem(id=result.id, reason=str(exc)))
+
         await db.commit()
         return BulkResultActionResponse(
             matched=len(results),
@@ -320,7 +366,11 @@ async def bulk_transition_results(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> BulkResultActionResponse:
-    return await BulkResultLifecycleService.admin_transition(db, current_admin, payload)
+    return await BulkResultLifecycleService.admin_transition(
+        db,
+        current_admin,
+        payload,
+    )
 
 
 @admin_router.post("/reopen", response_model=BulkResultActionResponse)
@@ -329,7 +379,11 @@ async def bulk_reopen_results(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> BulkResultActionResponse:
-    return await BulkResultLifecycleService.admin_reopen(db, current_admin, payload)
+    return await BulkResultLifecycleService.admin_reopen(
+        db,
+        current_admin,
+        payload,
+    )
 
 
 @teacher_router.post("/submit", response_model=BulkResultActionResponse)
@@ -338,4 +392,8 @@ async def bulk_submit_teacher_results(
     db: DbSession,
     current_teacher: CurrentTeacher,
 ) -> BulkResultActionResponse:
-    return await BulkResultLifecycleService.teacher_submit(db, current_teacher, payload)
+    return await BulkResultLifecycleService.teacher_submit(
+        db,
+        current_teacher,
+        payload,
+    )
