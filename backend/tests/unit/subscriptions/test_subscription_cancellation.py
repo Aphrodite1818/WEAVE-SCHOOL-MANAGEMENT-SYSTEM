@@ -28,7 +28,9 @@ async def test_request_cancellation_disables_paystack_renewal_and_marks_non_rene
         provider_subscription_code="SUB_test",
         provider_email_token="email-token",
     )
-    saved = SimpleNamespace(**subscription.__dict__, status=SubscriptionStatus.NON_RENEWING)
+    saved = SimpleNamespace(
+        **{**subscription.__dict__, "status": SubscriptionStatus.NON_RENEWING}
+    )
     db = AsyncMock()
 
     with (
@@ -124,6 +126,7 @@ async def test_request_cancellation_rejects_missing_paystack_credentials() -> No
 async def test_paystack_disable_webhook_keeps_access_until_period_end() -> None:
     subscription = SimpleNamespace(tenant_id=uuid.uuid4())
     payload = {"data": {"subscription_code": "SUB_test"}}
+    db = AsyncMock()
 
     with (
         patch(
@@ -140,12 +143,12 @@ async def test_paystack_disable_webhook_keeps_access_until_period_end() -> None:
         ) as cancel_subscription,
     ):
         await SubscriptionPaymentService.handle_subscription_disable(
-            AsyncMock(),
+            db,
             payload=payload,
         )
 
     mark_non_renewing.assert_awaited_once_with(
-        db=pytest.ANY,
+        db=db,
         subscription=subscription,
         notes="Paystack disabled automatic renewal.",
     )
