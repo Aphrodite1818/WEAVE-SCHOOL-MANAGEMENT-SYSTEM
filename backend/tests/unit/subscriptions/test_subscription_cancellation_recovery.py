@@ -16,9 +16,10 @@ from app.modules.subscriptions.subscription_enums import (
 
 
 @pytest.mark.asyncio
-async def test_missing_paystack_token_is_recovered_before_disabling_renewal() -> None:
+async def test_cancellation_refreshes_token_before_disabling_renewal() -> None:
     tenant_id = uuid.uuid4()
     subscription = SimpleNamespace(
+        id=uuid.uuid4(),
         tenant_id=tenant_id,
         status=SubscriptionStatus.ACTIVE,
         cancel_at_period_end=False,
@@ -42,9 +43,11 @@ async def test_missing_paystack_token_is_recovered_before_disabling_renewal() ->
         ),
         patch.object(
             SubscriptionCancellationService,
-            "_recover_paystack_credentials",
-            new=AsyncMock(return_value=("SUB_test", "recovered-token", "active")),
-        ) as recover,
+            "_synchronize_paystack_credentials",
+            new=AsyncMock(
+                return_value=("SUB_test", "recovered-token", "active")
+            ),
+        ) as synchronize,
         patch(
             "app.modules.subscriptions.cancellation_service.PaystackClient.disable_subscription",
             new=AsyncMock(return_value={"status": True}),
@@ -65,7 +68,7 @@ async def test_missing_paystack_token_is_recovered_before_disabling_renewal() ->
         )
 
     assert result is saved
-    recover.assert_awaited_once()
+    synchronize.assert_awaited_once()
     disable.assert_awaited_once_with(
         code="SUB_test",
         token="recovered-token",
@@ -79,8 +82,36 @@ async def test_missing_paystack_token_is_recovered_before_disabling_renewal() ->
     flush_events.assert_awaited_once_with(db)
 
 
+@pytest.mark.asyncio
+async def test_already_non_renewing_provider_is_idempotent() -> None:
+    subscription = SimpleNamespace(
+        tenant_id=uuid.uuid4(),
+        provider_subscription_code="SUB_test",
+        provider_email_token="token",
+    )
+    client = SimpleNamespace(disable_subscription=AsyncMock())
+
+    with patch.object(
+        SubscriptionCancellationService,
+        "_synchronize_paystack_credentials",
+        new=AsyncMock(
+            return_value=("SUB_test", "token", "non-renewing")
+        ),
+    ):
+        await SubscriptionCancellationService._disable_paystack_renewal(
+            AsyncMock(),
+            subscription,
+            client,
+        )
+
+    client.disable_subscription.assert_not_awaited()
+
+
 def test_customer_subscription_recovery_prefers_matching_active_plan() -> None:
-    subscription = SimpleNamespace(plan_code="professional", billing_interval="monthly")
+    subscription = SimpleNamespace(
+        plan_code="professional",
+        billing_interval="monthly",
+    )
     candidates = [
         {
             "subscription_code": "SUB_other",
