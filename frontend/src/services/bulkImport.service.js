@@ -116,6 +116,34 @@ export const bulkImportService = {
   getErrors: (jobId, requestOptions) =>
     api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, requestOptions),
 
+  getSlipSummary: (jobId, requestOptions) =>
+    api.get(`/tenant-admin/imports/${jobId}/slips/summary`, requestOptions),
+
+  listSlips: (
+    jobId,
+    {
+      search = "",
+      classKey = "",
+      page = 1,
+      pageSize = 50,
+      signal,
+    } = {},
+  ) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    if (search) params.set("search", search);
+    if (classKey) params.set("class_key", classKey);
+    return api.get(`/tenant-admin/imports/${jobId}/slips?${params.toString()}`, { signal });
+  },
+
+  getSlip: (jobId, rowNumber, requestOptions) =>
+    api.get(`/tenant-admin/imports/${jobId}/slips/${rowNumber}`, requestOptions),
+
+  getSlipPrintData: (jobId, payload, requestOptions) =>
+    api.post(`/tenant-admin/imports/${jobId}/slips/print`, payload, requestOptions),
+
   downloadResult: (jobId, { format = "spreadsheet", signal } = {}) => {
     const safeFormat = format === "slip" ? "slip" : "spreadsheet";
     const extension = safeFormat === "slip" ? "html" : "xlsx";
