@@ -5,9 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.modules.communications.enums import CommunicationActorType, NotificationStatus
+from app.modules.communications.enums import (
+    CommunicationActorType,
+    NotificationSourceType,
+    NotificationStatus,
+)
 from app.modules.communications.models import NotificationDelivery
 from app.modules.communications.notification_service import NotificationService
+from app.modules.communications.recipient_resolver import ResolvedRecipient
 
 
 @pytest.mark.asyncio
@@ -106,3 +111,43 @@ async def test_notification_dismissal_does_not_destroy_source(monkeypatch) -> No
     assert updated.status == NotificationStatus.DISMISSED
     assert updated.dismissed_at is not None
     assert updated.source_id == delivery.source_id
+
+
+@pytest.mark.asyncio
+async def test_system_event_failure_does_not_escape_source_transaction() -> None:
+    class NestedTransaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    class FailingDatabase:
+        @staticmethod
+        def begin_nested():
+            return NestedTransaction()
+
+        async def execute(self, _statement):
+            raise RuntimeError("notification schema mismatch")
+
+    tenant_id = uuid.uuid4()
+    recipient_id = uuid.uuid4()
+    deliveries = await NotificationService.deliver_system_event(
+        FailingDatabase(),
+        recipients=[
+            ResolvedRecipient(
+                actor_type=CommunicationActorType.TENANT_ADMIN,
+                actor_id=recipient_id,
+                tenant_id=tenant_id,
+                label="Tenant admin",
+            )
+        ],
+        source_type=NotificationSourceType.BULK_IMPORT,
+        source_id=uuid.uuid4(),
+        title="Bulk import completed",
+        preview="The import completed successfully.",
+        action_path="/admin/imports/history/job-id",
+        tenant_id=tenant_id,
+    )
+
+    assert deliveries == []
