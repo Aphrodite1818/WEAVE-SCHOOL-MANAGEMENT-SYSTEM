@@ -12,6 +12,7 @@ import BillingPage from "../pages/admin/BillingPage";
 import ParentLinkManagementPage from "../pages/admin/ParentLinkManagementPage";
 import ParentsPage from "../pages/admin/ParentsPage";
 import StudentCreatePage from "../pages/admin/StudentCreatePage";
+import StudentSlipsPage from "../pages/admin/StudentSlipsPage";
 import StudentsPage from "../pages/admin/StudentsPage";
 import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
 import SubscriptionVerifyPage from "../pages/admin/SubscriptionVerifyPage";
@@ -48,6 +49,7 @@ export const adminRoutes = (
       <Route path="/admin/parents" element={protectedWorkflow(<ParentsPage />)} />
       <Route path="/admin/parents/links" element={protectedWorkflow(<ParentLinkManagementPage />)} />
       <Route path="/admin/imports" element={protectedWorkflow(<BulkImportRouteGuard />)} />
+      <Route path="/admin/imports/:jobId/student-slips" element={protectedWorkflow(<BulkImportRouteGuard><StudentSlipsPage /></BulkImportRouteGuard>)} />
       <Route path="/admin/imports/:step" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route path="/admin/imports/:step/:jobId" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route path="/admin/attendance" element={<RuntimeFeatureRoute feature="attendance" role="admin">{protectedWorkflow(<AttendancePage />)}</RuntimeFeatureRoute>} />
