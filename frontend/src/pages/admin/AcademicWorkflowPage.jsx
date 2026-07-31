@@ -4,6 +4,7 @@ import { Navigate, useParams } from "react-router-dom";
 import AcademicSetupWorkspace from "../../features/academic-admin/AcademicSetupWorkspace";
 import AcademicWorkflowShell from "../../features/academic-admin/AcademicWorkflowShell";
 import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentConfigWorkspace";
+import BulkAcademicActionsWorkspace from "../../features/academic-admin/BulkAcademicActionsWorkspace";
 import GradingScalesWorkspace from "../../features/academic-admin/GradingScalesWorkspace";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
 import ClassStructureWorkspace from "../../features/academic-admin/ClassStructureWorkspace";
@@ -116,6 +117,15 @@ function AcademicWorkflowPage() {
     }
     if (workflow === "assignments") {
       return <TeacherAssignmentsWorkspace key={pageKey} activeTab={activeTab} />;
+    }
+    if (["results", "report-cards"].includes(workflow) && activeTab === "bulk-actions") {
+      return (
+        <BulkAcademicActionsWorkspace
+          key={`${workflow}-bulk-actions`}
+          domain={workflow}
+          onContextChange={updateContext}
+        />
+      );
     }
     if (workflow === "results") {
       return (
