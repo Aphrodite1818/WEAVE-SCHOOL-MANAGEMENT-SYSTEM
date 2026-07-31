@@ -29,6 +29,14 @@ from app.modules.bulk_imports.schemas import (
 )
 from app.modules.bulk_imports.sensitive_results import redact_result_row, reveal_result_row
 from app.modules.bulk_imports.service import BulkImportService
+from app.modules.bulk_imports.slip_schemas import (
+    StudentSlipDetailResponse,
+    StudentSlipListResponse,
+    StudentSlipPrintRequest,
+    StudentSlipPrintResponse,
+    StudentSlipSummaryResponse,
+)
+from app.modules.bulk_imports.slip_service import StudentSlipService
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
@@ -161,6 +169,70 @@ async def list_bulk_import_jobs(
         limit=limit,
         resource_type=resource_type,
         status=status_filter,
+    )
+
+
+@router.get("/{job_id}/slips/summary", response_model=StudentSlipSummaryResponse)
+async def get_student_slip_summary(
+    job_id: UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> StudentSlipSummaryResponse:
+    return await StudentSlipService.summary(
+        db,
+        actor=current_user,
+        job_id=job_id,
+    )
+
+
+@router.get("/{job_id}/slips", response_model=StudentSlipListResponse)
+async def list_student_slips(
+    job_id: UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+    search: str | None = Query(default=None, max_length=160),
+    class_key: str | None = Query(default=None, max_length=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+) -> StudentSlipListResponse:
+    return await StudentSlipService.list_slips(
+        db,
+        actor=current_user,
+        job_id=job_id,
+        search=search,
+        class_key=class_key,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/{job_id}/slips/{row_number}", response_model=StudentSlipDetailResponse)
+async def get_student_slip(
+    job_id: UUID,
+    row_number: int,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> StudentSlipDetailResponse:
+    return await StudentSlipService.get_slip(
+        db,
+        actor=current_user,
+        job_id=job_id,
+        row_number=row_number,
+    )
+
+
+@router.post("/{job_id}/slips/print", response_model=StudentSlipPrintResponse)
+async def get_student_slip_print_data(
+    job_id: UUID,
+    payload: StudentSlipPrintRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> StudentSlipPrintResponse:
+    return await StudentSlipService.print_data(
+        db,
+        actor=current_user,
+        job_id=job_id,
+        payload=payload,
     )
 
 
