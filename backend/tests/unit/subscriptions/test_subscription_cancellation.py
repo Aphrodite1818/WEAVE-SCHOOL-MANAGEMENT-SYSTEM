@@ -28,9 +28,7 @@ async def test_request_cancellation_disables_paystack_renewal_and_marks_non_rene
         cancel_at_period_end=False,
         provider=PaymentProvider.PAYSTACK,
     )
-    saved = SimpleNamespace(
-        **{**subscription.__dict__, "status": SubscriptionStatus.NON_RENEWING}
-    )
+    saved = SimpleNamespace(**{**subscription.__dict__, "status": SubscriptionStatus.NON_RENEWING})
     db = SimpleNamespace(commit=AsyncMock())
 
     with (

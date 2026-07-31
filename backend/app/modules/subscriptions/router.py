@@ -229,9 +229,7 @@ async def verify_subscription_checkout(
     if transaction.tenant_id != current_admin.tenant_id:
         from app.core.exceptions import ForbiddenException as AccessForbidden
 
-        raise AccessForbidden(
-            "You do not have access to this subscription verification result."
-        )
+        raise AccessForbidden("You do not have access to this subscription verification result.")
 
     return await SubscriptionPaymentService.verify_subscription_checkout(
         db=db,

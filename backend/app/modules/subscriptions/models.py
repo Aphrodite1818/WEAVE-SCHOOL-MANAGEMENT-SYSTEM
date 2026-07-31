@@ -4,7 +4,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -64,11 +74,17 @@ class TenantSubscription(BaseModel):
         default=PaymentProvider.MANUAL,
         server_default=PaymentProvider.MANUAL.value,
     )
-    current_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     grace_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    cancel_at_period_end: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    cancel_at_period_end: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_current: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
@@ -170,9 +186,7 @@ class SubscriptionPlanChange(BaseModel):
             "uq_subscription_plan_changes_open_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text(
-                "status IN ('pending', 'scheduled', 'awaiting_payment')"
-            ),
+            postgresql_where=text("status IN ('pending', 'scheduled', 'awaiting_payment')"),
         ),
     )
 
@@ -229,7 +243,9 @@ class PaymentTransaction(BaseModel):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     amount_kobo: Mapped[int] = mapped_column(nullable=False)
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="NGN", server_default="NGN")
+    currency: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="NGN", server_default="NGN"
+    )
     authorization_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

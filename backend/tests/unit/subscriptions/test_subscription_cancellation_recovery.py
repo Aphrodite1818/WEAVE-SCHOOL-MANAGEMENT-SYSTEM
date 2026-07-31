@@ -44,9 +44,7 @@ async def test_cancellation_refreshes_token_before_disabling_renewal() -> None:
         patch.object(
             SubscriptionCancellationService,
             "_synchronize_paystack_credentials",
-            new=AsyncMock(
-                return_value=("SUB_test", "recovered-token", "active")
-            ),
+            new=AsyncMock(return_value=("SUB_test", "recovered-token", "active")),
         ) as synchronize,
         patch(
             "app.modules.subscriptions.cancellation_service.PaystackClient.disable_subscription",
@@ -94,9 +92,7 @@ async def test_already_non_renewing_provider_is_idempotent() -> None:
     with patch.object(
         SubscriptionCancellationService,
         "_synchronize_paystack_credentials",
-        new=AsyncMock(
-            return_value=("SUB_test", "token", "non-renewing")
-        ),
+        new=AsyncMock(return_value=("SUB_test", "token", "non-renewing")),
     ):
         await SubscriptionCancellationService._disable_paystack_renewal(
             AsyncMock(),

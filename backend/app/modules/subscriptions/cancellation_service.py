@@ -82,15 +82,12 @@ class SubscriptionCancellationService:
             if str(item.get("status") or "").lower()
             in ({"active", "attention"} | _PROVIDER_NON_RENEWING_STATUSES)
         ]
-        expected_plan = SubscriptionCancellationService._provider_plan_code(
-            subscription
-        )
+        expected_plan = SubscriptionCancellationService._provider_plan_code(subscription)
         if expected_plan:
             matching = [
                 item
                 for item in viable
-                if SubscriptionCancellationService._candidate_plan_code(item)
-                == expected_plan
+                if SubscriptionCancellationService._candidate_plan_code(item) == expected_plan
             ]
             if matching:
                 viable = matching
@@ -98,9 +95,7 @@ class SubscriptionCancellationService:
             return None
         return max(
             viable,
-            key=lambda item: str(
-                item.get("updatedAt") or item.get("createdAt") or ""
-            ),
+            key=lambda item: str(item.get("updatedAt") or item.get("createdAt") or ""),
         )
 
     @staticmethod
@@ -109,9 +104,7 @@ class SubscriptionCancellationService:
         client: PaystackClient,
     ) -> dict[str, Any] | None:
         if subscription.provider_subscription_code:
-            response = await client.fetch_subscription(
-                code=subscription.provider_subscription_code
-            )
+            response = await client.fetch_subscription(code=subscription.provider_subscription_code)
             return SubscriptionPaymentService._extract_data(response)
 
         if not subscription.provider_customer_code:
@@ -154,9 +147,7 @@ class SubscriptionCancellationService:
         code = SubscriptionPaymentService._extract_subscription_code(provider_data)
         token = SubscriptionPaymentService._extract_email_token(provider_data)
         customer_code = SubscriptionPaymentService._extract_customer_code(provider_data)
-        next_payment_at = SubscriptionPaymentService._extract_next_payment_at(
-            provider_data
-        )
+        next_payment_at = SubscriptionPaymentService._extract_next_payment_at(provider_data)
 
         if code:
             subscription.provider_subscription_code = code
@@ -170,10 +161,7 @@ class SubscriptionCancellationService:
 
         await SubscriptionRepository.save_subscription(db, subscription)
 
-        if (
-            not subscription.provider_subscription_code
-            or not subscription.provider_email_token
-        ):
+        if not subscription.provider_subscription_code or not subscription.provider_email_token:
             raise ConflictException(
                 "Paystack did not return the cancellation credentials for this subscription. Synchronize the subscription.create webhook and try again."
             )
@@ -190,12 +178,14 @@ class SubscriptionCancellationService:
         subscription: TenantSubscription,
         client: PaystackClient,
     ) -> None:
-        code, token, provider_status = (
-            await SubscriptionCancellationService._synchronize_paystack_credentials(
-                db,
-                subscription,
-                client,
-            )
+        (
+            code,
+            token,
+            provider_status,
+        ) = await SubscriptionCancellationService._synchronize_paystack_credentials(
+            db,
+            subscription,
+            client,
         )
         if provider_status in _PROVIDER_NON_RENEWING_STATUSES:
             return
@@ -213,12 +203,14 @@ class SubscriptionCancellationService:
                 },
             )
 
-        code, token, provider_status = (
-            await SubscriptionCancellationService._synchronize_paystack_credentials(
-                db,
-                subscription,
-                client,
-            )
+        (
+            code,
+            token,
+            provider_status,
+        ) = await SubscriptionCancellationService._synchronize_paystack_credentials(
+            db,
+            subscription,
+            client,
         )
         if provider_status in _PROVIDER_NON_RENEWING_STATUSES:
             return

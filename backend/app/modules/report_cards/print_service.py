@@ -41,9 +41,7 @@ class ReportCardPrintService:
 
     @staticmethod
     def _class_label(card: ReportCardResponse) -> str:
-        value = " ".join(
-            part for part in [card.class_name, card.class_arm] if part
-        )
+        value = " ".join(part for part in [card.class_name, card.class_arm] if part)
         return ReportCardPrintService._text(value, "Not assigned")
 
     @staticmethod
@@ -107,9 +105,7 @@ class ReportCardPrintService:
             "No principal comment provided.",
         )
         status_value = getattr(card.status, "value", card.status)
-        status_label = ReportCardPrintService._text(
-            str(status_value).replace("_", " ").title()
-        )
+        status_label = ReportCardPrintService._text(str(status_value).replace("_", " ").title())
         position = (
             f"{card.position} of {card.position_out_of}"
             if card.position is not None and card.position_out_of is not None
@@ -203,9 +199,9 @@ class ReportCardPrintService:
       <section class="student-panel">
         {photo_markup}
         <div>
-          <h2 class="student-name">{ReportCardPrintService._text(card.student_name, card.admission_number or 'Student')}</h2>
+          <h2 class="student-name">{ReportCardPrintService._text(card.student_name, card.admission_number or "Student")}</h2>
           <div class="meta-grid">
-            <div class="field"><span>Admission number</span><strong>{ReportCardPrintService._text(card.admission_number, 'Not assigned')}</strong></div>
+            <div class="field"><span>Admission number</span><strong>{ReportCardPrintService._text(card.admission_number, "Not assigned")}</strong></div>
             <div class="field"><span>Class</span><strong>{ReportCardPrintService._class_label(card)}</strong></div>
             <div class="field"><span>Session</span><strong>{ReportCardPrintService._text(card.academic_session_name)}</strong></div>
             <div class="field"><span>Term</span><strong>{ReportCardPrintService._text(card.academic_term_name)}</strong></div>

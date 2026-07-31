@@ -106,9 +106,7 @@ class SubscriptionRepository:
         subscription_id: uuid.UUID,
     ) -> TenantSubscription | None:
         result = await db.execute(
-            select(TenantSubscription).where(
-                TenantSubscription.id == subscription_id
-            )
+            select(TenantSubscription).where(TenantSubscription.id == subscription_id)
         )
         return result.scalar_one_or_none()
 
@@ -140,8 +138,7 @@ class SubscriptionRepository:
         result = await db.execute(
             select(TenantSubscription).where(
                 TenantSubscription.provider == provider,
-                TenantSubscription.provider_subscription_code
-                == provider_subscription_code,
+                TenantSubscription.provider_subscription_code == provider_subscription_code,
             )
         )
         return result.scalar_one_or_none()
@@ -198,9 +195,7 @@ class SubscriptionRepository:
         reference: str,
     ) -> PaymentTransaction | None:
         result = await db.execute(
-            select(PaymentTransaction).where(
-                PaymentTransaction.reference == reference
-            )
+            select(PaymentTransaction).where(PaymentTransaction.reference == reference)
         )
         return result.scalar_one_or_none()
 
@@ -226,9 +221,7 @@ class SubscriptionRepository:
         total = int(
             (
                 await db.execute(
-                    select(func.count())
-                    .select_from(PaymentTransaction)
-                    .where(*filters)
+                    select(func.count()).select_from(PaymentTransaction).where(*filters)
                 )
             ).scalar_one()
         )
@@ -353,8 +346,7 @@ class SubscriptionRepository:
         result = await db.execute(
             select(SubscriptionPlanChange)
             .where(
-                SubscriptionPlanChange.status
-                == SubscriptionPlanChangeStatus.SCHEDULED,
+                SubscriptionPlanChange.status == SubscriptionPlanChangeStatus.SCHEDULED,
                 SubscriptionPlanChange.effective_at.is_not(None),
                 SubscriptionPlanChange.effective_at <= as_of,
             )
@@ -504,9 +496,7 @@ class SubscriptionRepository:
     @staticmethod
     async def count_classes(db: AsyncSession, tenant_id: uuid.UUID) -> int:
         result = await db.execute(
-            select(func.count(ClassRoom.id)).where(
-                ClassRoom.tenant_id == tenant_id
-            )
+            select(func.count(ClassRoom.id)).where(ClassRoom.tenant_id == tenant_id)
         )
         return int(result.scalar_one() or 0)
 
@@ -538,19 +528,9 @@ class SubscriptionRepository:
         tenant_id: uuid.UUID,
     ) -> dict[ResourceLimitCode, int]:
         return {
-            ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(
-                db, tenant_id
-            ),
-            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(
-                db, tenant_id
-            ),
-            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(
-                db, tenant_id
-            ),
-            ResourceLimitCode.CLASSES: await SubscriptionRepository.count_classes(
-                db, tenant_id
-            ),
-            ResourceLimitCode.SUBJECTS: await SubscriptionRepository.count_subjects(
-                db, tenant_id
-            ),
+            ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(db, tenant_id),
+            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(db, tenant_id),
+            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(db, tenant_id),
+            ResourceLimitCode.CLASSES: await SubscriptionRepository.count_classes(db, tenant_id),
+            ResourceLimitCode.SUBJECTS: await SubscriptionRepository.count_subjects(db, tenant_id),
         }

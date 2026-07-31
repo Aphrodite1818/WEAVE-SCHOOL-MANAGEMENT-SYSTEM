@@ -28,9 +28,7 @@ async def process_subscription_lifecycle_job(
 
     _ = ctx
     async with AsyncSessionLocal() as db:
-        lifecycle = await SubscriptionLifecycleService.sync_expired_subscriptions(
-            db=db
-        )
+        lifecycle = await SubscriptionLifecycleService.sync_expired_subscriptions(db=db)
         plan_changes = await SubscriptionPlanChangeService.sync_due_changes(db=db)
         return {
             **lifecycle,

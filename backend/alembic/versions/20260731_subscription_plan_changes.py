@@ -39,9 +39,7 @@ plan_change_status = postgresql.ENUM(
 
 
 def _table_exists(bind: sa.Connection) -> bool:
-    return "subscription_plan_changes" in sa.inspect(bind).get_table_names(
-        schema="public"
-    )
+    return "subscription_plan_changes" in sa.inspect(bind).get_table_names(schema="public")
 
 
 def upgrade() -> None:
@@ -176,9 +174,7 @@ def upgrade() -> None:
         ["tenant_id"],
         unique=True,
         schema="public",
-        postgresql_where=sa.text(
-            "status IN ('pending', 'scheduled', 'awaiting_payment')"
-        ),
+        postgresql_where=sa.text("status IN ('pending', 'scheduled', 'awaiting_payment')"),
     )
 
 

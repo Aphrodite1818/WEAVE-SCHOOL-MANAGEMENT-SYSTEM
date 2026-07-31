@@ -116,13 +116,9 @@ class BulkResultLifecycleService:
         if session is None or term is None or term.academic_session_id != session.id:
             raise NotFoundException("Academic session or term is invalid.")
         if not session.is_current or session.status != AcademicSessionStatus.OPEN:
-            raise ConflictException(
-                "Results can only be changed in the current open session."
-            )
+            raise ConflictException("Results can only be changed in the current open session.")
         if not term.is_current or term.status != AcademicTermStatus.OPEN:
-            raise ConflictException(
-                "Results can only be changed in the current open term."
-            )
+            raise ConflictException("Results can only be changed in the current open term.")
 
     @staticmethod
     async def _load_scope(
@@ -136,20 +132,16 @@ class BulkResultLifecycleService:
         filters = [
             StudentSubjectResult.tenant_id == tenant_id,
             StudentSubjectResult.class_id == payload.class_id,
-            StudentSubjectResult.academic_session_id
-            == payload.academic_session_id,
+            StudentSubjectResult.academic_session_id == payload.academic_session_id,
             StudentSubjectResult.academic_term_id == payload.academic_term_id,
             StudentSubjectResult.status == result_status,
         ]
         if payload.teacher_assignment_id is not None:
             filters.append(
-                StudentSubjectResult.teacher_assignment_id
-                == payload.teacher_assignment_id
+                StudentSubjectResult.teacher_assignment_id == payload.teacher_assignment_id
             )
         if teacher_id is not None:
-            filters.append(
-                StudentSubjectResult.teacher_membership_id == teacher_id
-            )
+            filters.append(StudentSubjectResult.teacher_membership_id == teacher_id)
         rows = (
             (
                 await db.execute(
