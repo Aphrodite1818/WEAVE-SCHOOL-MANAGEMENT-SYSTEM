@@ -18,7 +18,7 @@ REQUIRED_TABLES = {
     "report_cards",
     "tenant_subscriptions",
     "subscription_plan_changes",
-    "notification_deliveries",
+    "communication_notification_deliveries",
     "school_calendars",
 }
 
