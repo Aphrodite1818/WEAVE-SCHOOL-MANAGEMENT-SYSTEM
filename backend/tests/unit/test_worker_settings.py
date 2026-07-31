@@ -5,11 +5,13 @@ from app.core.queue.arq import (
     BULK_IMPORT_QUEUE_NAME,
     EMAIL_QUEUE_NAME,
     SESSION_PROGRESSION_QUEUE_NAME,
+    SUBSCRIPTION_QUEUE_NAME,
 )
 from app.core.queue.attendance_worker import WorkerSettings as AttendanceWorkerSettings
 from app.core.queue.bulk_import_worker import WorkerSettings as BulkImportWorkerSettings
 from app.core.queue.email_worker import WorkerSettings as EmailWorkerSettings
 from app.core.queue.progression_worker import WorkerSettings as ProgressionWorkerSettings
+from app.core.queue.subscription_worker import WorkerSettings as SubscriptionWorkerSettings
 
 
 def _function_names(worker_settings) -> set[str]:
@@ -38,3 +40,11 @@ def test_attendance_worker_registration_imports_cleanly() -> None:
     assert "process_attendance_retention_job" in _function_names(
         AttendanceWorkerSettings
     )
+
+
+def test_subscription_worker_registration_imports_cleanly() -> None:
+    assert SubscriptionWorkerSettings.queue_name == SUBSCRIPTION_QUEUE_NAME
+    assert "process_subscription_lifecycle_job" in _function_names(
+        SubscriptionWorkerSettings
+    )
+    assert SubscriptionWorkerSettings.cron_jobs
