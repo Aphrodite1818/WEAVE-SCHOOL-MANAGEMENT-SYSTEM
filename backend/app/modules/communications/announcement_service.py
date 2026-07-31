@@ -20,6 +20,18 @@ from app.modules.superadmin.models import SuperAdmin
 from app.modules.tenant_admins.models import TenantAdmin
 
 
+_ANNOUNCEMENT_INBOX_PATHS = {
+    CommunicationActorType.TENANT_ADMIN: "/admin/inbox",
+    CommunicationActorType.TEACHER: "/teacher/inbox",
+    CommunicationActorType.STUDENT: "/student/inbox",
+    CommunicationActorType.PARENT: "/parent/inbox",
+}
+
+
+def _announcement_action_path(actor_type: CommunicationActorType, announcement_id: uuid.UUID) -> str:
+    return f"{_ANNOUNCEMENT_INBOX_PATHS[actor_type]}?announcement={announcement_id}"
+
+
 class AnnouncementService:
     @staticmethod
     def _ensure_creator(actor) -> None:
@@ -143,16 +155,17 @@ class AnnouncementService:
             return announcement
         announcement.status = AnnouncementStatus.PUBLISHED
         announcement.publish_at = datetime.now(timezone.utc)
-        await NotificationService.deliver(
-            db,
-            recipients=recipients,
-            source_type=NotificationSourceType.ANNOUNCEMENT,
-            source_id=announcement.id,
-            title=announcement.title,
-            preview=announcement.body,
-            action_path=f"/announcements/{announcement.id}",
-            tenant_id=announcement.tenant_id,
-        )
+        for recipient in recipients:
+            await NotificationService.deliver(
+                db,
+                recipients=[recipient],
+                source_type=NotificationSourceType.ANNOUNCEMENT,
+                source_id=announcement.id,
+                title=announcement.title,
+                preview=announcement.body,
+                action_path=_announcement_action_path(recipient.actor_type, announcement.id),
+                tenant_id=announcement.tenant_id,
+            )
         await db.flush()
         return await CommunicationRepository.get_announcement(db, announcement.id)
 

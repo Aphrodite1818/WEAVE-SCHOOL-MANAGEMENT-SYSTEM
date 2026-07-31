@@ -79,7 +79,7 @@ async def range_days(
         calendar_id=calendar_id,
         start_date=start_date,
         end_date=end_date,
-        active_only=calendar_id is None,
+        active_only=True,
     )
 
 

@@ -161,7 +161,7 @@ async def _participant_labels(db: DbSession, participants) -> dict[tuple[Communi
     return labels
 
 
-async def _conversation_response(db: DbSession, conversation) -> ConversationResponse:
+async def _conversation_response(db: DbSession, conversation, current_actor=None) -> ConversationResponse:
     labels = await _participant_labels(db, conversation.participants)
     response = ConversationResponse.model_validate(conversation)
     response.participants = [
@@ -178,6 +178,30 @@ async def _conversation_response(db: DbSession, conversation) -> ConversationRes
         )
         for participant in conversation.participants
     ]
+    if current_actor is not None:
+        current_type = actor_type_for(current_actor)
+        current_participant = next(
+            (
+                participant
+                for participant in conversation.participants
+                if participant.actor_type == current_type
+                and participant.actor_id == current_actor.id
+                and participant.left_at is None
+            ),
+            None,
+        )
+        visible_messages = [message for message in conversation.messages if message.deleted_at is None]
+        start_index = 0
+        if current_participant is not None and current_participant.last_read_message_id is not None:
+            for index, message in enumerate(visible_messages):
+                if message.id == current_participant.last_read_message_id:
+                    start_index = index + 1
+                    break
+        response.unread_count = sum(
+            1
+            for message in visible_messages[start_index:]
+            if not (message.sender_actor_type == current_type and message.sender_actor_id == current_actor.id)
+        )
     return response
 
 
@@ -206,22 +230,26 @@ async def list_conversations(
 ) -> ConversationListResponse:
     current = await _active_communication_actor(actor, db)
     items, total = await MessagingService.list_conversations(db, actor=current, offset=skip, limit=limit)
-    unread_count = 0
-    return ConversationListResponse(items=[await _conversation_response(db, item) for item in items], total=total, unread_count=unread_count)
+    responses = [await _conversation_response(db, item, current) for item in items]
+    return ConversationListResponse(
+        items=responses,
+        total=total,
+        unread_count=sum(item.unread_count for item in responses),
+    )
 
 
 @messages_router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(payload: ConversationCreate, db: DbSession, actor: CurrentCommunicationActor) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
     conversation = await MessagingService.create_conversation(db, actor=current, payload=payload)
-    return await _conversation_response(db, conversation)
+    return await _conversation_response(db, conversation, current)
 
 
 @messages_router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
     conversation = await MessagingService.get_conversation(db, actor=current, conversation_id=conversation_id)
-    return await _conversation_response(db, conversation)
+    return await _conversation_response(db, conversation, current)
 
 
 @messages_router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
@@ -235,7 +263,7 @@ async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, db: D
 async def mark_conversation_read(conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
     conversation = await MessagingService.mark_read(db, actor=current, conversation_id=conversation_id)
-    return await _conversation_response(db, conversation)
+    return await _conversation_response(db, conversation, current)
 
 
 @notifications_router.get("", response_model=NotificationListResponse)

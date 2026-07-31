@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, Request, status
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_superadmin, get_current_tenant_admin
 from app.modules.subscriptions.schemas import (
+    SubscriptionCancellationRequest,
     SubscriptionCheckoutCreate,
     SubscriptionCheckoutResponse,
     SubscriptionStatusResponse,
@@ -50,6 +51,21 @@ async def get_subscription_entitlements(
         tenant_id=current_admin.tenant_id,
         use_cache=True,
     )
+
+
+@router.post("/cancel", response_model=TenantSubscriptionResponse)
+async def cancel_current_subscription(
+    payload: SubscriptionCancellationRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TenantSubscriptionResponse:
+    _ = payload.confirmation
+    subscription = await SubscriptionLifecycleService.request_cancellation(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        notes=payload.reason,
+    )
+    return TenantSubscriptionResponse.model_validate(subscription)
 
 
 @router.post(

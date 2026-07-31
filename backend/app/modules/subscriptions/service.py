@@ -415,6 +415,49 @@ class SubscriptionLifecycleService:
         return saved
 
     @staticmethod
+    async def request_cancellation(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        notes: str | None = None,
+    ) -> TenantSubscription:
+        subscription = await SubscriptionRepository.get_current_subscription(
+            db=db,
+            tenant_id=tenant_id,
+            for_update=True,
+        )
+        if subscription is None:
+            raise NotFoundException("No current subscription was found.")
+        if subscription.status == SubscriptionStatus.NON_RENEWING or subscription.cancel_at_period_end:
+            return subscription
+        if subscription.status != SubscriptionStatus.ACTIVE:
+            raise BadRequestException("Only an active paid subscription can be cancelled.")
+
+        if subscription.provider == PaymentProvider.PAYSTACK:
+            if not subscription.provider_subscription_code or not subscription.provider_email_token:
+                raise BadRequestException(
+                    "This Paystack subscription is missing the provider cancellation credentials. Contact support."
+                )
+            try:
+                await PaystackClient().disable_subscription(
+                    code=subscription.provider_subscription_code,
+                    token=subscription.provider_email_token,
+                )
+            except PaystackProviderError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Unable to cancel subscription renewal with Paystack.",
+                ) from exc
+        elif subscription.provider != PaymentProvider.MANUAL:
+            raise BadRequestException("This subscription provider does not support self-service cancellation.")
+
+        return await SubscriptionLifecycleService.mark_non_renewing(
+            db=db,
+            subscription=subscription,
+            notes=notes or "Tenant administrator disabled automatic renewal.",
+        )
+
+    @staticmethod
     async def sync_expired_subscriptions(
         db: AsyncSession,
         *,
@@ -1580,10 +1623,10 @@ class SubscriptionPaymentService:
         if subscription is None:
             return
 
-        await SubscriptionLifecycleService.cancel_subscription(
+        await SubscriptionLifecycleService.mark_non_renewing(
             db=db,
             subscription=subscription,
-            notes="Paystack disabled subscription.",
+            notes="Paystack disabled automatic renewal.",
         )
 
     @staticmethod

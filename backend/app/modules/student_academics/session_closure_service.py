@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.repository import ClassRoomRepository
-from app.modules.communications.enums import CommunicationActorType, NotificationSourceType
+from app.modules.communications.enums import (
+    AnnouncementPriority,
+    CommunicationActorType,
+    NotificationSourceType,
+)
 from app.modules.communications.notification_service import NotificationService
 from app.modules.communications.recipient_resolver import ResolvedRecipient
 from app.modules.student_academics.lifecycle_repository import (

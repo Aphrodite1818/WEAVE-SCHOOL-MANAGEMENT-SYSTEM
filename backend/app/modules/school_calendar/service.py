@@ -605,6 +605,7 @@ class SchoolCalendarService:
             tenant_id,
             start_date=start_date,
             end_date=end_date,
+            active_only=True,
         )
         notable_days = [
             day

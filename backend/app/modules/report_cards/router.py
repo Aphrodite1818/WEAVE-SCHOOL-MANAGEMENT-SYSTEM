@@ -166,12 +166,16 @@ async def list_child_report_cards(
     db: DbSession,
     current_parent: CurrentParent,
     response: Response,
+    academic_session_id: UUID | None = Query(default=None),
+    academic_term_id: UUID | None = Query(default=None),
 ) -> ReportCardListResponse:
     _prevent_report_card_cache(response)
     items, total = await ReportCardService.list_cards(
         db,
         current_parent,
         student_id=student_id,
+        academic_session_id=academic_session_id,
+        academic_term_id=academic_term_id,
     )
     return ReportCardListResponse(items=items, total=total)
 
@@ -181,9 +185,16 @@ async def list_my_report_cards(
     db: DbSession,
     current_student: CurrentStudent,
     response: Response,
+    academic_session_id: UUID | None = Query(default=None),
+    academic_term_id: UUID | None = Query(default=None),
 ) -> ReportCardListResponse:
     _prevent_report_card_cache(response)
-    items, total = await ReportCardService.list_cards(db, current_student)
+    items, total = await ReportCardService.list_cards(
+        db,
+        current_student,
+        academic_session_id=academic_session_id,
+        academic_term_id=academic_term_id,
+    )
     return ReportCardListResponse(items=items, total=total)
 
 

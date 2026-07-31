@@ -3,8 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
@@ -99,6 +100,13 @@ class ResourceLimitCheckResponse(BaseModel):
     limit: int | None
     remaining: int | None
     reason: str | None = None
+
+
+class SubscriptionCancellationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    confirmation: Literal["CANCEL_SUBSCRIPTION"]
+    reason: str | None = Field(default=None, min_length=3, max_length=500)
 
 
 class SubscriptionCheckoutCreate(BaseModel):

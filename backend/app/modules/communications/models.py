@@ -51,6 +51,7 @@ class Conversation(UUIDMixin, TimestampMixin, Base):
         "Message",
         back_populates="conversation",
         cascade="all, delete-orphan",
+        order_by="Message.created_at",
     )
 
 
