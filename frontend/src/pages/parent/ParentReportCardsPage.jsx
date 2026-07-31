@@ -8,6 +8,7 @@ import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import ReportCardLinesTable from "../../components/shared/ReportCardLinesTable";
 import ReportCardPrintSheet from "../../components/shared/ReportCardPrintSheet";
+import ReportCardPeriodFilters, { filterReportCardsByPeriod } from "../../components/shared/ReportCardPeriodFilters";
 import { getErrorMessage } from "../../services/api";
 import { reportCardService } from "../../services/reportCardService";
 import { cleanText } from "../../utils/academicDashboard";
@@ -42,6 +43,12 @@ function ParentReportCardsPage() {
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [printId, setPrintId] = useState(null);
   const [printCard, setPrintCard] = useState(null);
+  const [sessionFilter, setSessionFilter] = useState("");
+  const [termFilter, setTermFilter] = useState("");
+  const filteredReportCards = useMemo(
+    () => filterReportCardsByPeriod(reportCards, sessionFilter, termFilter),
+    [reportCards, sessionFilter, termFilter],
+  );
 
   const selectedChildAcademicLabel = useMemo(() => {
     const latestCard = reportCards[0];
@@ -67,6 +74,8 @@ function ParentReportCardsPage() {
         if (!mounted) return;
         setReportCards(response?.items || []);
         setExpandedId(null);
+        setSessionFilter("");
+        setTermFilter("");
       } catch (error) {
         if (!mounted) return;
         setReportCards([]);
@@ -147,6 +156,22 @@ function ParentReportCardsPage() {
         <LoadingState label="Loading report cards..." />
       )}
 
+      {selectedChildRecord && !isLoadingCards && reportCards.length > 0 && (
+        <Card className="p-5 sm:p-6">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-text">Filter report cards</h2>
+            <p className="mt-1 text-sm text-text-muted">Choose the session and term you want to review for this child.</p>
+          </div>
+          <ReportCardPeriodFilters
+            cards={reportCards}
+            sessionId={sessionFilter}
+            termId={termFilter}
+            onSessionChange={setSessionFilter}
+            onTermChange={setTermFilter}
+          />
+        </Card>
+      )}
+
       {selectedChildRecord && !isLoadingCards && reportCards.length === 0 && (
         <Card className="p-5 sm:p-6">
           <EmptyState
@@ -157,9 +182,15 @@ function ParentReportCardsPage() {
         </Card>
       )}
 
-      {selectedChildRecord && !isLoadingCards && reportCards.length > 0 && (
+      {selectedChildRecord && !isLoadingCards && reportCards.length > 0 && filteredReportCards.length === 0 && (
+        <Card className="p-5 sm:p-6">
+          <EmptyState icon={FileText} title="No report cards match these filters" description="Choose another academic session or term." />
+        </Card>
+      )}
+
+      {selectedChildRecord && !isLoadingCards && filteredReportCards.length > 0 && (
         <section className="space-y-4">
-          {reportCards.map((card) => {
+          {filteredReportCards.map((card) => {
             const isPublished = asStatus(card.status) === "published";
             const isExpanded = expandedId === card.id;
             const subjectCount = Array.isArray(card.lines) ? card.lines.length : 0;

@@ -28,12 +28,15 @@ export const reportCardService = {
   publishReportCard: (reportCardId) =>
     api.post(`/tenant-admin/academic/report-cards/${reportCardId}/publish`),
 
-  listMyReportCards: (requestOptions) =>
-    api.get("/students/me/academic/report-cards", requestOptions),
+  listMyReportCards: (params = {}, requestOptions) =>
+    api.get(`/students/me/academic/report-cards${queryString(params)}`, requestOptions),
   getMyReportCard: (reportCardId, requestOptions) =>
     api.get(`/students/me/academic/report-cards/${reportCardId}`, requestOptions),
-  listChildReportCards: (studentId, requestOptions) =>
-    api.get(`/parents/me/children/${studentId}/academic/report-cards`, requestOptions),
+  listChildReportCards: (studentId, params = {}, requestOptions) =>
+    api.get(
+      `/parents/me/children/${studentId}/academic/report-cards${queryString(params)}`,
+      requestOptions,
+    ),
   getChildReportCard: (studentId, reportCardId, requestOptions) =>
     api.get(`/parents/me/children/${studentId}/academic/report-cards/${reportCardId}`, requestOptions),
 };

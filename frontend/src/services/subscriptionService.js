@@ -11,6 +11,9 @@ export const subscriptionService = {
   getSubscriptionEntitlements: () =>
     api.get("/subscriptions/entitlements", backgroundAuthOptions),
 
+  cancelCurrentSubscription: (payload) =>
+    api.post("/subscriptions/cancel", payload),
+
   initializeSubscriptionCheckout: (payload) =>
     api.post("/subscriptions/checkout", payload),
 

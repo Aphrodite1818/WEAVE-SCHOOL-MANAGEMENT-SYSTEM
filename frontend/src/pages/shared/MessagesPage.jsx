@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { MessageCircle, Send, Search, SlidersHorizontal, UserPlus, X } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -7,7 +8,7 @@ import Input from "../../components/ui/Input";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import { authSession, getErrorMessage } from "../../services/api";
-import { messageService } from "../../services/communicationService";
+import { emitNotificationsChanged, messageService } from "../../services/communicationService";
 
 const actorTypeLabels = {
   superadmin: "Super admins",
@@ -171,10 +172,12 @@ function RecipientSearchList({ groups, value, role, onRoleChange, roleOptions, s
 }
 
 export default function MessagesPage() {
+  const [searchParams] = useSearchParams();
+  const requestedConversationId = searchParams.get("conversation") || "";
   const [conversations, setConversations] = useState([]);
   const [conversationTotal, setConversationTotal] = useState(0);
   const [conversationPage, setConversationPage] = useState(1);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(requestedConversationId);
   const [selected, setSelected] = useState(null);
   const [recipientGroups, setRecipientGroups] = useState([]);
   const [recipientRole, setRecipientRole] = useState("all");
@@ -286,9 +289,17 @@ export default function MessagesPage() {
       return;
     }
     let mounted = true;
-    messageService.getConversation(selectedId)
+    messageService.markRead(selectedId)
       .then((response) => {
-        if (mounted) setSelected(response);
+        if (mounted) {
+          setSelected(response);
+          emitNotificationsChanged();
+          setConversations((current) =>
+            current.map((conversation) =>
+              conversation.id === response.id ? { ...conversation, unread_count: 0 } : conversation,
+            ),
+          );
+        }
       })
       .catch((err) => {
         if (mounted) setError(getErrorMessage(err, "Could not open conversation."));
@@ -491,9 +502,14 @@ export default function MessagesPage() {
                 return (
                   <article key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[88%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[82%] sm:px-4 sm:py-3 ${mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md border border-border bg-surface text-text"}`}>
-                      <p className={`mb-1 text-[11px] font-bold uppercase ${mine ? "text-white/75" : "text-text-faint"}`}>
-                        {identityLabel(sender, currentActorKey, { useSelfLabel: false })}
-                      </p>
+                      <div className={`mb-1 text-[11px] font-bold uppercase ${mine ? "text-white/75" : "text-text-faint"}`}>
+                        <p>{identityLabel(sender, currentActorKey, { useSelfLabel: false })}</p>
+                        {dashboardRole === "teacher" ? (
+                          <p className={`mt-0.5 normal-case tracking-normal ${mine ? "text-white/65" : "text-text-muted"}`}>
+                            Sender ID: {message.sender_actor_id}
+                          </p>
+                        ) : null}
+                      </div>
                       <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.body}</p>
                       <time className={`mt-2 block text-[11px] ${mine ? "text-white/75" : "text-text-faint"}`}>{new Date(message.created_at).toLocaleString()}</time>
                     </div>
