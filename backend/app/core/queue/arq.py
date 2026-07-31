@@ -18,6 +18,7 @@ EMAIL_QUEUE_NAME = "weave:queue:email"
 BULK_IMPORT_QUEUE_NAME = "weave:queue:bulk-import"
 SESSION_PROGRESSION_QUEUE_NAME = "weave:queue:session-progression"
 ATTENDANCE_QUEUE_NAME = "weave:queue:attendance"
+SUBSCRIPTION_QUEUE_NAME = "weave:queue:subscriptions"
 DEFAULT_EMAIL_OUTBOX_BATCH_SIZE = 20
 
 
