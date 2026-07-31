@@ -1,4 +1,10 @@
-import { Archive, CheckCircle2, LockKeyhole, RotateCcw, Send } from "lucide-react";
+import {
+  Archive,
+  CheckCircle2,
+  LockKeyhole,
+  RotateCcw,
+  Send,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
@@ -8,7 +14,10 @@ import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
 import { bulkAcademicService } from "../../services/bulkAcademicService";
-import { SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
+import {
+  SelectControl,
+  WorkspacePanel,
+} from "./AcademicWorkspacePrimitives";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -24,25 +33,29 @@ const RESULT_ACTIONS = [
   {
     id: "submit",
     title: "Submit all draft results",
-    description: "Move every complete draft result in the selected class to submitted. Incomplete rows are skipped.",
+    description:
+      "Move every complete draft result in the selected class to submitted. Incomplete rows are skipped.",
     icon: Send,
   },
   {
     id: "approve",
     title: "Approve all submitted results",
-    description: "Approve submitted results that already have a calculated grade.",
+    description:
+      "Approve submitted results that already have a calculated grade.",
     icon: CheckCircle2,
   },
   {
     id: "lock",
     title: "Finalize all approved results",
-    description: "Lock approved results for report-card generation. Results use locked as their final state; publication belongs to report cards.",
+    description:
+      "Lock approved results for report-card generation. Publication belongs to report cards.",
     icon: LockKeyhole,
   },
   {
     id: "reopen",
     title: "Reopen locked results",
-    description: "Return locked results to draft for correction and mark affected report cards as outdated.",
+    description:
+      "Return locked results to draft for correction and mark affected report cards as outdated.",
     icon: RotateCcw,
     requiresReason: true,
   },
@@ -52,26 +65,33 @@ const REPORT_CARD_ACTIONS = [
   {
     id: "publish",
     title: "Publish all draft report cards",
-    description: "Publish every valid, current draft report card in the selected class and period.",
+    description:
+      "Publish every valid, current draft report card in the selected class and period.",
     icon: Send,
   },
   {
     id: "archive",
     title: "Archive class report cards",
-    description: "Archive current report cards while keeping their history available.",
+    description:
+      "Archive current report cards while keeping their history available.",
     icon: Archive,
     requiresReason: true,
   },
   {
     id: "reopen",
     title: "Reopen archived report cards",
-    description: "Return manually archived current versions to draft. Superseded historical versions remain read-only.",
+    description:
+      "Return manually archived current versions to draft. Superseded historical versions remain read-only.",
     icon: RotateCcw,
     requiresReason: true,
   },
 ];
 
-function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
+function BulkAcademicActionsWorkspace({
+  domain,
+  onContextChange,
+  paidAccess = false,
+}) {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -98,7 +118,8 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
       const nextSessions = asItems(sessionResponse);
       const nextTerms = asItems(termResponse);
       const nextClasses = asItems(classResponse);
-      const currentSession = nextSessions.find((item) => item.is_current) || null;
+      const currentSession =
+        nextSessions.find((item) => item.is_current) || null;
       const currentTerm = nextTerms.find((item) => item.is_current) || null;
       setSessions(nextSessions);
       setTerms(nextTerms);
@@ -106,13 +127,21 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
       setFilters((current) => ({
         class_id: current.class_id || nextClasses[0]?.id || "",
         academic_session_id:
-          current.academic_session_id || currentSession?.id || nextSessions[0]?.id || "",
+          current.academic_session_id ||
+          currentSession?.id ||
+          nextSessions[0]?.id ||
+          "",
         academic_term_id:
-          current.academic_term_id || currentTerm?.id || nextTerms[0]?.id || "",
+          current.academic_term_id ||
+          currentTerm?.id ||
+          nextTerms[0]?.id ||
+          "",
       }));
       onContextChange?.({ currentSession, currentTerm });
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load bulk action context."));
+      showError(
+        getErrorMessage(error, "Could not load bulk action context."),
+      );
     } finally {
       setLoading(false);
     }
@@ -122,8 +151,12 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
     loadContext();
   }, [loadContext]);
 
-  const actions = domain === "results" ? RESULT_ACTIONS : REPORT_CARD_ACTIONS;
-  const sessionOptions = sessions.map((item) => ({ value: item.id, label: item.name }));
+  const actions =
+    domain === "results" ? RESULT_ACTIONS : REPORT_CARD_ACTIONS;
+  const sessionOptions = sessions.map((item) => ({
+    value: item.id,
+    label: item.name,
+  }));
   const termOptions = terms
     .filter(
       (item) =>
@@ -134,13 +167,24 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
       value: item.id,
       label: String(item.name || "").replaceAll("_", " "),
     }));
-  const classOptions = classes.map((item) => ({ value: item.id, label: classLabel(item) }));
-  const selectedClass = classes.find((item) => item.id === filters.class_id);
-  const selectedSession = sessions.find((item) => item.id === filters.academic_session_id);
-  const selectedTerm = terms.find((item) => item.id === filters.academic_term_id);
+  const classOptions = classes.map((item) => ({
+    value: item.id,
+    label: classLabel(item),
+  }));
+  const selectedClass = classes.find(
+    (item) => item.id === filters.class_id,
+  );
+  const selectedSession = sessions.find(
+    (item) => item.id === filters.academic_session_id,
+  );
+  const selectedTerm = terms.find(
+    (item) => item.id === filters.academic_term_id,
+  );
 
   const contextReady = Boolean(
-    filters.class_id && filters.academic_session_id && filters.academic_term_id,
+    filters.class_id &&
+      filters.academic_session_id &&
+      filters.academic_term_id,
   );
 
   const modalDescription = useMemo(() => {
@@ -149,6 +193,12 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
   }, [pendingAction, selectedClass, selectedSession, selectedTerm]);
 
   const runAction = async () => {
+    if (!paidAccess) {
+      showWarning(
+        "Bulk academic operations require an active paid subscription.",
+      );
+      return;
+    }
     if (!pendingAction || !contextReady) return;
     if (pendingAction.requiresReason && reason.trim().length < 3) {
       showWarning("Enter a reason of at least 3 characters.");
@@ -160,7 +210,9 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
     try {
       const base = {
         ...filters,
-        ...(pendingAction.requiresReason ? { reason: reason.trim() } : {}),
+        ...(pendingAction.requiresReason
+          ? { reason: reason.trim() }
+          : {}),
       };
       let response;
       if (domain === "results") {
@@ -198,11 +250,17 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
       }
 
       setSummary(response);
-      showSuccess(`${response?.processed || 0} record${response?.processed === 1 ? "" : "s"} updated.`);
+      showSuccess(
+        `${response?.processed || 0} record${
+          response?.processed === 1 ? "" : "s"
+        } updated.`,
+      );
       setPendingAction(null);
       setReason("");
     } catch (error) {
-      showError(getErrorMessage(error, "Could not complete the bulk action."));
+      showError(
+        getErrorMessage(error, "Could not complete the bulk action."),
+      );
     } finally {
       setSaving(false);
     }
@@ -210,15 +268,30 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
 
   return (
     <div className="space-y-4">
+      {!paidAccess ? (
+        <div className="rounded-2xl border border-info/30 bg-info-soft px-4 py-3 text-sm font-medium text-info">
+          Bulk result and report-card actions are available on paid plans. Individual academic operations remain available according to the current plan.
+        </div>
+      ) : null}
+
       <WorkspacePanel
-        title={domain === "results" ? "Bulk result actions" : "Bulk report-card actions"}
+        title={
+          domain === "results"
+            ? "Bulk result actions"
+            : "Bulk report-card actions"
+        }
         description="Choose one class and academic period, then apply one lifecycle action to all eligible records. Ineligible records are skipped rather than silently changed."
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <SelectControl
             label="Class"
             value={filters.class_id}
-            onChange={(value) => setFilters((current) => ({ ...current, class_id: value }))}
+            onChange={(value) =>
+              setFilters((current) => ({
+                ...current,
+                class_id: value,
+              }))
+            }
             options={classOptions}
             required
           />
@@ -227,8 +300,13 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
             value={filters.academic_session_id}
             onChange={(value) => {
               const nextTerm =
-                terms.find((item) => item.academic_session_id === value && item.is_current) ||
-                terms.find((item) => item.academic_session_id === value);
+                terms.find(
+                  (item) =>
+                    item.academic_session_id === value && item.is_current,
+                ) ||
+                terms.find(
+                  (item) => item.academic_session_id === value,
+                );
               setFilters((current) => ({
                 ...current,
                 academic_session_id: value,
@@ -242,7 +320,10 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
             label="Academic term"
             value={filters.academic_term_id}
             onChange={(value) =>
-              setFilters((current) => ({ ...current, academic_term_id: value }))
+              setFilters((current) => ({
+                ...current,
+                academic_term_id: value,
+              }))
             }
             options={termOptions}
             required
@@ -254,21 +335,34 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
         {actions.map((action) => {
           const Icon = action.icon;
           return (
-            <WorkspacePanel key={action.id} title={action.title} description={action.description}>
+            <WorkspacePanel
+              key={action.id}
+              title={action.title}
+              description={action.description}
+            >
               <div className="flex items-center justify-between gap-4">
                 <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                   <Icon className="h-5 w-5" />
                 </span>
                 <Button
                   type="button"
-                  variant={action.id === "archive" || action.id === "reopen" ? "outline" : "default"}
-                  disabled={loading || !contextReady}
+                  variant={
+                    action.id === "archive" || action.id === "reopen"
+                      ? "outline"
+                      : "default"
+                  }
+                  disabled={loading || !contextReady || !paidAccess}
+                  title={
+                    paidAccess
+                      ? "Review this class-wide action"
+                      : "Requires an active paid subscription"
+                  }
                   onClick={() => {
                     setPendingAction(action);
                     setReason("");
                   }}
                 >
-                  Review action
+                  {paidAccess ? "Review action" : "Paid plan required"}
                 </Button>
               </div>
             </WorkspacePanel>
@@ -277,16 +371,25 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
       </div>
 
       {summary ? (
-        <WorkspacePanel title="Last bulk action result" description="The backend returns partial-success details so skipped records remain visible.">
+        <WorkspacePanel
+          title="Last bulk action result"
+          description="The backend returns partial-success details so skipped records remain visible."
+        >
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-border px-4 py-3"><p className="text-xs text-text-muted">Matched</p><p className="mt-1 text-xl font-semibold text-text">{summary.matched || 0}</p></div>
-            <div className="rounded-xl border border-border px-4 py-3"><p className="text-xs text-text-muted">Updated</p><p className="mt-1 text-xl font-semibold text-text">{summary.processed || 0}</p></div>
-            <div className="rounded-xl border border-border px-4 py-3"><p className="text-xs text-text-muted">Skipped</p><p className="mt-1 text-xl font-semibold text-text">{summary.skipped?.length || 0}</p></div>
+            <SummaryValue label="Matched" value={summary.matched || 0} />
+            <SummaryValue label="Updated" value={summary.processed || 0} />
+            <SummaryValue
+              label="Skipped"
+              value={summary.skipped?.length || 0}
+            />
           </div>
           {summary.skipped?.length ? (
             <div className="mt-4 space-y-2 text-sm text-text-muted">
               {summary.skipped.slice(0, 10).map((item) => (
-                <p key={item.id} className="rounded-xl bg-surface-muted/40 px-3 py-2">
+                <p
+                  key={item.id}
+                  className="rounded-xl bg-surface-muted/40 px-3 py-2"
+                >
                   {item.id}: {item.reason}
                 </p>
               ))}
@@ -308,10 +411,19 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
         closeOnOverlay={!saving}
         footer={(
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" disabled={saving} onClick={() => setPendingAction(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={() => setPendingAction(null)}
+            >
               Cancel
             </Button>
-            <Button type="button" disabled={saving} onClick={runAction}>
+            <Button
+              type="button"
+              disabled={saving || !paidAccess}
+              onClick={runAction}
+            >
               {saving ? "Applying..." : "Apply to eligible records"}
             </Button>
           </div>
@@ -329,9 +441,20 @@ function BulkAcademicActionsWorkspace({ domain, onContextChange }) {
             />
           </label>
         ) : (
-          <p className="text-sm text-text-muted">Only records in the correct current lifecycle stage will be changed.</p>
+          <p className="text-sm text-text-muted">
+            Only records in the correct current lifecycle stage will be changed.
+          </p>
         )}
       </Modal>
+    </div>
+  );
+}
+
+function SummaryValue({ label, value }) {
+  return (
+    <div className="rounded-xl border border-border px-4 py-3">
+      <p className="text-xs text-text-muted">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-text">{value}</p>
     </div>
   );
 }
