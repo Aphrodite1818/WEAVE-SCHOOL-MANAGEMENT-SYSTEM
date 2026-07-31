@@ -43,9 +43,7 @@ async def test_missing_paystack_token_is_recovered_before_disabling_renewal() ->
         patch.object(
             SubscriptionCancellationService,
             "_recover_paystack_credentials",
-            new=AsyncMock(
-                return_value=("SUB_test", "recovered-token", "active")
-            ),
+            new=AsyncMock(return_value=("SUB_test", "recovered-token", "active")),
         ) as recover,
         patch(
             "app.modules.subscriptions.cancellation_service.PaystackClient.disable_subscription",
