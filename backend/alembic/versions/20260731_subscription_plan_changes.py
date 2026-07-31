@@ -38,10 +38,22 @@ plan_change_status = postgresql.ENUM(
 )
 
 
+def _table_exists(bind: sa.Connection) -> bool:
+    return "subscription_plan_changes" in sa.inspect(bind).get_table_names(
+        schema="public"
+    )
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     plan_change_type.create(bind, checkfirst=True)
     plan_change_status.create(bind, checkfirst=True)
+
+    # The clean baseline builds the current SQLAlchemy metadata dynamically. On
+    # a fresh database it may therefore have already created this new model.
+    # Existing databases stamped at the baseline still need the explicit DDL.
+    if _table_exists(bind):
+        return
 
     op.create_table(
         "subscription_plan_changes",
@@ -105,13 +117,31 @@ def upgrade() -> None:
         sa.Column("effective_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("applied_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("usage_snapshot_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("blockers_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "usage_snapshot_json",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+        ),
+        sa.Column(
+            "blockers_json",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+        ),
         sa.Column("provider_reference", sa.String(length=120), nullable=True),
         sa.Column("failure_reason", sa.Text(), nullable=True),
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.ForeignKeyConstraint(
             ["requested_by_admin_id"],
@@ -153,23 +183,24 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "uq_subscription_plan_changes_open_per_tenant",
-        table_name="subscription_plan_changes",
-        schema="public",
-    )
-    op.drop_index(
-        "ix_subscription_plan_changes_effective_at",
-        table_name="subscription_plan_changes",
-        schema="public",
-    )
-    op.drop_index(
-        "ix_subscription_plan_changes_tenant_status",
-        table_name="subscription_plan_changes",
-        schema="public",
-    )
-    op.drop_table("subscription_plan_changes", schema="public")
-
     bind = op.get_bind()
+    if _table_exists(bind):
+        op.drop_index(
+            "uq_subscription_plan_changes_open_per_tenant",
+            table_name="subscription_plan_changes",
+            schema="public",
+        )
+        op.drop_index(
+            "ix_subscription_plan_changes_effective_at",
+            table_name="subscription_plan_changes",
+            schema="public",
+        )
+        op.drop_index(
+            "ix_subscription_plan_changes_tenant_status",
+            table_name="subscription_plan_changes",
+            schema="public",
+        )
+        op.drop_table("subscription_plan_changes", schema="public")
+
     plan_change_status.drop(bind, checkfirst=True)
     plan_change_type.drop(bind, checkfirst=True)
