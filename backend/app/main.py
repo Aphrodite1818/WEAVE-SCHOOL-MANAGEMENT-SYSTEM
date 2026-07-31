@@ -42,6 +42,7 @@ from app.modules.media.router import router as media_router
 from app.modules.metrics.events import register_metrics_cache_invalidation_events
 from app.modules.metrics.router import router as metrics_router
 from app.modules.parents.router import router as parent_router
+from app.modules.report_cards.bulk_router import router as bulk_report_card_router
 from app.modules.report_cards.fixed_router import router as fixed_report_card_router
 from app.modules.report_cards.router import (
     parent_router as parent_report_card_router,
@@ -53,6 +54,10 @@ from app.modules.school_calendar.shared_router import router as school_calendar_
 from app.modules.search.router import router as tenant_search_router
 from app.modules.student_academics.assessment_config_router import (
     router as assessment_config_router,
+)
+from app.modules.student_academics.bulk_results_router import (
+    admin_router as bulk_results_admin_router,
+    teacher_router as bulk_results_teacher_router,
 )
 from app.modules.student_academics.grading_readiness_router import (
     router as grading_readiness_router,
@@ -249,6 +254,11 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         dependencies=admin_write_guard,
     )
+    app.include_router(
+        bulk_results_admin_router,
+        prefix="/api/v1",
+        dependencies=admin_write_guard,
+    )
     app.include_router(assessment_config_router, prefix="/api/v1", dependencies=admin_write_guard)
     app.include_router(
         grading_scale_lifecycle_router,
@@ -260,11 +270,21 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         dependencies=teacher_write_guard,
     )
+    app.include_router(
+        bulk_results_teacher_router,
+        prefix="/api/v1",
+        dependencies=teacher_write_guard,
+    )
     app.include_router(student_academic_router, prefix="/api/v1")
     app.include_router(parent_academic_router, prefix="/api/v1")
     app.include_router(fixed_report_card_router, prefix="/api/v1")
     app.include_router(
         tenant_admin_report_card_router,
+        prefix="/api/v1",
+        dependencies=admin_write_guard,
+    )
+    app.include_router(
+        bulk_report_card_router,
         prefix="/api/v1",
         dependencies=admin_write_guard,
     )
