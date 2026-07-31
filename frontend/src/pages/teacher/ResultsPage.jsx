@@ -13,6 +13,7 @@ import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
 import assessmentLimitsService from "../../services/assessmentLimitsService";
 import { getErrorMessage } from "../../services/api";
+import { bulkAcademicService } from "../../services/bulkAcademicService";
 
 const emptyScores = { test_score: "", assessment_score: "", exam_score: "" };
 const scoreFields = ["test_score", "assessment_score", "exam_score"];
@@ -42,6 +43,7 @@ function TeacherResultsPage() {
   const [drafts, setDrafts] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState("");
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const { showSuccess, showError, showWarning } = useToast();
 
@@ -224,6 +226,32 @@ function TeacherResultsPage() {
     }
   };
 
+  const submitAllSavedDrafts = async () => {
+    if (!selectedAssignment?.class_id || !selectedAssignmentId || !academicSessionId || !academicTermId) {
+      showWarning("Select an assignment, session, and term first.");
+      return;
+    }
+    setIsBulkSubmitting(true);
+    try {
+      const response = await bulkAcademicService.submitTeacherResults({
+        class_id: selectedAssignment.class_id,
+        teacher_assignment_id: selectedAssignmentId,
+        academic_session_id: academicSessionId,
+        academic_term_id: academicTermId,
+        confirmation: "BULK_SUBMIT_RESULTS",
+      });
+      await loadResults();
+      showSuccess(`${response?.processed || 0} saved draft result${response?.processed === 1 ? "" : "s"} submitted.`);
+      if (response?.skipped?.length) {
+        showWarning(`${response.skipped.length} incomplete or ineligible result${response.skipped.length === 1 ? " was" : "s were"} skipped.`);
+      }
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not submit saved draft results."));
+    } finally {
+      setIsBulkSubmitting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <DashboardLayout role="teacher" title="Score Entry">
@@ -274,12 +302,23 @@ function TeacherResultsPage() {
       </Card>
 
       <Card className="p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="section-title">Class-subject roster and score entry</h2>
-            <p className="mt-1 text-sm text-text-muted">Submitted, approved, and locked rows are read-only.</p>
+            <p className="mt-1 text-sm text-text-muted">Submitted, approved, and locked rows are read-only. Save rows first, then submit all complete drafts together.</p>
           </div>
-          <Users className="hidden h-5 w-5 text-primary sm:block" />
+          <div className="flex items-center gap-2">
+            <Users className="hidden h-5 w-5 text-primary sm:block" />
+            <Button
+              type="button"
+              variant="success"
+              onClick={submitAllSavedDrafts}
+              disabled={isBulkSubmitting || draftCount === 0 || !limits?.is_configured}
+            >
+              <Send className="h-4 w-4" />
+              {isBulkSubmitting ? "Submitting..." : "Submit all saved drafts"}
+            </Button>
+          </div>
         </div>
       </Card>
 
