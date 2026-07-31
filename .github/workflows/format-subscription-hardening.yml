@@ -1,0 +1,63 @@
+name: Format subscription hardening
+
+on:
+  push:
+    branches:
+      - Attendance
+    paths:
+      - ".github/workflows/format-subscription-hardening.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: Attendance
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Format hardening files
+        run: |
+          uv run ruff format \
+            app/modules/subscriptions \
+            app/modules/report_cards/print_service.py \
+            app/modules/report_cards/router.py \
+            app/modules/report_cards/fixed_router.py \
+            app/modules/report_cards/bulk_router.py \
+            app/modules/student_academics/bulk_results_router.py \
+            app/core/queue/subscription_worker.py \
+            alembic/versions/20260731_subscription_plan_changes.py \
+            tests/unit/subscriptions \
+            tests/unit/report_cards/test_report_card_print_security.py
+
+      - name: Commit formatting
+        working-directory: .
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend
+          git commit -m "style: format subscription hardening changes"
+          git push origin HEAD:Attendance
