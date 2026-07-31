@@ -29,11 +29,14 @@ CurrentTenantAdmin: TypeAlias = Annotated[
 ]
 
 
-async def _ensure_report_cards(db: DbSession, actor: TenantAdmin) -> None:
+async def _ensure_paid_bulk_academics(
+    db: DbSession,
+    actor: TenantAdmin,
+) -> None:
     await SubscriptionFeatureService.ensure_feature_enabled(
         db=db,
         tenant_id=actor.tenant_id,
-        feature=FeatureCode.REPORT_CARDS,
+        feature=FeatureCode.BULK_ACADEMIC_OPERATIONS,
     )
 
 
@@ -43,7 +46,7 @@ async def bulk_publish_report_cards(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> BulkActionResponse:
-    await _ensure_report_cards(db, current_admin)
+    await _ensure_paid_bulk_academics(db, current_admin)
     return await BulkReportCardService.publish(db, current_admin, payload)
 
 
@@ -53,7 +56,7 @@ async def bulk_archive_report_cards(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> BulkActionResponse:
-    await _ensure_report_cards(db, current_admin)
+    await _ensure_paid_bulk_academics(db, current_admin)
     return await BulkReportCardService.archive(db, current_admin, payload)
 
 
@@ -63,5 +66,5 @@ async def bulk_reopen_report_cards(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> BulkActionResponse:
-    await _ensure_report_cards(db, current_admin)
+    await _ensure_paid_bulk_academics(db, current_admin)
     return await BulkReportCardService.reopen(db, current_admin, payload)
