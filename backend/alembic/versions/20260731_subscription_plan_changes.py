@@ -1,6 +1,6 @@
 """Add auditable subscription plan changes.
 
-Revision ID: 20260731_subscription_plan_changes
+Revision ID: 20260731_subscription_changes
 Revises: 20260731_clean_baseline
 """
 
@@ -13,7 +13,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 
-revision: str = "20260731_subscription_plan_changes"
+revision: str = "20260731_subscription_changes"
 down_revision: str | Sequence[str] | None = "20260731_clean_baseline"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
