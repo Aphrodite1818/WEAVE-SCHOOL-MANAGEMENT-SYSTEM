@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -18,7 +19,9 @@ class PaystackClient:
     """Thin async client for Paystack transaction and webhook operations."""
 
     def __init__(self) -> None:
-        self.base_url = str(getattr(settings, "PAYSTACK_BASE_URL", "https://api.paystack.co")).rstrip("/")
+        self.base_url = str(
+            getattr(settings, "PAYSTACK_BASE_URL", "https://api.paystack.co")
+        ).rstrip("/")
         self.secret_key = getattr(settings, "PAYSTACK_SECRET_KEY", None)
 
     def _headers(self) -> dict[str, str]:
@@ -38,6 +41,17 @@ class PaystackClient:
                 "Invalid Paystack plan code configured. Expected a plan code beginning with PLN_."
             )
         return normalized
+
+    @staticmethod
+    def _parse_response(response: httpx.Response, operation: str) -> dict[str, Any]:
+        if response.status_code >= 400:
+            raise PaystackProviderError(f"Paystack {operation} failed: {response.text}")
+        parsed = response.json()
+        if not parsed.get("status"):
+            raise PaystackProviderError(
+                str(parsed.get("message") or f"Paystack {operation} failed")
+            )
+        return parsed
 
     async def initialize_transaction(
         self,
@@ -65,15 +79,7 @@ class PaystackClient:
                 headers=self._headers(),
                 json=payload,
             )
-
-        if response.status_code >= 400:
-            raise PaystackProviderError(f"Paystack initialize failed: {response.text}")
-
-        parsed = response.json()
-        if not parsed.get("status"):
-            raise PaystackProviderError(str(parsed.get("message") or "Paystack initialize failed"))
-
-        return parsed
+        return self._parse_response(response, "initialize")
 
     async def verify_transaction(
         self,
@@ -83,18 +89,43 @@ class PaystackClient:
         timeout = httpx.Timeout(20.0, connect=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(
-                f"{self.base_url}/transaction/verify/{reference}",
+                f"{self.base_url}/transaction/verify/{quote(reference, safe='')}",
                 headers=self._headers(),
             )
+        return self._parse_response(response, "verify")
 
-        if response.status_code >= 400:
-            raise PaystackProviderError(f"Paystack verify failed: {response.text}")
+    async def fetch_subscription(self, *, code: str) -> dict[str, Any]:
+        timeout = httpx.Timeout(20.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                f"{self.base_url}/subscription/{quote(code, safe='')}",
+                headers=self._headers(),
+            )
+        return self._parse_response(response, "subscription fetch")
 
-        parsed = response.json()
-        if not parsed.get("status"):
-            raise PaystackProviderError(str(parsed.get("message") or "Paystack verify failed"))
+    async def fetch_customer(self, *, email_or_code: str) -> dict[str, Any]:
+        timeout = httpx.Timeout(20.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                f"{self.base_url}/customer/{quote(email_or_code, safe='')}",
+                headers=self._headers(),
+            )
+        return self._parse_response(response, "customer fetch")
 
-        return parsed
+    async def list_subscriptions(
+        self,
+        *,
+        customer_id: int,
+        per_page: int = 100,
+    ) -> dict[str, Any]:
+        timeout = httpx.Timeout(20.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                f"{self.base_url}/subscription",
+                headers=self._headers(),
+                params={"customer": customer_id, "perPage": per_page},
+            )
+        return self._parse_response(response, "subscription list")
 
     async def disable_subscription(
         self,
@@ -110,16 +141,7 @@ class PaystackClient:
                 headers=self._headers(),
                 json=payload,
             )
-
-        if response.status_code >= 400:
-            raise PaystackProviderError(f"Paystack subscription disable failed: {response.text}")
-
-        parsed = response.json()
-        if not parsed.get("status"):
-            raise PaystackProviderError(
-                str(parsed.get("message") or "Paystack subscription disable failed")
-            )
-        return parsed
+        return self._parse_response(response, "subscription disable")
 
     def verify_webhook_signature(
         self,
