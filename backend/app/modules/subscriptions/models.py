@@ -12,6 +12,8 @@ from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
     PaymentProvider,
     PaymentStatus,
+    SubscriptionPlanChangeStatus,
+    SubscriptionPlanChangeType,
     SubscriptionStatus,
 )
 from app.shared.base_model import Base, BaseModel, PUBLIC_SCHEMA
@@ -95,6 +97,82 @@ class TenantSubscription(BaseModel):
             "provider_subscription_code",
             unique=True,
             postgresql_where=text("provider_subscription_code IS NOT NULL"),
+        ),
+    )
+
+
+class SubscriptionPlanChange(BaseModel):
+    """Auditable upgrade or downgrade request for one tenant."""
+
+    __tablename__ = "subscription_plan_changes"
+
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    current_plan_code: Mapped[SubscriptionPlan] = mapped_column(
+        SQLEnum(
+            SubscriptionPlan,
+            name="subscriptionplan",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+    target_plan_code: Mapped[SubscriptionPlan] = mapped_column(
+        SQLEnum(
+            SubscriptionPlan,
+            name="subscriptionplan",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+    change_type: Mapped[SubscriptionPlanChangeType] = mapped_column(
+        SQLEnum(
+            SubscriptionPlanChangeType,
+            name="subscription_plan_change_type",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+    status: Mapped[SubscriptionPlanChangeStatus] = mapped_column(
+        SQLEnum(
+            SubscriptionPlanChangeStatus,
+            name="subscription_plan_change_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=SubscriptionPlanChangeStatus.PENDING,
+        server_default=SubscriptionPlanChangeStatus.PENDING.value,
+    )
+    requested_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    usage_snapshot_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    blockers_json: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    provider_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_subscription_plan_changes_tenant_status", "tenant_id", "status"),
+        Index("ix_subscription_plan_changes_effective_at", "status", "effective_at"),
+        Index(
+            "uq_subscription_plan_changes_open_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('pending', 'scheduled', 'awaiting_payment')"
+            ),
         ),
     )
 
