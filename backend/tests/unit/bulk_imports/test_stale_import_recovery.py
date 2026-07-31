@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from app.modules.bulk_imports.live_service import _job_is_stale, _terminal_result_rows
+from app.modules.bulk_imports.repository import ImportJobRepository
 from app.modules.bulk_imports.service import utc_now
 
 
@@ -34,3 +38,29 @@ def test_recovery_keeps_only_committed_terminal_rows() -> None:
     )
 
     assert [row["row_number"] for row in rows] == [3, 4]
+
+
+@pytest.mark.asyncio
+async def test_import_job_detail_loader_uses_current_relationships() -> None:
+    class Result:
+        @staticmethod
+        def scalar_one_or_none():
+            return None
+
+    class Database:
+        executed = False
+
+        async def execute(self, _statement):
+            self.executed = True
+            return Result()
+
+    db = Database()
+    result = await ImportJobRepository.get_job_by_id(
+        db,
+        tenant_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        include_children=True,
+    )
+
+    assert result is None
+    assert db.executed is True
