@@ -1,0 +1,42 @@
+name: Fix report-card filter imports
+
+on:
+  push:
+    branches: [Attendance]
+    paths:
+      - .github/workflows/one-time-filter-import-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: Attendance
+      - name: Update imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for relative in [
+              "frontend/src/pages/student/StudentReportCardsPage.jsx",
+              "frontend/src/pages/parent/ParentReportCardsPage.jsx",
+          ]:
+              path = Path(relative)
+              text = path.read_text(encoding="utf-8")
+              old = 'import ReportCardPeriodFilters, { filterReportCardsByPeriod } from "../../components/shared/ReportCardPeriodFilters";'
+              new = 'import ReportCardPeriodFilters from "../../components/shared/ReportCardPeriodFilters";\nimport { filterReportCardsByPeriod } from "../../utils/reportCardPeriodFilters";'
+              if text.count(old) != 1:
+                  raise RuntimeError(f"Unexpected import count in {relative}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          Path(".github/workflows/one-time-filter-import-fix.yml").unlink()
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: keep report-card filters lint compliant"
+          git push origin HEAD:Attendance
