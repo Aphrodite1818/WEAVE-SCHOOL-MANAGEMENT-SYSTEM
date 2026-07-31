@@ -191,13 +191,7 @@ def normalized(value: str | None) -> str | None:
 
 
 def slugify_school_name(value: str) -> str:
-    return (
-        value.lower()
-        .replace("'", "")
-        .replace(".", "")
-        .replace("&", "and")
-        .replace(" ", "-")
-    )
+    return value.lower().replace("'", "").replace(".", "").replace("&", "and").replace(" ", "-")
 
 
 def premium_school_name(index: int) -> str:
@@ -250,7 +244,9 @@ async def fetch_web_logo_png(school_name: str, school_index: int) -> bytes:
         return response.content
 
 
-async def upload_seed_logo(db, *, admin: TenantAdmin, school_name: str, school_index: int) -> str | None:
+async def upload_seed_logo(
+    db, *, admin: TenantAdmin, school_name: str, school_index: int
+) -> str | None:
     try:
         logo_bytes = await fetch_web_logo_png(school_name, school_index)
         source = "web"
@@ -448,7 +444,9 @@ async def seed_school(
 
     for index, class_name in enumerate(CLASS_NAMES[:-1]):
         for arm in ARMS:
-            class_by_label[(class_name, arm)].next_class_id = class_by_label[(CLASS_NAMES[index + 1], arm)].id
+            class_by_label[(class_name, arm)].next_class_id = class_by_label[
+                (CLASS_NAMES[index + 1], arm)
+            ].id
     await db.flush()
 
     subjects = [
@@ -502,7 +500,11 @@ async def seed_school(
             class_subjects.append(class_subject)
             class_subject_teachers.append(teacher_link)
             teacher_assignments.append(assignment)
-            teacher_by_scope[(classroom.id, subject_ref.id)] = (teacher_membership, teacher_link, assignment)
+            teacher_by_scope[(classroom.id, subject_ref.id)] = (
+                teacher_membership,
+                teacher_link,
+                assignment,
+            )
     db.add_all(class_subject_teachers + teacher_assignments)
     await db.flush()
 
@@ -540,7 +542,9 @@ async def seed_school(
                 academic_session_id=academic_session.id,
                 academic_term_id=academic_term.id,
                 calendar_date=cursor,
-                day_type=SchoolCalendarDayType.INSTRUCTIONAL_DAY if weekday else SchoolCalendarDayType.WEEKEND,
+                day_type=SchoolCalendarDayType.INSTRUCTIONAL_DAY
+                if weekday
+                else SchoolCalendarDayType.WEEKEND,
                 title="Instructional day" if weekday else "Weekend",
                 school_open=weekday,
                 student_activity_allowed=weekday,
@@ -668,7 +672,11 @@ async def seed_school(
                 student_id=student.id,
                 parent_membership_id=membership.id,
                 relationship_type=random.choice(
-                    [ParentRelationship.FATHER, ParentRelationship.MOTHER, ParentRelationship.GUARDIAN]
+                    [
+                        ParentRelationship.FATHER,
+                        ParentRelationship.MOTHER,
+                        ParentRelationship.GUARDIAN,
+                    ]
                 ),
                 status=StudentParentLinkStatus.ACTIVE,
                 is_primary_contact=True,
@@ -689,7 +697,9 @@ async def seed_school(
         classroom = classes[(position - 1) % len(classes)]
         student_results = []
         for subject_ref in core_subjects:
-            teacher_membership, teacher_link, assignment = teacher_by_scope[(classroom.id, subject_ref.id)]
+            teacher_membership, teacher_link, assignment = teacher_by_scope[
+                (classroom.id, subject_ref.id)
+            ]
             test_score = score(random.randint(8, 20))
             assessment_score = score(random.randint(8, 20))
             exam_score = score(random.randint(24, 60))
@@ -766,7 +776,9 @@ async def seed_school(
     for result in result_rows:
         subject_ref = subject_by_id[result.subject_id]
         teacher_membership = teacher_by_scope[(result.class_id, result.subject_id)][0]
-        teacher_account = next(account for account, membership in teachers if membership.id == teacher_membership.id)
+        teacher_account = next(
+            account for account, membership in teachers if membership.id == teacher_membership.id
+        )
         report_lines.append(
             ReportCardSubjectLine(
                 tenant_id=tenant.id,

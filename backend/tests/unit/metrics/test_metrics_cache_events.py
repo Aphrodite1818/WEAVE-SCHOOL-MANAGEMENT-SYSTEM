@@ -40,26 +40,41 @@ def test_student_result_change_invalidates_metric_dashboard_sources() -> None:
     queue_metrics_cache_invalidations(session)
 
     events = _queued_events(session)
-    assert CacheInvalidationEvent(
-        kind="key",
-        value=tenant_admin_dashboard_cache_key(tenant_id),
-    ) in events
-    assert CacheInvalidationEvent(
-        kind="key",
-        value=teacher_dashboard_cache_key(tenant_id, teacher_id),
-    ) in events
-    assert CacheInvalidationEvent(
-        kind="key",
-        value=student_dashboard_cache_key(tenant_id, student_id),
-    ) in events
-    assert CacheInvalidationEvent(
-        kind="pattern",
-        value=f"tenant:{tenant_id}:dashboard:teacher:*:metrics",
-    ) in events
-    assert CacheInvalidationEvent(
-        kind="pattern",
-        value=f"tenant:{tenant_id}:dashboard:student:*:metrics",
-    ) in events
+    assert (
+        CacheInvalidationEvent(
+            kind="key",
+            value=tenant_admin_dashboard_cache_key(tenant_id),
+        )
+        in events
+    )
+    assert (
+        CacheInvalidationEvent(
+            kind="key",
+            value=teacher_dashboard_cache_key(tenant_id, teacher_id),
+        )
+        in events
+    )
+    assert (
+        CacheInvalidationEvent(
+            kind="key",
+            value=student_dashboard_cache_key(tenant_id, student_id),
+        )
+        in events
+    )
+    assert (
+        CacheInvalidationEvent(
+            kind="pattern",
+            value=f"tenant:{tenant_id}:dashboard:teacher:*:metrics",
+        )
+        in events
+    )
+    assert (
+        CacheInvalidationEvent(
+            kind="pattern",
+            value=f"tenant:{tenant_id}:dashboard:student:*:metrics",
+        )
+        in events
+    )
 
 
 def test_tenant_change_invalidates_superadmin_metrics() -> None:

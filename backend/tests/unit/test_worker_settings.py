@@ -30,21 +30,15 @@ def test_bulk_import_worker_registration_imports_cleanly() -> None:
 
 def test_progression_worker_registration_imports_cleanly() -> None:
     assert ProgressionWorkerSettings.queue_name == SESSION_PROGRESSION_QUEUE_NAME
-    assert "process_session_progression_job" in _function_names(
-        ProgressionWorkerSettings
-    )
+    assert "process_session_progression_job" in _function_names(ProgressionWorkerSettings)
 
 
 def test_attendance_worker_registration_imports_cleanly() -> None:
     assert AttendanceWorkerSettings.queue_name == ATTENDANCE_QUEUE_NAME
-    assert "process_attendance_retention_job" in _function_names(
-        AttendanceWorkerSettings
-    )
+    assert "process_attendance_retention_job" in _function_names(AttendanceWorkerSettings)
 
 
 def test_subscription_worker_registration_imports_cleanly() -> None:
     assert SubscriptionWorkerSettings.queue_name == SUBSCRIPTION_QUEUE_NAME
-    assert "process_subscription_lifecycle_job" in _function_names(
-        SubscriptionWorkerSettings
-    )
+    assert "process_subscription_lifecycle_job" in _function_names(SubscriptionWorkerSettings)
     assert SubscriptionWorkerSettings.cron_jobs

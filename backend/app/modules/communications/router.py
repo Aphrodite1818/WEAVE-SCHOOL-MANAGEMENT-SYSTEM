@@ -21,7 +21,11 @@ from app.core.dependencies.route_guards import (
 )
 from app.core.exceptions import ForbiddenException
 from app.modules.communications.announcement_service import AnnouncementService
-from app.modules.communications.enums import AnnouncementStatus, CommunicationActorType, NotificationStatus
+from app.modules.communications.enums import (
+    AnnouncementStatus,
+    CommunicationActorType,
+    NotificationStatus,
+)
 from app.modules.communications.messaging_service import MessagingService
 from app.modules.communications.notification_service import NotificationService
 from app.modules.communications.recipient_resolver import actor_type_for
@@ -56,11 +60,17 @@ from app.modules.tenant_admins.models import TenantAdmin
 router = APIRouter(prefix="/communications", tags=["Communications"])
 messages_router = APIRouter(prefix="/messages", tags=["Messages"])
 notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
-superadmin_announcement_router = APIRouter(prefix="/superadmin/announcements", tags=["Superadmin Announcements"])
-tenant_admin_announcement_router = APIRouter(prefix="/tenant-admin/announcements", tags=["Tenant Admin Announcements"])
+superadmin_announcement_router = APIRouter(
+    prefix="/superadmin/announcements", tags=["Superadmin Announcements"]
+)
+tenant_admin_announcement_router = APIRouter(
+    prefix="/tenant-admin/announcements", tags=["Tenant Admin Announcements"]
+)
 
 CurrentCommunicationActor: TypeAlias = Annotated[CurrentActor, Depends(get_current_actor)]
-CurrentTenantMember = Annotated[TenantAdmin | Teacher | Parent | Student, Depends(get_current_tenant_member)]
+CurrentTenantMember = Annotated[
+    TenantAdmin | Teacher | Parent | Student, Depends(get_current_tenant_member)
+]
 CurrentSuperadmin = Annotated[SuperAdmin, Depends(get_current_superadmin)]
 CurrentTenantAdmin = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 
@@ -88,17 +98,25 @@ def _label_with_identifier(name: str, identifier: str | None) -> str:
     return f"{name} - {identifier}" if identifier else name
 
 
-async def _participant_labels(db: DbSession, participants) -> dict[tuple[CommunicationActorType, uuid.UUID], str]:
+async def _participant_labels(
+    db: DbSession, participants
+) -> dict[tuple[CommunicationActorType, uuid.UUID], str]:
     ids_by_type: dict[CommunicationActorType, set[uuid.UUID]] = {}
     for participant in participants:
-        actor_type = participant.actor_type if isinstance(participant.actor_type, CommunicationActorType) else CommunicationActorType(participant.actor_type)
+        actor_type = (
+            participant.actor_type
+            if isinstance(participant.actor_type, CommunicationActorType)
+            else CommunicationActorType(participant.actor_type)
+        )
         ids_by_type.setdefault(actor_type, set()).add(participant.actor_id)
 
     labels: dict[tuple[CommunicationActorType, uuid.UUID], str] = {}
 
     student_ids = ids_by_type.get(CommunicationActorType.STUDENT, set())
     if student_ids:
-        rows = (await db.execute(select(Student).where(Student.id.in_(student_ids)))).scalars().all()
+        rows = (
+            (await db.execute(select(Student).where(Student.id.in_(student_ids)))).scalars().all()
+        )
         for row in rows:
             labels[(CommunicationActorType.STUDENT, row.id)] = _label_with_identifier(
                 _name(row.first_name, row.last_name, fallback=row.admission_number),
@@ -148,31 +166,47 @@ async def _participant_labels(db: DbSession, participants) -> dict[tuple[Communi
 
     tenant_admin_ids = ids_by_type.get(CommunicationActorType.TENANT_ADMIN, set())
     if tenant_admin_ids:
-        rows = (await db.execute(select(TenantAdmin).where(TenantAdmin.id.in_(tenant_admin_ids)))).scalars().all()
+        rows = (
+            (await db.execute(select(TenantAdmin).where(TenantAdmin.id.in_(tenant_admin_ids))))
+            .scalars()
+            .all()
+        )
         for row in rows:
             labels[(CommunicationActorType.TENANT_ADMIN, row.id)] = row.email
 
     superadmin_ids = ids_by_type.get(CommunicationActorType.SUPERADMIN, set())
     if superadmin_ids:
-        rows = (await db.execute(select(SuperAdmin).where(SuperAdmin.id.in_(superadmin_ids)))).scalars().all()
+        rows = (
+            (await db.execute(select(SuperAdmin).where(SuperAdmin.id.in_(superadmin_ids))))
+            .scalars()
+            .all()
+        )
         for row in rows:
             labels[(CommunicationActorType.SUPERADMIN, row.id)] = row.email
 
     return labels
 
 
-async def _conversation_response(db: DbSession, conversation, current_actor=None) -> ConversationResponse:
+async def _conversation_response(
+    db: DbSession, conversation, current_actor=None
+) -> ConversationResponse:
     labels = await _participant_labels(db, conversation.participants)
     response = ConversationResponse.model_validate(conversation)
     response.participants = [
         ConversationParticipantResponse.model_validate(participant).model_copy(
             update={
-                "label": labels.get((
-                    participant.actor_type if isinstance(participant.actor_type, CommunicationActorType) else CommunicationActorType(participant.actor_type),
-                    participant.actor_id,
-                )),
+                "label": labels.get(
+                    (
+                        participant.actor_type
+                        if isinstance(participant.actor_type, CommunicationActorType)
+                        else CommunicationActorType(participant.actor_type),
+                        participant.actor_id,
+                    )
+                ),
                 "group_label": str(
-                    participant.actor_type.value if hasattr(participant.actor_type, "value") else participant.actor_type
+                    participant.actor_type.value
+                    if hasattr(participant.actor_type, "value")
+                    else participant.actor_type
                 ).replace("_", " "),
             },
         )
@@ -190,7 +224,9 @@ async def _conversation_response(db: DbSession, conversation, current_actor=None
             ),
             None,
         )
-        visible_messages = [message for message in conversation.messages if message.deleted_at is None]
+        visible_messages = [
+            message for message in conversation.messages if message.deleted_at is None
+        ]
         start_index = 0
         if current_participant is not None and current_participant.last_read_message_id is not None:
             for index, message in enumerate(visible_messages):
@@ -200,24 +236,34 @@ async def _conversation_response(db: DbSession, conversation, current_actor=None
         response.unread_count = sum(
             1
             for message in visible_messages[start_index:]
-            if not (message.sender_actor_type == current_type and message.sender_actor_id == current_actor.id)
+            if not (
+                message.sender_actor_type == current_type
+                and message.sender_actor_id == current_actor.id
+            )
         )
     return response
 
 
 def _announcement_list(items, total: int) -> AnnouncementListResponse:
-    return AnnouncementListResponse(items=[AnnouncementResponse.model_validate(item) for item in items], total=total)
+    return AnnouncementListResponse(
+        items=[AnnouncementResponse.model_validate(item) for item in items], total=total
+    )
 
 
 @router.get("/available-recipients", response_model=AvailableRecipientsResponse)
-async def available_recipients(db: DbSession, actor: CurrentCommunicationActor) -> AvailableRecipientsResponse:
+async def available_recipients(
+    db: DbSession, actor: CurrentCommunicationActor
+) -> AvailableRecipientsResponse:
     current = await _active_communication_actor(actor, db)
     recipients = await MessagingService.available_recipients(db, actor=current)
     groups: dict[str, list] = {}
     for recipient in recipients:
         groups.setdefault(recipient.group_label or "Recipients", []).append(recipient.as_schema())
     return AvailableRecipientsResponse(
-        groups=[AvailableRecipientGroup(label=label, recipients=items) for label, items in groups.items()]
+        groups=[
+            AvailableRecipientGroup(label=label, recipients=items)
+            for label, items in groups.items()
+        ]
     )
 
 
@@ -229,7 +275,9 @@ async def list_conversations(
     limit: int = Query(default=50, ge=1, le=100),
 ) -> ConversationListResponse:
     current = await _active_communication_actor(actor, db)
-    items, total = await MessagingService.list_conversations(db, actor=current, offset=skip, limit=limit)
+    items, total = await MessagingService.list_conversations(
+        db, actor=current, offset=skip, limit=limit
+    )
     responses = [await _conversation_response(db, item, current) for item in items]
     return ConversationListResponse(
         items=responses,
@@ -238,31 +286,54 @@ async def list_conversations(
     )
 
 
-@messages_router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
-async def create_conversation(payload: ConversationCreate, db: DbSession, actor: CurrentCommunicationActor) -> ConversationResponse:
+@messages_router.post(
+    "/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_conversation(
+    payload: ConversationCreate, db: DbSession, actor: CurrentCommunicationActor
+) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
     conversation = await MessagingService.create_conversation(db, actor=current, payload=payload)
     return await _conversation_response(db, conversation, current)
 
 
 @messages_router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-async def get_conversation(conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> ConversationResponse:
+async def get_conversation(
+    conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
+) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
-    conversation = await MessagingService.get_conversation(db, actor=current, conversation_id=conversation_id)
+    conversation = await MessagingService.get_conversation(
+        db, actor=current, conversation_id=conversation_id
+    )
     return await _conversation_response(db, conversation, current)
 
 
-@messages_router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
-async def send_message(conversation_id: uuid.UUID, payload: MessageCreate, db: DbSession, actor: CurrentCommunicationActor) -> MessageResponse:
+@messages_router.post(
+    "/conversations/{conversation_id}/messages",
+    response_model=MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def send_message(
+    conversation_id: uuid.UUID,
+    payload: MessageCreate,
+    db: DbSession,
+    actor: CurrentCommunicationActor,
+) -> MessageResponse:
     current = await _active_communication_actor(actor, db)
-    message = await MessagingService.add_message(db, actor=current, conversation_id=conversation_id, body=payload.body)
+    message = await MessagingService.add_message(
+        db, actor=current, conversation_id=conversation_id, body=payload.body
+    )
     return MessageResponse.model_validate(message)
 
 
 @messages_router.post("/conversations/{conversation_id}/read", response_model=ConversationResponse)
-async def mark_conversation_read(conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> ConversationResponse:
+async def mark_conversation_read(
+    conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
+) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
-    conversation = await MessagingService.mark_read(db, actor=current, conversation_id=conversation_id)
+    conversation = await MessagingService.mark_read(
+        db, actor=current, conversation_id=conversation_id
+    )
     return await _conversation_response(db, conversation, current)
 
 
@@ -284,46 +355,72 @@ async def list_notifications(
         offset=skip,
         limit=limit,
     )
-    return NotificationListResponse(items=[NotificationResponse.model_validate(item) for item in items], total=total, unread_count=unread)
+    return NotificationListResponse(
+        items=[NotificationResponse.model_validate(item) for item in items],
+        total=total,
+        unread_count=unread,
+    )
 
 
 @notifications_router.get("/unread-count", response_model=UnreadCountResponse)
 async def unread_count(db: DbSession, actor: CurrentCommunicationActor) -> UnreadCountResponse:
     current = await _active_communication_actor(actor, db)
-    _, _, unread = await NotificationService.list_for_actor(db, actor=current, status=None, source_type=None, offset=0, limit=1)
+    _, _, unread = await NotificationService.list_for_actor(
+        db, actor=current, status=None, source_type=None, offset=0, limit=1
+    )
     return UnreadCountResponse(unread_count=unread)
 
 
 @notifications_router.get("/{notification_id}", response_model=NotificationResponse)
-async def get_notification(notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> NotificationResponse:
+async def get_notification(
+    notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
+) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
-    delivery = await NotificationService.update_status(db, actor=current, notification_id=notification_id, status=NotificationStatus.READ)
+    delivery = await NotificationService.update_status(
+        db, actor=current, notification_id=notification_id, status=NotificationStatus.READ
+    )
     return NotificationResponse.model_validate(delivery)
 
 
 @notifications_router.post("/{notification_id}/read", response_model=NotificationResponse)
-async def mark_notification_read(notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> NotificationResponse:
+async def mark_notification_read(
+    notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
+) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
-    delivery = await NotificationService.update_status(db, actor=current, notification_id=notification_id, status=NotificationStatus.READ)
+    delivery = await NotificationService.update_status(
+        db, actor=current, notification_id=notification_id, status=NotificationStatus.READ
+    )
     return NotificationResponse.model_validate(delivery)
 
 
 @notifications_router.post("/{notification_id}/acknowledge", response_model=NotificationResponse)
-async def acknowledge_notification(notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> NotificationResponse:
+async def acknowledge_notification(
+    notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
+) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
-    delivery = await NotificationService.update_status(db, actor=current, notification_id=notification_id, status=NotificationStatus.ACKNOWLEDGED)
+    delivery = await NotificationService.update_status(
+        db, actor=current, notification_id=notification_id, status=NotificationStatus.ACKNOWLEDGED
+    )
     return NotificationResponse.model_validate(delivery)
 
 
 @notifications_router.delete("/{notification_id}", response_model=NotificationResponse)
-async def dismiss_notification(notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor) -> NotificationResponse:
+async def dismiss_notification(
+    notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
+) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
-    delivery = await NotificationService.update_status(db, actor=current, notification_id=notification_id, status=NotificationStatus.DISMISSED)
+    delivery = await NotificationService.update_status(
+        db, actor=current, notification_id=notification_id, status=NotificationStatus.DISMISSED
+    )
     return NotificationResponse.model_validate(delivery)
 
 
-@superadmin_announcement_router.post("", response_model=AnnouncementResponse, status_code=status.HTTP_201_CREATED)
-async def create_superadmin_announcement(payload: AnnouncementCreate, db: DbSession, actor: CurrentSuperadmin) -> AnnouncementResponse:
+@superadmin_announcement_router.post(
+    "", response_model=AnnouncementResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_superadmin_announcement(
+    payload: AnnouncementCreate, db: DbSession, actor: CurrentSuperadmin
+) -> AnnouncementResponse:
     announcement = await AnnouncementService.create(db, actor=actor, payload=payload)
     return AnnouncementResponse.model_validate(announcement)
 
@@ -336,38 +433,82 @@ async def list_superadmin_announcements(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AnnouncementListResponse:
-    items, total = await AnnouncementService.list_manageable(db, actor=actor, status=status_filter, offset=skip, limit=limit)
+    items, total = await AnnouncementService.list_manageable(
+        db, actor=actor, status=status_filter, offset=skip, limit=limit
+    )
     return _announcement_list(items, total)
 
 
 @superadmin_announcement_router.post("/preview", response_model=RecipientPreviewResponse)
-async def preview_superadmin_announcement(payload: AnnouncementCreate, db: DbSession, actor: CurrentSuperadmin) -> RecipientPreviewResponse:
-    label, recipients, excluded = await AnnouncementService.preview(db, actor=actor, audiences=payload.audiences)
-    return RecipientPreviewResponse(audience_label=label, recipient_count=len(recipients), excluded_reasons=excluded, recipients=[item.as_schema() for item in recipients[:50]])
+async def preview_superadmin_announcement(
+    payload: AnnouncementCreate, db: DbSession, actor: CurrentSuperadmin
+) -> RecipientPreviewResponse:
+    label, recipients, excluded = await AnnouncementService.preview(
+        db, actor=actor, audiences=payload.audiences
+    )
+    return RecipientPreviewResponse(
+        audience_label=label,
+        recipient_count=len(recipients),
+        excluded_reasons=excluded,
+        recipients=[item.as_schema() for item in recipients[:50]],
+    )
 
 
 @superadmin_announcement_router.patch("/{announcement_id}", response_model=AnnouncementResponse)
-async def update_superadmin_announcement(announcement_id: uuid.UUID, payload: AnnouncementUpdate, db: DbSession, actor: CurrentSuperadmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.update(db, actor=actor, announcement_id=announcement_id, payload=payload))
+async def update_superadmin_announcement(
+    announcement_id: uuid.UUID, payload: AnnouncementUpdate, db: DbSession, actor: CurrentSuperadmin
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.update(
+            db, actor=actor, announcement_id=announcement_id, payload=payload
+        )
+    )
 
 
-@superadmin_announcement_router.post("/{announcement_id}/publish", response_model=AnnouncementResponse)
-async def publish_superadmin_announcement(announcement_id: uuid.UUID, payload: AnnouncementPublishRequest, db: DbSession, actor: CurrentSuperadmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.publish(db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at))
+@superadmin_announcement_router.post(
+    "/{announcement_id}/publish", response_model=AnnouncementResponse
+)
+async def publish_superadmin_announcement(
+    announcement_id: uuid.UUID,
+    payload: AnnouncementPublishRequest,
+    db: DbSession,
+    actor: CurrentSuperadmin,
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.publish(
+            db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at
+        )
+    )
 
 
-@superadmin_announcement_router.post("/{announcement_id}/archive", response_model=AnnouncementResponse)
-async def archive_superadmin_announcement(announcement_id: uuid.UUID, db: DbSession, actor: CurrentSuperadmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.archive(db, actor=actor, announcement_id=announcement_id))
+@superadmin_announcement_router.post(
+    "/{announcement_id}/archive", response_model=AnnouncementResponse
+)
+async def archive_superadmin_announcement(
+    announcement_id: uuid.UUID, db: DbSession, actor: CurrentSuperadmin
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.archive(db, actor=actor, announcement_id=announcement_id)
+    )
 
 
-@superadmin_announcement_router.post("/{announcement_id}/cancel", response_model=AnnouncementResponse)
-async def cancel_superadmin_announcement(announcement_id: uuid.UUID, db: DbSession, actor: CurrentSuperadmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.cancel(db, actor=actor, announcement_id=announcement_id))
+@superadmin_announcement_router.post(
+    "/{announcement_id}/cancel", response_model=AnnouncementResponse
+)
+async def cancel_superadmin_announcement(
+    announcement_id: uuid.UUID, db: DbSession, actor: CurrentSuperadmin
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.cancel(db, actor=actor, announcement_id=announcement_id)
+    )
 
 
-@tenant_admin_announcement_router.post("", response_model=AnnouncementResponse, status_code=status.HTTP_201_CREATED)
-async def create_tenant_admin_announcement(payload: AnnouncementCreate, db: DbSession, actor: CurrentTenantAdmin) -> AnnouncementResponse:
+@tenant_admin_announcement_router.post(
+    "", response_model=AnnouncementResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_tenant_admin_announcement(
+    payload: AnnouncementCreate, db: DbSession, actor: CurrentTenantAdmin
+) -> AnnouncementResponse:
     announcement = await AnnouncementService.create(db, actor=actor, payload=payload)
     return AnnouncementResponse.model_validate(announcement)
 
@@ -380,31 +521,74 @@ async def list_tenant_admin_announcements(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> AnnouncementListResponse:
-    items, total = await AnnouncementService.list_manageable(db, actor=actor, status=status_filter, offset=skip, limit=limit)
+    items, total = await AnnouncementService.list_manageable(
+        db, actor=actor, status=status_filter, offset=skip, limit=limit
+    )
     return _announcement_list(items, total)
 
 
 @tenant_admin_announcement_router.post("/preview", response_model=RecipientPreviewResponse)
-async def preview_tenant_admin_announcement(payload: AnnouncementCreate, db: DbSession, actor: CurrentTenantAdmin) -> RecipientPreviewResponse:
-    label, recipients, excluded = await AnnouncementService.preview(db, actor=actor, audiences=payload.audiences)
-    return RecipientPreviewResponse(audience_label=label, recipient_count=len(recipients), excluded_reasons=excluded, recipients=[item.as_schema() for item in recipients[:50]])
+async def preview_tenant_admin_announcement(
+    payload: AnnouncementCreate, db: DbSession, actor: CurrentTenantAdmin
+) -> RecipientPreviewResponse:
+    label, recipients, excluded = await AnnouncementService.preview(
+        db, actor=actor, audiences=payload.audiences
+    )
+    return RecipientPreviewResponse(
+        audience_label=label,
+        recipient_count=len(recipients),
+        excluded_reasons=excluded,
+        recipients=[item.as_schema() for item in recipients[:50]],
+    )
 
 
 @tenant_admin_announcement_router.patch("/{announcement_id}", response_model=AnnouncementResponse)
-async def update_tenant_admin_announcement(announcement_id: uuid.UUID, payload: AnnouncementUpdate, db: DbSession, actor: CurrentTenantAdmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.update(db, actor=actor, announcement_id=announcement_id, payload=payload))
+async def update_tenant_admin_announcement(
+    announcement_id: uuid.UUID,
+    payload: AnnouncementUpdate,
+    db: DbSession,
+    actor: CurrentTenantAdmin,
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.update(
+            db, actor=actor, announcement_id=announcement_id, payload=payload
+        )
+    )
 
 
-@tenant_admin_announcement_router.post("/{announcement_id}/publish", response_model=AnnouncementResponse)
-async def publish_tenant_admin_announcement(announcement_id: uuid.UUID, payload: AnnouncementPublishRequest, db: DbSession, actor: CurrentTenantAdmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.publish(db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at))
+@tenant_admin_announcement_router.post(
+    "/{announcement_id}/publish", response_model=AnnouncementResponse
+)
+async def publish_tenant_admin_announcement(
+    announcement_id: uuid.UUID,
+    payload: AnnouncementPublishRequest,
+    db: DbSession,
+    actor: CurrentTenantAdmin,
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.publish(
+            db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at
+        )
+    )
 
 
-@tenant_admin_announcement_router.post("/{announcement_id}/archive", response_model=AnnouncementResponse)
-async def archive_tenant_admin_announcement(announcement_id: uuid.UUID, db: DbSession, actor: CurrentTenantAdmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.archive(db, actor=actor, announcement_id=announcement_id))
+@tenant_admin_announcement_router.post(
+    "/{announcement_id}/archive", response_model=AnnouncementResponse
+)
+async def archive_tenant_admin_announcement(
+    announcement_id: uuid.UUID, db: DbSession, actor: CurrentTenantAdmin
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.archive(db, actor=actor, announcement_id=announcement_id)
+    )
 
 
-@tenant_admin_announcement_router.post("/{announcement_id}/cancel", response_model=AnnouncementResponse)
-async def cancel_tenant_admin_announcement(announcement_id: uuid.UUID, db: DbSession, actor: CurrentTenantAdmin) -> AnnouncementResponse:
-    return AnnouncementResponse.model_validate(await AnnouncementService.cancel(db, actor=actor, announcement_id=announcement_id))
+@tenant_admin_announcement_router.post(
+    "/{announcement_id}/cancel", response_model=AnnouncementResponse
+)
+async def cancel_tenant_admin_announcement(
+    announcement_id: uuid.UUID, db: DbSession, actor: CurrentTenantAdmin
+) -> AnnouncementResponse:
+    return AnnouncementResponse.model_validate(
+        await AnnouncementService.cancel(db, actor=actor, announcement_id=announcement_id)
+    )

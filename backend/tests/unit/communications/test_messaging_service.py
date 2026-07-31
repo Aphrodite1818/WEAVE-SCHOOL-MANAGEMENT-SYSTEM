@@ -77,7 +77,9 @@ async def test_create_conversation_uses_new_participants_for_first_message(monke
     )
 
     payload = ConversationCreate(
-        recipient=RecipientTarget(actor_type=CommunicationActorType.TEACHER, actor_id=recipient.actor_id),
+        recipient=RecipientTarget(
+            actor_type=CommunicationActorType.TEACHER, actor_id=recipient.actor_id
+        ),
         body="Hello from admin",
     )
 

@@ -34,7 +34,7 @@ OUTPUT_PATH = r"C:\Users\taiwo\Downloads\students_import_template (1).xlsx"
 NUM_STUDENTS = 1000
 
 fake = Faker()
-Faker.seed()          # remove/seed with an int for reproducible output
+Faker.seed()  # remove/seed with an int for reproducible output
 random.seed()
 
 # ---------------------------------------------------------------------------
@@ -46,9 +46,9 @@ CLASS_DEFINITIONS = [
     ("JSS1", ["A", "B"], (10, 11)),
     ("JSS2", ["A", "B"], (11, 12)),
     ("JSS3", ["A", "B"], (12, 13)),
-    ("SS1",  ["ART", "COMMERCIAL", "SCIENCE"], (14, 15)),
-    ("SS2",  ["ART", "COMMERCIAL", "SCIENCE"], (15, 16)),
-    ("SS3",  ["ART", "COMMERCIAL", "SCIENCE"], (16, 17)),
+    ("SS1", ["ART", "COMMERCIAL", "SCIENCE"], (14, 15)),
+    ("SS2", ["ART", "COMMERCIAL", "SCIENCE"], (15, 16)),
+    ("SS3", ["ART", "COMMERCIAL", "SCIENCE"], (16, 17)),
 ]
 
 # Expand into a flat list of (class_name, class_arm, min_age, max_age)
@@ -59,20 +59,59 @@ CLASS_ARM_CHOICES = [
 ]
 
 NIGERIAN_STATES = [
-    "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue",
-    "Borno", "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu",
-    "Gombe", "Imo", "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi",
-    "Kwara", "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo",
-    "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara",
+    "Abia",
+    "Adamawa",
+    "Akwa Ibom",
+    "Anambra",
+    "Bauchi",
+    "Bayelsa",
+    "Benue",
+    "Borno",
+    "Cross River",
+    "Delta",
+    "Ebonyi",
+    "Edo",
+    "Ekiti",
+    "Enugu",
+    "Gombe",
+    "Imo",
+    "Jigawa",
+    "Kaduna",
+    "Kano",
+    "Katsina",
+    "Kebbi",
+    "Kogi",
+    "Kwara",
+    "Lagos",
+    "Nasarawa",
+    "Niger",
+    "Ogun",
+    "Ondo",
+    "Osun",
+    "Oyo",
+    "Plateau",
+    "Rivers",
+    "Sokoto",
+    "Taraba",
+    "Yobe",
+    "Zamfara",
     "Federal Capital Territory",
 ]
 
 GENDERS = ["Male", "Female"]
 
 HEADERS = [
-    "first_name", "last_name", "date_of_birth", "gender", "class_name",
-    "class_arm", "state_of_origin", "parent_email_1", "parent_relationship_1",
-    "parent_email_2", "parent_relationship_2",
+    "first_name",
+    "last_name",
+    "date_of_birth",
+    "gender",
+    "class_name",
+    "class_arm",
+    "state_of_origin",
+    "parent_email_1",
+    "parent_relationship_1",
+    "parent_email_2",
+    "parent_relationship_2",
 ]
 
 

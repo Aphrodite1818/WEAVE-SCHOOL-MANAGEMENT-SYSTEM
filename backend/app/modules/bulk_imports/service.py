@@ -20,8 +20,16 @@ from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.bulk_imports.chunking import chunk_import_items
-from app.modules.bulk_imports.models import ImportFileType, ImportJob, ImportJobStatus, ImportResourceType
-from app.modules.bulk_imports.normalizers import BulkImportNormalizer, SUPPORTED_IMPORT_RESOURCE_TYPES
+from app.modules.bulk_imports.models import (
+    ImportFileType,
+    ImportJob,
+    ImportJobStatus,
+    ImportResourceType,
+)
+from app.modules.bulk_imports.normalizers import (
+    BulkImportNormalizer,
+    SUPPORTED_IMPORT_RESOURCE_TYPES,
+)
 from app.modules.bulk_imports.notification_service import BulkImportCommunicationService
 from app.modules.bulk_imports.parsers import BulkImportParser, ParsedImportFile
 from app.modules.bulk_imports.repository import (
@@ -236,13 +244,17 @@ class BulkImportService:
         if metadata_json.get("confirmed_at"):
             raise ConflictException(detail="This import job has already been confirmed.")
         if import_job.status != ImportJobStatus.COMPLETED or import_job.completed_at is None:
-            raise BadRequestException(detail="The dry run must complete successfully before confirmation.")
+            raise BadRequestException(
+                detail="The dry run must complete successfully before confirmation."
+            )
         if int(import_job.failed_rows or 0) != 0:
             raise BadRequestException(detail="All rows must pass validation before confirmation.")
         if int(import_job.successful_rows or 0) <= 0:
             raise BadRequestException(detail="This dry-run job has no valid rows to confirm.")
         if staged_row_count <= 0:
-            raise BadRequestException(detail="This dry-run job has no valid staged rows to confirm.")
+            raise BadRequestException(
+                detail="This dry-run job has no valid staged rows to confirm."
+            )
         if staged_row_count != int(import_job.total_rows or 0):
             raise ConflictException(
                 detail="The number of staged valid rows does not match the dry-run total rows."
@@ -256,8 +268,12 @@ class BulkImportService:
     ) -> None:
         """Ensure uploaded data headers exactly match the current template contract."""
 
-        normalized_actual = [BulkImportNormalizer.normalize_key(header) for header in actual_headers]
-        normalized_expected = [BulkImportNormalizer.normalize_key(header) for header in expected_headers]
+        normalized_actual = [
+            BulkImportNormalizer.normalize_key(header) for header in actual_headers
+        ]
+        normalized_expected = [
+            BulkImportNormalizer.normalize_key(header) for header in expected_headers
+        ]
 
         if normalized_actual != normalized_expected:
             raise BadRequestException(
@@ -624,7 +640,9 @@ class BulkImportService:
         row_error_items: list[ImportRowErrorCreate] = []
         result_rows: list[dict[str, Any]] = []
 
-        for chunk in chunk_import_items(items=validation_results, chunk_size=IMPORT_PROCESSING_CHUNK_SIZE):
+        for chunk in chunk_import_items(
+            items=validation_results, chunk_size=IMPORT_PROCESSING_CHUNK_SIZE
+        ):
             for validation_result in chunk.items:
                 try:
                     async with db.begin_nested():
@@ -638,7 +656,12 @@ class BulkImportService:
                     successful_rows += 1
                     result_rows.append(result_row)
 
-                except (BadRequestException, ConflictException, NotFoundException, ValidationError) as exc:
+                except (
+                    BadRequestException,
+                    ConflictException,
+                    NotFoundException,
+                    ValidationError,
+                ) as exc:
                     failed_rows += 1
                     error_message = (
                         compact_validation_error(exc)
@@ -742,7 +765,8 @@ class BulkImportService:
             job_data=ImportJobCreate(
                 resource_type=resource_type,
                 file_type=parsed_file.file_type,
-                original_filename=upload_file.filename or f"{resource_type.value}_import.{parsed_file.file_type.value}",
+                original_filename=upload_file.filename
+                or f"{resource_type.value}_import.{parsed_file.file_type.value}",
                 file_size_bytes=parsed_file.file_size_bytes,
                 created_by_admin_id=actor.id,
                 metadata_json={
@@ -781,11 +805,9 @@ class BulkImportService:
                 tenant_id=actor.tenant_id,
                 validation_results=validation_results,
             )
-            parent_preflight_summary = (
-                await BulkImportService.preflight_student_parent_invitations(
-                    db=db,
-                    validation_results=validation_results,
-                )
+            parent_preflight_summary = await BulkImportService.preflight_student_parent_invitations(
+                db=db,
+                validation_results=validation_results,
             )
         else:
             parent_preflight_summary = {}
@@ -963,15 +985,18 @@ class BulkImportService:
             for staged_row in staged_rows
         ]
 
-        created_count, processing_failed_count, processing_errors, processing_result_rows = (
-            await BulkImportService.process_valid_rows(
-                db=db,
-                actor=actor,
-                resource_type=import_job.resource_type,
-                validation_results=validation_results,
-                import_job_id=import_job.id,
-                school_name=tenant.school_name,
-            )
+        (
+            created_count,
+            processing_failed_count,
+            processing_errors,
+            processing_result_rows,
+        ) = await BulkImportService.process_valid_rows(
+            db=db,
+            actor=actor,
+            resource_type=import_job.resource_type,
+            validation_results=validation_results,
+            import_job_id=import_job.id,
+            school_name=tenant.school_name,
         )
 
         if processing_errors:
@@ -982,10 +1007,7 @@ class BulkImportService:
             )
 
         existing_result_rows = list(metadata_json.get("result_rows") or [])
-        invalid_result_rows = [
-            row for row in existing_result_rows
-            if row.get("status") == "failed"
-        ]
+        invalid_result_rows = [row for row in existing_result_rows if row.get("status") == "failed"]
 
         invalid_rows = int(metadata_json.get("invalid_rows") or 0)
         successful_rows = created_count
@@ -1225,7 +1247,9 @@ class BulkImportService:
         return list_template_responses(file_type=file_type)
 
     @staticmethod
-    def get_template(*, resource_type: ImportResourceType, file_type: ImportFileType = ImportFileType.XLSX):
+    def get_template(
+        *, resource_type: ImportResourceType, file_type: ImportFileType = ImportFileType.XLSX
+    ):
         """Return one supported import template."""
 
         BulkImportService.ensure_supported_resource_type(resource_type)

@@ -56,7 +56,10 @@ class SuperadminBootstrapService:
             )
             db.add(superadmin)
             await db.flush()
-            logger.info("Bootstrap superadmin created", extra={"superadmin_id": str(superadmin_id), "email": email})
+            logger.info(
+                "Bootstrap superadmin created",
+                extra={"superadmin_id": str(superadmin_id), "email": email},
+            )
             return
 
         changed = False
@@ -73,4 +76,7 @@ class SuperadminBootstrapService:
         if changed:
             db.add(superadmin)
             await db.flush()
-            logger.info("Bootstrap superadmin updated", extra={"superadmin_id": str(superadmin.id), "email": email})
+            logger.info(
+                "Bootstrap superadmin updated",
+                extra={"superadmin_id": str(superadmin.id), "email": email},
+            )

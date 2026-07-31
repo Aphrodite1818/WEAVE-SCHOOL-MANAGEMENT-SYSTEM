@@ -115,17 +115,13 @@ class StudentService:
     @staticmethod
     def _require_tenant_admin(actor: TenantAdmin) -> UUID:
         if not actor.tenant_id:
-            raise ForbiddenException(
-                "Tenant admin is not attached to a tenant."
-            )
+            raise ForbiddenException("Tenant admin is not attached to a tenant.")
         return actor.tenant_id
 
     @staticmethod
     def _require_student(actor: Student) -> UUID:
         if not actor.tenant_id:
-            raise ForbiddenException(
-                "Student is not attached to a tenant."
-            )
+            raise ForbiddenException("Student is not attached to a tenant.")
         return actor.tenant_id
 
     @staticmethod
@@ -135,11 +131,7 @@ class StudentService:
             student.last_name,
             student.gender,
         )
-        return (
-            StudentProfileStatus.COMPLETE
-            if all(required)
-            else StudentProfileStatus.INCOMPLETE
-        )
+        return StudentProfileStatus.COMPLETE if all(required) else StudentProfileStatus.INCOMPLETE
 
     @staticmethod
     async def _generate_admission_number(
@@ -156,10 +148,10 @@ class StudentService:
             raise NotFoundException("Tenant not found.")
 
         prefix = (
-            tenant.admission_number_prefix
-            or tenant.slug.replace("-", "")[:6]
-            or "STD"
-        ).strip().upper()
+            (tenant.admission_number_prefix or tenant.slug.replace("-", "")[:6] or "STD")
+            .strip()
+            .upper()
+        )
         year = date.today().year
         for _ in range(20):
             suffix = secrets.randbelow(900000) + 100000
@@ -170,9 +162,7 @@ class StudentService:
                 candidate,
             ):
                 return candidate
-        raise ConflictException(
-            "Could not allocate a unique admission number."
-        )
+        raise ConflictException("Could not allocate a unique admission number.")
 
     @staticmethod
     async def _build_detail_response(
@@ -333,9 +323,12 @@ class StudentService:
         )
 
         school_name = tenant.school_name if tenant is not None else "your school"
-        student_name = " ".join(
-            part for part in [created_student.first_name, created_student.last_name] if part
-        ) or "Student"
+        student_name = (
+            " ".join(
+                part for part in [created_student.first_name, created_student.last_name] if part
+            )
+            or "Student"
+        )
 
         for parent in payload.parents:
             normalized_email = str(parent.email).casefold()
@@ -358,8 +351,7 @@ class StudentService:
                 school_name=school_name,
                 student_name=student_name,
                 invite_link=(
-                    f"{settings.FRONTEND_APP_URL.rstrip('/')}"
-                    f"/parent-invitations/{raw_token}"
+                    f"{settings.FRONTEND_APP_URL.rstrip('/')}/parent-invitations/{raw_token}"
                 ),
                 admission_number=created_student.admission_number,
                 metadata_json={
@@ -400,9 +392,7 @@ class StudentService:
                 ],
             )
             if not any(link.student_id == student_id for link in links):
-                raise ForbiddenException(
-                    "This parent membership cannot access the student."
-                )
+                raise ForbiddenException("This parent membership cannot access the student.")
 
         student = await StudentRepository.get_by_id(
             db,
@@ -468,8 +458,7 @@ class StudentService:
             total = len(students)
 
         return [
-            await StudentService._build_detail_response(db, student)
-            for student in students
+            await StudentService._build_detail_response(db, student) for student in students
         ], total
 
     @staticmethod
@@ -542,9 +531,7 @@ class StudentService:
         return StudentOnboardingStatusResponse(
             actor_type="student",
             student_id=student.id,
-            onboarding_required=(
-                student.profile_status != StudentProfileStatus.COMPLETE
-            ),
+            onboarding_required=(student.profile_status != StudentProfileStatus.COMPLETE),
             profile_status=student.profile_status,
             completion_target="student",
             required_fields=["first_name", "last_name", "gender"],
@@ -573,9 +560,7 @@ class StudentAccessCodeService:
     @staticmethod
     def _generate_code() -> str:
         length = settings.STUDENT_ACCESS_CODE_LENGTH
-        return "".join(
-            secrets.choice("0123456789") for _ in range(length)
-        )
+        return "".join(secrets.choice("0123456789") for _ in range(length))
 
     @staticmethod
     async def _create_code(
@@ -593,9 +578,7 @@ class StudentAccessCodeService:
                 student.id,
             )
         raw_code = StudentAccessCodeService._generate_code()
-        expires_at = _utc_now() + timedelta(
-            hours=settings.STUDENT_ACCESS_CODE_EXPIRY_HOURS
-        )
+        expires_at = _utc_now() + timedelta(hours=settings.STUDENT_ACCESS_CODE_EXPIRY_HOURS)
         await StudentAccessCodeRepository.add(
             db,
             StudentAccessCode(
@@ -610,11 +593,7 @@ class StudentAccessCodeService:
         return StudentAdminAccessCodeResponse(
             student_id=student.id,
             admission_number=student.admission_number,
-            full_name=" ".join(
-                part
-                for part in [student.first_name, student.last_name]
-                if part
-            )
+            full_name=" ".join(part for part in [student.first_name, student.last_name] if part)
             or None,
             purpose=purpose,
             access_code=raw_code,
@@ -638,14 +617,16 @@ class StudentAccessCodeService:
         )
         if student is None:
             raise NotFoundException("Student not found.")
-        if student.status in {
-            AcademicStatus.WITHDRAWN,
-            AcademicStatus.EXPELLED,
-            AcademicStatus.GRADUATED,
-        } or student.is_archived:
-            raise BadRequestException(
-                "Access codes cannot be generated for inactive students."
-            )
+        if (
+            student.status
+            in {
+                AcademicStatus.WITHDRAWN,
+                AcademicStatus.EXPELLED,
+                AcademicStatus.GRADUATED,
+            }
+            or student.is_archived
+        ):
+            raise BadRequestException("Access codes cannot be generated for inactive students.")
 
         response = await StudentAccessCodeService._create_code(
             db,
@@ -699,13 +680,8 @@ class StudentAccessCodeService:
         )
         if code is None:
             raise BadRequestException("Access code is invalid or expired.")
-        if (
-            student.password_hash
-            and verify_password(payload.new_password, student.password_hash)
-        ):
-            raise BadRequestException(
-                "New password must differ from the current password."
-            )
+        if student.password_hash and verify_password(payload.new_password, student.password_hash):
+            raise BadRequestException("New password must differ from the current password.")
 
         student.password_hash = hash_password(payload.new_password)
         student.password_reset_required = False
@@ -740,14 +716,12 @@ class ParentInvitationService:
             email=normalized_email,
             invited_actor_type=ActorType.PARENT_ACCOUNT,
         )
-        existing = (
-            await ParentInvitationRepository.get_pending_for_student_email(
-                db,
-                tenant_id,
-                student.id,
-                normalized_email,
-                lock=True,
-            )
+        existing = await ParentInvitationRepository.get_pending_for_student_email(
+            db,
+            tenant_id,
+            student.id,
+            normalized_email,
+            lock=True,
         )
         if existing is not None:
             return existing
@@ -767,6 +741,7 @@ class ParentInvitationService:
         invitation = await ParentInvitationRepository.add(db, invitation)
         invitation.raw_token = raw_token
         return invitation
+
 
 class StudentEnrollmentService:
     @staticmethod
@@ -804,9 +779,7 @@ class StudentEnrollmentService:
             )
             output.append(
                 StudentEnrollmentDetailResponse(
-                    **StudentEnrollmentDetailResponse.model_validate(
-                        row
-                    ).model_dump(
+                    **StudentEnrollmentDetailResponse.model_validate(row).model_dump(
                         exclude={
                             "class_name",
                             "class_arm",
@@ -815,9 +788,7 @@ class StudentEnrollmentService:
                     ),
                     class_name=classroom.name if classroom else None,
                     class_arm=classroom.arm if classroom else None,
-                    academic_session_name=(
-                        session.name if session else None
-                    ),
+                    academic_session_name=(session.name if session else None),
                 )
             )
         return output
@@ -843,9 +814,7 @@ class StudentEnrollmentService:
             AcademicStatus.ACTIVE,
             AcademicStatus.SUSPENDED,
         }:
-            raise BadRequestException(
-                "Only active or suspended students can change class."
-            )
+            raise BadRequestException("Only active or suspended students can change class.")
 
         target_class = await ClassRoomRepository.get_by_id(
             db,
@@ -879,13 +848,9 @@ class StudentEnrollmentService:
             lock=True,
         )
         if current is None:
-            raise ConflictException(
-                "Student has no current enrollment to close."
-            )
+            raise ConflictException("Student has no current enrollment to close.")
         if current.class_id == target_class.id:
-            raise ConflictException(
-                "Student is already in the target class."
-            )
+            raise ConflictException("Student is already in the target class.")
 
         current.is_current = False
         current.ended_on = payload.effective_date
@@ -974,10 +939,7 @@ class StudentLifecycleService:
         membership.status = target
         if target == ParentMembershipStatus.INACTIVE:
             membership.ended_at = membership.ended_at or now
-            membership.end_reason = (
-                membership.end_reason
-                or "No usable student links remain."
-            )
+            membership.end_reason = membership.end_reason or "No usable student links remain."
         else:
             membership.ended_at = None
             membership.end_reason = None
@@ -1008,9 +970,7 @@ class StudentLifecycleService:
 
         previous_status = student.status
         if previous_status == target_status:
-            raise ConflictException(
-                f"Student is already {target_status.value}."
-            )
+            raise ConflictException(f"Student is already {target_status.value}.")
 
         now = _utc_now()
         terminal = target_status in {
@@ -1020,13 +980,9 @@ class StudentLifecycleService:
         }
         if target_status == AcademicStatus.SUSPENDED:
             if previous_status != AcademicStatus.ACTIVE:
-                raise BadRequestException(
-                    "Only active students can be suspended."
-                )
+                raise BadRequestException("Only active students can be suspended.")
             student.status = target_status
-            student.promotion_hold = (
-                promotion_hold if promotion_hold is not None else True
-            )
+            student.promotion_hold = promotion_hold if promotion_hold is not None else True
             student.is_active = False
             student.account_status = StudentAccountStatus.INACTIVE
         elif target_status == AcademicStatus.ACTIVE:
@@ -1060,9 +1016,7 @@ class StudentLifecycleService:
             if current is not None:
                 current.is_current = False
                 current.ended_on = effective_date
-                current.outcome = StudentEnrollmentOutcome(
-                    target_status.value
-                )
+                current.outcome = StudentEnrollmentOutcome(target_status.value)
                 current.reason = reason
                 current.changed_by_admin_id = actor.id
                 await StudentEnrollmentRepository.save(db, current)
@@ -1076,21 +1030,17 @@ class StudentLifecycleService:
             if target_status == AcademicStatus.GRADUATED:
                 student.graduation_date = effective_date
         else:
-            raise BadRequestException(
-                "Unsupported student lifecycle transition."
-            )
+            raise BadRequestException("Unsupported student lifecycle transition.")
 
         await StudentRepository.save(db, student)
         if target_status == AcademicStatus.ACTIVE:
             session_revoked = False
             codes_revoked = 0
         else:
-            session_revoked, codes_revoked = (
-                await StudentLifecycleService._revoke_student_access(
-                    db,
-                    student,
-                    reason=target_status.value,
-                )
+            session_revoked, codes_revoked = await StudentLifecycleService._revoke_student_access(
+                db,
+                student,
+                reason=target_status.value,
             )
 
         links = await StudentParentLinkRepository.list_for_student(
@@ -1211,13 +1161,9 @@ class StudentLifecycleService:
         if student is None:
             raise NotFoundException("Student not found.")
         if student.is_archived:
-            raise ConflictException(
-                "Restore the archived student before reinstatement."
-            )
+            raise ConflictException("Restore the archived student before reinstatement.")
         if student.status != AcademicStatus.EXPELLED:
-            raise BadRequestException(
-                "Only expelled students use this reinstatement endpoint."
-            )
+            raise BadRequestException("Only expelled students use this reinstatement endpoint.")
 
         classroom = await ClassRoomRepository.get_by_id(
             db,
@@ -1225,11 +1171,7 @@ class StudentLifecycleService:
             target_class_id,
             lock=True,
         )
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise NotFoundException("Target class not found.")
         session = await AcademicSessionLifecycleRepository.get_by_id(
             db,
@@ -1504,9 +1446,7 @@ class StudentLifecycleService:
             student_id=student.id,
             eligible=not blockers,
             blocking_dependencies=blockers,
-            recommendation=(
-                "hard_delete" if not blockers else "archive"
-            ),
+            recommendation=("hard_delete" if not blockers else "archive"),
         )
 
     @staticmethod
@@ -1523,9 +1463,7 @@ class StudentLifecycleService:
             student_id=student_id,
         )
         if not eligibility.eligible:
-            raise ConflictException(
-                "Student has historical dependencies and must be archived."
-            )
+            raise ConflictException("Student has historical dependencies and must be archived.")
 
         student = await StudentRepository.get_by_id(
             db,
@@ -1596,10 +1534,7 @@ class StudentParentLinkService:
             actor.tenant_id,
             actor.id,
         )
-        return [
-            await StudentParentLinkService._detail(link)
-            for link in links
-        ], len(links)
+        return [await StudentParentLinkService._detail(link) for link in links], len(links)
 
     @staticmethod
     async def update(
@@ -1648,17 +1583,10 @@ class StudentParentLinkRequestService:
             await ParentInvitationRepository.save(db, invitation)
             raise BadRequestException("Invitation has expired.")
         if actor.tenant_id != invitation.tenant_id:
-            raise ForbiddenException(
-                "Select the invited school before continuing."
-            )
+            raise ForbiddenException("Select the invited school before continuing.")
         if actor.email.casefold() != invitation.invited_email.casefold():
-            raise ForbiddenException(
-                "Invitation belongs to a different email."
-            )
-        if (
-            payload.admission_number.strip().upper()
-            != invitation.admission_number_snapshot.upper()
-        ):
+            raise ForbiddenException("Invitation belongs to a different email.")
+        if payload.admission_number.strip().upper() != invitation.admission_number_snapshot.upper():
             raise BadRequestException("Admission number does not match.")
 
         existing = await StudentParentLinkRequestRepository.get_by_invitation(
@@ -1708,24 +1636,14 @@ class StudentParentLinkRequestService:
             else None
         )
         account = membership.parent_account if membership else None
-        base = StudentParentLinkRequestResponse.model_validate(
-            request
-        ).model_dump()
+        base = StudentParentLinkRequestResponse.model_validate(request).model_dump()
         return StudentParentLinkRequestDetailResponse(
             **base,
-            parent_email=(
-                account.email if account else "unknown@example.com"
-            ),
-            parent_first_name=(
-                account.first_name if account else None
-            ),
+            parent_email=(account.email if account else "unknown@example.com"),
+            parent_first_name=(account.first_name if account else None),
             parent_last_name=(account.last_name if account else None),
             student_name=(
-                " ".join(
-                    part
-                    for part in [student.first_name, student.last_name]
-                    if part
-                )
+                " ".join(part for part in [student.first_name, student.last_name] if part)
                 if student
                 else None
             ),
@@ -1741,10 +1659,7 @@ class StudentParentLinkRequestService:
             actor.tenant_id,
             actor.id,
         )
-        return [
-            await StudentParentLinkRequestService._detail(db, row)
-            for row in rows
-        ], len(rows)
+        return [await StudentParentLinkRequestService._detail(db, row) for row in rows], len(rows)
 
     @staticmethod
     async def list_parent_requests(
@@ -1757,13 +1672,8 @@ class StudentParentLinkRequestService:
             offset=0,
             limit=100,
         )
-        rows = [
-            row for row in rows if row.parent_membership_id == actor.id
-        ]
-        return [
-            await StudentParentLinkRequestService._detail(db, row)
-            for row in rows
-        ], len(rows)
+        rows = [row for row in rows if row.parent_membership_id == actor.id]
+        return [await StudentParentLinkRequestService._detail(db, row) for row in rows], len(rows)
 
     @staticmethod
     async def respond_to_request(
@@ -1783,9 +1693,7 @@ class StudentParentLinkRequestService:
         if request.status != StudentParentLinkRequestStatus.PENDING:
             raise ConflictException("Request has already been decided.")
         if isinstance(actor, Student) and request.student_id != actor.id:
-            raise ForbiddenException(
-                "Student cannot decide another student's request."
-            )
+            raise ForbiddenException("Student cannot decide another student's request.")
 
         now = _utc_now()
         responder_type = (
@@ -1808,14 +1716,12 @@ class StudentParentLinkRequestService:
             )
             if membership is None:
                 raise ConflictException("Parent membership no longer exists.")
-            existing_link = (
-                await StudentParentLinkRepository.get_by_student_and_membership(
-                    db,
-                    request.tenant_id,
-                    request.student_id,
-                    membership.id,
-                    lock=True,
-                )
+            existing_link = await StudentParentLinkRepository.get_by_student_and_membership(
+                db,
+                request.tenant_id,
+                request.student_id,
+                membership.id,
+                lock=True,
             )
             request.status = StudentParentLinkRequestStatus.APPROVED
             request.responded_at = now
@@ -1855,9 +1761,7 @@ class StudentParentLinkRequestService:
             if invitation is not None:
                 invitation.status = ParentInvitationStatus.ACCEPTED
                 invitation.accepted_at = now
-                invitation.accepted_by_parent_account_id = (
-                    request.parent_account_id
-                )
+                invitation.accepted_by_parent_account_id = request.parent_account_id
                 await ParentInvitationRepository.save(db, invitation)
 
         await StudentParentLinkRequestRepository.save(db, request)

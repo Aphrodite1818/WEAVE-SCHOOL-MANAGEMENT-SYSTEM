@@ -9,7 +9,6 @@ from typing import Any
 import app.models  # noqa: F401
 
 
-
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402
 from app.core.queue.arq import (  # noqa: E402
     SESSION_PROGRESSION_QUEUE_NAME,

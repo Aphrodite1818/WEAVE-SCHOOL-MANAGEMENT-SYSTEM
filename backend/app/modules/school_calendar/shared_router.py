@@ -44,7 +44,9 @@ def _audiences_for(actor: TenantActor) -> set[SchoolCalendarEventAudience]:
 
 
 async def _ensure_academic_setup(db: DbSession, tenant_id: UUID) -> None:
-    await SubscriptionFeatureService.ensure_feature_enabled(db, tenant_id, FeatureCode.ACADEMIC_SETUP)
+    await SubscriptionFeatureService.ensure_feature_enabled(
+        db, tenant_id, FeatureCode.ACADEMIC_SETUP
+    )
 
 
 @router.get("/today", response_model=ResolvedSchoolDayResponse)
@@ -55,7 +57,9 @@ async def today(
 ) -> ResolvedSchoolDayResponse:
     await _ensure_academic_setup(db, current_actor.tenant_id)
     service = SchoolDayPolicyService()
-    resolved_date = target_date or await SchoolCalendarService.tenant_today(db, current_actor.tenant_id)
+    resolved_date = target_date or await SchoolCalendarService.tenant_today(
+        db, current_actor.tenant_id
+    )
     return await service.resolve_day(
         db,
         tenant_id=current_actor.tenant_id,
@@ -114,7 +118,9 @@ async def upcoming(
     limit: int = Query(default=10, ge=1, le=50),
 ) -> SchoolCalendarUpcomingResponse:
     await _ensure_academic_setup(db, current_actor.tenant_id)
-    resolved_start = start_date or await SchoolCalendarService.tenant_today(db, current_actor.tenant_id)
+    resolved_start = start_date or await SchoolCalendarService.tenant_today(
+        db, current_actor.tenant_id
+    )
     return await SchoolCalendarService.upcoming(
         db,
         current_actor.tenant_id,

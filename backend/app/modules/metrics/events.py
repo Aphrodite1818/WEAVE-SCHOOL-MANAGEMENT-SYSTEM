@@ -15,7 +15,11 @@ from app.core.cache.events import (
 )
 from app.core.cache.base import build_cache_key, tenant_prefix
 from app.modules.communications.enums import CommunicationActorType
-from app.modules.communications.models import Announcement, AnnouncementAudience, NotificationDelivery
+from app.modules.communications.models import (
+    Announcement,
+    AnnouncementAudience,
+    NotificationDelivery,
+)
 from app.modules.classes.models import ClassRoom
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,

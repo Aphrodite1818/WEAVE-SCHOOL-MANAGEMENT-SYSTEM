@@ -22,7 +22,12 @@ from app.modules.communications.models import (
     NotificationDelivery,
 )
 from app.modules.communications.notification_service import NotificationService
-from app.modules.communications.recipient_resolver import RecipientResolver, ResolvedRecipient, actor_tenant_id, actor_type_for
+from app.modules.communications.recipient_resolver import (
+    RecipientResolver,
+    ResolvedRecipient,
+    actor_tenant_id,
+    actor_type_for,
+)
 from app.modules.communications.repository import CommunicationRepository
 
 
@@ -118,7 +123,9 @@ class MessagingService:
         )
 
     @staticmethod
-    async def get_conversation(db: AsyncSession, *, actor, conversation_id: uuid.UUID) -> Conversation:
+    async def get_conversation(
+        db: AsyncSession, *, actor, conversation_id: uuid.UUID
+    ) -> Conversation:
         conversation = await CommunicationRepository.get_conversation_for_actor(
             db,
             conversation_id=conversation_id,
@@ -141,12 +148,16 @@ class MessagingService:
         participants: list[ConversationParticipant] | None = None,
     ) -> Message:
         sender_type = actor_type_for(actor)
-        active_participants = participants if participants is not None else list(conversation.participants)
+        active_participants = (
+            participants if participants is not None else list(conversation.participants)
+        )
         sender_participant = next(
             (
                 participant
                 for participant in active_participants
-                if participant.actor_type == sender_type and participant.actor_id == actor.id and participant.left_at is None
+                if participant.actor_type == sender_type
+                and participant.actor_id == actor.id
+                and participant.left_at is None
             ),
             None,
         )
@@ -172,7 +183,8 @@ class MessagingService:
                     label="Conversation participant",
                 )
                 for participant in active_participants
-                if not (participant.actor_type == sender_type and participant.actor_id == actor.id) and participant.left_at is None
+                if not (participant.actor_type == sender_type and participant.actor_id == actor.id)
+                and participant.left_at is None
             ]
             for recipient in recipients:
                 await NotificationService.deliver(
@@ -189,20 +201,37 @@ class MessagingService:
         return message
 
     @staticmethod
-    async def add_message(db: AsyncSession, *, actor, conversation_id: uuid.UUID, body: str, notify: bool = True) -> Message:
-        conversation = await MessagingService.get_conversation(db, actor=actor, conversation_id=conversation_id)
-        return await MessagingService._append_message(db, actor=actor, conversation=conversation, body=body, notify=notify)
+    async def add_message(
+        db: AsyncSession, *, actor, conversation_id: uuid.UUID, body: str, notify: bool = True
+    ) -> Message:
+        conversation = await MessagingService.get_conversation(
+            db, actor=actor, conversation_id=conversation_id
+        )
+        return await MessagingService._append_message(
+            db, actor=actor, conversation=conversation, body=body, notify=notify
+        )
 
     @staticmethod
     async def mark_read(db: AsyncSession, *, actor, conversation_id: uuid.UUID) -> Conversation:
-        conversation = await MessagingService.get_conversation(db, actor=actor, conversation_id=conversation_id)
-        latest = max((message for message in conversation.messages if message.deleted_at is None), key=lambda item: item.created_at, default=None)
+        conversation = await MessagingService.get_conversation(
+            db, actor=actor, conversation_id=conversation_id
+        )
+        latest = max(
+            (message for message in conversation.messages if message.deleted_at is None),
+            key=lambda item: item.created_at,
+            default=None,
+        )
         current_actor_type = actor_type_for(actor)
         if latest is not None:
             for participant in conversation.participants:
-                if participant.actor_type == current_actor_type and participant.actor_id == actor.id:
+                if (
+                    participant.actor_type == current_actor_type
+                    and participant.actor_id == actor.id
+                ):
                     participant.last_read_message_id = latest.id
-            message_ids = [message.id for message in conversation.messages if message.deleted_at is None]
+            message_ids = [
+                message.id for message in conversation.messages if message.deleted_at is None
+            ]
             if message_ids:
                 await db.execute(
                     update(NotificationDelivery)

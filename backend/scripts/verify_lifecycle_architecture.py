@@ -37,32 +37,22 @@ def main() -> None:
     normalized_tables = {name.rsplit(".", 1)[-1] for name in registered_tables}
     missing_tables = REQUIRED_TABLES - normalized_tables
     if missing_tables:
-        raise SystemExit(
-            f"Lifecycle models are not registered: {sorted(missing_tables)}"
-        )
+        raise SystemExit(f"Lifecycle models are not registered: {sorted(missing_tables)}")
 
     route_paths = {route.path for route in app.routes}
     missing_routes = REQUIRED_ROUTES - route_paths
     if missing_routes:
-        raise SystemExit(
-            f"Lifecycle routes are not registered: {sorted(missing_routes)}"
-        )
+        raise SystemExit(f"Lifecycle routes are not registered: {sorted(missing_routes)}")
 
-    plan_change_table = Base.metadata.tables.get(
-        "public.subscription_plan_changes"
-    )
+    plan_change_table = Base.metadata.tables.get("public.subscription_plan_changes")
     if plan_change_table is None:
-        plan_change_table = Base.metadata.tables.get(
-            "subscription_plan_changes"
-        )
+        plan_change_table = Base.metadata.tables.get("subscription_plan_changes")
     if plan_change_table is None:
         raise SystemExit("subscription_plan_changes table metadata is unavailable")
 
     index_names = {index.name for index in plan_change_table.indexes}
     if "uq_subscription_plan_changes_open_per_tenant" not in index_names:
-        raise SystemExit(
-            "Open plan changes are not protected by the expected unique index"
-        )
+        raise SystemExit("Open plan changes are not protected by the expected unique index")
 
     print(
         "Lifecycle architecture verified:",

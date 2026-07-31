@@ -304,5 +304,3 @@ class ImportStagedRow(BaseModel):
         Index("ix_import_staged_rows_tenant_job", "tenant_id", "import_job_id"),
         Index("ix_import_staged_rows_job_row", "import_job_id", "row_number"),
     )
-
-

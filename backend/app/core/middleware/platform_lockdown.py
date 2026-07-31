@@ -95,7 +95,9 @@ class PlatformLockdownMiddleware:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             if payload.get("token_type") != "access":
                 return False
-            if (payload.get("actor_type") or payload.get("account_type")) != AuthSessionActorType.SUPERADMIN.value:
+            if (
+                payload.get("actor_type") or payload.get("account_type")
+            ) != AuthSessionActorType.SUPERADMIN.value:
                 return False
             session_jti = payload.get("sid")
             if not session_jti:
@@ -104,8 +106,16 @@ class PlatformLockdownMiddleware:
             if session is None or session.actor_type != AuthSessionActorType.SUPERADMIN:
                 return False
             now = datetime.now(timezone.utc)
-            expires_at = session.expires_at if session.expires_at.tzinfo else session.expires_at.replace(tzinfo=timezone.utc)
-            if session.revoked_at is not None or session.compromised_at is not None or expires_at <= now:
+            expires_at = (
+                session.expires_at
+                if session.expires_at.tzinfo
+                else session.expires_at.replace(tzinfo=timezone.utc)
+            )
+            if (
+                session.revoked_at is not None
+                or session.compromised_at is not None
+                or expires_at <= now
+            ):
                 return False
             superadmin = await SuperAdminRepository.get_by_id(db, session.actor_id)
             return bool(superadmin and superadmin.is_active)

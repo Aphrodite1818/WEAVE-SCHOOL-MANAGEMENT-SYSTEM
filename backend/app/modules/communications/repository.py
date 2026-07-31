@@ -47,7 +47,12 @@ class CommunicationRepository:
             )
         )
         if tenant_id is not None:
-            stmt = stmt.where(or_(Conversation.tenant_id == tenant_id, ConversationParticipant.tenant_id == tenant_id))
+            stmt = stmt.where(
+                or_(
+                    Conversation.tenant_id == tenant_id,
+                    ConversationParticipant.tenant_id == tenant_id,
+                )
+            )
         return (await db.execute(stmt)).unique().scalar_one_or_none()
 
     @staticmethod
@@ -70,16 +75,28 @@ class CommunicationRepository:
             )
         )
         if tenant_id is not None:
-            base = base.where(or_(Conversation.tenant_id == tenant_id, ConversationParticipant.tenant_id == tenant_id))
+            base = base.where(
+                or_(
+                    Conversation.tenant_id == tenant_id,
+                    ConversationParticipant.tenant_id == tenant_id,
+                )
+            )
         total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
         rows = (
-            await db.execute(
-                base.options(selectinload(Conversation.participants), selectinload(Conversation.messages))
-                .order_by(Conversation.updated_at.desc())
-                .offset(offset)
-                .limit(limit)
+            (
+                await db.execute(
+                    base.options(
+                        selectinload(Conversation.participants), selectinload(Conversation.messages)
+                    )
+                    .order_by(Conversation.updated_at.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
             )
-        ).unique().scalars().all()
+            .unique()
+            .scalars()
+            .all()
+        )
         return list(rows), int(total)
 
     @staticmethod
@@ -103,10 +120,22 @@ class CommunicationRepository:
             .group_by(left.conversation_id)
             .having(func.count(func.distinct(left.id)) == 2)
         )
-        stmt = select(Conversation).where(Conversation.id.in_(subquery), Conversation.closed_at.is_(None))
+        stmt = select(Conversation).where(
+            Conversation.id.in_(subquery), Conversation.closed_at.is_(None)
+        )
         if tenant_id is not None:
             stmt = stmt.where(Conversation.tenant_id == tenant_id)
-        return (await db.execute(stmt.options(selectinload(Conversation.participants), selectinload(Conversation.messages)))).unique().scalar_one_or_none()
+        return (
+            (
+                await db.execute(
+                    stmt.options(
+                        selectinload(Conversation.participants), selectinload(Conversation.messages)
+                    )
+                )
+            )
+            .unique()
+            .scalar_one_or_none()
+        )
 
     @staticmethod
     async def list_notifications(
@@ -126,7 +155,12 @@ class CommunicationRepository:
             NotificationDelivery.status != NotificationStatus.DISMISSED,
         ]
         if tenant_id is not None:
-            filters.append(or_(NotificationDelivery.tenant_id == tenant_id, NotificationDelivery.tenant_id.is_(None)))
+            filters.append(
+                or_(
+                    NotificationDelivery.tenant_id == tenant_id,
+                    NotificationDelivery.tenant_id.is_(None),
+                )
+            )
         if status is not None:
             filters.append(NotificationDelivery.status == status)
         if source_type:
@@ -135,14 +169,26 @@ class CommunicationRepository:
         total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
         unread = (
             await db.execute(
-                select(func.count()).select_from(NotificationDelivery).where(
+                select(func.count())
+                .select_from(NotificationDelivery)
+                .where(
                     NotificationDelivery.recipient_actor_type == actor_type,
                     NotificationDelivery.recipient_actor_id == actor_id,
                     NotificationDelivery.status == NotificationStatus.UNREAD,
                 )
             )
         ).scalar_one()
-        rows = (await db.execute(stmt.order_by(NotificationDelivery.delivered_at.desc()).offset(offset).limit(limit))).scalars().all()
+        rows = (
+            (
+                await db.execute(
+                    stmt.order_by(NotificationDelivery.delivered_at.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
         return list(rows), int(total), int(unread)
 
     @staticmethod
@@ -166,9 +212,13 @@ class CommunicationRepository:
     @staticmethod
     async def get_announcement(db: AsyncSession, announcement_id: uuid.UUID) -> Announcement | None:
         return (
-            await db.execute(
-                select(Announcement)
-                .options(selectinload(Announcement.audiences))
-                .where(Announcement.id == announcement_id)
+            (
+                await db.execute(
+                    select(Announcement)
+                    .options(selectinload(Announcement.audiences))
+                    .where(Announcement.id == announcement_id)
+                )
             )
-        ).unique().scalar_one_or_none()
+            .unique()
+            .scalar_one_or_none()
+        )
