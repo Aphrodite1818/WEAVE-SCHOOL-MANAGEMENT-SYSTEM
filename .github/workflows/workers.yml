@@ -6,6 +6,7 @@ on:
       - "backend/app/core/queue/**"
       - "backend/app/modules/bulk_imports/**"
       - "backend/app/modules/communications/**"
+      - "backend/app/modules/subscriptions/**"
       - "backend/app/modules/student_academics/session_closure_service.py"
       - "backend/tests/unit/bulk_imports/**"
       - "backend/tests/unit/communications/**"
@@ -20,6 +21,7 @@ on:
       - "backend/app/core/queue/**"
       - "backend/app/modules/bulk_imports/**"
       - "backend/app/modules/communications/**"
+      - "backend/app/modules/subscriptions/**"
       - "backend/app/modules/student_academics/session_closure_service.py"
       - "backend/tests/unit/bulk_imports/**"
       - "backend/tests/unit/communications/**"
@@ -70,12 +72,14 @@ jobs:
           from app.core.queue.bulk_import_worker import WorkerSettings as BulkImportWorker
           from app.core.queue.email_worker import WorkerSettings as EmailWorker
           from app.core.queue.progression_worker import WorkerSettings as ProgressionWorker
+          from app.core.queue.subscription_worker import WorkerSettings as SubscriptionWorker
 
           workers = (
               AttendanceWorker,
               BulkImportWorker,
               EmailWorker,
               ProgressionWorker,
+              SubscriptionWorker,
           )
           for worker in workers:
               assert worker.functions
