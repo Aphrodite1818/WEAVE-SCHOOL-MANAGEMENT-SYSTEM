@@ -103,7 +103,7 @@ jobs:
 
       - name: Check hardening formatting
         run: |
-          uv run ruff format --check --diff \
+          uv run ruff format --check \
             app/modules/subscriptions \
             app/modules/report_cards/print_service.py \
             app/modules/report_cards/router.py \
