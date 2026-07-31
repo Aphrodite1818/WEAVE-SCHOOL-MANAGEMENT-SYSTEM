@@ -2,17 +2,28 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException
-from app.modules.communications.enums import CommunicationActorType, NotificationSourceType, NotificationStatus
+from app.modules.communications.enums import (
+    NotificationSourceType,
+    NotificationStatus,
+)
 from app.modules.communications.models import NotificationDelivery
-from app.modules.communications.recipient_resolver import ResolvedRecipient, actor_tenant_id, actor_type_for
+from app.modules.communications.recipient_resolver import (
+    ResolvedRecipient,
+    actor_tenant_id,
+    actor_type_for,
+)
 from app.modules.communications.repository import CommunicationRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationService:
@@ -33,7 +44,8 @@ class NotificationService:
             existing = (
                 await db.execute(
                     select(NotificationDelivery).where(
-                        NotificationDelivery.recipient_actor_type == recipient.actor_type,
+                        NotificationDelivery.recipient_actor_type
+                        == recipient.actor_type,
                         NotificationDelivery.recipient_actor_id == recipient.actor_id,
                         NotificationDelivery.source_type == source_type,
                         NotificationDelivery.source_id == source_id,
@@ -44,7 +56,11 @@ class NotificationService:
                 deliveries.append(existing)
                 continue
             delivery = NotificationDelivery(
-                tenant_id=recipient.tenant_id if recipient.tenant_id is not None else tenant_id,
+                tenant_id=(
+                    recipient.tenant_id
+                    if recipient.tenant_id is not None
+                    else tenant_id
+                ),
                 recipient_actor_type=recipient.actor_type,
                 recipient_actor_id=recipient.actor_id,
                 source_type=source_type,
@@ -70,19 +86,47 @@ class NotificationService:
         action_path: str | None = None,
         tenant_id: uuid.UUID | None = None,
     ) -> list[NotificationDelivery]:
-        return await NotificationService.deliver(
-            db,
-            recipients=recipients,
-            source_type=source_type,
-            source_id=source_id,
-            title=title,
-            preview=preview,
-            action_path=action_path,
-            tenant_id=tenant_id,
-        )
+        """Deliver a non-critical system event without risking its source transaction.
+
+        Worker jobs and lifecycle operations must remain durable even when the
+        notification schema, recipient query, or delivery insert fails. A nested
+        transaction confines any delivery failure to its savepoint while the
+        caller retains control of the surrounding business transaction.
+        """
+
+        try:
+            async with db.begin_nested():
+                return await NotificationService.deliver(
+                    db,
+                    recipients=recipients,
+                    source_type=source_type,
+                    source_id=source_id,
+                    title=title,
+                    preview=preview,
+                    action_path=action_path,
+                    tenant_id=tenant_id,
+                )
+        except Exception:
+            logger.exception(
+                "System notification delivery failed",
+                extra={
+                    "notification_source_type": source_type.value,
+                    "notification_source_id": str(source_id),
+                    "notification_recipient_count": len(recipients),
+                },
+            )
+            return []
 
     @staticmethod
-    async def list_for_actor(db: AsyncSession, *, actor, status: NotificationStatus | None, source_type: str | None, offset: int, limit: int):
+    async def list_for_actor(
+        db: AsyncSession,
+        *,
+        actor,
+        status: NotificationStatus | None,
+        source_type: str | None,
+        offset: int,
+        limit: int,
+    ):
         return await CommunicationRepository.list_notifications(
             db,
             actor_type=actor_type_for(actor),
