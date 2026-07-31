@@ -145,13 +145,14 @@ export const bulkImportService = {
     api.post(`/tenant-admin/imports/${jobId}/slips/print`, payload, requestOptions),
 
   downloadResult: (jobId, { format = "spreadsheet", signal } = {}) => {
-    const safeFormat = format === "slip" ? "slip" : "spreadsheet";
-    const extension = safeFormat === "slip" ? "html" : "xlsx";
-    const label = safeFormat === "slip" ? "student_access_slips" : "result";
+    if (format === "slip") {
+      window.location.assign(`/admin/imports/${jobId}/student-slips`);
+      return Promise.resolve();
+    }
 
     return downloadBlob(
-      `/tenant-admin/imports/${jobId}/result?format=${safeFormat}`,
-      `students_${jobId}_${label}.${extension}`,
+      `/tenant-admin/imports/${jobId}/result?format=spreadsheet`,
+      `students_${jobId}_result.xlsx`,
       signal,
     );
   },
