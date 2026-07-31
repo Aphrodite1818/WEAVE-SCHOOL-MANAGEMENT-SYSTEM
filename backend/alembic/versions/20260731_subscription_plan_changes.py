@@ -19,11 +19,24 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# These enum objects are created explicitly with checkfirst=True below. Keeping
+# create_type=False prevents PostgreSQL from trying to create the same named
+# type again when Alembic creates the table columns.
+subscription_plan = postgresql.ENUM(
+    "free_trial",
+    "plus",
+    "professional",
+    "enterprise",
+    name="subscriptionplan",
+    schema="public",
+    create_type=False,
+)
 plan_change_type = postgresql.ENUM(
     "upgrade",
     "downgrade",
     name="subscription_plan_change_type",
     schema="public",
+    create_type=False,
 )
 plan_change_status = postgresql.ENUM(
     "pending",
@@ -35,6 +48,7 @@ plan_change_status = postgresql.ENUM(
     "failed",
     name="subscription_plan_change_status",
     schema="public",
+    create_type=False,
 )
 
 
@@ -44,6 +58,7 @@ def _table_exists(bind: sa.Connection) -> bool:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    subscription_plan.create(bind, checkfirst=True)
     plan_change_type.create(bind, checkfirst=True)
     plan_change_status.create(bind, checkfirst=True)
 
@@ -56,57 +71,12 @@ def upgrade() -> None:
     op.create_table(
         "subscription_plan_changes",
         sa.Column("subscription_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column(
-            "current_plan_code",
-            sa.Enum(
-                "free_trial",
-                "plus",
-                "professional",
-                "enterprise",
-                name="subscriptionplan",
-                schema="public",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
-        sa.Column(
-            "target_plan_code",
-            sa.Enum(
-                "free_trial",
-                "plus",
-                "professional",
-                "enterprise",
-                name="subscriptionplan",
-                schema="public",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
-        sa.Column(
-            "change_type",
-            sa.Enum(
-                "upgrade",
-                "downgrade",
-                name="subscription_plan_change_type",
-                schema="public",
-                create_type=False,
-            ),
-            nullable=False,
-        ),
+        sa.Column("current_plan_code", subscription_plan, nullable=False),
+        sa.Column("target_plan_code", subscription_plan, nullable=False),
+        sa.Column("change_type", plan_change_type, nullable=False),
         sa.Column(
             "status",
-            sa.Enum(
-                "pending",
-                "blocked",
-                "scheduled",
-                "awaiting_payment",
-                "applied",
-                "cancelled",
-                "failed",
-                name="subscription_plan_change_status",
-                schema="public",
-                create_type=False,
-            ),
+            plan_change_status,
             server_default="pending",
             nullable=False,
         ),
