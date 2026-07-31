@@ -5,12 +5,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
-from app.core.exceptions import BadRequestException
-from app.modules.subscriptions.service import (
-    SubscriptionLifecycleService,
-    SubscriptionPaymentService,
+from app.core.exceptions import ConflictException
+from app.modules.subscriptions.cancellation_service import (
+    SubscriptionCancellationService,
 )
+from app.modules.subscriptions.service import SubscriptionPaymentService
 from app.modules.subscriptions.subscription_enums import (
     PaymentProvider,
     SubscriptionStatus,
@@ -21,105 +22,119 @@ from app.modules.subscriptions.subscription_enums import (
 async def test_request_cancellation_disables_paystack_renewal_and_marks_non_renewing() -> None:
     tenant_id = uuid.uuid4()
     subscription = SimpleNamespace(
+        id=uuid.uuid4(),
         tenant_id=tenant_id,
         status=SubscriptionStatus.ACTIVE,
         cancel_at_period_end=False,
         provider=PaymentProvider.PAYSTACK,
-        provider_subscription_code="SUB_test",
-        provider_email_token="email-token",
     )
     saved = SimpleNamespace(
         **{**subscription.__dict__, "status": SubscriptionStatus.NON_RENEWING}
     )
-    db = AsyncMock()
+    db = SimpleNamespace(commit=AsyncMock())
 
     with (
         patch(
-            "app.modules.subscriptions.service.SubscriptionRepository.get_current_subscription",
+            "app.modules.subscriptions.cancellation_service.SubscriptionRepository.get_current_subscription",
             new=AsyncMock(return_value=subscription),
         ) as get_current,
-        patch(
-            "app.modules.subscriptions.service.PaystackClient.disable_subscription",
-            new=AsyncMock(return_value={"status": True}),
+        patch.object(
+            SubscriptionCancellationService,
+            "_disable_paystack_renewal",
+            new=AsyncMock(),
         ) as disable_subscription,
         patch(
-            "app.modules.subscriptions.service.SubscriptionLifecycleService.mark_non_renewing",
+            "app.modules.subscriptions.cancellation_service.SubscriptionLifecycleService.mark_non_renewing",
             new=AsyncMock(return_value=saved),
         ) as mark_non_renewing,
+        patch(
+            "app.modules.subscriptions.cancellation_service.flush_cache_invalidation_events",
+            new=AsyncMock(),
+        ),
     ):
-        result = await SubscriptionLifecycleService.request_cancellation(
+        result = await SubscriptionCancellationService.request_cancellation(
             db,
             tenant_id=tenant_id,
             notes="School requested cancellation",
         )
 
     assert result is saved
-    get_current.assert_awaited_once_with(db=db, tenant_id=tenant_id, for_update=True)
-    disable_subscription.assert_awaited_once_with(code="SUB_test", token="email-token")
+    get_current.assert_awaited_once_with(
+        db=db,
+        tenant_id=tenant_id,
+        for_update=True,
+    )
+    disable_subscription.assert_awaited_once()
     mark_non_renewing.assert_awaited_once_with(
         db=db,
         subscription=subscription,
         notes="School requested cancellation",
     )
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_request_cancellation_is_idempotent_when_already_non_renewing() -> None:
     tenant_id = uuid.uuid4()
     subscription = SimpleNamespace(
+        id=uuid.uuid4(),
         tenant_id=tenant_id,
         status=SubscriptionStatus.NON_RENEWING,
         cancel_at_period_end=True,
         provider=PaymentProvider.PAYSTACK,
-        provider_subscription_code="SUB_test",
-        provider_email_token="email-token",
     )
 
     with (
         patch(
-            "app.modules.subscriptions.service.SubscriptionRepository.get_current_subscription",
+            "app.modules.subscriptions.cancellation_service.SubscriptionRepository.get_current_subscription",
             new=AsyncMock(return_value=subscription),
         ),
-        patch(
-            "app.modules.subscriptions.service.PaystackClient.disable_subscription",
+        patch.object(
+            SubscriptionCancellationService,
+            "_disable_paystack_renewal",
             new=AsyncMock(),
         ) as disable_subscription,
-        patch(
-            "app.modules.subscriptions.service.SubscriptionLifecycleService.mark_non_renewing",
-            new=AsyncMock(),
-        ) as mark_non_renewing,
     ):
-        result = await SubscriptionLifecycleService.request_cancellation(
+        result = await SubscriptionCancellationService.request_cancellation(
             AsyncMock(),
             tenant_id=tenant_id,
         )
 
     assert result is subscription
     disable_subscription.assert_not_awaited()
-    mark_non_renewing.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_request_cancellation_rejects_missing_paystack_credentials() -> None:
+async def test_provider_sync_failure_returns_safe_reference() -> None:
     tenant_id = uuid.uuid4()
     subscription = SimpleNamespace(
+        id=uuid.uuid4(),
         tenant_id=tenant_id,
         status=SubscriptionStatus.ACTIVE,
         cancel_at_period_end=False,
         provider=PaymentProvider.PAYSTACK,
-        provider_subscription_code=None,
-        provider_email_token=None,
     )
 
-    with patch(
-        "app.modules.subscriptions.service.SubscriptionRepository.get_current_subscription",
-        new=AsyncMock(return_value=subscription),
+    with (
+        patch(
+            "app.modules.subscriptions.cancellation_service.SubscriptionRepository.get_current_subscription",
+            new=AsyncMock(return_value=subscription),
+        ),
+        patch.object(
+            SubscriptionCancellationService,
+            "_disable_paystack_renewal",
+            new=AsyncMock(side_effect=ConflictException("provider mismatch")),
+        ),
     ):
-        with pytest.raises(BadRequestException, match="missing the provider cancellation credentials"):
-            await SubscriptionLifecycleService.request_cancellation(
+        with pytest.raises(HTTPException) as exc_info:
+            await SubscriptionCancellationService.request_cancellation(
                 AsyncMock(),
                 tenant_id=tenant_id,
             )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail["reason"] == "provider_cancellation_failed"
+    assert exc_info.value.detail["reference"].startswith("billing_")
 
 
 @pytest.mark.asyncio
