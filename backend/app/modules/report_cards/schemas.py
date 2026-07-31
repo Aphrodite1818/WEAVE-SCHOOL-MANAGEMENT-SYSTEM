@@ -2,18 +2,26 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.utils.normalization import normalize_class_name
 from app.modules.report_cards.models import ReportCardStatus
 
 
 class InputBase(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, use_enum_values=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        use_enum_values=True,
+    )
 
 
 class OutputBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True,
+        populate_by_name=True,
+    )
 
     @field_validator("class_name", mode="before", check_fields=False)
     @classmethod
@@ -40,8 +48,8 @@ class ReportCardGenerateRequest(InputBase):
 
 
 class ReportCardCommentsUpdate(InputBase):
-    class_teacher_comment: str | None = None
-    principal_comment: str | None = None
+    class_teacher_comment: str | None = Field(default=None, max_length=2000)
+    principal_comment: str | None = Field(default=None, max_length=2000)
 
 
 class ReportCardSubjectLineResponse(OutputBase):
@@ -61,6 +69,11 @@ class ReportCardSubjectLineResponse(OutputBase):
 class ReportCardResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    school_name: str | None = None
+    school_logo_url: str | None = None
+    school_address: str | None = None
+    school_phone: str | None = None
+    school_email: str | None = None
     student_id: uuid.UUID
     student_name: str | None = None
     admission_number: str | None = None
