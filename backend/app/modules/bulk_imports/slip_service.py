@@ -82,14 +82,17 @@ def _full_name(row: dict[str, Any]) -> str:
 
 
 def _class_name(row: dict[str, Any]) -> str:
-    return " ".join(
-        part
-        for part in (
-            str(row.get("class_name") or "").strip(),
-            str(row.get("class_arm") or "").strip(),
+    return (
+        " ".join(
+            part
+            for part in (
+                str(row.get("class_name") or "").strip(),
+                str(row.get("class_arm") or "").strip(),
+            )
+            if part
         )
-        if part
-    ) or "Unassigned"
+        or "Unassigned"
+    )
 
 
 def _class_key(row: dict[str, Any]) -> str:
@@ -117,9 +120,13 @@ class StudentSlipService:
         if import_job is None:
             raise NotFoundException(detail="Import job not found")
         if import_job.resource_type != ImportResourceType.STUDENTS:
-            raise BadRequestException(detail="Student slips are only available for student imports.")
+            raise BadRequestException(
+                detail="Student slips are only available for student imports."
+            )
         if import_job.status not in _ALLOWED_JOB_STATUSES:
-            raise ConflictException(detail="Student slips are available only after import processing finishes.")
+            raise ConflictException(
+                detail="Student slips are available only after import processing finishes."
+            )
 
         metadata = dict(import_job.metadata_json or {})
         if metadata.get("dry_run"):
@@ -173,9 +180,7 @@ class StudentSlipService:
             class_name=_class_name(row),
             setup_code_available=bool(redacted.get("setup_code_available")),
             access_code_expires_at=_parse_datetime(row.get("access_code_expires_at")),
-            credentials_available_until=_parse_datetime(
-                row.get(SETUP_CODE_AVAILABLE_UNTIL_FIELD)
-            ),
+            credentials_available_until=_parse_datetime(row.get(SETUP_CODE_AVAILABLE_UNTIL_FIELD)),
         )
 
     @staticmethod
@@ -331,11 +336,7 @@ class StudentSlipService:
 
         if payload.mode == "selected":
             selected = set(payload.row_numbers)
-            scoped_rows = [
-                row
-                for row in rows
-                if int(row.get("row_number") or 0) in selected
-            ]
+            scoped_rows = [row for row in rows if int(row.get("row_number") or 0) in selected]
             found = {int(row.get("row_number") or 0) for row in scoped_rows}
             if selected - found:
                 raise NotFoundException(
