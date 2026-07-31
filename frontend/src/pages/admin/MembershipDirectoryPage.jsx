@@ -163,6 +163,18 @@ function MembershipDirectoryPage({ role }) {
     loadPage();
   }, [loadPage]);
 
+  useEffect(() => {
+    if (activeTab === "requests") return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearch(draftSearch);
+      setAppliedStatus(draftStatus);
+    }, draftSearch.trim() ? 250 : 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeTab, draftSearch, draftStatus]);
+
   const selectTab = (tabId) => {
     const nextStatus = defaultStatusForTab(tabId);
     setActiveTab(tabId);
@@ -171,13 +183,6 @@ function MembershipDirectoryPage({ role }) {
     setAppliedSearch("");
     setDraftStatus(nextStatus);
     setAppliedStatus(nextStatus);
-  };
-
-  const applyFilters = (event) => {
-    event.preventDefault();
-    setPage(1);
-    setAppliedSearch(draftSearch);
-    setAppliedStatus(draftStatus);
   };
 
   const clearFilters = () => {
@@ -412,7 +417,7 @@ function MembershipDirectoryPage({ role }) {
         </div>
 
         {activeTab !== "requests" ? (
-          <form onSubmit={applyFilters} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]">
+          <form onSubmit={(event) => event.preventDefault()} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <Input value={draftSearch} onChange={(event) => setDraftSearch(event.target.value)} placeholder={activeTab === "memberships" ? `Search ${role} email or name` : "Search invited email"} className="pl-11" />
@@ -421,8 +426,7 @@ function MembershipDirectoryPage({ role }) {
               <option value="">All statuses</option>
               {statusOptions.map((status) => <option key={status} value={status}>{titleCase(status)}</option>)}
             </select>
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="submit" size="small">Apply</Button>
+            <div className="grid gap-2">
               <Button type="button" variant="outline" size="small" onClick={clearFilters}>Clear</Button>
             </div>
           </form>

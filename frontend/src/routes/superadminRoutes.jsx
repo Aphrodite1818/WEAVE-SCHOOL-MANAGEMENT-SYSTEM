@@ -11,6 +11,7 @@ import AnnouncementManagementPage from "../pages/shared/AnnouncementManagementPa
 import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
 import MessagesPage from "../pages/shared/MessagesPage";
 import RoleGuard from "./RoleGuard";
+import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
 export const superadminRoutes = (
   <Route element={<RoleGuard allowedRoles={["SUPERADMIN"]} />}>
@@ -21,7 +22,7 @@ export const superadminRoutes = (
       <Route path="/superadmin/usage" element={<SuperadminTenantUsagePage />} />
       <Route path="/superadmin/traffic" element={<SuperadminTrafficMonitorPage />} />
       <Route path="/superadmin/inbox" element={<CommunicationInboxPage />} />
-      <Route path="/superadmin/messages" element={<MessagesPage />} />
+      <Route path="/superadmin/messages" element={<RuntimeFeatureRoute feature="messaging" role="superadmin"><MessagesPage /></RuntimeFeatureRoute>} />
       <Route path="/superadmin/announcements" element={<AnnouncementManagementPage mode="superadmin" />} />
       <Route path="/superadmin/settings" element={<SuperadminSettingsPage />} />
     </Route>

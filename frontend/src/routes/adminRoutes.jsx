@@ -25,6 +25,7 @@ import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import BulkImportRouteGuard from "./BulkImportRouteGuard";
 import RoleGuard from "./RoleGuard";
+import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
 const protectedWorkflow = (element) => (
   <PullRefreshBoundary>{element}</PullRefreshBoundary>
@@ -49,13 +50,13 @@ export const adminRoutes = (
       <Route path="/admin/imports" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route path="/admin/imports/:step" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route path="/admin/imports/:step/:jobId" element={protectedWorkflow(<BulkImportRouteGuard />)} />
-      <Route path="/admin/attendance" element={protectedWorkflow(<AttendancePage />)} />
+      <Route path="/admin/attendance" element={<RuntimeFeatureRoute feature="attendance" role="admin">{protectedWorkflow(<AttendancePage />)}</RuntimeFeatureRoute>} />
       <Route path="/admin/academic" element={<AcademicHubOverviewPage />} />
       <Route path="/admin/academic/:workflow" element={protectedWorkflow(<AcademicWorkflowPage />)} />
       <Route path="/admin/billing" element={<BillingPage />} />
       <Route path="/admin/usage" element={<UsagePage />} />
       <Route path="/admin/inbox" element={<CommunicationInboxPage />} />
-      <Route path="/admin/messages" element={<MessagesPage />} />
+      <Route path="/admin/messages" element={<RuntimeFeatureRoute feature="messaging" role="admin"><MessagesPage /></RuntimeFeatureRoute>} />
       <Route path="/admin/announcements" element={<AnnouncementManagementPage mode="tenant-admin" />} />
       <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
     </Route>

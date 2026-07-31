@@ -19,6 +19,7 @@ from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
 from app.core.middleware.trusted_proxy import TrustedProxyHeadersMiddleware
+from app.core.runtime_config import router as runtime_config_router
 from app.modules.communications.router import (
     messages_router,
     notifications_router,
@@ -205,6 +206,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+    app.include_router(runtime_config_router, prefix="/api/v1")
     app.include_router(superadmin_router, prefix="/api/v1")
     app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
     app.include_router(media_router, prefix="/api/v1/tenant-admin")

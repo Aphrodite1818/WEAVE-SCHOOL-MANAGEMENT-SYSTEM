@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 
 import SubscriptionProvider from "../features/subscriptions/SubscriptionProvider";
 import { APP_NAVIGATE_EVENT, NAVIGATION_ABORT_EVENT } from "../services/api";
+import { loadRuntimeConfig } from "../services/runtimeConfigService";
 import ProtectedRoute from "./ProtectedRoute";
 import { adminRoutes } from "./adminRoutes";
 import { parentRoutes } from "./parentRoutes";
@@ -38,6 +39,10 @@ function RouteChangeAbortBridge() {
     window.addEventListener(APP_NAVIGATE_EVENT, handleAppNavigation);
     return () => window.removeEventListener(APP_NAVIGATE_EVENT, handleAppNavigation);
   }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    loadRuntimeConfig();
+  }, []);
 
   return null;
 }

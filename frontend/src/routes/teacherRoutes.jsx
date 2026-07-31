@@ -15,6 +15,7 @@ import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import SchoolSwitchPage from "../pages/shared/SchoolSwitchPage";
 import MembershipScopeGuard from "./MembershipScopeGuard";
 import RoleGuard from "./RoleGuard";
+import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
 export const teacherRoutes = (
   <Route element={<RoleGuard allowedRoles={["TEACHER"]} />}>
@@ -29,11 +30,11 @@ export const teacherRoutes = (
         <Route path="/teacher/classes" element={<TeacherClassesPage />} />
         <Route path="/teacher/students" element={<TeacherStudentsPage />} />
         <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />
-        <Route path="/teacher/attendance" element={<TeacherAttendancePage />} />
+        <Route path="/teacher/attendance" element={<RuntimeFeatureRoute feature="attendance" role="teacher"><TeacherAttendancePage /></RuntimeFeatureRoute>} />
         <Route path="/teacher/score-entry" element={<TeacherResultsPage />} />
         <Route path="/teacher/calendar" element={<SchoolCalendarPage role="teacher" />} />
         <Route path="/teacher/inbox" element={<CommunicationInboxPage />} />
-        <Route path="/teacher/messages" element={<MessagesPage />} />
+        <Route path="/teacher/messages" element={<RuntimeFeatureRoute feature="messaging" role="teacher"><MessagesPage /></RuntimeFeatureRoute>} />
         <Route path="/teacher/settings" element={<RoleSettingsPage role="teacher" />} />
       </Route>
     </Route>

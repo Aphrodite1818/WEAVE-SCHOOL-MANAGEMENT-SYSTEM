@@ -352,6 +352,15 @@ function StudentDirectoryPage() {
     loadStudents();
   }, [loadStudents]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setAppliedFilters({ ...draftFilters });
+    }, draftFilters.search.trim() ? 250 : 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [draftFilters]);
+
   const refresh = async () => {
     await loadStudents();
   };
@@ -567,12 +576,6 @@ function StudentDirectoryPage() {
     }
   };
 
-  const applyFilters = (event) => {
-    event.preventDefault();
-    setPage(1);
-    setAppliedFilters({ ...draftFilters });
-  };
-
   const clearFilters = () => {
     setDraftFilters(EMPTY_FILTERS);
     setAppliedFilters(EMPTY_FILTERS);
@@ -611,7 +614,7 @@ function StudentDirectoryPage() {
       </div>
 
       <Card className="p-4 sm:p-5">
-        <form onSubmit={applyFilters} className="grid gap-3 md:grid-cols-4 xl:grid-cols-5">
+        <form onSubmit={(event) => event.preventDefault()} className="grid gap-3 md:grid-cols-4 xl:grid-cols-5">
           <Input
             label="Search"
             value={draftFilters.search}
@@ -640,8 +643,7 @@ function StudentDirectoryPage() {
             />
             Include archived
           </label>
-          <div className="grid grid-cols-2 gap-2 self-end">
-            <Button type="submit" size="small">Apply</Button>
+          <div className="grid gap-2 self-end">
             <Button type="button" size="small" variant="outline" onClick={clearFilters}>Clear</Button>
           </div>
         </form>

@@ -1080,14 +1080,28 @@ class SubscriptionPaymentService:
         subscription = data.get("subscription")
         if isinstance(subscription, dict):
             return subscription.get("subscription_code") or subscription.get("code")
-        return data.get("subscription_code")
+        if isinstance(subscription, str):
+            return subscription
+        authorization = data.get("authorization")
+        plan = data.get("plan")
+        return (
+            data.get("subscription_code")
+            or (authorization.get("subscription_code") if isinstance(authorization, dict) else None)
+            or (plan.get("subscription_code") if isinstance(plan, dict) else None)
+        )
 
     @staticmethod
     def _extract_email_token(data: dict[str, Any]) -> str | None:
         subscription = data.get("subscription")
         if isinstance(subscription, dict):
             return subscription.get("email_token")
-        return data.get("email_token")
+        authorization = data.get("authorization")
+        plan = data.get("plan")
+        return (
+            data.get("email_token")
+            or (authorization.get("email_token") if isinstance(authorization, dict) else None)
+            or (plan.get("email_token") if isinstance(plan, dict) else None)
+        )
 
     @staticmethod
     def _extract_next_payment_at(data: dict[str, Any]) -> datetime | None:

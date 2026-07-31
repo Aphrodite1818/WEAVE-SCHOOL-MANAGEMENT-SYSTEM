@@ -38,7 +38,11 @@ let refreshTimerId = null;
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
   error?.code === 20 ||
-  error?.isAbortError === true;
+  error?.isAbortError === true ||
+  (
+    typeof error?.message === "string" &&
+    /abort|aborted|cancelled|canceled/i.test(error.message)
+  );
 
 const normalizeDetail = (detail) => {
   if (!detail) return null;

@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import WeaveIcon from "../brand/WeaveIcon";
@@ -22,7 +23,11 @@ function resolveWorkspaceLogo(user) {
   );
 }
 
-function shouldHideNavItem(item, subscription) {
+function shouldHideNavItem(item, subscription, runtimeConfig) {
+  if (item.runtimeFeature && runtimeConfig?.features?.[item.runtimeFeature] === false) {
+    return true;
+  }
+
   if (!item.featureCode) return false;
 
   const featureGuard = subscription.getFeatureGuard(item.featureCode);
@@ -46,6 +51,7 @@ export default function SidebarContent({
 }) {
   const location = useLocation();
   const subscription = useSubscription();
+  const runtimeConfig = useRuntimeConfig();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -60,7 +66,7 @@ export default function SidebarContent({
       ...group,
       items: group.items.filter((item) => {
         if (isAccountScope && !item.accountScope) return false;
-        return !shouldHideNavItem(item, subscription);
+        return !shouldHideNavItem(item, subscription, runtimeConfig);
       }),
     }))
     .filter((group) => group.items.length > 0);

@@ -14,6 +14,7 @@ import {
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
 import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
@@ -32,6 +33,8 @@ function TeacherDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const user = authSession.getUser();
+  const runtimeConfig = useRuntimeConfig();
+  const attendanceEnabled = runtimeConfig?.features?.attendance !== false;
   const firstName = user?.first_name || user?.firstname || "Teacher";
   const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
 
@@ -156,7 +159,7 @@ function TeacherDashboardPage() {
               icon={BookOpen}
               tone="primary"
               primaryAction={{ to: "/teacher/score-entry", label: "Enter scores", icon: Send, disabled: !hasSubjectAssignments }}
-              secondaryAction={{ to: "/teacher/attendance", label: "Attendance", icon: CheckSquare, disabled: !hasClassTeacherClasses }}
+              secondaryAction={attendanceEnabled ? { to: "/teacher/attendance", label: "Attendance", icon: CheckSquare, disabled: !hasClassTeacherClasses } : null}
             >
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Assigned subjects" value={subjectNames.length} />

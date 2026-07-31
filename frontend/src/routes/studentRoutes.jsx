@@ -14,6 +14,7 @@ import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import RoleGuard from "./RoleGuard";
+import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
 export const studentRoutes = (
   <Route element={<RoleGuard allowedRoles={["STUDENT"]} />}>
@@ -27,10 +28,10 @@ export const studentRoutes = (
       <Route path="/student/subjects/:subjectResultId" element={<StudentSubjectDetailsPage />} />
       <Route path="/student/parent-linking" element={<StudentParentLinkingPage />} />
       <Route path="/student/report-cards" element={<StudentReportCardsPage />} />
-      <Route path="/student/attendance" element={<StudentAttendancePage />} />
+      <Route path="/student/attendance" element={<RuntimeFeatureRoute feature="attendance" role="student"><StudentAttendancePage /></RuntimeFeatureRoute>} />
       <Route path="/student/calendar" element={<SchoolCalendarPage role="student" />} />
       <Route path="/student/inbox" element={<CommunicationInboxPage />} />
-      <Route path="/student/messages" element={<MessagesPage />} />
+      <Route path="/student/messages" element={<RuntimeFeatureRoute feature="messaging" role="student"><MessagesPage /></RuntimeFeatureRoute>} />
       <Route path="/student/settings" element={<RoleSettingsPage role="student" />} />
     </Route>
   </Route>

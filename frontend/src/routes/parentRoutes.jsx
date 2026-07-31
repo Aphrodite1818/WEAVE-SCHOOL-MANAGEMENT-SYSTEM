@@ -13,6 +13,7 @@ import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import SchoolSwitchPage from "../pages/shared/SchoolSwitchPage";
 import MembershipScopeGuard from "./MembershipScopeGuard";
 import RoleGuard from "./RoleGuard";
+import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
 export const parentRoutes = (
   <Route element={<RoleGuard allowedRoles={["PARENT"]} />}>
@@ -25,11 +26,11 @@ export const parentRoutes = (
         <Route path="/parent/dashboard" element={<ParentDashboardPage />} />
         <Route path="/parent/student-linking" element={<ParentStudentLinkingPage />} />
         <Route path="/parent/report-cards" element={<ParentReportCardsPage />} />
-        <Route path="/parent/attendance" element={<ParentAttendancePage />} />
+        <Route path="/parent/attendance" element={<RuntimeFeatureRoute feature="attendance" role="parent"><ParentAttendancePage /></RuntimeFeatureRoute>} />
         <Route path="/parent/calendar" element={<SchoolCalendarPage role="parent" />} />
         <Route path="/parent/results" element={<ParentResultsPage />} />
         <Route path="/parent/inbox" element={<CommunicationInboxPage />} />
-        <Route path="/parent/messages" element={<MessagesPage />} />
+        <Route path="/parent/messages" element={<RuntimeFeatureRoute feature="messaging" role="parent"><MessagesPage /></RuntimeFeatureRoute>} />
         <Route path="/parent/settings" element={<RoleSettingsPage role="parent" />} />
       </Route>
     </Route>

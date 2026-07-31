@@ -159,7 +159,12 @@ function BillingPage() {
       setCancelOpen(false);
       setCancelReason("");
     } catch (error) {
-      setCancelError(getErrorMessage(error, "Could not cancel automatic renewal."));
+      const message = getErrorMessage(error, "Could not cancel automatic renewal.");
+      setCancelError(
+        message.includes("missing the provider cancellation credentials")
+          ? "This subscription is missing the Paystack cancellation token. Verify the latest payment/webhook or contact support before promising cancellation."
+          : message,
+      );
     } finally {
       setIsCancelling(false);
     }

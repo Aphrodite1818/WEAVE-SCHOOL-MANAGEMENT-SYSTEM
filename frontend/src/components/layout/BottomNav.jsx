@@ -9,6 +9,7 @@ import {
 import { Link, useLocation } from "react-router-dom";
 import { Bell, Home, Menu, BookOpen, FileText, Building2, ClipboardList, Users, Mail } from "lucide-react";
 import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 
@@ -29,7 +30,7 @@ const isStandalonePwaDisplay = () => {
 const bottomNavConfig = {
   admin: [
     { label: "Academic", to: "/admin/academic", icon: ClipboardList },
-    { label: "Messages", to: "/admin/messages", icon: Mail },
+    { label: "Messages", to: "/admin/messages", icon: Mail, runtimeFeature: "messaging" },
     { label: "Home", to: "/admin/dashboard", icon: Home, isHome: true },
     { label: "Notices", to: "/admin/announcements", icon: Bell },
   ],
@@ -69,6 +70,7 @@ const getIndicatorStyleForElement = (element) => ({
 
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
+  const runtimeConfig = useRuntimeConfig();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -94,9 +96,10 @@ function BottomNav({ role, onOpenMenu }) {
     typeof window === "undefined" ? 0 : window.innerWidth
   );
   const configuredItems = bottomNavConfig[role] || bottomNavConfig.admin;
-  const items = isAccountScope
+  const items = (isAccountScope
     ? configuredItems.filter((item) => item.accountScope)
-    : configuredItems;
+    : configuredItems
+  ).filter((item) => !item.runtimeFeature || runtimeConfig?.features?.[item.runtimeFeature] !== false);
 
   const clearTimer = useCallback((timerRef) => {
     if (!timerRef.current) return;

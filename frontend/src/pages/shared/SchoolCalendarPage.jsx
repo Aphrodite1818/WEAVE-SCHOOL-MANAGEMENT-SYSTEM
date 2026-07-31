@@ -82,6 +82,11 @@ function SchoolCalendarPage({ role = "student" }) {
     () => mondayGridOffset(orderedDays[0]?.calendar_date || orderedDays[0]?.date),
     [orderedDays],
   );
+  const todayRange = useMemo(() => {
+    const today = todayIso();
+    return { start: today, end: addDays(today, 34) };
+  }, []);
+  const isShowingTodayRange = rangeStart === todayRange.start && rangeEnd === todayRange.end;
 
   const loadCalendar = useCallback(async ({ signal, quiet = false, startDate = rangeStart, endDate = rangeEnd } = {}) => {
     if (quiet) setRefreshing(true);
@@ -111,11 +116,12 @@ function SchoolCalendarPage({ role = "student" }) {
   }, [rangeEnd, rangeStart]);
 
   const showTodayRange = () => {
-    const today = todayIso();
-    const endDate = addDays(today, 34);
-    setRangeStart(today);
-    setRangeEnd(endDate);
-    loadCalendar({ quiet: true, startDate: today, endDate });
+    if (isShowingTodayRange) {
+      loadCalendar({ quiet: true });
+      return;
+    }
+    setRangeStart(todayRange.start);
+    setRangeEnd(todayRange.end);
   };
 
   useEffect(() => {
@@ -162,6 +168,7 @@ function SchoolCalendarPage({ role = "student" }) {
                   variant="outline"
                   className="w-full sm:w-auto"
                   onClick={showTodayRange}
+                  disabled={refreshing && isShowingTodayRange}
                 >
                   Today
                 </Button>
