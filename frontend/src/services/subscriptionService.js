@@ -22,6 +22,9 @@ export const subscriptionService = {
   getSubscriptionEntitlements: () =>
     api.get("/subscriptions/entitlements", backgroundAuthOptions),
 
+  getActorEntitlements: () =>
+    api.get("/subscriptions/actor-entitlements", backgroundAuthOptions),
+
   getPaymentHistory: (params = {}) =>
     api.get(`/subscriptions/payments${queryString(params)}`, backgroundAuthOptions),
 
