@@ -103,7 +103,7 @@ jobs:
 
       - name: Check hardening formatting
         run: |
-          uv run ruff format --check \
+          uv run ruff format --check --diff \
             app/modules/subscriptions \
             app/modules/report_cards/print_service.py \
             app/modules/report_cards/router.py \
@@ -122,6 +122,7 @@ jobs:
 
           paths = {route.path for route in app.routes}
           expected = {
+              "/api/v1/subscriptions/actor-entitlements",
               "/api/v1/subscriptions/payments",
               "/api/v1/subscriptions/plan-change/preview",
               "/api/v1/subscriptions/plan-change/current",
