@@ -7,9 +7,12 @@ from fastapi import APIRouter, Depends, Header, Query, Request, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
+    CurrentActor,
+    get_current_actor,
     get_current_superadmin,
     get_current_tenant_admin,
 )
+from app.core.exceptions import ForbiddenException
 from app.modules.subscriptions.cancellation_service import (
     SubscriptionCancellationService,
 )
@@ -51,6 +54,10 @@ CurrentSuperadmin: TypeAlias = Annotated[
     SuperAdmin,
     Depends(get_current_superadmin),
 ]
+CurrentSubscriptionActor: TypeAlias = Annotated[
+    CurrentActor,
+    Depends(get_current_actor),
+]
 
 
 @router.get("/current", response_model=TenantSubscriptionResponse | None)
@@ -72,6 +79,23 @@ async def get_subscription_entitlements(
     return await SubscriptionFeatureService.get_tenant_entitlements(
         db=db,
         tenant_id=current_admin.tenant_id,
+        use_cache=True,
+    )
+
+
+@router.get("/actor-entitlements", response_model=TenantEntitlementsResponse)
+async def get_actor_subscription_entitlements(
+    db: DbSession,
+    current_actor: CurrentSubscriptionActor,
+) -> TenantEntitlementsResponse:
+    tenant_id = getattr(current_actor, "tenant_id", None)
+    if tenant_id is None:
+        raise ForbiddenException(
+            "Select a tenant membership before reading subscription capabilities."
+        )
+    return await SubscriptionFeatureService.get_tenant_entitlements(
+        db=db,
+        tenant_id=tenant_id,
         use_cache=True,
     )
 
@@ -203,9 +227,9 @@ async def verify_subscription_checkout(
 
         raise NotFoundException("Payment transaction not found.")
     if transaction.tenant_id != current_admin.tenant_id:
-        from app.core.exceptions import ForbiddenException
+        from app.core.exceptions import ForbiddenException as AccessForbidden
 
-        raise ForbiddenException(
+        raise AccessForbidden(
             "You do not have access to this subscription verification result."
         )
 
