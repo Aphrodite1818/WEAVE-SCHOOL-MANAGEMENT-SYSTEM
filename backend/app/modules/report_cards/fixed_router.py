@@ -23,7 +23,8 @@ router = APIRouter(
 )
 
 CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
+    TenantAdmin,
+    Depends(get_current_tenant_admin),
 ]
 
 
@@ -36,10 +37,15 @@ async def generate_report_card(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ReportCardResponse | ReportCardBulkGenerateResponse:
+    feature = (
+        FeatureCode.BULK_ACADEMIC_OPERATIONS
+        if payload.class_id is not None
+        else FeatureCode.REPORT_CARDS
+    )
     await SubscriptionFeatureService.ensure_feature_enabled(
         db=db,
         tenant_id=current_admin.tenant_id,
-        feature=FeatureCode.REPORT_CARDS,
+        feature=feature,
     )
     return await EnrollmentReportCardService.generate(db, current_admin, payload)
 
