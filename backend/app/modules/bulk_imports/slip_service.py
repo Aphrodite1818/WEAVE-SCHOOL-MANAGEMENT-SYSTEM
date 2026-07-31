@@ -92,6 +92,13 @@ def _class_name(row: dict[str, Any]) -> str:
     ) or "Unassigned"
 
 
+def _class_key(row: dict[str, Any]) -> str:
+    class_id = _parse_uuid(row.get("class_id"))
+    if class_id is not None:
+        return f"id:{class_id}"
+    return f"name:{_normalize_search(_class_name(row))}"
+
+
 class StudentSlipService:
     """Serve searchable and printable slips from encrypted import results."""
 
@@ -135,9 +142,9 @@ class StudentSlipService:
         row: dict[str, Any],
         *,
         search: str | None,
-        class_id: uuid.UUID | None,
+        class_key: str | None,
     ) -> bool:
-        if class_id is not None and _parse_uuid(row.get("class_id")) != class_id:
+        if class_key and _class_key(row) != class_key:
             return False
         query = _normalize_search(search)
         if not query:
@@ -161,6 +168,7 @@ class StudentSlipService:
             student_id=_parse_uuid(row.get("student_id")),
             full_name=_full_name(row),
             admission_number=str(row.get("admission_number") or "--"),
+            class_key=_class_key(row),
             class_id=_parse_uuid(row.get("class_id")),
             class_name=_class_name(row),
             setup_code_available=bool(redacted.get("setup_code_available")),
@@ -203,13 +211,13 @@ class StudentSlipService:
             actor=actor,
             job_id=job_id,
         )
-        class_counts: dict[tuple[uuid.UUID | None, str], int] = {}
+        class_counts: dict[tuple[str, uuid.UUID | None, str], int] = {}
         printable = 0
         available_until_values: list[datetime] = []
         for row in rows:
             item = StudentSlipService._list_item(row)
-            class_key = (item.class_id, item.class_name)
-            class_counts[class_key] = class_counts.get(class_key, 0) + 1
+            group_key = (item.class_key, item.class_id, item.class_name)
+            class_counts[group_key] = class_counts.get(group_key, 0) + 1
             if item.setup_code_available:
                 printable += 1
             if item.credentials_available_until is not None:
@@ -217,13 +225,14 @@ class StudentSlipService:
 
         classes = [
             StudentSlipClassSummary(
+                class_key=class_key,
                 class_id=class_id,
                 class_name=class_name,
                 count=count,
             )
-            for (class_id, class_name), count in sorted(
+            for (class_key, class_id, class_name), count in sorted(
                 class_counts.items(),
-                key=lambda item: item[0][1].casefold(),
+                key=lambda item: item[0][2].casefold(),
             )
         ]
         return StudentSlipSummaryResponse(
@@ -248,7 +257,7 @@ class StudentSlipService:
         actor: TenantAdmin,
         job_id: uuid.UUID,
         search: str | None,
-        class_id: uuid.UUID | None,
+        class_key: str | None,
         page: int,
         page_size: int,
     ) -> StudentSlipListResponse:
@@ -260,7 +269,11 @@ class StudentSlipService:
         filtered = [
             row
             for row in rows
-            if StudentSlipService._matches(row, search=search, class_id=class_id)
+            if StudentSlipService._matches(
+                row,
+                search=search,
+                class_key=class_key,
+            )
         ]
         start = (page - 1) * page_size
         page_rows = filtered[start : start + page_size]
@@ -324,8 +337,7 @@ class StudentSlipService:
                 if int(row.get("row_number") or 0) in selected
             ]
             found = {int(row.get("row_number") or 0) for row in scoped_rows}
-            missing = sorted(selected - found)
-            if missing:
+            if selected - found:
                 raise NotFoundException(
                     detail="One or more selected slips do not belong to this import job."
                 )
@@ -336,7 +348,7 @@ class StudentSlipService:
                 if StudentSlipService._matches(
                     row,
                     search=payload.search,
-                    class_id=payload.class_id,
+                    class_key=payload.class_key,
                 )
             ]
         else:
