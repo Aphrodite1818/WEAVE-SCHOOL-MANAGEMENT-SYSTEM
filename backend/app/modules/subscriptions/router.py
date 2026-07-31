@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, Request, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_superadmin, get_current_tenant_admin
+from app.modules.subscriptions.cancellation_service import SubscriptionCancellationService
 from app.modules.subscriptions.schemas import (
     SubscriptionCancellationRequest,
     SubscriptionCheckoutCreate,
@@ -60,7 +61,7 @@ async def cancel_current_subscription(
     current_admin: CurrentTenantAdmin,
 ) -> TenantSubscriptionResponse:
     _ = payload.confirmation
-    subscription = await SubscriptionLifecycleService.request_cancellation(
+    subscription = await SubscriptionCancellationService.request_cancellation(
         db=db,
         tenant_id=current_admin.tenant_id,
         notes=payload.reason,
@@ -104,7 +105,9 @@ async def verify_subscription_checkout(
     if transaction.tenant_id != current_admin.tenant_id:
         from app.core.exceptions import ForbiddenException
 
-        raise ForbiddenException("You do not have access to this subscription verification result.")
+        raise ForbiddenException(
+            "You do not have access to this subscription verification result."
+        )
 
     response = await SubscriptionPaymentService.verify_subscription_checkout(
         db=db,
