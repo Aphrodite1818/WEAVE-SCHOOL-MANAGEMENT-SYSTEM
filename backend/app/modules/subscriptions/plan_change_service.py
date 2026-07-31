@@ -94,9 +94,13 @@ class SubscriptionPlanChangeService:
         current_plan = coerce_subscription_plan(subscription.plan_code)
         target_plan = coerce_subscription_plan(target_plan_code)
         if target_plan == SubscriptionPlan.FREE_TRIAL:
-            raise BadRequestException("A paid subscription cannot downgrade to a new free trial.")
+            raise BadRequestException(
+                "A paid subscription cannot downgrade to a new free trial."
+            )
         if target_plan == current_plan:
-            raise BadRequestException("The selected plan is already your current plan.")
+            raise BadRequestException(
+                "The selected plan is already your current plan."
+            )
 
         usage, blockers = await SubscriptionPlanChangeService._usage_and_blockers(
             db,
@@ -142,7 +146,9 @@ class SubscriptionPlanChangeService:
                 "message": "Your school exceeds the selected plan limits.",
                 "target_plan": target_plan.value,
                 "usage": {item.value: count for item, count in usage.items()},
-                "blockers": [item.model_dump(mode="json") for item in blockers],
+                "blockers": [
+                    item.model_dump(mode="json") for item in blockers
+                ],
                 "reason": "plan_change_blocked",
             },
         )
@@ -173,18 +179,17 @@ class SubscriptionPlanChangeService:
         )
         if subscription is None:
             raise NotFoundException("No current subscription was found.")
-        if subscription.status not in {
-            SubscriptionStatus.ACTIVE,
-            SubscriptionStatus.GRACE_PERIOD,
-        }:
+        if subscription.status != SubscriptionStatus.ACTIVE:
             raise ConflictException(
-                "A downgrade can only be scheduled from an active paid subscription."
+                "A downgrade can only be scheduled from an active paid subscription. Resolve any failed payment first."
             )
 
         current_plan = coerce_subscription_plan(subscription.plan_code)
         target_plan = coerce_subscription_plan(target_plan_code)
         if target_plan == SubscriptionPlan.FREE_TRIAL:
-            raise BadRequestException("A paid subscription cannot return to a free trial.")
+            raise BadRequestException(
+                "A paid subscription cannot return to a free trial."
+            )
         if PLAN_RANK[target_plan] >= PLAN_RANK[current_plan]:
             raise BadRequestException(
                 "Use checkout for upgrades. This endpoint schedules lower plans only."
@@ -217,7 +222,9 @@ class SubscriptionPlanChangeService:
                 detail={
                     "message": "Your school exceeds the selected plan limits.",
                     "target_plan": target_plan.value,
-                    "blockers": [item.model_dump(mode="json") for item in blockers],
+                    "blockers": [
+                        item.model_dump(mode="json") for item in blockers
+                    ],
                     "reason": "plan_change_blocked",
                 },
             )
@@ -229,7 +236,10 @@ class SubscriptionPlanChangeService:
         subscription = await SubscriptionCancellationService.request_cancellation(
             db,
             tenant_id=tenant_id,
-            notes=f"Automatic renewal disabled for scheduled downgrade to {target_plan.value}.",
+            notes=(
+                "Automatic renewal disabled for scheduled downgrade to "
+                f"{target_plan.value}."
+            ),
             commit=False,
         )
         plan_change = await SubscriptionRepository.create_plan_change(
@@ -285,12 +295,16 @@ class SubscriptionPlanChangeService:
         if (
             pending is None
             or pending.target_plan_code != target_plan
-            or pending.status != SubscriptionPlanChangeStatus.AWAITING_PAYMENT
+            or pending.status
+            != SubscriptionPlanChangeStatus.AWAITING_PAYMENT
         ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
-                    "message": "Schedule this downgrade first. Payment for the lower plan is accepted after the current paid period ends.",
+                    "message": (
+                        "Schedule this downgrade first. Payment for the lower "
+                        "plan is accepted after the current paid period ends."
+                    ),
                     "target_plan": target_plan.value,
                     "reason": "downgrade_must_be_scheduled",
                 },
@@ -308,10 +322,15 @@ class SubscriptionPlanChangeService:
             db,
             tenant_id=tenant_id,
         )
-        if pending is None or pending.change_type != SubscriptionPlanChangeType.DOWNGRADE:
+        if (
+            pending is None
+            or pending.change_type != SubscriptionPlanChangeType.DOWNGRADE
+        ):
             return current_limit
 
-        target_limit = get_plan_entitlements(pending.target_plan_code).limits.get(resource)
+        target_limit = get_plan_entitlements(
+            pending.target_plan_code
+        ).limits.get(resource)
         if current_limit is None:
             return target_limit
         if target_limit is None:
@@ -351,10 +370,12 @@ class SubscriptionPlanChangeService:
             as_of=now,
             limit=limit,
         ):
-            usage, blockers = await SubscriptionPlanChangeService._usage_and_blockers(
-                db,
-                tenant_id=change.tenant_id,
-                target_plan=change.target_plan_code,
+            usage, blockers = (
+                await SubscriptionPlanChangeService._usage_and_blockers(
+                    db,
+                    tenant_id=change.tenant_id,
+                    target_plan=change.target_plan_code,
+                )
             )
             change.usage_snapshot_json = {
                 resource.value: count for resource, count in usage.items()
