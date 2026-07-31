@@ -6,7 +6,8 @@ import ParentResultsPage from "../pages/parent/ParentResultsPage";
 import ParentStudentLinkingPage from "../pages/parent/ParentStudentLinkingPage";
 import ParentReportCardsPage from "../pages/parent/ParentReportCardsPage";
 import ParentAttendancePage from "../pages/parent/ParentAttendancePage";
-import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
+import MessagesPage from "../pages/shared/MessagesPage";
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import SchoolSwitchPage from "../pages/shared/SchoolSwitchPage";
@@ -27,7 +28,8 @@ export const parentRoutes = (
         <Route path="/parent/attendance" element={<ParentAttendancePage />} />
         <Route path="/parent/calendar" element={<SchoolCalendarPage role="parent" />} />
         <Route path="/parent/results" element={<ParentResultsPage />} />
-        <Route path="/parent/notices" element={<AnnouncementsWorkspacePage mode="parent" />} />
+        <Route path="/parent/inbox" element={<CommunicationInboxPage />} />
+        <Route path="/parent/messages" element={<MessagesPage />} />
         <Route path="/parent/settings" element={<RoleSettingsPage role="parent" />} />
       </Route>
     </Route>

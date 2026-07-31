@@ -521,9 +521,12 @@ function MembershipDirectoryPage({ role }) {
         </section>
       )}
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" size="small" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-4 w-4" />Previous</Button>
-        <Button type="button" size="small" variant="outline" disabled={page >= pageCount || loading} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next<ChevronRight className="h-4 w-4" /></Button>
+      <div className="mobile-list-pagination flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-text-muted sm:hidden">Page {page}/{pageCount}</span>
+        <div className="ml-auto grid grid-cols-2 gap-2 sm:flex">
+          <Button type="button" size="small" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-4 w-4" />Previous</Button>
+          <Button type="button" size="small" variant="outline" disabled={page >= pageCount || loading} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next<ChevronRight className="h-4 w-4" /></Button>
+        </div>
       </div>
 
       <Modal open={Boolean(lifecycleState)} title={lifecycleState ? `${titleCase(lifecycleState.action)} membership` : "Membership lifecycle"} description="This changes access to this school only; the global account remains intact." onClose={() => !actionId && setLifecycleState(null)} closeOnOverlay={!actionId}>

@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bell, Home, Menu, BookOpen, FileText, Building2, ClipboardList, Users } from "lucide-react";
+import { Bell, Home, Menu, BookOpen, FileText, Building2, ClipboardList, Users, Mail } from "lucide-react";
 import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
@@ -29,6 +29,7 @@ const isStandalonePwaDisplay = () => {
 const bottomNavConfig = {
   admin: [
     { label: "Academic", to: "/admin/academic", icon: ClipboardList },
+    { label: "Messages", to: "/admin/messages", icon: Mail },
     { label: "Home", to: "/admin/dashboard", icon: Home, isHome: true },
     { label: "Notices", to: "/admin/announcements", icon: Bell },
   ],

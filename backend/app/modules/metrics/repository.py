@@ -8,11 +8,14 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.modules.announcements.models import (
+from app.modules.communications.enums import (
+    CommunicationActorType,
+    NotificationSourceType,
+    NotificationStatus,
+)
+from app.modules.communications.models import (
     Announcement,
-    AnnouncementActorType,
-    AnnouncementRead,
-    AnnouncementReadStatus,
+    NotificationDelivery,
 )
 from app.modules.classes.models import ClassRoom
 from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus
@@ -432,7 +435,7 @@ class MetricsRepository:
                 await db.execute(
                     select(Announcement.id).where(
                         Announcement.tenant_id == tenant_id,
-                        Announcement.created_by_actor_type == AnnouncementActorType.TEACHER,
+                        Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
                         Announcement.created_by_actor_id == teacher_id,
                     )
                 )
@@ -453,7 +456,7 @@ class MetricsRepository:
                 select(Announcement.category, func.count(Announcement.id))
                 .where(
                     Announcement.tenant_id == tenant_id,
-                    Announcement.created_by_actor_type == AnnouncementActorType.TEACHER,
+                    Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
                     Announcement.created_by_actor_id == teacher_id,
                 )
                 .group_by(Announcement.category)
@@ -467,18 +470,56 @@ class MetricsRepository:
         *,
         tenant_id: uuid.UUID,
         announcement_ids: list[uuid.UUID],
-        statuses: list[AnnouncementReadStatus],
+        statuses: list[NotificationStatus],
     ) -> int:
         if not announcement_ids:
             return 0
 
         return await MetricsRepository.count(
             db,
-            AnnouncementRead,
-            AnnouncementRead.tenant_id == tenant_id,
-            AnnouncementRead.announcement_id.in_(announcement_ids),
-            AnnouncementRead.status.in_(statuses),
+            NotificationDelivery,
+            NotificationDelivery.tenant_id == tenant_id,
+            NotificationDelivery.source_type == NotificationSourceType.ANNOUNCEMENT,
+            NotificationDelivery.source_id.in_(announcement_ids),
+            NotificationDelivery.status.in_(statuses),
         )
+
+    @staticmethod
+    async def notification_summary_for_actor(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        actor_type: CommunicationActorType,
+        actor_id: uuid.UUID,
+    ) -> tuple[int, int, list[LabelCount]]:
+        rows = (
+            await db.execute(
+                select(
+                    NotificationDelivery.source_type,
+                    NotificationDelivery.status,
+                    func.count(NotificationDelivery.id),
+                )
+                .where(
+                    NotificationDelivery.tenant_id == tenant_id,
+                    NotificationDelivery.recipient_actor_type == actor_type,
+                    NotificationDelivery.recipient_actor_id == actor_id,
+                    NotificationDelivery.status != NotificationStatus.DISMISSED,
+                )
+                .group_by(NotificationDelivery.source_type, NotificationDelivery.status)
+            )
+        ).all()
+        total = 0
+        read_count = 0
+        by_source: dict[object, int] = {}
+        for source_type, status, count in rows:
+            value = int(count or 0)
+            total += value
+            if status in {NotificationStatus.READ, NotificationStatus.ACKNOWLEDGED}:
+                read_count += value
+            by_source[source_type] = by_source.get(source_type, 0) + value
+        return total, read_count, [
+            LabelCount(label=label, value=value) for label, value in by_source.items()
+        ]
 
     @staticmethod
     async def submitted_results_for_student(

@@ -15,7 +15,6 @@ from app.core.queue.arq import (  # noqa: E402
     SESSION_PROGRESSION_QUEUE_NAME,
     get_arq_redis_settings,
 )
-from app.modules.announcements.models import AnnouncementPriority  # noqa: E402
 from app.modules.student_academics.lifecycle_repository import (  # noqa: E402
     StudentProgressionRepository,
 )
@@ -87,7 +86,7 @@ async def process_session_progression_job(
                         "The session remains in closing and academic writes remain paused. "
                         f"Review the progression status before retrying. Reason: {str(failure_exception)[:500]}"
                     ),
-                    priority=AnnouncementPriority.URGENT,
+                    priority="urgent",
                 )
             await failure_db.commit()
         raise failure_exception

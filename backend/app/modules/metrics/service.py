@@ -5,8 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.core.cache.manager import CacheManager
-from app.modules.announcements.models import AnnouncementReadStatus
-from app.modules.announcements.service import AnnouncementService
+from app.modules.communications.enums import CommunicationActorType, NotificationStatus
 from app.modules.classes.models import ClassRoom
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
@@ -540,13 +539,13 @@ class MetricsService:
                 db,
                 tenant_id=tenant_id,
                 announcement_ids=own_announcement_ids,
-                statuses=[AnnouncementReadStatus.READ, AnnouncementReadStatus.ACKNOWLEDGED],
+                statuses=[NotificationStatus.READ, NotificationStatus.ACKNOWLEDGED],
             )
             ack_count = await MetricsRepository.announcement_read_count(
                 db,
                 tenant_id=tenant_id,
                 announcement_ids=own_announcement_ids,
-                statuses=[AnnouncementReadStatus.ACKNOWLEDGED],
+                statuses=[NotificationStatus.ACKNOWLEDGED],
             )
             category_rows = await MetricsRepository.teacher_announcement_category_counts(
                 db,
@@ -646,10 +645,16 @@ class MetricsService:
         parent: Parent,
     ) -> DashboardMetricsResponse:
         async def fetch_dashboard() -> DashboardMetricsResponse:
-            feed_total, read_count, category_counts = await AnnouncementService.feed_summary(
+            feed_total, read_count, category_rows = await MetricsRepository.notification_summary_for_actor(
                 db,
-                actor=parent,
+                tenant_id=parent.tenant_id,
+                actor_type=CommunicationActorType.PARENT,
+                actor_id=parent.id,
             )
+            category_counts = {
+                MetricsService._enum_label(row.label): row.value
+                for row in category_rows
+            }
             link_counts = await MetricsService._parent_link_counts(db, parent)
             return await MetricsService._personal_announcement_metrics(
                 feed_total=feed_total,
@@ -669,10 +674,16 @@ class MetricsService:
         student: Student,
     ) -> DashboardMetricsResponse:
         async def fetch_dashboard() -> DashboardMetricsResponse:
-            feed_total, read_count, category_counts = await AnnouncementService.feed_summary(
+            feed_total, read_count, category_rows = await MetricsRepository.notification_summary_for_actor(
                 db,
-                actor=student,
+                tenant_id=student.tenant_id,
+                actor_type=CommunicationActorType.STUDENT,
+                actor_id=student.id,
             )
+            category_counts = {
+                MetricsService._enum_label(row.label): row.value
+                for row in category_rows
+            }
             academic_stats, academic_charts = await MetricsService._student_result_metrics(
                 db,
                 tenant_id=student.tenant_id,

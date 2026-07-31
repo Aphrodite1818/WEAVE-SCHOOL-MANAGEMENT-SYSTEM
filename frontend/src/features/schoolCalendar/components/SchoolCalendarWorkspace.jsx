@@ -8,6 +8,7 @@ import { academicService } from "../../../services/academicService";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Input from "../../../components/ui/Input";
+import Modal from "../../../components/ui/Modal";
 import {
   CheckboxControl,
   SelectControl,
@@ -92,6 +93,9 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   const [eventAudience, setEventAudience] = useState("");
   const [editingEventId, setEditingEventId] = useState("");
   const [editingDay, setEditingDay] = useState(null);
+  const [regenerationPreview, setRegenerationPreview] = useState(null);
+  const [cancelEventTarget, setCancelEventTarget] = useState(null);
+  const [cancelEventReason, setCancelEventReason] = useState("");
   const [dayForm, setDayForm] = useState({
     day_type: "instructional_day",
     title: "",
@@ -249,28 +253,33 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
     runAction("configuration", () => schoolCalendarService.updateConfiguration(configForm), "Calendar configuration saved.");
   };
 
-  const generateCalendar = () => {
-    const isRegeneration = Boolean(selectedCalendar?.generated_at);
-    if (isRegeneration) {
-      const generatedDays = days.filter((day) => !day.is_manual_override).length;
-      const manualOverrides = days.filter((day) => day.is_manual_override).length;
-      const fromRevision = selectedCalendar.generated_from_configuration_revision || "none";
-      const toRevision = configuration?.revision || "current";
-      const confirmed = window.confirm(
-        `Regenerate Calendar?\n\nGenerated days to update: ${generatedDays}\nManual overrides preserved: ${manualOverrides}\nConfiguration revision change: ${fromRevision} -> ${toRevision}`,
-      );
-      if (!confirmed) return;
-    }
+  const executeGenerateCalendar = (overwriteGeneratedDays) => {
     runAction(
       "generate",
       () =>
         schoolCalendarService.generateCalendar({
           academic_session_id: selectedSessionId,
           academic_term_id: selectedTermId,
-          overwrite_generated_days: isRegeneration,
+          overwrite_generated_days: overwriteGeneratedDays,
         }),
       generationResultMessage,
-    );
+    ).then(() => setRegenerationPreview(null));
+  };
+
+  const generateCalendar = () => {
+    const isRegeneration = Boolean(selectedCalendar?.generated_at);
+    if (isRegeneration) {
+      const generatedDays = days.filter((day) => !day.is_manual_override).length;
+      const manualOverrides = days.filter((day) => day.is_manual_override).length;
+      setRegenerationPreview({
+        generatedDays,
+        manualOverrides,
+        fromRevision: selectedCalendar.generated_from_configuration_revision || "none",
+        toRevision: configuration?.revision || "current",
+      });
+      return;
+    }
+    executeGenerateCalendar(false);
   };
 
   const createEmergencyClosure = (event) => {
@@ -470,9 +479,8 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
             runAction("event-action", () => schoolCalendarService.publishEvent(eventId), "Calendar event published.")
           }
           onCancel={(eventId) => {
-            const reason = window.prompt("Reason for cancelling this event");
-            if (!reason) return;
-            runAction("event-action", () => schoolCalendarService.cancelEvent(eventId, reason), "Calendar event cancelled.");
+            setCancelEventTarget(eventId);
+            setCancelEventReason("");
           }}
         />
       ) : null}
@@ -509,6 +517,68 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
           onSubmit={updateDay}
         />
       ) : null}
+
+      <Modal
+        open={Boolean(regenerationPreview)}
+        title="Regenerate calendar"
+        description="Generated school days will be refreshed from the current setup. Manual day changes are preserved."
+        onClose={busy ? undefined : () => setRegenerationPreview(null)}
+        closeOnOverlay={!busy}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setRegenerationPreview(null)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => executeGenerateCalendar(true)}>
+              {saving === "generate" ? "Regenerating..." : "Regenerate calendar"}
+            </Button>
+          </div>
+        }
+      >
+        {regenerationPreview ? (
+          <div className="space-y-2 text-sm text-text-muted">
+            <p>{regenerationPreview.generatedDays} generated day{regenerationPreview.generatedDays === 1 ? "" : "s"} will be refreshed.</p>
+            <p>{regenerationPreview.manualOverrides} manual override{regenerationPreview.manualOverrides === 1 ? "" : "s"} will stay unchanged.</p>
+            <p>Calendar setup version: {regenerationPreview.fromRevision} to {regenerationPreview.toRevision}.</p>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(cancelEventTarget)}
+        title="Cancel calendar event"
+        description="The event will no longer appear as an active school event. Calendar history remains available."
+        onClose={busy ? undefined : () => setCancelEventTarget(null)}
+        closeOnOverlay={!busy}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setCancelEventTarget(null)}>
+              Keep event
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={busy || cancelEventReason.trim().length < 3}
+              onClick={() =>
+                runAction(
+                  "event-action",
+                  () => schoolCalendarService.cancelEvent(cancelEventTarget, cancelEventReason.trim()),
+                  "Calendar event cancelled.",
+                ).then(() => setCancelEventTarget(null))
+              }
+            >
+              {saving === "event-action" ? "Cancelling..." : "Cancel event"}
+            </Button>
+          </div>
+        }
+      >
+        <Input
+          label="Reason"
+          value={cancelEventReason}
+          onChange={(event) => setCancelEventReason(event.target.value)}
+          placeholder="Explain why this event is being cancelled"
+        />
+      </Modal>
     </section>
   );
 }
@@ -718,7 +788,7 @@ function ManageTab({
                 }))}
               />
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="small" variant="outline" onClick={onRefresh} disabled={busy || detailsLoading}>
+                <Button type="button" size="small" variant="outline" className="manual-refresh-action" onClick={onRefresh} disabled={busy || detailsLoading}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh
                 </Button>

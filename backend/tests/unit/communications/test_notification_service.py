@@ -1,0 +1,108 @@
+from __future__ import annotations
+
+import uuid
+from types import SimpleNamespace
+
+import pytest
+
+from app.modules.communications.enums import CommunicationActorType, NotificationStatus
+from app.modules.communications.models import NotificationDelivery
+from app.modules.communications.notification_service import NotificationService
+
+
+@pytest.mark.asyncio
+async def test_notification_status_mutation_is_recipient_scoped(monkeypatch) -> None:
+    actor = SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4())
+    delivery = NotificationDelivery(
+        tenant_id=actor.tenant_id,
+        recipient_actor_type=CommunicationActorType.TENANT_ADMIN,
+        recipient_actor_id=actor.id,
+        source_type="system_event",
+        source_id=uuid.uuid4(),
+        title="Bulk import completed",
+        preview="10 rows imported.",
+    )
+
+    async def get_notification_for_actor(_db, **kwargs):
+        assert kwargs["actor_type"] == CommunicationActorType.TENANT_ADMIN
+        assert kwargs["actor_id"] == actor.id
+        return delivery
+
+    async def save(_db, row):
+        return row
+
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.CommunicationRepository.get_notification_for_actor",
+        get_notification_for_actor,
+    )
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.CommunicationRepository.save",
+        save,
+    )
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.actor_type_for",
+        lambda _actor: CommunicationActorType.TENANT_ADMIN,
+    )
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.actor_tenant_id",
+        lambda item: item.tenant_id,
+    )
+
+    updated = await NotificationService.update_status(
+        None,
+        actor=actor,
+        notification_id=uuid.uuid4(),
+        status=NotificationStatus.ACKNOWLEDGED,
+    )
+
+    assert updated.status == NotificationStatus.ACKNOWLEDGED
+    assert updated.read_at is not None
+    assert updated.acknowledged_at is not None
+
+
+@pytest.mark.asyncio
+async def test_notification_dismissal_does_not_destroy_source(monkeypatch) -> None:
+    actor = SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4())
+    delivery = NotificationDelivery(
+        tenant_id=actor.tenant_id,
+        recipient_actor_type=CommunicationActorType.TENANT_ADMIN,
+        recipient_actor_id=actor.id,
+        source_type="announcement",
+        source_id=uuid.uuid4(),
+        title="School update",
+        preview="Assembly starts at 8.",
+    )
+
+    async def get_notification_for_actor(_db, **_kwargs):
+        return delivery
+
+    async def save(_db, row):
+        return row
+
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.CommunicationRepository.get_notification_for_actor",
+        get_notification_for_actor,
+    )
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.CommunicationRepository.save",
+        save,
+    )
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.actor_type_for",
+        lambda _actor: CommunicationActorType.TENANT_ADMIN,
+    )
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.actor_tenant_id",
+        lambda item: item.tenant_id,
+    )
+
+    updated = await NotificationService.update_status(
+        None,
+        actor=actor,
+        notification_id=delivery.id,
+        status=NotificationStatus.DISMISSED,
+    )
+
+    assert updated.status == NotificationStatus.DISMISSED
+    assert updated.dismissed_at is not None
+    assert updated.source_id == delivery.source_id

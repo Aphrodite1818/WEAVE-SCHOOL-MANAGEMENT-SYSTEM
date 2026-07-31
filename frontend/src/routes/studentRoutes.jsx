@@ -8,7 +8,8 @@ import StudentReportCardsPage from "../pages/student/StudentReportCardsPage";
 import StudentAttendancePage from "../pages/student/StudentAttendancePage";
 import StudentSubjectDetailsPage from "../pages/student/StudentSubjectDetailsPage";
 import StudentSubjectsPage from "../pages/student/StudentSubjectsPage";
-import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
+import MessagesPage from "../pages/shared/MessagesPage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
@@ -28,7 +29,8 @@ export const studentRoutes = (
       <Route path="/student/report-cards" element={<StudentReportCardsPage />} />
       <Route path="/student/attendance" element={<StudentAttendancePage />} />
       <Route path="/student/calendar" element={<SchoolCalendarPage role="student" />} />
-      <Route path="/student/notices" element={<AnnouncementsWorkspacePage mode="student" />} />
+      <Route path="/student/inbox" element={<CommunicationInboxPage />} />
+      <Route path="/student/messages" element={<MessagesPage />} />
       <Route path="/student/settings" element={<RoleSettingsPage role="student" />} />
     </Route>
   </Route>

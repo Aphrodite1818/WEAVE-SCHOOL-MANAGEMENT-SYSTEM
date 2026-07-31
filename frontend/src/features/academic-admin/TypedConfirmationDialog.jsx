@@ -12,8 +12,10 @@ function TypedConfirmationDialog({
   confirmLabel = "Confirm",
   variant = "danger",
   isLoading = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
+  children,
 }) {
   const [value, setValue] = useState("");
 
@@ -38,7 +40,7 @@ function TypedConfirmationDialog({
           <Button
             type="button"
             variant={variant}
-            disabled={isLoading || !matches}
+            disabled={isLoading || !matches || confirmDisabled}
             onClick={onConfirm}
           >
             {isLoading ? "Working..." : confirmLabel}
@@ -57,6 +59,7 @@ function TypedConfirmationDialog({
           autoComplete="off"
           autoFocus
         />
+        {children}
       </div>
     </Modal>
   );

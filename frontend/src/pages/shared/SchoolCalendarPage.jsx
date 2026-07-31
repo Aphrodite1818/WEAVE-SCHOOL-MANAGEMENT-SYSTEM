@@ -168,7 +168,7 @@ function SchoolCalendarPage({ role = "student" }) {
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full sm:w-auto"
+                  className="manual-refresh-action w-full sm:w-auto"
                   onClick={() => loadCalendar({ quiet: true })}
                   disabled={refreshing}
                 >

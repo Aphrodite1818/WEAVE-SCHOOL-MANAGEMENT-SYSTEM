@@ -445,7 +445,7 @@ function DashboardShellFrame({
             id="dashboard-content"
             className={cn(
               "mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pt-4 sm:gap-6 sm:px-5 sm:pt-6 lg:px-8",
-              shouldRenderAiLauncher ? "pb-36 sm:pb-24 lg:pb-28" : "pb-28 sm:pb-12"
+              shouldRenderAiLauncher ? "pb-10 sm:pb-24 lg:pb-28" : "pb-6 sm:pb-12"
             )}
           >
             {(title || description || actions) && (
@@ -457,7 +457,7 @@ function DashboardShellFrame({
                   ) : null}
                 </div>
                 {actions ? (
-                  <div className="flex w-full justify-start md:w-auto md:max-w-full md:justify-end">
+                  <div className="page-header-actions flex w-full justify-start md:w-auto md:max-w-full md:justify-end">
                     {actions}
                   </div>
                 ) : null}

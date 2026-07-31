@@ -121,40 +121,40 @@ const formatMappingError = (error, fallback) => {
 };
 
 const mappingLifecycleConfirmation = (item, action) => {
-  const name = item.subject_name || "Class-subject mapping";
+  const name = item.subject_name || "Subject in class";
   const config = {
     activate: {
-      title: "Activate class-subject mapping",
+      title: "Activate subject for this class",
       confirmationText: CONFIRM_ACTIVATE_CLASS_SUBJECT,
-      confirmLabel: "Activate mapping",
+      confirmLabel: "Activate subject",
       variant: "primary",
       description: item.activation_blocker || name,
     },
     deactivate: {
-      title: "Deactivate class-subject mapping",
+      title: "Deactivate subject for this class",
       confirmationText: CONFIRM_DEACTIVATE_CLASS_SUBJECT,
-      confirmLabel: "Deactivate mapping",
+      confirmLabel: "Deactivate subject",
       variant: "danger",
-      description: name,
+      description: `${name} will stop appearing in new academic work for this class. Existing records remain available.`,
     },
     archive: {
-      title: "Archive class-subject mapping",
+      title: "Archive subject for this class",
       confirmationText: CONFIRM_ARCHIVE_CLASS_SUBJECT,
-      confirmLabel: "Archive mapping",
+      confirmLabel: "Archive subject",
       variant: "danger",
       description: `${name} must already be inactive. Academic history will remain available.`,
     },
     restore: {
-      title: "Restore class-subject mapping",
+      title: "Restore subject for this class",
       confirmationText: CONFIRM_RESTORE_CLASS_SUBJECT,
-      confirmLabel: "Restore mapping",
+      confirmLabel: "Restore subject",
       variant: "primary",
       description: name,
     },
     delete: {
-      title: "Delete class-subject mapping",
+      title: "Remove subject from this class",
       confirmationText: CONFIRM_DELETE_CLASS_SUBJECT,
-      confirmLabel: "Delete mapping",
+      confirmLabel: "Remove subject",
       variant: "danger",
       description: `${name} must be inactive, unarchived, and have no academic history.`,
     },
@@ -349,10 +349,10 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
 
   const mappingEmptyMessage =
     activeTab === "inactive"
-      ? "No inactive mappings are attached to this class."
+      ? "No inactive subjects are attached to this class."
       : activeTab === "archived"
-        ? "No archived mappings are attached to this class."
-        : "No current mappings are attached to this class.";
+        ? "No archived subjects are attached to this class."
+        : "No current subjects are attached to this class.";
 
   const resetClassForm = () => {
     setClassForm(BLANK_CLASS);
@@ -489,10 +489,10 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       if (action === "archive") await academicService.archiveClassSubject(item.id);
       if (action === "restore") await academicService.restoreClassSubject(item.id);
       if (action === "delete") await academicService.deleteClassSubject(item.id);
-      showSuccess(`Class-subject mapping ${action}d.`);
+      showSuccess(`Subject in class ${action}d.`);
       await loadClassSubjects();
     } catch (err) {
-      showError(formatMappingError(err, `Could not ${action} class-subject mapping.`));
+      showError(formatMappingError(err, `Could not ${action} this subject for the class.`));
     } finally {
       setSaving("");
       setPendingMappingConfirmation(null);
@@ -506,11 +506,11 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       await academicService.updateClassSubject(editingMapping.id, {
         is_core: editingMapping.is_core,
       });
-      showSuccess("Class-subject mapping updated.");
+      showSuccess("Subject settings updated for this class.");
       setEditingMapping(null);
       await loadClassSubjects();
     } catch (err) {
-      showError(formatMappingError(err, "Could not update class-subject mapping."));
+      showError(formatMappingError(err, "Could not update this subject for the class."));
     } finally {
       setSaving("");
     }
@@ -1249,8 +1249,8 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       />
       <Modal
         open={Boolean(editingMapping)}
-        title="Edit class-subject mapping"
-        description={editingMapping?.subject_name || "Class-subject mapping"}
+        title="Edit subject in class"
+        description={editingMapping?.subject_name || "Subject in class"}
         onClose={() => setEditingMapping(null)}
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -1284,8 +1284,8 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       </Modal>
       <Modal
         open={Boolean(viewingMapping)}
-        title={viewingMapping?.subject_name || "Class-subject mapping"}
-        description="Archived mapping"
+        title={viewingMapping?.subject_name || "Subject in class"}
+        description="Archived class subject"
         onClose={() => setViewingMapping(null)}
         footer={
           <div className="flex justify-end">
@@ -1308,7 +1308,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
 
   const reviewView = (
     <WorkspacePanel
-      title="Class subject mappings"
+      title="Subjects taught in this class"
       description="Select a class to review the subjects currently attached to it."
     >
       <div className="max-h-[calc(100vh-15rem)] space-y-3 overflow-y-auto pr-2">

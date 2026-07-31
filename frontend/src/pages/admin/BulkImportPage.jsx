@@ -137,8 +137,8 @@ const routeForStep = (nextStep, jobId) => {
 function StepHeader({ step, currentJob, onNavigate }) {
   const activeIndex = Math.max(0, stepOrder.indexOf(step));
   return (
-    <Card className="rounded-lg p-4">
-      <div className="grid gap-4 md:grid-cols-4">
+    <Card className="p-3 sm:p-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
         {stepOrder.map((key, index) => {
           const complete = index < activeIndex;
           const active = index === activeIndex;
@@ -149,7 +149,7 @@ function StepHeader({ step, currentJob, onNavigate }) {
               type="button"
               disabled={!canNavigate}
               onClick={() => onNavigate(key)}
-              className="flex min-w-0 items-center gap-3 rounded-lg p-1 text-left transition hover:bg-surface-muted/40"
+              className="flex min-h-12 min-w-0 items-center gap-2 rounded-xl p-2 text-left transition hover:bg-surface-muted/40 sm:gap-3"
             >
               <span className={[
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ring-1 ring-inset",
@@ -158,7 +158,7 @@ function StepHeader({ step, currentJob, onNavigate }) {
               >
                 {complete ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
               </span>
-              <span className={["truncate text-sm font-semibold", canNavigate ? "text-text" : "text-text-muted"].join(" ")}>
+              <span className={["line-clamp-2 text-xs font-semibold leading-tight sm:text-sm", canNavigate ? "text-text" : "text-text-muted"].join(" ")}>
                 {stepLabels[key]}
               </span>
             </button>
@@ -171,10 +171,10 @@ function StepHeader({ step, currentJob, onNavigate }) {
 
 function MetricCard({ label, value, variant = "default" }) {
   return (
-    <Card className="rounded-lg p-4">
+    <Card className="min-h-[5.75rem] p-3 sm:min-h-[7rem] sm:p-4">
       <p className="text-xs font-semibold uppercase text-text-muted">{label}</p>
       <p className={[
-        "mt-2 text-2xl font-bold",
+        "mt-1 text-xl font-bold sm:mt-2 sm:text-2xl",
         variant === "success" ? "text-success" : variant === "error" ? "text-error" : "text-text",
       ].join(" ")}
       >
@@ -472,7 +472,7 @@ function BulkImportPage() {
   }
 
   const renderUpload = () => (
-    <Card className="rounded-lg p-5">
+    <Card className="p-3 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-text">Start With The Official Template</h2>
@@ -480,18 +480,18 @@ function BulkImportPage() {
             Download the backend-generated XLSX file, keep the headers unchanged, then upload the completed student sheet.
           </p>
         </div>
-        <Button onClick={handleDownloadTemplate} disabled={Boolean(busy)}>
+        <Button className="w-full sm:w-auto" onClick={handleDownloadTemplate} disabled={Boolean(busy)}>
           {busy === "template" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Download student template
         </Button>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">Required: first name, last name, date of birth, and class name. Class arm is optional for classes without an arm.</div>
         <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">One or two parent or guardian emails can be supplied with matching relationship fields.</div>
         <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">Validation checks the template signature, version, headers, classes, dates, emails, and duplicates.</div>
       </div>
       <div
-        className="mt-5 flex min-h-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-surface-muted/30 p-6 text-center focus-within:ring-2 focus-within:ring-primary"
+        className="mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-surface-muted/30 p-4 text-center focus-within:ring-2 focus-within:ring-primary sm:mt-5 sm:min-h-48 sm:p-6"
         onDragOver={(event) => event.preventDefault()}
         onDrop={onDrop}
         onClick={() => fileInputRef.current?.click()}
@@ -531,7 +531,7 @@ function BulkImportPage() {
     const hasErrors = Number(currentJob.failed_rows || 0) > 0;
     return (
       <div className="space-y-5">
-        <Card className="rounded-lg p-5">
+        <Card className="p-3 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-text">Validation Result</h2>
@@ -539,7 +539,7 @@ function BulkImportPage() {
             </div>
             <JobStatusBadge job={currentJob} />
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
             <MetricCard label="Total rows" value={currentJob.total_rows} />
             <MetricCard label="Valid rows" value={currentJob.successful_rows} variant="success" />
             <MetricCard label="Rows with errors" value={currentJob.failed_rows} variant="error" />
@@ -562,7 +562,7 @@ function BulkImportPage() {
     title = "Validation Errors",
     description = "Correct these rows and upload the file again.",
   } = {}) => (
-    <Card className="rounded-lg p-5">
+    <Card className="p-3 sm:p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-text">{title}</h2>
@@ -590,7 +590,7 @@ function BulkImportPage() {
           This job is marked as failed, but no row-level error details were returned. Refresh the page; if it stays this way, check the import job error message in the backend.
         </div>
       )}
-      <div className="mt-4 max-h-[420px] overflow-auto rounded-lg border border-border">
+      <div className="mt-4 max-h-[min(24rem,58dvh)] overflow-auto rounded-xl border border-border sm:max-h-[420px]">
         <table className="min-w-[980px] w-full text-left text-sm">
           <thead className="sticky top-0 border-b border-border bg-surface text-xs uppercase text-text-muted">
             <tr>
@@ -622,7 +622,7 @@ function BulkImportPage() {
   const renderReview = () => {
     if (!currentJob) return <EmptyState title="No dry run selected" description="Validate a file before reviewing the import." />;
     return (
-      <Card className="rounded-lg p-5">
+      <Card className="p-3 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-text">Review Dry Run</h2>
@@ -630,7 +630,7 @@ function BulkImportPage() {
           </div>
           <JobStatusBadge job={currentJob} />
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
           <MetricCard label="Students to create" value={currentJob.successful_rows} variant="success" />
           <MetricCard label="Rows blocked" value={currentJob.failed_rows} variant="error" />
           <MetricCard label="Parent invitations expected" value={expectedParentInvitationCount} />
@@ -653,7 +653,7 @@ function BulkImportPage() {
     const terminal = isTerminalJob(currentJob);
     return (
       <div className="space-y-5">
-        <Card className="rounded-lg p-5">
+        <Card className="p-3 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-text">Processing and Results</h2>
@@ -679,13 +679,13 @@ function BulkImportPage() {
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-surface-muted">
             <div className="h-full rounded-full bg-primary" style={{ width: `${percent(currentJob.processed_rows, currentJob.total_rows)}%` }} />
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
             <MetricCard label="Processed" value={currentJob.processed_rows} />
             <MetricCard label="Created" value={currentJob.successful_rows} variant="success" />
             <MetricCard label="Failed" value={currentJob.failed_rows} variant="error" />
             <MetricCard label="Parent emails queued" value={actualParentInvitationsQueued} />
           </div>
-          <div className="mt-4 grid gap-3 text-sm text-text-muted sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-text-muted sm:gap-3 sm:text-sm lg:grid-cols-4">
             <span>Created: {formatDate(currentJob.created_at)}</span>
             <span>Started: {formatDate(currentJob.started_at || currentJob.metadata_json?.queued_at)}</span>
             <span>Completed: {formatDate(currentJob.completed_at)}</span>
@@ -716,13 +716,13 @@ function BulkImportPage() {
   };
 
   const renderHistory = () => (
-    <Card className="rounded-lg p-5">
+    <Card className="p-3 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-text">Job History</h2>
           <p className="mt-1 text-sm text-text-muted">{jobsTotal} import job{jobsTotal === 1 ? "" : "s"} match the selected status.</p>
         </div>
-        <Button onClick={() => go("upload")}><UploadCloud className="h-4 w-4" /> New student import</Button>
+        <Button className="w-full sm:w-auto" onClick={() => go("upload")}><UploadCloud className="h-4 w-4" /> New student import</Button>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
         <label className="relative block">
@@ -756,20 +756,20 @@ function BulkImportPage() {
           Loading import history...
         </div>
       )}
-      <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto pr-1">
+      <div className="mt-4 grid max-h-[min(28rem,58dvh)] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-[560px] sm:gap-3 lg:grid-cols-2 xl:grid-cols-1">
         {jobs.length === 0 && !historyLoading && <EmptyState title="No imports found" description="Student import jobs will appear here after validation." />}
         {jobs.length > 0 && filteredJobs.length === 0 && (
           <EmptyState title="No matching filenames" description="Clear the search or load another page of history." />
         )}
         {filteredJobs.map((job) => (
-          <div key={job.id} className="rounded-lg border border-border bg-surface p-3">
+          <div key={job.id} className="rounded-xl border border-border bg-surface p-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <button type="button" onClick={() => openHistoryJob(job.id)} className="min-w-0 text-left">
                 <p className="truncate text-sm font-semibold text-text">{job.original_filename}</p>
                 <p className="mt-1 text-xs text-text-muted">{formatDate(job.created_at)} · {job.total_rows || 0} rows · {job.successful_rows || 0} successful · {job.failed_rows || 0} failed</p>
                 {!isStudentJob(job) && <p className="mt-1 text-xs font-semibold text-warning">Historical import type - new imports are no longer supported.</p>}
               </button>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <JobStatusBadge job={job} />
                 <Button variant="outline" size="sm" onClick={() => openHistoryJob(job.id)}>View</Button>
                 {canDeleteJob(job) && (
@@ -784,7 +784,7 @@ function BulkImportPage() {
       </div>
       <div className="mt-4 flex flex-col gap-2 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
         <span>Showing {jobs.length ? historySkip + 1 : 0}-{historySkip + jobs.length} of {jobsTotal}</span>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex">
           <Button
             variant="outline"
             size="sm"
@@ -820,12 +820,12 @@ function BulkImportPage() {
       title="Import Students"
       description="Download the official template, validate the upload, review the dry run, then process in the background."
       actions={(
-        <Button variant="outline" onClick={handleRefresh} disabled={Boolean(busy)}>
+        <Button variant="outline" className="manual-refresh-action" onClick={handleRefresh} disabled={Boolean(busy)}>
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
       )}
     >
-      <div ref={workspaceRef} className="space-y-5 scroll-mt-4">
+      <div ref={workspaceRef} className="space-y-4 scroll-mt-4 sm:space-y-5">
         {step !== "history" && <StepHeader step={step} currentJob={currentJob} onNavigate={go} />}
         <div
           key={displayStep}

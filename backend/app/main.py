@@ -10,7 +10,7 @@ from fastapi.routing import APIRoute
 from sqlalchemy import text
 
 import app.models  # noqa: F401
-from app.config.database import engine
+from app.config.database import AsyncSessionLocal, engine
 from app.config.logging import get_logger
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
@@ -19,11 +19,12 @@ from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
 from app.core.middleware.trusted_proxy import TrustedProxyHeadersMiddleware
-from app.modules.announcements.router import (
-    feed_router as announcement_feed_router,
-    superadmin_router as superadmin_announcement_router,
-    teacher_router as teacher_announcement_router,
-    tenant_admin_router as tenant_admin_announcement_router,
+from app.modules.communications.router import (
+    messages_router,
+    notifications_router,
+    router as communication_router,
+    superadmin_announcement_router,
+    tenant_admin_announcement_router,
 )
 from app.modules.attendance.router import (
     parent_router as parent_attendance_router,
@@ -84,6 +85,7 @@ from app.modules.students.router import router as student_router
 from app.modules.subjects.router import router as subject_router
 from app.modules.subscriptions.router import router as subscriptions_router
 from app.modules.superadmin.router import router as superadmin_router
+from app.modules.superadmin.bootstrap import SuperadminBootstrapService
 from app.modules.teachers.router import router as teacher_router
 from app.modules.tenant_admins.router import router as tenant_admin_router
 from app.modules.tenant_branding.router import router as tenant_branding_router
@@ -144,6 +146,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _ = app
     logger.info("Starting Weave API")
     await connect_redis()
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            await SuperadminBootstrapService.ensure_bootstrap_superadmin(db)
     try:
         yield
     finally:
@@ -213,10 +218,11 @@ def create_app() -> FastAPI:
     app.include_router(subject_router, prefix="/api/v1/subjects", tags=["Subjects"])
     app.include_router(class_router, prefix="/api/v1", tags=["Classes"])
     app.include_router(class_subjects_router, prefix="/api/v1", tags=["Class Subjects"])
+    app.include_router(communication_router, prefix="/api/v1")
+    app.include_router(messages_router, prefix="/api/v1")
+    app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(superadmin_announcement_router, prefix="/api/v1")
     app.include_router(tenant_admin_announcement_router, prefix="/api/v1")
-    app.include_router(teacher_announcement_router, prefix="/api/v1")
-    app.include_router(announcement_feed_router, prefix="/api/v1")
     app.include_router(metrics_router, prefix="/api/v1")
 
     app.include_router(result_limits_admin_router, prefix="/api/v1")

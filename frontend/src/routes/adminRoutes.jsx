@@ -17,7 +17,9 @@ import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
 import SubscriptionVerifyPage from "../pages/admin/SubscriptionVerifyPage";
 import TeachersPage from "../pages/admin/TeachersPage";
 import UsagePage from "../pages/admin/UsagePage";
-import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import AnnouncementManagementPage from "../pages/shared/AnnouncementManagementPage";
+import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
+import MessagesPage from "../pages/shared/MessagesPage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
@@ -52,7 +54,9 @@ export const adminRoutes = (
       <Route path="/admin/academic/:workflow" element={protectedWorkflow(<AcademicWorkflowPage />)} />
       <Route path="/admin/billing" element={<BillingPage />} />
       <Route path="/admin/usage" element={<UsagePage />} />
-      <Route path="/admin/announcements" element={<AnnouncementsWorkspacePage mode="tenant-admin" />} />
+      <Route path="/admin/inbox" element={<CommunicationInboxPage />} />
+      <Route path="/admin/messages" element={<MessagesPage />} />
+      <Route path="/admin/announcements" element={<AnnouncementManagementPage mode="tenant-admin" />} />
       <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
     </Route>
   </Route>

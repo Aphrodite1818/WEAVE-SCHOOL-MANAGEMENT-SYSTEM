@@ -300,6 +300,7 @@ function StudentDirectoryPage() {
   const [lifecycleState, setLifecycleState] = useState(null);
   const [historyState, setHistoryState] = useState(null);
   const [hardDeleteState, setHardDeleteState] = useState(null);
+  const [accessCodeConfirmation, setAccessCodeConfirmation] = useState(null);
 
   const classOptions = useMemo(
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
@@ -376,7 +377,8 @@ function StudentDirectoryPage() {
     setBusyId(editState.student.id);
     setFieldErrors({});
     const payload = Object.fromEntries(
-      Object.entries(editState.form).map(([key, value]) => [key, value === "" ? null : value]),
+      Object.entries(editState.form)
+        .map(([key, value]) => [key, value === "" ? null : value]),
     );
     try {
       await studentService.updateAdminStudent(editState.student.id, payload);
@@ -458,12 +460,12 @@ function StudentDirectoryPage() {
   };
 
   const resetAccessCode = async (student) => {
-    if (!window.confirm(`Generate a new access code for ${displayName(student)}?`)) return;
     setBusyId(student.id);
     try {
       const result = await studentService.resetStudentAccessCode(student.id);
       setAccessNotice(buildAccessNotice(result));
       showSuccess("New student access code generated.");
+      setAccessCodeConfirmation(null);
       await refresh();
     } catch (requestError) {
       showError(parseApiError(requestError, "Failed to generate access code.").message);
@@ -669,7 +671,7 @@ function StudentDirectoryPage() {
               student={student}
               busy={busyId === student.id}
               onEdit={openEdit}
-              onReset={resetAccessCode}
+              onReset={setAccessCodeConfirmation}
               onHistory={openHistory}
               onLifecycle={openLifecycle}
               onHardDelete={inspectHardDelete}
@@ -678,7 +680,11 @@ function StudentDirectoryPage() {
         </section>
       )}
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="mobile-list-pagination flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-text-muted sm:hidden">
+          Page {page}/{pageCount}
+        </span>
+        <div className="ml-auto grid grid-cols-2 gap-2 sm:flex">
         <Button
           type="button"
           variant="outline"
@@ -699,6 +705,7 @@ function StudentDirectoryPage() {
           Next
           <ChevronRight className="h-4 w-4" />
         </Button>
+        </div>
       </div>
 
       <Modal
@@ -718,12 +725,37 @@ function StudentDirectoryPage() {
               <Input label="State of origin" value={editState.form.state_of_origin} error={fieldErrors.state_of_origin} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, state_of_origin: event.target.value } }))} />
               <Input label="Arm" value={editState.form.arm} error={fieldErrors.arm} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, arm: event.target.value } }))} />
             </div>
+            <p className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
+              To change this student's class, open Class history and use Change class so the placement history is updated.
+            </p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setEditState(null)}>Cancel</Button>
               <Button type="submit" disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Save changes"}</Button>
             </div>
           </form>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(accessCodeConfirmation)}
+        title="Generate new access code"
+        description={accessCodeConfirmation ? `Generate a new one-time access code for ${displayName(accessCodeConfirmation)}.` : ""}
+        onClose={() => !busyId && setAccessCodeConfirmation(null)}
+        closeOnOverlay={!busyId}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setAccessCodeConfirmation(null)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={Boolean(busyId)} onClick={() => resetAccessCode(accessCodeConfirmation)}>
+              {busyId ? "Generating..." : "Generate code"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-6 text-text-muted">
+          The old reset code will no longer be useful once a new one is generated. The student's records and class history are not changed.
+        </p>
       </Modal>
 
       <Modal

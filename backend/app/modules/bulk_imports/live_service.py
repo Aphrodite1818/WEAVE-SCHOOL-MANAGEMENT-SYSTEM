@@ -19,7 +19,7 @@ from app.core.exceptions import BadRequestException, ConflictException, NotFound
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.bulk_imports.chunking import chunk_import_items
 from app.modules.bulk_imports.models import ImportJob, ImportJobStatus
-from app.modules.bulk_imports.notification_service import BulkImportNotificationService
+from app.modules.bulk_imports.notification_service import BulkImportCommunicationService
 from app.modules.bulk_imports.repository import (
     ImportJobRepository,
     ImportRowErrorRepository,
@@ -539,14 +539,14 @@ class BulkImportLiveService:
 
             if notify_on_completion:
                 if final_status == ImportJobStatus.FAILED:
-                    await BulkImportNotificationService.create_failure_notification(
+                    await BulkImportCommunicationService.create_failure_notification(
                         db=db,
                         tenant_id=tenant_id,
                         recipient_admin_id=actor_id,
                         import_job=import_job,
                     )
                 else:
-                    await BulkImportNotificationService.create_completion_notification(
+                    await BulkImportCommunicationService.create_completion_notification(
                         db=db,
                         tenant_id=tenant_id,
                         recipient_admin_id=actor_id,

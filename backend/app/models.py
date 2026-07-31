@@ -10,7 +10,7 @@ standalone scripts, Alembic migrations, and tests.
 import app.tenant_management.models
 
 # Modules
-import app.modules.announcements.models
+import app.modules.communications.models
 import app.modules.attendance.models
 import app.modules.auth.models
 import app.modules.auth_identity.models

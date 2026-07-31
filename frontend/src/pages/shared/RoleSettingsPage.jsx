@@ -4,11 +4,9 @@ import {
   Accessibility,
   ChevronDown,
   ChevronRight,
-  Database,
   Eye,
   IdCard,
   Languages,
-  LockKeyhole,
   Mail,
   Moon,
   ShieldCheck,
@@ -133,8 +131,6 @@ function RoleSettingsPage({ role }) {
           <SettingsGroup title="Account">
             {isStudent ? <SettingsRow icon={IdCard} label="Admission number" value={admissionNumber || "Not assigned"} /> : <SettingsRow icon={Mail} label="Email" value={currentEmail || "No email on file"} />}
             <SettingsRow icon={UserRound} label="Profile" value={profileSummary || "Details and photo"} to="/profile" />
-            {!isStudent ? <SettingsRow icon={LockKeyhole} label="Change email" value="Unavailable" description="Email changes require a verified identity-migration workflow and are not enabled yet." /> : null}
-            <SettingsRow icon={Database} label="Download account data" value="Unavailable" description="A complete server-generated export is not enabled yet; the app will not provide a partial file as if it were complete." />
           </SettingsGroup>
 
           <SettingsGroup title="Appearance and accessibility">
@@ -143,7 +139,7 @@ function RoleSettingsPage({ role }) {
                 {themeOptions.map((item) => {
                   const Icon = item.icon;
                   const active = preferences.theme === item.value;
-                  return <button key={item.value} type="button" onClick={() => updatePreference({ theme: item.value })} className={cn("flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-bold transition sm:text-sm", active ? "border-primary bg-primary-subtle text-primary" : "border-border bg-surface text-text-soft hover:bg-surface-muted")}><Icon className="h-4 w-4" />{item.label}</button>;
+                  return <button key={item.value} type="button" onClick={() => updatePreference({ theme: item.value })} className={cn("flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-bold transition sm:text-sm", active ? "is-selected-highlight" : "border-border bg-surface text-text-soft hover:bg-surface-muted")}><Icon className="h-4 w-4" />{item.label}</button>;
                 })}
               </div>
             </ExpandableSettingsRow>

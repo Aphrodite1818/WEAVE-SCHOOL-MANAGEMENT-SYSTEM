@@ -7,7 +7,9 @@ import SuperadminDashboardPage from "../pages/superadmin/SuperadminDashboardPage
 import SuperadminSettingsPage from "../pages/superadmin/SuperadminSettingsPage";
 import SuperadminTenantUsagePage from "../pages/superadmin/SuperadminTenantUsagePage";
 import SuperadminTrafficMonitorPage from "../pages/superadmin/SuperadminTrafficMonitorPage";
-import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import AnnouncementManagementPage from "../pages/shared/AnnouncementManagementPage";
+import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
+import MessagesPage from "../pages/shared/MessagesPage";
 import RoleGuard from "./RoleGuard";
 
 export const superadminRoutes = (
@@ -18,7 +20,9 @@ export const superadminRoutes = (
       <Route path="/superadmin/control-center" element={<SuperadminControlCenterPage />} />
       <Route path="/superadmin/usage" element={<SuperadminTenantUsagePage />} />
       <Route path="/superadmin/traffic" element={<SuperadminTrafficMonitorPage />} />
-      <Route path="/superadmin/announcements" element={<AnnouncementsWorkspacePage mode="superadmin" />} />
+      <Route path="/superadmin/inbox" element={<CommunicationInboxPage />} />
+      <Route path="/superadmin/messages" element={<MessagesPage />} />
+      <Route path="/superadmin/announcements" element={<AnnouncementManagementPage mode="superadmin" />} />
       <Route path="/superadmin/settings" element={<SuperadminSettingsPage />} />
     </Route>
   </Route>

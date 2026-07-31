@@ -154,11 +154,11 @@ function ParentDashboardPage() {
     unreadNotices > 0
       ? {
           key: "unread-notices",
-          title: "Unread school notices",
-          description: `${unreadNotices} school update${unreadNotices === 1 ? "" : "s"} waiting for you.`,
+          title: "Unread notifications",
+          description: `${unreadNotices} update${unreadNotices === 1 ? "" : "s"} waiting for you.`,
           icon: Bell,
           tone: "primary",
-          to: "/parent/notices",
+          to: "/parent/inbox",
           value: unreadNotices,
         }
       : null,
@@ -236,12 +236,12 @@ function ParentDashboardPage() {
               to="/parent/report-cards"
             />
             <DashboardMetricCard
-              label="Unread notices"
+              label="Unread notifications"
               value={unreadNotices}
               description="School updates"
               icon={Bell}
               tone={unreadNotices > 0 ? "warning" : "success"}
-              to="/parent/notices"
+              to="/parent/inbox"
             />
           </section>
 
@@ -267,7 +267,7 @@ function ParentDashboardPage() {
               description="Parent tasks or updates that need a quick look."
               items={attentionItems}
               emptyTitle="Everything looks calm"
-              emptyDescription="No unread notices, linking issues, or report-card actions need attention right now."
+              emptyDescription="No unread notifications, linking issues, or report-card actions need attention right now."
             />
           </section>
 
@@ -289,7 +289,7 @@ function ParentDashboardPage() {
               { label: "Student linking", description: "Request or manage child access", to: "/parent/student-linking", icon: Link2, tone: "primary" },
               { label: "Results", description: "View academic scores", to: "/parent/results", icon: BarChart3, tone: "success" },
               { label: "Report cards", description: "Open published reports", to: "/parent/report-cards", icon: FileText, tone: "warning" },
-              { label: "Notices", description: "School updates", to: "/parent/notices", icon: Bell, tone: "accent" },
+              { label: "Inbox", description: "Notifications and updates", to: "/parent/inbox", icon: Bell, tone: "accent" },
             ]}
           />
         </>

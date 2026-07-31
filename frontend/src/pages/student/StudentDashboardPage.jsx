@@ -258,11 +258,11 @@ function StudentDashboardPage() {
     Number(dashboardData.stats.unread_count || 0) > 0
       ? {
           key: "unread-notices",
-          title: "Unread school notices",
-          description: `${dashboardData.stats.unread_count} notice${Number(dashboardData.stats.unread_count) === 1 ? "" : "s"} waiting for you.`,
+          title: "Unread notifications",
+          description: `${dashboardData.stats.unread_count} notification${Number(dashboardData.stats.unread_count) === 1 ? "" : "s"} waiting for you.`,
           icon: Megaphone,
           tone: "primary",
-          to: "/student/notices",
+          to: "/student/inbox",
         }
       : null,
   ].filter(Boolean);
@@ -347,7 +347,7 @@ function StudentDashboardPage() {
                 <InfoTile label="Best subject" value={dashboardData.subjectHighlights.best?.label || "Awaiting results"} />
                 <InfoTile label="Needs support" value={dashboardData.subjectHighlights.weakest?.label || "No weak spot yet"} />
                 <InfoTile label="Latest report" value={dashboardData.latestReportCard ? cleanText(dashboardData.latestReportCard.academic_term_name, "Published") : "Awaiting release"} />
-                <InfoTile label="Unread notices" value={dashboardData.stats.unread_count ?? 0} />
+                <InfoTile label="Unread notifications" value={dashboardData.stats.unread_count ?? 0} />
               </div>
             </DashboardFocusCard>
 
@@ -356,7 +356,7 @@ function StudentDashboardPage() {
               description="Items that need a quick look."
               items={attentionItems}
               emptyTitle="You are all caught up"
-              emptyDescription="No pending parent link, report, or school notice needs attention right now."
+              emptyDescription="No pending parent link, report, or school notification needs attention right now."
             />
           </section>
 
@@ -380,7 +380,7 @@ function StudentDashboardPage() {
                 { label: "Subjects", description: "View scores and components", to: "/student/subjects", icon: BookOpen, tone: "primary" },
                 { label: "Performance", description: "Open full analytics", to: "/student/analytics", icon: BarChart3, tone: "success" },
                 { label: "Report cards", description: "Published term reports", to: "/student/report-cards", icon: FileText, tone: "warning" },
-                { label: "Notices", description: "School updates", to: "/student/notices", icon: Megaphone, tone: "accent" },
+                { label: "Inbox", description: "Notifications and updates", to: "/student/inbox", icon: Megaphone, tone: "accent" },
               ]}
             />
           </section>

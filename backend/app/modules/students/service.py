@@ -42,7 +42,7 @@ from app.modules.parents.repository import (
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
 )
-from app.modules.student_academics.models import StudentSubjectResult
+from app.modules.student_academics.models import AcademicSessionStatus, StudentSubjectResult
 from app.modules.students.models import (
     AcademicStatus,
     ParentLinkVerifiedByType,
@@ -806,7 +806,13 @@ class StudentEnrollmentService:
                 StudentEnrollmentDetailResponse(
                     **StudentEnrollmentDetailResponse.model_validate(
                         row
-                    ).model_dump(),
+                    ).model_dump(
+                        exclude={
+                            "class_name",
+                            "class_arm",
+                            "academic_session_name",
+                        }
+                    ),
                     class_name=classroom.name if classroom else None,
                     class_arm=classroom.arm if classroom else None,
                     academic_session_name=(
@@ -859,7 +865,11 @@ class StudentEnrollmentService:
             payload.academic_session_id,
             lock=True,
         )
-        if session is None or not session.is_active:
+        if (
+            session is None
+            or not session.is_current
+            or session.status != AcademicSessionStatus.OPEN
+        ):
             raise NotFoundException("Academic session not found.")
 
         current = await StudentEnrollmentRepository.get_current(

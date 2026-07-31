@@ -11,8 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.modules.bulk_imports.models import (
     ImportFileType,
     ImportJobStatus,
-    ImportNotificationChannel,
-    ImportNotificationStatus,
     ImportResourceType,
 )
 from app.modules.bulk_imports.sensitive_results import sanitize_import_metadata_for_response
@@ -106,21 +104,6 @@ class ImportRowErrorCreate(InputBase):
         return _clean_optional_string(value)
 
 
-class ImportNotificationCreate(InputBase):
-    import_job_id: uuid.UUID
-    recipient_admin_id: uuid.UUID | None = None
-    channel: ImportNotificationChannel = ImportNotificationChannel.IN_APP
-    status: ImportNotificationStatus = ImportNotificationStatus.PENDING
-    title: str = Field(..., min_length=1, max_length=200)
-    message: str = Field(..., min_length=1)
-    failure_reason: str | None = None
-
-    @field_validator("title", "message", "failure_reason", mode="before")
-    @classmethod
-    def clean_text_fields(cls, value: str | None) -> str | None:
-        return _clean_optional_string(value)
-
-
 class ImportJobSummaryResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -155,23 +138,6 @@ class ImportRowErrorResponse(OutputBase):
     updated_at: datetime
 
 
-class ImportNotificationResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    import_job_id: uuid.UUID
-    recipient_admin_id: uuid.UUID | None = None
-    channel: ImportNotificationChannel
-    status: ImportNotificationStatus
-    title: str
-    message: str
-    is_read: bool
-    sent_at: datetime | None = None
-    read_at: datetime | None = None
-    failure_reason: str | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
 class ImportJobDetailResponse(ImportJobSummaryResponse):
     created_by_admin_id: uuid.UUID | None = None
     source_file_path: str | None = None
@@ -179,7 +145,6 @@ class ImportJobDetailResponse(ImportJobSummaryResponse):
     file_size_bytes: int | None = None
     metadata_json: dict[str, Any] | None = None
     row_errors: list[ImportRowErrorResponse] = Field(default_factory=list)
-    notifications: list[ImportNotificationResponse] = Field(default_factory=list)
 
     @field_validator("metadata_json", mode="before")
     @classmethod

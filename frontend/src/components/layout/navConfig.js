@@ -1,7 +1,6 @@
 import {
   Activity,
   BarChart3,
-  Bell,
   BookOpen,
   Building2,
   CalendarDays,
@@ -12,8 +11,10 @@ import {
   FileText,
   GraduationCap,
   Home,
+  Inbox,
   Library,
   Link2,
+  Mail,
   Settings,
   Shield,
   UploadCloud,
@@ -33,12 +34,12 @@ export const roleLabels = {
 export const workspaceSearchRoles = new Set(["admin", "teacher"]);
 export const tenantNameFallbackRoles = new Set(["admin", "teacher", "student", "parent"]);
 
-export const announcementPaths = {
-  admin: "/admin/announcements",
-  teacher: "/teacher/notices",
-  student: "/student/notices",
-  parent: "/parent/notices",
-  superadmin: "/superadmin/announcements",
+export const inboxPaths = {
+  admin: "/admin/inbox",
+  teacher: "/teacher/inbox",
+  student: "/student/inbox",
+  parent: "/parent/inbox",
+  superadmin: "/superadmin/inbox",
 };
 
 export const onboardingModalCopy = {
@@ -98,7 +99,9 @@ export const navGroups = {
     {
       label: "Communication",
       items: [
-        { label: "Notices", to: "/admin/announcements", icon: FileText },
+        { label: "Inbox", to: "/admin/inbox", icon: Inbox },
+        { label: "Messages", to: "/admin/messages", icon: Mail },
+        { label: "Announcements", to: "/admin/announcements", icon: FileText },
       ],
     },
     {
@@ -121,7 +124,8 @@ export const navGroups = {
         { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen },
         { label: "Score Entry", to: "/teacher/score-entry", icon: BarChart3 },
         { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
-        { label: "Notices", to: "/teacher/notices", icon: Bell },
+        { label: "Inbox", to: "/teacher/inbox", icon: Inbox },
+        { label: "Messages", to: "/teacher/messages", icon: Mail },
       ],
     },
     {
@@ -129,7 +133,6 @@ export const navGroups = {
       items: [
         { label: "My Class", to: "/teacher/classes", icon: Library },
         { label: "Class Attendance", to: "/teacher/attendance", icon: CheckSquare },
-        { label: "Class Notices", to: "/teacher/announcements", icon: FileText },
         { label: "Switch School", to: "/teacher/schools", icon: Building2, accountScope: true },
         { label: "Settings", to: "/teacher/settings", icon: Settings },
       ],
@@ -145,7 +148,8 @@ export const navGroups = {
         { label: "Parent Linking", to: "/student/parent-linking", icon: Link2 },
         { label: "Report Cards", to: "/student/report-cards", icon: FileText },
         { label: "Calendar", to: "/student/calendar", icon: CalendarDays },
-        { label: "Notices", to: "/student/notices", icon: FileText },
+        { label: "Inbox", to: "/student/inbox", icon: Inbox },
+        { label: "Messages", to: "/student/messages", icon: Mail },
         { label: "Settings", to: "/student/settings", icon: Settings },
       ],
     },
@@ -160,7 +164,8 @@ export const navGroups = {
         { label: "Results", to: "/parent/results", icon: BarChart3 },
         { label: "Attendance", to: "/parent/attendance", icon: CheckSquare },
         { label: "Calendar", to: "/parent/calendar", icon: CalendarDays },
-        { label: "Notices", to: "/parent/notices", icon: FileText },
+        { label: "Inbox", to: "/parent/inbox", icon: Inbox },
+        { label: "Messages", to: "/parent/messages", icon: Mail },
         { label: "Switch School", to: "/parent/schools", icon: Building2, accountScope: true },
         { label: "Settings", to: "/parent/settings", icon: Settings },
       ],
@@ -180,6 +185,8 @@ export const navGroups = {
     {
       label: "Platform",
       items: [
+        { label: "Inbox", to: "/superadmin/inbox", icon: Inbox },
+        { label: "Messages", to: "/superadmin/messages", icon: Mail },
         { label: "Announcements", to: "/superadmin/announcements", icon: FileText },
         { label: "Settings", to: "/superadmin/settings", icon: Settings },
       ],

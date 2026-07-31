@@ -69,12 +69,12 @@ const subjectStatus = (item) =>
   item.archived_at ? "archived" : item.is_active === false ? "inactive" : "active";
 
 const dependencyLabels = {
-  class_subjects: "Class-subject mappings",
+  class_subjects: "Subjects attached to classes",
   teacher_links: "Teacher capability links",
   teacher_assignments: "Teacher assignments",
   results: "Student result rows",
   report_card_lines: "Report-card subject lines",
-  active_class_subjects: "Active class-subject mappings",
+  active_class_subjects: "Active subjects attached to classes",
   active_teacher_links: "Active teacher capability links",
   active_teacher_assignments: "Active teacher assignments",
   open_terms: "Open terms",
@@ -223,6 +223,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const [openingSessionId, setOpeningSessionId] = useState("");
   const [closingSessionId, setClosingSessionId] = useState("");
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [cancelClosureReason, setCancelClosureReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { showSuccess, showError } = useToast();
@@ -466,12 +467,12 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         await academicService.finalizeTermClose(item.id);
         showSuccess("Academic term closed.");
       } else if (transition === "cancel-closure") {
-        const reason = window.prompt("Reason for cancelling term closure");
-        if (!reason || reason.trim().length < 3) {
+        const reason = cancelClosureReason.trim();
+        if (reason.length < 3) {
           showError("A reason is required to cancel term closure.");
           return;
         }
-        await academicService.cancelTermClosure(item.id, reason.trim());
+        await academicService.cancelTermClosure(item.id, reason);
         showSuccess("Academic term closure cancelled.");
       }
       await loadWorkspace();
@@ -480,6 +481,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     } finally {
       setSaving("");
       setPendingConfirmation(null);
+      setCancelClosureReason("");
     }
   };
 
@@ -592,7 +594,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         confirmationText: "ACTIVATE_SUBJECT",
         confirmLabel: "Restore to active",
         variant: "success",
-        description: `${item.name} will become active again and available for new class mappings and assignments.`,
+        description: `${item.name} will become active again and available for class setup and teacher assignments.`,
       },
       deactivate: {
         title: "Deactivate subject",
@@ -1086,16 +1088,19 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                     variant="outline"
                     disabled={saving === item.id}
                     onClick={() =>
-                      setPendingConfirmation({
+                      {
+                        setCancelClosureReason("");
+                        setPendingConfirmation({
                         type: "term-transition",
                         item,
                         transition: "cancel-closure",
                         title: "Cancel term closure",
-                        description: termLabel(item.name),
+                        description: `${termLabel(item.name)} will return to Open so academic work can continue. Existing results, calendars, and reports remain available.`,
                         confirmationText: CONFIRM_CANCEL_TERM_CLOSURE,
                         confirmLabel: "Cancel closure",
                         variant: "outline",
-                      })
+                        });
+                      }
                     }
                   >
                     Cancel Closure
@@ -1136,6 +1141,10 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         confirmationText={pendingConfirmation?.confirmationText || ""}
         confirmLabel={pendingConfirmation?.confirmLabel}
         variant={pendingConfirmation?.variant}
+        confirmDisabled={
+          pendingConfirmation?.transition === "cancel-closure" &&
+          cancelClosureReason.trim().length < 3
+        }
         isLoading={
           pendingConfirmation?.type === "open-session"
             ? openingSessionId === pendingConfirmation.item?.id
@@ -1144,8 +1153,20 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
               : saving === pendingConfirmation?.item?.id
         }
         onConfirm={runConfirmedAction}
-        onCancel={() => setPendingConfirmation(null)}
-      />
+        onCancel={() => {
+          setPendingConfirmation(null);
+          setCancelClosureReason("");
+        }}
+      >
+        {pendingConfirmation?.transition === "cancel-closure" ? (
+          <Input
+            label="Reason"
+            value={cancelClosureReason}
+            onChange={(event) => setCancelClosureReason(event.target.value)}
+            placeholder="Explain why this term should stay open"
+          />
+        ) : null}
+      </TypedConfirmationDialog>
     </div>
   );
 

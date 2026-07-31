@@ -1,4 +1,23 @@
 @media (max-width: 767px) {
+  html,
+  body,
+  #root,
+  .public-page-shell {
+    min-height: 100dvh !important;
+  }
+
+  .public-page-shell {
+    background-color: rgb(var(--color-background)) !important;
+  }
+
+  .public-page-shell > main {
+    min-height: calc(100dvh - 4.4rem);
+  }
+
+  .public-page-shell > main > section:first-child {
+    min-height: calc(100dvh - 4.4rem);
+  }
+
   html:not([data-standalone-pwa="true"]) [data-mobile-bottom-nav="true"] {
     display: none !important;
   }

@@ -3,6 +3,7 @@ import { ChevronRight, Filter, X } from "lucide-react";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import MultiSelect from "../../components/ui/MultiSelect";
 import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage, parseApiError } from "../../services/api";
@@ -124,6 +125,7 @@ function ResourcePage({ config }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const contextRef = useRef(context);
   const filtersRef = useRef(filters);
@@ -318,12 +320,7 @@ function ResourcePage({ config }) {
   };
 
   const handleDelete = async (item) => {
-    const label = config.getItemLabel ? config.getItemLabel(item, context) : item.id;
-
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) {
-      return;
-    }
-
+    if (!item) return;
     setBusyId(item.id);
 
     try {
@@ -336,6 +333,7 @@ function ResourcePage({ config }) {
       showError(message);
     } finally {
       setBusyId(null);
+      setDeleteTarget(null);
     }
   };
 
@@ -517,7 +515,7 @@ function ResourcePage({ config }) {
                               size="xs"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                handleDelete(item);
+                                setDeleteTarget(item);
                               }}
                               disabled={busyId === item.id}
                               className="ml-auto"
@@ -585,7 +583,7 @@ function ResourcePage({ config }) {
                                   type="button"
                                   variant="danger"
                                   size="small"
-                                  onClick={() => handleDelete(item)}
+                                  onClick={() => setDeleteTarget(item)}
                                   disabled={busyId === item.id}
                                   className="w-full sm:w-auto"
                                 >
@@ -642,6 +640,31 @@ function ResourcePage({ config }) {
           </div>
         </div>
       )}
+      <Modal
+        open={Boolean(deleteTarget)}
+        title={`Delete ${config.singularLabel.toLowerCase()}`}
+        description={
+          deleteTarget
+            ? `Delete ${config.getItemLabel ? config.getItemLabel(deleteTarget, context) : deleteTarget.id}? This cannot be undone.`
+            : ""
+        }
+        onClose={() => !busyId && setDeleteTarget(null)}
+        closeOnOverlay={!busyId}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" disabled={Boolean(busyId)} onClick={() => handleDelete(deleteTarget)}>
+              {busyId ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-6 text-text-muted">
+          This action permanently removes the record from this workspace.
+        </p>
+      </Modal>
     </div>
   );
 }

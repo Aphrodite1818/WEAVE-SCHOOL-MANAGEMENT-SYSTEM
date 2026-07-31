@@ -164,18 +164,18 @@ function LandingPage() {
   }, [location.hash]);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background text-text">
+    <div className="public-page-shell min-h-[100dvh] overflow-x-hidden bg-background text-text">
       <Navbar />
 
       <main>
-        <section id="home" className="relative scroll-mt-24 overflow-hidden border-b border-border bg-slate-950 text-white">
+        <section id="home" className="relative min-h-[calc(100dvh-4.4rem)] scroll-mt-24 overflow-hidden border-b border-border bg-slate-950 text-white">
           <img
             src={previewImage}
             alt="Weave dashboard preview"
             className="absolute inset-0 h-full w-full object-cover opacity-35"
           />
           <div className="absolute inset-0 bg-slate-950/70" />
-          <div className="section-container relative py-14 sm:py-18 lg:py-24">
+          <div className="section-container relative flex min-h-[calc(100dvh-4.4rem)] items-center py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:py-18 lg:py-24">
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
               <div className="max-w-3xl">
                 <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">

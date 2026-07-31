@@ -3,6 +3,7 @@ import { Camera, ImageOff } from "lucide-react";
 import Button from "../ui/Button";
 import Input from "../ui/Input";
 import { parseApiError } from "../../services/api";
+import { clearDashboardMetricsCache } from "../../services/dashboard.service";
 import { onboardingService } from "../../services/onboardingService";
 import { getAvatarSrcFromRecord } from "../../utils/user";
 import { useToast } from "../../hooks/useToast";
@@ -329,6 +330,7 @@ function ProfileCompletionForm({
       }, {});
 
       await onboardingService.submitOnboarding(normalizedRole, payload);
+      clearDashboardMetricsCache();
       const nextStatus = await onboardingService.getOnboardingStatus(normalizedRole);
       const nextUser = onboardingService.updateSessionUserFromStatus(normalizedRole, nextStatus);
 

@@ -1,25 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
   CalendarDays,
+  CheckCircle2,
   FileText,
   GitBranch,
   GraduationCap,
-  Layers3,
   Ruler,
   School,
   Users,
 } from "lucide-react";
 
-import {
-  DashboardMetricCard,
-} from "../../components/dashboard/DashboardPrimitives";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
+import {
+  AcademicBlockerList,
+  AcademicNextActionCard,
+  AcademicOverviewCard,
+} from "../../features/academic-admin/AcademicWorkspacePrimitives";
+import { chooseAcademicHubNextAction } from "../../features/academic-admin/academicHubGuidance";
+import { academicWorkflowConfig, academicWorkflowOrder } from "../../features/academic-admin/academicWorkflowConfig";
 import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import {
@@ -27,49 +31,18 @@ import {
   getDashboardSessionCacheKey,
 } from "../../services/dashboardSessionCache";
 import { cleanText } from "../../utils/academicDashboard";
-import { cn } from "../../utils/cn";
 
 const ACADEMIC_HUB_CACHE_KEY = getDashboardSessionCacheKey(
   "admin:academic-hub-overview",
 );
 
-const domainIcons = {
-  classes: School,
-  subjects: BookOpen,
-  "class-subjects": Layers3,
-  assignments: Users,
-  sessions: CalendarDays,
-  terms: CalendarDays,
-  grading: Ruler,
-  results: BarChart3,
-  "report-cards": FileText,
-  "school-calendar": CalendarDays,
-  progression: GitBranch,
-};
-
-const domains = [
-  "classes",
-  "subjects",
-  "class-subjects",
-  "assignments",
-  "sessions",
-  "terms",
-  "grading",
-  "results",
-  "report-cards",
-  "school-calendar",
-  "progression",
-].map((key) => ({
-  key,
-  ...academicWorkflowConfig[key],
-  icon: domainIcons[key] || academicWorkflowConfig[key].icon,
-  to: `/admin/academic/${key}`,
-}));
-
 const metricNumber = (value, fallback = "-") => {
   const nextValue = Number(value);
   return Number.isFinite(nextValue) ? nextValue : fallback;
 };
+
+const percentLabel = (value) =>
+  Number.isFinite(Number(value)) ? `${Number(value)}%` : "-";
 
 function scheduleBackgroundTask(callback) {
   if (typeof window === "undefined") return undefined;
@@ -85,24 +58,7 @@ function AcademicHubOverviewPage() {
   const navigate = useNavigate();
   const [analytics, setAnalytics] = useState(null);
   const [metricsError, setMetricsError] = useState(null);
-  const [selectedDomain, setSelectedDomain] = useState("classes");
   const [isMetricsRefreshing, setIsMetricsRefreshing] = useState(false);
-  const [orbitRotation, setOrbitRotation] = useState(0);
-  const [isSpinning, setIsSpinning] = useState(false);
-  const orbitRotationRef = useRef(0);
-  const orbitDragRef = useRef({
-    active: false,
-    dragged: false,
-    domainKey: "",
-    pointerType: "",
-    startRotation: 0,
-    currentRotation: 0,
-    lastX: 0,
-    lastY: 0,
-    lastTime: 0,
-    velocity: 0,
-  });
-  const spinFrameRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -135,270 +91,207 @@ function AcademicHubOverviewPage() {
 
   const stats = analytics?.stats || {};
   const hasMetrics = Boolean(analytics?.stats);
+  const nextAction = useMemo(() => chooseAcademicHubNextAction(stats, hasMetrics), [hasMetrics, stats]);
+  const currentSession = cleanText(stats.active_academic_session, hasMetrics ? "Not set" : "Loading");
+  const currentTerm = cleanText(stats.active_academic_term, hasMetrics ? "Not set" : "Loading");
+  const submittedResults = metricNumber(stats.result_rows_submitted, 0);
+  const totalResults = metricNumber(stats.result_rows_total, 0);
+  const reportCardsGenerated = metricNumber(stats.report_cards_generated, 0);
+  const reportCardsPublished = metricNumber(stats.report_cards_published, 0);
+  const blockers = [
+    !stats.active_academic_session
+      ? {
+          key: "session",
+          label: "No current academic session",
+          description: "Open a session before managing terms, calendars, results, and report cards.",
+        }
+      : null,
+    !stats.active_academic_term
+      ? {
+          key: "term",
+          label: "No current academic term",
+          description: "Open a term so academic work is attached to the correct period.",
+        }
+      : null,
+    metricNumber(stats.total_classes, 0) === 0
+      ? {
+          key: "classes",
+          label: "No classes have been created",
+          description: "Create classes before attaching subjects or assigning teachers.",
+        }
+      : null,
+    metricNumber(stats.total_subjects, 0) === 0
+      ? {
+          key: "subjects",
+          label: "No subjects have been created",
+          description: "Create the subject catalog before setting class offerings.",
+        }
+      : null,
+    submittedResults > 0
+      ? {
+          key: "results",
+          label: `${submittedResults} submitted result${submittedResults === 1 ? "" : "s"} need review`,
+          description: "Approve or return submitted results before locking report cards.",
+        }
+      : null,
+  ];
 
-  const orbitDomains = useMemo(
-    () =>
-      domains.map((domain, index) => ({
-        ...domain,
-        style: {
-          "--orbit-index": index,
-          "--orbit-count": domains.length,
-          "--orbit-angle": `${(360 / domains.length) * index}deg`,
-          "--orbit-angle-counter": `${(-360 / domains.length) * index}deg`,
-        },
-      })),
-    [],
-  );
-
-  const updateOrbitRotation = (value) => {
-    orbitRotationRef.current = value;
-    setOrbitRotation(value);
-  };
-
-  const getDragRotationDelta = (event, previousX, previousY) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const centerX = bounds.left + bounds.width / 2;
-    const centerY = bounds.top + bounds.height / 2;
-    const dx = event.clientX - previousX;
-    const dy = event.clientY - previousY;
-    const relativeX = previousX - centerX;
-    const relativeY = previousY - centerY;
-    const distance = Math.hypot(relativeX, relativeY);
-
-    if (distance < bounds.width * 0.14) {
-      return dx * 0.42;
-    }
-
-    const tangentX = -relativeY / distance;
-    const tangentY = relativeX / distance;
-    const tangentMovement = dx * tangentX + dy * tangentY;
-    return (tangentMovement / Math.max(distance, 1)) * (180 / Math.PI);
-  };
-
-  useEffect(
-    () => () => {
-      if (spinFrameRef.current) window.cancelAnimationFrame(spinFrameRef.current);
-    },
-    [],
-  );
-
-  const startOrbitSpin = (event) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    const domainButton = event.target.closest?.("[data-academic-domain-key]");
-    if (spinFrameRef.current) {
-      window.cancelAnimationFrame(spinFrameRef.current);
-      spinFrameRef.current = 0;
-    }
-    orbitDragRef.current = {
-      active: true,
-      dragged: false,
-      domainKey: domainButton?.dataset?.academicDomainKey || "",
-      pointerType: event.pointerType,
-      startRotation: orbitRotationRef.current,
-      currentRotation: orbitRotationRef.current,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      lastTime: performance.now(),
-      velocity: 0,
-    };
-    setIsSpinning(true);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-
-  const spinOrbit = (event) => {
-    const drag = orbitDragRef.current;
-    if (!drag.active) return;
-    event.preventDefault();
-    const now = performance.now();
-    const elapsed = Math.max(now - drag.lastTime, 16);
-    const delta = getDragRotationDelta(event, drag.lastX, drag.lastY);
-    const nextRotation = drag.currentRotation + delta;
-    if (Math.abs(nextRotation - drag.startRotation) > 3) {
-      drag.dragged = true;
-    }
-    drag.velocity = delta / elapsed;
-    drag.currentRotation = nextRotation;
-    drag.lastX = event.clientX;
-    drag.lastY = event.clientY;
-    drag.lastTime = now;
-    updateOrbitRotation(nextRotation);
-  };
-
-  const coastOrbit = (initialRotation, initialVelocity) => {
-    let velocity = initialVelocity * 16;
-    let rotation = initialRotation;
-    const step = () => {
-      velocity *= 0.94;
-      rotation += velocity;
-      updateOrbitRotation(rotation);
-      if (Math.abs(velocity) > 0.05) {
-        spinFrameRef.current = window.requestAnimationFrame(step);
-      } else {
-        spinFrameRef.current = 0;
-      }
-    };
-    spinFrameRef.current = window.requestAnimationFrame(step);
-  };
-
-  const stopOrbitSpin = (event) => {
-    const drag = orbitDragRef.current;
-    drag.active = false;
-    setIsSpinning(false);
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-    if (drag.dragged) {
-      coastOrbit(orbitRotationRef.current, drag.velocity);
-      return;
-    }
-
-    if (drag.domainKey) {
-      const domain = domains.find((item) => item.key === drag.domainKey);
-      if (domain) navigate(domain.to);
-    }
-  };
-
-  const openDomain = (domain) => {
-    if (orbitDragRef.current.dragged) {
-      orbitDragRef.current.dragged = false;
-      return;
-    }
-    navigate(domain.to);
-  };
+  const sections = academicWorkflowOrder.map((key) => ({
+    key,
+    ...academicWorkflowConfig[key],
+    to: `/admin/academic/${key}`,
+  }));
 
   return (
-    <DashboardLayout
-      role="admin"
-    >
-      <section className="academic-hub-domain-shell">
-        <Card className="academic-hub-selector-card overflow-hidden p-4 sm:p-6">
-          <div className="academic-hub-selector-top min-w-0">
-            <h2 className="max-w-3xl text-2xl font-semibold leading-tight sm:text-3xl">
-              Academic Hub
-            </h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Badge
-                className="academic-hub-status-badge"
-                variant={stats.active_academic_session ? "success" : "warning"}
-              >
-                Session: {cleanText(stats.active_academic_session, hasMetrics ? "Not set" : "Loading")}
-              </Badge>
-              <Badge
-                className="academic-hub-status-badge"
-                variant={stats.active_academic_term ? "primary" : "warning"}
-              >
-                Term: {cleanText(stats.active_academic_term, hasMetrics ? "Not set" : "Loading")}
-              </Badge>
-              {isMetricsRefreshing ? (
-                <Badge className="academic-hub-status-badge" variant="primary">
-                  Metrics refreshing
+    <DashboardLayout role="admin" title="Academic Hub">
+      <section className="space-y-4 sm:space-y-5">
+        <Card className="p-3 sm:p-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary sm:h-12 sm:w-12">
+                  <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-semibold leading-tight text-text sm:text-3xl">
+                    Academic Hub
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted sm:text-sm sm:leading-6">
+                    A guided workspace for sessions, terms, classes, subjects, teachers, results, calendars, and report cards.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
+                <Badge variant={stats.active_academic_session ? "success" : "warning"}>
+                  Session: {currentSession}
                 </Badge>
-              ) : null}
+                <Badge variant={stats.active_academic_term ? "primary" : "warning"}>
+                  Term: {currentTerm}
+                </Badge>
+                {isMetricsRefreshing ? <Badge variant="default">Refreshing</Badge> : null}
+                {metricsError ? <Badge variant="error">Metrics unavailable</Badge> : null}
+              </div>
               {metricsError ? (
-                <Badge className="academic-hub-status-badge" variant="error">
-                  Metrics unavailable
-                </Badge>
+                <p className="mt-3 max-w-2xl text-sm font-medium text-error">
+                  {metricsError}
+                </p>
               ) : null}
             </div>
-            {metricsError ? (
-              <p className="mt-3 max-w-2xl text-sm font-medium">
-                {metricsError}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="academic-orbit-wrap mt-4">
-            <div
-              className={cn("academic-orbit", isSpinning ? "is-spinning" : "")}
-              style={{
-                "--orbit-rotation": `${orbitRotation}deg`,
-                "--orbit-rotation-counter": `${-orbitRotation}deg`,
-              }}
-              aria-label="Academic Hub domains"
-              onPointerDown={startOrbitSpin}
-              onPointerMove={spinOrbit}
-              onPointerUp={stopOrbitSpin}
-              onPointerCancel={stopOrbitSpin}
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              className="w-full justify-center sm:w-auto"
+              onClick={() => navigate("/admin/academic/sessions")}
             >
-              <div className="academic-orbit-ring academic-orbit-ring-outer" />
-              <div className="academic-orbit-ring academic-orbit-ring-inner" />
-              <div className="academic-orbit-core">
-                <GraduationCap className="h-9 w-9 text-primary" />
-                <span>Academic Hub</span>
-              </div>
-              {orbitDomains.map((domain) => {
-                const Icon = domain.icon;
-                const active = selectedDomain === domain.key;
+              Manage academic year
+            </Button>
+          </div>
+        </Card>
+
+        <AcademicNextActionCard
+          action={nextAction.action}
+          description={nextAction.description}
+          buttonLabel={nextAction.buttonLabel}
+          onAction={() => navigate(nextAction.to)}
+        />
+
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+          <AcademicOverviewCard
+            icon={CalendarDays}
+            label="Current Session"
+            value={currentSession}
+            status={stats.active_academic_session ? "open" : "needs attention"}
+            description="The school year currently receiving academic work."
+          />
+          <AcademicOverviewCard
+            icon={CalendarDays}
+            label="Current Term"
+            value={currentTerm}
+            status={stats.active_academic_term ? "open" : "needs attention"}
+            description="The term used for calendars, results, and report cards."
+          />
+          <AcademicOverviewCard
+            icon={School}
+            label="Active Classes"
+            value={metricNumber(stats.total_classes)}
+            status={metricNumber(stats.total_classes, 0) > 0 ? "ready" : "needs attention"}
+            description="Classes available for students, subjects, and teachers."
+          />
+          <AcademicOverviewCard
+            icon={BookOpen}
+            label="Active Subjects"
+            value={metricNumber(stats.total_subjects)}
+            status={metricNumber(stats.total_subjects, 0) > 0 ? "ready" : "needs attention"}
+            description="Subjects available for class setup and score entry."
+          />
+          <AcademicOverviewCard
+            icon={Users}
+            label="Teacher Assignments"
+            value={metricNumber(stats.total_teachers)}
+            status={metricNumber(stats.total_teachers, 0) > 0 ? "ready" : "needs attention"}
+            description="Active teachers available for class and subject responsibilities."
+          />
+          <AcademicOverviewCard
+            icon={Ruler}
+            label="Grading"
+            value={percentLabel(stats.result_completion_percent)}
+            status={totalResults > 0 ? "active" : "not started"}
+            description="Result completion based on submitted rows."
+          />
+          <AcademicOverviewCard
+            icon={BarChart3}
+            label="Results"
+            value={`${submittedResults}/${totalResults}`}
+            status={submittedResults > 0 ? "submitted" : "draft"}
+            description="Submitted results waiting in the academic workflow."
+          />
+          <AcademicOverviewCard
+            icon={FileText}
+            label="Report Cards"
+            value={`${reportCardsPublished}/${reportCardsGenerated}`}
+            status={reportCardsGenerated > reportCardsPublished ? "needs attention" : "ready"}
+            description="Published report cards out of generated cards."
+          />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.8fr)]">
+          <Card className="p-3 sm:p-5">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-success" />
+              <h3 className="section-title">Academic Workspaces</h3>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:gap-3 xl:grid-cols-3">
+              {sections.map((section) => {
+                const Icon = section.icon || GitBranch;
                 return (
                   <button
-                    key={domain.key}
+                    key={section.key}
                     type="button"
-                    data-academic-domain-key={domain.key}
-                    style={domain.style}
-                    onMouseEnter={() => setSelectedDomain(domain.key)}
-                    onFocus={() => setSelectedDomain(domain.key)}
-                    onClick={() => openDomain(domain)}
-                    onDragStart={(event) => event.preventDefault()}
-                    className={cn(
-                      "academic-orbit-node group",
-                      active ? "is-active" : "",
-                    )}
-                    aria-label={`Open ${domain.title}`}
+                    onClick={() => navigate(section.to)}
+                    className="min-h-[6.75rem] rounded-2xl border border-border/70 bg-surface px-3 py-3 text-left transition hover:border-primary/40 hover:bg-primary-soft/20 sm:min-h-[8.75rem] sm:px-4 sm:py-4"
                   >
-                    <span className="academic-orbit-icon">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <span className="academic-orbit-label">{domain.shortTitle}</span>
+                    <div className="flex h-full flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-surface-muted text-text-soft sm:h-9 sm:w-9">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold leading-tight text-text sm:text-base">
+                          {section.title}
+                        </span>
+                        <span className="mt-1 hidden text-sm leading-5 text-text-muted sm:line-clamp-3 sm:block">
+                          {section.description}
+                        </span>
+                      </span>
+                    </div>
                   </button>
                 );
               })}
             </div>
-          </div>
-        </Card>
+          </Card>
 
-        <div className="academic-hub-wave" aria-hidden="true" />
-
-        <div className="academic-hub-kpi-grid grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <DashboardMetricCard
-            compact
-            label="Students"
-            value={metricNumber(stats.total_students)}
-            description="Learner records"
-            icon={Users}
-            tone="primary"
-            to="/admin/students"
-          />
-          <DashboardMetricCard
-            compact
-            label="Subjects"
-            value={metricNumber(stats.total_subjects)}
-            description="Catalog records"
-            icon={BookOpen}
-            tone="success"
-            to="/admin/academic/subjects"
-          />
-          <DashboardMetricCard
-            compact
-            label="Result completion"
-            value={
-              Number.isFinite(Number(stats.result_completion_percent))
-                ? `${stats.result_completion_percent}%`
-                : "-"
-            }
-            description="Submitted rows"
-            icon={BarChart3}
-            tone="warning"
-            to="/admin/academic/results?view=submitted"
-          />
-          <DashboardMetricCard
-            compact
-            label="Report cards"
-            value={metricNumber(stats.report_cards_published)}
-            description={`${metricNumber(stats.report_cards_generated)} generated`}
-            icon={FileText}
-            tone="primary"
-            to="/admin/academic/report-cards?view=published"
-          />
+          <AcademicBlockerList blockers={blockers} />
         </div>
-
       </section>
     </DashboardLayout>
   );

@@ -7,7 +7,8 @@ import TeacherClassesPage from "../pages/teacher/MyClassesPage";
 import TeacherResultsPage from "../pages/teacher/ResultsPage";
 import TeacherStudentsPage from "../pages/teacher/StudentsPage";
 import TeacherSubjectsPage from "../pages/teacher/SubjectsPage";
-import AnnouncementsWorkspacePage from "../pages/shared/AnnouncementsWorkspacePage";
+import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
+import MessagesPage from "../pages/shared/MessagesPage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
 import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
@@ -31,8 +32,8 @@ export const teacherRoutes = (
         <Route path="/teacher/attendance" element={<TeacherAttendancePage />} />
         <Route path="/teacher/score-entry" element={<TeacherResultsPage />} />
         <Route path="/teacher/calendar" element={<SchoolCalendarPage role="teacher" />} />
-        <Route path="/teacher/notices" element={<AnnouncementsWorkspacePage mode="teacher" variant="received-notices" />} />
-        <Route path="/teacher/announcements" element={<AnnouncementsWorkspacePage mode="teacher" />} />
+        <Route path="/teacher/inbox" element={<CommunicationInboxPage />} />
+        <Route path="/teacher/messages" element={<MessagesPage />} />
         <Route path="/teacher/settings" element={<RoleSettingsPage role="teacher" />} />
       </Route>
     </Route>

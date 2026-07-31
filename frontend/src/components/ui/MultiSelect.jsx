@@ -80,7 +80,7 @@ function MultiSelect({
                 key={option.value}
                 type="button"
                 onClick={() => removeValue(option.value)}
-                className="inline-flex min-h-9 items-center gap-2 rounded-full border border-primary/20 bg-primary-soft px-3 py-1.5 text-sm font-medium text-primary"
+                className="is-selected-highlight inline-flex min-h-9 items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium"
                 disabled={disabled}
               >
                 <span className="max-w-44 truncate">{option.label}</span>
@@ -102,7 +102,7 @@ function MultiSelect({
                   disabled={disabled}
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${
                     isSelected
-                      ? "bg-primary-soft text-primary"
+                      ? "is-selected-highlight"
                       : "text-text-soft hover:bg-surface hover:text-text"
                   }`}
                 >

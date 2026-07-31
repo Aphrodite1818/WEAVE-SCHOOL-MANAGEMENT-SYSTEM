@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { formatPlanName } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { announcementService } from "../../services/announcementService";
+import { NOTIFICATIONS_CHANGED_EVENT, emitNotificationsChanged, notificationService } from "../../services/communicationService";
 import { authSession } from "../../services/api";
 import { authService } from "../../services/auth.service";
 import { cn } from "../../utils/cn";
@@ -21,7 +21,7 @@ import WeaveIcon from "../brand/WeaveIcon";
 import Avatar from "../ui/Avatar";
 import Dropdown from "../ui/Dropdown";
 import WorkspaceSearch from "./WorkspaceSearch";
-import { announcementPaths, roleLabels, workspaceSearchRoles } from "./navConfig";
+import { inboxPaths, roleLabels, workspaceSearchRoles } from "./navConfig";
 
 const headerIconButtonClass =
   "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface/90 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text sm:h-10 sm:w-10";
@@ -80,7 +80,7 @@ export default function Topbar({
   const isSuperadmin = role === "superadmin";
   const notificationPath = isAccountScope
     ? schoolSwitchPaths[role] || "/profile"
-    : announcementPaths[role] || "/profile";
+    : inboxPaths[role] || "/profile";
   const showPlanBadge = role === "admin" && isTenantAdmin;
   const settingsPath = isAccountScope
     ? "/profile"
@@ -99,8 +99,7 @@ export default function Topbar({
   useEffect(() => {
     let mounted = true;
 
-    // Superadmin announcements are managed separately; this feed is tenant-member scoped.
-    if (isAccountScope || isSuperadmin) {
+    if (isAccountScope) {
       setNotifications([]);
       setUnreadCount(0);
       setNotificationsError("");
@@ -114,7 +113,7 @@ export default function Topbar({
       setNotificationsLoading(true);
       setNotificationsError("");
       try {
-        const response = await announcementService.getFeed({ limit: 5 });
+        const response = await notificationService.list({ limit: 5 });
         if (!mounted) return;
         const items = response?.items || [];
         setNotifications(items.slice(0, 5));
@@ -135,6 +134,19 @@ export default function Topbar({
       mounted = false;
     };
   }, [isAccountScope, isSuperadmin, notificationRefreshKey, role]);
+
+  useEffect(() => {
+    if (isAccountScope) return undefined;
+
+    const refreshNotifications = () => setNotificationRefreshKey((value) => value + 1);
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
+    window.addEventListener("focus", refreshNotifications);
+
+    return () => {
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
+      window.removeEventListener("focus", refreshNotifications);
+    };
+  }, [isAccountScope]);
 
   useEffect(() => {
     const syncThemeHint = () => {
@@ -163,9 +175,10 @@ export default function Topbar({
 
   const deleteReadNotification = async (id) => {
     try {
-      await announcementService.deleteReadNotification(id);
+      await notificationService.dismiss(id);
       setNotifications((current) => current.filter((item) => item.id !== id));
       setNotificationRefreshKey((value) => value + 1);
+      emitNotificationsChanged();
     } catch {
       setNotificationsError("Could not delete notification.");
     }
@@ -230,7 +243,7 @@ export default function Topbar({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {!isAccountScope && !isSuperadmin ? (
+          {!isAccountScope ? (
             <Dropdown
               align="right"
               className="notification-dropdown-panel w-80 max-w-[calc(100vw-1rem)]"
@@ -262,7 +275,7 @@ export default function Topbar({
                     <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2">
                       <div className="flex items-start gap-2">
                         <p className="min-w-0 flex-1 line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
-                        {item.is_read ? (
+                        {item.status !== "unread" ? (
                           <button
                             type="button"
                             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-faint transition hover:bg-error-soft hover:text-error"
@@ -273,8 +286,8 @@ export default function Topbar({
                           </button>
                         ) : null}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.body}</p>
-                      <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.preview}</p>
+                      <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.delivered_at)}</p>
                     </div>
                   ))
                 ) : (

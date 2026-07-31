@@ -158,7 +158,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         <span className="font-semibold text-text">Selected report context:</span>{" "}
         {classLabel(selectedClass)} · {selectedSession?.name || "No session"} · {String(selectedTerm?.name || "No term").replaceAll("_", " ")}
       </span>
-      <Button type="button" size="small" variant="outline" onClick={loadPageData}>
+      <Button type="button" size="small" variant="outline" className="manual-refresh-action" onClick={loadPageData}>
         <RefreshCw className="h-4 w-4" /> Refresh
       </Button>
     </div>

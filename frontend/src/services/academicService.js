@@ -75,8 +75,8 @@ const resolveExistingClassSubjectId = async (classId, subjectId) => {
   if (existing.is_active === false || existing.archived_at) {
     throw new Error(
       existing.archived_at
-        ? "This class-subject mapping is archived. Restore it before assigning a teacher."
-        : "This class-subject mapping is inactive. Activate it before assigning a teacher.",
+        ? "This subject is archived for the class. Restore it before assigning a teacher."
+        : "This subject is inactive for the class. Activate it before assigning a teacher.",
     );
   }
 

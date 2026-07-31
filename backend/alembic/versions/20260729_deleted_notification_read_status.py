@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from alembic import op
+from sqlalchemy import inspect
 
 revision: str = "20260729_deleted_notif_status"
 down_revision: str | Sequence[str] | None = "20260729_student_import_type"
@@ -18,10 +19,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if not inspect(bind).has_table("announcement_reads", schema="public"):
+        return
     op.execute("ALTER TYPE public.announcement_read_status ADD VALUE IF NOT EXISTS 'DELETED';")
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    if not inspect(bind).has_table("announcement_reads", schema="public"):
+        return
     op.execute("UPDATE public.announcement_reads SET status = 'READ' WHERE status::text = 'DELETED';")
     op.execute("ALTER TYPE public.announcement_read_status RENAME TO announcement_read_status_old;")
     op.execute("CREATE TYPE public.announcement_read_status AS ENUM ('UNREAD', 'READ', 'ACKNOWLEDGED');")

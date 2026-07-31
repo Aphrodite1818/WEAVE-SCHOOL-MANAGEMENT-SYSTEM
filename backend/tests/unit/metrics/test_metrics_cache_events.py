@@ -4,7 +4,8 @@ import uuid
 from types import SimpleNamespace
 
 from app.core.cache.events import CACHE_INVALIDATION_EVENTS, CacheInvalidationEvent
-from app.modules.announcements.models import AnnouncementRead, AnnouncementRecipientRole
+from app.modules.communications.enums import CommunicationActorType, NotificationSourceType
+from app.modules.communications.models import NotificationDelivery
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
     student_dashboard_cache_key,
@@ -73,14 +74,17 @@ def test_tenant_change_invalidates_superadmin_metrics() -> None:
     ) in _queued_events(session)
 
 
-def test_parent_announcement_read_invalidates_parent_dashboard() -> None:
+def test_parent_notification_delivery_invalidates_parent_dashboard() -> None:
     tenant_id = uuid.uuid4()
     parent_id = uuid.uuid4()
-    read = AnnouncementRead(
+    read = NotificationDelivery(
         tenant_id=tenant_id,
-        announcement_id=uuid.uuid4(),
-        actor_type=AnnouncementRecipientRole.PARENT,
-        actor_id=parent_id,
+        recipient_actor_type=CommunicationActorType.PARENT,
+        recipient_actor_id=parent_id,
+        source_type=NotificationSourceType.ANNOUNCEMENT,
+        source_id=uuid.uuid4(),
+        title="School update",
+        preview="A school update is available.",
     )
     session = _session(read)
 
