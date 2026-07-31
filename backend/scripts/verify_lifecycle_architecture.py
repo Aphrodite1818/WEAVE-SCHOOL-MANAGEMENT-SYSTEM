@@ -50,7 +50,11 @@ def main() -> None:
 
     plan_change_table = Base.metadata.tables.get(
         "public.subscription_plan_changes"
-    ) or Base.metadata.tables.get("subscription_plan_changes")
+    )
+    if plan_change_table is None:
+        plan_change_table = Base.metadata.tables.get(
+            "subscription_plan_changes"
+        )
     if plan_change_table is None:
         raise SystemExit("subscription_plan_changes table metadata is unavailable")
 
