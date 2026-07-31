@@ -15,6 +15,7 @@ class FeatureCode(StrEnum):
     ADVANCED_ANALYTICS = "advanced_analytics"
     AI_ASSISTANT = "ai_assistant"
     BULK_IMPORT = "bulk_import"
+    BULK_ACADEMIC_OPERATIONS = "bulk_academic_operations"
 
 
 class ResourceLimitCode(StrEnum):
@@ -61,6 +62,25 @@ class PaymentStatus(StrEnum):
     ABANDONED = "abandoned"
 
 
+class SubscriptionPlanChangeType(StrEnum):
+    """Direction of a requested subscription plan change."""
+
+    UPGRADE = "upgrade"
+    DOWNGRADE = "downgrade"
+
+
+class SubscriptionPlanChangeStatus(StrEnum):
+    """Lifecycle states for a requested plan change."""
+
+    PENDING = "pending"
+    BLOCKED = "blocked"
+    SCHEDULED = "scheduled"
+    AWAITING_PAYMENT = "awaiting_payment"
+    APPLIED = "applied"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
 class SubscriptionBlockReason(StrEnum):
     """Why a subscription-gated action was denied."""
 
@@ -68,3 +88,4 @@ class SubscriptionBlockReason(StrEnum):
     RESOURCE_LIMIT_REACHED = "resource_limit_reached"
     TENANT_NOT_FOUND = "tenant_not_found"
     SUBSCRIPTION_INACTIVE = "subscription_inactive"
+    PLAN_CHANGE_BLOCKED = "plan_change_blocked"
