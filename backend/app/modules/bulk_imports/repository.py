@@ -73,10 +73,7 @@ class ImportJobRepository:
         )
 
         if include_children:
-            query = query.options(
-                selectinload(ImportJob.row_errors),
-                selectinload(ImportJob.notifications),
-            )
+            query = query.options(selectinload(ImportJob.row_errors))
 
         if lock:
             query = query.with_for_update()
@@ -160,7 +157,7 @@ class ImportJobRepository:
     ) -> None:
         """Delete an import job.
 
-        Row errors, staged rows, and notifications should be deleted by cascade.
+        Row errors and staged rows are deleted by cascade.
         """
 
         await db.delete(import_job)
@@ -352,5 +349,3 @@ class ImportStagedRowRepository:
             )
         )
         await db.flush()
-
-
