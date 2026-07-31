@@ -12,6 +12,7 @@ from app.modules.bulk_imports.schemas import InputBase, OutputBase
 
 
 class StudentSlipClassSummary(OutputBase):
+    class_key: str
     class_id: uuid.UUID | None = None
     class_name: str
     count: int = Field(ge=0)
@@ -35,6 +36,7 @@ class StudentSlipListItem(OutputBase):
     student_id: uuid.UUID | None = None
     full_name: str
     admission_number: str
+    class_key: str
     class_id: uuid.UUID | None = None
     class_name: str
     setup_code_available: bool
@@ -62,7 +64,7 @@ class StudentSlipPrintRequest(InputBase):
     mode: Literal["selected", "filtered", "all"]
     row_numbers: list[int] = Field(default_factory=list, max_length=5000)
     search: str | None = Field(default=None, max_length=160)
-    class_id: uuid.UUID | None = None
+    class_key: str | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def validate_scope(self) -> "StudentSlipPrintRequest":
