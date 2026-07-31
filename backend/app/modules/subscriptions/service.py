@@ -424,7 +424,8 @@ class SubscriptionLifecycleService:
     ) -> TenantSubscription:
         now = SubscriptionLifecycleService.utc_now()
         subscription.status = SubscriptionStatus.GRACE_PERIOD
-        subscription.grace_ends_at = now + timedelta(days=grace_days)
+        if subscription.grace_ends_at is None:
+            subscription.grace_ends_at = now + timedelta(days=grace_days)
         subscription.notes = _append_note(subscription.notes, notes)
         saved = await SubscriptionRepository.save_subscription(
             db=db,

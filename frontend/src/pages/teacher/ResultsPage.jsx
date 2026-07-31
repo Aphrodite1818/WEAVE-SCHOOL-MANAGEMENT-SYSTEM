@@ -77,7 +77,7 @@ function TeacherResultsPage() {
           academicService.listTeacherSessions(),
           academicService.listTeacherTerms(),
           assessmentLimitsService.getTeacherLimits(),
-          subscriptionService.getActorEntitlements(),
+          subscriptionService.getActorEntitlements().catch(() => null),
         ]);
         if (!mounted) return;
         const assignmentItems = assignmentResponse?.items || [];
