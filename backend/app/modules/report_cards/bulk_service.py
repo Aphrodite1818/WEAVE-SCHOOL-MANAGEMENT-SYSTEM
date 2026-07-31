@@ -73,13 +73,9 @@ class BulkReportCardService:
         card,
     ) -> None:
         if card.status != ReportCardStatus.DRAFT:
-            raise BadRequestException(
-                "Only draft report cards can be published."
-            )
+            raise BadRequestException("Only draft report cards can be published.")
         if card.superseded_at is not None:
-            raise BadRequestException(
-                "Superseded report cards cannot be published."
-            )
+            raise BadRequestException("Superseded report cards cannot be published.")
         if card.is_outdated:
             raise BadRequestException(
                 "Outdated report cards must be regenerated before publication."
@@ -95,14 +91,10 @@ class BulkReportCardService:
             actor.tenant_id,
             card.class_id,
         )
-        expected_subject_ids = {
-            class_subject.subject_id for class_subject in expected
-        }
+        expected_subject_ids = {class_subject.subject_id for class_subject in expected}
         line_subject_ids = {line.subject_id for line in lines}
         if line_subject_ids != expected_subject_ids:
-            raise BadRequestException(
-                "Report card is missing expected subject lines."
-            )
+            raise BadRequestException("Report card is missing expected subject lines.")
 
         for line in lines:
             result = await StudentAcademicRepository.get_result_by_id(
@@ -148,9 +140,7 @@ class BulkReportCardService:
                     )
                 processed += 1
             except Exception as exc:
-                skipped.append(
-                    BulkActionSkippedItem(id=card.id, reason=str(exc))
-                )
+                skipped.append(BulkActionSkippedItem(id=card.id, reason=str(exc)))
 
         await db.commit()
         return BulkActionResponse(
@@ -194,9 +184,7 @@ class BulkReportCardService:
                     )
                 processed += 1
             except Exception as exc:
-                skipped.append(
-                    BulkActionSkippedItem(id=card.id, reason=str(exc))
-                )
+                skipped.append(BulkActionSkippedItem(id=card.id, reason=str(exc)))
 
         await db.commit()
         return BulkActionResponse(
@@ -231,9 +219,7 @@ class BulkReportCardService:
                 skipped.append(
                     BulkActionSkippedItem(
                         id=card.id,
-                        reason=(
-                            "Superseded historical versions cannot be reopened."
-                        ),
+                        reason=("Superseded historical versions cannot be reopened."),
                     )
                 )
                 continue
@@ -255,9 +241,7 @@ class BulkReportCardService:
                     )
                 processed += 1
             except Exception as exc:
-                skipped.append(
-                    BulkActionSkippedItem(id=card.id, reason=str(exc))
-                )
+                skipped.append(BulkActionSkippedItem(id=card.id, reason=str(exc)))
 
         await db.commit()
         return BulkActionResponse(
