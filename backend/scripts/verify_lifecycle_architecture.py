@@ -58,11 +58,15 @@ def main() -> None:
     route_paths = {route.path for route in app.routes}
     missing_routes = REQUIRED_ROUTES - route_paths
     if missing_routes:
-        raise SystemExit(f"Lifecycle routes are not registered: {sorted(missing_routes)}")
+        raise SystemExit(
+            f"Lifecycle routes are not registered: {sorted(missing_routes)}"
+        )
 
     index_names = {index.name for index in SubscriptionPlanChange.__table__.indexes}
     if "uq_subscription_plan_changes_open_per_tenant" not in index_names:
-        raise SystemExit("Open plan changes are not protected by the expected unique index")
+        raise SystemExit(
+            "Open plan changes are not protected by the expected unique index"
+        )
 
     print(
         "Lifecycle architecture verified:",
