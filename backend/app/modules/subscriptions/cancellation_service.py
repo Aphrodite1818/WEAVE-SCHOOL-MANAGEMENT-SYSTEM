@@ -61,8 +61,7 @@ class SubscriptionCancellationService:
             matching = [
                 item
                 for item in viable
-                if SubscriptionCancellationService._candidate_plan_code(item)
-                == expected_plan
+                if SubscriptionCancellationService._candidate_plan_code(item) == expected_plan
             ]
             if matching:
                 viable = matching
@@ -82,9 +81,7 @@ class SubscriptionCancellationService:
         provider_data: dict[str, Any] | None = None
 
         if subscription.provider_subscription_code:
-            response = await client.fetch_subscription(
-                code=subscription.provider_subscription_code
-            )
+            response = await client.fetch_subscription(code=subscription.provider_subscription_code)
             provider_data = SubscriptionPaymentService._extract_data(response)
         elif subscription.provider_customer_code:
             customer_response = await client.fetch_customer(
@@ -93,9 +90,7 @@ class SubscriptionCancellationService:
             customer_data = SubscriptionPaymentService._extract_data(customer_response)
             customer_id = customer_data.get("id")
             if customer_id is not None:
-                list_response = await client.list_subscriptions(
-                    customer_id=int(customer_id)
-                )
+                list_response = await client.list_subscriptions(customer_id=int(customer_id))
                 raw_candidates = list_response.get("data")
                 candidates = (
                     [item for item in raw_candidates if isinstance(item, dict)]
@@ -163,9 +158,7 @@ class SubscriptionCancellationService:
         ):
             return subscription
         if subscription.status != SubscriptionStatus.ACTIVE:
-            raise BadRequestException(
-                "Only an active paid subscription can be cancelled."
-            )
+            raise BadRequestException("Only an active paid subscription can be cancelled.")
 
         if subscription.provider == PaymentProvider.PAYSTACK:
             client = PaystackClient()
@@ -175,12 +168,14 @@ class SubscriptionCancellationService:
                     not subscription.provider_subscription_code
                     or not subscription.provider_email_token
                 ):
-                    code, token, provider_status = (
-                        await SubscriptionCancellationService._recover_paystack_credentials(
-                            db,
-                            subscription,
-                            client,
-                        )
+                    (
+                        code,
+                        token,
+                        provider_status,
+                    ) = await SubscriptionCancellationService._recover_paystack_credentials(
+                        db,
+                        subscription,
+                        client,
                     )
                 else:
                     code = subscription.provider_subscription_code
