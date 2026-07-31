@@ -5,7 +5,7 @@ import { FEATURE_CODES } from "../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../features/subscriptions/useSubscription";
 import BulkImportPage from "../pages/admin/BulkImportPage";
 
-function BulkImportRouteGuard() {
+function BulkImportRouteGuard({ children = null }) {
   const { getFeatureGuard, isLoading, isRefreshing, planCode } = useSubscription();
   const bulkImportGuard = getFeatureGuard(FEATURE_CODES.BULK_IMPORT);
   const isTrialPlan = String(planCode || "").trim().toLowerCase() === "free_trial";
@@ -18,7 +18,7 @@ function BulkImportRouteGuard() {
     return <LoadingState label="Checking plan access..." />;
   }
 
-  return <BulkImportPage />;
+  return children || <BulkImportPage />;
 }
 
 export default BulkImportRouteGuard;
