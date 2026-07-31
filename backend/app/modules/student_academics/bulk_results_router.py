@@ -23,6 +23,8 @@ from app.modules.student_academics.models import (
 )
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.service import StudentAcademicService
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.teachers.models import TeacherMembership
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -44,6 +46,14 @@ CurrentTeacher: TypeAlias = Annotated[
     TeacherMembership,
     Depends(get_current_teacher),
 ]
+
+
+async def _ensure_paid_bulk_academics(db: DbSession, tenant_id: uuid.UUID) -> None:
+    await SubscriptionFeatureService.ensure_feature_enabled(
+        db=db,
+        tenant_id=tenant_id,
+        feature=FeatureCode.BULK_ACADEMIC_OPERATIONS,
+    )
 
 
 class ResultBulkScope(BaseModel):
@@ -106,9 +116,13 @@ class BulkResultLifecycleService:
         if session is None or term is None or term.academic_session_id != session.id:
             raise NotFoundException("Academic session or term is invalid.")
         if not session.is_current or session.status != AcademicSessionStatus.OPEN:
-            raise ConflictException("Results can only be changed in the current open session.")
+            raise ConflictException(
+                "Results can only be changed in the current open session."
+            )
         if not term.is_current or term.status != AcademicTermStatus.OPEN:
-            raise ConflictException("Results can only be changed in the current open term.")
+            raise ConflictException(
+                "Results can only be changed in the current open term."
+            )
 
     @staticmethod
     async def _load_scope(
@@ -122,16 +136,20 @@ class BulkResultLifecycleService:
         filters = [
             StudentSubjectResult.tenant_id == tenant_id,
             StudentSubjectResult.class_id == payload.class_id,
-            StudentSubjectResult.academic_session_id == payload.academic_session_id,
+            StudentSubjectResult.academic_session_id
+            == payload.academic_session_id,
             StudentSubjectResult.academic_term_id == payload.academic_term_id,
             StudentSubjectResult.status == result_status,
         ]
         if payload.teacher_assignment_id is not None:
             filters.append(
-                StudentSubjectResult.teacher_assignment_id == payload.teacher_assignment_id
+                StudentSubjectResult.teacher_assignment_id
+                == payload.teacher_assignment_id
             )
         if teacher_id is not None:
-            filters.append(StudentSubjectResult.teacher_membership_id == teacher_id)
+            filters.append(
+                StudentSubjectResult.teacher_membership_id == teacher_id
+            )
         rows = (
             (
                 await db.execute(
@@ -364,6 +382,7 @@ async def bulk_transition_results(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> BulkResultActionResponse:
+    await _ensure_paid_bulk_academics(db, current_admin.tenant_id)
     return await BulkResultLifecycleService.admin_transition(
         db,
         current_admin,
@@ -377,6 +396,7 @@ async def bulk_reopen_results(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> BulkResultActionResponse:
+    await _ensure_paid_bulk_academics(db, current_admin.tenant_id)
     return await BulkResultLifecycleService.admin_reopen(
         db,
         current_admin,
@@ -390,6 +410,7 @@ async def bulk_submit_teacher_results(
     db: DbSession,
     current_teacher: CurrentTeacher,
 ) -> BulkResultActionResponse:
+    await _ensure_paid_bulk_academics(db, current_teacher.tenant_id)
     return await BulkResultLifecycleService.teacher_submit(
         db,
         current_teacher,
