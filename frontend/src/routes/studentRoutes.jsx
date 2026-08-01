@@ -1,18 +1,19 @@
 import { Route } from "react-router-dom";
 
 import { DashboardShell } from "../components/layout/DashboardLayout";
+import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
+import MessagesPage from "../pages/shared/MessagesPage";
+import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
+import RoleGettingStartedPage from "../pages/shared/RoleGettingStartedPage";
+import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
+import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
+import StudentAttendancePage from "../pages/student/StudentAttendancePage";
 import StudentChangePasswordPage from "../pages/student/StudentChangePasswordPage";
 import StudentDashboardPage from "../pages/student/StudentDashboardPage";
 import StudentParentLinkingPage from "../pages/student/StudentParentLinkingPage";
 import StudentReportCardsPage from "../pages/student/StudentReportCardsPage";
-import StudentAttendancePage from "../pages/student/StudentAttendancePage";
 import StudentSubjectDetailsPage from "../pages/student/StudentSubjectDetailsPage";
 import StudentSubjectsPage from "../pages/student/StudentSubjectsPage";
-import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
-import MessagesPage from "../pages/shared/MessagesPage";
-import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
-import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
-import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
@@ -23,6 +24,7 @@ export const studentRoutes = (
     </Route>
     <Route element={<DashboardShell role="student" />}>
       <Route path="/student/dashboard" element={<StudentDashboardPage />} />
+      <Route path="/student/getting-started" element={<RoleGettingStartedPage role="student" />} />
       <Route path="/student/analytics" element={<RoleAnalyticsPage role="student" />} />
       <Route path="/student/subjects" element={<StudentSubjectsPage />} />
       <Route path="/student/subjects/:subjectResultId" element={<StudentSubjectDetailsPage />} />
