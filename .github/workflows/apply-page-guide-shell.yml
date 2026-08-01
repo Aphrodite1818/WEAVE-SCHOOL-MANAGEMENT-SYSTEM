@@ -1,0 +1,39 @@
+name: Apply page guide shell
+
+on:
+  push:
+    branches:
+      - Attendance
+    paths:
+      - ".github/workflows/apply-page-guide-shell.yml"
+      - ".github/scripts/apply_page_guide_shell.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Attendance
+        uses: actions/checkout@v4
+        with:
+          ref: Attendance
+          fetch-depth: 0
+
+      - name: Apply page guide shell patch
+        run: python .github/scripts/apply_page_guide_shell.py
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/components/layout/DashboardLayout.jsx frontend/src/pages/admin/AdminDashboardPage.jsx
+          git commit -m "refactor: replace dashboard guide modals with pages"
+          git push origin HEAD:Attendance
