@@ -32,6 +32,21 @@ test("assisted class-limit warning routes admins to a working checkout page", ()
   assert.match(plansPage, /window\.location\.assign\(response\.authorization_url\)/);
 });
 
+test("new tenant admins enter assisted setup immediately after onboarding", () => {
+  const onboardingGate = readSource(
+    "components",
+    "layout",
+    "useOnboardingGate.js",
+  );
+
+  assert.match(onboardingGate, /normalizedRole === "admin"/);
+  assert.match(onboardingGate, /profileMode === "onboarding"/);
+  assert.match(
+    onboardingGate,
+    /navigate\("\/admin\/getting-started", \{ replace: true \}\)/,
+  );
+});
+
 test("all guided setup exit actions return to the actor dashboard", () => {
   const adminGuide = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
   const roleGuide = readSource("pages", "shared", "RoleGettingStartedPage.jsx");
