@@ -40,13 +40,22 @@ async def send_email(
             }
 
             timeout = httpx.Timeout(12.0, connect=5.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
                 res = await client.post(
                     settings.APP_SCRIPT_URL,
                     json=payload,
                 )
 
             if res.status_code == 200:
+                try:
+                    response_payload = res.json()
+                except ValueError:
+                    response_payload = None
+
+                if isinstance(response_payload, dict) and response_payload.get("success") is False:
+                    logger.warning(f"App Script failed with success=false: {res.text}")
+                    return False
+
                 logger.info(f"Email sent via App Script → {to_email}")
                 return True
 
