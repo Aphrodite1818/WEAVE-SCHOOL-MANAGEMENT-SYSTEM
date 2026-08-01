@@ -130,6 +130,8 @@ function DashboardShellFrame({
       !profileModalOpen,
   });
   const gettingStartedRoute = roleGuide.config?.route || "";
+  const startRoleGuide = roleGuide.start;
+  const shouldAutoRedirect = roleGuide.shouldAutoRedirect;
   const showGettingStartedBanner = Boolean(
     roleGuide.shouldShowBanner &&
       roleGuide.config?.dashboardRoute === location.pathname &&
@@ -138,7 +140,7 @@ function DashboardShellFrame({
 
   useEffect(() => {
     if (
-      !roleGuide.shouldAutoRedirect ||
+      !shouldAutoRedirect ||
       !gettingStartedRoute ||
       location.pathname === gettingStartedRoute
     ) {
@@ -146,7 +148,7 @@ function DashboardShellFrame({
     }
 
     let cancelled = false;
-    roleGuide.start().then(() => {
+    startRoleGuide().then(() => {
       if (!cancelled) navigate(gettingStartedRoute, { replace: true });
     });
     return () => {
@@ -156,8 +158,8 @@ function DashboardShellFrame({
     gettingStartedRoute,
     location.pathname,
     navigate,
-    roleGuide.shouldAutoRedirect,
-    roleGuide.start,
+    shouldAutoRedirect,
+    startRoleGuide,
   ]);
 
   useEffect(() => {
