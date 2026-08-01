@@ -108,7 +108,7 @@ export function DashboardWelcomePanel({
             )}
             <div className="min-w-0">
               {!hasSchoolLogo ? (
-                <p className={cn("text-[10px] font-bold uppercase tracking-[0.16em]", isBlueHero ? "text-white/65" : "text-text-faint")}>
+                <p className={cn("text-[10px] font-bold uppercase tracking-[0.16em]", isBlueHero ? "text-white/75" : "text-text-faint")}>
                   Powered by
                 </p>
               ) : null}
@@ -117,9 +117,9 @@ export function DashboardWelcomePanel({
               </p>
             </div>
           </div>
-          {eyebrow ? <p className={cn("text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs", isBlueHero && "text-white/75")}>{eyebrow}</p> : null}
+          {eyebrow ? <p className={cn("text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs", isBlueHero && "text-white/80")}>{eyebrow}</p> : null}
           <h2 className={cn("mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl", isBlueHero && "text-white")}>{title}</h2>
-          {description ? <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/80")}>{description}</p> : null}
+          {description ? <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/85")}>{description}</p> : null}
           {visibleChips.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {visibleChips.map((chip) => {
@@ -130,7 +130,7 @@ export function DashboardWelcomePanel({
                     key={`${chip.label}-${chip.value || ""}`}
                     className={cn(
                       "inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold sm:text-xs",
-                      isBlueHero ? "border border-white/20 bg-white/15 text-white" : chipToneStyle.badge,
+                      isBlueHero ? "border border-white/25 bg-white/15 text-white" : chipToneStyle.badge,
                     )}
                   >
                     <span className="truncate">{chip.label}</span>

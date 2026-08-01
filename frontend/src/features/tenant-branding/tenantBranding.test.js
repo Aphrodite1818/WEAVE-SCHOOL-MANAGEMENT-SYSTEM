@@ -33,20 +33,22 @@ test("strict allow-list rejects unknown, missing, and invalid token values", () 
 });
 
 test("tenant response validation prevents cross-tenant cache use", () => {
-  const response = { tenant_id: "school-a", light_tokens: tokens, dark_tokens: tokens };
+  const response = { tenant_id: "school-a", token_schema_version: 2, light_tokens: tokens, dark_tokens: tokens };
   assert.ok(validateBrandingResponse(response, "school-a"));
   assert.equal(validateBrandingResponse(response, "school-b"), null);
+  assert.equal(validateBrandingResponse({ ...response, token_schema_version: 1 }, "school-a"), null);
 });
 
 test("appearance switches token sets without retaining previous variables", () => {
   const element = fakeElement();
   const dark = { ...tokens, "--color-primary": "9 8 7" };
   const response = {
-    tenant_id: "school-a", theme_version: 2, is_enabled: true,
+    tenant_id: "school-a", theme_version: 2, token_schema_version: 2, is_enabled: true,
     is_default_theme: false, light_tokens: tokens, dark_tokens: dark,
   };
   applyBranding(element, response, "light");
   assert.equal(element.style.getPropertyValue("--color-primary"), "1 2 3");
+  assert.equal(element.style.getPropertyValue("--color-background"), "");
   applyBranding(element, response, "dark");
   assert.equal(element.style.getPropertyValue("--color-primary"), "9 8 7");
   clearAppliedBranding(element);

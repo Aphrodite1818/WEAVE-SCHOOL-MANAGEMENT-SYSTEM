@@ -57,19 +57,19 @@
 
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --color-background: 10 15 28;
-    --color-surface: 15 23 42;
-    --color-surface-raised: 20 31 54;
-    --color-surface-muted: 30 41 59;
-    --color-surface-subtle: 51 65 85;
+    --color-background: 0 0 0;
+    --color-surface: 8 12 20;
+    --color-surface-raised: 12 17 27;
+    --color-surface-muted: 18 24 36;
+    --color-surface-subtle: 27 35 49;
     --color-surface-tint: 30 41 59;
     --color-surface-blue: 15 23 42;
     --color-surface-emerald: 6 78 59;
     --color-surface-amber: 69 47 10;
     --color-surface-rose: 76 29 48;
-    --color-border: 51 65 85;
-    --color-border-strong: 71 85 105;
-    --color-border-subtle: 30 41 59;
+    --color-border: 30 41 59;
+    --color-border-strong: 51 65 85;
+    --color-border-subtle: 18 24 36;
     --color-text: 248 250 252;
     --color-text-soft: 226 232 240;
     --color-text-muted: 148 163 184;
@@ -78,12 +78,12 @@
     --color-sidebar-background: 15 23 42;
     --color-sidebar-text: 226 232 240;
     --color-sidebar-border: 51 65 85;
-    --color-header-background: 15 23 42;
+    --color-header-background: 0 0 0;
     --color-header-text: 248 250 252;
     --color-header-text-muted: 148 163 184;
-    --color-header-surface: 20 31 54;
-    --color-header-surface-hover: 30 41 59;
-    --color-header-border: 51 65 85;
+    --color-header-surface: 8 12 20;
+    --color-header-surface-hover: 18 24 36;
+    --color-header-border: 30 41 59;
   }
 
   :root:not([data-theme="dark"]) [data-dashboard-role="admin"],
@@ -198,17 +198,18 @@
 
   .dashboard-welcome-blue,
   .dashboard-welcome-student {
-    --weave-icon-primary: #eff6ff;
-    --weave-icon-accent: #f59e0b;
-    background-color: #1d4ed8;
-    box-shadow: 0 18px 40px rgb(29 78 216 / 0.18);
+    --weave-icon-primary: rgb(var(--color-on-primary));
+    --weave-icon-accent: rgb(var(--color-accent));
+    background-color: rgb(var(--color-primary));
+    color: rgb(var(--color-on-primary));
+    box-shadow: 0 18px 40px rgb(var(--color-primary) / 0.18);
   }
 
   :root[data-theme="dark"] .dashboard-welcome-blue,
   :root[data-theme="dark"] .dashboard-welcome-student {
-    --weave-icon-primary: #bfdbfe;
-    --weave-icon-accent: #fbbf24;
-    background-color: #172554;
+    --weave-icon-primary: rgb(var(--color-on-primary));
+    --weave-icon-accent: rgb(var(--color-accent));
+    background-color: rgb(var(--color-sidebar-background));
     box-shadow: 0 18px 42px rgb(2 6 23 / 0.42);
   }
 

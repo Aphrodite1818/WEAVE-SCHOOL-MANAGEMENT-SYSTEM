@@ -14,6 +14,7 @@ export const TENANT_BRANDING_TOKEN_KEYS = Object.freeze([
 ]);
 
 const TOKEN_KEY_SET = new Set(TENANT_BRANDING_TOKEN_KEYS);
+const NON_BRANDABLE_TOKEN_KEYS = new Set(["--color-background"]);
 const RGB_CHANNELS = /^(?:0|[1-9]\d?|1\d\d|2[0-4]\d|25[0-5]) (?:0|[1-9]\d?|1\d\d|2[0-4]\d|25[0-5]) (?:0|[1-9]\d?|1\d\d|2[0-4]\d|25[0-5])$/;
 
 export const brandingCacheKey = (tenantId) => `weave-branding:${tenantId}`;
@@ -28,6 +29,7 @@ export function validateBrandingTokens(tokens) {
 
 export function validateBrandingResponse(value, tenantId) {
   if (!value || String(value.tenant_id || "") !== String(tenantId || "")) return null;
+  if (value.token_schema_version !== 2) return null;
   const lightTokens = validateBrandingTokens(value.light_tokens);
   const darkTokens = validateBrandingTokens(value.dark_tokens);
   if (!lightTokens || !darkTokens) return null;
@@ -65,7 +67,9 @@ export function applyBranding(element, response, appearance) {
   const tokens = appearance === "dark" ? response.dark_tokens : response.light_tokens;
   const validated = validateBrandingTokens(tokens);
   if (!validated) return;
-  Object.entries(validated).forEach(([key, value]) => element.style.setProperty(key, value));
+  Object.entries(validated).forEach(([key, value]) => {
+    if (!NON_BRANDABLE_TOKEN_KEYS.has(key)) element.style.setProperty(key, value);
+  });
   element.dataset.brandingTenantId = String(response.tenant_id);
   element.dataset.brandingVersion = String(response.theme_version || 0);
 }

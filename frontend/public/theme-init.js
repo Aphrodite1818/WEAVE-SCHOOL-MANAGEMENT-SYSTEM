@@ -40,11 +40,16 @@
       const tokens = resolvedTheme === "dark" ? branding?.dark_tokens : branding?.light_tokens;
       const valid = branding?.is_enabled === true
         && branding?.is_default_theme === false
+        && branding?.token_schema_version === 2
         && String(branding?.tenant_id || "") === String(tenantId)
         && tokens && Object.keys(tokens).length === tokenKeys.length
         && tokenKeys.every((key) => rgbChannels.test(String(tokens[key] || "")));
       if (valid) {
-        tokenKeys.forEach((key) => document.documentElement.style.setProperty(key, tokens[key]));
+        tokenKeys.forEach((key) => {
+          if (key !== "--color-background") {
+            document.documentElement.style.setProperty(key, tokens[key]);
+          }
+        });
         document.documentElement.dataset.startupTenantBranding = String(tenantId);
       }
     }

@@ -103,7 +103,7 @@ function BillingSignal({ icon: Icon, label, value }) {
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/65">{label}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/75">{label}</p>
         <p className="mt-1 text-sm font-semibold leading-5 text-white">{value || "--"}</p>
       </div>
     </div>
@@ -244,9 +244,9 @@ function BillingPage() {
                     {formatBillingInterval(currentSubscription?.billing_interval)}
                   </span>
                 </div>
-                <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.16em] text-white/70">Current subscription</p>
+                <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.16em] text-white/75">Current subscription</p>
                 <h2 className="mt-2 text-3xl font-semibold text-white sm:text-4xl">{formatPlanName(planCode)}</h2>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/80">
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
                   Usage limits and premium features are enforced from the active subscription and any scheduled downgrade.
                 </p>
               </div>

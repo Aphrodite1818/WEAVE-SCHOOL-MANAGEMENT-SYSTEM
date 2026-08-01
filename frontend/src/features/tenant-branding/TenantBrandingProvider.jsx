@@ -79,7 +79,7 @@ export function TenantBrandingProvider({ children, role, user: userProp }) {
   const value = useMemo(() => ({
     branding,
     tenantId,
-    schoolName: branding?.brand_name || resolveSchoolName(user),
+    schoolName: branding?.school_name || resolveSchoolName(user),
     logoUrl: branding?.logo_url || user?.tenant_logo_url || user?.tenant?.logo_url || "",
     applyResponse: acceptBranding,
   }), [acceptBranding, branding, tenantId, user]);
