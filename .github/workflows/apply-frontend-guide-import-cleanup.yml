@@ -1,0 +1,39 @@
+name: Apply frontend guide and import cleanup
+
+on:
+  push:
+    branches:
+      - Attendance
+    paths:
+      - ".github/scripts/apply_frontend_guide_and_import_cleanup.py"
+      - ".github/workflows/apply-frontend-guide-import-cleanup.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Attendance
+        uses: actions/checkout@v4
+        with:
+          ref: Attendance
+          fetch-depth: 0
+
+      - name: Apply cleanup
+        run: python .github/scripts/apply_frontend_guide_and_import_cleanup.py
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend backend
+          git commit -m "feat: refine guides and prevent duplicate imports"
+          git push origin HEAD:Attendance
