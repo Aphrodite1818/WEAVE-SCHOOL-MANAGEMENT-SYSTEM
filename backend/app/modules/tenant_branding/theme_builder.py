@@ -17,7 +17,7 @@ DEFAULT_THEME_MODE: Final[TenantBrandingThemeMode] = TenantBrandingThemeMode.LIG
 DEFAULT_HEADER_COLOR: Final[str] = "#FFFFFF"
 DEFAULT_BACKGROUND_COLOR: Final[str] = "#F8FAFC"
 DEFAULT_DARK_HEADER_COLOR: Final[str] = "#0A0F1C"
-DEFAULT_DARK_BACKGROUND_COLOR: Final[str] = "#0A0F1C"
+DEFAULT_DARK_BACKGROUND_COLOR: Final[str] = "#000000"
 
 LIGHT_TEXT_RGB: Final[tuple[int, int, int]] = (255, 255, 255)
 DARK_TEXT_RGB: Final[tuple[int, int, int]] = (15, 23, 42)
@@ -45,7 +45,7 @@ def hex_to_rgb(value: str) -> tuple[int, int, int]:
     """Convert a hex color into an RGB tuple."""
 
     normalized = normalize_hex_color(value).lstrip("#")
-    return tuple(int(normalized[index:index + 2], 16) for index in (0, 2, 4))
+    return tuple(int(normalized[index : index + 2], 16) for index in (0, 2, 4))
 
 
 def rgb_to_channels(rgb: tuple[int, int, int]) -> str:
@@ -165,22 +165,60 @@ def get_default_background_color(theme_mode: TenantBrandingThemeMode) -> str:
 
 # Versioned semantic contract used by workspace clients. Legacy flat token
 # payloads are treated as stale and regenerated from the stored source palette.
-TOKEN_SCHEMA_VERSION: Final[int] = 1
+TOKEN_SCHEMA_VERSION: Final[int] = 2
 DEFAULT_SURFACE_COLOR: Final[str] = "#FFFFFF"
+DEFAULT_PALETTE_KEY: Final[str] = "blue"
+BRANDING_PALETTES: Final[dict[str, dict[str, str]]] = {
+    "blue": {"primary": "#1D4ED8", "accent": "#4F46E5"},
+    "navy": {"primary": "#1E3A8A", "accent": "#3B82F6"},
+    "gold": {"primary": "#A16207", "accent": "#D97706"},
+    "orange": {"primary": "#C2410C", "accent": "#F97316"},
+    "emerald": {"primary": "#047857", "accent": "#10B981"},
+    "forest": {"primary": "#166534", "accent": "#22C55E"},
+    "violet": {"primary": "#7C3AED", "accent": "#8B5CF6"},
+    "plum": {"primary": "#86198F", "accent": "#D946EF"},
+    "rose": {"primary": "#BE123C", "accent": "#E11D48"},
+    "teal": {"primary": "#0F766E", "accent": "#14B8A6"},
+    "cyan": {"primary": "#0E7490", "accent": "#06B6D4"},
+    "slate": {"primary": "#334155", "accent": "#64748B"},
+}
 SEMANTIC_THEME_TOKEN_KEYS: Final[frozenset[str]] = frozenset(
     {
-        "--color-primary", "--color-primary-hover", "--color-primary-soft",
-        "--color-primary-subtle", "--color-primary-deep", "--color-on-primary",
-        "--color-accent", "--color-accent-hover", "--color-accent-soft",
-        "--color-on-accent", "--color-background", "--color-surface",
-        "--color-surface-raised", "--color-surface-muted", "--color-surface-subtle",
-        "--color-border", "--color-border-strong", "--color-border-subtle",
-        "--color-text", "--color-text-soft", "--color-text-muted",
-        "--color-text-faint", "--color-text-inverse", "--color-sidebar-background",
-        "--color-sidebar-text", "--color-sidebar-active", "--color-sidebar-active-text",
-        "--color-sidebar-border", "--color-header-background", "--color-header-text",
-        "--color-header-text-muted", "--color-header-surface",
-        "--color-header-surface-hover", "--color-header-border", "--color-focus-ring",
+        "--color-primary",
+        "--color-primary-hover",
+        "--color-primary-soft",
+        "--color-primary-subtle",
+        "--color-primary-deep",
+        "--color-on-primary",
+        "--color-accent",
+        "--color-accent-hover",
+        "--color-accent-soft",
+        "--color-on-accent",
+        "--color-background",
+        "--color-surface",
+        "--color-surface-raised",
+        "--color-surface-muted",
+        "--color-surface-subtle",
+        "--color-border",
+        "--color-border-strong",
+        "--color-border-subtle",
+        "--color-text",
+        "--color-text-soft",
+        "--color-text-muted",
+        "--color-text-faint",
+        "--color-text-inverse",
+        "--color-sidebar-background",
+        "--color-sidebar-text",
+        "--color-sidebar-active",
+        "--color-sidebar-active-text",
+        "--color-sidebar-border",
+        "--color-header-background",
+        "--color-header-text",
+        "--color-header-text-muted",
+        "--color-header-surface",
+        "--color-header-surface-hover",
+        "--color-header-border",
+        "--color-focus-ring",
     }
 )
 
@@ -195,12 +233,12 @@ def _semantic_tokens(
     surface: tuple[int, int, int],
     dark: bool,
 ) -> dict[str, str]:
-    canvas = _blend_towards(background, DARK_TEXT_RGB, 0.88) if dark else background
-    card = _blend_towards(surface, DARK_TEXT_RGB, 0.86) if dark else surface
+    canvas = (0, 0, 0) if dark else background
+    card = _blend_towards(surface, (8, 12, 20), 0.97) if dark else surface
     contrast_target = LIGHT_TEXT_RGB if dark else DARK_TEXT_RGB
     text = (248, 250, 252) if dark else DARK_TEXT_RGB
     side = _blend_towards(sidebar, DARK_TEXT_RGB, 0.78) if dark else sidebar
-    head = _blend_towards(header, DARK_TEXT_RGB, 0.84) if dark else header
+    head = (0, 0, 0) if dark else header
     side_text = choose_readable_text_color(side)
     head_text = choose_readable_text_color(head)
     values = {
@@ -216,12 +254,12 @@ def _semantic_tokens(
         "--color-on-accent": choose_readable_text_color(accent),
         "--color-background": canvas,
         "--color-surface": card,
-        "--color-surface-raised": _blend_towards(card, LIGHT_TEXT_RGB, 0.05 if dark else 0),
-        "--color-surface-muted": _blend_towards(card, contrast_target, 0.08),
-        "--color-surface-subtle": _blend_towards(card, contrast_target, 0.15),
-        "--color-border": _blend_towards(card, contrast_target, 0.18 if dark else 0.12),
-        "--color-border-strong": _blend_towards(card, contrast_target, 0.28 if dark else 0.20),
-        "--color-border-subtle": _blend_towards(card, contrast_target, 0.10 if dark else 0.06),
+        "--color-surface-raised": _blend_towards(card, LIGHT_TEXT_RGB, 0.02 if dark else 0),
+        "--color-surface-muted": _blend_towards(card, contrast_target, 0.05 if dark else 0.08),
+        "--color-surface-subtle": _blend_towards(card, contrast_target, 0.09 if dark else 0.15),
+        "--color-border": _blend_towards(card, contrast_target, 0.12 if dark else 0.12),
+        "--color-border-strong": _blend_towards(card, contrast_target, 0.20),
+        "--color-border-subtle": _blend_towards(card, contrast_target, 0.07 if dark else 0.06),
         "--color-text": text,
         "--color-text-soft": (226, 232, 240) if dark else (51, 65, 85),
         "--color-text-muted": (148, 163, 184) if dark else (100, 116, 139),
@@ -244,13 +282,21 @@ def _semantic_tokens(
 
 
 def build_theme_token_sets(
-    *, primary_color: str, accent_color: str, sidebar_color: str,
-    header_color: str, background_color: str, surface_color: str,
+    *,
+    primary_color: str,
+    accent_color: str,
+    sidebar_color: str,
+    header_color: str,
+    background_color: str,
+    surface_color: str,
 ) -> dict[str, dict[str, str]]:
     values = {
-        "primary": hex_to_rgb(primary_color), "accent": hex_to_rgb(accent_color),
-        "sidebar": hex_to_rgb(sidebar_color), "header": hex_to_rgb(header_color),
-        "background": hex_to_rgb(background_color), "surface": hex_to_rgb(surface_color),
+        "primary": hex_to_rgb(primary_color),
+        "accent": hex_to_rgb(accent_color),
+        "sidebar": hex_to_rgb(sidebar_color),
+        "header": hex_to_rgb(header_color),
+        "background": hex_to_rgb(background_color),
+        "surface": hex_to_rgb(surface_color),
     }
     return {
         "light": _semantic_tokens(**values, dark=False),
@@ -258,38 +304,91 @@ def build_theme_token_sets(
     }
 
 
+def normalize_palette_key(value: str) -> str:
+    key = str(value or "").strip().lower()
+    if key not in BRANDING_PALETTES:
+        allowed = ", ".join(BRANDING_PALETTES)
+        raise ValueError(f"Unknown branding palette. Choose one of: {allowed}.")
+    return key
+
+
+def get_palette_source_colors(palette_key: str) -> dict[str, str]:
+    palette = BRANDING_PALETTES[normalize_palette_key(palette_key)]
+    primary_rgb = hex_to_rgb(palette["primary"])
+    return {
+        "primary_color": palette["primary"],
+        "accent_color": palette["accent"],
+        "sidebar_color": palette["primary"],
+        "header_color": DEFAULT_HEADER_COLOR,
+        "surface_color": rgb_to_hex(_blend_towards(primary_rgb, LIGHT_TEXT_RGB, 0.95)),
+    }
+
+
+def build_palette_theme_token_sets(palette_key: str) -> dict[str, dict[str, str]]:
+    sources = get_palette_source_colors(palette_key)
+    return build_theme_token_sets(
+        **sources,
+        background_color=DEFAULT_BACKGROUND_COLOR,
+    )
+
+
 def build_default_theme_token_sets() -> dict[str, dict[str, str]]:
     """Return defaults matching the existing Weave light and dark workspaces."""
 
     light = build_theme_token_sets(
-        primary_color="#1D4ED8", accent_color=DEFAULT_ACCENT_COLOR,
-        sidebar_color="#FFFFFF", header_color="#FFFFFF",
-        background_color="#F8FAFC", surface_color=DEFAULT_SURFACE_COLOR,
+        primary_color="#1D4ED8",
+        accent_color=DEFAULT_ACCENT_COLOR,
+        sidebar_color="#FFFFFF",
+        header_color="#FFFFFF",
+        background_color="#F8FAFC",
+        surface_color=DEFAULT_SURFACE_COLOR,
     )["light"]
-    light.update({
-        "--color-primary-hover": "30 64 175", "--color-primary-soft": "219 234 254",
-        "--color-primary-subtle": "239 246 255", "--color-primary-deep": "30 58 138",
-        "--color-accent-hover": "67 56 202", "--color-accent-soft": "224 231 255",
-        "--color-surface-muted": "241 245 249", "--color-surface-subtle": "226 232 240",
-        "--color-border": "226 232 240", "--color-border-strong": "203 213 225",
-        "--color-border-subtle": "241 245 249", "--color-sidebar-text": "51 65 85",
-        "--color-sidebar-border": "226 232 240", "--color-header-text-muted": "100 116 139",
-        "--color-header-surface-hover": "241 245 249", "--color-header-border": "226 232 240",
-    })
+    light.update(
+        {
+            "--color-primary-hover": "30 64 175",
+            "--color-primary-soft": "219 234 254",
+            "--color-primary-subtle": "239 246 255",
+            "--color-primary-deep": "30 58 138",
+            "--color-accent-hover": "67 56 202",
+            "--color-accent-soft": "224 231 255",
+            "--color-surface-muted": "241 245 249",
+            "--color-surface-subtle": "226 232 240",
+            "--color-border": "226 232 240",
+            "--color-border-strong": "203 213 225",
+            "--color-border-subtle": "241 245 249",
+            "--color-sidebar-text": "51 65 85",
+            "--color-sidebar-border": "226 232 240",
+            "--color-header-text-muted": "100 116 139",
+            "--color-header-surface-hover": "241 245 249",
+            "--color-header-border": "226 232 240",
+        }
+    )
     dark = dict(light)
-    dark.update({
-        "--color-background": "10 15 28", "--color-surface": "15 23 42",
-        "--color-surface-raised": "20 31 54", "--color-surface-muted": "30 41 59",
-        "--color-surface-subtle": "51 65 85", "--color-border": "51 65 85",
-        "--color-border-strong": "71 85 105", "--color-border-subtle": "30 41 59",
-        "--color-text": "248 250 252", "--color-text-soft": "226 232 240",
-        "--color-text-muted": "148 163 184", "--color-text-faint": "100 116 139",
-        "--color-sidebar-background": "15 23 42", "--color-sidebar-text": "226 232 240",
-        "--color-sidebar-border": "51 65 85", "--color-header-background": "15 23 42",
-        "--color-header-text": "248 250 252", "--color-header-text-muted": "148 163 184",
-        "--color-header-surface": "20 31 54", "--color-header-surface-hover": "30 41 59",
-        "--color-header-border": "51 65 85",
-    })
+    dark.update(
+        {
+            "--color-background": "0 0 0",
+            "--color-surface": "8 12 20",
+            "--color-surface-raised": "12 17 27",
+            "--color-surface-muted": "18 24 36",
+            "--color-surface-subtle": "27 35 49",
+            "--color-border": "30 41 59",
+            "--color-border-strong": "51 65 85",
+            "--color-border-subtle": "18 24 36",
+            "--color-text": "248 250 252",
+            "--color-text-soft": "226 232 240",
+            "--color-text-muted": "148 163 184",
+            "--color-text-faint": "100 116 139",
+            "--color-sidebar-background": "15 23 42",
+            "--color-sidebar-text": "226 232 240",
+            "--color-sidebar-border": "51 65 85",
+            "--color-header-background": "0 0 0",
+            "--color-header-text": "248 250 252",
+            "--color-header-text-muted": "148 163 184",
+            "--color-header-surface": "8 12 20",
+            "--color-header-surface-hover": "18 24 36",
+            "--color-header-border": "30 41 59",
+        }
+    )
     return {"light": light, "dark": dark}
 
 

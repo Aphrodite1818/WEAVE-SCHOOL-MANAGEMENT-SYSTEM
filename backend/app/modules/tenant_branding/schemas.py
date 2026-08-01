@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from app.modules.tenant_branding.models import TenantBrandingThemeMode
-
-
-STRICT_HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
+from pydantic import BaseModel, ConfigDict
 
 
 class InputBase(BaseModel):
@@ -34,64 +29,27 @@ class OutputBase(BaseModel):
     )
 
 
-def _clean_optional_text(value: object) -> str | None:
-    """Trim optional string values and convert blanks to None."""
-
-    if value is None:
-        return None
-
-    cleaned_value = str(value).strip()
-    return cleaned_value or None
-
-
 class TenantBrandingUpdate(InputBase):
-    """Admin-controlled branding update payload."""
+    """Admin selects one backend-controlled palette; arbitrary colours are forbidden."""
 
-    brand_name: str | None = Field(default=None, max_length=255)
-    primary_color: str | None = Field(default=None, min_length=4, max_length=7)
-    accent_color: str | None = Field(default=None, min_length=4, max_length=7)
-    sidebar_color: str | None = Field(default=None, min_length=4, max_length=7)
-    header_color: str | None = Field(default=None, min_length=4, max_length=7)
-    background_color: str | None = Field(default=None, min_length=4, max_length=7)
-    surface_color: str | None = Field(default=None, min_length=4, max_length=7)
-    theme_mode: TenantBrandingThemeMode | None = None
+    palette_key: (
+        Literal[
+            "blue",
+            "navy",
+            "gold",
+            "orange",
+            "emerald",
+            "forest",
+            "violet",
+            "plum",
+            "rose",
+            "teal",
+            "cyan",
+            "slate",
+        ]
+        | None
+    ) = None
     is_enabled: bool | None = None
-
-    @field_validator(
-        "brand_name",
-        "primary_color",
-        "accent_color",
-        "sidebar_color",
-        "header_color",
-        "background_color",
-        "surface_color",
-        mode="before",
-    )
-    @classmethod
-    def clean_optional_strings(cls, value: object) -> str | None:
-        """Normalize optional text fields."""
-
-        return _clean_optional_text(value)
-
-    @field_validator(
-        "primary_color",
-        "accent_color",
-        "sidebar_color",
-        "header_color",
-        "background_color",
-        "surface_color",
-    )
-    @classmethod
-    def validate_strict_hex_colors(cls, value: str | None) -> str | None:
-        """Require full hex colors so frontend and backend share one contract."""
-
-        if value is None:
-            return None
-
-        if not STRICT_HEX_COLOR_PATTERN.fullmatch(value):
-            raise ValueError("Color must use full hex format like #2563EB.")
-
-        return value
 
 
 class TenantBrandingResponse(OutputBase):
@@ -99,15 +57,9 @@ class TenantBrandingResponse(OutputBase):
 
     id: uuid.UUID | None = None
     tenant_id: uuid.UUID
-    brand_name: str
+    school_name: str
     logo_url: str | None = None
-    primary_color: str
-    accent_color: str
-    sidebar_color: str
-    header_color: str
-    background_color: str
-    surface_color: str
-    theme_mode: TenantBrandingThemeMode
+    palette_key: str
     light_tokens: dict[str, str]
     dark_tokens: dict[str, str]
     is_enabled: bool
@@ -122,7 +74,7 @@ class TenantBrandingEffectiveResponse(OutputBase):
     """Branding response used by authenticated tenant workspaces."""
 
     tenant_id: uuid.UUID
-    brand_name: str
+    school_name: str
     logo_url: str | None = None
     is_enabled: bool
     theme_version: int
