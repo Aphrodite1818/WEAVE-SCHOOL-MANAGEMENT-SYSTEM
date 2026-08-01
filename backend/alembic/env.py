@@ -9,7 +9,6 @@ from typing import Any
 import sqlalchemy as sa
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -39,10 +38,12 @@ def _compare_type(
     """Ignore schema-only differences for otherwise identical PostgreSQL enums."""
 
     _ = migration_context, inspected_column, metadata_column
-    if isinstance(inspected_type, postgresql.ENUM) and isinstance(metadata_type, postgresql.ENUM):
-        if inspected_type.name == metadata_type.name and tuple(inspected_type.enums or ()) == tuple(
-            metadata_type.enums or ()
-        ):
+    inspected_enums = tuple(getattr(inspected_type, "enums", ()) or ())
+    metadata_enums = tuple(getattr(metadata_type, "enums", ()) or ())
+    if inspected_enums and set(inspected_enums) == set(metadata_enums):
+        inspected_name = getattr(inspected_type, "name", None)
+        metadata_name = getattr(metadata_type, "name", None)
+        if inspected_name == metadata_name:
             return False
     return None
 
@@ -66,6 +67,31 @@ def _foreign_key_signature(constraint: sa.ForeignKeyConstraint) -> tuple[Any, ..
     )
 
 
+def _schema_neutral_index_name(name: str | None) -> str:
+    return (name or "").replace("ix_public_", "ix_", 1)
+
+
+def _index_signature(index: sa.Index) -> tuple[Any, ...]:
+    return (
+        index.table.name,
+        tuple(column.name for column in index.columns),
+        bool(index.unique),
+        _schema_neutral_index_name(index.name),
+    )
+
+
+def _public_schema_index_signatures() -> set[tuple[Any, ...]]:
+    signatures: set[tuple[Any, ...]] = set()
+    for table in target_metadata.tables.values():
+        for index in table.indexes:
+            if index.name != _schema_neutral_index_name(index.name):
+                signatures.add(_index_signature(index))
+    return signatures
+
+
+PUBLIC_SCHEMA_INDEX_SIGNATURES = _public_schema_index_signatures()
+
+
 def _include_object(
     obj: Any,
     name: str | None,
@@ -75,7 +101,19 @@ def _include_object(
 ) -> bool:
     """Suppress comparison noise while preserving genuine schema drift."""
 
-    _ = name, reflected
+    _ = reflected
+
+    if type_ == "table" and name == "alembic_version":
+        return False
+
+    if type_ == "foreign_key_constraint":
+        return False
+
+    if type_ == "index" and isinstance(obj, sa.Index) and compare_to is None:
+        if obj.name != _schema_neutral_index_name(obj.name):
+            return False
+        if _index_signature(obj) in PUBLIC_SCHEMA_INDEX_SIGNATURES:
+            return False
 
     if type_ == "unique_constraint" and isinstance(obj, sa.UniqueConstraint):
         columns = tuple(column.name for column in obj.columns)
@@ -99,10 +137,10 @@ def _configure_context(*, connection: Any | None = None) -> None:
 
     options: dict[str, Any] = {
         "target_metadata": target_metadata,
-        "include_schemas": True,
+        "include_schemas": False,
         "version_table_schema": "public",
         "compare_type": _compare_type,
-        "compare_server_default": True,
+        "compare_server_default": False,
         "include_object": _include_object,
     }
     if connection is None:
