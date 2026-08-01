@@ -143,10 +143,10 @@ export default function SidebarContent({
           >
             {logoMark}
             <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight text-text">
+              <span className="block truncate text-[15px] font-bold leading-tight text-sidebar-text">
                 {isAccountScope ? "Your schools" : schoolName || "Weave"}
               </span>
-              <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
+              <span className="block truncate text-[11px] font-medium text-sidebar-text/65">School Management</span>
             </span>
           </Link>
         )}
@@ -165,8 +165,8 @@ export default function SidebarContent({
 
       {!collapsed && (
         <div className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
-          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-text-faint">Workspace</p>
-          <p className="mt-1 truncate text-[13px] font-semibold text-text">
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-text/55">Workspace</p>
+          <p className="mt-1 truncate text-[13px] font-semibold text-sidebar-text">
             {isAccountScope ? "Select a school" : schoolName || "School workspace"}
           </p>
           <span className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
@@ -183,7 +183,7 @@ export default function SidebarContent({
         {groups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-text-faint">{group.label}</p>
+              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-sidebar-text/55">{group.label}</p>
             )}
             <div className="space-y-1">
               {group.items.map((item) => {
@@ -202,8 +202,8 @@ export default function SidebarContent({
                     className={cn(
                       "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
                       isActive
-                        ? "bg-primary text-white shadow-sm"
-                        : "text-text-soft hover:bg-surface-muted hover:text-text",
+                ? "bg-sidebar-active text-sidebar-active-text shadow-sm"
+                        : "text-sidebar-text/80 hover:bg-sidebar-active/10 hover:text-sidebar-text",
                       collapsed && "justify-center px-2"
                     )}
                   >
@@ -214,7 +214,7 @@ export default function SidebarContent({
                       </span>
                     )}
                     {!collapsed && <span className="truncate">{item.label}</span>}
-                    {!collapsed && isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/70" />}
+                    {!collapsed && isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-sidebar-active-text/70" />}
                   </Link>
                 );
               })}
@@ -225,7 +225,7 @@ export default function SidebarContent({
 
       {!collapsed && (
         <div className="shrink-0 border-t border-border/60 p-2.5">
-          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] text-text-muted">
+          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] text-sidebar-text/65">
             <HelpCircle className="h-4 w-4" />
             Help & Support
           </div>

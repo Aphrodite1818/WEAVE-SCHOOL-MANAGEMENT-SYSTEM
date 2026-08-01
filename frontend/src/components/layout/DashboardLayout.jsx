@@ -13,6 +13,8 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearGuideReturn, readGuideReturn } from "../../features/guides/guideNavigation";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
+import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import { authSession } from "../../services/api";
 import { clearDashboardSessionCache } from "../../services/dashboardSessionCache";
 import { cn } from "../../utils/cn";
@@ -30,7 +32,6 @@ import Topbar from "./Topbar";
 import { onboardingModalCopy } from "./navConfig";
 import useOnboardingGate from "./useOnboardingGate";
 import useRoleGuide from "../../features/guides/useRoleGuide";
-import { useTenantWorkspaceBranding } from "./useTenantWorkspaceName";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
@@ -110,7 +111,7 @@ function DashboardShellFrame({
     currentX: 0,
     currentY: 0,
   });
-  const workspaceBranding = useTenantWorkspaceBranding({ user, role });
+  const workspaceBranding = useTenantBranding();
   const schoolName = workspaceBranding.schoolName;
   const aiAssistantGuard =
     role === "admin" && isTenantAdmin
@@ -489,7 +490,7 @@ function DashboardShellFrame({
       />
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-all duration-300 md:block",
+          "fixed inset-y-0 left-0 z-40 hidden border-r border-sidebar-border bg-sidebar-background text-sidebar-text transition-all duration-300 md:block",
           sidebarCollapsed ? "w-[4.25rem]" : "w-[13rem] xl:w-[14rem]"
         )}
       >
@@ -672,11 +673,13 @@ export function DashboardShell({ role = "admin", onboardingModalEnabled = true }
   const shellContext = useMemo(() => ({ setPageMeta }), [setPageMeta]);
 
   return (
-    <DashboardShellContext.Provider value={shellContext}>
-      <DashboardShellFrame {...pageMeta}>
-        <Outlet />
-      </DashboardShellFrame>
-    </DashboardShellContext.Provider>
+    <TenantBrandingProvider user={authSession.getUser() || {}} role={pageMeta.role}>
+      <DashboardShellContext.Provider value={shellContext}>
+        <DashboardShellFrame {...pageMeta}>
+          <Outlet />
+        </DashboardShellFrame>
+      </DashboardShellContext.Provider>
+    </TenantBrandingProvider>
   );
 }
 
@@ -706,15 +709,17 @@ function DashboardLayout({
   if (shell) return <>{children}</>;
 
   return (
-    <DashboardShellFrame
-      role={roleProp}
-      title={title}
-      description={description}
-      actions={actions}
-      onboardingModalEnabled={onboardingModalEnabled}
-    >
-      {children}
-    </DashboardShellFrame>
+    <TenantBrandingProvider user={authSession.getUser() || {}} role={roleProp}>
+      <DashboardShellFrame
+        role={roleProp}
+        title={title}
+        description={description}
+        actions={actions}
+        onboardingModalEnabled={onboardingModalEnabled}
+      >
+        {children}
+      </DashboardShellFrame>
+    </TenantBrandingProvider>
   );
 }
 

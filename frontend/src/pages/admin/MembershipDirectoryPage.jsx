@@ -409,7 +409,7 @@ function MembershipDirectoryPage({ role }) {
               key={tab.id}
               type="button"
               onClick={() => selectTab(tab.id)}
-              className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${activeTab === tab.id ? "bg-primary text-white" : "bg-surface-muted/40 text-text-muted hover:text-text"}`}
+              className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${activeTab === tab.id ? "bg-primary text-primary-foreground" : "bg-surface-muted/40 text-text-muted hover:text-text"}`}
             >
               {tab.label}
             </button>

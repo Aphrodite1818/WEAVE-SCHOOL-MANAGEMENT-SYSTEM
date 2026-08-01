@@ -109,7 +109,7 @@ function MultiSelect({
                   <span
                     className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
                       isSelected
-                        ? "border-primary bg-primary text-white"
+                        ? "border-primary bg-primary text-primary-foreground"
                         : "border-border bg-surface"
                     }`}
                   >

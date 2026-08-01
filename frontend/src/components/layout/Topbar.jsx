@@ -24,7 +24,7 @@ import WorkspaceSearch from "./WorkspaceSearch";
 import { inboxPaths, roleLabels, workspaceSearchRoles } from "./navConfig";
 
 const headerIconButtonClass =
-  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface/90 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text sm:h-10 sm:w-10";
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-header-surface/90 text-header-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-header-hover hover:text-header-text sm:h-10 sm:w-10";
 
 function notificationTimestamp(value) {
   if (!value) return "";
@@ -185,7 +185,7 @@ export default function Topbar({
   };
 
   return (
-    <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-border bg-surface pt-[env(safe-area-inset-top)]">
+    <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-header-border bg-header-background text-header-text pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex h-[3.75rem] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:gap-2 sm:px-5 md:h-16 md:px-4 lg:px-5">
         <button
           type="button"
@@ -206,7 +206,7 @@ export default function Topbar({
                 onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
               />
             ) : null}
-            <p className="truncate text-base font-bold text-text">
+            <p className="truncate text-base font-bold text-header-text">
               {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
             </p>
           </div>
@@ -221,7 +221,7 @@ export default function Topbar({
             <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
           )}
           <div className="hidden min-w-0 sm:block">
-            <p className="brand-wordmark truncate text-sm font-bold sm:text-lg">
+            <p className="brand-wordmark truncate text-sm font-bold text-header-text sm:text-lg">
               {hasSchoolLogo ? schoolName || "School workspace" : "Weave"}
             </p>
           </div>

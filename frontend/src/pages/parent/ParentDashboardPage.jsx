@@ -332,7 +332,7 @@ function ChildSwitcher({ linkedChildren = [], selectedChildId, onSelectChild, ac
                 className={cn(
                   "min-h-10 shrink-0 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition",
                   isActive
-                    ? "border-primary bg-primary text-white shadow-sm"
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
                     : "border-border/70 bg-surface text-text-soft hover:border-primary/40 hover:text-text",
                 )}
               >

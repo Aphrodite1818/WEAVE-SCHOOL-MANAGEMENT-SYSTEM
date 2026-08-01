@@ -31,6 +31,28 @@
     --color-text-muted: 100 116 139;
     --color-text-faint: 148 163 184;
     --color-text-inverse: 255 255 255;
+    --color-primary: 29 78 216;
+    --color-primary-hover: 30 64 175;
+    --color-primary-soft: 219 234 254;
+    --color-primary-subtle: 239 246 255;
+    --color-primary-deep: 30 58 138;
+    --color-on-primary: 255 255 255;
+    --color-accent: 79 70 229;
+    --color-accent-hover: 67 56 202;
+    --color-accent-soft: 224 231 255;
+    --color-on-accent: 255 255 255;
+    --color-sidebar-background: 255 255 255;
+    --color-sidebar-text: 51 65 85;
+    --color-sidebar-active: 29 78 216;
+    --color-sidebar-active-text: 255 255 255;
+    --color-sidebar-border: 226 232 240;
+    --color-header-background: 255 255 255;
+    --color-header-text: 15 23 42;
+    --color-header-text-muted: 100 116 139;
+    --color-header-surface: 255 255 255;
+    --color-header-surface-hover: 241 245 249;
+    --color-header-border: 226 232 240;
+    --color-focus-ring: 29 78 216;
   }
 
   :root[data-theme="dark"] {
@@ -53,6 +75,15 @@
     --color-text-muted: 148 163 184;
     --color-text-faint: 100 116 139;
     --color-text-inverse: 255 255 255;
+    --color-sidebar-background: 15 23 42;
+    --color-sidebar-text: 226 232 240;
+    --color-sidebar-border: 51 65 85;
+    --color-header-background: 15 23 42;
+    --color-header-text: 248 250 252;
+    --color-header-text-muted: 148 163 184;
+    --color-header-surface: 20 31 54;
+    --color-header-surface-hover: 30 41 59;
+    --color-header-border: 51 65 85;
   }
 
   :root:not([data-theme="dark"]) [data-dashboard-role="admin"],

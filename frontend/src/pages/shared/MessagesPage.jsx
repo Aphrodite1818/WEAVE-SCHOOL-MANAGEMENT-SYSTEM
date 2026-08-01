@@ -401,7 +401,7 @@ export default function MessagesPage() {
               >
                 <span className="flex items-center justify-between gap-3">
                   <span className={`truncate text-sm font-bold ${active ? "text-text-inverse" : "text-text"}`}>{latestSenderTitle(conversation, identityDirectory)}</span>
-                  {conversation.unread_count ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${active ? "bg-white/20 text-white" : "bg-primary text-white"}`}>{conversation.unread_count}</span> : null}
+                  {conversation.unread_count ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${active ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary text-primary-foreground"}`}>{conversation.unread_count}</span> : null}
                 </span>
                 <span className={`mt-1 block truncate text-[11px] font-semibold uppercase ${active ? "text-white/70" : "text-text-faint"}`}>{latestSenderMeta(conversation, currentActorKey, identityDirectory)}</span>
                 <span className={`mt-1 block truncate text-xs ${active ? "text-white/80" : "text-text-muted"}`}>{latestMessage?.body || "No messages yet"}</span>
@@ -501,7 +501,7 @@ export default function MessagesPage() {
                 };
                 return (
                   <article key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[88%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[82%] sm:px-4 sm:py-3 ${mine ? "rounded-br-md bg-primary text-white" : "rounded-bl-md border border-border bg-surface text-text"}`}>
+                    <div className={`max-w-[88%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[82%] sm:px-4 sm:py-3 ${mine ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md border border-border bg-surface text-text"}`}>
                       <div className={`mb-1 text-[11px] font-bold uppercase ${mine ? "text-white/75" : "text-text-faint"}`}>
                         <p>{identityLabel(sender, currentActorKey, { useSelfLabel: false })}</p>
                         {dashboardRole === "teacher" ? (

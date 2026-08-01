@@ -985,7 +985,7 @@ function WeekdayPicker({ value = [], onChange }) {
             key={label}
             type="button"
             onClick={() => toggle(index)}
-            className={`min-h-10 rounded-xl border text-xs font-semibold ${value.includes(index) ? "border-primary bg-primary text-white" : "border-border/70 bg-surface text-text-soft"}`}
+            className={`min-h-10 rounded-xl border text-xs font-semibold ${value.includes(index) ? "border-primary bg-primary text-primary-foreground" : "border-border/70 bg-surface text-text-soft"}`}
           >
             {label}
           </button>

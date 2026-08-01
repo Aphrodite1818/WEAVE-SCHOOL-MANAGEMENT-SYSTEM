@@ -90,7 +90,7 @@ function AcademicWorkflowShell({
                   className={cn(
                     "flex min-h-10 items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition",
                     active
-                      ? "bg-primary text-white shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-text-muted hover:bg-surface-muted hover:text-text",
                   )}
                 >
