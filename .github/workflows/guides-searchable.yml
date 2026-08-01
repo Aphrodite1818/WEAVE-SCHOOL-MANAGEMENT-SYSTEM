@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "backend/app/modules/user_guides/**"
-      - "backend/alembic/versions/20260801_user_guides.py"
+      - "backend/alembic/versions/*guide*.py"
       - "backend/app/models.py"
       - "backend/app/main.py"
       - "backend/tests/unit/user_guides/**"
@@ -31,7 +31,7 @@ on:
       - master
     paths:
       - "backend/app/modules/user_guides/**"
-      - "backend/alembic/versions/20260801_user_guides.py"
+      - "backend/alembic/versions/*guide*.py"
       - "backend/app/models.py"
       - "backend/app/main.py"
       - "backend/tests/unit/user_guides/**"
@@ -115,18 +115,22 @@ jobs:
         run: uv sync
 
       - name: Lint guide files
+        shell: bash
         run: |
-          uv run ruff check \
-            app/modules/user_guides \
-            alembic/versions/20260801_user_guides.py \
-            tests/unit/user_guides
+          guide_paths=(app/modules/user_guides tests/unit/user_guides)
+          while IFS= read -r migration; do
+            guide_paths+=("$migration")
+          done < <(find alembic/versions -maxdepth 1 -type f -iname '*guide*.py' -print)
+          uv run ruff check "${guide_paths[@]}"
 
       - name: Check guide formatting
+        shell: bash
         run: |
-          uv run ruff format --check \
-            app/modules/user_guides \
-            alembic/versions/20260801_user_guides.py \
-            tests/unit/user_guides
+          guide_paths=(app/modules/user_guides tests/unit/user_guides)
+          while IFS= read -r migration; do
+            guide_paths+=("$migration")
+          done < <(find alembic/versions -maxdepth 1 -type f -iname '*guide*.py' -print)
+          uv run ruff format --check "${guide_paths[@]}"
 
       - name: Import application and assert guide routes
         run: |
@@ -218,8 +222,8 @@ jobs:
             "generateCalendar",
             "createClass",
             "createSubject",
-            "activateCalendar",
             "openSession",
+            "activateCalendar",
             "openTerm",
           ]) {
             if (!adminPage.includes(action)) throw new Error(`Missing admin setup action: ${action}`);
