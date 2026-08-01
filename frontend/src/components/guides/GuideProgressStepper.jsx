@@ -84,9 +84,9 @@ function GuideProgressStepper({
                 >
                   <span
                     className={cn(
-                      "grid h-[2.1rem] w-[2.1rem] place-items-center rounded-full border-2 bg-surface text-xs font-bold shadow-[0_0_0_5px_rgb(var(--color-surface))] transition",
-                      active && "border-primary bg-primary text-white",
-                      complete && !active && "border-success bg-success text-white",
+                      "guide-progress-node grid h-[2.1rem] w-[2.1rem] place-items-center rounded-full border-2 bg-surface text-xs font-bold shadow-[0_0_0_5px_rgb(var(--color-surface))] transition",
+                      active && "guide-progress-node-active border-primary bg-primary text-white",
+                      complete && !active && "guide-progress-node-complete border-success bg-success text-white",
                       skipped && !active && "border-border bg-surface-muted text-text-faint",
                       !active && !complete && !skipped && "border-border text-text-muted",
                       clickable && "group-hover:border-primary/60",
@@ -103,7 +103,7 @@ function GuideProgressStepper({
                   <span
                     className={cn(
                       "mt-3 block max-w-[9rem] truncate text-xs font-semibold",
-                      active ? "text-primary" : "text-text-soft",
+                      active ? "guide-progress-label-active text-primary" : "text-text-soft",
                     )}
                   >
                     {step.shortLabel || step.label}

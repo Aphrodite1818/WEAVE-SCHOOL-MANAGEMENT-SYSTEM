@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -172,6 +174,41 @@ def _format_class_reference(class_name: Any, class_arm: Any) -> str:
 
     parts = [str(part).strip() for part in (class_name, class_arm) if not _is_blank(part)]
     return " ".join(parts) or "the supplied class"
+
+
+def build_import_source_fingerprint(
+    *,
+    resource_type: ImportResourceType,
+    template_version: str | None,
+    rows: list[tuple[int, dict[str, Any]]],
+) -> str:
+    """Hash canonical normalized rows so the same workbook cannot be confirmed twice."""
+
+    canonical_payload = {
+        "resource_type": resource_type.value,
+        "template_version": str(template_version or ""),
+        "rows": [
+            {"row_number": int(row_number), "data": normalized_row}
+            for row_number, normalized_row in sorted(rows, key=lambda item: item[0])
+        ],
+    }
+    encoded = json.dumps(
+        canonical_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def duplicate_import_message(import_job: ImportJob) -> str:
+    completed = import_job.completed_at or import_job.created_at
+    completed_text = completed.isoformat() if completed else "an earlier date"
+    return (
+        "This student workbook has already been confirmed and processed "
+        f"by import job {import_job.id} on {completed_text}. "
+        "Use a new workbook containing only records that have not been imported."
+    )
 
 
 def build_parent_invitations_from_row(
@@ -759,6 +796,24 @@ class BulkImportService:
             parsed_file=parsed_file,
         )
 
+        row_items = BulkImportService.build_row_items(
+            resource_type=resource_type,
+            parsed_file=parsed_file,
+        )
+        source_fingerprint = build_import_source_fingerprint(
+            resource_type=resource_type,
+            template_version=parsed_file.metadata.get("_import_template_version"),
+            rows=[(row_number, normalized_row) for row_number, _, normalized_row, _ in row_items],
+        )
+        existing_import = await ImportJobRepository.get_confirmed_job_by_fingerprint(
+            db=db,
+            tenant_id=actor.tenant_id,
+            resource_type=resource_type,
+            source_fingerprint=source_fingerprint,
+        )
+        if existing_import is not None:
+            raise ConflictException(detail=duplicate_import_message(existing_import))
+
         import_job = await ImportJobRepository.create_job(
             db=db,
             tenant_id=actor.tenant_id,
@@ -768,6 +823,7 @@ class BulkImportService:
                 original_filename=upload_file.filename
                 or f"{resource_type.value}_import.{parsed_file.file_type.value}",
                 file_size_bytes=parsed_file.file_size_bytes,
+                source_fingerprint=source_fingerprint,
                 created_by_admin_id=actor.id,
                 metadata_json={
                     "dry_run": True,
@@ -775,6 +831,7 @@ class BulkImportService:
                     "notify_on_completion": notify_on_completion,
                     "template_version": parsed_file.metadata.get("_import_template_version"),
                     "template_headers_hash": parsed_file.metadata.get("_import_headers_hash"),
+                    "source_fingerprint": source_fingerprint,
                     "result_rows": [],
                 },
             ),
@@ -790,10 +847,6 @@ class BulkImportService:
             ),
         )
 
-        row_items = BulkImportService.build_row_items(
-            resource_type=resource_type,
-            parsed_file=parsed_file,
-        )
         validation_results = BulkImportValidator.validate_rows(
             resource_type=resource_type,
             row_items=row_items,
@@ -952,6 +1005,21 @@ class BulkImportService:
             staged_row_count=len(staged_rows),
         )
 
+        source_fingerprint = import_job.source_fingerprint or build_import_source_fingerprint(
+            resource_type=import_job.resource_type,
+            template_version=metadata_json.get("template_version"),
+            rows=[(row.row_number, row.normalized_row) for row in staged_rows],
+        )
+        existing_import = await ImportJobRepository.get_confirmed_job_by_fingerprint(
+            db=db,
+            tenant_id=actor.tenant_id,
+            resource_type=import_job.resource_type,
+            source_fingerprint=source_fingerprint,
+            exclude_job_id=import_job.id,
+        )
+        if existing_import is not None:
+            raise ConflictException(detail=duplicate_import_message(existing_import))
+
         tenant = await TenantRepository.get_by_id(db=db, tenant_id=actor.tenant_id)
         if tenant is None:
             raise NotFoundException(detail="Tenant not found")
@@ -973,6 +1041,8 @@ class BulkImportService:
                 successful_rows=0,
                 failed_rows=0,
                 processed_rows=0,
+                source_fingerprint=source_fingerprint,
+                confirmed_fingerprint=source_fingerprint,
             ),
         )
 

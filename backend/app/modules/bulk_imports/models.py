@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -124,6 +125,16 @@ class ImportJob(BaseModel):
         nullable=True,
     )
 
+    source_fingerprint: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    confirmed_fingerprint: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
     total_rows: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -205,6 +216,20 @@ class ImportJob(BaseModel):
         Index("ix_import_jobs_tenant_created_by", "tenant_id", "created_by_admin_id"),
         Index("ix_import_jobs_tenant_created_at", "tenant_id", "created_at"),
         Index("ix_import_jobs_status_created_at", "status", "created_at"),
+        Index(
+            "ix_import_jobs_tenant_source_fingerprint",
+            "tenant_id",
+            "resource_type",
+            "source_fingerprint",
+        ),
+        Index(
+            "uq_import_jobs_tenant_confirmed_fingerprint",
+            "tenant_id",
+            "resource_type",
+            "confirmed_fingerprint",
+            unique=True,
+            postgresql_where=text("confirmed_fingerprint IS NOT NULL"),
+        ),
     )
 
 

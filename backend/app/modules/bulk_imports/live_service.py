@@ -33,7 +33,9 @@ from app.modules.bulk_imports.schemas import (
 from app.modules.bulk_imports.service import (
     BulkImportService,
     build_failed_result_row,
+    build_import_source_fingerprint,
     compact_validation_error,
+    duplicate_import_message,
     utc_now,
 )
 from app.modules.bulk_imports.validators import ImportRowValidationResult
@@ -150,6 +152,21 @@ class BulkImportLiveService:
             staged_row_count=len(staged_rows),
         )
 
+        source_fingerprint = import_job.source_fingerprint or build_import_source_fingerprint(
+            resource_type=import_job.resource_type,
+            template_version=metadata_json.get("template_version"),
+            rows=[(row.row_number, row.normalized_row) for row in staged_rows],
+        )
+        existing_import = await ImportJobRepository.get_confirmed_job_by_fingerprint(
+            db=db,
+            tenant_id=actor.tenant_id,
+            resource_type=import_job.resource_type,
+            source_fingerprint=source_fingerprint,
+            exclude_job_id=import_job.id,
+        )
+        if existing_import is not None:
+            raise ConflictException(detail=duplicate_import_message(existing_import))
+
         await SubscriptionFeatureService.ensure_resource_limit_available(
             db=db,
             tenant_id=actor.tenant_id,
@@ -184,10 +201,25 @@ class BulkImportLiveService:
                 failed_rows=invalid_rows,
                 processed_rows=invalid_rows,
                 skipped_rows=0,
+                source_fingerprint=source_fingerprint,
+                confirmed_fingerprint=source_fingerprint,
                 metadata_json=metadata_json,
             ),
         )
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            duplicate = await ImportJobRepository.get_confirmed_job_by_fingerprint(
+                db=db,
+                tenant_id=actor.tenant_id,
+                resource_type=import_job.resource_type,
+                source_fingerprint=source_fingerprint,
+                exclude_job_id=import_job.id,
+            )
+            if duplicate is not None:
+                raise ConflictException(detail=duplicate_import_message(duplicate)) from exc
+            raise
 
         try:
             from app.core.queue.arq import enqueue_bulk_import_job
@@ -208,13 +240,18 @@ class BulkImportLiveService:
             if failed_job is not None:
                 failed_metadata = dict(failed_job.metadata_json or {})
                 failed_metadata["queue_error"] = str(exc)
+                failed_metadata["dry_run"] = True
+                failed_metadata["confirmation_required"] = True
+                failed_metadata.pop("confirmed_at", None)
+                failed_metadata.pop("queued_at", None)
                 await ImportJobRepository.update_job(
                     db=db,
                     import_job=failed_job,
                     job_update=ImportJobUpdate(
-                        status=ImportJobStatus.FAILED,
-                        error_message="Could not queue the background import worker.",
+                        status=ImportJobStatus.COMPLETED,
+                        error_message="Could not queue the background import worker. Try confirming again.",
                         completed_at=utc_now(),
+                        confirmed_fingerprint=None,
                         metadata_json=failed_metadata,
                     ),
                 )

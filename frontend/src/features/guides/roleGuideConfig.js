@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   FileText,
   GraduationCap,
+  Route,
   School,
   Users,
 } from "lucide-react";
@@ -50,6 +51,14 @@ export const ROLE_GUIDES = {
         description:
           "Create at least one active class and one active subject before launching normal academic work.",
         icon: School,
+      },
+      {
+        id: "progression",
+        shortLabel: "Progression",
+        label: "Configure class progression",
+        description:
+          "Choose the next class for every non-terminal class and mark final classes as terminal.",
+        icon: Route,
       },
       {
         id: "session_open",

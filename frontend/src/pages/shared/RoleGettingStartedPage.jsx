@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, CheckCircle2, ExternalLink } from "lucide-react";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -7,6 +7,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import { saveGuideReturn } from "../../features/guides/guideNavigation";
 import useRoleGuide from "../../features/guides/useRoleGuide";
 
 function RoleGettingStartedPage({ role }) {
@@ -34,6 +35,12 @@ function RoleGettingStartedPage({ role }) {
 
   const openWorkspace = async () => {
     await guide.moveTo(current.id);
+    saveGuideReturn({
+      role,
+      route: guide.config.route,
+      stepId: current.id,
+      label: current.label,
+    });
     navigate(current.to);
   };
 
@@ -73,7 +80,7 @@ function RoleGettingStartedPage({ role }) {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 text-primary">
-                  <Sparkles className="h-4 w-4" />
+                  <BookOpenCheck className="h-4 w-4" />
                   <p className="text-[11px] font-bold uppercase tracking-[0.16em]">
                     {guide.config.eyebrow}
                   </p>
@@ -127,7 +134,7 @@ function RoleGettingStartedPage({ role }) {
                     Explore the real workspace
                   </p>
                   <p className="mt-1 text-sm leading-6 text-text-muted">
-                    This guide does not cover the application with an overlay. Open the feature, use it normally, then return and mark the step complete.
+                    Open the real workspace and use it normally. A persistent return bar will keep the tutorial one click away on every page.
                   </p>
                   <Button
                     type="button"

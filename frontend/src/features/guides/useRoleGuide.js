@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { guideService } from "../../services/guideService";
 import { guideForRole } from "./roleGuideConfig";
 
+export const GUIDE_STATE_CHANGED_EVENT = "weave:guide-state-changed";
+
 const hasOwn = (value, key) =>
   Boolean(value) && Object.prototype.hasOwnProperty.call(value, key);
 
@@ -20,6 +22,13 @@ export function useRoleGuide({
       if (!config) return null;
       const response = await guideService.updateState(config.key, payload);
       setGuideState(response);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(GUIDE_STATE_CHANGED_EVENT, {
+            detail: { key: config.key, state: response },
+          }),
+        );
+      }
       return response;
     },
     [config],
@@ -41,6 +50,16 @@ export function useRoleGuide({
   useEffect(() => {
     loadGuide();
   }, [loadGuide]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !config) return undefined;
+    const handleStateChange = (event) => {
+      if (event?.detail?.key !== config.key || !event.detail.state) return;
+      setGuideState(event.detail.state);
+    };
+    window.addEventListener(GUIDE_STATE_CHANGED_EVENT, handleStateChange);
+    return () => window.removeEventListener(GUIDE_STATE_CHANGED_EVENT, handleStateChange);
+  }, [config]);
 
   const steps = useMemo(() => {
     if (!config) return [];

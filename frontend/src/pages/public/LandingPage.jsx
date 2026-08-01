@@ -9,7 +9,6 @@ import {
   ClipboardCheck,
   GraduationCap,
   ShieldCheck,
-  Sparkles,
   Users,
 } from "lucide-react";
 import {
@@ -18,6 +17,7 @@ import {
   formatLimitValue,
   saveSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
+import WeaveIcon from "../../components/brand/WeaveIcon";
 import Navbar from "../../components/layout/Navbar";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -90,7 +90,10 @@ function LandingPricingCard({ plan, activePlanCode, onSelect }) {
         {isCurrent ? <Badge variant="success">Current plan</Badge> : null}
       </div>
 
-      <h3 className="mt-4 text-2xl font-semibold text-text">{plan.name}</h3>
+      <div className="mt-4 flex justify-center">
+        <WeaveIcon className="h-16 w-16" decorative />
+      </div>
+      <h3 className="mt-3 text-center text-2xl font-semibold text-text">{plan.name}</h3>
       <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
       <p className="mt-4 min-h-[4.5rem] text-sm leading-6 text-text-muted">{plan.description}</p>
 
@@ -394,7 +397,7 @@ function LandingPage() {
             <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[1.5rem] border border-border/70 bg-surface px-5 py-5 text-center shadow-soft-card sm:flex-row sm:text-left">
               <div>
                 <div className="flex items-center justify-center gap-2 sm:justify-start">
-                  <Sparkles className="h-4 w-4 text-primary" />
+                  <ShieldCheck className="h-4 w-4 text-primary" />
                   <p className="text-sm font-semibold text-text">Need the full comparison?</p>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-text-muted">Open the dedicated pricing page for the full plan matrix and FAQs.</p>

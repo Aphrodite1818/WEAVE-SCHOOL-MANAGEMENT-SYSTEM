@@ -15,7 +15,7 @@ test("every supported dashboard role has a valid page guide", () => {
     assert.equal(guide.route, `/${role}/getting-started`);
     assert.equal(guide.dashboardRoute, `/${role}/dashboard`);
 
-    const expectedStepCount = role === "admin" ? 7 : 4;
+    const expectedStepCount = role === "admin" ? 8 : 4;
     assert.equal(guide.steps.length, expectedStepCount);
     assert.equal(new Set(guide.steps.map((step) => step.id)).size, expectedStepCount);
 
@@ -44,6 +44,7 @@ test("tenant admin guide follows the backend lifecycle dependency order", () => 
       "term",
       "calendar",
       "structure",
+      "progression",
       "session_open",
       "calendar_active",
       "term_open",

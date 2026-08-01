@@ -52,6 +52,8 @@ class ImportJobCreate(InputBase):
     stored_filename: str | None = Field(default=None, max_length=255)
     source_file_path: str | None = None
     file_size_bytes: int | None = Field(default=None, ge=0)
+    source_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
+    confirmed_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
     created_by_admin_id: uuid.UUID | None = None
     metadata_json: dict[str, Any] | None = None
 
@@ -67,6 +69,8 @@ class ImportJobUpdate(InputBase):
     source_file_path: str | None = None
     result_file_path: str | None = None
     file_size_bytes: int | None = Field(default=None, ge=0)
+    source_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
+    confirmed_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
     total_rows: int | None = Field(default=None, ge=0)
     processed_rows: int | None = Field(default=None, ge=0)
     successful_rows: int | None = Field(default=None, ge=0)

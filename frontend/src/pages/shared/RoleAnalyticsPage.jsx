@@ -1,4 +1,4 @@
-import { BarChart3, LineChart, PieChart, Sparkles } from "lucide-react";
+import { BarChart3, LineChart, LockKeyhole, PieChart } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
@@ -170,7 +170,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
       <DashboardLayout role={role} title="Advanced Analytics">
         <Card className="p-6 sm:p-8">
           <div className="flex max-w-3xl flex-col gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-warning-soft text-amber-950"><Sparkles className="h-5 w-5" /></div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-warning-soft text-amber-950"><LockKeyhole className="h-5 w-5" /></div>
             <div><h2 className="section-title">Advanced analytics is not active on this plan</h2><p className="mt-2 text-sm leading-6 text-text-muted">Upgrade when deeper analytics are required.</p></div>
           </div>
         </Card>

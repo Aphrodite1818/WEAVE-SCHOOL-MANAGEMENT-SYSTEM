@@ -47,6 +47,8 @@ class ImportJobRepository:
             stored_filename=job_data.stored_filename,
             source_file_path=job_data.source_file_path,
             file_size_bytes=job_data.file_size_bytes,
+            source_fingerprint=job_data.source_fingerprint,
+            confirmed_fingerprint=job_data.confirmed_fingerprint,
             created_by_admin_id=job_data.created_by_admin_id,
             metadata_json=job_data.metadata_json or {},
         )
@@ -78,6 +80,30 @@ class ImportJobRepository:
         if lock:
             query = query.with_for_update()
 
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_confirmed_job_by_fingerprint(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        resource_type: ImportResourceType,
+        source_fingerprint: str,
+        exclude_job_id: UUID | None = None,
+        lock: bool = False,
+    ) -> ImportJob | None:
+        """Return the job that already claimed a canonical import fingerprint."""
+
+        query = select(ImportJob).where(
+            ImportJob.tenant_id == tenant_id,
+            ImportJob.resource_type == resource_type,
+            ImportJob.confirmed_fingerprint == source_fingerprint,
+        )
+        if exclude_job_id is not None:
+            query = query.where(ImportJob.id != exclude_job_id)
+        if lock:
+            query = query.with_for_update()
         result = await db.execute(query)
         return result.scalar_one_or_none()
 

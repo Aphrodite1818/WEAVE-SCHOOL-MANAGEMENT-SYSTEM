@@ -7,8 +7,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { ArrowLeft, X } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
+import { clearGuideReturn, readGuideReturn } from "../../features/guides/guideNavigation";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { authSession } from "../../services/api";
@@ -16,8 +18,10 @@ import { clearDashboardSessionCache } from "../../services/dashboardSessionCache
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 import AiChatLauncher from "../ai/AiChatLauncher";
+import WeaveIcon from "../brand/WeaveIcon";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import GettingStartedBanner from "../guides/GettingStartedBanner";
+import Button from "../ui/Button";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
 import MobileDrawer from "./MobileDrawer";
@@ -84,9 +88,11 @@ function DashboardShellFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const role = getRole(user, roleProp);
+  const guidePageActive = location.pathname.endsWith("/getting-started");
   const academicHubActive = location.pathname.startsWith("/admin/academic");
   const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [guideReturn, setGuideReturn] = useState(() => readGuideReturn());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     window.localStorage.getItem("sidebarCollapsed") === "true"
   );
@@ -165,6 +171,15 @@ function DashboardShellFrame({
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (guidePageActive) {
+      clearGuideReturn();
+      setGuideReturn(null);
+      return;
+    }
+    setGuideReturn(readGuideReturn());
+  }, [guidePageActive, location.pathname]);
 
   useEffect(() => {
     if (!academicHubActive) return;
@@ -409,6 +424,51 @@ function DashboardShellFrame({
       ? "Release to refresh"
       : "Pull to refresh";
 
+  const returnToGuide = () => {
+    const route = guideReturn?.route;
+    clearGuideReturn();
+    setGuideReturn(null);
+    if (route) navigate(route);
+  };
+  const dismissGuideReturn = () => {
+    clearGuideReturn();
+    setGuideReturn(null);
+  };
+
+  if (guidePageActive) {
+    return (
+      <div
+        ref={shellRef}
+        data-dashboard-role={role}
+        data-guide-page="true"
+        className="min-h-[100dvh] overflow-y-auto bg-background text-text"
+      >
+        <header className="sticky top-0 z-40 border-b border-border/70 bg-surface/95 backdrop-blur-xl">
+          <div className="mx-auto flex min-h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <WeaveIcon className="h-10 w-10 shrink-0" decorative />
+              <div>
+                <p className="text-sm font-bold text-text">Weave</p>
+                <p className="text-xs text-text-muted">Getting started</p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              onClick={() => navigate(roleGuide.config?.dashboardRoute || `/${role}/dashboard`)}
+            >
+              Finish later
+            </Button>
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-[1440px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={shellRef}
@@ -506,6 +566,34 @@ function DashboardShellFrame({
                 ) : null}
               </section>
             )}
+            {guideReturn?.role === role ? (
+              <section className="flex flex-col gap-3 rounded-2xl border border-primary/25 bg-primary-subtle/70 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <ArrowLeft className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-text">Tutorial still in progress</p>
+                    <p className="truncate text-xs text-text-muted">
+                      {guideReturn.label || "Return to the getting-started page when you are done exploring."}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="small" onClick={returnToGuide}>
+                    Return to tutorial
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={dismissGuideReturn}
+                    className="grid h-9 w-9 place-items-center rounded-xl text-text-muted transition hover:bg-surface hover:text-text"
+                    aria-label="Dismiss tutorial return prompt"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </section>
+            ) : null}
             {showGettingStartedBanner ? (
               <GettingStartedBanner
                 guide={roleGuide}

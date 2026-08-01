@@ -11,8 +11,8 @@ import {
   GraduationCap,
   Loader2,
   RefreshCw,
+  Route,
   School,
-  Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -98,7 +98,7 @@ function StepHeading({ step, number, total, complete }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
       <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary">
-        {Icon ? <Icon className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
+        {Icon ? <Icon className="h-5 w-5" /> : <CircleDashed className="h-5 w-5" />}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -138,6 +138,7 @@ function AdminGettingStartedPage() {
   const [calendarForm, setCalendarForm] = useState(DEFAULT_CALENDAR);
   const [classForm, setClassForm] = useState({ name: "", arm: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
+  const [progressionDrafts, setProgressionDrafts] = useState({});
 
   const loadSetup = useCallback(async ({ quiet = false } = {}) => {
     if (quiet) setRefreshing(true);
@@ -274,6 +275,31 @@ function AdminGettingStartedPage() {
     selectedTerm && statusValue(selectedTerm) === "open" && selectedTerm.is_current,
   );
   const calendarActive = statusValue(selectedCalendar) === "active";
+  const activeClasses = useMemo(
+    () => classes.filter((item) => item?.is_active !== false && !item?.archived_at),
+    [classes],
+  );
+  const activeSubjects = useMemo(
+    () => subjects.filter((item) => item?.is_active !== false && !item?.archived_at),
+    [subjects],
+  );
+  const progressionComplete = Boolean(
+    activeClasses.length > 0 &&
+      activeClasses.every((item) => item.is_terminal || item.next_class_id),
+  );
+
+  useEffect(() => {
+    setProgressionDrafts((current) => {
+      const next = {};
+      for (const classroom of activeClasses) {
+        next[classroom.id] = current[classroom.id] || {
+          is_terminal: Boolean(classroom.is_terminal),
+          next_class_id: classroom.next_class_id || "",
+        };
+      }
+      return next;
+    });
+  }, [activeClasses]);
   const sessionDraft = statusValue(selectedSession) === "draft";
   const termDraft = statusValue(selectedTerm) === "draft";
   const sessionDatesComplete = Boolean(
@@ -326,7 +352,8 @@ function AdminGettingStartedPage() {
       session: Boolean(selectedSession),
       term: Boolean(selectedSession && selectedTerm),
       calendar: calendarPrepared,
-      structure: classes.length > 0 && subjects.length > 0,
+      structure: activeClasses.length > 0 && activeSubjects.length > 0,
+      progression: progressionComplete,
       session_open: sessionActive,
       calendar_active: calendarActive,
       term_open: termActive,
@@ -334,7 +361,9 @@ function AdminGettingStartedPage() {
     [
       calendarActive,
       calendarPrepared,
-      classes.length,
+      activeClasses.length,
+      activeSubjects.length,
+      progressionComplete,
       selectedSession,
       selectedTerm,
       sessionActive,
@@ -437,7 +466,6 @@ function AdminGettingStartedPage() {
     );
     if (!created) return;
     setClassForm({ name: "", arm: "" });
-    if (subjects.length > 0) await guide.moveTo("session_open");
   };
 
   const createSubject = async (event) => {
@@ -449,7 +477,23 @@ function AdminGettingStartedPage() {
     );
     if (!created) return;
     setSubjectForm({ name: "", code: "" });
-    if (classes.length > 0) await guide.moveTo("session_open");
+  };
+
+  const saveClassProgression = async (classroom) => {
+    const draft = progressionDrafts[classroom.id] || {};
+    if (!draft.is_terminal && !draft.next_class_id) {
+      showError(`Choose a next class or mark ${classLabel(classroom)} as terminal.`);
+      return;
+    }
+    await runAction(
+      `progression-${classroom.id}`,
+      () =>
+        classService.configureClassProgression(classroom.id, {
+          is_terminal: Boolean(draft.is_terminal),
+          next_class_id: draft.is_terminal ? null : draft.next_class_id,
+        }),
+      `${classLabel(classroom)} progression saved.`,
+    );
   };
 
   const openSession = async () => {
@@ -479,7 +523,10 @@ function AdminGettingStartedPage() {
       () => academicService.openTerm(selectedTerm.id),
       "Academic term opened.",
     );
-    if (result) await guide.finish();
+    if (result) {
+      await guide.finish();
+      navigate("/admin/dashboard", { replace: true });
+    }
   };
 
   if (loading || guide.loading || !guide.config || !guide.currentStep) {
@@ -757,100 +804,194 @@ function AdminGettingStartedPage() {
   );
 
   const renderStructureStep = () => (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div className="rounded-2xl border border-border bg-surface-muted/20 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-semibold text-text">Classes</p>
-            <p className="mt-1 text-sm text-text-muted">
-              {classes.length ? `${classes.length} class${classes.length === 1 ? "" : "es"} available` : "Create the first class"}
-            </p>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-border bg-surface-muted/25 p-4 text-sm leading-6 text-text-muted">
+        Add as many classes and subjects as the school needs. The forms remain available after each creation. Continue when the minimum structure is ready, or skip the stage and return later.
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-text">Classes</p>
+              <p className="mt-1 text-sm text-text-muted">
+                {activeClasses.length} active class{activeClasses.length === 1 ? "" : "es"}
+              </p>
+            </div>
+            {activeClasses.length ? <Badge variant="success">Ready</Badge> : null}
           </div>
-          {classes.length ? <Badge variant="success">Ready</Badge> : null}
-        </div>
-        {!classes.length ? (
-          <form onSubmit={createClass} className="mt-4 space-y-3">
+          {activeClasses.length ? (
+            <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+              {activeClasses.map((item) => (
+                <span key={item.id} className="rounded-full border border-border bg-surface-muted/40 px-3 py-1.5 text-xs font-semibold text-text-soft">
+                  {classLabel(item)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <form onSubmit={createClass} className="mt-4 space-y-3 border-t border-border pt-4">
             <Input
               label="Class name"
               value={classForm.name}
               placeholder="JSS 1"
-              onChange={(event) =>
-                setClassForm((currentForm) => ({
-                  ...currentForm,
-                  name: event.target.value,
-                }))
-              }
+              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, name: event.target.value }))}
               required
             />
             <Input
               label="Arm"
               value={classForm.arm}
               placeholder="A"
-              onChange={(event) =>
-                setClassForm((currentForm) => ({
-                  ...currentForm,
-                  arm: event.target.value,
-                }))
-              }
+              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, arm: event.target.value }))}
             />
             <Button type="submit" disabled={saving === "class"} className="w-full">
               {saving === "class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <School className="h-4 w-4" />}
-              {saving === "class" ? "Creating..." : "Create class"}
+              {saving === "class" ? "Adding class..." : "Add another class"}
             </Button>
           </form>
-        ) : (
-          <div className="mt-4 rounded-xl border border-success/20 bg-success-soft/40 px-3 py-3 text-sm text-text-soft">
-            {classLabel(classes[0])} is available. More classes can be added later.
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-2xl border border-border bg-surface-muted/20 p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-semibold text-text">Subjects</p>
-            <p className="mt-1 text-sm text-text-muted">
-              {subjects.length ? `${subjects.length} subject${subjects.length === 1 ? "" : "s"} available` : "Create the first subject"}
-            </p>
-          </div>
-          {subjects.length ? <Badge variant="success">Ready</Badge> : null}
         </div>
-        {!subjects.length ? (
-          <form onSubmit={createSubject} className="mt-4 space-y-3">
+
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-text">Subjects</p>
+              <p className="mt-1 text-sm text-text-muted">
+                {activeSubjects.length} active subject{activeSubjects.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            {activeSubjects.length ? <Badge variant="success">Ready</Badge> : null}
+          </div>
+          {activeSubjects.length ? (
+            <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+              {activeSubjects.map((item) => (
+                <span key={item.id} className="rounded-full border border-border bg-surface-muted/40 px-3 py-1.5 text-xs font-semibold text-text-soft">
+                  {item.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <form onSubmit={createSubject} className="mt-4 space-y-3 border-t border-border pt-4">
             <Input
               label="Subject name"
               value={subjectForm.name}
               placeholder="Mathematics"
-              onChange={(event) =>
-                setSubjectForm((currentForm) => ({
-                  ...currentForm,
-                  name: event.target.value,
-                }))
-              }
+              onChange={(event) => setSubjectForm((currentForm) => ({ ...currentForm, name: event.target.value }))}
               required
             />
             <Input
               label="Subject code"
               value={subjectForm.code}
               placeholder="MTH"
-              onChange={(event) =>
-                setSubjectForm((currentForm) => ({
-                  ...currentForm,
-                  code: event.target.value,
-                }))
-              }
+              onChange={(event) => setSubjectForm((currentForm) => ({ ...currentForm, code: event.target.value }))}
             />
             <Button type="submit" disabled={saving === "subject"} className="w-full">
               {saving === "subject" ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-              {saving === "subject" ? "Creating..." : "Create subject"}
+              {saving === "subject" ? "Adding subject..." : "Add another subject"}
             </Button>
           </form>
-        ) : (
-          <div className="mt-4 rounded-xl border border-success/20 bg-success-soft/40 px-3 py-3 text-sm text-text-soft">
-            {subjects[0]?.name || "A subject"} is available. More subjects can be added later.
-          </div>
-        )}
+        </div>
       </div>
+    </div>
+  );
+
+  const renderProgressionStep = () => (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-primary/20 bg-primary-subtle/45 p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <Route className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div>
+            <p className="font-semibold text-text">Define what happens at session closure</p>
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              Every active class must point to its next class, or be marked terminal when learners graduate from it.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {!activeClasses.length ? (
+        <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-soft">
+          Create at least one class before configuring progression. You may skip this stage and return later.
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {activeClasses.map((classroom) => {
+            const draft = progressionDrafts[classroom.id] || {
+              is_terminal: Boolean(classroom.is_terminal),
+              next_class_id: classroom.next_class_id || "",
+            };
+            const configured = Boolean(classroom.is_terminal || classroom.next_class_id);
+            const nextOptions = activeClasses
+              .filter((candidate) => candidate.id !== classroom.id)
+              .map((candidate) => ({
+                value: candidate.id,
+                label: classLabel(candidate),
+                description: candidate.is_terminal ? "Terminal class" : "Active class",
+              }));
+
+            return (
+              <div key={classroom.id} className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-text">{classLabel(classroom)}</p>
+                      {configured ? <Badge variant="success">Configured</Badge> : <Badge variant="warning">Required</Badge>}
+                    </div>
+                    <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface-muted/25 px-3 text-sm font-medium text-text-soft">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={Boolean(draft.is_terminal)}
+                        onChange={(event) =>
+                          setProgressionDrafts((current) => ({
+                            ...current,
+                            [classroom.id]: {
+                              ...draft,
+                              is_terminal: event.target.checked,
+                              next_class_id: event.target.checked ? "" : draft.next_class_id,
+                            },
+                          }))
+                        }
+                      />
+                      Terminal class — students graduate after this class
+                    </label>
+                  </div>
+                  <div className="grid min-w-0 flex-[1.2] gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <SearchableSelect
+                      label="Next class"
+                      value={draft.next_class_id || ""}
+                      onChange={(value) =>
+                        setProgressionDrafts((current) => ({
+                          ...current,
+                          [classroom.id]: {
+                            ...draft,
+                            is_terminal: false,
+                            next_class_id: value,
+                          },
+                        }))
+                      }
+                      options={nextOptions}
+                      placeholder={draft.is_terminal ? "Terminal class" : "Select next class"}
+                      searchable={nextOptions.length > 5}
+                      clearable
+                      disabled={draft.is_terminal}
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => saveClassProgression(classroom)}
+                      disabled={
+                        saving === `progression-${classroom.id}` ||
+                        (!draft.is_terminal && !draft.next_class_id)
+                      }
+                      className="w-full sm:w-auto"
+                    >
+                      {saving === `progression-${classroom.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Route className="h-4 w-4" />}
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
@@ -1046,6 +1187,7 @@ function AdminGettingStartedPage() {
     if (current.id === "term") return renderTermStep();
     if (current.id === "calendar") return renderCalendarStep();
     if (current.id === "structure") return renderStructureStep();
+    if (current.id === "progression") return renderProgressionStep();
     if (current.id === "session_open") return renderSessionOpenStep();
     if (current.id === "calendar_active") return renderCalendarActivationStep();
     return renderTermOpenStep();
@@ -1075,7 +1217,7 @@ function AdminGettingStartedPage() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 text-primary">
-                  <Sparkles className="h-4 w-4" />
+                  <School className="h-4 w-4" />
                   <p className="text-[11px] font-bold uppercase tracking-[0.16em]">
                     Guided academic launch
                   </p>
@@ -1218,7 +1360,12 @@ function AdminGettingStartedPage() {
                 <SetupCheck
                   label="Classes and subjects"
                   complete={completionMap.structure}
-                  detail={`${classes.length} classes · ${subjects.length} subjects`}
+                  detail={`${activeClasses.length} classes · ${activeSubjects.length} subjects`}
+                />
+                <SetupCheck
+                  label="Class progression"
+                  complete={completionMap.progression}
+                  detail={progressionComplete ? "Every active class has a destination" : "Choose next classes or terminal classes"}
                 />
                 <SetupCheck
                   label="Session open"

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { HelpCircle, ShieldCheck } from "lucide-react";
 
+import WeaveIcon from "../../components/brand/WeaveIcon";
 import Navbar from "../../components/layout/Navbar";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -57,7 +58,7 @@ function PricingPage() {
                 </div>
               </div>
               <Card className="border-white/10 bg-white/10 p-5 text-white backdrop-blur-xl">
-                <Sparkles className="h-8 w-8 text-primary-soft" />
+                <WeaveIcon className="mx-auto h-20 w-20" decorative />
                 <h2 className="mt-4 text-xl font-semibold text-white">Pay for the capacity you need.</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-300">
                   Free Trial proves the product. Paid plans unlock higher limits and operational features like bulk import and advanced analytics.

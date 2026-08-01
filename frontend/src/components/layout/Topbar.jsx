@@ -1,4 +1,4 @@
-import { Bell, Building2, ChevronDown, FileText, LogOut, Menu, Moon, Settings, Sparkles, Sun, Trash2, UserRound } from "lucide-react";
+import { Bell, Building2, ChevronDown, CreditCard, FileText, LogOut, Menu, Moon, Settings, Sun, Trash2, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -363,7 +363,7 @@ export default function Topbar({
                     className="flex min-h-11 items-center gap-3 rounded-2xl border border-border/70 bg-surface px-3 py-2 text-sm font-semibold text-text transition hover:border-primary/30 hover:bg-primary-subtle/35"
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                      <Sparkles className="h-4 w-4" />
+                      <CreditCard className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1 truncate">Upgrade</span>
                   </Link>

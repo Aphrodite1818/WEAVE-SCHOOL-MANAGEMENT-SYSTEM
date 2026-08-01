@@ -110,6 +110,11 @@
     @apply bg-primary-soft text-primary-deep;
   }
 
+  :root[data-theme="dark"] ::selection {
+    background: rgb(30 64 175 / 0.78);
+    color: rgb(239 246 255);
+  }
+
   h1,
   h2,
   h3,
@@ -257,10 +262,12 @@
   }
 
   :root[data-theme="dark"] .is-selected-highlight {
-    border-color: rgb(147 197 253 / 0.65) !important;
-    background: rgb(var(--color-surface-raised)) !important;
-    color: rgb(var(--color-text)) !important;
-    box-shadow: inset 0 0 0 1px rgb(147 197 253 / 0.12);
+    border-color: rgb(96 165 250 / 0.58) !important;
+    background: linear-gradient(135deg, rgb(30 64 175 / 0.24), rgb(20 31 54 / 0.92)) !important;
+    color: rgb(219 234 254) !important;
+    box-shadow:
+      inset 0 0 0 1px rgb(147 197 253 / 0.12),
+      0 10px 28px rgb(2 6 23 / 0.18);
   }
 
   :root[data-theme="dark"] .is-selected-highlight .text-text,
@@ -274,9 +281,24 @@
   }
 
   :root[data-theme="dark"] .academic-lifecycle-step[data-state="active"] {
-    border-color: rgb(147 197 253 / 0.75);
-    background: rgb(var(--color-surface-raised));
-    box-shadow: inset 0 0 0 1px rgb(147 197 253 / 0.2);
+    border-color: rgb(96 165 250 / 0.6);
+    background: linear-gradient(135deg, rgb(30 64 175 / 0.2), rgb(20 31 54 / 0.94));
+    box-shadow: inset 0 0 0 1px rgb(147 197 253 / 0.12);
+  }
+
+  :root[data-theme="dark"] .guide-progress-node-active {
+    border-color: rgb(96 165 250 / 0.82) !important;
+    background-color: rgb(30 64 175 / 0.72) !important;
+    color: rgb(239 246 255) !important;
+  }
+
+  :root[data-theme="dark"] .guide-progress-node-complete {
+    border-color: rgb(52 211 153 / 0.72) !important;
+    background-color: rgb(5 150 105 / 0.58) !important;
+  }
+
+  :root[data-theme="dark"] .guide-progress-label-active {
+    color: rgb(147 197 253) !important;
   }
 
   :root[data-theme="dark"] .academic-lifecycle-step[data-state="complete"] {
