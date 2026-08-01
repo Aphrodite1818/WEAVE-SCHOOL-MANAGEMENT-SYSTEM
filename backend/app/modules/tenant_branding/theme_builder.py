@@ -273,8 +273,10 @@ def _semantic_tokens(
         "--color-header-background": head,
         "--color-header-text": head_text,
         "--color-header-text-muted": _blend_towards(head_text, head, 0.35),
-        "--color-header-surface": _blend_towards(head, head_text, 0.08),
-        "--color-header-surface-hover": _blend_towards(head, head_text, 0.14),
+        "--color-header-surface": (24, 34, 54) if dark else _blend_towards(head, head_text, 0.08),
+        "--color-header-surface-hover": (30, 41, 59)
+        if dark
+        else _blend_towards(head, head_text, 0.14),
         "--color-header-border": _blend_towards(head, head_text, 0.18),
         "--color-focus-ring": primary,
     }
@@ -384,8 +386,8 @@ def build_default_theme_token_sets() -> dict[str, dict[str, str]]:
             "--color-header-background": "15 23 42",
             "--color-header-text": "248 250 252",
             "--color-header-text-muted": "148 163 184",
-            "--color-header-surface": "8 12 20",
-            "--color-header-surface-hover": "18 24 36",
+            "--color-header-surface": "24 34 54",
+            "--color-header-surface-hover": "30 41 59",
             "--color-header-border": "30 41 59",
         }
     )

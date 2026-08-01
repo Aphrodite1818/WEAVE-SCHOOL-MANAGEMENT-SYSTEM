@@ -206,7 +206,7 @@ export default function Topbar({
                 onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
               />
             ) : null}
-            <p className="truncate text-base font-bold text-header-text">
+            <p className={cn("truncate text-base font-bold", isAccountScope ? "text-header-text" : "text-primary")}>
               {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
             </p>
           </div>
@@ -221,7 +221,7 @@ export default function Topbar({
             <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
           )}
           <div className="hidden min-w-0 sm:block">
-            <p className="brand-wordmark truncate text-sm font-bold text-header-text sm:text-lg">
+            <p className={cn("truncate text-sm font-bold sm:text-lg", hasSchoolLogo ? "text-primary" : "brand-wordmark")}>
               {hasSchoolLogo ? schoolName || "School workspace" : "Weave"}
             </p>
           </div>

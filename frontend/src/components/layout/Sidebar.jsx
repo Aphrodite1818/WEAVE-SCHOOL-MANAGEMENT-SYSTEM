@@ -143,7 +143,7 @@ export default function SidebarContent({
           >
             {logoMark}
             <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight text-sidebar-text">
+              <span className={cn("block truncate text-[15px] font-bold leading-tight", isAccountScope ? "text-sidebar-text" : "tenant-school-name-sidebar")}>
                 {isAccountScope ? "Your schools" : schoolName || "Weave"}
               </span>
               <span className="block truncate text-[11px] font-medium text-sidebar-text/65">School Management</span>

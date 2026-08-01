@@ -182,7 +182,10 @@ function LandingPage() {
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
               <div className="max-w-3xl">
                 <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
-                  Run school records, results, attendance, and notices from one workspace.
+                  <span className="landing-headline-line">Run school records,</span>
+                  <span className="landing-headline-line">results, attendance,</span>
+                  <span className="landing-headline-line">and notices from</span>
+                  <span className="landing-headline-line">one workspace.</span>
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8">
                   Weave gives admins, teachers, students, and parents the screens they need for daily school work: enrollment, class setup, attendance, score entry, report cards, announcements, and billing.

@@ -29,6 +29,7 @@ def test_default_and_custom_palettes_have_complete_light_and_dark_contracts() ->
         assert tokens["light"]["--color-header-background"] == "255 255 255"
         assert tokens["dark"]["--color-background"] == "15 23 42"
         assert tokens["dark"]["--color-header-background"] == "15 23 42"
+        assert tokens["dark"]["--color-header-surface"] == "24 34 54"
         assert tokens["dark"]["--color-sidebar-background"] == "15 23 42"
 
 
