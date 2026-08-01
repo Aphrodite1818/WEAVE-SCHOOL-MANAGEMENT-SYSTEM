@@ -27,6 +27,24 @@ jobs:
       - name: Apply navigation patch
         run: python .github/scripts/apply_guide_exit_navigation_fix.py
 
+      - name: Update legacy navigation contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("frontend/src/navigationAndGuideContracts.test.js")
+          content = path.read_text(encoding="utf-8")
+          old = '  assert.match(setupPage, /navigate\\("\\/admin\\/billing\\/plans"\\)/);\n'
+          new = '''  assert.match(
+            setupPage,
+            /leaveGuideRoute\\("admin", "\\/admin\\/billing\\/plans", \\{ replace: true \\}\\)/,
+          );
+          '''
+          if old not in content:
+              raise SystemExit("Legacy billing navigation assertion was not found")
+          path.write_text(content.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Remove one-shot patch files
         run: |
           rm .github/scripts/apply_guide_exit_navigation_fix.py
