@@ -550,7 +550,7 @@ function AdminGettingStartedPage() {
               ? `${notice.used} of ${notice.limit} ${notice.resource}`
               : "",
           actionLabel: "Upgrade plan",
-          onAction: () => navigate("/admin/billing/plans"),
+          onAction: goToPlanUpgrade,
         });
         return null;
       }
@@ -760,16 +760,23 @@ function AdminGettingStartedPage() {
   const goPrevious = () => {
     if (!firstStep) guide.moveTo(guide.steps[guide.currentIndex - 1].id);
   };
+  const goToPlanUpgrade = () => {
+    setWarningDialog(null);
+    navigate("/admin/billing/plans");
+  };
   const continueStep = async () => {
+    if (guide.guideState?.status === "completed") {
+      navigate("/admin/dashboard", { replace: true });
+      return;
+    }
     if (lastStep || setupReadyToComplete) {
-      if (currentComplete) {
-        try {
-          await guide.finish();
-          showSuccess("Assisted setup completed.");
-          navigate("/admin/dashboard", { replace: true });
-        } catch (completionError) {
-          showError(getErrorMessage(completionError, "Could not complete assisted setup."));
-        }
+      if (!currentComplete && !setupReadyToComplete) return;
+      try {
+        await guide.finish();
+        showSuccess("Assisted setup completed.");
+        navigate("/admin/dashboard", { replace: true });
+      } catch (completionError) {
+        showError(getErrorMessage(completionError, "Could not complete assisted setup."));
       }
       return;
     }
@@ -1160,7 +1167,7 @@ function AdminGettingStartedPage() {
             <Button
               type="button"
               className="w-full sm:w-auto"
-              onClick={() => navigate("/admin/billing/plans")}
+              onClick={goToPlanUpgrade}
             >
               <CreditCard className="h-4 w-4" />
               Upgrade plan
@@ -1673,7 +1680,7 @@ function AdminGettingStartedPage() {
                 <Button
                   type="button"
                   onClick={continueStep}
-                  disabled={!currentComplete}
+                  disabled={!currentComplete && !setupReadyToComplete && guide.guideState?.status !== "completed"}
                 >
                   {lastStep || setupReadyToComplete ? "Complete setup" : "Continue"}
                   {lastStep || setupReadyToComplete ? (

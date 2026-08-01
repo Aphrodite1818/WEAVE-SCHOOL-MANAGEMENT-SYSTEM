@@ -237,6 +237,13 @@
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
     display: block !important;
+    position: fixed !important;
+    inset-inline: 0 !important;
+    bottom: 0 !important;
+    transform: translate3d(0, 0, 0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+    touch-action: none !important;
+    overscroll-behavior: none !important;
   }
 }
 
@@ -545,6 +552,7 @@
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] button {
     min-height: 3.45rem !important;
     border-radius: 1.8rem !important;
+    touch-action: manipulation !important;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] svg {

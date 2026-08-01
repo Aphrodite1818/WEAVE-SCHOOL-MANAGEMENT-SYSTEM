@@ -5,9 +5,9 @@ import { cn } from "../../utils/cn";
 
 const toneClasses = {
   primary: "bg-primary-soft text-primary",
-  success: "bg-success-soft text-emerald-800",
-  warning: "bg-warning-soft text-amber-950",
-  error: "bg-error-soft text-rose-800",
+  success: "bg-success-soft text-emerald-800 dark:text-emerald-100",
+  warning: "bg-warning-soft text-amber-950 dark:text-amber-100",
+  error: "bg-error-soft text-rose-800 dark:text-rose-100",
   accent: "bg-accent-soft text-accent",
 };
 

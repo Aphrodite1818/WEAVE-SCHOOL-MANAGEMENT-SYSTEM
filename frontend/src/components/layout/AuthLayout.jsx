@@ -87,7 +87,7 @@ function AuthLayout({
             </div>
           </Link>
 
-          <Card className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-2xl sm:p-8">
+          <Card className="rounded-[2rem] border border-slate-700/70 bg-slate-950/65 p-6 shadow-none sm:p-8">
             <div className="mb-7">
               {iconPosition === "header" ? (
                 <span className="flex h-10 w-10 items-center justify-center rounded-[1rem] bg-white/10 text-slate-100">
@@ -109,7 +109,7 @@ function AuthLayout({
           </Card>
           {iconPosition === "below" ? (
             <div className="mt-5 flex justify-center">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-100 shadow-[0_18px_45px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-700/70 bg-slate-950/65 text-slate-100 shadow-none">
                 <ShieldCheck className="h-4 w-4" />
               </span>
             </div>
