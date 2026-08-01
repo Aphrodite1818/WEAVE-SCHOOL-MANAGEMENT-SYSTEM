@@ -17,7 +17,7 @@ function RoleGettingStartedPage({ role }) {
     if (!guide.loading && guide.guideState?.status === "not_started") {
       guide.start();
     }
-  }, [guide]);
+  }, [guide.guideState?.status, guide.loading, guide.start]);
 
   if (guide.loading || !guide.config || !guide.currentStep) {
     return (
