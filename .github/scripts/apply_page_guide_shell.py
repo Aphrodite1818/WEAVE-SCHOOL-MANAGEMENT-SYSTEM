@@ -10,22 +10,6 @@ def replace_once(path: str, old: str, new: str) -> None:
 
 
 replace_once(
-    "frontend/src/pages/shared/RoleGettingStartedPage.jsx",
-    '''  useEffect(() => {
-    if (!guide.loading && guide.guideState?.status === "not_started") {
-      guide.start();
-    }
-  }, [guide]);
-''',
-    '''  useEffect(() => {
-    if (!guide.loading && guide.guideState?.status === "not_started") {
-      guide.start();
-    }
-  }, [guide.guideState?.status, guide.loading, guide.start]);
-''',
-)
-
-replace_once(
     "frontend/src/pages/admin/AdminGettingStartedPage.jsx",
     '''  useEffect(() => {
     if (!guide.loading && guide.guideState?.status === "not_started") {
@@ -42,7 +26,64 @@ replace_once(
 )
 
 replace_once(
+    "frontend/src/pages/admin/AdminGettingStartedPage.jsx",
+    '''    [calendars, selectedTerm?.id],
+  );
+  const selectedCalendar = useMemo(
+''',
+    '''    [calendars, selectedTerm],
+  );
+  const selectedCalendar = useMemo(
+''',
+)
+
+replace_once(
     "frontend/src/components/guides/GettingStartedBanner.jsx",
     '<Sparkles className="h-4.5 w-4.5" />',
     '<Sparkles className="h-4 w-4" />',
+)
+
+replace_once(
+    "frontend/src/components/layout/DashboardLayout.jsx",
+    '''  const gettingStartedRoute = roleGuide.config?.route || "";
+  const showGettingStartedBanner = Boolean(
+''',
+    '''  const gettingStartedRoute = roleGuide.config?.route || "";
+  const startRoleGuide = roleGuide.start;
+  const shouldAutoRedirect = roleGuide.shouldAutoRedirect;
+  const showGettingStartedBanner = Boolean(
+''',
+)
+replace_once(
+    "frontend/src/components/layout/DashboardLayout.jsx",
+    '''      !roleGuide.shouldAutoRedirect ||
+      !gettingStartedRoute ||
+''',
+    '''      !shouldAutoRedirect ||
+      !gettingStartedRoute ||
+''',
+)
+replace_once(
+    "frontend/src/components/layout/DashboardLayout.jsx",
+    '''    roleGuide.start().then(() => {
+      if (!cancelled) navigate(gettingStartedRoute, { replace: true });
+    });
+''',
+    '''    startRoleGuide().then(() => {
+      if (!cancelled) navigate(gettingStartedRoute, { replace: true });
+    });
+''',
+)
+replace_once(
+    "frontend/src/components/layout/DashboardLayout.jsx",
+    '''    navigate,
+    roleGuide.shouldAutoRedirect,
+    roleGuide.start,
+  ]);
+''',
+    '''    navigate,
+    shouldAutoRedirect,
+    startRoleGuide,
+  ]);
+''',
 )
