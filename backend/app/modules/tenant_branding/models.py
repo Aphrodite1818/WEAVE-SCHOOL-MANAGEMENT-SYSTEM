@@ -97,8 +97,8 @@ class TenantBranding(BaseModel):
     token_schema_version: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        default=2,
-        server_default="2",
+        default=4,
+        server_default="4",
     )
 
     updated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(

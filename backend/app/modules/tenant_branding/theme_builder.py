@@ -165,7 +165,7 @@ def get_default_background_color(theme_mode: TenantBrandingThemeMode) -> str:
 
 # Versioned semantic contract used by workspace clients. Legacy flat token
 # payloads are treated as stale and regenerated from the stored source palette.
-TOKEN_SCHEMA_VERSION: Final[int] = 2
+TOKEN_SCHEMA_VERSION: Final[int] = 4
 DEFAULT_SURFACE_COLOR: Final[str] = "#FFFFFF"
 DEFAULT_PALETTE_KEY: Final[str] = "blue"
 BRANDING_PALETTES: Final[dict[str, dict[str, str]]] = {
@@ -233,12 +233,12 @@ def _semantic_tokens(
     surface: tuple[int, int, int],
     dark: bool,
 ) -> dict[str, str]:
-    canvas = (0, 0, 0) if dark else background
-    card = _blend_towards(surface, (8, 12, 20), 0.97) if dark else surface
+    canvas = (15, 23, 42) if dark else background
+    card = (17, 24, 39) if dark else surface
     contrast_target = LIGHT_TEXT_RGB if dark else DARK_TEXT_RGB
     text = (248, 250, 252) if dark else DARK_TEXT_RGB
-    side = _blend_towards(sidebar, DARK_TEXT_RGB, 0.78) if dark else sidebar
-    head = (0, 0, 0) if dark else header
+    side = (15, 23, 42) if dark else sidebar
+    head = (15, 23, 42) if dark else header
     side_text = choose_readable_text_color(side)
     head_text = choose_readable_text_color(head)
     values = {
@@ -366,11 +366,11 @@ def build_default_theme_token_sets() -> dict[str, dict[str, str]]:
     dark = dict(light)
     dark.update(
         {
-            "--color-background": "0 0 0",
-            "--color-surface": "8 12 20",
-            "--color-surface-raised": "12 17 27",
-            "--color-surface-muted": "18 24 36",
-            "--color-surface-subtle": "27 35 49",
+            "--color-background": "15 23 42",
+            "--color-surface": "17 24 39",
+            "--color-surface-raised": "20 28 45",
+            "--color-surface-muted": "24 34 54",
+            "--color-surface-subtle": "30 41 59",
             "--color-border": "30 41 59",
             "--color-border-strong": "51 65 85",
             "--color-border-subtle": "18 24 36",
@@ -381,7 +381,7 @@ def build_default_theme_token_sets() -> dict[str, dict[str, str]]:
             "--color-sidebar-background": "15 23 42",
             "--color-sidebar-text": "226 232 240",
             "--color-sidebar-border": "51 65 85",
-            "--color-header-background": "0 0 0",
+            "--color-header-background": "15 23 42",
             "--color-header-text": "248 250 252",
             "--color-header-text-muted": "148 163 184",
             "--color-header-surface": "8 12 20",

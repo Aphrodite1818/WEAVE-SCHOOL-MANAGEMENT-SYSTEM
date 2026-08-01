@@ -87,7 +87,7 @@ async def test_update_tenant_branding_uses_current_tenant_logo() -> None:
     assert response.palette_key == "gold"
     assert response.light_tokens["--color-primary"] == "161 98 7"
     assert response.light_tokens["--color-background"] == "248 250 252"
-    assert response.token_schema_version == 2
+    assert response.token_schema_version == 4
     assert response.theme_version == 1
     db.commit.assert_awaited_once()
 
@@ -149,6 +149,6 @@ async def test_reset_disables_branding_increments_version_and_keeps_logo() -> No
     assert response.logo_url == tenant.logo_url
     assert response.school_name == tenant.school_name
     assert row.palette_key == "blue"
-    assert row.token_schema_version == 2
+    assert row.token_schema_version == 4
     invalidate.assert_awaited_once_with(tenant_id, db=db)
     db.commit.assert_awaited_once()

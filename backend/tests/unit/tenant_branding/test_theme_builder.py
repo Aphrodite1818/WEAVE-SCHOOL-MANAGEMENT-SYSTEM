@@ -27,7 +27,9 @@ def test_default_and_custom_palettes_have_complete_light_and_dark_contracts() ->
         tokens = build_palette_theme_token_sets(palette_key)
         assert tokens["light"]["--color-on-primary"] == "255 255 255"
         assert tokens["light"]["--color-header-background"] == "255 255 255"
-        assert tokens["dark"]["--color-header-background"] == "0 0 0"
+        assert tokens["dark"]["--color-background"] == "15 23 42"
+        assert tokens["dark"]["--color-header-background"] == "15 23 42"
+        assert tokens["dark"]["--color-sidebar-background"] == "15 23 42"
 
 
 def test_pale_primary_uses_dark_readable_foreground() -> None:
@@ -61,8 +63,8 @@ def test_curated_palette_keeps_workspace_background_fixed() -> None:
     blue = build_palette_theme_token_sets("blue")
 
     assert gold["light"]["--color-background"] == blue["light"]["--color-background"]
-    assert gold["dark"]["--color-background"] == "0 0 0"
-    assert blue["dark"]["--color-background"] == "0 0 0"
+    assert gold["dark"]["--color-background"] == "15 23 42"
+    assert blue["dark"]["--color-background"] == "15 23 42"
 
 
 def test_unknown_palette_is_rejected() -> None:

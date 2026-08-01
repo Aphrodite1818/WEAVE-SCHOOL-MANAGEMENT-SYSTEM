@@ -29,7 +29,7 @@ export function validateBrandingTokens(tokens) {
 
 export function validateBrandingResponse(value, tenantId) {
   if (!value || String(value.tenant_id || "") !== String(tenantId || "")) return null;
-  if (value.token_schema_version !== 2) return null;
+  if (value.token_schema_version !== 4) return null;
   const lightTokens = validateBrandingTokens(value.light_tokens);
   const darkTokens = validateBrandingTokens(value.dark_tokens);
   if (!lightTokens || !darkTokens) return null;

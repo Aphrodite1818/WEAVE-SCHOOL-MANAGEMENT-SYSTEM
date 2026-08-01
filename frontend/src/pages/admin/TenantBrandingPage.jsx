@@ -32,12 +32,12 @@ function toEffective(response) {
 }
 
 function ThemePreview({ palette, dark = false }) {
-  const background = dark ? "#000000" : "#F7F4EE";
+  const background = dark ? "#0F172A" : "#F7F4EE";
   const foreground = dark ? "#F8FAFC" : "#0F172A";
   const muted = dark ? "#94A3B8" : "#64748B";
-  const chrome = dark ? palette.dark : palette.primary;
-  const card = dark ? palette.darkTint : palette.tint;
-  const header = dark ? "#000000" : "#FFFFFF";
+  const chrome = dark ? "#0F172A" : palette.primary;
+  const card = dark ? "#111827" : palette.tint;
+  const header = dark ? "#0F172A" : "#FFFFFF";
   const headerText = dark ? "#F8FAFC" : "#0F172A";
 
   return (
@@ -47,10 +47,10 @@ function ThemePreview({ palette, dark = false }) {
       </header>
       <div className="flex min-h-44">
         <aside className="w-16 space-y-2 p-2" style={{ background: chrome }}>
-          {[1, 2, 3].map((item) => <div key={item} className={`h-7 rounded-md ${item === 1 ? "bg-white/25" : "bg-black/10"}`} />)}
+          {[1, 2, 3].map((item) => <div key={item} className="h-7 rounded-md" style={{ background: item === 1 ? palette.primary : dark ? "rgb(255 255 255 / 0.08)" : "rgb(0 0 0 / 0.10)" }} />)}
         </aside>
         <main className="min-w-0 flex-1 space-y-2 p-3">
-          <div className="rounded-lg px-3 py-3 text-xs font-bold text-white" style={{ background: dark ? chrome : palette.primary }}>Welcome back</div>
+          <div className="relative overflow-hidden rounded-lg border px-3 py-3 text-xs font-bold text-white" style={{ background: dark ? "#182236" : palette.primary, borderColor: dark ? "#263247" : palette.primary }}><span className="absolute inset-x-0 top-0 h-1" style={{ background: palette.primary }} />Welcome back</div>
           <div className="rounded-lg border p-3" style={{ background: card, borderColor: `${muted}35` }}>
             <div className="h-2.5 w-20 rounded" style={{ background: palette.primary }} />
             <div className="mt-2 h-2 w-full rounded opacity-30" style={{ background: muted }} />
@@ -129,20 +129,15 @@ export default function TenantBrandingPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl pb-10">
-      <Card className="overflow-hidden border-border/60 p-0 shadow-premium">
-        <div className="relative overflow-hidden border-b border-border/60 bg-gradient-to-br from-primary-subtle via-surface to-surface px-5 py-6 sm:px-7">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-surface/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-primary"><Palette className="h-3.5 w-3.5" /> Brand studio</div>
-              <h1 className="text-2xl font-bold tracking-tight text-text sm:text-3xl">A polished look for your whole school</h1>
-              <p className="mt-2 text-sm leading-6 text-text-muted">Pick one professionally balanced theme. Weave applies it consistently to navigation, actions, welcome panels, billing and supporting cards.</p>
-            </div>
+      <Card className="overflow-hidden border-border/60 p-0 shadow-sm">
+        <div className="border-b border-border/60 px-5 py-6 sm:px-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-2xl"><h1 className="text-2xl font-bold tracking-tight text-text">School colour theme</h1><p className="mt-2 text-sm leading-6 text-text-muted">Choose one coordinated palette for navigation, actions and key highlights. Light and dark appearance remain each user’s choice.</p></div>
             <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-2 text-xs font-bold ${enabled ? "border-success/25 bg-success/10 text-success" : "border-border bg-surface/80 text-text-muted"}`}><span className={`h-2 w-2 rounded-full ${enabled ? "bg-success" : "bg-text-faint"}`} />{enabled ? "Live across your school" : "Not currently live"}</div>
           </div>
 
-          <div className="relative mt-6 flex flex-col gap-3 rounded-2xl border border-border/60 bg-surface/85 p-3 backdrop-blur sm:flex-row sm:items-center">
-            {logoUrl ? <img src={logoUrl} alt="Current school logo" className="h-12 w-12 rounded-xl border bg-surface object-contain p-1" /> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-surface-muted text-[10px] text-text-muted">No logo</div>}
+          <div className="mt-5 flex flex-col gap-3 border-t border-border/60 pt-5 sm:flex-row sm:items-center">
+            {logoUrl ? <img src={logoUrl} alt="Current school logo" className="h-11 w-11 rounded-xl border bg-surface object-contain p-1" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-muted text-[10px] text-text-muted">No logo</div>}
             <div className="min-w-0 flex-1"><p className="truncate font-semibold text-text">{identityName}</p><p className="text-xs text-text-muted">School name is managed in your profile and stays authoritative.</p></div>
             <Link to="/profile" className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-primary">Manage logo <ExternalLink className="h-3.5 w-3.5" /></Link>
           </div>
@@ -163,7 +158,7 @@ export default function TenantBrandingPage() {
             <div className="xl:sticky xl:top-5">
               <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-text-faint">Live preview</p><h2 className="mt-1 font-semibold text-text">{selected.name}</h2></div><div className="inline-flex rounded-xl border border-border bg-surface p-1"><button type="button" onClick={() => setPreviewMode("light")} aria-pressed={previewMode === "light"} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition ${previewMode === "light" ? "bg-primary text-primary-foreground" : "text-text-muted"}`}><Sun className="h-3.5 w-3.5" /> Light</button><button type="button" onClick={() => setPreviewMode("dark")} aria-pressed={previewMode === "dark"} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition ${previewMode === "dark" ? "bg-primary text-primary-foreground" : "text-text-muted"}`}><Moon className="h-3.5 w-3.5" /> Dark</button></div></div>
               <div className="mt-4"><ThemePreview palette={selected} dark={previewMode === "dark"} /></div>
-              <div className="mt-4 rounded-xl border border-border/60 bg-surface p-4 text-xs leading-5 text-text-muted"><p className="font-semibold text-text">Built for contrast in both modes</p><p className="mt-1">Light mode retains Weave’s warm canvas. Dark mode uses a fixed black canvas so every theme stays crisp. Admins cannot override either background.</p></div>
+              <div className="mt-4 rounded-xl border border-border/60 bg-surface p-4 text-xs leading-5 text-text-muted"><p className="font-semibold text-text">One stable foundation</p><p className="mt-1">Light mode keeps Weave’s warm canvas. Dark mode uses the same deep slate for the page, header, sidebar and hero; the selected theme appears through accents and actions.</p></div>
             </div>
           </aside>
         </div>
