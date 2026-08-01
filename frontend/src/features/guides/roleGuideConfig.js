@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CalendarCheck2,
   CalendarDays,
   ClipboardCheck,
   FileText,
@@ -11,66 +12,70 @@ import {
 export const ROLE_GUIDES = {
   admin: {
     key: "tenant_admin_academic_setup",
-    eyebrow: "School setup assistant",
-    title: "Prepare your school for academic work",
+    route: "/admin/getting-started",
+    dashboardRoute: "/admin/dashboard",
+    eyebrow: "Academic setup",
+    title: "Set up your school workspace",
     description:
-      "Complete the foundation in a sensible order. Weave checks your live school data and resumes from the first unfinished stage.",
+      "Build the minimum academic foundation in the correct order. Every stage is verified against your live school data.",
     steps: [
       {
-        id: "foundation",
-        shortLabel: "Foundation",
-        label: "Create the academic foundation",
+        id: "session",
+        shortLabel: "Session",
+        label: "Create an academic session",
         description:
-          "Create an academic session and its terms, then make the active period clear for the rest of the school.",
-        actionLabel: "Create academic session",
-        to: "/admin/academic/sessions?view=create",
+          "Define the academic year that terms, calendars, classes, and student records will belong to.",
+        icon: CalendarDays,
+      },
+      {
+        id: "term",
+        shortLabel: "Term",
+        label: "Create a term in the session",
+        description:
+          "Add the first term to the session and define its operating dates.",
+        icon: CalendarCheck2,
+      },
+      {
+        id: "calendar",
+        shortLabel: "Calendar",
+        label: "Generate the school calendar",
+        description:
+          "Set the school timetable defaults and generate operational days for the selected term.",
         icon: CalendarDays,
       },
       {
         id: "structure",
         shortLabel: "Structure",
-        label: "Build classes and subjects",
+        label: "Create classes and subjects",
         description:
-          "Create the classes learners belong to, add subjects, and map each subject to the right classes.",
-        actionLabel: "Set up classes",
-        to: "/admin/academic/classes?view=create",
+          "Create at least one class and one subject so the academic workspace has a usable structure.",
         icon: School,
       },
       {
-        id: "staff",
-        shortLabel: "Staff",
-        label: "Invite and assign teachers",
+        id: "activation",
+        shortLabel: "Activate",
+        label: "Activate the calendar, session, and term",
         description:
-          "Add teachers, then connect them to their class and subject responsibilities before result entry begins.",
-        actionLabel: "Manage teachers",
-        to: "/admin/teachers",
-        icon: Users,
-      },
-      {
-        id: "students",
-        shortLabel: "Launch",
-        label: "Add students and start school work",
-        description:
-          "Create or import students, review readiness, and continue into attendance, results, and report cards.",
-        actionLabel: "Add students",
-        to: "/admin/students/create",
+          "Complete the launch sequence so teachers and administrators can begin academic operations.",
         icon: GraduationCap,
       },
     ],
   },
   teacher: {
     key: "teacher_workspace_intro",
-    eyebrow: "Teacher quick guide",
-    title: "Get comfortable with your teaching workspace",
+    route: "/teacher/getting-started",
+    dashboardRoute: "/teacher/dashboard",
+    eyebrow: "Teacher workspace",
+    title: "Learn your teaching workspace",
     description:
-      "A short tour of the workflows you will use most often. You can leave and continue later.",
+      "A short, practical introduction to the areas you will use during normal school operations.",
     steps: [
       {
         id: "classes",
         shortLabel: "Classes",
         label: "Review your assigned classes",
         description:
-          "Confirm the classes and subjects assigned to you before entering attendance or scores.",
+          "Confirm your class and subject assignments before entering attendance or scores.",
         actionLabel: "Open my classes",
         to: "/teacher/classes",
         icon: School,
@@ -78,9 +83,9 @@ export const ROLE_GUIDES = {
       {
         id: "results",
         shortLabel: "Results",
-        label: "Enter and save student results",
+        label: "Understand score entry",
         description:
-          "Choose an assignment, search the roster by name or admission number, save drafts, and submit complete rows.",
+          "Choose an assignment, search students by name or admission number, save drafts, and submit complete results.",
         actionLabel: "Open score entry",
         to: "/teacher/score-entry",
         icon: ClipboardCheck,
@@ -88,7 +93,7 @@ export const ROLE_GUIDES = {
       {
         id: "attendance",
         shortLabel: "Attendance",
-        label: "Mark attendance accurately",
+        label: "Review the attendance workflow",
         description:
           "Choose the correct roster, review every learner, and submit the completed register.",
         actionLabel: "Open attendance",
@@ -109,10 +114,12 @@ export const ROLE_GUIDES = {
   },
   parent: {
     key: "parent_workspace_intro",
-    eyebrow: "Parent quick guide",
+    route: "/parent/getting-started",
+    dashboardRoute: "/parent/dashboard",
+    eyebrow: "Parent workspace",
     title: "Follow your child’s school progress",
     description:
-      "Learn where to find linked children, attendance, report cards, and school updates.",
+      "Learn where to find linked children, attendance, report cards, and school dates.",
     steps: [
       {
         id: "children",
@@ -129,7 +136,7 @@ export const ROLE_GUIDES = {
         shortLabel: "Attendance",
         label: "Check attendance",
         description:
-          "Review daily attendance and the available attendance summary for each linked child.",
+          "Review daily attendance and the attendance summary available for each linked child.",
         actionLabel: "View attendance",
         to: "/parent/attendance",
         icon: ClipboardCheck,
@@ -139,7 +146,7 @@ export const ROLE_GUIDES = {
         shortLabel: "Reports",
         label: "Open published report cards",
         description:
-          "View and print report cards that the school has published for your child.",
+          "View and print report cards after the school publishes them.",
         actionLabel: "View report cards",
         to: "/parent/report-cards",
         icon: FileText,
@@ -158,10 +165,12 @@ export const ROLE_GUIDES = {
   },
   student: {
     key: "student_workspace_intro",
-    eyebrow: "Student quick guide",
+    route: "/student/getting-started",
+    dashboardRoute: "/student/dashboard",
+    eyebrow: "Student workspace",
     title: "Find your academic information quickly",
     description:
-      "A short introduction to subjects, attendance, report cards, and school updates.",
+      "A short introduction to subjects, attendance, report cards, and school dates.",
     steps: [
       {
         id: "subjects",
@@ -198,7 +207,7 @@ export const ROLE_GUIDES = {
         shortLabel: "Calendar",
         label: "Know what is happening next",
         description:
-          "Use the school calendar to see term events, closures, holidays, and important dates.",
+          "Use the school calendar to see events, closures, holidays, and important dates.",
         actionLabel: "View calendar",
         to: "/student/calendar",
         icon: CalendarDays,
@@ -207,4 +216,5 @@ export const ROLE_GUIDES = {
   },
 };
 
-export const guideForRole = (role) => ROLE_GUIDES[String(role || "").toLowerCase()] || null;
+export const guideForRole = (role) =>
+  ROLE_GUIDES[String(role || "").toLowerCase()] || null;
