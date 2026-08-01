@@ -25,11 +25,13 @@ test("assisted class-limit warning routes admins to a working checkout page", ()
   const setupPage = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
   const plansPage = readSource("pages", "admin", "SubscriptionOptionsPage.jsx");
   const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
+  const guideNavigation = readSource("features", "guides", "guideNavigation.js");
 
   assert.match(setupPage, /detail\?\.reason === "resource_limit_reached"/);
   assert.match(setupPage, /actionLabel:\s*"Upgrade plan"/);
   assert.match(setupRoute, /label === "upgrade plan"/);
-  assert.match(setupRoute, /hardNavigate\("\/admin\/billing\/plans"\)/);
+  assert.match(setupRoute, /leaveAdminSetup\("\/admin\/billing\/plans"\)/);
+  assert.match(guideNavigation, /window\.location\.replace\(destination\)/);
   assert.match(plansPage, /initializeSubscriptionCheckout/);
   assert.match(plansPage, /window\.location\.assign\(response\.authorization_url\)/);
 });
@@ -52,11 +54,14 @@ test("new tenant admins enter assisted setup immediately after onboarding", () =
 test("tenant admin guide exits always leave the full-screen setup shell", () => {
   const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
   const adminRoutes = readSource("routes", "adminRoutes.jsx");
+  const roleGuide = readSource("features", "guides", "useRoleGuide.js");
 
   assert.match(setupRoute, /label === "finish later"/);
   assert.match(setupRoute, /label === "complete setup"/);
+  assert.match(setupRoute, /label === "back to dashboard"/);
   assert.match(setupRoute, /await guide\.finish\(\)/);
-  assert.match(setupRoute, /hardNavigate\("\/admin\/dashboard"\)/);
+  assert.match(setupRoute, /leaveAdminSetup\("\/admin\/dashboard"\)/);
+  assert.match(roleGuide, /!hasGuideExitSuppression\(role\)/);
   assert.match(
     adminRoutes,
     /path="\/admin\/getting-started" element=\{<AdminGettingStartedRoute \/>\}/,
