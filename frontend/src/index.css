@@ -352,6 +352,14 @@
     background-color: rgb(120 53 15 / 0.36) !important;
   }
 
+  .auth-surface input:-webkit-autofill,
+  .auth-surface input:-webkit-autofill:hover,
+  .auth-surface input:-webkit-autofill:focus {
+    -webkit-text-fill-color: rgb(248 250 252);
+    box-shadow: 0 0 0 1000px rgb(15 23 42 / 0.82) inset !important;
+    caret-color: rgb(248 250 252);
+  }
+
   .auth-surface .input-base {
     border-color: rgb(203 213 225 / 0.32) !important;
     background-color: rgb(15 23 42 / 0.52) !important;
@@ -462,6 +470,105 @@
   :root[data-theme="dark"] .is-selected-highlight .text-text-muted,
   :root[data-theme="dark"] .is-selected-highlight .text-text-faint {
     color: rgb(var(--color-text-soft)) !important;
+  }
+
+  :root[data-theme="dark"] .bg-primary-soft,
+  :root[data-theme="dark"] .bg-primary-soft\/45,
+  :root[data-theme="dark"] .bg-primary-subtle,
+  :root[data-theme="dark"] .bg-primary-subtle\/20,
+  :root[data-theme="dark"] .bg-primary-subtle\/25,
+  :root[data-theme="dark"] .bg-primary-subtle\/30,
+  :root[data-theme="dark"] .bg-primary-subtle\/35,
+  :root[data-theme="dark"] .bg-primary-subtle\/45,
+  :root[data-theme="dark"] .bg-primary-subtle\/50,
+  :root[data-theme="dark"] .bg-primary-subtle\/60,
+  :root[data-theme="dark"] .bg-primary-subtle\/70 {
+    background-color: rgb(30 64 175 / 0.22) !important;
+  }
+
+  :root[data-theme="dark"] .bg-primary-soft,
+  :root[data-theme="dark"] .bg-primary-soft\/45,
+  :root[data-theme="dark"] .bg-primary-subtle,
+  :root[data-theme="dark"] .bg-primary-subtle\/20,
+  :root[data-theme="dark"] .bg-primary-subtle\/25,
+  :root[data-theme="dark"] .bg-primary-subtle\/30,
+  :root[data-theme="dark"] .bg-primary-subtle\/35,
+  :root[data-theme="dark"] .bg-primary-subtle\/45,
+  :root[data-theme="dark"] .bg-primary-subtle\/50,
+  :root[data-theme="dark"] .bg-primary-subtle\/60,
+  :root[data-theme="dark"] .bg-primary-subtle\/70,
+  :root[data-theme="dark"] .bg-primary-soft .text-primary,
+  :root[data-theme="dark"] .bg-primary-soft\/45 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/20 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/25 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/30 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/35 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/45 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/50 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/60 .text-primary,
+  :root[data-theme="dark"] .bg-primary-subtle\/70 .text-primary {
+    color: rgb(219 234 254) !important;
+  }
+
+  :root[data-theme="dark"] .bg-warning-soft,
+  :root[data-theme="dark"] .bg-warning-soft\/50 {
+    background-color: rgb(120 53 15 / 0.34) !important;
+  }
+
+  :root[data-theme="dark"] .bg-error-soft,
+  :root[data-theme="dark"] .bg-error-soft\/50 {
+    background-color: rgb(127 29 29 / 0.36) !important;
+  }
+
+  :root[data-theme="dark"] .bg-success-soft,
+  :root[data-theme="dark"] .bg-success-soft\/50 {
+    background-color: rgb(6 78 59 / 0.36) !important;
+  }
+
+  :root[data-theme="dark"] .bg-warning-soft,
+  :root[data-theme="dark"] .bg-warning-soft\/50,
+  :root[data-theme="dark"] .bg-warning-soft .text-text,
+  :root[data-theme="dark"] .bg-warning-soft\/50 .text-text,
+  :root[data-theme="dark"] .bg-warning-soft .text-text-muted,
+  :root[data-theme="dark"] .bg-warning-soft\/50 .text-text-muted,
+  :root[data-theme="dark"] .bg-warning-soft .text-amber-700,
+  :root[data-theme="dark"] .bg-warning-soft\/50 .text-amber-700,
+  :root[data-theme="dark"] .bg-warning-soft .text-amber-800,
+  :root[data-theme="dark"] .bg-warning-soft\/50 .text-amber-800,
+  :root[data-theme="dark"] .bg-warning-soft .text-amber-900,
+  :root[data-theme="dark"] .bg-warning-soft\/50 .text-amber-900,
+  :root[data-theme="dark"] .bg-warning-soft .text-amber-950,
+  :root[data-theme="dark"] .bg-warning-soft\/50 .text-amber-950 {
+    color: rgb(254 243 199) !important;
+  }
+
+  :root[data-theme="dark"] .bg-error-soft,
+  :root[data-theme="dark"] .bg-error-soft\/50,
+  :root[data-theme="dark"] .bg-error-soft .text-error,
+  :root[data-theme="dark"] .bg-error-soft\/50 .text-error,
+  :root[data-theme="dark"] .bg-error-soft .text-rose-700,
+  :root[data-theme="dark"] .bg-error-soft\/50 .text-rose-700,
+  :root[data-theme="dark"] .bg-error-soft .text-rose-800,
+  :root[data-theme="dark"] .bg-error-soft\/50 .text-rose-800,
+  :root[data-theme="dark"] .bg-error-soft .text-rose-900,
+  :root[data-theme="dark"] .bg-error-soft\/50 .text-rose-900 {
+    color: rgb(254 226 226) !important;
+  }
+
+  :root[data-theme="dark"] .bg-success-soft,
+  :root[data-theme="dark"] .bg-success-soft\/50,
+  :root[data-theme="dark"] .bg-success-soft .text-emerald-700,
+  :root[data-theme="dark"] .bg-success-soft\/50 .text-emerald-700,
+  :root[data-theme="dark"] .bg-success-soft .text-emerald-800,
+  :root[data-theme="dark"] .bg-success-soft\/50 .text-emerald-800,
+  :root[data-theme="dark"] .bg-success-soft .text-emerald-900,
+  :root[data-theme="dark"] .bg-success-soft\/50 .text-emerald-900,
+  :root[data-theme="dark"] .bg-success-soft .text-success,
+  :root[data-theme="dark"] .bg-success-soft\/50 .text-success,
+  :root[data-theme="dark"] .bg-success-soft .text-success-hover,
+  :root[data-theme="dark"] .bg-success-soft\/50 .text-success-hover {
+    color: rgb(209 250 229) !important;
   }
 
   :root[data-theme="dark"] .academic-lifecycle-step[data-state="active"] {

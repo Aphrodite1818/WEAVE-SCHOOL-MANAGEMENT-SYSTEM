@@ -292,11 +292,15 @@ function BottomNav({ role, onOpenMenu }) {
 
       <nav
         data-mobile-bottom-nav="true"
-        className="fixed inset-x-0 z-40 border-t border-border/70 bg-background px-2 pt-0.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 touch-none overscroll-none border-t border-border/70 bg-background px-2 pt-0.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
         style={{
-          bottom: "calc(-0.45 * env(safe-area-inset-bottom))",
-          paddingBottom: "max(0.12rem, calc(env(safe-area-inset-bottom) * 0.45))",
+          bottom: 0,
+          paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
+          transform: "translate3d(0, 0, 0)",
+          WebkitTransform: "translate3d(0, 0, 0)",
+          willChange: "auto",
         }}
+        onTouchMove={(event) => event.preventDefault()}
         aria-label="Primary installed app navigation"
       >
         <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface p-1.5 shadow-sm">

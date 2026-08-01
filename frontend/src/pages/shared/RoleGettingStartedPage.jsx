@@ -45,7 +45,7 @@ function RoleGettingStartedPage({ role }) {
   };
 
   const markComplete = async () => {
-    if (lastStep) {
+    if (lastStep || guide.guideState?.status === "completed") {
       await guide.finish();
       navigate(guide.config.dashboardRoute, { replace: true });
       return;
@@ -163,8 +163,8 @@ function RoleGettingStartedPage({ role }) {
                   Skip this step
                 </Button>
                 <Button type="button" onClick={markComplete}>
-                  {lastStep ? "Finish guide" : "Done, continue"}
-                  {lastStep ? (
+                  {lastStep || guide.guideState?.status === "completed" ? "Back to dashboard" : "Done, continue"}
+                  {lastStep || guide.guideState?.status === "completed" ? (
                     <CheckCircle2 className="h-4 w-4" />
                   ) : (
                     <ArrowRight className="h-4 w-4" />

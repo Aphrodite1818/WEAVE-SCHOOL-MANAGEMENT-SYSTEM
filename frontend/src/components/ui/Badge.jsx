@@ -5,9 +5,9 @@ const variants = {
   info: "bg-primary-soft text-primary ring-blue-200",
   primary: "bg-primary-soft text-primary ring-blue-200",
   accent: "bg-accent-soft text-accent ring-indigo-200",
-  success: "bg-success-soft text-emerald-800 ring-emerald-200",
-  warning: "bg-warning-soft text-amber-950 ring-amber-200",
-  error: "bg-error-soft text-rose-800 ring-rose-200",
+  success: "bg-success-soft text-emerald-800 ring-emerald-200 dark:text-emerald-100 dark:ring-emerald-400/30",
+  warning: "bg-warning-soft text-amber-950 ring-amber-200 dark:text-amber-100 dark:ring-amber-400/30",
+  error: "bg-error-soft text-rose-800 ring-rose-200 dark:text-rose-100 dark:ring-rose-400/30",
 };
 
 function Badge({ variant = "default", children, className = "", ...props }) {
