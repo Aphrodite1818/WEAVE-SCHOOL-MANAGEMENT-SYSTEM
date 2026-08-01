@@ -59,9 +59,7 @@ async def send_email(
                 logger.info(f"Email sent via App Script → {to_email}")
                 return True
 
-            logger.warning(
-                f"App Script failed ({res.status_code}): {res.text}"
-            )
+            logger.warning(f"App Script failed ({res.status_code}): {res.text}")
 
         except Exception as e:
             logger.exception(f"App Script error: {e}")
@@ -81,20 +79,14 @@ async def send_email(
         return False
 
     # Build email message
-    msg = (
-        MIMEMultipart("alternative")
-        if is_html
-        else MIMEMultipart()
-    )
+    msg = MIMEMultipart("alternative") if is_html else MIMEMultipart()
 
     msg["From"] = settings.SMTP_FROM_EMAIL
     msg["To"] = to_email
     msg["Subject"] = subject
     msg["Date"] = email.utils.formatdate(localtime=True)
 
-    msg["Message-ID"] = email.utils.make_msgid(
-        domain=settings.SMTP_FROM_EMAIL.split("@")[-1]
-    )
+    msg["Message-ID"] = email.utils.make_msgid(domain=settings.SMTP_FROM_EMAIL.split("@")[-1])
 
     if is_html:
         plain_text = re.sub(r"<[^>]+>", " ", body)
@@ -137,4 +129,3 @@ async def send_email(
                 await smtp.quit()
         except Exception:
             pass
-
