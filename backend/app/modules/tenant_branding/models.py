@@ -110,8 +110,11 @@ class TenantBranding(BaseModel):
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_tenant_branding_tenant_id"),
         CheckConstraint(
-            "palette_key IN ('blue', 'navy', 'gold', 'orange', 'emerald', 'forest', "
-            "'violet', 'plum', 'rose', 'teal', 'cyan', 'slate')",
+            "palette_key IN ('blue', 'royal_gold', 'navy', 'navy_gold', "
+            "'indigo_gold', 'gold', 'black_gold', 'orange', 'emerald', "
+            "'green_gold', 'forest', 'teal_gold', 'violet', 'purple_gold', "
+            "'plum', 'burgundy_cream', 'maroon_gold', 'rose', 'crimson_gray', "
+            "'red_navy', 'teal', 'cyan', 'sky_navy', 'slate', 'charcoal_red')",
             name="ck_tenant_branding_palette_key",
         ),
         Index("ix_tenant_branding_tenant_enabled", "tenant_id", "is_enabled"),

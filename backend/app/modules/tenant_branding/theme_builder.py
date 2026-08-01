@@ -170,17 +170,30 @@ DEFAULT_SURFACE_COLOR: Final[str] = "#FFFFFF"
 DEFAULT_PALETTE_KEY: Final[str] = "blue"
 BRANDING_PALETTES: Final[dict[str, dict[str, str]]] = {
     "blue": {"primary": "#1D4ED8", "accent": "#4F46E5"},
+    "royal_gold": {"primary": "#1D4ED8", "accent": "#D97706"},
     "navy": {"primary": "#1E3A8A", "accent": "#3B82F6"},
+    "navy_gold": {"primary": "#1E3A8A", "accent": "#D97706"},
+    "indigo_gold": {"primary": "#3730A3", "accent": "#F59E0B"},
     "gold": {"primary": "#A16207", "accent": "#D97706"},
+    "black_gold": {"primary": "#111827", "accent": "#D97706"},
     "orange": {"primary": "#C2410C", "accent": "#F97316"},
     "emerald": {"primary": "#047857", "accent": "#10B981"},
+    "green_gold": {"primary": "#166534", "accent": "#D97706"},
     "forest": {"primary": "#166534", "accent": "#22C55E"},
+    "teal_gold": {"primary": "#0F766E", "accent": "#D97706"},
     "violet": {"primary": "#7C3AED", "accent": "#8B5CF6"},
+    "purple_gold": {"primary": "#6D28D9", "accent": "#D97706"},
     "plum": {"primary": "#86198F", "accent": "#D946EF"},
+    "burgundy_cream": {"primary": "#881337", "accent": "#F59E0B"},
+    "maroon_gold": {"primary": "#7F1D1D", "accent": "#D97706"},
     "rose": {"primary": "#BE123C", "accent": "#E11D48"},
+    "crimson_gray": {"primary": "#B91C1C", "accent": "#64748B"},
+    "red_navy": {"primary": "#B91C1C", "accent": "#1D4ED8"},
     "teal": {"primary": "#0F766E", "accent": "#14B8A6"},
     "cyan": {"primary": "#0E7490", "accent": "#06B6D4"},
+    "sky_navy": {"primary": "#0369A1", "accent": "#1E3A8A"},
     "slate": {"primary": "#334155", "accent": "#64748B"},
+    "charcoal_red": {"primary": "#374151", "accent": "#DC2626"},
 }
 SEMANTIC_THEME_TOKEN_KEYS: Final[frozenset[str]] = frozenset(
     {
