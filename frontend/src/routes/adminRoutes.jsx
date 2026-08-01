@@ -5,6 +5,7 @@ import PullRefreshBoundary from "../components/layout/PullRefreshBoundary";
 import AcademicHubOverviewPage from "../pages/admin/AcademicHubOverviewPage";
 import AcademicWorkflowPage from "../pages/admin/AcademicWorkflowPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
+import AdminGettingStartedPage from "../pages/admin/AdminGettingStartedPage";
 import AdminInvitationPage from "../pages/admin/AdminInvitationPage";
 import AdminSearchDetailPage from "../pages/admin/AdminSearchDetailPage";
 import AttendancePage from "../pages/admin/AttendancePage";
@@ -22,8 +23,8 @@ import AnnouncementManagementPage from "../pages/shared/AnnouncementManagementPa
 import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
 import MessagesPage from "../pages/shared/MessagesPage";
 import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
-import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
+import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import BulkImportRouteGuard from "./BulkImportRouteGuard";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
@@ -39,6 +40,7 @@ export const adminRoutes = (
 
     <Route element={<DashboardShell role="admin" />}>
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+      <Route path="/admin/getting-started" element={<AdminGettingStartedPage />} />
       <Route path="/admin/search/:resultKey" element={<AdminSearchDetailPage />} />
       <Route path="/admin/analytics" element={<RoleAnalyticsPage role="admin" />} />
       <Route path="/admin/calendar" element={<SchoolCalendarPage role="admin" />} />
