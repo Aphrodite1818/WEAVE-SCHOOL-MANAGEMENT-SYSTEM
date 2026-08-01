@@ -5,7 +5,7 @@ import { clearGuideReturn, readGuideReturn, saveGuideReturn } from "./guideNavig
 
 function installWindow() {
   const values = new Map();
-  global.window = {
+  globalThis.window = {
     sessionStorage: {
       getItem: (key) => values.get(key) ?? null,
       setItem: (key, value) => values.set(key, value),
@@ -25,5 +25,5 @@ test("guide return state persists and clears", () => {
   });
   clearGuideReturn();
   assert.equal(readGuideReturn(), null);
-  delete global.window;
+  delete globalThis.window;
 });
