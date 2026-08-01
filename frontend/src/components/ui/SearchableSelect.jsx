@@ -105,6 +105,7 @@ function SearchableSelect({
   }, [mobile, open]);
 
   const selectOption = (option) => {
+    if (option.disabled) return;
     onChange?.(String(option.value));
     setOpen(false);
     setQuery("");
@@ -164,12 +165,14 @@ function SearchableSelect({
                 type="button"
                 role="option"
                 aria-selected={isSelected}
+                disabled={option.disabled}
                 onClick={() => selectOption(option)}
                 className={cn(
                   "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition",
                   isSelected
                     ? "bg-primary-soft text-primary"
                     : "text-text-soft hover:bg-surface-muted hover:text-text",
+                  option.disabled && "cursor-not-allowed opacity-45",
                 )}
               >
                 <span className="min-w-0 flex-1">
@@ -197,7 +200,7 @@ function SearchableSelect({
   );
 
   return (
-    <label className={cn("block min-w-0", className)} ref={containerRef}>
+    <div className={cn("block min-w-0", className)} ref={containerRef}>
       {label ? (
         <span className="mb-1.5 block text-sm font-semibold text-text-soft">
           {label}
@@ -208,6 +211,7 @@ function SearchableSelect({
           type="button"
           className={cn(
             "input-base flex min-h-11 items-center justify-between gap-3 text-left",
+            clearable && selected && "pr-16",
             !selected && "text-text-muted",
             disabled && "cursor-not-allowed opacity-60",
             buttonClassName,
@@ -217,52 +221,30 @@ function SearchableSelect({
           aria-expanded={open}
           aria-controls={`${id}-listbox`}
           aria-haspopup="listbox"
+          aria-required={required}
           onClick={() => setOpen((current) => !current)}
         >
           <span className="min-w-0 flex-1 truncate">
             {selected?.label || placeholder}
           </span>
-          <span className="flex shrink-0 items-center gap-1">
-            {clearable && selected && !disabled ? (
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label="Clear selection"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onChange?.("");
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onChange?.("");
-                  }
-                }}
-                className="grid h-7 w-7 place-items-center rounded-lg text-text-faint hover:bg-surface-muted hover:text-text"
-              >
-                <X className="h-3.5 w-3.5" />
-              </span>
-            ) : null}
-            <ChevronDown
-              className={cn("h-4 w-4 text-text-faint transition", open && "rotate-180")}
-            />
-          </span>
+          <ChevronDown
+            className={cn("h-4 w-4 shrink-0 text-text-faint transition", open && "rotate-180")}
+          />
         </button>
+        {clearable && selected && !disabled ? (
+          <button
+            type="button"
+            aria-label="Clear selection"
+            onClick={() => onChange?.("")}
+            className="absolute right-8 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-lg text-text-faint transition hover:bg-surface-muted hover:text-text"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
         {!mobile && open ? panel : null}
       </div>
 
       {name ? <input type="hidden" name={name} value={normalizedValue} /> : null}
-      {required ? (
-        <input
-          tabIndex={-1}
-          aria-hidden="true"
-          className="pointer-events-none absolute h-px w-px opacity-0"
-          value={normalizedValue}
-          onChange={() => {}}
-          required
-        />
-      ) : null}
       {helperText && !error ? (
         <span className="mt-1 block text-xs text-text-muted">{helperText}</span>
       ) : null}
@@ -282,7 +264,7 @@ function SearchableSelect({
             document.body,
           )
         : null}
-    </label>
+    </div>
   );
 }
 
