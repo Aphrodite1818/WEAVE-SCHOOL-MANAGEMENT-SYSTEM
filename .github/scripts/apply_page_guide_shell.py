@@ -9,114 +9,40 @@ def replace_once(path: str, old: str, new: str) -> None:
     file_path.write_text(content.replace(old, new, 1), encoding="utf-8")
 
 
-layout = "frontend/src/components/layout/DashboardLayout.jsx"
 replace_once(
-    layout,
-    'import { Outlet, useLocation } from "react-router-dom";\n',
-    'import { Outlet, useLocation, useNavigate } from "react-router-dom";\n',
-)
-replace_once(
-    layout,
-    'import RoleGuideModal from "../guides/RoleGuideModal";\n',
-    'import GettingStartedBanner from "../guides/GettingStartedBanner";\n',
-)
-replace_once(
-    layout,
-    '  const location = useLocation();\n  const role = getRole(user, roleProp);\n',
-    '  const location = useLocation();\n  const navigate = useNavigate();\n  const role = getRole(user, roleProp);\n',
-)
-replace_once(
-    layout,
-    '''  const roleGuide = useRoleGuide({
-    role,
-    enabled:
-      onboardingModalEnabled &&
-      !onboardingState.loading &&
-      !onboardingState.required &&
-      !profileModalOpen,
-  });
-
-  useEffect(() => {
-''',
-    '''  const roleGuide = useRoleGuide({
-    role,
-    enabled:
-      onboardingModalEnabled &&
-      !onboardingState.loading &&
-      !onboardingState.required &&
-      !profileModalOpen,
-  });
-  const gettingStartedRoute = roleGuide.config?.route || "";
-  const showGettingStartedBanner = Boolean(
-    roleGuide.shouldShowBanner &&
-      roleGuide.config?.dashboardRoute === location.pathname &&
-      gettingStartedRoute !== location.pathname,
-  );
-
-  useEffect(() => {
-    if (
-      !roleGuide.shouldAutoRedirect ||
-      !gettingStartedRoute ||
-      location.pathname === gettingStartedRoute
-    ) {
-      return undefined;
+    "frontend/src/pages/shared/RoleGettingStartedPage.jsx",
+    '''  useEffect(() => {
+    if (!guide.loading && guide.guideState?.status === "not_started") {
+      guide.start();
     }
-
-    let cancelled = false;
-    roleGuide.start().then(() => {
-      if (!cancelled) navigate(gettingStartedRoute, { replace: true });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    gettingStartedRoute,
-    location.pathname,
-    navigate,
-    roleGuide.shouldAutoRedirect,
-    roleGuide.start,
-  ]);
-
-  useEffect(() => {
+  }, [guide]);
 ''',
-)
-replace_once(
-    layout,
-    '''            {children}
-          </main>
-''',
-    '''            {showGettingStartedBanner ? (
-              <GettingStartedBanner
-                guide={roleGuide}
-                onContinue={() => navigate(gettingStartedRoute)}
-              />
-            ) : null}
-            {children}
-          </main>
-''',
-)
-replace_once(
-    layout,
-    '''
-      <RoleGuideModal guide={roleGuide} />
-
-      {shouldRenderAiLauncher ? <AiChatLauncher role={role} /> : null}
-''',
-    '''
-      {shouldRenderAiLauncher ? <AiChatLauncher role={role} /> : null}
+    '''  useEffect(() => {
+    if (!guide.loading && guide.guideState?.status === "not_started") {
+      guide.start();
+    }
+  }, [guide.guideState?.status, guide.loading, guide.start]);
 ''',
 )
 
-admin_dashboard = "frontend/src/pages/admin/AdminDashboardPage.jsx"
 replace_once(
-    admin_dashboard,
-    'import AdminSetupProgressCard from "../../components/guides/AdminSetupProgressCard";\n',
-    '',
-)
-replace_once(
-    admin_dashboard,
-    '''          <AdminSetupProgressCard stats={stats} />
-
+    "frontend/src/pages/admin/AdminGettingStartedPage.jsx",
+    '''  useEffect(() => {
+    if (!guide.loading && guide.guideState?.status === "not_started") {
+      guide.start();
+    }
+  }, [guide]);
 ''',
-    '',
+    '''  useEffect(() => {
+    if (!guide.loading && guide.guideState?.status === "not_started") {
+      guide.start();
+    }
+  }, [guide.guideState?.status, guide.loading, guide.start]);
+''',
+)
+
+replace_once(
+    "frontend/src/components/guides/GettingStartedBanner.jsx",
+    '<Sparkles className="h-4.5 w-4.5" />',
+    '<Sparkles className="h-4 w-4" />',
 )
