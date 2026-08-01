@@ -5,7 +5,18 @@ from __future__ import annotations
 import uuid
 from enum import Enum
 
-from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,11 +34,6 @@ class TenantBranding(BaseModel):
     """Tenant-scoped branding configuration used inside school workspaces."""
 
     __tablename__ = "tenant_branding"
-
-    brand_name: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-    )
 
     logo_url: Mapped[str | None] = mapped_column(
         Text,
@@ -49,6 +55,12 @@ class TenantBranding(BaseModel):
         nullable=False,
     )
 
+    header_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="#FFFFFF")
+    surface_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="#FFFFFF")
+    palette_key: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="blue", server_default="blue"
+    )
+
     theme_mode: Mapped[TenantBrandingThemeMode] = mapped_column(
         SQLEnum(
             TenantBrandingThemeMode,
@@ -61,7 +73,7 @@ class TenantBranding(BaseModel):
         server_default=TenantBrandingThemeMode.LIGHT.value,
     )
 
-    tokens: Mapped[dict[str, str]] = mapped_column(
+    tokens: Mapped[dict[str, object]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,
@@ -82,6 +94,13 @@ class TenantBranding(BaseModel):
         server_default="0",
     )
 
+    token_schema_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=4,
+        server_default="4",
+    )
+
     updated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
@@ -90,5 +109,13 @@ class TenantBranding(BaseModel):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_tenant_branding_tenant_id"),
+        CheckConstraint(
+            "palette_key IN ('blue', 'royal_gold', 'navy', 'navy_gold', "
+            "'indigo_gold', 'gold', 'black_gold', 'orange', 'emerald', "
+            "'green_gold', 'forest', 'teal_gold', 'violet', 'purple_gold', "
+            "'plum', 'burgundy_cream', 'maroon_gold', 'rose', 'crimson_gray', "
+            "'red_navy', 'teal', 'cyan', 'sky_navy', 'slate', 'charcoal_red')",
+            name="ck_tenant_branding_palette_key",
+        ),
         Index("ix_tenant_branding_tenant_enabled", "tenant_id", "is_enabled"),
     )

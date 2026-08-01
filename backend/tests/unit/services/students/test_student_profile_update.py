@@ -68,6 +68,10 @@ async def test_admin_student_profile_update_ignores_explicit_nulls() -> None:
             new=AsyncMock(return_value=student),
         ),
         patch(
+            "app.modules.students.service.StudentService._build_detail_response",
+            new=AsyncMock(return_value=student),
+        ),
+        patch(
             "app.modules.students.service.StudentRepository.save",
             new=AsyncMock(return_value=student),
         ),
@@ -103,6 +107,10 @@ async def test_admin_student_profile_update_applies_explicit_values() -> None:
             new=AsyncMock(return_value=student),
         ),
         patch(
+            "app.modules.students.service.StudentService._build_detail_response",
+            new=AsyncMock(return_value=student),
+        ),
+        patch(
             "app.modules.students.service.StudentRepository.save",
             new=AsyncMock(return_value=student),
         ),
@@ -127,6 +135,10 @@ async def test_student_self_update_ignores_explicit_nulls() -> None:
     with (
         patch(
             "app.modules.students.service.StudentRepository.get_by_id",
+            new=AsyncMock(return_value=student),
+        ),
+        patch(
+            "app.modules.students.service.StudentService._build_detail_response",
             new=AsyncMock(return_value=student),
         ),
         patch(

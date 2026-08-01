@@ -4,13 +4,16 @@ import { Navigate, useParams } from "react-router-dom";
 import AcademicSetupWorkspace from "../../features/academic-admin/AcademicSetupWorkspace";
 import AcademicWorkflowShell from "../../features/academic-admin/AcademicWorkflowShell";
 import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentConfigWorkspace";
-import GradingScalesWorkspace from "../../features/academic-admin/GradingScalesWorkspace";
-import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
+import BulkAcademicActionsWorkspace from "../../features/academic-admin/BulkAcademicActionsWorkspace";
 import ClassStructureWorkspace from "../../features/academic-admin/ClassStructureWorkspace";
+import GradingScalesWorkspace from "../../features/academic-admin/GradingScalesWorkspace";
 import ReportCardsWorkspace from "../../features/academic-admin/ReportCardsWorkspace";
 import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
+import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
+import SchoolCalendarWorkspace from "../../features/schoolCalendar/components/SchoolCalendarWorkspace";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { academicService } from "../../services/academicService";
 
 const workflowAliases = {
@@ -31,6 +34,10 @@ const asItems = (response) =>
 function AcademicWorkflowPage() {
   const { workflow: routeWorkflow = "sessions" } = useParams();
   const workflow = workflowAliases[routeWorkflow] || routeWorkflow;
+  const { entitlements } = useSubscription();
+  const bulkAcademicAllowed = Boolean(
+    entitlements?.features?.bulk_academic_operations,
+  );
   const [context, setContext] = useState({
     currentSession: null,
     currentTerm: null,
@@ -65,7 +72,8 @@ function AcademicWorkflowPage() {
     setContext((current) => ({
       currentSession:
         currentSession === undefined ? current.currentSession : currentSession,
-      currentTerm: currentTerm === undefined ? current.currentTerm : currentTerm,
+      currentTerm:
+        currentTerm === undefined ? current.currentTerm : currentTerm,
     }));
   }, []);
 
@@ -114,7 +122,22 @@ function AcademicWorkflowPage() {
       );
     }
     if (workflow === "assignments") {
-      return <TeacherAssignmentsWorkspace key={pageKey} activeTab={activeTab} />;
+      return (
+        <TeacherAssignmentsWorkspace key={pageKey} activeTab={activeTab} />
+      );
+    }
+    if (
+      ["results", "report-cards"].includes(workflow) &&
+      activeTab === "bulk-actions"
+    ) {
+      return (
+        <BulkAcademicActionsWorkspace
+          key={`${workflow}-bulk-actions`}
+          domain={workflow}
+          paidAccess={bulkAcademicAllowed}
+          onContextChange={updateContext}
+        />
+      );
     }
     if (workflow === "results") {
       return (
@@ -131,6 +154,14 @@ function AcademicWorkflowPage() {
           key="report-cards-workflow"
           activeTab={activeTab}
           onContextChange={updateContext}
+        />
+      );
+    }
+    if (workflow === "school-calendar") {
+      return (
+        <SchoolCalendarWorkspace
+          key="school-calendar-workflow"
+          activeTab={activeTab}
         />
       );
     }

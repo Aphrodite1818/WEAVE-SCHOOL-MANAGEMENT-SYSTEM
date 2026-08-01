@@ -4,12 +4,24 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
+import SearchableSelect from "../../components/ui/SearchableSelect";
 import { cn } from "../../utils/cn";
+import {
+  AcademicLifecycleStepper,
+  AcademicStatusBadge,
+} from "./AcademicWorkspacePrimitives";
 import {
   academicToneStyles,
   academicWorkflowConfig,
   academicWorkflowOrder,
 } from "./academicWorkflowConfig";
+
+const lifecycleSteps = [
+  { id: "draft", label: "Draft", helper: "Setup can still change before school work starts." },
+  { id: "open", label: "Open", helper: "This period is active for normal academic work." },
+  { id: "closing", label: "Closing", helper: "Final checks are being completed before closure." },
+  { id: "closed", label: "Closed", helper: "This period is read-only for history and reports." },
+];
 
 const normalizeTab = (workflow, tab) => {
   const config = academicWorkflowConfig[workflow];
@@ -78,7 +90,7 @@ function AcademicWorkflowShell({
                   className={cn(
                     "flex min-h-10 items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition",
                     active
-                      ? "bg-primary text-white shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-text-muted hover:bg-surface-muted hover:text-text",
                   )}
                 >
@@ -100,25 +112,17 @@ function AcademicWorkflowShell({
               <ArrowLeft className="h-4 w-4" />
               Academic Hub
             </Link>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
-                Workspace
-              </span>
-              <select
-                value={workflow}
-                onChange={(event) => selectWorkflow(event.target.value)}
-                className="input-base"
-              >
-                {academicWorkflowOrder.map((key) => {
-                  const item = academicWorkflowConfig[key];
-                  return (
-                    <option key={key} value={key}>
-                      {item.title}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Workspace"
+              value={workflow}
+              onChange={selectWorkflow}
+              searchPlaceholder="Search academic workspaces"
+              options={academicWorkflowOrder.map((key) => ({
+                value: key,
+                label: academicWorkflowConfig[key].title,
+                description: academicWorkflowConfig[key].description,
+              }))}
+            />
           </Card>
 
           <Card className="overflow-hidden p-4 sm:p-5">
@@ -140,29 +144,45 @@ function AcademicWorkflowShell({
                     {config.description}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge variant={currentSession ? "success" : "warning"}>
-                      Session: {currentSession?.name || "Not configured"}
-                    </Badge>
-                    <Badge variant={currentTerm ? "primary" : "warning"}>
-                      Term: {currentTerm?.display_name || currentTerm?.name || "Not configured"}
-                    </Badge>
+                    <AcademicStatusBadge
+                      label="Session"
+                      status={currentSession?.status || (currentSession ? "ready" : "not configured")}
+                      helper={currentSession?.name || ""}
+                    />
+                    <AcademicStatusBadge
+                      label="Term"
+                      status={currentTerm?.status || (currentTerm ? "ready" : "not configured")}
+                      helper={currentTerm?.display_name || currentTerm?.name || ""}
+                    />
                     {loading ? <Badge variant="default">Refreshing</Badge> : null}
                   </div>
                 </div>
               </div>
             </div>
+            {["sessions", "terms"].includes(workflow) ? (
+              <div className="mt-4">
+                <AcademicLifecycleStepper
+                  steps={lifecycleSteps}
+                  current={
+                    workflow === "sessions"
+                      ? currentSession?.status || "draft"
+                      : currentTerm?.status || "draft"
+                  }
+                />
+              </div>
+            ) : null}
           </Card>
 
           {config.tabs.length > 1 ? (
-            <div className="overflow-x-auto pb-1">
-              <div className="inline-flex min-w-full gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:min-w-0">
+            <div className="pb-1">
+              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:inline-flex sm:min-w-0">
                 {config.tabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => selectTab(tab.id)}
                     className={cn(
-                      "min-h-11 flex-1 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition sm:flex-none",
+                      "min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition sm:flex-none sm:px-4",
                       activeTab === tab.id
                         ? "bg-surface text-primary shadow-sm"
                         : "text-text-muted hover:bg-surface/60 hover:text-text",

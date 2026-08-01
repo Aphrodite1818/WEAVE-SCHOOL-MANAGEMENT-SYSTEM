@@ -24,9 +24,13 @@ def _features(
     academic_setup: bool = True,
     report_cards: bool = True,
     announcements: bool = True,
+    attendance: bool = True,
+    geofencing: bool = True,
     advanced_analytics: bool = False,
     ai_assistant: bool = False,
     bulk_import: bool = False,
+    bulk_academic_operations: bool = False,
+    tenant_branding: bool = False,
 ) -> dict[FeatureCode, bool]:
     return {
         FeatureCode.STUDENT_MANAGEMENT: student_management,
@@ -35,19 +39,25 @@ def _features(
         FeatureCode.ACADEMIC_SETUP: academic_setup,
         FeatureCode.REPORT_CARDS: report_cards,
         FeatureCode.ANNOUNCEMENTS: announcements,
+        FeatureCode.ATTENDANCE: attendance,
+        FeatureCode.GEOFENCING: geofencing,
         FeatureCode.ADVANCED_ANALYTICS: advanced_analytics,
         FeatureCode.AI_ASSISTANT: ai_assistant,
         FeatureCode.BULK_IMPORT: bulk_import,
+        FeatureCode.BULK_ACADEMIC_OPERATIONS: bulk_academic_operations,
+        FeatureCode.TENANT_BRANDING: tenant_branding,
     }
 
 
-def _paid_features() -> dict[FeatureCode, bool]:
+def _paid_features(*, tenant_branding: bool = False) -> dict[FeatureCode, bool]:
     """All paying customers get full product features; quotas scale by plan."""
 
     return _features(
         advanced_analytics=True,
         ai_assistant=True,
         bulk_import=True,
+        bulk_academic_operations=True,
+        tenant_branding=tenant_branding,
     )
 
 
@@ -90,7 +100,7 @@ PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
         ),
     ),
     SubscriptionPlan.PROFESSIONAL.value: PlanEntitlements(
-        features=_paid_features(),
+        features=_paid_features(tenant_branding=True),
         limits=_limits(
             students=1000,
             teachers=100,
@@ -100,7 +110,7 @@ PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
         ),
     ),
     SubscriptionPlan.ENTERPRISE.value: PlanEntitlements(
-        features=_paid_features(),
+        features=_paid_features(tenant_branding=True),
         limits=_limits(
             students=None,
             teachers=None,

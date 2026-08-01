@@ -10,12 +10,16 @@ def _build_app(is_development: bool):
     stub_settings = SimpleNamespace(
         ALLOWED_ORIGINS=["http://localhost:5173"],
         is_development=is_development,
+        is_production_like=not is_development,
     )
 
-    with patch.object(main_module, "settings", stub_settings), patch.object(
-        main_module,
-        "register_metrics_cache_invalidation_events",
-        new=lambda: None,
+    with (
+        patch.object(main_module, "settings", stub_settings),
+        patch.object(
+            main_module,
+            "register_metrics_cache_invalidation_events",
+            new=lambda: None,
+        ),
     ):
         return main_module.create_app()
 

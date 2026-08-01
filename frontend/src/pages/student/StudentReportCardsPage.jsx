@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, FileText, Printer } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
@@ -8,6 +8,8 @@ import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import ReportCardLinesTable from "../../components/shared/ReportCardLinesTable";
 import ReportCardPrintSheet from "../../components/shared/ReportCardPrintSheet";
+import ReportCardPeriodFilters from "../../components/shared/ReportCardPeriodFilters";
+import { filterReportCardsByPeriod } from "../../utils/reportCardPeriodFilters";
 import { getErrorMessage } from "../../services/api";
 import { reportCardService } from "../../services/reportCardService";
 import { cleanText } from "../../utils/academicDashboard";
@@ -21,6 +23,12 @@ function StudentReportCardsPage() {
   const [loadError, setLoadError] = useState(null);
   const [printId, setPrintId] = useState(null);
   const [printCard, setPrintCard] = useState(null);
+  const [sessionFilter, setSessionFilter] = useState("");
+  const [termFilter, setTermFilter] = useState("");
+  const filteredReportCards = useMemo(
+    () => filterReportCardsByPeriod(reportCards, sessionFilter, termFilter),
+    [reportCards, sessionFilter, termFilter],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -87,6 +95,22 @@ function StudentReportCardsPage() {
         </div>
       )}
 
+      {!loadError && reportCards.length > 0 && (
+        <Card className="p-5 sm:p-6">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-text">Filter report cards</h2>
+            <p className="mt-1 text-sm text-text-muted">Choose a session and term to find an older published report quickly.</p>
+          </div>
+          <ReportCardPeriodFilters
+            cards={reportCards}
+            sessionId={sessionFilter}
+            termId={termFilter}
+            onSessionChange={setSessionFilter}
+            onTermChange={setTermFilter}
+          />
+        </Card>
+      )}
+
       {!loadError && reportCards.length === 0 && (
         <Card className="p-5 sm:p-6">
           <EmptyState
@@ -97,9 +121,15 @@ function StudentReportCardsPage() {
         </Card>
       )}
 
-      {!loadError && reportCards.length > 0 && (
+      {!loadError && reportCards.length > 0 && filteredReportCards.length === 0 && (
+        <Card className="p-5 sm:p-6">
+          <EmptyState icon={FileText} title="No report cards match these filters" description="Choose another academic session or term." />
+        </Card>
+      )}
+
+      {!loadError && filteredReportCards.length > 0 && (
         <section className="space-y-4">
-          {reportCards.map((card) => {
+          {filteredReportCards.map((card) => {
             const isPublished = asStatus(card.status) === "published";
             const isExpanded = expandedId === card.id;
             const subjectCount = Array.isArray(card.lines) ? card.lines.length : 0;

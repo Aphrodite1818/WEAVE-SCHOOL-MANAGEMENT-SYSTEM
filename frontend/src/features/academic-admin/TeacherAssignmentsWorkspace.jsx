@@ -309,7 +309,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const editor = (
     <WorkspacePanel
       title={editingAssignmentId ? "Change assigned teacher" : "Assign subject teacher"}
-      description="Assignments use teacher membership IDs, not global teacher account IDs."
+      description="Choose the class, subject, teacher, and start date. If a teacher is already assigned, the previous assignment is ended and kept in history."
     >
       <form className="space-y-3" onSubmit={saveAssignment}>
         <SelectControl
@@ -335,8 +335,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           options={subjectOptions}
           placeholder={
             subjectOptions.length === 0
-              ? "No active subjects attached"
-              : "Select class subject"
+              ? "No active subjects for this class"
+              : "Select subject"
           }
           required
           disabled={Boolean(editingAssignmentId) || subjectOptions.length === 0}
@@ -348,7 +348,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             setForm((current) => ({ ...current, teacher_membership_id: value }))
           }
           options={teacherOptions}
-          placeholder="Select active teacher membership"
+          placeholder="Select teacher"
           required
         />
         <Input
@@ -394,7 +394,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           ? "Select an active assignment, then choose the replacement teacher and effective date."
           : activeTab === "end"
             ? "Select an active assignment and record its effective end date."
-            : "Filter and review current or historical class-subject assignments."
+            : "Filter and review current or historical teacher assignments."
       }
     >
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
@@ -602,7 +602,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
               setForm((current) => ({ ...current, teacher_membership_id: value }))
             }
             options={teacherOptions}
-            placeholder="Select active teacher membership"
+            placeholder="Select replacement teacher"
             required
           />
           <Input

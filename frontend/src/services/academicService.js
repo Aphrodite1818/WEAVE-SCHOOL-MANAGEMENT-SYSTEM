@@ -75,8 +75,8 @@ const resolveExistingClassSubjectId = async (classId, subjectId) => {
   if (existing.is_active === false || existing.archived_at) {
     throw new Error(
       existing.archived_at
-        ? "This class-subject mapping is archived. Restore it before assigning a teacher."
-        : "This class-subject mapping is inactive. Activate it before assigning a teacher.",
+        ? "This subject is archived for the class. Restore it before assigning a teacher."
+        : "This subject is inactive for the class. Activate it before assigning a teacher.",
     );
   }
 
@@ -173,6 +173,19 @@ export const academicService = {
     api.post(`/tenant-admin/academics/terms/${termId}/close`, {
       confirmation: "CLOSE_ACADEMIC_TERM",
     }),
+  startTermClosing: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/start-closing`, {
+      confirmation: "START_TERM_CLOSING",
+    }),
+  finalizeTermClose: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/finalize-close`, {
+      confirmation: "FINALIZE_TERM_CLOSE",
+    }),
+  cancelTermClosure: (termId, reason) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/cancel-closure`, {
+      confirmation: "CANCEL_TERM_CLOSURE",
+      reason,
+    }),
   deleteTerm: (termId) =>
     api.delete(`/tenant-admin/academics/terms/${termId}`, {
       body: JSON.stringify({
@@ -219,6 +232,8 @@ export const academicService = {
     api.get(`/classes/${classId}/subjects${queryString(params)}`),
   addClassSubject: (classId, payload) =>
     api.post(`/classes/${classId}/subjects`, payload),
+  addClassSubjectsBulk: (classId, payload) =>
+    api.post(`/classes/${classId}/subjects/bulk`, payload),
   activateClassSubject,
   deactivateClassSubject: (classSubjectId) =>
     api.post(`/class-subjects/${classSubjectId}/deactivate`, {

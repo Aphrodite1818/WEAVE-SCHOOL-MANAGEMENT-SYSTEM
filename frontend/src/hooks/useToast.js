@@ -12,12 +12,15 @@ export const toastBus = {
     return () => listeners.delete(listener);
   },
   show(message, type = "info", options = {}) {
+    const normalizedMessage = typeof message === "string" ? message.trim() : message;
+    if (!normalizedMessage) return null;
+
     const id =
       options.id ||
       `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     emitToast({
       id,
-      message,
+      message: normalizedMessage,
       type,
       duration: options.duration ?? 3200,
     });

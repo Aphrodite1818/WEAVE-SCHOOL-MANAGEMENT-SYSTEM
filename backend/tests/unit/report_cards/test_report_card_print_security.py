@@ -7,9 +7,10 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import BadRequestException
-from app.modules.report_cards.models import ReportCardStatus
-from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards import router
+from app.modules.report_cards.models import ReportCardStatus
+from app.modules.report_cards.print_service import ReportCardPrintService
+from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards.schemas import ReportCardCommentsUpdate
 from app.modules.report_cards.service import ReportCardService
 from app.modules.student_academics.models import AcademicResultStatus
@@ -33,12 +34,17 @@ def test_report_card_data_response_headers_prevent_sensitive_caching():
     assert headers["Referrer-Policy"] == "no-referrer"
 
 
-def test_report_card_html_template_has_no_inline_print_handler():
-    source = inspect.getsource(ReportCardService.render_html)
+def test_canonical_report_card_template_is_print_safe_and_omits_subject_teacher():
+    source = inspect.getsource(ReportCardPrintService.render_html)
 
     assert "onclick=" not in source
     assert "document.write" not in source
     assert "dangerouslySetInnerHTML" not in source
+    assert "<th>Teacher" not in source
+    assert "Admission number" in source
+    assert "Class teacher's comment" in source
+    assert "Principal's comment" in source
+    assert "weave-email-icon.png" in source
 
 
 @pytest.mark.asyncio
@@ -56,7 +62,10 @@ async def test_published_report_card_comments_are_immutable(monkeypatch):
         AsyncMock(return_value=card),
     )
 
-    with pytest.raises(BadRequestException, match="Only draft report cards can be edited"):
+    with pytest.raises(
+        BadRequestException,
+        match="Only draft report cards can be edited",
+    ):
         await ReportCardService.update_comments(
             SimpleNamespace(),
             actor,
@@ -113,8 +122,16 @@ async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_ve
         "_missing_subjects",
         AsyncMock(return_value=[]),
     )
-    monkeypatch.setattr(ReportCardRepository, "save", AsyncMock(side_effect=_save))
-    monkeypatch.setattr(ReportCardRepository, "create", AsyncMock(side_effect=_create))
+    monkeypatch.setattr(
+        ReportCardRepository,
+        "save",
+        AsyncMock(side_effect=_save),
+    )
+    monkeypatch.setattr(
+        ReportCardRepository,
+        "create",
+        AsyncMock(side_effect=_create),
+    )
     monkeypatch.setattr(
         ReportCardRepository,
         "create_line",

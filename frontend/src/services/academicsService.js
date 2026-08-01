@@ -111,6 +111,9 @@ export const classService = {
     api.post(`/classes/${classId}/deactivate`, {
       confirmation: "DEACTIVATE_CLASSROOM",
     }),
+
+  removeClassFromSetup: (classId) =>
+    api.post(`/tenant-admin/setup-assistant/classes/${classId}/remove`, {}),
 };
 
 export const attendanceService = {

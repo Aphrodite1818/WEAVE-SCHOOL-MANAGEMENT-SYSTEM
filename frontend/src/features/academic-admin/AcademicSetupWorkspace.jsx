@@ -42,7 +42,9 @@ const BLANK_SUBJECT = { name: "", code: "", description: "" };
 const CONFIRM_OPEN_SESSION = "OPEN_ACADEMIC_SESSION";
 const CONFIRM_CLOSE_SESSION = "CLOSE_AND_PROGRESS";
 const CONFIRM_OPEN_TERM = "OPEN_ACADEMIC_TERM";
-const CONFIRM_CLOSE_TERM = "CLOSE_ACADEMIC_TERM";
+const CONFIRM_START_TERM_CLOSING = "START_TERM_CLOSING";
+const CONFIRM_FINALIZE_TERM_CLOSE = "FINALIZE_TERM_CLOSE";
+const CONFIRM_CANCEL_TERM_CLOSURE = "CANCEL_TERM_CLOSURE";
 const CONFIRM_DELETE_SESSION = "DELETE_ACADEMIC_SESSION";
 const CONFIRM_DELETE_TERM = "DELETE_ACADEMIC_TERM";
 const SUBJECT_PAGE_SIZE = 24;
@@ -67,12 +69,12 @@ const subjectStatus = (item) =>
   item.archived_at ? "archived" : item.is_active === false ? "inactive" : "active";
 
 const dependencyLabels = {
-  class_subjects: "Class-subject mappings",
+  class_subjects: "Subjects attached to classes",
   teacher_links: "Teacher capability links",
   teacher_assignments: "Teacher assignments",
   results: "Student result rows",
   report_card_lines: "Report-card subject lines",
-  active_class_subjects: "Active class-subject mappings",
+  active_class_subjects: "Active subjects attached to classes",
   active_teacher_links: "Active teacher capability links",
   active_teacher_assignments: "Active teacher assignments",
   open_terms: "Open terms",
@@ -81,7 +83,6 @@ const dependencyLabels = {
   approved_but_unlocked_results: "Approved results awaiting lock",
   unpublished_report_cards: "Unpublished report cards",
   active_or_pending_progression_runs: "Active progression runs",
-  pending_result_imports: "Pending result imports",
   terms: "Academic terms",
   enrollments: "Student enrollments",
   report_cards: "Report cards",
@@ -222,6 +223,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const [openingSessionId, setOpeningSessionId] = useState("");
   const [closingSessionId, setClosingSessionId] = useState("");
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [cancelClosureReason, setCancelClosureReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { showSuccess, showError } = useToast();
@@ -230,7 +232,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     domain === "subjects" && ["active", "inactive", "archived"].includes(activeTab)
       ? activeTab
       : undefined;
-  const academicStatusFilter = ["draft", "open", "closed"].includes(activeTab)
+  const academicStatusFilter = ["draft", "open", "closing", "closed"].includes(activeTab)
     ? activeTab
     : undefined;
   const editingSession = sessions.find((item) => item.id === editing.id);
@@ -448,14 +450,30 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       if (transition === "open") {
         await academicService.openTerm(item.id);
         showSuccess("Academic term opened.");
-      } else {
+      } else if (transition === "start-closing") {
         const preview = await academicService.getTermDependencies(item.id);
-        if (!preview?.can_close) {
-          showError(formatDependencyMessage(preview) || "This term cannot be closed yet.");
+        if (!preview?.can_start_closing) {
+          showError(formatDependencyMessage(preview) || "This term cannot start closing yet.");
           return;
         }
-        await academicService.closeTerm(item.id);
+        await academicService.startTermClosing(item.id);
+        showSuccess("Academic term is now closing.");
+      } else if (transition === "finalize-close") {
+        const preview = await academicService.getTermDependencies(item.id);
+        if (!preview?.can_finalize_close) {
+          showError(formatDependencyMessage(preview) || "This term cannot be finalized yet.");
+          return;
+        }
+        await academicService.finalizeTermClose(item.id);
         showSuccess("Academic term closed.");
+      } else if (transition === "cancel-closure") {
+        const reason = cancelClosureReason.trim();
+        if (reason.length < 3) {
+          showError("A reason is required to cancel term closure.");
+          return;
+        }
+        await academicService.cancelTermClosure(item.id, reason);
+        showSuccess("Academic term closure cancelled.");
       }
       await loadWorkspace();
     } catch (err) {
@@ -463,6 +481,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     } finally {
       setSaving("");
       setPendingConfirmation(null);
+      setCancelClosureReason("");
     }
   };
 
@@ -575,7 +594,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         confirmationText: "ACTIVATE_SUBJECT",
         confirmLabel: "Restore to active",
         variant: "success",
-        description: `${item.name} will become active again and available for new class mappings and assignments.`,
+        description: `${item.name} will become active again and available for class setup and teacher assignments.`,
       },
       deactivate: {
         title: "Deactivate subject",
@@ -992,9 +1011,11 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                 ? terms.filter((item) => item.status === "draft")
                 : activeTab === "open"
                   ? terms.filter((item) => item.status === "open")
-                  : activeTab === "closed"
-                    ? terms.filter((item) => item.status === "closed")
-                    : terms
+                  : activeTab === "closing"
+                    ? terms.filter((item) => item.status === "closing")
+                    : activeTab === "closed"
+                      ? terms.filter((item) => item.status === "closed")
+                      : terms
             }
             emptyIcon={CalendarDays}
             emptyTitle="No academic terms"
@@ -1018,31 +1039,71 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
             }}
             renderActions={(item) => (
               <>
-                {["draft", "open"].includes(item.status) ? (
+                {["draft", "open", "closing"].includes(item.status) ? (
                   <Button
                     type="button"
                     size="small"
                     variant="outline"
                     disabled={saving === item.id}
                     onClick={() => {
-                      const transition = item.status === "draft" ? "open" : "close";
+                      const transition =
+                        item.status === "draft"
+                          ? "open"
+                          : item.status === "open"
+                            ? "start-closing"
+                            : "finalize-close";
+                      const isOpen = transition === "open";
+                      const isStart = transition === "start-closing";
                       setPendingConfirmation({
                         type: "term-transition",
                         item,
                         transition,
-                        title: `${transition === "open" ? "Open" : "Close"} academic term`,
+                        title: `${isOpen ? "Open" : isStart ? "Start closing" : "Finalize"} academic term`,
                         description: `${termLabel(item.name)} - ${
                           sessions.find((session) => session.id === item.academic_session_id)?.name ||
                           "Unknown session"
                         }`,
                         confirmationText:
-                          transition === "open" ? CONFIRM_OPEN_TERM : CONFIRM_CLOSE_TERM,
-                        confirmLabel: transition === "open" ? "Open term" : "Close term",
-                        variant: transition === "open" ? "primary" : "danger",
+                          isOpen
+                            ? CONFIRM_OPEN_TERM
+                            : isStart
+                              ? CONFIRM_START_TERM_CLOSING
+                              : CONFIRM_FINALIZE_TERM_CLOSE,
+                        confirmLabel: isOpen ? "Open term" : isStart ? "Start closing" : "Finalize close",
+                        variant: isOpen ? "primary" : "danger",
                       });
                     }}
                   >
-                    {item.status === "draft" ? "Open" : "Close"} {termLabel(item.name)}
+                    {item.status === "draft"
+                      ? "Open"
+                      : item.status === "open"
+                        ? "Start Closing"
+                        : "Finalize"} {termLabel(item.name)}
+                  </Button>
+                ) : null}
+                {item.status === "closing" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={saving === item.id}
+                    onClick={() =>
+                      {
+                        setCancelClosureReason("");
+                        setPendingConfirmation({
+                        type: "term-transition",
+                        item,
+                        transition: "cancel-closure",
+                        title: "Cancel term closure",
+                        description: `${termLabel(item.name)} will return to Open so academic work can continue. Existing results, calendars, and reports remain available.`,
+                        confirmationText: CONFIRM_CANCEL_TERM_CLOSURE,
+                        confirmLabel: "Cancel closure",
+                        variant: "outline",
+                        });
+                      }
+                    }
+                  >
+                    Cancel Closure
                   </Button>
                 ) : null}
                 {item.status === "draft" ? (
@@ -1080,6 +1141,10 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         confirmationText={pendingConfirmation?.confirmationText || ""}
         confirmLabel={pendingConfirmation?.confirmLabel}
         variant={pendingConfirmation?.variant}
+        confirmDisabled={
+          pendingConfirmation?.transition === "cancel-closure" &&
+          cancelClosureReason.trim().length < 3
+        }
         isLoading={
           pendingConfirmation?.type === "open-session"
             ? openingSessionId === pendingConfirmation.item?.id
@@ -1088,8 +1153,20 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
               : saving === pendingConfirmation?.item?.id
         }
         onConfirm={runConfirmedAction}
-        onCancel={() => setPendingConfirmation(null)}
-      />
+        onCancel={() => {
+          setPendingConfirmation(null);
+          setCancelClosureReason("");
+        }}
+      >
+        {pendingConfirmation?.transition === "cancel-closure" ? (
+          <Input
+            label="Reason"
+            value={cancelClosureReason}
+            onChange={(event) => setCancelClosureReason(event.target.value)}
+            placeholder="Explain why this term should stay open"
+          />
+        ) : null}
+      </TypedConfirmationDialog>
     </div>
   );
 

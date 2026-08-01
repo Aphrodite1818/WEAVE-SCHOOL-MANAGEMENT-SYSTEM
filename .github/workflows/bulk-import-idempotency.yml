@@ -1,0 +1,136 @@
+name: Bulk import idempotency
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/modules/bulk_imports/models.py"
+      - "backend/app/modules/bulk_imports/repository.py"
+      - "backend/app/modules/bulk_imports/schemas.py"
+      - "backend/app/modules/bulk_imports/service.py"
+      - "backend/app/modules/bulk_imports/live_service.py"
+      - "backend/tests/unit/bulk_imports/test_import_idempotency.py"
+      - ".github/workflows/bulk-import-idempotency.yml"
+  push:
+    branches:
+      - Attendance
+      - staging
+      - master
+    paths:
+      - "backend/app/modules/bulk_imports/models.py"
+      - "backend/app/modules/bulk_imports/repository.py"
+      - "backend/app/modules/bulk_imports/schemas.py"
+      - "backend/app/modules/bulk_imports/service.py"
+      - "backend/app/modules/bulk_imports/live_service.py"
+      - "backend/tests/unit/bulk_imports/test_import_idempotency.py"
+      - ".github/workflows/bulk-import-idempotency.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d weave_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint idempotency implementation
+        run: |
+          uv run ruff check \
+            app/modules/bulk_imports/models.py \
+            app/modules/bulk_imports/repository.py \
+            app/modules/bulk_imports/schemas.py \
+            app/modules/bulk_imports/service.py \
+            app/modules/bulk_imports/live_service.py \
+            tests/unit/bulk_imports/test_import_idempotency.py
+
+      - name: Check formatting
+        run: |
+          uv run ruff format --check \
+            app/modules/bulk_imports/models.py \
+            app/modules/bulk_imports/repository.py \
+            app/modules/bulk_imports/schemas.py \
+            app/modules/bulk_imports/service.py \
+            app/modules/bulk_imports/live_service.py \
+            tests/unit/bulk_imports/test_import_idempotency.py
+
+      - name: Run idempotency regression tests
+        run: uv run pytest tests/unit/bulk_imports/test_import_idempotency.py -q
+
+      - name: Upgrade fresh database through clean baseline
+        run: uv run alembic upgrade head
+
+      - name: Verify fingerprint columns and indexes
+        run: |
+          uv run python - <<'PY'
+          import asyncio
+          from sqlalchemy import inspect
+          from app.config.database import engine
+
+          async def main():
+              async with engine.begin() as connection:
+                  columns, indexes = await connection.run_sync(
+                      lambda sync_connection: (
+                          {item["name"] for item in inspect(sync_connection).get_columns("import_jobs", schema="public")},
+                          {item["name"] for item in inspect(sync_connection).get_indexes("import_jobs", schema="public")},
+                      )
+                  )
+              assert {"source_fingerprint", "confirmed_fingerprint"}.issubset(columns)
+              assert "ix_import_jobs_tenant_source_fingerprint" in indexes
+              assert "uq_import_jobs_tenant_confirmed_fingerprint" in indexes
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY

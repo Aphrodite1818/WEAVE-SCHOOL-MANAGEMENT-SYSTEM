@@ -1,0 +1,64 @@
+name: Format backend hardening diff
+
+on:
+  push:
+    branches:
+      - Attendance
+    paths:
+      - ".github/workflows/format-backend-hardening.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: Attendance
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Format all changed backend Python files
+        shell: bash
+        run: |
+          BASELINE_SHA=6a434994d2b2397d45c6716d89c6f1a3eda8ea0f
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$BASELINE_SHA"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed Python files to format."
+            exit 0
+          fi
+          printf 'Formatting %s backend Python files.\n' "${#files[@]}"
+          uv run ruff format "${files[@]}"
+
+      - name: Commit formatting
+        working-directory: .
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend
+          git commit -m "style: format backend hardening changes"
+          git push origin HEAD:Attendance

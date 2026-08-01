@@ -24,6 +24,7 @@ import {
   DashboardSectionHeader,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { academicService } from "../../services/academicService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
@@ -65,6 +66,22 @@ const emptyDashboardBundle = (studentProfile) => ({
   subjectContext: null,
 });
 
+const studentClassLabel = (student, fallback = null) => {
+  if (!student) return fallback;
+  return cleanText(
+    [student.class_name, student.class_arm || student.arm].filter(Boolean).join(" "),
+    fallback ?? (student.class_id ? "Class assigned" : "No class assigned yet"),
+  );
+};
+
+const formatAcademicTermLabel = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "No term";
+  return normalized
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
 function StudentDashboardPage() {
   const [student, setStudent] = useState(null);
   const [parentLinks, setParentLinks] = useState([]);
@@ -78,6 +95,7 @@ function StudentDashboardPage() {
   const [loadError, setLoadError] = useState(null);
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Student";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
 
   useEffect(() => {
     let mounted = true;
@@ -139,7 +157,7 @@ function StudentDashboardPage() {
         });
 
         if (!mounted || controller.signal.aborted) return;
-        setStudent(bundle.student);
+        setStudent(studentProfile);
         setParentLinks(bundle.parentLinks);
         setParentLinkRequests(bundle.parentLinkRequests);
         setMetrics(bundle.metrics);
@@ -169,16 +187,33 @@ function StudentDashboardPage() {
     const chartSource = metrics?.charts || {};
     const publishedResults = academicResults.filter(isPublishedResult);
     const pendingResults = academicResults.filter((result) => !isPublishedResult(result));
+    const fallbackContext = getAcademicContext(academicResults, reportCards);
     const context = subjectContext
       ? {
           classLabel:
-            subjectContext.class_name || subjectContext.class_arm
+            studentClassLabel(student) ||
+            (subjectContext.class_name || subjectContext.class_arm
               ? [subjectContext.class_name, subjectContext.class_arm].filter(Boolean).join(" ")
-              : null,
-          sessionLabel: subjectContext.academic_session_name || null,
-          termLabel: subjectContext.academic_term_name || null,
+              : null),
+          sessionLabel:
+            student?.current_academic_session_name ||
+            subjectContext.academic_session_name ||
+            null,
+          termLabel:
+            student?.current_academic_term_name ||
+            subjectContext.academic_term_name ||
+            null,
         }
-      : getAcademicContext(academicResults, reportCards);
+      : {
+          ...fallbackContext,
+          classLabel: studentClassLabel(student, fallbackContext.classLabel),
+          sessionLabel:
+            student?.current_academic_session_name ||
+            fallbackContext.sessionLabel,
+          termLabel:
+            student?.current_academic_term_name ||
+            fallbackContext.termLabel,
+        };
     const currentAverage = hasValue(stats.current_average)
       ? stats.current_average
       : publishedResults.length > 0
@@ -212,7 +247,7 @@ function StudentDashboardPage() {
       performanceTrend,
       gradeDistribution,
     };
-  }, [academicResults, metrics, parentLinkRequests, reportCards, subjectCards, subjectContext]);
+  }, [academicResults, metrics, parentLinkRequests, reportCards, student, subjectCards, subjectContext]);
 
   if (isLoading) {
     return (
@@ -240,7 +275,7 @@ function StudentDashboardPage() {
           description: `${dashboardData.pendingResults.length} result row${dashboardData.pendingResults.length === 1 ? "" : "s"} still pending.`,
           icon: ClipboardList,
           tone: "warning",
-          to: "/student/results",
+          to: "/student/report-cards",
         }
       : null,
     !dashboardData.latestReportCard
@@ -256,11 +291,11 @@ function StudentDashboardPage() {
     Number(dashboardData.stats.unread_count || 0) > 0
       ? {
           key: "unread-notices",
-          title: "Unread school notices",
-          description: `${dashboardData.stats.unread_count} notice${Number(dashboardData.stats.unread_count) === 1 ? "" : "s"} waiting for you.`,
+          title: "Unread notifications",
+          description: `${dashboardData.stats.unread_count} notification${Number(dashboardData.stats.unread_count) === 1 ? "" : "s"} waiting for you.`,
           icon: Megaphone,
           tone: "primary",
-          to: "/student/notices",
+          to: "/student/inbox",
         }
       : null,
   ].filter(Boolean);
@@ -293,7 +328,8 @@ function StudentDashboardPage() {
             )}
             profileCompletion={student.profile_status}
             chips={[
-              { label: cleanText(dashboardData.context.sessionLabel, "No session"), value: cleanText(dashboardData.context.termLabel, "No term"), tone: "primary" },
+              { label: "Admission", value: cleanText(student.admission_number, "Not assigned"), tone: "primary" },
+              { label: cleanText(dashboardData.context.sessionLabel, "No session"), value: formatAcademicTermLabel(dashboardData.context.termLabel), tone: "primary" },
             ]}
           />
 
@@ -320,7 +356,7 @@ function StudentDashboardPage() {
               description={`${dashboardData.pendingResults.length} pending`}
               icon={ClipboardList}
               tone={dashboardData.pendingResults.length > 0 ? "warning" : "success"}
-              to="/student/results"
+              to="/student/report-cards"
             />
             <DashboardMetricCard
               label="Parent links"
@@ -345,7 +381,7 @@ function StudentDashboardPage() {
                 <InfoTile label="Best subject" value={dashboardData.subjectHighlights.best?.label || "Awaiting results"} />
                 <InfoTile label="Needs support" value={dashboardData.subjectHighlights.weakest?.label || "No weak spot yet"} />
                 <InfoTile label="Latest report" value={dashboardData.latestReportCard ? cleanText(dashboardData.latestReportCard.academic_term_name, "Published") : "Awaiting release"} />
-                <InfoTile label="Unread notices" value={dashboardData.stats.unread_count ?? 0} />
+                <InfoTile label="Unread notifications" value={dashboardData.stats.unread_count ?? 0} />
               </div>
             </DashboardFocusCard>
 
@@ -354,7 +390,18 @@ function StudentDashboardPage() {
               description="Items that need a quick look."
               items={attentionItems}
               emptyTitle="You are all caught up"
-              emptyDescription="No pending parent link, report, or school notice needs attention right now."
+              emptyDescription="No pending parent link, report, or school notification needs attention right now."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="student" actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
+            <DashboardListCard
+              title="Student calendar"
+              description="Published student-visible dates and school status."
+              items={[]}
+              emptyTitle="No calendar action needed"
+              emptyDescription="Exams, holidays, closures, and student events will appear in the calendar card."
             />
           </section>
 
@@ -367,7 +414,7 @@ function StudentDashboardPage() {
                 { label: "Subjects", description: "View scores and components", to: "/student/subjects", icon: BookOpen, tone: "primary" },
                 { label: "Performance", description: "Open full analytics", to: "/student/analytics", icon: BarChart3, tone: "success" },
                 { label: "Report cards", description: "Published term reports", to: "/student/report-cards", icon: FileText, tone: "warning" },
-                { label: "Notices", description: "School updates", to: "/student/notices", icon: Megaphone, tone: "accent" },
+                { label: "Inbox", description: "Notifications and updates", to: "/student/inbox", icon: Megaphone, tone: "accent" },
               ]}
             />
           </section>

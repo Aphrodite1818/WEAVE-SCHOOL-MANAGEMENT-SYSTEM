@@ -9,17 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
-from app.modules.announcements.models import (
-    Announcement,
-    AnnouncementActorType,
-    AnnouncementCategory,
-    AnnouncementPriority,
-    AnnouncementStatus,
-    AnnouncementTarget,
-    AnnouncementTargetType,
-)
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.repository import ClassRoomRepository
+from app.modules.communications.enums import (
+    AnnouncementPriority,
+    CommunicationActorType,
+    NotificationSourceType,
+)
+from app.modules.communications.notification_service import NotificationService
+from app.modules.communications.recipient_resolver import ResolvedRecipient
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
     StudentProgressionRepository,
@@ -28,7 +26,6 @@ from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
     AcademicTerm,
-    AcademicTermStatus,
     StudentProgressionItem,
     StudentProgressionItemAction,
     StudentProgressionItemStatus,
@@ -81,9 +78,7 @@ class SessionClosureService:
     ) -> StudentProgressionRunDetailResponse | None:
         if run is None:
             return None
-        items = await StudentProgressionRepository.list_items_for_run(
-            db, tenant_id, run.id
-        )
+        items = await StudentProgressionRepository.list_items_for_run(db, tenant_id, run.id)
         summary = StudentProgressionRunResponse.model_validate(run)
         return StudentProgressionRunDetailResponse(
             **summary.model_dump(),
@@ -118,9 +113,7 @@ class SessionClosureService:
         tenant_id: uuid.UUID,
         session_id: uuid.UUID,
     ) -> SessionClosureAuditResponse:
-        session = await AcademicSessionLifecycleRepository.get_by_id(
-            db, tenant_id, session_id
-        )
+        session = await AcademicSessionLifecycleRepository.get_by_id(db, tenant_id, session_id)
         if session is None:
             raise NotFoundException("Academic session not found.")
 
@@ -140,7 +133,9 @@ class SessionClosureService:
             if next_session is None:
                 blockers.append("The configured next academic session no longer exists.")
             elif next_session.status != AcademicSessionStatus.DRAFT:
-                blockers.append("The next academic session must remain in draft until final closure.")
+                blockers.append(
+                    "The next academic session must remain in draft until final closure."
+                )
             else:
                 terms = list(
                     (
@@ -150,11 +145,15 @@ class SessionClosureService:
                                 AcademicTerm.academic_session_id == next_session.id,
                             )
                         )
-                    ).scalars().all()
+                    )
+                    .scalars()
+                    .all()
                 )
                 counts["next_session_terms"] = len(terms)
                 if not terms:
-                    blockers.append("Create at least one term in the next session before starting closure.")
+                    blockers.append(
+                        "Create at least one term in the next session before starting closure."
+                    )
 
         enrollments = await SessionClosureService._current_enrollments(
             db,
@@ -167,9 +166,7 @@ class SessionClosureService:
             if enrollment.class_id in checked_classes:
                 continue
             checked_classes.add(enrollment.class_id)
-            classroom = await ClassRoomRepository.get_by_id(
-                db, tenant_id, enrollment.class_id
-            )
+            classroom = await ClassRoomRepository.get_by_id(db, tenant_id, enrollment.class_id)
             if classroom is None:
                 invalid_targets += 1
                 blockers.append(
@@ -185,13 +182,9 @@ class SessionClosureService:
                 continue
             if classroom.next_class_id is None:
                 invalid_targets += 1
-                blockers.append(
-                    f"Configure a next-class target for {classroom.name}."
-                )
+                blockers.append(f"Configure a next-class target for {classroom.name}.")
                 continue
-            target = await ClassRoomRepository.get_by_id(
-                db, tenant_id, classroom.next_class_id
-            )
+            target = await ClassRoomRepository.get_by_id(db, tenant_id, classroom.next_class_id)
             if target is None or not target.is_active or target.archived_at is not None:
                 invalid_targets += 1
                 blockers.append(
@@ -222,30 +215,26 @@ class SessionClosureService:
         actor_id: uuid.UUID,
         title: str,
         body: str,
-        priority: AnnouncementPriority = AnnouncementPriority.HIGH,
+        priority: str = "high",
     ) -> None:
-        announcement = Announcement(
-            tenant_id=tenant_id,
+        _ = priority
+        await NotificationService.deliver_system_event(
+            db,
+            recipients=[
+                ResolvedRecipient(
+                    actor_type=CommunicationActorType.TENANT_ADMIN,
+                    actor_id=actor_id,
+                    tenant_id=tenant_id,
+                    label="Tenant admin",
+                )
+            ],
+            source_type=NotificationSourceType.ACADEMIC_LIFECYCLE,
+            source_id=uuid.uuid4(),
             title=title,
-            body=body,
-            category=AnnouncementCategory.SYSTEM,
-            priority=priority,
-            status=AnnouncementStatus.PUBLISHED,
-            created_by_actor_type=AnnouncementActorType.TENANT_ADMIN,
-            created_by_actor_id=actor_id,
-            publish_at=_utc_now(),
-            is_pinned=True,
+            preview=body,
+            action_path="/admin/academic/progression",
+            tenant_id=tenant_id,
         )
-        db.add(announcement)
-        await db.flush()
-        db.add(
-            AnnouncementTarget(
-                tenant_id=tenant_id,
-                announcement_id=announcement.id,
-                target_type=AnnouncementTargetType.ALL,
-            )
-        )
-        await db.flush()
 
     @staticmethod
     async def start_closing(
@@ -275,7 +264,8 @@ class SessionClosureService:
                 progression_run=await SessionClosureService._run_detail(
                     db, tenant_id=actor.tenant_id, run=existing
                 ),
-                queued=existing.status in {
+                queued=existing.status
+                in {
                     StudentProgressionRunStatus.PENDING,
                     StudentProgressionRunStatus.PROCESSING,
                 },
@@ -377,9 +367,7 @@ class SessionClosureService:
         tenant_id: uuid.UUID,
         run_id: uuid.UUID,
     ) -> dict[str, int | str]:
-        run = await StudentProgressionRepository.get_run_by_id(
-            db, tenant_id, run_id, lock=True
-        )
+        run = await StudentProgressionRepository.get_run_by_id(db, tenant_id, run_id, lock=True)
         if run is None:
             raise NotFoundException("Progression run not found.")
         if run.status == StudentProgressionRunStatus.COMPLETED:
@@ -515,9 +503,7 @@ class SessionClosureService:
                 )
             ),
             priority=(
-                AnnouncementPriority.URGENT
-                if run.failed_students
-                else AnnouncementPriority.HIGH
+                AnnouncementPriority.URGENT if run.failed_students else AnnouncementPriority.HIGH
             ),
         )
         await db.commit()
@@ -538,17 +524,11 @@ class SessionClosureService:
         tenant_id: uuid.UUID,
         session_id: uuid.UUID,
     ) -> SessionClosureStatusResponse:
-        session = await AcademicSessionLifecycleRepository.get_by_id(
-            db, tenant_id, session_id
-        )
+        session = await AcademicSessionLifecycleRepository.get_by_id(db, tenant_id, session_id)
         if session is None:
             raise NotFoundException("Academic session not found.")
-        run = await StudentProgressionRepository.get_run_by_session(
-            db, tenant_id, session.id
-        )
-        audit = await SessionClosureService.audit(
-            db, tenant_id=tenant_id, session_id=session.id
-        )
+        run = await StudentProgressionRepository.get_run_by_session(db, tenant_id, session.id)
+        audit = await SessionClosureService.audit(db, tenant_id=tenant_id, session_id=session.id)
         can_finalize = bool(
             session.status == AcademicSessionStatus.CLOSING
             and run is not None
@@ -636,39 +616,14 @@ class SessionClosureService:
         session.closed_by_admin_id = actor.id
         await AcademicSessionLifecycleRepository.save(db, session)
 
-        next_session.status = AcademicSessionStatus.OPEN
-        next_session.is_current = True
-        next_session.closing_started_at = None
-        next_session.closed_at = None
-        next_session.closed_by_admin_id = None
-        await AcademicSessionLifecycleRepository.save(db, next_session)
+        from app.modules.school_calendar.service import SchoolCalendarService
 
-        next_terms = list(
-            (
-                await db.execute(
-                    select(AcademicTerm)
-                    .where(
-                        AcademicTerm.tenant_id == actor.tenant_id,
-                        AcademicTerm.academic_session_id == next_session.id,
-                    )
-                    .order_by(
-                        AcademicTerm.start_date.asc().nulls_last(),
-                        AcademicTerm.created_at.asc(),
-                    )
-                    .with_for_update()
-                )
-            ).scalars().all()
+        await SchoolCalendarService.archive_session_calendars(
+            db,
+            tenant_id=actor.tenant_id,
+            academic_session_id=session.id,
+            acting_admin_id=actor.id,
         )
-        if not next_terms:
-            raise ConflictException("The next session has no term to open.")
-        first_term = next_terms[0]
-        if first_term.status == AcademicTermStatus.DRAFT:
-            first_term.status = AcademicTermStatus.OPEN
-            first_term.is_current = True
-            first_term.opened_at = now
-            first_term.closed_at = None
-            first_term.opened_by_admin_id = actor.id
-            db.add(first_term)
 
         await StudentAcademicService._record_academic_lifecycle(
             db,
@@ -686,9 +641,9 @@ class SessionClosureService:
             tenant_id=actor.tenant_id,
             entity_type="session",
             entity_id=next_session.id,
-            action="opened_after_progression",
-            previous_status=AcademicSessionStatus.DRAFT.value,
-            new_status=AcademicSessionStatus.OPEN.value,
+            action="retained_draft_after_progression",
+            previous_status=next_session.status.value,
+            new_status=next_session.status.value,
             acting_admin_id=actor.id,
             metadata={"progression_run_id": str(run.id)},
         )
@@ -696,10 +651,10 @@ class SessionClosureService:
             db,
             tenant_id=actor.tenant_id,
             actor_id=actor.id,
-            title=f"{next_session.name} academic session has begun",
+            title=f"{session.name} academic session has closed",
             body=(
-                f"{session.name} has been closed. {next_session.name} is now active and "
-                "the first configured term has opened. Academic write activities have resumed."
+                f"{session.name} has been closed. {next_session.name} remains in draft "
+                "for calendar setup and a separate opening step."
             ),
             priority=AnnouncementPriority.HIGH,
         )
@@ -708,7 +663,7 @@ class SessionClosureService:
         await db.refresh(next_session)
         return SessionClosureFinalizeResponse(
             closed_session=AcademicSessionResponse.model_validate(session),
-            opened_session=AcademicSessionResponse.model_validate(next_session),
+            next_session=AcademicSessionResponse.model_validate(next_session),
             progression_run=await SessionClosureService._run_detail(
                 db, tenant_id=actor.tenant_id, run=run
             ),

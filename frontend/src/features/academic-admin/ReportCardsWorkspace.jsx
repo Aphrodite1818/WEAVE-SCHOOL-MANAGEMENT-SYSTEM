@@ -1,4 +1,4 @@
-import { CheckCircle2, Eye, FileText, RefreshCw, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Eye, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
@@ -9,7 +9,7 @@ import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
 import { reportCardService } from "../../services/reportCardService";
-import { SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
+import { Input, SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -37,6 +37,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   });
   const [generationTarget, setGenerationTarget] = useState("class");
   const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [studentQuery, setStudentQuery] = useState("");
   const [generationSummary, setGenerationSummary] = useState(null);
   const [previewCard, setPreviewCard] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -142,6 +143,17 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const selectedSession = sessions.find((item) => item.id === filters.academic_session_id);
   const selectedTerm = terms.find((item) => item.id === filters.academic_term_id);
   const rows = overview?.items || [];
+  const normalizedStudentQuery = studentQuery.trim().toLowerCase();
+  const filteredRows = normalizedStudentQuery
+    ? rows.filter((item) => studentLabel(item).toLowerCase().includes(normalizedStudentQuery))
+    : rows;
+  const filteredCards = normalizedStudentQuery
+    ? cards.filter((item) =>
+        `${item.student_name || ""} ${item.admission_number || ""}`
+          .toLowerCase()
+          .includes(normalizedStudentQuery),
+      )
+    : cards;
   const readyRows = rows.filter(
     (item) => item.expected_count > 0 && item.submitted_count >= item.expected_count,
   );
@@ -158,7 +170,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         <span className="font-semibold text-text">Selected report context:</span>{" "}
         {classLabel(selectedClass)} · {selectedSession?.name || "No session"} · {String(selectedTerm?.name || "No term").replaceAll("_", " ")}
       </span>
-      <Button type="button" size="small" variant="outline" onClick={loadPageData}>
+      <Button type="button" size="small" variant="outline" className="manual-refresh-action" onClick={loadPageData}>
         <RefreshCw className="h-4 w-4" /> Refresh
       </Button>
     </div>
@@ -289,8 +301,16 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
 
       {activeTab === "ready" ? (
         <WorkspacePanel title="Student readiness" description="Students require every expected subject result to be locked before generation.">
+          <div className="mb-4">
+            <Input
+              label="Search students"
+              value={studentQuery}
+              placeholder="Student name or admission number"
+              onChange={(event) => setStudentQuery(event.target.value)}
+            />
+          </div>
           <div className="space-y-3">
-            {rows.map((item) => {
+            {filteredRows.map((item) => {
               const ready = item.expected_count > 0 && item.submitted_count >= item.expected_count;
               return <div key={item.student_id} className="rounded-2xl border border-border/70 bg-surface px-4 py-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-text">{studentLabel(item)}</p><p className="mt-1 text-sm text-text-muted">{item.submitted_count} of {item.expected_count} subject results locked</p>{item.missing_subject_names?.length ? <p className="mt-2 text-xs text-error">Missing: {item.missing_subject_names.join(", ")}</p> : null}</div><Badge variant={ready ? "success" : "warning"}>{ready ? "ready" : "incomplete"}</Badge></div></div>;
             })}
@@ -302,7 +322,36 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         <WorkspacePanel title="Generate report cards" description="Generation uses the selected class and academic period.">
           <div className="space-y-4">
             <SelectControl label="Generation target" value={generationTarget} onChange={(value) => { setGenerationTarget(value); setSelectedStudentId(""); setGenerationSummary(null); }} options={[{ value: "class", label: "Entire class" }, { value: "student", label: "One student" }]} />
-            {generationTarget === "student" ? <SelectControl label="Student" value={selectedStudentId} onChange={setSelectedStudentId} options={rows.map((item) => ({ value: item.student_id, label: `${studentLabel(item)} · ${item.expected_count > 0 && item.submitted_count >= item.expected_count ? "Ready" : "Incomplete"}` }))} required /> : <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">{readyRows.length} of {rows.length} students are ready.</div>}
+            {generationTarget === "student" ? (
+              <div className="space-y-3">
+                <Input
+                  label="Search students"
+                  value={studentQuery}
+                  placeholder="Student name or admission number"
+                  onChange={(event) => setStudentQuery(event.target.value)}
+                />
+                <SelectControl
+                  label="Student"
+                  value={selectedStudentId}
+                  onChange={setSelectedStudentId}
+                  searchPlaceholder="Search name or admission number"
+                  options={filteredRows.map((item) => ({
+                    value: item.student_id,
+                    label: studentLabel(item),
+                    description:
+                      item.expected_count > 0 && item.submitted_count >= item.expected_count
+                        ? "Ready for generation"
+                        : "Incomplete results",
+                    keywords: item.admission_number,
+                  }))}
+                  required
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
+                {readyRows.length} of {rows.length} students are ready.
+              </div>
+            )}
             <Button type="button" onClick={generate} disabled={saving === "generate"}>{saving === "generate" ? "Generating..." : "Generate report card"}</Button>
             {generationSummary ? <div className="rounded-2xl border border-border/70 p-4 text-sm"><p className="font-semibold text-text">Generated: {generationSummary.generated.length} · Skipped: {generationSummary.skipped.length}</p></div> : null}
           </div>
@@ -310,8 +359,16 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       ) : null}
 
       {listTabs.includes(activeTab) ? (
-        <WorkspacePanel title={`${String(activeTab).replaceAll("-", " ")} report cards`} description={`${cards.length} matching report card${cards.length === 1 ? "" : "s"}.`}>
-          {cards.length === 0 ? <div className="rounded-2xl border border-dashed border-border p-6 text-center"><FileText className="mx-auto h-7 w-7 text-text-muted" /><p className="mt-3 text-sm font-semibold text-text">No matching report cards</p></div> : <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{cards.map((card) => <div key={card.id} className="flex min-h-[14rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-text">{card.student_name || card.admission_number || "Student"}</p><p className="mt-1 text-xs text-text-muted">Version {card.version || 1}</p></div><Badge variant={card.status === "published" ? "success" : "warning"}>{card.status}</Badge></div><div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl bg-surface-muted/40 px-3 py-2"><p className="text-[10px] uppercase text-text-muted">Average</p><p className="mt-1 font-semibold text-text">{card.average_score ?? "–"}</p></div><div className="rounded-xl bg-surface-muted/40 px-3 py-2"><p className="text-[10px] uppercase text-text-muted">Position</p><p className="mt-1 font-semibold text-text">{card.position ? `${card.position}/${card.position_out_of || "–"}` : "–"}</p></div></div>{card.is_outdated ? <div className="mt-3 flex gap-2 rounded-xl bg-error-soft px-3 py-2 text-xs text-error"><TriangleAlert className="h-4 w-4" />Results changed after generation.</div> : null}<div className="mt-auto flex flex-wrap gap-2 pt-4"><Button type="button" size="small" variant="outline" disabled={previewLoading} onClick={() => openPreview(card)}><Eye className="h-4 w-4" />Preview</Button>{card.is_outdated && card.status !== "published" ? <Button type="button" size="small" variant="outline" disabled={saving === card.id} onClick={() => regenerate(card)}>Regenerate</Button> : null}{card.status === "draft" ? <Button type="button" size="small" variant="success" disabled={saving === card.id || card.is_outdated} onClick={() => openPreview(card)}><CheckCircle2 className="h-4 w-4" />Review before publish</Button> : null}</div></div>)}</div>}
+        <WorkspacePanel title={`${String(activeTab).replaceAll("-", " ")} report cards`} description={`${filteredCards.length} matching report card${filteredCards.length === 1 ? "" : "s"}.`}>
+          <div className="mb-4">
+            <Input
+              label="Search report cards"
+              value={studentQuery}
+              placeholder="Student name or admission number"
+              onChange={(event) => setStudentQuery(event.target.value)}
+            />
+          </div>
+          {filteredCards.length === 0 ? <div className="rounded-2xl border border-dashed border-border p-6 text-center"><Search className="mx-auto h-7 w-7 text-text-muted" /><p className="mt-3 text-sm font-semibold text-text">No matching report cards</p></div> : <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">{filteredCards.map((card) => <div key={card.id} className="flex min-h-[14rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-text">{card.student_name || card.admission_number || "Student"}</p><p className="mt-1 text-xs text-text-muted">Version {card.version || 1}</p></div><Badge variant={card.status === "published" ? "success" : "warning"}>{card.status}</Badge></div><div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl bg-surface-muted/40 px-3 py-2"><p className="text-[10px] uppercase text-text-muted">Average</p><p className="mt-1 font-semibold text-text">{card.average_score ?? "–"}</p></div><div className="rounded-xl bg-surface-muted/40 px-3 py-2"><p className="text-[10px] uppercase text-text-muted">Position</p><p className="mt-1 font-semibold text-text">{card.position ? `${card.position}/${card.position_out_of || "–"}` : "–"}</p></div></div>{card.is_outdated ? <div className="mt-3 flex gap-2 rounded-xl bg-error-soft px-3 py-2 text-xs text-error"><TriangleAlert className="h-4 w-4" />Results changed after generation.</div> : null}<div className="mt-auto flex flex-wrap gap-2 pt-4"><Button type="button" size="small" variant="outline" disabled={previewLoading} onClick={() => openPreview(card)}><Eye className="h-4 w-4" />Preview</Button>{card.is_outdated && card.status !== "published" ? <Button type="button" size="small" variant="outline" disabled={saving === card.id} onClick={() => regenerate(card)}>Regenerate</Button> : null}{card.status === "draft" ? <Button type="button" size="small" variant="success" disabled={saving === card.id || card.is_outdated} onClick={() => openPreview(card)}><CheckCircle2 className="h-4 w-4" />Review before publish</Button> : null}</div></div>)}</div>}
         </WorkspacePanel>
       ) : null}
 

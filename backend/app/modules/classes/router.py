@@ -25,6 +25,7 @@ from app.modules.classes.service import ClassRoomService
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
     ClassSubjectActivateRequest,
+    ClassSubjectBulkCreate,
     ClassSubjectCreate,
     ClassSubjectListResponse,
     ClassSubjectResponse,
@@ -331,6 +332,30 @@ async def add_class_subject(
         feature=FeatureCode.ACADEMIC_SETUP,
     )
     return await StudentAcademicService.create_class_subject(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        class_id=class_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/{class_id}/subjects/bulk",
+    response_model=list[ClassSubjectResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_class_subjects_bulk(
+    class_id: uuid.UUID,
+    payload: ClassSubjectBulkCreate,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> list[ClassSubjectResponse]:
+    await SubscriptionFeatureService.ensure_feature_enabled(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        feature=FeatureCode.ACADEMIC_SETUP,
+    )
+    return await StudentAcademicService.create_class_subjects_bulk(
         db=db,
         tenant_id=current_user.tenant_id,
         class_id=class_id,

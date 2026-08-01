@@ -52,6 +52,7 @@ function PhoneNumberInput({
   value,
   onChange,
   defaultCountryCode = DEFAULT_COUNTRY_CODE,
+  fixedCountryCode = false,
   placeholder = "8012345678",
   className = "",
   ...props
@@ -60,7 +61,9 @@ function PhoneNumberInput({
     findCountryCode(value) || defaultCountryCode
   );
   const detectedCountryCode = findCountryCode(value);
-  const effectiveCountryCode = detectedCountryCode || countryCode;
+  const effectiveCountryCode = fixedCountryCode
+    ? defaultCountryCode
+    : detectedCountryCode || countryCode;
 
   const errorMessage =
     typeof error === "string"
@@ -113,18 +116,24 @@ function PhoneNumberInput({
       <div
         className={`flex w-full overflow-hidden rounded-xl border border-border bg-surface-raised transition-all duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${className}`}
       >
-        <select
-          aria-label={`${label || name} country code`}
-          value={effectiveCountryCode}
-          onChange={handleCountryCodeChange}
-          className="w-28 shrink-0 border-r border-border bg-surface-raised px-3 py-2.5 text-sm text-text outline-none"
-        >
-          {COUNTRY_CODE_OPTIONS.map((option) => (
-            <option key={option.code} value={option.code}>
-              {option.code} {option.label}
-            </option>
-          ))}
-        </select>
+        {fixedCountryCode ? (
+          <span className="flex w-24 shrink-0 items-center border-r border-border bg-surface-raised px-3 py-2.5 text-sm font-semibold text-text">
+            {defaultCountryCode}
+          </span>
+        ) : (
+          <select
+            aria-label={`${label || name} country code`}
+            value={effectiveCountryCode}
+            onChange={handleCountryCodeChange}
+            className="w-28 shrink-0 border-r border-border bg-surface-raised px-3 py-2.5 text-sm text-text outline-none"
+          >
+            {COUNTRY_CODE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.code} {option.label}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           {...props}
           name={name}

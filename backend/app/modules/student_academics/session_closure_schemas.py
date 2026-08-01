@@ -54,5 +54,5 @@ class SessionClosureStatusResponse(OutputBase):
 
 class SessionClosureFinalizeResponse(OutputBase):
     closed_session: AcademicSessionResponse
-    opened_session: AcademicSessionResponse
+    next_session: AcademicSessionResponse | None = None
     progression_run: StudentProgressionRunDetailResponse

@@ -20,7 +20,7 @@ def _scale(tenant_id: uuid.UUID) -> GradingScale:
         max_score=Decimal("100"),
         grade="A",
         remark="Excellent",
-        is_active=True,
+        is_active=False,
     )
 
 

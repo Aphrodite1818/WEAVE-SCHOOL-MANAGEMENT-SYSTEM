@@ -17,6 +17,7 @@ from app.modules.parents.models import Parent
 from app.modules.students.models import AcademicStatus, Student
 from app.modules.students.schemas import (
     StudentChangePasswordRequest,
+    StudentDetailResponse,
     StudentListResponse,
     StudentOnboardingStatusResponse,
     StudentOnboardingUpdate,
@@ -83,23 +84,23 @@ async def list_students(
     return StudentListResponse(items=students, total=total)
 
 
-@router.get("/me", response_model=StudentResponse)
+@router.get("/me", response_model=StudentDetailResponse)
 async def get_my_student_profile(
     db: DbSession,
     current_user: CurrentStudent,
-) -> StudentResponse:
+) -> StudentDetailResponse:
     return await StudentService.get_my_student_profile(
         db,
         current_user,
     )
 
 
-@router.patch("/me/profile", response_model=StudentResponse)
+@router.patch("/me/profile", response_model=StudentDetailResponse)
 async def update_my_student_profile(
     payload: StudentSelfUpdate,
     db: DbSession,
     current_user: CurrentStudent,
-) -> StudentResponse:
+) -> StudentDetailResponse:
     return await StudentService.update_my_student_profile(
         db,
         current_user,
@@ -107,12 +108,12 @@ async def update_my_student_profile(
     )
 
 
-@router.post("/me/onboarding", response_model=StudentResponse)
+@router.post("/me/onboarding", response_model=StudentDetailResponse)
 async def complete_my_student_onboarding(
     payload: StudentOnboardingUpdate,
     db: DbSession,
     current_user: CurrentStudent,
-) -> StudentResponse:
+) -> StudentDetailResponse:
     return await StudentService.update_my_student_profile(
         db,
         current_user,
@@ -155,11 +156,9 @@ async def list_my_parent_link_requests(
     db: DbSession,
     current_user: CurrentOnboardedStudent,
 ) -> StudentParentLinkRequestListResponse:
-    requests, total = (
-        await StudentParentLinkRequestService.list_student_requests(
-            db,
-            current_user,
-        )
+    requests, total = await StudentParentLinkRequestService.list_student_requests(
+        db,
+        current_user,
     )
     return StudentParentLinkRequestListResponse(
         items=requests,
@@ -210,9 +209,7 @@ async def get_student_profile(
         # Student self-access is intentionally limited to /me.
         from app.core.exceptions import ForbiddenException
 
-        raise ForbiddenException(
-            "Students cannot view another student's profile."
-        )
+        raise ForbiddenException("Students cannot view another student's profile.")
     return await StudentService.get_student_profile(
         db,
         current_user,

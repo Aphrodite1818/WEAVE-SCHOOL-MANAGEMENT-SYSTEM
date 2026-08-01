@@ -55,6 +55,9 @@ export const subjectService = {
       confirmation: "DEACTIVATE_SUBJECT",
     }),
 
+  removeSubjectFromSetup: (subjectId) =>
+    api.post(`/tenant-admin/setup-assistant/subjects/${subjectId}/remove`, {}),
+
   archiveSubject: (subjectId) =>
     api.post(`/subjects/${subjectId}/archive`, {
       confirmation: "ARCHIVE_SUBJECT",

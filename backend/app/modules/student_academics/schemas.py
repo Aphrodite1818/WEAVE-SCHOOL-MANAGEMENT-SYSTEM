@@ -119,6 +119,7 @@ class AcademicSessionResponse(OutputBase):
     created_at: datetime
     updated_at: datetime
 
+
 class AcademicTermCreate(InputBase):
     academic_session_id: uuid.UUID
     name: AcademicTermName
@@ -143,7 +144,7 @@ class AcademicTermUpdate(InputBase):
     end_date: date | None = None
 
     @model_validator(mode="after")
-    def validate_update(self)->AcademicTermUpdate:
+    def validate_update(self) -> AcademicTermUpdate:
         if not self.model_fields_set:
             raise ValueError("at least one term field must be provided")
 
@@ -157,7 +158,6 @@ class AcademicTermUpdate(InputBase):
         return self
 
 
-
 class AcademicTermOpenRequest(InputBase):
     confirmation: Literal["OPEN_ACADEMIC_TERM"]
 
@@ -166,10 +166,21 @@ class AcademicTermCloseRequest(InputBase):
     confirmation: Literal["CLOSE_ACADEMIC_TERM"]
 
 
+class AcademicTermStartClosingRequest(InputBase):
+    confirmation: Literal["START_TERM_CLOSING"]
+
+
+class AcademicTermFinalizeCloseRequest(InputBase):
+    confirmation: Literal["FINALIZE_TERM_CLOSE"]
+
+
+class AcademicTermCancelClosureRequest(InputBase):
+    confirmation: Literal["CANCEL_TERM_CLOSURE"]
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class AcademicTermDeleteRequest(InputBase):
     confirmation: Literal["DELETE_ACADEMIC_TERM"]
-
-
 
 
 class AcademicTermResponse(OutputBase):
@@ -184,14 +195,13 @@ class AcademicTermResponse(OutputBase):
     is_current: bool
 
     opened_at: datetime | None = None
+    closing_started_at: datetime | None = None
     closed_at: datetime | None = None
     opened_by_admin_id: uuid.UUID | None = None
     closed_by_admin_id: uuid.UUID | None = None
 
     created_at: datetime
     updated_at: datetime
-
-
 
 
 class GradingScaleCreate(InputBase):
@@ -231,8 +241,6 @@ class GradingScaleUpdate(InputBase):
         normalized = normalize_grade(value)
 
 
-
-
 class AcademicTermResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -245,14 +253,13 @@ class AcademicTermResponse(OutputBase):
     is_current: bool
 
     opened_at: datetime | None = None
+    closing_started_at: datetime | None = None
     closed_at: datetime | None = None
     opened_by_admin_id: uuid.UUID | None = None
     closed_by_admin_id: uuid.UUID | None = None
 
     created_at: datetime
     updated_at: datetime
-
-
 
 
 class GradingScaleCreate(InputBase):
@@ -323,6 +330,18 @@ class GradingScaleReadiness(OutputBase):
 class ClassSubjectCreate(InputBase):
     subject_id: uuid.UUID
     is_core: bool = False
+
+
+class ClassSubjectBulkCreate(InputBase):
+    subject_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    is_core: bool = False
+
+    @field_validator("subject_ids")
+    @classmethod
+    def subject_ids_must_be_unique(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("subject_ids must not contain duplicates")
+        return value
 
 
 class ClassSubjectUpdate(InputBase):
@@ -416,6 +435,9 @@ class AcademicTermDependencyPreview(OutputBase):
     blocker_messages: list[str] = []
     can_open: bool
     can_close: bool
+    can_start_closing: bool = False
+    can_finalize_close: bool = False
+    can_cancel_closure: bool = False
     can_delete: bool
 
 

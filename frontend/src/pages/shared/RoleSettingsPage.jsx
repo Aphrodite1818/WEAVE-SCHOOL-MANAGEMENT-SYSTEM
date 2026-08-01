@@ -4,13 +4,12 @@ import {
   Accessibility,
   ChevronDown,
   ChevronRight,
-  Database,
   Eye,
   IdCard,
   Languages,
-  LockKeyhole,
   Mail,
   Moon,
+  Palette,
   ShieldCheck,
   Sun,
   UserRound,
@@ -20,6 +19,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Avatar from "../../components/ui/Avatar";
 import Card from "../../components/ui/Card";
 import { authSession } from "../../services/api";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import {
   applyAccessibilityPreferences,
   getSavedAccessibilityPreferences,
@@ -93,6 +93,7 @@ function ToggleRow({ label, checked, onChange }) {
 function RoleSettingsPage({ role }) {
   const normalizedRole = String(role || "admin").toLowerCase();
   const user = authSession.getUser() || {};
+  const { planCode } = useSubscription();
   const copy = roleCopy[normalizedRole] || roleCopy.admin;
   const isStudent = normalizedRole === "student";
   const displayName = getUserDisplayName(user);
@@ -133,9 +134,13 @@ function RoleSettingsPage({ role }) {
           <SettingsGroup title="Account">
             {isStudent ? <SettingsRow icon={IdCard} label="Admission number" value={admissionNumber || "Not assigned"} /> : <SettingsRow icon={Mail} label="Email" value={currentEmail || "No email on file"} />}
             <SettingsRow icon={UserRound} label="Profile" value={profileSummary || "Details and photo"} to="/profile" />
-            {!isStudent ? <SettingsRow icon={LockKeyhole} label="Change email" value="Unavailable" description="Email changes require a verified identity-migration workflow and are not enabled yet." /> : null}
-            <SettingsRow icon={Database} label="Download account data" value="Unavailable" description="A complete server-generated export is not enabled yet; the app will not provide a partial file as if it were complete." />
           </SettingsGroup>
+
+          {normalizedRole === "admin" && ["professional", "enterprise"].includes(String(planCode || "").toLowerCase()) ? (
+            <SettingsGroup title="School">
+              <SettingsRow icon={Palette} label="School branding" description="Manage the shared school identity and colour palette." to="/admin/settings/branding" />
+            </SettingsGroup>
+          ) : null}
 
           <SettingsGroup title="Appearance and accessibility">
             <ExpandableSettingsRow icon={Accessibility} label="Appearance" value={preferences.theme === "system" ? "System device preference" : preferences.theme} open={openPanel === "appearance"} onToggle={() => togglePanel("appearance")}>
@@ -143,7 +148,7 @@ function RoleSettingsPage({ role }) {
                 {themeOptions.map((item) => {
                   const Icon = item.icon;
                   const active = preferences.theme === item.value;
-                  return <button key={item.value} type="button" onClick={() => updatePreference({ theme: item.value })} className={cn("flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-bold transition sm:text-sm", active ? "border-primary bg-primary-subtle text-primary" : "border-border bg-surface text-text-soft hover:bg-surface-muted")}><Icon className="h-4 w-4" />{item.label}</button>;
+                  return <button key={item.value} type="button" onClick={() => updatePreference({ theme: item.value })} className={cn("flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-bold transition sm:text-sm", active ? "is-selected-highlight" : "border-border bg-surface text-text-soft hover:bg-surface-muted")}><Icon className="h-4 w-4" />{item.label}</button>;
                 })}
               </div>
             </ExpandableSettingsRow>

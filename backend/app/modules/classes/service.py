@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
 from app.modules.classes.models import ClassRoom
 from app.modules.classes.repository import ClassRoomRepository
@@ -387,9 +392,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived classrooms cannot be configured. Restore them first."
-            )
+            raise ConflictException("Archived classrooms cannot be configured. Restore them first.")
 
         next_classroom: ClassRoom | None = None
         if payload.next_class_id is not None:
@@ -449,9 +452,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived classrooms cannot be configured. Restore them first."
-            )
+            raise ConflictException("Archived classrooms cannot be configured. Restore them first.")
 
         classroom.next_class_id = None
         classroom.is_terminal = False
@@ -538,9 +539,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived records cannot be deactivated. Restore them first."
-            )
+            raise ConflictException("Archived records cannot be deactivated. Restore them first.")
         if not classroom.is_active:
             return ClassRoomResponse.model_validate(classroom)
 
@@ -555,6 +554,45 @@ class ClassRoomService:
         await db.commit()
         await db.refresh(classroom)
         return ClassRoomResponse.model_validate(classroom)
+
+    @staticmethod
+    async def purge_setup_classroom(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        class_id: uuid.UUID,
+    ) -> ClassRoomResponse:
+        """Permanently remove an unused classroom created during assisted setup."""
+
+        ClassRoomService._ensure_tenant_admin(actor)
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=class_id,
+        )
+        if classroom is None:
+            raise NotFoundException("Classroom not found")
+
+        dependency_counts = await ClassRoomRepository.count_class_dependencies(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=classroom.id,
+        )
+        if any(count > 0 for count in dependency_counts.values()):
+            raise ConflictException(
+                detail="This class is already referenced and cannot be removed from setup.",
+                payload={"dependency_counts": dependency_counts},
+            )
+
+        response = ClassRoomResponse.model_validate(classroom)
+        await ClassRoomRepository.clear_next_class_references(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=classroom.id,
+        )
+        await ClassRoomRepository.delete_classroom(db=db, classroom=classroom)
+        await db.commit()
+        return response
 
     @staticmethod
     async def activate_classroom(
@@ -591,8 +629,6 @@ class ClassRoomService:
         await db.refresh(classroom)
         return ClassRoomResponse.model_validate(classroom)
 
-
-
     @staticmethod
     async def archive_classroom(
         db: AsyncSession,
@@ -607,14 +643,15 @@ class ClassRoomService:
             class_id=class_id,
         )
 
-
         if classroom is None:
             raise NotFoundException("Classroom not found")
 
         if classroom.archived_at is not None:
             return ClassRoomResponse.model_validate(classroom)
         if classroom.is_active:
-            raise ConflictException("Active classes cannot be archived. Deactivate the class first.")
+            raise ConflictException(
+                "Active classes cannot be archived. Deactivate the class first."
+            )
 
         await ClassRoomService._ensure_no_live_dependencies(
             db,
@@ -634,12 +671,6 @@ class ClassRoomService:
         await db.refresh(classroom)
         return ClassRoomResponse.model_validate(classroom)
 
-
-
-
-
-
-
     @staticmethod
     async def restore_classroom(
         db: AsyncSession,
@@ -647,7 +678,6 @@ class ClassRoomService:
         class_id: uuid.UUID,
     ) -> ClassRoomResponse:
         ClassRoomService._ensure_tenant_admin(actor)
-
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,
@@ -665,9 +695,7 @@ class ClassRoomService:
         classroom.archived_by_admin_id = None
         classroom.is_active = False
 
-
         classroom = await ClassRoomRepository.save(db=db, classroom=classroom)
-
 
         await db.commit()
         await db.refresh(classroom)

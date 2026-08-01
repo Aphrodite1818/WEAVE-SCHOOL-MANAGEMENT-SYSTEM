@@ -8,12 +8,16 @@ on:
       - "docker-compose.yml"
   push:
     branches:
+      - Attendance
       - staging
       - master
     paths:
       - "backend/**"
       - ".github/workflows/backend.yml"
       - "docker-compose.yml"
+
+permissions:
+  contents: write
 
 jobs:
   validate:
@@ -33,12 +37,24 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     env:
       ENV: dev
-      SECRET_KEY: ci-only-secret-key-that-is-longer-than-32-characters
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
       FRONTEND_APP_URL: http://localhost:5174
       APP_SCRIPT_URL: http://localhost:3000/mock-app-script
       TWILIO_ACCOUNT_SID: ci-test-account
@@ -46,6 +62,7 @@ jobs:
       TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886"
       ALLOWED_ORIGINS: '["http://localhost:5174"]'
       CACHE_ENABLED: "false"
+      FORMAT_BASELINE_SHA: 6a434994d2b2397d45c6716d89c6f1a3eda8ea0f
 
     defaults:
       run:
@@ -54,11 +71,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: Attendance
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Repository hygiene
+        run: python scripts/verify_repository_hygiene.py
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -68,19 +91,75 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Apply Ruff formatting to hardening diff
+        if: github.event_name == 'push' && github.ref_name == 'Attendance'
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$FORMAT_BASELINE_SHA"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            exit 0
+          fi
+          uv run --with ruff ruff format "${files[@]}"
+          cd ..
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend
+          git commit -m "style: format backend hardening changes"
+          git push origin HEAD:Attendance
+
       - name: Lint
         run: uv run --with ruff ruff check .
 
-      - name: Format check
-        run: uv run --with ruff ruff format --check .
-        continue-on-error: true
+      - name: Format check for production hardening changes
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$FORMAT_BASELINE_SHA"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No Python files changed since the production-hardening baseline."
+            exit 0
+          fi
+          printf 'Checking Ruff formatting for %s changed Python files.\n' "${#files[@]}"
+          uv run --with ruff ruff format --check "${files[@]}"
 
-      - name: Type check
-        run: uv run --with pyright pyright
-        continue-on-error: true
+      - name: Type check production hardening changes
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$FORMAT_BASELINE_SHA"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' \
+              | grep -Ev '^(tests/|alembic/versions/)' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No production Python files changed since the hardening baseline."
+            exit 0
+          fi
+          printf 'Checking Pyright for %s changed production files.\n' "${#files[@]}"
+          set +e
+          uv run --with pyright pyright "${files[@]}" > ../pyright-output.log 2>&1
+          code=$?
+          cat ../pyright-output.log
+          exit $code
 
-      - name: Unit tests
-        run: uv run pytest tests/unit
+      - name: Upload Pyright diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pyright-output
+          path: pyright-output.log
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Alembic heads
         run: uv run --with alembic alembic heads
@@ -88,9 +167,17 @@ jobs:
       - name: Alembic history
         run: uv run --with alembic alembic history
 
-      - name: Alembic check
+      - name: Upgrade fresh database
+        run: uv run --with alembic alembic upgrade head
+
+      - name: Alembic drift check
         run: uv run --with alembic alembic check
-        continue-on-error: true
+
+      - name: Unit tests
+        run: uv run pytest tests/unit
+
+      - name: Integration tests
+        run: uv run pytest tests/integration
 
       - name: Application import check
         run: uv run python -c "from app.main import app; print(app.title)"

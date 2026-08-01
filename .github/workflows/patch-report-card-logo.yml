@@ -1,0 +1,70 @@
+name: Patch report card fallback logo
+
+on:
+  push:
+    branches:
+      - Attendance
+    paths:
+      - ".github/workflows/patch-report-card-logo.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: Attendance
+          fetch-depth: 0
+      - name: Embed fallback logo
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          data_uri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiI+PHJlY3Qgd2lkdGg9Ijk2IiBoZWlnaHQ9Ijk2IiByeD0iMjAiIGZpbGw9IiMxZDRlZDgiLz48cGF0aCBkPSJNMjAgMjZsMTIgNDRoMTJsNC0yMCA0IDIwaDEybDEyLTQ0SDYzbC02IDI4LTUtMjhoLThsLTUgMjgtNi0yOEgyMHoiIGZpbGw9IndoaXRlIi8+PC9zdmc+"
+
+          backend = Path("backend/app/modules/report_cards/print_service.py")
+          text = backend.read_text()
+          text = text.replace("from app.config.settings import settings\n", "")
+          marker = "from app.tenant_management.repository import TenantRepository\n\n\n"
+          replacement = (
+              "from app.tenant_management.repository import TenantRepository\n\n\n"
+              f'WEAVE_FALLBACK_LOGO = "{data_uri}"\n\n\n'
+          )
+          if marker not in text:
+              raise SystemExit("Backend logo insertion marker not found")
+          text = text.replace(marker, replacement, 1)
+          old = "else f\"{str(settings.FRONTEND_APP_URL).rstrip('/')}\" \"/icons/weave-email-icon.png\""
+          if old not in text:
+              old = "else f\"{str(settings.FRONTEND_APP_URL).rstrip('/')}\"\n            \"/icons/weave-email-icon.png\""
+          if old not in text:
+              raise SystemExit("Backend fallback logo expression not found")
+          text = text.replace(old, "else WEAVE_FALLBACK_LOGO", 1)
+          backend.write_text(text)
+
+          frontend = Path("frontend/src/components/shared/ReportCardPrintSheet.jsx")
+          text = frontend.read_text()
+          marker = "const formatClassLabel = (card) =>\n"
+          replacement = f'const WEAVE_FALLBACK_LOGO = "{data_uri}";\n\n{marker}'
+          if marker not in text:
+              raise SystemExit("Frontend logo insertion marker not found")
+          text = text.replace(marker, replacement, 1)
+          old = 'card.school_logo_url || "/icons/weave-email-icon.png"'
+          if old not in text:
+              raise SystemExit("Frontend fallback logo expression not found")
+          text = text.replace(old, "card.school_logo_url || WEAVE_FALLBACK_LOGO", 1)
+          frontend.write_text(text)
+          PY
+      - name: Format backend
+        run: |
+          python -m pip install ruff
+          ruff format backend/app/modules/report_cards/print_service.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/app/modules/report_cards/print_service.py frontend/src/components/shared/ReportCardPrintSheet.jsx
+          git commit -m "fix: embed report card fallback logo"
+          git push origin HEAD:Attendance

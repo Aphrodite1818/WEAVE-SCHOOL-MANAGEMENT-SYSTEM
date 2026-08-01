@@ -406,6 +406,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
               type="button"
               variant="outline"
               size="small"
+              className="manual-refresh-action"
               onClick={loadClosingWorkflow}
             >
               <RefreshCw className="h-4 w-4" /> Refresh

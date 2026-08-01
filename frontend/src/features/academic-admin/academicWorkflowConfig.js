@@ -20,6 +20,7 @@ export const academicWorkflowOrder = [
   "grading",
   "results",
   "report-cards",
+  "school-calendar",
 ];
 
 export const academicWorkflowConfig = {
@@ -57,27 +58,27 @@ export const academicWorkflowConfig = {
     ],
   },
   "class-subjects": {
-    title: "Class-Subject Mappings",
-    shortTitle: "Mappings",
+    title: "Subjects in Classes",
+    shortTitle: "Class Subjects",
     description:
-      "Attach subjects to classes and manage mapping lifecycle with dependency-aware actions.",
+      "Choose which subjects are taught in each class and keep old class offerings out of new work.",
     icon: Layers3,
     tone: "accent",
     defaultTab: "overview",
     tabs: [
       { id: "overview", label: "Overview" },
-      { id: "create", label: "Create Mapping" },
-      { id: "current", label: "Current Mappings" },
-      { id: "inactive", label: "Inactive Mappings" },
-      { id: "archived", label: "Archived Mappings" },
-      { id: "review", label: "Mapping Details" },
+      { id: "create", label: "Assign Subject" },
+      { id: "current", label: "Current Subjects" },
+      { id: "inactive", label: "Inactive Subjects" },
+      { id: "archived", label: "Archived Subjects" },
+      { id: "review", label: "Class Details" },
     ],
   },
   assignments: {
     title: "Teacher Assignments",
     shortTitle: "Assignments",
     description:
-      "Treat teacher assignments as historical timeline records: assign, reassign, or end them without archiving.",
+      "Assign teachers to the subjects they teach, change teachers when needed, and keep history clear.",
     icon: Users,
     tone: "warning",
     defaultTab: "overview",
@@ -93,7 +94,7 @@ export const academicWorkflowConfig = {
     title: "Academic Sessions",
     shortTitle: "Sessions",
     description:
-      "Audit readiness, pause writes, run background progression, and finalize closure from one controlled workflow.",
+      "Create school years, open the current year, and close a completed year with clear readiness checks.",
     icon: CalendarDays,
     tone: "primary",
     defaultTab: "overview",
@@ -118,6 +119,7 @@ export const academicWorkflowConfig = {
       { id: "create", label: "Create Term" },
       { id: "draft", label: "Draft Terms" },
       { id: "open", label: "Open Term" },
+      { id: "closing", label: "Closing Terms" },
       { id: "closed", label: "Closed Terms" },
     ],
   },
@@ -125,7 +127,7 @@ export const academicWorkflowConfig = {
     title: "Grading Configuration",
     shortTitle: "Grading",
     description:
-      "Configure assessment score limits and maintain grading rules used when results are calculated.",
+      "Set score limits and grading rules before teachers and admins process results.",
     icon: Ruler,
     tone: "warning",
     defaultTab: "overview",
@@ -148,6 +150,7 @@ export const academicWorkflowConfig = {
     tabs: [
       { id: "overview", label: "Overview" },
       { id: "entry", label: "Score Entry" },
+      { id: "bulk-actions", label: "Bulk Actions" },
       { id: "draft", label: "Draft" },
       { id: "submitted", label: "Submitted" },
       { id: "approved", label: "Approved" },
@@ -166,10 +169,28 @@ export const academicWorkflowConfig = {
       { id: "overview", label: "Overview" },
       { id: "ready", label: "Student Readiness" },
       { id: "generate", label: "Generate" },
+      { id: "bulk-actions", label: "Bulk Actions" },
       { id: "draft", label: "Draft Cards" },
       { id: "published", label: "Published Cards" },
       { id: "outdated", label: "Outdated Cards" },
       { id: "archived", label: "Archived Versions" },
+    ],
+  },
+  "school-calendar": {
+    title: "School Calendar",
+    shortTitle: "Calendar",
+    description:
+      "Set school days, holidays, events, and closures for the selected term calendar.",
+    icon: CalendarDays,
+    tone: "success",
+    defaultTab: "overview",
+    tabs: [
+      { id: "overview", label: "Overview" },
+      { id: "setup", label: "Setup" },
+      { id: "calendar", label: "Calendar" },
+      { id: "events", label: "Events" },
+      { id: "closures", label: "Closures" },
+      { id: "history", label: "History" },
     ],
   },
 };
@@ -196,14 +217,14 @@ export const academicWorkflowSummaryCards = [
     icon: BookOpen,
   },
   {
-    label: "Mappings",
-    description: "Class-subject offerings",
+    label: "Class Subjects",
+    description: "Subjects taught in each class",
     to: "/admin/academic/class-subjects",
     icon: Layers3,
   },
   {
     label: "Assignments",
-    description: "Teacher and class-subject mapping",
+    description: "Who teaches each class subject",
     to: "/admin/academic/assignments",
     icon: Users,
   },
@@ -212,5 +233,11 @@ export const academicWorkflowSummaryCards = [
     description: "Scores and submission status",
     to: "/admin/academic/results",
     icon: BarChart3,
+  },
+  {
+    label: "Calendar",
+    description: "Term days and school events",
+    to: "/admin/academic/school-calendar",
+    icon: CalendarDays,
   },
 ];

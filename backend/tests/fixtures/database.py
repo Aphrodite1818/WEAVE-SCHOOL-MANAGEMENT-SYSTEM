@@ -12,7 +12,7 @@ from app.shared.base_model import Base
 
 # Import models so SQLAlchemy registers all tables before create_all() runs.
 from app.modules.auth import models as _auth_models  # noqa: F401
-from app.modules.announcements import models as _announcement_models  # noqa: F401
+from app.modules.communications import models as _communication_models  # noqa: F401
 from app.modules.auth_identity import models as _auth_identity_models  # noqa: F401
 from app.modules.attendance import models as _attendance_models  # noqa: F401
 from app.modules.classes import models as _classes_models  # noqa: F401

@@ -202,6 +202,10 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
             new=AsyncMock(return_value=([term], 1)),
         ),
         patch(
+            "app.modules.school_calendar.service.SchoolCalendarService.term_calendar_readiness",
+            new=AsyncMock(return_value={"blockers": [], "counts": {}, "calendar_id": str(uuid.uuid4())}),
+        ),
+        patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
             new=AsyncMock(return_value=term),
         ),
@@ -221,11 +225,12 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
     assert opened.is_current is True
     assert opened.opened_by_admin_id == admin_id
     assert opened.opened_at is not None
+    assert opened.closing_started_at is None
     db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_close_academic_term_only_accepts_open_terms() -> None:
+async def test_close_academic_term_starts_closure_for_open_terms() -> None:
     tenant_id = uuid.uuid4()
     admin_id = uuid.uuid4()
     term = _academic_term(tenant_id, status=AcademicTermStatus.OPEN)
@@ -258,7 +263,63 @@ async def test_close_academic_term_only_accepts_open_terms() -> None:
             new=AsyncMock(),
         ),
     ):
-        closed = await StudentAcademicService.close_academic_term(
+        closing = await StudentAcademicService.close_academic_term(
+            db=db,
+            tenant_id=tenant_id,
+            term_id=term.id,
+            admin_id=admin_id,
+        )
+
+    assert closing.status == AcademicTermStatus.CLOSING
+    assert closing.is_current is True
+    assert closing.closing_started_at is not None
+    assert closing.closed_by_admin_id is None
+    assert closing.closed_at is None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_finalize_academic_term_closure_closes_and_archives_calendar() -> None:
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    term = _academic_term(tenant_id, status=AcademicTermStatus.CLOSING)
+    db = AsyncMock()
+
+    archive_calendar = AsyncMock(return_value=1)
+
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
+            new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
+            new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService.academic_term_dependency_preview",
+            new=AsyncMock(
+                return_value=AcademicTermDependencyPreview(
+                    term_id=term.id,
+                    dependency_counts={},
+                    blocker_messages=[],
+                    can_open=False,
+                    can_close=True,
+                    can_finalize_close=True,
+                    can_delete=False,
+                )
+            ),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarService.archive_term_calendar",
+            new=archive_calendar,
+        ),
+    ):
+        closed = await StudentAcademicService.finalize_academic_term_closure(
             db=db,
             tenant_id=tenant_id,
             term_id=term.id,
@@ -269,6 +330,7 @@ async def test_close_academic_term_only_accepts_open_terms() -> None:
     assert closed.is_current is False
     assert closed.closed_by_admin_id == admin_id
     assert closed.closed_at is not None
+    archive_calendar.assert_awaited_once()
     db.commit.assert_awaited_once()
 
 

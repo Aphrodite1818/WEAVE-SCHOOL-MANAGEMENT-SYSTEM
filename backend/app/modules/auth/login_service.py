@@ -62,6 +62,23 @@ def _tenant_allows_login(tenant: Tenant | None) -> bool:
     )
 
 
+def _verification_required_exception(
+    *,
+    detail: str,
+    email: str,
+) -> AccountNotVerifiedException:
+    return AccountNotVerifiedException(
+        detail=detail,
+        payload={
+            "verification_required": True,
+            "email": email,
+            "purpose": AuthPurpose.VERIFICATION.value,
+            "redirect_to": "/verify-otp",
+            "resend_otp_available": True,
+        },
+    )
+
+
 class AuthService:
     """Authenticate canonical account owners and select tenant memberships."""
 
@@ -280,8 +297,9 @@ class AuthService:
             if not verify_password(payload.password, admin.password_hash):
                 raise UnauthorizedException("Invalid email or password.")
             if not admin.is_verified or admin.account_status == TenantAdminStatus.PENDING:
-                raise AccountNotVerifiedException(
-                    detail="Account verification is required before login."
+                raise _verification_required_exception(
+                    detail="Account verification is required before login.",
+                    email=admin.email,
                 )
             tenant = await TenantRepository.get_by_id(db, admin.tenant_id)
             if (
@@ -318,8 +336,9 @@ class AuthService:
             if account is None or not verify_password(payload.password, account.password_hash):
                 raise UnauthorizedException("Invalid email or password.")
             if not account.is_verified or account.account_status == ParentAccountStatus.PENDING:
-                raise AccountNotVerifiedException(
-                    detail="Verify the parent account before login."
+                raise _verification_required_exception(
+                    detail="Verify the parent account before login.",
+                    email=account.email,
                 )
             if not account.is_active or account.account_status != ParentAccountStatus.ACTIVE:
                 raise UnauthorizedException("Parent account is not active.")
@@ -333,8 +352,9 @@ class AuthService:
             if account is None or not verify_password(payload.password, account.password_hash):
                 raise UnauthorizedException("Invalid email or password.")
             if not account.is_verified or account.account_status == TeacherAccountStatus.PENDING:
-                raise AccountNotVerifiedException(
-                    detail="Verify the teacher account before login."
+                raise _verification_required_exception(
+                    detail="Verify the teacher account before login.",
+                    email=account.email,
                 )
             if not account.is_active or account.account_status != TeacherAccountStatus.ACTIVE:
                 raise UnauthorizedException("Teacher account is not active.")
@@ -400,20 +420,28 @@ class AuthService:
         email = _normalize_email(str(payload.email))
         now = _utc_now()
         records = (
-            await db.execute(
-                select(AuthRecord)
-                .where(
-                    AuthRecord.email == email,
-                    AuthRecord.purpose == AuthPurpose.PASSWORD_RESET,
-                    AuthRecord.is_used.is_(False),
-                    AuthRecord.expires_at > now,
+            (
+                await db.execute(
+                    select(AuthRecord)
+                    .where(
+                        AuthRecord.email == email,
+                        AuthRecord.purpose == AuthPurpose.PASSWORD_RESET,
+                        AuthRecord.is_used.is_(False),
+                        AuthRecord.expires_at > now,
+                    )
+                    .order_by(AuthRecord.created_at.desc())
+                    .with_for_update()
                 )
-                .order_by(AuthRecord.created_at.desc())
-                .with_for_update()
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         record = next(
-            (item for item in records if verify_auth_secret(payload.reset_token, item.hashed_value)),
+            (
+                item
+                for item in records
+                if verify_auth_secret(payload.reset_token, item.hashed_value)
+            ),
             None,
         )
         if record is None:

@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,13 +37,6 @@ class ImportResourceType(str, PyEnum):
     """Supported resource types for tenant bulk imports."""
 
     STUDENTS = "students"
-    TEACHERS = "teachers"
-    PARENTS = "parents"
-    CLASSES = "classes"
-    SUBJECTS = "subjects"
-    CLASS_SUBJECTS = "class_subjects"
-    TEACHER_SUBJECTS = "teacher_subjects"
-    ASSESSMENT_RECORDS = "assessment_records"
 
 
 class ImportFileType(str, PyEnum):
@@ -61,21 +55,6 @@ class ImportJobStatus(str, PyEnum):
     PARTIALLY_COMPLETED = "partially_completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
-
-
-class ImportNotificationChannel(str, PyEnum):
-    """Channel used to notify admins about import results."""
-
-    IN_APP = "in_app"
-    EMAIL = "email"
-
-
-class ImportNotificationStatus(str, PyEnum):
-    """Delivery state for an import notification."""
-
-    PENDING = "pending"
-    SENT = "sent"
-    FAILED = "failed"
 
 
 class ImportJob(BaseModel):
@@ -143,6 +122,16 @@ class ImportJob(BaseModel):
 
     file_size_bytes: Mapped[int | None] = mapped_column(
         Integer,
+        nullable=True,
+    )
+
+    source_fingerprint: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    confirmed_fingerprint: Mapped[str | None] = mapped_column(
+        String(64),
         nullable=True,
     )
 
@@ -221,19 +210,26 @@ class ImportJob(BaseModel):
         passive_deletes=True,
     )
 
-    notifications: Mapped[list["ImportNotification"]] = relationship(
-        "ImportNotification",
-        back_populates="import_job",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
     __table_args__ = (
         Index("ix_import_jobs_tenant_status", "tenant_id", "status"),
         Index("ix_import_jobs_tenant_resource_type", "tenant_id", "resource_type"),
         Index("ix_import_jobs_tenant_created_by", "tenant_id", "created_by_admin_id"),
         Index("ix_import_jobs_tenant_created_at", "tenant_id", "created_at"),
         Index("ix_import_jobs_status_created_at", "status", "created_at"),
+        Index(
+            "ix_import_jobs_tenant_source_fingerprint",
+            "tenant_id",
+            "resource_type",
+            "source_fingerprint",
+        ),
+        Index(
+            "uq_import_jobs_tenant_confirmed_fingerprint",
+            "tenant_id",
+            "resource_type",
+            "confirmed_fingerprint",
+            unique=True,
+            postgresql_where=text("confirmed_fingerprint IS NOT NULL"),
+        ),
     )
 
 
@@ -332,95 +328,4 @@ class ImportStagedRow(BaseModel):
         UniqueConstraint("import_job_id", "row_number", name="uq_import_staged_rows_job_row"),
         Index("ix_import_staged_rows_tenant_job", "tenant_id", "import_job_id"),
         Index("ix_import_staged_rows_job_row", "import_job_id", "row_number"),
-    )
-
-
-class ImportNotification(BaseModel):
-    """Tracks notifications generated from import job completion or failure."""
-
-    __tablename__ = "import_notifications"
-
-    import_job_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.import_jobs.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    recipient_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id"),
-        nullable=True,
-    )
-
-    channel: Mapped[ImportNotificationChannel] = mapped_column(
-        SQLEnum(
-            ImportNotificationChannel,
-            name="import_notification_channel",
-            schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
-        ),
-        nullable=False,
-        default=ImportNotificationChannel.IN_APP,
-        server_default=ImportNotificationChannel.IN_APP.value,
-    )
-
-    status: Mapped[ImportNotificationStatus] = mapped_column(
-        SQLEnum(
-            ImportNotificationStatus,
-            name="import_notification_status",
-            schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
-        ),
-        nullable=False,
-        default=ImportNotificationStatus.PENDING,
-        server_default=ImportNotificationStatus.PENDING.value,
-    )
-
-    title: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-    )
-
-    message: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
-
-    is_read: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-    )
-
-    sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    read_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    failure_reason: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
-
-    import_job: Mapped["ImportJob"] = relationship(
-        "ImportJob",
-        back_populates="notifications",
-    )
-
-    recipient_admin: Mapped["TenantAdmin | None"] = relationship(
-        "TenantAdmin",
-        foreign_keys=[recipient_admin_id],
-    )
-
-    __table_args__ = (
-        Index("ix_import_notifications_tenant_job", "tenant_id", "import_job_id"),
-        Index("ix_import_notifications_tenant_recipient", "tenant_id", "recipient_admin_id"),
-        Index("ix_import_notifications_tenant_status", "tenant_id", "status"),
-        Index("ix_import_notifications_tenant_read", "tenant_id", "is_read"),
     )

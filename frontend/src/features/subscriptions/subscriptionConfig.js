@@ -21,6 +21,7 @@ export const FEATURE_CODES = {
   ADVANCED_ANALYTICS: "advanced_analytics",
   AI_ASSISTANT: "ai_assistant",
   BULK_IMPORT: "bulk_import",
+  TENANT_BRANDING: "tenant_branding",
 };
 
 export const RESOURCE_CODES = {
@@ -78,7 +79,7 @@ export const LANDING_PRICING_PLANS = [
     planCode: "free_trial",
     name: "Free Trial",
     bestFor: "Best for testing Weave",
-    description: "Try the core school workflow for 30 days before moving into monthly billing.",
+    description: "Try the core school workflow for 30 days before moving into a monthly Weave subscription.",
     priceMonthly: 0,
     priceLabel: "₦0",
     features: [
@@ -103,6 +104,7 @@ export const LANDING_PRICING_PLANS = [
     priceMonthly: 15000,
     priceLabel: "₦15,000/mo",
     features: [
+      "Academic lifecycle controls",
       "Advanced analytics",
       "AI assistant enabled",
       "Bulk import enabled",
@@ -125,10 +127,12 @@ export const LANDING_PRICING_PLANS = [
     priceMonthly: 35000,
     priceLabel: "₦35,000/mo",
     features: [
+      "Academic lifecycle controls",
       "Advanced analytics",
       "AI assistant enabled",
       "Bulk import enabled",
       "Higher school limits",
+      "School colour branding",
     ],
     limits: {
       students: 1000,
@@ -148,10 +152,12 @@ export const LANDING_PRICING_PLANS = [
     priceMonthly: 80000,
     priceLabel: "From ₦80,000/mo",
     features: [
+      "Academic lifecycle controls",
       "Advanced analytics",
       "AI assistant enabled",
       "Bulk import enabled",
       "Custom limits",
+      "School colour branding",
     ],
     limits: {
       students: null,
@@ -165,6 +171,8 @@ export const LANDING_PRICING_PLANS = [
 ];
 
 const SUBSCRIPTION_SELECTION_STORAGE_KEY = "weave_subscription_selection";
+const REGISTRATION_CHECKOUT_STORAGE_KEY = "weave_registration_checkout_intent";
+const REGISTRATION_CHECKOUT_REDIRECT_KEY = "weave_registration_checkout_redirect";
 
 const ATTENTION_STATUSES = new Set([
   "past_due",
@@ -271,4 +279,93 @@ export const getSelectedSubscriptionPlan = () => {
 export const clearSelectedSubscriptionPlan = () => {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(SUBSCRIPTION_SELECTION_STORAGE_KEY);
+};
+
+export const saveRegistrationCheckoutIntent = ({
+  planCode,
+  billingInterval = "monthly",
+} = {}) => {
+  if (typeof window === "undefined") return;
+
+  const nextPlanCode = canonicalPlanCode(planCode);
+  if (nextPlanCode === "free_trial") {
+    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(
+    REGISTRATION_CHECKOUT_STORAGE_KEY,
+    JSON.stringify({
+      planCode: nextPlanCode,
+      billingInterval: canonicalBillingInterval(billingInterval),
+    }),
+  );
+};
+
+export const getRegistrationCheckoutIntent = (user = {}) => {
+  const tenantFlags = user?.tenant?.feature_flags || user?.feature_flags || {};
+  const tenantPlanCode = canonicalPlanCode(
+    tenantFlags.registration_selected_plan_code ||
+      tenantFlags.selected_plan_code ||
+      tenantFlags.registration_plan_code,
+  );
+  const tenantBillingInterval =
+    tenantFlags.registration_billing_interval || "monthly";
+
+  if (tenantPlanCode !== "free_trial") {
+    return {
+      planCode: tenantPlanCode,
+      billingInterval: canonicalBillingInterval(tenantBillingInterval),
+      source: "tenant",
+    };
+  }
+
+  if (typeof window === "undefined") return null;
+
+  try {
+    const parsed = JSON.parse(
+      window.sessionStorage.getItem(REGISTRATION_CHECKOUT_STORAGE_KEY) || "null",
+    );
+    const planCode = canonicalPlanCode(parsed?.planCode);
+    if (planCode === "free_trial") return null;
+    return {
+      planCode,
+      billingInterval: canonicalBillingInterval(parsed?.billingInterval),
+      source: "session",
+    };
+  } catch {
+    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
+    return null;
+  }
+};
+
+export const clearRegistrationCheckoutIntent = () => {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
+};
+
+export const markRegistrationCheckoutRedirect = (intent) => {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(
+    REGISTRATION_CHECKOUT_REDIRECT_KEY,
+    JSON.stringify({
+      planCode: canonicalPlanCode(intent?.planCode),
+      createdAt: new Date().toISOString(),
+    }),
+  );
+};
+
+export const consumeRegistrationCheckoutRedirect = () => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const parsed = JSON.parse(
+      window.sessionStorage.getItem(REGISTRATION_CHECKOUT_REDIRECT_KEY) || "null",
+    );
+    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_REDIRECT_KEY);
+    return parsed;
+  } catch {
+    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_REDIRECT_KEY);
+    return null;
+  }
 };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 
 import Button from "../ui/Button";
@@ -7,6 +7,11 @@ import { getErrorMessage } from "../../services/api";
 import { studentService } from "../../services/studentService";
 
 const PAGE_SIZE = 20;
+
+const normalizeAdmissionReference = (value) =>
+  String(value || "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toUpperCase();
 
 const studentLabel = (student) => {
   const name = [student?.first_name, student?.last_name]
@@ -17,6 +22,7 @@ const studentLabel = (student) => {
 };
 
 export default function AdminStudentLookup({ value, onChange, error, disabled = false }) {
+  const onChangeRef = useRef(onChange);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [items, setItems] = useState([]);
@@ -24,6 +30,10 @@ export default function AdminStudentLookup({ value, onChange, error, disabled = 
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -38,8 +48,20 @@ export default function AdminStudentLookup({ value, onChange, error, disabled = 
           status: "active",
         });
         if (controller.signal.aborted) return;
-        setItems(Array.isArray(response?.items) ? response.items : []);
+        const nextItems = Array.isArray(response?.items) ? response.items : [];
+        const normalizedQuery = normalizeAdmissionReference(query);
+        const exactAdmissionMatch =
+          normalizedQuery && nextItems.find(
+            (student) =>
+              normalizeAdmissionReference(student?.admission_number) === normalizedQuery,
+          );
+
+        setItems(nextItems);
         setTotal(Number(response?.total || 0));
+        if (exactAdmissionMatch && exactAdmissionMatch.id !== value) {
+          setSelectedRecord(exactAdmissionMatch);
+          onChangeRef.current?.(exactAdmissionMatch.id, exactAdmissionMatch);
+        }
       } catch (requestError) {
         if (controller.signal.aborted) return;
         setLoadError(
@@ -54,7 +76,7 @@ export default function AdminStudentLookup({ value, onChange, error, disabled = 
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [page, query]);
+  }, [page, query, value]);
 
   const options = useMemo(() => {
     if (!selectedRecord || items.some((item) => item.id === selectedRecord.id)) {
@@ -63,6 +85,8 @@ export default function AdminStudentLookup({ value, onChange, error, disabled = 
     return [selectedRecord, ...items];
   }, [items, selectedRecord]);
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const selectedStudent =
+    selectedRecord || options.find((item) => item.id === value) || null;
 
   const handleSelection = (event) => {
     const nextId = event.target.value;
@@ -79,8 +103,20 @@ export default function AdminStudentLookup({ value, onChange, error, disabled = 
           label="Find student"
           value={query}
           onChange={(event) => {
-            setQuery(event.target.value);
+            const nextQuery = event.target.value;
+            const selectedAdmission = normalizeAdmissionReference(
+              selectedStudent?.admission_number,
+            );
+            setQuery(nextQuery);
             setPage(1);
+            if (
+              value &&
+              selectedAdmission &&
+              normalizeAdmissionReference(nextQuery) !== selectedAdmission
+            ) {
+              setSelectedRecord(null);
+              onChange("", null);
+            }
           }}
           placeholder="Search name or admission number"
           className="pl-11"
@@ -92,6 +128,11 @@ export default function AdminStudentLookup({ value, onChange, error, disabled = 
         <span className="mb-1.5 block text-sm font-semibold text-text-soft">
           Student
         </span>
+        {selectedStudent ? (
+          <div className="mb-2 rounded-xl border border-primary/25 bg-primary-subtle/50 px-3 py-2.5 text-sm font-semibold text-text">
+            {studentLabel(selectedStudent)}
+          </div>
+        ) : null}
         <select
           value={value}
           onChange={handleSelection}

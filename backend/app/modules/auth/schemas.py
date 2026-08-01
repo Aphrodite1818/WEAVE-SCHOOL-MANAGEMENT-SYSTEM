@@ -29,6 +29,9 @@ class LoginSessionUser(BaseModel):
     meta: dict[str, Any] | None = None
     passport_photo_url: str | None = None
     tenant_logo_url: str | None = None
+    legal_compliance_required: bool | None = None
+    legal_compliance_policy_version: str | None = None
+    legal_compliance_accepted_at: str | None = None
 
 
 class SessionBootstrapResponse(BaseModel):
@@ -40,6 +43,9 @@ class SessionBootstrapResponse(BaseModel):
     email: str | None = None
     password_reset_required: bool | None = None
     user: LoginSessionUser
+    legal_compliance_required: bool = True
+    legal_compliance_policy_version: str
+    legal_compliance_accepted_at: str | None = None
 
 
 class LoginRequest(BaseModel):

@@ -13,6 +13,8 @@ import {
   DashboardSectionHeader,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
@@ -31,7 +33,10 @@ function TeacherDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const user = authSession.getUser();
+  const runtimeConfig = useRuntimeConfig();
+  const attendanceEnabled = runtimeConfig?.features?.attendance !== false;
   const firstName = user?.first_name || user?.firstname || "Teacher";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
 
   useEffect(() => {
     let mounted = true;
@@ -135,6 +140,7 @@ function TeacherDashboardPage() {
             description="Manage assigned subjects, draft scores, submissions, and class-teacher work."
             profileCompletion={teacher?.profile_completed}
             chips={[
+              { label: "Staff ID", value: cleanText(teacher?.staff_id, "Not assigned"), tone: "primary" },
               { label: teacher?.is_verified ? "Verified" : "Pending verification", tone: teacher?.is_verified ? "success" : "warning" },
               { label: cleanText(teacher?.specialization, "Specialization not provided"), tone: "primary" },
             ]}
@@ -154,7 +160,7 @@ function TeacherDashboardPage() {
               icon={BookOpen}
               tone="primary"
               primaryAction={{ to: "/teacher/score-entry", label: "Enter scores", icon: Send, disabled: !hasSubjectAssignments }}
-              secondaryAction={{ to: "/teacher/attendance", label: "Attendance", icon: CheckSquare, disabled: !hasClassTeacherClasses }}
+              secondaryAction={attendanceEnabled ? { to: "/teacher/attendance", label: "Attendance", icon: CheckSquare, disabled: !hasClassTeacherClasses } : null}
             >
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Assigned subjects" value={subjectNames.length} />
@@ -170,6 +176,17 @@ function TeacherDashboardPage() {
               items={attentionItems}
               emptyTitle="No score task needs attention"
               emptyDescription="There are no editable draft or pending score rows right now."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="teacher" actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
+            <DashboardListCard
+              title="Calendar notes"
+              description="Read-only school schedule context for planning."
+              items={[]}
+              emptyTitle="No extra calendar action"
+              emptyDescription="Calendar setup and lifecycle controls are managed by tenant admins."
             />
           </section>
 

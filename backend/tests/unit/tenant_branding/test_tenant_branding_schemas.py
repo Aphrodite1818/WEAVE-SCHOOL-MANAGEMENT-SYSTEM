@@ -4,35 +4,32 @@ from pydantic import ValidationError
 from app.modules.tenant_branding.schemas import TenantBrandingUpdate
 
 
-def test_tenant_branding_update_accepts_full_hex_colors() -> None:
-    payload = TenantBrandingUpdate(
-        primary_color="#2563EB",
-        accent_color="#4f46e5",
-        sidebar_color="#0F172A",
-        header_color="#F8FAFC",
-        background_color="#E2E8F0",
-    )
+def test_tenant_branding_update_accepts_palette_and_enabled_state() -> None:
+    payload = TenantBrandingUpdate(palette_key="gold", is_enabled=True)
 
-    assert payload.primary_color == "#2563EB"
-    assert payload.accent_color == "#4f46e5"
-    assert payload.sidebar_color == "#0F172A"
-    assert payload.header_color == "#F8FAFC"
-    assert payload.background_color == "#E2E8F0"
+    assert payload.palette_key == "gold"
+    assert payload.is_enabled is True
+
+
+def test_tenant_branding_update_rejects_unknown_palette() -> None:
+    with pytest.raises(ValidationError, match="palette_key"):
+        TenantBrandingUpdate(palette_key="neon-green")
 
 
 @pytest.mark.parametrize(
-    "field_name,value",
+    "field_name",
     [
-        ("primary_color", "2563EB"),
-        ("accent_color", "#ABC"),
-        ("sidebar_color", "blue"),
-        ("header_color", "#123"),
-        ("background_color", "slate"),
+        "brand_name",
+        "primary_color",
+        "accent_color",
+        "sidebar_color",
+        "header_color",
+        "background_color",
+        "surface_color",
     ],
 )
-def test_tenant_branding_update_rejects_non_strict_hex_colors(
+def test_tenant_branding_update_rejects_direct_identity_and_color_fields(
     field_name: str,
-    value: str,
 ) -> None:
     with pytest.raises(ValidationError):
-        TenantBrandingUpdate(**{field_name: value})
+        TenantBrandingUpdate(**{field_name: "#2563EB"})

@@ -1,9 +1,10 @@
 import { Library } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
+import MultiSelect from "../../components/ui/MultiSelect";
 import { useToast } from "../../hooks/useToast";
 import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
@@ -121,40 +122,40 @@ const formatMappingError = (error, fallback) => {
 };
 
 const mappingLifecycleConfirmation = (item, action) => {
-  const name = item.subject_name || "Class-subject mapping";
+  const name = item.subject_name || "Subject in class";
   const config = {
     activate: {
-      title: "Activate class-subject mapping",
+      title: "Activate subject for this class",
       confirmationText: CONFIRM_ACTIVATE_CLASS_SUBJECT,
-      confirmLabel: "Activate mapping",
+      confirmLabel: "Activate subject",
       variant: "primary",
       description: item.activation_blocker || name,
     },
     deactivate: {
-      title: "Deactivate class-subject mapping",
+      title: "Deactivate subject for this class",
       confirmationText: CONFIRM_DEACTIVATE_CLASS_SUBJECT,
-      confirmLabel: "Deactivate mapping",
+      confirmLabel: "Deactivate subject",
       variant: "danger",
-      description: name,
+      description: `${name} will stop appearing in new academic work for this class. Existing records remain available.`,
     },
     archive: {
-      title: "Archive class-subject mapping",
+      title: "Archive subject for this class",
       confirmationText: CONFIRM_ARCHIVE_CLASS_SUBJECT,
-      confirmLabel: "Archive mapping",
+      confirmLabel: "Archive subject",
       variant: "danger",
       description: `${name} must already be inactive. Academic history will remain available.`,
     },
     restore: {
-      title: "Restore class-subject mapping",
+      title: "Restore subject for this class",
       confirmationText: CONFIRM_RESTORE_CLASS_SUBJECT,
-      confirmLabel: "Restore mapping",
+      confirmLabel: "Restore subject",
       variant: "primary",
       description: name,
     },
     delete: {
-      title: "Delete class-subject mapping",
+      title: "Remove subject from this class",
       confirmationText: CONFIRM_DELETE_CLASS_SUBJECT,
-      confirmLabel: "Delete mapping",
+      confirmLabel: "Remove subject",
       variant: "danger",
       description: `${name} must be inactive, unarchived, and have no academic history.`,
     },
@@ -167,6 +168,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [classSearchDraft, setClassSearchDraft] = useState("");
   const [classSearch, setClassSearch] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [mappingSelectedClassByTab, setMappingSelectedClassByTab] = useState({});
@@ -174,7 +176,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [classForm, setClassForm] = useState(BLANK_CLASS);
   const [progressionForm, setProgressionForm] = useState(BLANK_PROGRESSION);
   const [subjectSelection, setSubjectSelection] = useState({
-    subject_id: "",
+    subject_ids: [],
     is_core: true,
   });
   const [editingClassId, setEditingClassId] = useState("");
@@ -189,38 +191,56 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [saving, setSaving] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const classLoadSequence = useRef(0);
   const { showSuccess, showError, showWarning } = useToast();
 
-  const loadBase = useCallback(async () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const nextSearch = classSearchDraft.trim();
+      setClassSearch((current) => (current === nextSearch ? current : nextSearch));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [classSearchDraft]);
+
+  const loadClasses = useCallback(async () => {
+    const requestId = classLoadSequence.current + 1;
+    classLoadSequence.current = requestId;
     setLoading(true);
     setError(null);
     try {
-      const [classResponse, subjectResponse, teacherResponse] = await Promise.all([
-        classService.getClasses({
-          limit: 100,
-          includeArchived: domain === "classes",
-          search: classSearch,
-        }),
-        subjectService.getSubjects({ limit: 100, isActive: true }),
-        teacherService.listMemberships({ limit: 100 }),
-      ]);
+      const classResponse = await classService.getClasses({
+        limit: 100,
+        includeArchived: domain === "classes",
+        search: classSearch || undefined,
+      });
+      if (classLoadSequence.current !== requestId) return;
       const nextClasses = asItems(classResponse);
       setClasses(nextClasses);
-      setSubjects(asItems(subjectResponse));
-      setTeachers(
-        asItems(teacherResponse).filter(isAssignableClassTeacher),
-      );
       if (domain !== "class-subjects") {
         setSelectedClassId((current) => current || nextClasses[0]?.id || "");
       }
     } catch (err) {
+      if (classLoadSequence.current !== requestId) return;
       const message = getErrorMessage(err, "Could not load class structure.");
       setError(message);
       showError(message);
     } finally {
-      setLoading(false);
+      if (classLoadSequence.current === requestId) setLoading(false);
     }
   }, [classSearch, domain, showError]);
+
+  const loadLookups = useCallback(async () => {
+    try {
+      const [subjectResponse, teacherResponse] = await Promise.all([
+        subjectService.getSubjects({ limit: 500, isActive: true }),
+        teacherService.listMemberships({ limit: 100 }),
+      ]);
+      setSubjects(asItems(subjectResponse));
+      setTeachers(asItems(teacherResponse).filter(isAssignableClassTeacher));
+    } catch (err) {
+      showError(getErrorMessage(err, "Could not load class structure lookups."));
+    }
+  }, [showError]);
 
   const activeSelectedClassId =
     domain === "class-subjects"
@@ -269,8 +289,12 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   }, [activeSelectedClassId, showError]);
 
   useEffect(() => {
-    loadBase();
-  }, [loadBase]);
+    loadLookups();
+  }, [loadLookups]);
+
+  useEffect(() => {
+    loadClasses();
+  }, [loadClasses]);
 
   useEffect(() => {
     loadClassSubjects();
@@ -326,10 +350,10 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
 
   const mappingEmptyMessage =
     activeTab === "inactive"
-      ? "No inactive mappings are attached to this class."
+      ? "No inactive subjects are attached to this class."
       : activeTab === "archived"
-        ? "No archived mappings are attached to this class."
-        : "No current mappings are attached to this class.";
+        ? "No archived subjects are attached to this class."
+        : "No current subjects are attached to this class.";
 
   const resetClassForm = () => {
     setClassForm(BLANK_CLASS);
@@ -361,7 +385,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       }
       showSuccess(editingClassId ? "Class updated." : "Class created.");
       resetClassForm();
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, "Could not save class."));
     } finally {
@@ -371,21 +395,22 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
 
   const attachSubject = async (event) => {
     event.preventDefault();
-    if (!activeSelectedClassId || !subjectSelection.subject_id) {
-      showWarning("Select a class and subject first.");
+    if (!activeSelectedClassId || subjectSelection.subject_ids.length === 0) {
+      showWarning("Select a class and at least one subject first.");
       return;
     }
     setSaving("offering");
     try {
-      await academicService.addClassSubject(activeSelectedClassId, {
-        subject_id: subjectSelection.subject_id,
+      const created = await academicService.addClassSubjectsBulk(activeSelectedClassId, {
+        subject_ids: subjectSelection.subject_ids,
         is_core: subjectSelection.is_core,
       });
-      showSuccess("Subject attached to class.");
-      setSubjectSelection({ subject_id: "", is_core: true });
+      const count = Array.isArray(created) ? created.length : subjectSelection.subject_ids.length;
+      showSuccess(`${count} subject${count === 1 ? "" : "s"} attached to class.`);
+      setSubjectSelection({ subject_ids: [], is_core: true });
       await loadClassSubjects();
     } catch (err) {
-      showError(formatMappingError(err, "Could not attach subject to class."));
+      showError(formatMappingError(err, "Could not attach subjects to class."));
     } finally {
       setSaving("");
     }
@@ -409,7 +434,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
         is_terminal: progressionForm.is_terminal,
       });
       showSuccess("Class progression updated.");
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, "Could not update class progression."));
     } finally {
@@ -432,7 +457,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
         next_class_id: "",
         is_terminal: false,
       }));
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, "Could not clear class progression."));
     } finally {
@@ -448,7 +473,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       if (action === "archive") await classService.archiveClass(item.id);
       if (action === "restore") await classService.restoreClass(item.id);
       showSuccess(`Class ${action}d.`);
-      await loadBase();
+      await loadClasses();
     } catch (err) {
       showError(getErrorMessage(err, `Could not ${action} class.`));
     } finally {
@@ -466,10 +491,10 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       if (action === "archive") await academicService.archiveClassSubject(item.id);
       if (action === "restore") await academicService.restoreClassSubject(item.id);
       if (action === "delete") await academicService.deleteClassSubject(item.id);
-      showSuccess(`Class-subject mapping ${action}d.`);
+      showSuccess(`Subject in class ${action}d.`);
       await loadClassSubjects();
     } catch (err) {
-      showError(formatMappingError(err, `Could not ${action} class-subject mapping.`));
+      showError(formatMappingError(err, `Could not ${action} this subject for the class.`));
     } finally {
       setSaving("");
       setPendingMappingConfirmation(null);
@@ -483,11 +508,11 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       await academicService.updateClassSubject(editingMapping.id, {
         is_core: editingMapping.is_core,
       });
-      showSuccess("Class-subject mapping updated.");
+      showSuccess("Subject settings updated for this class.");
       setEditingMapping(null);
       await loadClassSubjects();
     } catch (err) {
-      showError(formatMappingError(err, "Could not update class-subject mapping."));
+      showError(formatMappingError(err, "Could not update this subject for the class."));
     } finally {
       setSaving("");
     }
@@ -582,8 +607,8 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const classSearchControl = (
     <Input
       label="Search classes"
-      value={classSearch}
-      onChange={(event) => setClassSearch(event.target.value)}
+      value={classSearchDraft}
+      onChange={(event) => setClassSearchDraft(event.target.value)}
       placeholder="Class name or arm"
     />
   );
@@ -1027,18 +1052,23 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
               options={classOptions}
               required
             />
-            <SelectControl
-              label="Subject"
-              value={subjectSelection.subject_id}
-              onChange={(value) =>
-                setSubjectSelection((current) => ({ ...current, subject_id: value }))
+            <MultiSelect
+              label="Subjects"
+              name="subject_ids"
+              value={subjectSelection.subject_ids}
+              onChange={(event) =>
+                setSubjectSelection((current) => ({
+                  ...current,
+                  subject_ids: event.target.value,
+                }))
               }
               options={subjectOptions}
               placeholder={
                 subjectOptions.length === 0
                   ? "All active subjects are attached"
-                  : "Select subject"
+                  : "Search and select subjects"
               }
+              searchPlaceholder="Search subjects"
               disabled={subjectOptions.length === 0}
               required
             />
@@ -1051,9 +1081,17 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
             />
             <Button
               type="submit"
-              disabled={saving === "offering" || subjectOptions.length === 0}
+              disabled={
+                saving === "offering" ||
+                subjectOptions.length === 0 ||
+                subjectSelection.subject_ids.length === 0
+              }
             >
-              {saving === "offering" ? "Attaching..." : "Attach subject"}
+              {saving === "offering"
+                ? "Attaching..."
+                : subjectSelection.subject_ids.length > 0
+                  ? `Attach ${subjectSelection.subject_ids.length} subject${subjectSelection.subject_ids.length === 1 ? "" : "s"}`
+                  : "Attach subjects"}
             </Button>
           </form>
         </WorkspacePanel>
@@ -1226,8 +1264,8 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       />
       <Modal
         open={Boolean(editingMapping)}
-        title="Edit class-subject mapping"
-        description={editingMapping?.subject_name || "Class-subject mapping"}
+        title="Edit subject in class"
+        description={editingMapping?.subject_name || "Subject in class"}
         onClose={() => setEditingMapping(null)}
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -1261,8 +1299,8 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
       </Modal>
       <Modal
         open={Boolean(viewingMapping)}
-        title={viewingMapping?.subject_name || "Class-subject mapping"}
-        description="Archived mapping"
+        title={viewingMapping?.subject_name || "Subject in class"}
+        description="Archived class subject"
         onClose={() => setViewingMapping(null)}
         footer={
           <div className="flex justify-end">
@@ -1285,7 +1323,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
 
   const reviewView = (
     <WorkspacePanel
-      title="Class subject mappings"
+      title="Subjects taught in this class"
       description="Select a class to review the subjects currently attached to it."
     >
       <div className="max-h-[calc(100vh-15rem)] space-y-3 overflow-y-auto pr-2">
@@ -1394,7 +1432,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
     return (
       <WorkspacePanel title="Class structure unavailable">
         <p className="text-sm text-error">{error}</p>
-        <Button type="button" className="mt-4" onClick={loadBase}>
+        <Button type="button" className="mt-4" onClick={loadClasses}>
           Retry
         </Button>
       </WorkspacePanel>

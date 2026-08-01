@@ -1,4 +1,4 @@
-import { Sparkles, X } from "lucide-react";
+import { MessageCircle, X } from "lucide-react";
 import Button from "../ui/Button";
 
 function AiChatPanel({ open, onClose }) {
@@ -20,7 +20,7 @@ function AiChatPanel({ open, onClose }) {
         <div className="space-y-4 px-5 py-5">
           <div className="rounded-2xl border border-primary/15 bg-primary-subtle px-4 py-4 text-sm text-text-soft">
             <div className="flex items-center gap-2 font-semibold text-primary">
-              <Sparkles className="h-4 w-4" />
+              <MessageCircle className="h-4 w-4" />
               Assistant unavailable
             </div>
             <p className="mt-2 text-sm text-text-soft">

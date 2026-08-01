@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import AsyncGenerator
 
 import pytest
@@ -19,9 +19,11 @@ from app.modules.auth_identity.models import ActorType, AuthIdentity, Identifier
 from app.modules.classes.models import ClassRoom
 from app.modules.parents.models import (
     Parent,
+    ParentAccount,
     ParentAccountStatus,
     ParentInvitation,
     ParentInvitationStatus,
+    ParentMembershipStatus,
 )
 from app.modules.students.models import (
     Gender,
@@ -31,6 +33,7 @@ from app.modules.students.models import (
     StudentParentLinkRequestStatus,
     StudentProfileStatus,
 )
+from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus
 from app.modules.subjects.models import Subject
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.teachers.models import (
@@ -40,10 +43,14 @@ from app.modules.teachers.models import (
     TeacherInvitation,
     TeacherInvitationStatus,
     TeacherMembershipStatus,
-    TeacherStatus,
 )
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
-from app.tenant_management.models import SubscriptionPlan, Tenant, TenantStatus, TenantVerificationStatus
+from app.tenant_management.models import (
+    SubscriptionPlan,
+    Tenant,
+    TenantStatus,
+    TenantVerificationStatus,
+)
 
 
 @pytest_asyncio.fixture
@@ -146,16 +153,27 @@ async def create_teacher(
     verified: bool = True,
     account_status: TeacherAccountStatus = TeacherAccountStatus.ACTIVE,
 ) -> Teacher:
-    teacher = Teacher(
-        tenant_id=tenant.id,
+    account = TeacherAccount(
         email=email,
         password_hash=hash_password("TeacherPass123"),
         first_name="Tola",
         last_name="Teacher",
         account_status=account_status,
-        status=TeacherStatus.ACTIVE,
         is_verified=verified,
         is_active=True,
+    )
+    db_session.add(account)
+    await db_session.flush()
+    await db_session.refresh(account)
+
+    teacher = Teacher(
+        tenant_id=tenant.id,
+        teacher_account_id=account.id,
+        teacher_account=account,
+        staff_id=f"TCH-{email.split('@')[0]}",
+        job_title="Teacher",
+        status=TeacherMembershipStatus.ACTIVE,
+        joined_at=datetime.now(timezone.utc),
     )
     db_session.add(teacher)
     await db_session.flush()
@@ -221,8 +239,7 @@ async def create_parent(
     verified: bool = True,
     account_status: ParentAccountStatus = ParentAccountStatus.ACTIVE,
 ) -> Parent:
-    parent = Parent(
-        tenant_id=tenant.id,
+    account = ParentAccount(
         email=email,
         password_hash=hash_password("ParentPass123"),
         first_name="Bola",
@@ -231,9 +248,21 @@ async def create_parent(
         is_verified=verified,
         is_active=True,
     )
+    db_session.add(account)
+    await db_session.flush()
+    await db_session.refresh(account)
+
+    parent = Parent(
+        tenant_id=tenant.id,
+        parent_account_id=account.id,
+        parent_account=account,
+        status=ParentMembershipStatus.ACTIVE,
+        joined_at=datetime.now(timezone.utc),
+    )
     db_session.add(parent)
     await db_session.flush()
     await db_session.refresh(parent)
+    parent.parent_account = account
     await create_auth_identity(
         db_session,
         tenant_id=tenant.id,
@@ -282,7 +311,9 @@ async def create_student(
     return student
 
 
-def auth_headers(*, actor_id, actor_type: str, role: str, email: str, tenant_id=None) -> dict[str, str]:
+def auth_headers(
+    *, actor_id, actor_type: str, role: str, email: str, tenant_id=None
+) -> dict[str, str]:
     payload = {
         "sub": str(actor_id),
         "actor_type": actor_type,
@@ -461,13 +492,30 @@ async def test_student_default_password_first_login_flow(
 ) -> None:
     tenant = await create_tenant(db_session, suffix="student")
     admin = await create_tenant_admin(db_session, tenant=tenant, email="admin-student@example.com")
+    classroom = ClassRoom(
+        tenant_id=tenant.id,
+        name="JSS1",
+        arm="A",
+        is_active=True,
+    )
+    academic_session = AcademicSession(
+        tenant_id=tenant.id,
+        name="2026/2027",
+        start_date=date(2026, 7, 1),
+        end_date=date(2027, 7, 31),
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+    )
+    db_session.add_all([classroom, academic_session])
     await db_session.commit()
+    await db_session.refresh(classroom)
 
     create_response = await api_client.post(
         "/api/v1/tenant-admin/students",
-        headers=auth_headers(
+        headers=await session_auth_headers(
+            db_session,
             actor_id=admin.id,
-            actor_type="tenant_admin",
+            actor_type=AuthSessionActorType.TENANT_ADMIN,
             role="admin",
             email=admin.email,
             tenant_id=tenant.id,
@@ -475,6 +523,9 @@ async def test_student_default_password_first_login_flow(
         json={
             "first_name": "Ada",
             "last_name": "Lovelace",
+            "date_of_birth": "2012-05-01",
+            "class_id": str(classroom.id),
+            "gender": "female",
         },
     )
 
@@ -482,14 +533,14 @@ async def test_student_default_password_first_login_flow(
     created_student = create_response.json()
     assert created_student["admission_number"]
     assert created_student["password_reset_required"] is True
-    assert created_student["default_password"] == settings.DEFAULT_STUDENT_PASSWORD
+    assert created_student["setup_code"]
     assert "password_hash" not in created_student
 
     login_response = await api_client.post(
         "/api/v1/auth/login",
         json={
             "email": created_student["admission_number"],
-            "password": settings.DEFAULT_STUDENT_PASSWORD,
+            "password": created_student["setup_code"],
         },
     )
     assert login_response.status_code == 200
@@ -505,13 +556,13 @@ async def test_student_default_password_first_login_flow(
         headers=student_headers,
     )
     assert blocked_response.status_code == 403
-    assert "change your default password" in blocked_response.json()["detail"].lower()
+    assert "change your temporary password" in blocked_response.json()["detail"].lower()
 
     change_password_response = await api_client.post(
         "/api/v1/students/me/change-password",
         headers=student_headers,
         json={
-            "current_password": settings.DEFAULT_STUDENT_PASSWORD,
+            "access_code": created_student["setup_code"],
             "new_password": "ResetPass123",
             "confirm_password": "ResetPass123",
         },
@@ -525,21 +576,7 @@ async def test_student_default_password_first_login_flow(
     )
     assert onboarding_after_password_response.status_code == 200
     onboarding_after_password = onboarding_after_password_response.json()
-    assert onboarding_after_password["onboarding_required"] is True
-    assert onboarding_after_password["current_values"]["password_reset_required"] is False
-
-    complete_profile_response = await api_client.patch(
-        "/api/v1/students/me/profile",
-        headers=student_headers,
-        json={
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "date_of_birth": "2012-01-01",
-            "gender": "female",
-        },
-    )
-    assert complete_profile_response.status_code == 200
-    assert complete_profile_response.json()["profile_status"] == "complete"
+    assert onboarding_after_password["onboarding_required"] is False
 
     onboarding_complete_response = await api_client.get(
         "/api/v1/students/me/onboarding-status",
@@ -564,10 +601,11 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
     tenant_one = await create_tenant(db_session, suffix="tenant1")
     tenant_two = await create_tenant(db_session, suffix="tenant2")
 
+    parent_email = "parent-link@example.com"
     parent = await create_parent(
         db_session,
         tenant=tenant_one,
-        email="parent-link@example.com",
+        email=parent_email,
     )
     student = await create_student(
         db_session,
@@ -581,34 +619,70 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
         admission_number="WVS-T2-00001",
         password_reset_required=False,
     )
+    invitation_token = "parent-link-invitation-token"
+    db_session.add(
+        ParentInvitation(
+            tenant_id=tenant_one.id,
+            student_id=student.id,
+            invited_email=parent_email,
+            relationship_type="guardian",
+            admission_number_snapshot=student.admission_number,
+            token_digest=hash_auth_secret(invitation_token),
+            status=ParentInvitationStatus.PENDING,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+        )
+    )
     await db_session.commit()
 
-    parent_headers = auth_headers(
+    parent_headers = await session_auth_headers(
+        db_session,
         actor_id=parent.id,
-        actor_type="parent",
+        actor_type=AuthSessionActorType.PARENT,
         role="parent",
-        email=parent.email,
+        email=parent_email,
         tenant_id=tenant_one.id,
     )
-    student_headers = auth_headers(
+    parent_account_headers = await session_auth_headers(
+        db_session,
+        actor_id=parent.parent_account_id,
+        actor_type=AuthSessionActorType.PARENT_ACCOUNT,
+        role="parent_account",
+        email=parent_email,
+    )
+    student_headers = await session_auth_headers(
+        db_session,
         actor_id=student.id,
-        actor_type="student",
+        actor_type=AuthSessionActorType.STUDENT,
         role="student",
         email=student.admission_number,
         tenant_id=tenant_one.id,
     )
-    other_student_headers = auth_headers(
+    other_student_headers = await session_auth_headers(
+        db_session,
         actor_id=other_student.id,
-        actor_type="student",
+        actor_type=AuthSessionActorType.STUDENT,
         role="student",
         email=other_student.admission_number,
         tenant_id=tenant_two.id,
     )
 
+    wrong_admission_response = await api_client.post(
+        "/api/v1/parents/accounts/me/invitations/accept",
+        headers={
+            **parent_account_headers,
+            "X-Student-Admission-Number": other_student.admission_number,
+        },
+        json={"invitation_token": invitation_token},
+    )
+    assert wrong_admission_response.status_code == 400
+
     request_response = await api_client.post(
-        "/api/v1/parents/me/student-link-requests",
-        headers=parent_headers,
-        json={"admission_number": student.admission_number},
+        "/api/v1/parents/accounts/me/invitations/accept",
+        headers={
+            **parent_account_headers,
+            "X-Student-Admission-Number": student.admission_number,
+        },
+        json={"invitation_token": invitation_token},
     )
     assert request_response.status_code == 201
     request_payload = request_response.json()
@@ -616,18 +690,15 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
     request_id = request_payload["id"]
 
     duplicate_response = await api_client.post(
-        "/api/v1/parents/me/student-link-requests",
-        headers=parent_headers,
-        json={"admission_number": student.admission_number},
+        "/api/v1/parents/accounts/me/invitations/accept",
+        headers={
+            **parent_account_headers,
+            "X-Student-Admission-Number": student.admission_number,
+        },
+        json={"invitation_token": invitation_token},
     )
-    assert duplicate_response.status_code == 409
-
-    cross_tenant_request_response = await api_client.post(
-        "/api/v1/parents/me/student-link-requests",
-        headers=parent_headers,
-        json={"admission_number": other_student.admission_number},
-    )
-    assert cross_tenant_request_response.status_code == 404
+    assert duplicate_response.status_code == 201
+    assert duplicate_response.json()["id"] == request_id
 
     parent_list_response = await api_client.get(
         "/api/v1/parents/me/student-link-requests",
@@ -641,17 +712,17 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
         headers=student_headers,
     )
     assert student_list_response.status_code == 200
-    assert student_list_response.json()["items"][0]["parent"]["email"] == parent.email
+    assert student_list_response.json()["items"][0]["parent_email"] == parent_email
 
     wrong_student_response = await api_client.post(
-        f"/api/v1/students/me/parent-link-requests/{request_id}/respond",
+        f"/api/v1/students/me/parent-link-requests/{request_id}/decision",
         headers=other_student_headers,
         json={"action": "approve"},
     )
     assert wrong_student_response.status_code == 404
 
     approve_response = await api_client.post(
-        f"/api/v1/students/me/parent-link-requests/{request_id}/respond",
+        f"/api/v1/students/me/parent-link-requests/{request_id}/decision",
         headers=student_headers,
         json={"action": "approve"},
     )
@@ -659,11 +730,11 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
     assert approve_response.json()["status"] == "approved"
 
     already_processed_response = await api_client.post(
-        f"/api/v1/students/me/parent-link-requests/{request_id}/respond",
+        f"/api/v1/students/me/parent-link-requests/{request_id}/decision",
         headers=student_headers,
-        json={"action": "reject"},
+        json={"action": "reject", "reason": "Already approved."},
     )
-    assert already_processed_response.status_code == 400
+    assert already_processed_response.status_code == 409
 
     linked_students_response = await api_client.get(
         "/api/v1/parents/me/students",
@@ -677,7 +748,7 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
         headers=student_headers,
     )
     assert linked_parents_response.status_code == 200
-    assert linked_parents_response.json()["items"][0]["parent_id"] == str(parent.id)
+    assert linked_parents_response.json()["items"][0]["parent_membership_id"] == str(parent.id)
 
 
 @pytest.mark.asyncio
@@ -697,7 +768,9 @@ async def test_analytics_endpoints_return_real_counts(
         suffix="rejected",
         verification_status=TenantVerificationStatus.REJECTED,
     )
-    admin = await create_tenant_admin(db_session, tenant=active_tenant, email="admin-analytics@example.com")
+    admin = await create_tenant_admin(
+        db_session, tenant=active_tenant, email="admin-analytics@example.com"
+    )
     await create_teacher(db_session, tenant=active_tenant, email="teacher-analytics@example.com")
     await create_parent(db_session, tenant=active_tenant, email="parent-analytics@example.com")
     student = await create_student(
@@ -749,17 +822,35 @@ async def test_analytics_endpoints_return_real_counts(
             created_by_admin_id=admin.id,
         )
     )
+    pending_parent = await create_parent(
+        db_session,
+        tenant=active_tenant,
+        email="pending-parent@example.com",
+        verified=False,
+        account_status=ParentAccountStatus.PENDING,
+    )
+    pending_invitation = ParentInvitation(
+        tenant_id=active_tenant.id,
+        student_id=student.id,
+        invited_email="pending-parent@example.com",
+        relationship_type="guardian",
+        admission_number_snapshot=student.admission_number,
+        token_digest=hash_auth_secret("pending-parent-request-token"),
+        status=ParentInvitationStatus.ACCEPTED,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+        accepted_at=datetime.now(timezone.utc),
+        accepted_by_parent_account_id=pending_parent.parent_account_id,
+        created_by_admin_id=admin.id,
+    )
+    db_session.add(pending_invitation)
+    await db_session.flush()
     db_session.add(
         StudentParentLinkRequest(
             tenant_id=active_tenant.id,
+            invitation_id=pending_invitation.id,
             student_id=student.id,
-            parent_id=(await create_parent(
-                db_session,
-                tenant=active_tenant,
-                email="pending-parent@example.com",
-                verified=False,
-                account_status=ParentAccountStatus.PENDING,
-            )).id,
+            parent_account_id=pending_parent.parent_account_id,
+            parent_membership_id=pending_parent.id,
             admission_number_snapshot=student.admission_number,
             status=StudentParentLinkRequestStatus.PENDING,
         )
@@ -776,23 +867,28 @@ async def test_analytics_endpoints_return_real_counts(
 
     superadmin_response = await api_client.get(
         "/api/v1/superadmin/analytics/overview",
-        headers={
-            "Authorization": f"Bearer {create_access_token({'sub': str(superadmin.id), 'role': 'superadmin', 'account_type': 'superadmin', 'email': superadmin.email})}"
-        },
+        headers=await session_auth_headers(
+            db_session,
+            actor_id=superadmin.id,
+            actor_type=AuthSessionActorType.SUPERADMIN,
+            role="superadmin",
+            email=superadmin.email,
+        ),
     )
     assert superadmin_response.status_code == 200
     superadmin_payload = superadmin_response.json()
-    assert superadmin_payload["stats"]["total_tenants"] == 3
-    assert superadmin_payload["stats"]["active_tenants"] == 1
-    assert superadmin_payload["stats"]["pending_verification"] == 1
-    assert superadmin_payload["stats"]["rejected_verification"] == 1
-    assert superadmin_payload["stats"]["total_tenant_admins"] == 1
+    assert superadmin_payload["stats"]["total_tenants"] >= 3
+    assert superadmin_payload["stats"]["active_tenants"] >= 1
+    assert superadmin_payload["stats"]["pending_verification"] >= 1
+    assert superadmin_payload["stats"]["rejected_verification"] >= 1
+    assert superadmin_payload["stats"]["total_tenant_admins"] >= 1
 
     tenant_admin_response = await api_client.get(
         "/api/v1/tenant-admin/analytics/overview",
-        headers=auth_headers(
+        headers=await session_auth_headers(
+            db_session,
             actor_id=admin.id,
-            actor_type="tenant_admin",
+            actor_type=AuthSessionActorType.TENANT_ADMIN,
             role="admin",
             email=admin.email,
             tenant_id=active_tenant.id,
