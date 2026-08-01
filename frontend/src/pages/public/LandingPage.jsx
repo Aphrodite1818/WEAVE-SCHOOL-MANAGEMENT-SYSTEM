@@ -3,11 +3,11 @@ import { useEffect, useState } from "react";
 import {
   BarChart3,
   BookOpen,
-  CalendarDays,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
   GraduationCap,
+  Palette,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -28,28 +28,29 @@ const features = [
   { title: "Teacher Management", description: "Manage teacher profiles, subjects, class assignments, and verification status.", icon: Users },
   { title: "Attendance", description: "Mark daily attendance and keep summaries available for admins, teachers, and parents.", icon: ClipboardCheck },
   { title: "Grades", description: "Record scores, track drafts and submissions, and prepare report cards.", icon: BookOpen },
-  { title: "Timetable", description: "Organize class schedules and keep teaching assignments clear.", icon: CalendarDays },
-  { title: "Analytics", description: "Track enrollment, attendance, results, usage, and billing signals without digging through tables.", icon: BarChart3 },
+  { title: "Academic Lifecycle", description: "Guide sessions, terms, calendars, class progression, and term opening through backend-verified setup steps.", icon: ShieldCheck },
+  { title: "Analytics", description: "Track enrollment, attendance, results, usage, and subscription signals without digging through tables.", icon: BarChart3 },
+  { title: "School Branding", description: "Publish a coordinated colour palette and logo across the tenant workspace on eligible plans.", icon: Palette },
 ];
 
 const benefits = [
-  "Separate dashboards for admins, teachers, students, parents, and platform operators.",
-  "Routes, services, and API calls stay separated so the frontend remains maintainable.",
-  "Mobile layouts keep the common tasks usable on phones, not just desktop.",
+  "Give every role a focused workspace with the tools they need and nothing they should not access.",
+  "Move from admission to class assignment, parent access, attendance, results, and report cards in one connected flow.",
+  "Keep the school running from phones, tablets, and desktops without losing the structure of the full workspace.",
 ];
 
 const operationalNotes = [
   {
-    title: "Admins see the school state",
-    description: "Enrollment, staff, classes, results, billing, and notices stay reachable from one workspace.",
+    title: "Administrators get control",
+    description: "Set up sessions, manage learners and staff, publish notices, track the Weave subscription, and review school activity from one dashboard.",
   },
   {
-    title: "Teachers stay focused",
-    description: "Attendance, class context, score entry, and announcements sit close to the daily teaching flow.",
+    title: "Teachers work faster",
+    description: "Open assigned classes, mark attendance, enter scores, and follow school updates without searching through admin-only tools.",
   },
   {
-    title: "Parents get the right context",
-    description: "Portal views keep student updates, attendance, and school notices clear without exposing admin tools.",
+    title: "Parents stay informed",
+    description: "Give guardians a clear view of attendance, report cards, linked children, and school announcements without exposing private operations.",
   },
 ];
 
@@ -99,7 +100,7 @@ function LandingPricingCard({ plan, activePlanCode, onSelect }) {
 
       <div className="mt-5">
         <p className="text-2xl font-bold text-text">{formatLandingPrice(plan)}</p>
-        <p className="mt-1 text-xs font-medium text-text-muted">Monthly billing</p>
+        <p className="mt-1 text-xs font-medium text-text-muted">Monthly subscription</p>
       </div>
 
       <ul className="mt-5 space-y-3 text-sm text-text-soft">
@@ -182,13 +183,22 @@ function LandingPage() {
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
               <div className="max-w-3xl">
                 <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
-                  <span className="landing-headline-line">Run school records,</span>
-                  <span className="landing-headline-line">results, attendance,</span>
-                  <span className="landing-headline-line">and notices from</span>
-                  <span className="landing-headline-line">one workspace.</span>
+                  <span className="landing-headline-line">
+                    <span className="landing-headline-word">Run school records,</span>
+                  </span>
+                  <span className="landing-headline-line">
+                    <span className="landing-headline-word">results,</span>{" "}
+                    <span className="landing-headline-word">attendance,</span>
+                  </span>
+                  <span className="landing-headline-line">
+                    <span className="landing-headline-word">and notices from</span>
+                  </span>
+                  <span className="landing-headline-line">
+                    <span className="landing-headline-word">one workspace.</span>
+                  </span>
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8">
-                  Weave gives admins, teachers, students, and parents the screens they need for daily school work: enrollment, class setup, attendance, score entry, report cards, announcements, and billing.
+                  Weave gives admins, teachers, students, and parents the screens they need for daily school work: enrollment, guided academic lifecycle setup, attendance, score entry, report cards, announcements, and subscription management.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <Link to={buildRegistrationHref("free_trial")}>
@@ -210,7 +220,9 @@ function LandingPage() {
                   {[
                     ["Multi-role", "Admin, teacher, student, and parent workspaces"],
                     ["Tenant-aware", "School-level boundaries and onboarding"],
-                    ["Billing-ready", "Checkout and subscription verification"],
+                    ["Lifecycle-led", "Sessions, terms, calendars, and progression checks"],
+                    ["Subscription-ready", "Plan checkout and subscription verification"],
+                    ["Brandable", "School colours and logo support on higher plans"],
                   ].map(([title, copy]) => (
                     <div
                       key={title}
@@ -292,10 +304,10 @@ function LandingPage() {
             <div>
               <p className="text-sm font-bold uppercase tracking-wide text-primary">Benefits</p>
               <h2 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
-                Built for daily use, not demos.
+                Keep every school role working from the same source of truth.
               </h2>
               <p className="mt-4 text-base leading-7 text-text-muted">
-                The interface favors quick scans, clear actions, and records that stay tied to the right tenant.
+                Weave keeps student records, staff workflows, parent access, and school updates connected without mixing responsibilities across roles.
               </p>
             </div>
             <div className="grid gap-3">

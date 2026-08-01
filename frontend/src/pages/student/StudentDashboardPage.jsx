@@ -66,6 +66,22 @@ const emptyDashboardBundle = (studentProfile) => ({
   subjectContext: null,
 });
 
+const studentClassLabel = (student, fallback = null) => {
+  if (!student) return fallback;
+  return cleanText(
+    [student.class_name, student.class_arm || student.arm].filter(Boolean).join(" "),
+    fallback ?? (student.class_id ? "Class assigned" : "No class assigned yet"),
+  );
+};
+
+const formatAcademicTermLabel = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "No term";
+  return normalized
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
 function StudentDashboardPage() {
   const [student, setStudent] = useState(null);
   const [parentLinks, setParentLinks] = useState([]);
@@ -141,7 +157,7 @@ function StudentDashboardPage() {
         });
 
         if (!mounted || controller.signal.aborted) return;
-        setStudent(bundle.student);
+        setStudent(studentProfile);
         setParentLinks(bundle.parentLinks);
         setParentLinkRequests(bundle.parentLinkRequests);
         setMetrics(bundle.metrics);
@@ -171,16 +187,33 @@ function StudentDashboardPage() {
     const chartSource = metrics?.charts || {};
     const publishedResults = academicResults.filter(isPublishedResult);
     const pendingResults = academicResults.filter((result) => !isPublishedResult(result));
+    const fallbackContext = getAcademicContext(academicResults, reportCards);
     const context = subjectContext
       ? {
           classLabel:
-            subjectContext.class_name || subjectContext.class_arm
+            studentClassLabel(student) ||
+            (subjectContext.class_name || subjectContext.class_arm
               ? [subjectContext.class_name, subjectContext.class_arm].filter(Boolean).join(" ")
-              : null,
-          sessionLabel: subjectContext.academic_session_name || null,
-          termLabel: subjectContext.academic_term_name || null,
+              : null),
+          sessionLabel:
+            student?.current_academic_session_name ||
+            subjectContext.academic_session_name ||
+            null,
+          termLabel:
+            student?.current_academic_term_name ||
+            subjectContext.academic_term_name ||
+            null,
         }
-      : getAcademicContext(academicResults, reportCards);
+      : {
+          ...fallbackContext,
+          classLabel: studentClassLabel(student, fallbackContext.classLabel),
+          sessionLabel:
+            student?.current_academic_session_name ||
+            fallbackContext.sessionLabel,
+          termLabel:
+            student?.current_academic_term_name ||
+            fallbackContext.termLabel,
+        };
     const currentAverage = hasValue(stats.current_average)
       ? stats.current_average
       : publishedResults.length > 0
@@ -214,7 +247,7 @@ function StudentDashboardPage() {
       performanceTrend,
       gradeDistribution,
     };
-  }, [academicResults, metrics, parentLinkRequests, reportCards, subjectCards, subjectContext]);
+  }, [academicResults, metrics, parentLinkRequests, reportCards, student, subjectCards, subjectContext]);
 
   if (isLoading) {
     return (
@@ -295,7 +328,8 @@ function StudentDashboardPage() {
             )}
             profileCompletion={student.profile_status}
             chips={[
-              { label: cleanText(dashboardData.context.sessionLabel, "No session"), value: cleanText(dashboardData.context.termLabel, "No term"), tone: "primary" },
+              { label: "Admission", value: cleanText(student.admission_number, "Not assigned"), tone: "primary" },
+              { label: cleanText(dashboardData.context.sessionLabel, "No session"), value: formatAcademicTermLabel(dashboardData.context.termLabel), tone: "primary" },
             ]}
           />
 

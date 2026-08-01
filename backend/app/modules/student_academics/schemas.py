@@ -340,6 +340,18 @@ class ClassSubjectCreate(InputBase):
     is_core: bool = False
 
 
+class ClassSubjectBulkCreate(InputBase):
+    subject_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    is_core: bool = False
+
+    @field_validator("subject_ids")
+    @classmethod
+    def subject_ids_must_be_unique(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("subject_ids must not contain duplicates")
+        return value
+
+
 class ClassSubjectUpdate(InputBase):
     is_core: bool
 

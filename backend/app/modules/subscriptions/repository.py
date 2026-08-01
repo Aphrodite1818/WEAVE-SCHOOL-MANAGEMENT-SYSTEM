@@ -496,14 +496,22 @@ class SubscriptionRepository:
     @staticmethod
     async def count_classes(db: AsyncSession, tenant_id: uuid.UUID) -> int:
         result = await db.execute(
-            select(func.count(ClassRoom.id)).where(ClassRoom.tenant_id == tenant_id)
+            select(func.count(ClassRoom.id)).where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.is_active == True,
+                ClassRoom.archived_at.is_(None),
+            )
         )
         return int(result.scalar_one() or 0)
 
     @staticmethod
     async def count_subjects(db: AsyncSession, tenant_id: uuid.UUID) -> int:
         result = await db.execute(
-            select(func.count(Subject.id)).where(Subject.tenant_id == tenant_id)
+            select(func.count(Subject.id)).where(
+                Subject.tenant_id == tenant_id,
+                Subject.is_active == True,
+                Subject.archived_at.is_(None),
+            )
         )
         return int(result.scalar_one() or 0)
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
+import MultiSelect from "../../components/ui/MultiSelect";
 import { useToast } from "../../hooks/useToast";
 import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
@@ -175,7 +176,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const [classForm, setClassForm] = useState(BLANK_CLASS);
   const [progressionForm, setProgressionForm] = useState(BLANK_PROGRESSION);
   const [subjectSelection, setSubjectSelection] = useState({
-    subject_id: "",
+    subject_ids: [],
     is_core: true,
   });
   const [editingClassId, setEditingClassId] = useState("");
@@ -231,7 +232,7 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
   const loadLookups = useCallback(async () => {
     try {
       const [subjectResponse, teacherResponse] = await Promise.all([
-        subjectService.getSubjects({ limit: 100, isActive: true }),
+        subjectService.getSubjects({ limit: 500, isActive: true }),
         teacherService.listMemberships({ limit: 100 }),
       ]);
       setSubjects(asItems(subjectResponse));
@@ -394,21 +395,22 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
 
   const attachSubject = async (event) => {
     event.preventDefault();
-    if (!activeSelectedClassId || !subjectSelection.subject_id) {
-      showWarning("Select a class and subject first.");
+    if (!activeSelectedClassId || subjectSelection.subject_ids.length === 0) {
+      showWarning("Select a class and at least one subject first.");
       return;
     }
     setSaving("offering");
     try {
-      await academicService.addClassSubject(activeSelectedClassId, {
-        subject_id: subjectSelection.subject_id,
+      const created = await academicService.addClassSubjectsBulk(activeSelectedClassId, {
+        subject_ids: subjectSelection.subject_ids,
         is_core: subjectSelection.is_core,
       });
-      showSuccess("Subject attached to class.");
-      setSubjectSelection({ subject_id: "", is_core: true });
+      const count = Array.isArray(created) ? created.length : subjectSelection.subject_ids.length;
+      showSuccess(`${count} subject${count === 1 ? "" : "s"} attached to class.`);
+      setSubjectSelection({ subject_ids: [], is_core: true });
       await loadClassSubjects();
     } catch (err) {
-      showError(formatMappingError(err, "Could not attach subject to class."));
+      showError(formatMappingError(err, "Could not attach subjects to class."));
     } finally {
       setSaving("");
     }
@@ -1050,18 +1052,23 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
               options={classOptions}
               required
             />
-            <SelectControl
-              label="Subject"
-              value={subjectSelection.subject_id}
-              onChange={(value) =>
-                setSubjectSelection((current) => ({ ...current, subject_id: value }))
+            <MultiSelect
+              label="Subjects"
+              name="subject_ids"
+              value={subjectSelection.subject_ids}
+              onChange={(event) =>
+                setSubjectSelection((current) => ({
+                  ...current,
+                  subject_ids: event.target.value,
+                }))
               }
               options={subjectOptions}
               placeholder={
                 subjectOptions.length === 0
                   ? "All active subjects are attached"
-                  : "Select subject"
+                  : "Search and select subjects"
               }
+              searchPlaceholder="Search subjects"
               disabled={subjectOptions.length === 0}
               required
             />
@@ -1074,9 +1081,17 @@ function ClassStructureWorkspace({ activeTab, domain = "classes" }) {
             />
             <Button
               type="submit"
-              disabled={saving === "offering" || subjectOptions.length === 0}
+              disabled={
+                saving === "offering" ||
+                subjectOptions.length === 0 ||
+                subjectSelection.subject_ids.length === 0
+              }
             >
-              {saving === "offering" ? "Attaching..." : "Attach subject"}
+              {saving === "offering"
+                ? "Attaching..."
+                : subjectSelection.subject_ids.length > 0
+                  ? `Attach ${subjectSelection.subject_ids.length} subject${subjectSelection.subject_ids.length === 1 ? "" : "s"}`
+                  : "Attach subjects"}
             </Button>
           </form>
         </WorkspacePanel>

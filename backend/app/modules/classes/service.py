@@ -557,6 +557,45 @@ class ClassRoomService:
         return ClassRoomResponse.model_validate(classroom)
 
     @staticmethod
+    async def purge_setup_classroom(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        class_id: uuid.UUID,
+    ) -> ClassRoomResponse:
+        """Permanently remove an unused classroom created during assisted setup."""
+
+        ClassRoomService._ensure_tenant_admin(actor)
+
+        classroom = await ClassRoomRepository.get_by_id(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=class_id,
+        )
+        if classroom is None:
+            raise NotFoundException("Classroom not found")
+
+        dependency_counts = await ClassRoomRepository.count_class_dependencies(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=classroom.id,
+        )
+        if any(count > 0 for count in dependency_counts.values()):
+            raise ConflictException(
+                detail="This class is already referenced and cannot be removed from setup.",
+                payload={"dependency_counts": dependency_counts},
+            )
+
+        response = ClassRoomResponse.model_validate(classroom)
+        await ClassRoomRepository.clear_next_class_references(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=classroom.id,
+        )
+        await ClassRoomRepository.delete_classroom(db=db, classroom=classroom)
+        await db.commit()
+        return response
+
+    @staticmethod
     async def activate_classroom(
         db: AsyncSession,
         actor: TenantAdmin,

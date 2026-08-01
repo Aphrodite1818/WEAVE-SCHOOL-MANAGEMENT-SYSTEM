@@ -18,6 +18,7 @@ function ConfirmDialog({
       title={title}
       description={description}
       onClose={onCancel}
+      placement="center"
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>

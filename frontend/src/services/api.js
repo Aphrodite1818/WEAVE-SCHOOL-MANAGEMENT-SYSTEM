@@ -500,9 +500,6 @@ const logUnexpectedApiError = (endpoint, error) => {
 
   const status = error?.response?.status;
   if (status && (status < 500 || status === 503)) {
-    if (import.meta.env.DEV && status !== 401 && status !== 403) {
-      console.debug(`Handled API response on ${endpoint}: ${status}`);
-    }
     return;
   }
 

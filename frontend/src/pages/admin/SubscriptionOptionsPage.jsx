@@ -57,6 +57,7 @@ function SubscriptionOptionsPage() {
   const [busy, setBusy] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [activePricingPlan, setActivePricingPlan] = useState("professional");
 
   useEffect(() => {
     let active = true;
@@ -72,6 +73,12 @@ function SubscriptionOptionsPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (paidPlans.some((plan) => plan.planCode === planCode)) {
+      setActivePricingPlan(planCode);
+    }
+  }, [paidPlans, planCode]);
 
   const getPlanContext = (candidatePlanCode) => {
     const currentRank = PLAN_RANK[planCode] ?? 0;
@@ -230,7 +237,7 @@ function SubscriptionOptionsPage() {
                 Choose the plan that fits your school
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-                Compare plan features and continue securely through Paystack when you are ready.
+                Compare plan features, including school colour branding on eligible plans, and continue securely through Paystack when you are ready.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -257,7 +264,27 @@ function SubscriptionOptionsPage() {
           </Notice>
         ) : null}
 
-        <section className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="mx-auto mt-6 flex max-w-full justify-center overflow-x-auto px-1 pb-1">
+          <div className="inline-grid min-w-[28rem] grid-cols-3 gap-1 rounded-full border border-border/70 bg-surface-muted/60 p-1 shadow-soft-card sm:min-w-[36rem]">
+            {paidPlans.map((plan) => (
+              <a
+                key={`subscription-plan-tab-${plan.planCode}`}
+                href={`#subscription-plan-${plan.planCode}`}
+                onClick={() => setActivePricingPlan(plan.planCode)}
+                aria-current={activePricingPlan === plan.planCode ? "true" : undefined}
+                className={`rounded-full px-3 py-2.5 text-center text-sm font-semibold transition ${
+                  activePricingPlan === plan.planCode
+                    ? "bg-surface text-primary shadow-[0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-border/60"
+                    : "text-text-muted hover:text-text"
+                }`}
+              >
+                {plan.name}
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <section className="mt-8 grid items-stretch gap-5 lg:grid-cols-3">
           {paidPlans.map((plan) => {
             const context = getPlanContext(plan.planCode);
             const current = context.samePlan && !context.retryCurrentPlan;
@@ -271,36 +298,50 @@ function SubscriptionOptionsPage() {
 
             return (
               <article
+                id={`subscription-plan-${plan.planCode}`}
                 key={plan.planCode}
-                className={`flex min-h-[410px] flex-col rounded-[1.6rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-premium-hover ${
-                  plan.highlighted ? "border-primary ring-4 ring-primary/10" : "border-border/70"
+                className={`flex min-h-[34rem] scroll-mt-28 flex-col rounded-[1.6rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
+                  activePricingPlan === plan.planCode
+                    ? "border-primary/60 ring-4 ring-primary/10"
+                    : "border-border/70"
                 }`}
               >
                 <div className="flex min-h-8 flex-wrap items-center gap-2">
                   {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
                   {current ? <Badge variant="success">Current plan</Badge> : null}
                 </div>
-                <div className="mt-5 flex justify-center">
-                  <div className="grid h-20 w-20 place-items-center rounded-3xl border border-border/70 bg-surface-muted/35 shadow-inner-soft">
-                    <WeaveIcon className="h-16 w-16" decorative />
-                  </div>
+                <div className="mt-4 flex justify-center">
+                  <WeaveIcon className="h-16 w-16" decorative />
                 </div>
-                <h2 className="mt-5 text-2xl font-semibold text-text">{plan.name}</h2>
-                <p className="mt-2 text-xl font-bold text-text">{plan.priceLabel}</p>
+                <h2 className="mt-3 text-center text-2xl font-semibold text-text">{plan.name}</h2>
+                <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
+                <p className="mt-4 min-h-[4.5rem] text-sm leading-6 text-text-muted">
+                  {plan.description}
+                </p>
+
+                <div className="mt-5">
+                  <p className="text-2xl font-bold text-text">{plan.priceLabel}</p>
+                  <p className="mt-1 text-xs font-medium text-text-muted">Monthly subscription</p>
+                </div>
+
                 <ul className="mt-5 space-y-3 text-sm text-text-soft">
                   {(plan.features || []).slice(0, 6).map((feature) => (
-                    <li key={feature} className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <li key={feature} className="flex gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                       <span>{feature}</span>
                     </li>
                   ))}
                 </ul>
-                <div className="mt-auto grid gap-2 border-t border-border/70 pt-5 text-sm text-text-muted">
+
+                <div className="mt-5 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm text-text-muted">
                   <PlanLimit label="Students" value={formatLimitValue(plan.limits?.students)} />
                   <PlanLimit label="Teachers" value={formatLimitValue(plan.limits?.teachers)} />
                   <PlanLimit label="Classes" value={formatLimitValue(plan.limits?.classes)} />
+                </div>
+
+                <div className="mt-auto flex flex-1 items-end justify-center pt-6">
                   <Button
-                    className="mt-3 w-full"
+                    className="w-full"
                     variant={current ? "outline" : "primary"}
                     disabled={current}
                     onClick={() => openPlanModal(plan.planCode)}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
 
@@ -24,12 +25,14 @@ from app.modules.auth.schemas import (
     VerifyOTP,
 )
 from app.modules.auth.service import (
+    AuthenticatedActor,
     AuthService,
     AuthSessionService,
     OTPService,
     TenantActivationService,
 )
 from app.modules.auth.student_authentication import authenticate_student_actor
+from app.modules.legal_compliance.service import LegalComplianceService
 from app.modules.parents.models import Parent, ParentAccount
 from app.modules.students.models import Student
 from app.modules.superadmin.models import SuperAdmin
@@ -185,6 +188,14 @@ async def _build_session_bootstrap_response(
         passport_photo_url=passport_photo_url,
         tenant_logo_url=tenant.logo_url if tenant else None,
     )
+    legal_status = await LegalComplianceService.get_status(db, actor)
+    legal_accepted_at = legal_status["accepted_at"]
+    legal_accepted_at_value = (
+        legal_accepted_at.isoformat() if legal_accepted_at is not None else None
+    )
+    user.legal_compliance_required = not bool(legal_status["accepted"])
+    user.legal_compliance_policy_version = str(legal_status["policy_version"])
+    user.legal_compliance_accepted_at = legal_accepted_at_value
     return SessionBootstrapResponse(
         authenticated=True,
         actor_type=actor_type,
@@ -194,6 +205,9 @@ async def _build_session_bootstrap_response(
         email=email,
         password_reset_required=getattr(actor, "password_reset_required", None),
         user=user,
+        legal_compliance_required=not bool(legal_status["accepted"]),
+        legal_compliance_policy_version=str(legal_status["policy_version"]),
+        legal_compliance_accepted_at=legal_accepted_at_value,
     )
 
 
@@ -206,6 +220,52 @@ class LoginResponse(Token):
     account_type: str | None = None
     password_reset_required: bool | None = None
     user: LoginSessionUser | None = None
+    legal_compliance_required: bool = True
+    legal_compliance_policy_version: str | None = None
+    legal_compliance_accepted_at: str | None = None
+
+
+def _legal_identity_from_authenticated_actor(actor: AuthenticatedActor) -> tuple[str, str]:
+    actor_type = str(actor.actor_type)
+    account_type = str(actor.account_type)
+    user_meta = actor.user.meta if actor.user and actor.user.meta else {}
+    if actor_type == "teacher" and user_meta.get("teacher_account_id"):
+        return "teacher_account", str(user_meta["teacher_account_id"])
+    if actor_type == "parent" and user_meta.get("parent_account_id"):
+        return "parent_account", str(user_meta["parent_account_id"])
+    if actor_type in {"teacher_account", "parent_account"}:
+        return actor_type, str(actor.actor_id)
+    if account_type in {"teacher_account", "parent_account"} and actor.user and actor.user.id:
+        return account_type, str(actor.user.id)
+    return actor_type, str(actor.actor_id)
+
+
+async def _legal_status_for_authenticated_actor(
+    db: DbSession,
+    actor: AuthenticatedActor,
+) -> dict[str, object]:
+    actor_type, actor_id = _legal_identity_from_authenticated_actor(actor)
+    return await LegalComplianceService.get_status_for_identity(
+        db,
+        actor_type=actor_type,
+        actor_id=UUID(actor_id),
+    )
+
+
+def _apply_legal_status_to_login_response(
+    response: LoginResponse,
+    legal_status: dict[str, object],
+) -> LoginResponse:
+    accepted_at = legal_status["accepted_at"]
+    accepted_at_value = accepted_at.isoformat() if accepted_at is not None else None
+    response.legal_compliance_required = not bool(legal_status["accepted"])
+    response.legal_compliance_policy_version = str(legal_status["policy_version"])
+    response.legal_compliance_accepted_at = accepted_at_value
+    if response.user is not None:
+        response.user.legal_compliance_required = response.legal_compliance_required
+        response.user.legal_compliance_policy_version = response.legal_compliance_policy_version
+        response.user.legal_compliance_accepted_at = accepted_at_value
+    return response
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -267,7 +327,7 @@ async def login(
         refresh_token=token_pair.refresh_token,
         expires_at=token_pair.refresh_token_expires_at,
     )
-    return LoginResponse(
+    login_response = LoginResponse(
         access_token=token_pair.access_token,
         email=actor.email,
         actor_type=actor.actor_type,
@@ -276,6 +336,8 @@ async def login(
         password_reset_required=actor.password_reset_required,
         user=actor.user,
     )
+    legal_status = await _legal_status_for_authenticated_actor(db, actor)
+    return _apply_legal_status_to_login_response(login_response, legal_status)
 
 
 @router.post("/select-membership", response_model=LoginResponse)
@@ -323,7 +385,7 @@ async def select_membership(
         refresh_token=token_pair.refresh_token,
         expires_at=token_pair.refresh_token_expires_at,
     )
-    return LoginResponse(
+    login_response = LoginResponse(
         access_token=token_pair.access_token,
         email=selected_actor.email,
         actor_type=selected_actor.actor_type,
@@ -331,6 +393,8 @@ async def select_membership(
         account_type=selected_actor.account_type,
         user=selected_actor.user,
     )
+    legal_status = await _legal_status_for_authenticated_actor(db, selected_actor)
+    return _apply_legal_status_to_login_response(login_response, legal_status)
 
 
 @router.post("/refresh", response_model=Token)

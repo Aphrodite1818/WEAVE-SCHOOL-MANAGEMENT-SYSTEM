@@ -101,7 +101,7 @@ async def list_subjects(
     db: DbSession,
     current_user: CurrentSubjectViewer,
     skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=100),
+    limit: int = Query(default=100, ge=1, le=500),
     is_active: bool | None = Query(default=None),
     include_archived: bool = Query(default=False),
     search: str | None = Query(default=None, min_length=1, max_length=100),
@@ -187,11 +187,13 @@ async def activate_subject(
     """Activate subject."""
 
     _ = payload.confirmation
-    return await SubjectService.activate_subject(
+    subject = await SubjectService.activate_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return subject
 
 
 @router.post(
@@ -208,11 +210,13 @@ async def deactivate_subject(
     """Deactivate subject."""
 
     _ = payload.confirmation
-    return await SubjectService.deactivate_subject(
+    subject = await SubjectService.deactivate_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return subject
 
 
 @router.post(
@@ -227,11 +231,13 @@ async def archive_subject(
     current_user: CurrentTenantAdmin,
 ) -> Subject:
     _ = payload.confirmation
-    return await SubjectService.archive_subject(
+    subject = await SubjectService.archive_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return subject
 
 
 @router.post(
@@ -246,11 +252,13 @@ async def restore_subject(
     current_user: CurrentTenantAdmin,
 ) -> Subject:
     _ = payload.confirmation
-    return await SubjectService.restore_subject(
+    subject = await SubjectService.restore_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    return subject
 
 
 @router.delete(

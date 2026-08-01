@@ -1078,7 +1078,10 @@ class SubscriptionFeatureService:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "message": "Your subscription does not currently allow this write operation.",
+                "message": (
+                    f"Your current plan has reached its {check.resource.value} limit. "
+                    f"Upgrade your subscription to add more {check.resource.value}."
+                ),
                 "resource": check.resource.value,
                 "plan": check.plan,
                 "status": check.status.value,

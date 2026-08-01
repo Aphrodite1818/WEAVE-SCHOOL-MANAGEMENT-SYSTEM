@@ -84,16 +84,16 @@ function GuideProgressStepper({
                 >
                   <span
                     className={cn(
-                      "guide-progress-node grid h-[2.1rem] w-[2.1rem] place-items-center rounded-full border-2 bg-surface text-xs font-bold shadow-[0_0_0_5px_rgb(var(--color-surface))] transition",
-                      active && "guide-progress-node-active border-primary bg-primary text-primary-foreground",
-                      complete && !active && "guide-progress-node-complete border-success bg-success text-white",
+                      "guide-progress-node grid h-[2.1rem] w-[2.1rem] place-items-center rounded-full border-2 text-xs font-bold shadow-[0_0_0_5px_rgb(var(--color-surface))] transition",
+                      active && !complete && "guide-progress-node-active border-primary bg-primary text-primary-foreground",
+                      complete && "guide-progress-node-complete !border-success !bg-success !text-white",
                       skipped && !active && "border-border bg-surface-muted text-text-faint",
-                      !active && !complete && !skipped && "border-border text-text-muted",
+                      !active && !complete && !skipped && "border-border bg-surface text-text-muted",
                       clickable && "group-hover:border-primary/60",
                     )}
                   >
                     {complete ? (
-                      <Check className="h-3.5 w-3.5" />
+                      <Check className="h-4 w-4 stroke-[3] text-white" />
                     ) : skipped ? (
                       <Minus className="h-3.5 w-3.5" />
                     ) : (

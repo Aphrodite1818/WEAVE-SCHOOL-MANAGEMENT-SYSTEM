@@ -47,11 +47,23 @@ function RouteChangeAbortBridge() {
   return null;
 }
 
+function ScrollToTopOnRouteChange() {
+  const { hash, pathname, search } = useLocation();
+
+  useEffect(() => {
+    if (hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [hash, pathname, search]);
+
+  return null;
+}
+
 function AppRoutes() {
   return (
     <BrowserRouter>
       <SubscriptionProvider>
         <RouteChangeAbortBridge />
+        <ScrollToTopOnRouteChange />
         <Routes>
           {publicRoutes}
 

@@ -140,6 +140,7 @@ function TeacherDashboardPage() {
             description="Manage assigned subjects, draft scores, submissions, and class-teacher work."
             profileCompletion={teacher?.profile_completed}
             chips={[
+              { label: "Staff ID", value: cleanText(teacher?.staff_id, "Not assigned"), tone: "primary" },
               { label: teacher?.is_verified ? "Verified" : "Pending verification", tone: teacher?.is_verified ? "success" : "warning" },
               { label: cleanText(teacher?.specialization, "Specialization not provided"), tone: "primary" },
             ]}

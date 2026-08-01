@@ -208,9 +208,11 @@ function BulkImportPage() {
   const [errors, setErrors] = useState([]);
   const [errorSearch, setErrorSearch] = useState("");
   const [busy, setBusy] = useState("");
+  const [validationProgress, setValidationProgress] = useState(0);
   const [pageLoading, setPageLoading] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteJob, setDeleteJob] = useState(null);
+  const [criticalImportError, setCriticalImportError] = useState(null);
   const [displayStep, setDisplayStep] = useState(step);
   const [transitionState, setTransitionState] = useState("entered");
 
@@ -318,6 +320,21 @@ function BulkImportPage() {
     return () => window.clearInterval(timer);
   }, [currentJob, loadJob, showError]);
 
+  useEffect(() => {
+    if (busy !== "validate") return undefined;
+
+    setValidationProgress(12);
+    const timer = window.setInterval(() => {
+      setValidationProgress((current) => {
+        if (current < 45) return current + 8;
+        if (current < 75) return current + 5;
+        return Math.min(current + 2, 92);
+      });
+    }, 450);
+
+    return () => window.clearInterval(timer);
+  }, [busy]);
+
   const filteredErrors = useMemo(() => {
     const query = errorSearch.trim().toLowerCase();
     const displayErrors = errors.length
@@ -381,12 +398,17 @@ function BulkImportPage() {
       const errorResponse = await bulkImportService.getErrors(job.id).catch(() => ({ items: [] }));
       setErrors(Array.isArray(errorResponse?.items) ? errorResponse.items : []);
       await loadJobs({ skip: historySkip, status: historyStatus });
+      setValidationProgress(100);
       showSuccess(Number(job.failed_rows || 0) ? "Validation finished with errors." : "Validation passed.");
       navigateSmooth(`/admin/imports/validate/${job.id}`);
     } catch (error) {
-      showError(getErrorMessage(error, "Could not validate the file."));
+      setCriticalImportError({
+        title: "Validation blocked",
+        message: getErrorMessage(error, "Could not validate the file."),
+      });
     } finally {
       setBusy("");
+      window.setTimeout(() => setValidationProgress(0), 600);
     }
   };
 
@@ -513,13 +535,30 @@ function BulkImportPage() {
           aria-label="Choose student import file"
         />
       </div>
+      {busy === "validate" ? (
+        <div className="mt-4 rounded-2xl border border-primary/20 bg-primary-soft/35 px-4 py-4" role="status" aria-live="polite">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-semibold text-text">Validating file</span>
+            <span className="font-bold text-primary">{validationProgress}%</span>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+              style={{ width: `${validationProgress}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs leading-5 text-text-muted">
+            Checking the template, rows, classes, dates, parent emails, and duplicate records.
+          </p>
+        </div>
+      ) : null}
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
         <Button variant="outline" onClick={() => go("history")}><History className="h-4 w-4" /> View history</Button>
         <div className="flex flex-col gap-2 sm:flex-row">
           {file && <Button variant="ghost" onClick={() => setFile(null)} disabled={Boolean(busy)}><X className="h-4 w-4" /> Remove file</Button>}
           <Button onClick={handleValidate} disabled={!file || Boolean(busy)}>
             {busy === "validate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-            Validate file
+            {busy === "validate" ? "Validating..." : "Validate file"}
           </Button>
         </div>
       </div>
@@ -878,6 +917,41 @@ function BulkImportPage() {
         )}
       >
         <p className="text-sm text-text-muted">{deleteJob?.original_filename}</p>
+      </Modal>
+
+      <Modal
+        open={Boolean(criticalImportError)}
+        title={criticalImportError?.title || "Import blocked"}
+        description={criticalImportError?.message || ""}
+        onClose={() => setCriticalImportError(null)}
+        placement="center"
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setCriticalImportError(null)}>
+              Stay here
+            </Button>
+            <Button
+              onClick={() => {
+                setCriticalImportError(null);
+                setFile(null);
+                navigateSmooth("/admin/imports/upload");
+              }}
+            >
+              <UploadCloud className="h-4 w-4" />
+              Upload another file
+            </Button>
+          </div>
+        )}
+      >
+        <div className="flex gap-3 rounded-2xl border border-error/30 bg-error-soft px-4 py-4 text-sm leading-6 text-error">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="font-semibold">The file cannot continue in this import flow.</p>
+            <p className="mt-1 text-error/85">
+              Review the message above, then upload a workbook that has not already been imported.
+            </p>
+          </div>
+        </div>
       </Modal>
     </DashboardLayout>
   );

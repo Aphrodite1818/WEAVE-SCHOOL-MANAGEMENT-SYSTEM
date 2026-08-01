@@ -12,6 +12,8 @@ export function useRoleGuide({
   role,
   enabled = true,
   completionMap = null,
+  allowCompletedCurrentStep = false,
+  allowSkippedCurrentStep = false,
 } = {}) {
   const config = guideForRole(role);
   const [guideState, setGuideState] = useState(null);
@@ -90,13 +92,19 @@ export function useRoleGuide({
     );
     if (
       storedIndex >= 0 &&
-      !steps[storedIndex].complete &&
-      !steps[storedIndex].skipped
+      (allowCompletedCurrentStep || !steps[storedIndex].complete) &&
+      (allowSkippedCurrentStep || !steps[storedIndex].skipped)
     ) {
       return storedIndex;
     }
     return firstPendingIndex;
-  }, [firstPendingIndex, guideState?.current_step, steps]);
+  }, [
+    allowCompletedCurrentStep,
+    allowSkippedCurrentStep,
+    firstPendingIndex,
+    guideState?.current_step,
+    steps,
+  ]);
 
   const currentStep = steps[currentIndex] || null;
   const completedCount = steps.filter((step) => step.complete).length;

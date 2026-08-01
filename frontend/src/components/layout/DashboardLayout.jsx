@@ -7,16 +7,25 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, CreditCard, Loader2, X } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { clearGuideReturn, readGuideReturn } from "../../features/guides/guideNavigation";
-import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
+import {
+  FEATURE_CODES,
+  clearRegistrationCheckoutIntent,
+  formatPlanName,
+  getRegistrationCheckoutIntent,
+  markRegistrationCheckoutRedirect,
+} from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
+import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
 import { authSession } from "../../services/api";
 import { clearDashboardSessionCache } from "../../services/dashboardSessionCache";
+import { legalComplianceService } from "../../services/legalComplianceService";
+import { subscriptionService } from "../../services/subscriptionService";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 import AiChatLauncher from "../ai/AiChatLauncher";
@@ -24,6 +33,7 @@ import WeaveIcon from "../brand/WeaveIcon";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import GettingStartedBanner from "../guides/GettingStartedBanner";
 import Button from "../ui/Button";
+import Input from "../ui/Input";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
 import MobileDrawer from "./MobileDrawer";
@@ -85,13 +95,32 @@ function DashboardShellFrame({
   children,
   onboardingModalEnabled = true,
 }) {
-  const user = authSession.getUser() || {};
+  const user = useMemo(() => authSession.getUser() || {}, []);
   const location = useLocation();
   const navigate = useNavigate();
   const role = getRole(user, roleProp);
   const guidePageActive = location.pathname.endsWith("/getting-started");
   const academicHubActive = location.pathname.startsWith("/admin/academic");
-  const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
+  const {
+    currentSubscription,
+    entitlements,
+    getFeatureGuard,
+    isTenantAdmin,
+  } = useSubscription();
+  const [registrationCheckout, setRegistrationCheckout] = useState(() =>
+    getRegistrationCheckoutIntent(user),
+  );
+  const [registrationBillingEmail, setRegistrationBillingEmail] = useState(
+    user?.email || "",
+  );
+  const [registrationCheckoutBusy, setRegistrationCheckoutBusy] = useState(false);
+  const [registrationCheckoutError, setRegistrationCheckoutError] = useState("");
+  const [legalState, setLegalState] = useState(() => ({
+    loading: onboardingModalEnabled,
+    required: Boolean(user?.legal_compliance_required ?? onboardingModalEnabled),
+    dismissed: false,
+    status: null,
+  }));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [guideReturn, setGuideReturn] = useState(() => readGuideReturn());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
@@ -120,6 +149,25 @@ function DashboardShellFrame({
   const showAiLauncher =
     role !== "admin" || !isTenantAdmin ? true : Boolean(entitlements) && aiAssistantGuard.allowed;
   const shouldRenderAiLauncher = AI_CHAT_LAUNCHER_VISIBLE && showAiLauncher;
+  const registrationCheckoutPlanCode = registrationCheckout?.planCode || "";
+  const activeSubscriptionPlanCode =
+    currentSubscription?.plan_code || entitlements?.plan || "";
+  const activeSubscriptionStatus = String(
+    currentSubscription?.status || entitlements?.subscription_status || "",
+  ).toLowerCase();
+  const registrationCheckoutSatisfied = Boolean(
+    registrationCheckoutPlanCode &&
+      activeSubscriptionPlanCode === registrationCheckoutPlanCode &&
+      ["active", "non_renewing"].includes(activeSubscriptionStatus),
+  );
+  const registrationCheckoutOpen = Boolean(
+    role === "admin" &&
+      onboardingModalEnabled &&
+      registrationCheckoutPlanCode &&
+      !registrationCheckoutSatisfied &&
+      location.pathname !== "/billing/subscription/verify",
+  );
+  const legalBlocksProgression = Boolean(legalState.loading || legalState.required);
   const {
     onboardingState,
     profileModalOpen,
@@ -127,11 +175,16 @@ function DashboardShellFrame({
     profileMode,
     handleProfileStateResolved,
     handleProfileSaved,
-  } = useOnboardingGate({ role, enabled: onboardingModalEnabled });
+  } = useOnboardingGate({
+    role,
+    enabled: onboardingModalEnabled && !registrationCheckoutOpen && !legalBlocksProgression,
+  });
   const roleGuide = useRoleGuide({
     role,
     enabled:
       onboardingModalEnabled &&
+      !registrationCheckoutOpen &&
+      !legalBlocksProgression &&
       !onboardingState.loading &&
       !onboardingState.required &&
       !profileModalOpen,
@@ -144,6 +197,59 @@ function DashboardShellFrame({
       roleGuide.config?.dashboardRoute === location.pathname &&
       gettingStartedRoute !== location.pathname,
   );
+
+  useEffect(() => {
+    const nextIntent = getRegistrationCheckoutIntent(authSession.getUser() || user);
+    setRegistrationCheckout(nextIntent);
+    setRegistrationBillingEmail((currentEmail) => currentEmail || user?.email || "");
+  }, [user, user?.email, user?.tenant?.feature_flags, user?.feature_flags]);
+
+  useEffect(() => {
+    if (!registrationCheckoutSatisfied) return;
+    clearRegistrationCheckoutIntent();
+    setRegistrationCheckout(null);
+  }, [registrationCheckoutSatisfied]);
+
+  useEffect(() => {
+    if (registrationCheckoutOpen) setProfileModalOpen(false);
+  }, [registrationCheckoutOpen, setProfileModalOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLegalStatus() {
+      if (!onboardingModalEnabled || registrationCheckoutOpen) {
+        setLegalState({ loading: false, required: false, dismissed: false, status: null });
+        return;
+      }
+
+      setLegalState((current) => ({ ...current, loading: true }));
+      try {
+        const status = await legalComplianceService.getStatus();
+        if (cancelled) return;
+        setLegalState({
+          loading: false,
+          required: !status?.accepted,
+          dismissed: false,
+          status: status || null,
+        });
+      } catch {
+        if (!cancelled) {
+          setLegalState((current) => ({ ...current, loading: false }));
+        }
+      }
+    }
+
+    loadLegalStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardingModalEnabled, registrationCheckoutOpen, role]);
+
+  useEffect(() => {
+    if (legalState.required) setProfileModalOpen(false);
+  }, [legalState.required, setProfileModalOpen]);
 
   useEffect(() => {
     if (
@@ -435,6 +541,47 @@ function DashboardShellFrame({
     clearGuideReturn();
     setGuideReturn(null);
   };
+  const startRegistrationCheckout = async () => {
+    if (!registrationCheckoutPlanCode || !registrationBillingEmail.trim()) return;
+
+    setRegistrationCheckoutBusy(true);
+    setRegistrationCheckoutError("");
+    try {
+      const response = await subscriptionService.initializeSubscriptionCheckout({
+        plan_code: registrationCheckoutPlanCode,
+        billing_interval: registrationCheckout?.billingInterval || "monthly",
+        billing_email: registrationBillingEmail.trim(),
+      });
+      markRegistrationCheckoutRedirect(registrationCheckout);
+      window.location.assign(response.authorization_url);
+    } catch (error) {
+      setRegistrationCheckoutError(
+        error?.message || "We could not start checkout right now.",
+      );
+      setRegistrationCheckoutBusy(false);
+    }
+  };
+  const continueRegistrationOnTrial = () => {
+    clearRegistrationCheckoutIntent();
+    setRegistrationCheckout(null);
+    setRegistrationCheckoutError("");
+  };
+  const handleLegalAccepted = (status) => {
+    setLegalState({
+      loading: false,
+      required: false,
+      dismissed: false,
+      status: status || null,
+    });
+  };
+  const handleLegalRejected = () => {
+    setLegalState((current) => ({
+      ...current,
+      loading: false,
+      required: true,
+      dismissed: true,
+    }));
+  };
 
   if (guidePageActive) {
     return (
@@ -609,6 +756,15 @@ function DashboardShellFrame({
       <BottomNav role={role} onOpenMenu={() => setMobileNavOpen(true)} />
 
       {onboardingModalEnabled ? (
+        <LegalComplianceModal
+          open={Boolean(legalState.required && !legalState.dismissed && !registrationCheckoutOpen)}
+          role={role}
+          onAccepted={handleLegalAccepted}
+          onRejected={handleLegalRejected}
+        />
+      ) : null}
+
+      {onboardingModalEnabled ? (
         <Modal
           open={profileModalOpen}
           onClose={() => !onboardingState.required && setProfileModalOpen(false)}
@@ -626,6 +782,62 @@ function DashboardShellFrame({
           />
         </Modal>
       ) : null}
+
+      <Modal
+        open={registrationCheckoutOpen}
+        title={`Checkout for ${formatPlanName(registrationCheckoutPlanCode)}`}
+        description="Complete payment before onboarding so your school setup uses the limits you selected."
+        closeOnOverlay={false}
+        showClose={false}
+        footer={(
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={registrationCheckoutBusy}
+              onClick={continueRegistrationOnTrial}
+            >
+              Upgrade later
+            </Button>
+            <Button
+              type="button"
+              disabled={registrationCheckoutBusy || !registrationBillingEmail.trim()}
+              onClick={startRegistrationCheckout}
+            >
+              {registrationCheckoutBusy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CreditCard className="h-4 w-4" />
+              )}
+              Continue to Paystack
+            </Button>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-primary/20 bg-primary-subtle/50 p-4">
+            <p className="text-sm font-semibold text-text">
+              {formatPlanName(registrationCheckoutPlanCode)} selected
+            </p>
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              Payment activates this plan. Until checkout succeeds, the tenant remains on the normal trial limits.
+            </p>
+          </div>
+          <Input
+            label="Billing email"
+            type="email"
+            value={registrationBillingEmail}
+            onChange={(event) => setRegistrationBillingEmail(event.target.value)}
+            placeholder="admin@school.example"
+            required
+          />
+          {registrationCheckoutError ? (
+            <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
+              {registrationCheckoutError}
+            </div>
+          ) : null}
+        </div>
+      </Modal>
 
       {shouldRenderAiLauncher ? <AiChatLauncher role={role} /> : null}
     </div>

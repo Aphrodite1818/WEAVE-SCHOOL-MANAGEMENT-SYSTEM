@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   FileText,
   GraduationCap,
+  ImageIcon,
   Route,
   School,
   Users,
@@ -20,6 +21,14 @@ export const ROLE_GUIDES = {
     description:
       "Follow the backend-safe setup order. Every stage is verified against your live school data before the next lifecycle transition.",
     steps: [
+      {
+        id: "school_logo",
+        shortLabel: "Logo",
+        label: "Upload the school logo",
+        description:
+          "Add the logo that appears in the school workspace, printable records, invitations, and report cards.",
+        icon: ImageIcon,
+      },
       {
         id: "session",
         shortLabel: "Session",

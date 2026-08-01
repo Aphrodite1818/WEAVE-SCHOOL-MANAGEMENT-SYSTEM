@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
@@ -237,7 +237,139 @@ class ClassRoomRepository:
         return int(result.scalar_one() or 0)
 
     @staticmethod
+    async def count_class_dependencies(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+    ) -> dict[str, int]:
+        from app.modules.attendance.models import (
+            StudentAttendanceSheet,
+            TemporaryAttendanceAssignment,
+        )
+        from app.modules.communications.models import AnnouncementAudience
+        from app.modules.report_cards.models import ReportCard
+        from app.modules.student_academics.models import (
+            ClassSubject,
+            StudentProgressionItem,
+            StudentSubjectResult,
+            TeacherAssignment,
+        )
+        from app.modules.students.models import Student, StudentEnrollment
+
+        student_count = (
+            await db.execute(
+                select(func.count()).select_from(Student).where(
+                    Student.tenant_id == tenant_id,
+                    Student.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        enrollment_count = (
+            await db.execute(
+                select(func.count()).select_from(StudentEnrollment).where(
+                    StudentEnrollment.tenant_id == tenant_id,
+                    StudentEnrollment.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        teacher_assignment_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(TeacherAssignment)
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        result_count = (
+            await db.execute(
+                select(func.count()).select_from(StudentSubjectResult).where(
+                    StudentSubjectResult.tenant_id == tenant_id,
+                    StudentSubjectResult.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        report_card_count = (
+            await db.execute(
+                select(func.count()).select_from(ReportCard).where(
+                    ReportCard.tenant_id == tenant_id,
+                    ReportCard.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        progression_item_count = (
+            await db.execute(
+                select(func.count()).select_from(StudentProgressionItem).where(
+                    StudentProgressionItem.tenant_id == tenant_id,
+                    or_(
+                        StudentProgressionItem.from_class_id == class_id,
+                        StudentProgressionItem.to_class_id == class_id,
+                    ),
+                )
+            )
+        ).scalar_one()
+        attendance_sheet_count = (
+            await db.execute(
+                select(func.count()).select_from(StudentAttendanceSheet).where(
+                    StudentAttendanceSheet.tenant_id == tenant_id,
+                    StudentAttendanceSheet.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        temporary_assignment_count = (
+            await db.execute(
+                select(func.count()).select_from(TemporaryAttendanceAssignment).where(
+                    TemporaryAttendanceAssignment.tenant_id == tenant_id,
+                    TemporaryAttendanceAssignment.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        announcement_audience_count = (
+            await db.execute(
+                select(func.count()).select_from(AnnouncementAudience).where(
+                    AnnouncementAudience.tenant_id == tenant_id,
+                    AnnouncementAudience.class_id == class_id,
+                )
+            )
+        ).scalar_one()
+        return {
+            "students": int(student_count),
+            "enrollments": int(enrollment_count),
+            "teacher_assignments": int(teacher_assignment_count),
+            "results": int(result_count),
+            "report_cards": int(report_card_count),
+            "progression_items": int(progression_item_count),
+            "attendance_sheets": int(attendance_sheet_count),
+            "temporary_attendance_assignments": int(temporary_assignment_count),
+            "announcement_audiences": int(announcement_audience_count),
+        }
+
+    @staticmethod
+    async def clear_next_class_references(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+    ) -> None:
+        await db.execute(
+            update(ClassRoom)
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.next_class_id == class_id,
+            )
+            .values(next_class_id=None, is_terminal=False)
+        )
+        await db.flush()
+
+    @staticmethod
     async def save(db: AsyncSession, classroom: ClassRoom) -> ClassRoom:
         db.add(classroom)
         await db.flush()
         return classroom
+
+    @staticmethod
+    async def delete_classroom(db: AsyncSession, classroom: ClassRoom) -> None:
+        await db.delete(classroom)
+        await db.flush()

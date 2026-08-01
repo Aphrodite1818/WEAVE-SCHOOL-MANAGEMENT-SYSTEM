@@ -1,0 +1,1 @@
+"""Legal compliance acceptance module."""

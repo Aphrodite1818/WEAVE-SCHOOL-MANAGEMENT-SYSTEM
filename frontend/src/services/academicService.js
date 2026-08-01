@@ -232,6 +232,8 @@ export const academicService = {
     api.get(`/classes/${classId}/subjects${queryString(params)}`),
   addClassSubject: (classId, payload) =>
     api.post(`/classes/${classId}/subjects`, payload),
+  addClassSubjectsBulk: (classId, payload) =>
+    api.post(`/classes/${classId}/subjects/bulk`, payload),
   activateClassSubject,
   deactivateClassSubject: (classSubjectId) =>
     api.post(`/class-subjects/${classSubjectId}/deactivate`, {

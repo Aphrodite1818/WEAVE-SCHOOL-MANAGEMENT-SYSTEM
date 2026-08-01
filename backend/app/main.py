@@ -38,6 +38,7 @@ from app.modules.bulk_imports.router import router as bulk_import_router
 from app.modules.classes.class_subjects_router import router as class_subjects_router
 from app.modules.classes.router import router as class_router
 from app.modules.email_outbox.router import router as email_outbox_router
+from app.modules.legal_compliance.router import router as legal_compliance_router
 from app.modules.media.router import router as media_router
 from app.modules.metrics.events import register_metrics_cache_invalidation_events
 from app.modules.metrics.router import router as metrics_router
@@ -52,6 +53,7 @@ from app.modules.report_cards.router import (
 from app.modules.school_calendar.admin_router import router as school_calendar_admin_router
 from app.modules.school_calendar.shared_router import router as school_calendar_shared_router
 from app.modules.search.router import router as tenant_search_router
+from app.modules.setup_assistant.router import router as setup_assistant_router
 from app.modules.student_academics.assessment_config_router import (
     router as assessment_config_router,
 )
@@ -223,6 +225,8 @@ def create_app() -> FastAPI:
     app.include_router(workspace_branding_router, prefix="/api/v1")
     app.include_router(bulk_import_router, prefix="/api/v1/tenant-admin")
     app.include_router(email_outbox_router, prefix="/api/v1/tenant-admin")
+    app.include_router(setup_assistant_router, prefix="/api/v1")
+    app.include_router(legal_compliance_router, prefix="/api/v1")
     app.include_router(tenant_router, prefix="/api/v1/tenants", tags=["Tenants"])
     app.include_router(teacher_router, prefix="/api/v1/teachers", tags=["Teachers"])
     app.include_router(student_router, prefix="/api/v1/students", tags=["Students"])

@@ -45,6 +45,7 @@ from app.modules.student_academics.schemas import (
     AcademicTermDependencyPreview,
     AcademicTermUpdate,
     ClassSubjectCreate,
+    ClassSubjectBulkCreate,
     ClassSubjectResponse,
     ClassSubjectTeacherCreate,
     ClassSubjectTeacherResponse,
@@ -702,6 +703,95 @@ class StudentAcademicService:
         )
         await db.commit()
         return await StudentAcademicService._build_class_subject_response(db, row)
+
+    @staticmethod
+    async def create_class_subjects_bulk(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        payload: ClassSubjectBulkCreate,
+    ) -> list[ClassSubjectResponse]:
+        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
+            raise NotFoundException("Class not found or inactive.")
+
+        subjects = await SubjectRepository.get_subjects_by_id(
+            db=db,
+            tenant_id=tenant_id,
+            subject_ids=payload.subject_ids,
+        )
+        subjects_by_id = {subject.id: subject for subject in subjects}
+        missing_subject_ids = [
+            str(subject_id)
+            for subject_id in payload.subject_ids
+            if subject_id not in subjects_by_id
+        ]
+        inactive_subject_names = [
+            subject.name
+            for subject in subjects
+            if not subject.is_active or subject.archived_at is not None
+        ]
+        if missing_subject_ids:
+            raise NotFoundException(
+                detail="One or more subjects were not found.",
+                payload={"subject_ids": missing_subject_ids},
+            )
+        if inactive_subject_names:
+            raise ConflictException(
+                detail="One or more selected subjects are inactive or archived.",
+                payload={"subjects": inactive_subject_names},
+            )
+
+        existing_rows, _ = await StudentAcademicRepository.list_class_subjects(
+            db,
+            tenant_id,
+            class_id=class_id,
+            include_archived=True,
+            limit=500,
+        )
+        existing_by_subject_id = {
+            row.subject_id: row
+            for row in existing_rows
+            if row.subject_id in set(payload.subject_ids)
+        }
+        if existing_by_subject_id:
+            conflicts = []
+            for subject_id, row in existing_by_subject_id.items():
+                subject = subjects_by_id.get(subject_id)
+                status = "archived" if row.archived_at is not None else "active" if row.is_active else "inactive"
+                conflicts.append(
+                    {
+                        "subject_id": str(subject_id),
+                        "subject_name": subject.name if subject else None,
+                        "status": status,
+                    }
+                )
+            raise ConflictException(
+                detail="One or more selected subjects are already attached to this class.",
+                payload={"conflicts": conflicts},
+            )
+
+        rows = []
+        for subject_id in payload.subject_ids:
+            row = await StudentAcademicRepository.create_class_subject(
+                db,
+                ClassSubject(
+                    tenant_id=tenant_id,
+                    class_id=class_id,
+                    subject_id=subject_id,
+                    is_core=payload.is_core,
+                    is_active=True,
+                    archived_at=None,
+                    archived_by_admin_id=None,
+                ),
+            )
+            rows.append(row)
+
+        await db.commit()
+        return [
+            await StudentAcademicService._build_class_subject_response(db, row)
+            for row in rows
+        ]
 
     @staticmethod
     async def list_class_subjects(

@@ -18,6 +18,7 @@ import app.modules.bulk_imports.models
 import app.modules.classes.models
 import app.modules.email_outbox.models
 import app.modules.finance.models
+import app.modules.legal_compliance.models
 import app.modules.media.models
 import app.modules.parents.models
 import app.modules.report_cards.models

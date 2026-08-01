@@ -57,11 +57,20 @@ class TenantRegistrationService:
         *,
         admin: TenantAdmin,
         password: str,
+        selected_plan_code: str = "free_trial",
+        billing_interval: str = "monthly",
     ) -> None:
         admin.password_hash = hash_password(password)
         admin.account_status = TenantAdminStatus.PENDING
         admin.is_verified = False
         admin.is_active = True
+        tenant = await TenantRepository.get_by_id(db, admin.tenant_id, lock=True)
+        if tenant is not None:
+            flags = dict(tenant.feature_flags or {})
+            flags["registration_selected_plan_code"] = selected_plan_code
+            flags["registration_billing_interval"] = billing_interval
+            tenant.feature_flags = flags
+            await TenantRepository.save(db, tenant)
         await TenantAdminRepository.save(db, admin)
 
     @staticmethod
@@ -71,6 +80,8 @@ class TenantRegistrationService:
         normalized_email: str,
         school_name: str,
         password: str,
+        selected_plan_code: str,
+        billing_interval: str,
     ) -> tuple[Tenant, TenantAdmin]:
         """Recover the registration that won a concurrent insert race."""
 
@@ -112,6 +123,8 @@ class TenantRegistrationService:
                 db,
                 admin=admin,
                 password=password,
+                selected_plan_code=selected_plan_code,
+                billing_interval=billing_interval,
             )
             await TenantService._ensure_tenant_admin_identity(
                 db=db,
@@ -133,6 +146,8 @@ class TenantRegistrationService:
 
         school_name = _normalize_school_name(payload.school_name)
         normalized_email = _normalize_email(str(payload.email))
+        selected_plan_code = payload.selected_plan_code.value
+        billing_interval = payload.billing_interval
         tenant: Tenant | None = None
         reused_pending_account = False
 
@@ -214,6 +229,8 @@ class TenantRegistrationService:
                     db,
                     admin=existing_admin,
                     password=payload.password,
+                    selected_plan_code=selected_plan_code,
+                    billing_interval=billing_interval,
                 )
                 await TenantService._ensure_tenant_admin_identity(
                     db=db,
@@ -232,6 +249,10 @@ class TenantRegistrationService:
                     verification_status=(
                         TenantVerificationStatus.PENDING_VERIFICATION
                     ),
+                    feature_flags={
+                        "registration_selected_plan_code": selected_plan_code,
+                        "registration_billing_interval": billing_interval,
+                    },
                 )
                 await TenantRepository.create(db, tenant)
                 await db.flush()
@@ -254,6 +275,8 @@ class TenantRegistrationService:
                     normalized_email=normalized_email,
                     school_name=school_name,
                     password=payload.password,
+                    selected_plan_code=selected_plan_code,
+                    billing_interval=billing_interval,
                 )
             )
             reused_pending_account = True

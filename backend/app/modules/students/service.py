@@ -42,7 +42,12 @@ from app.modules.parents.repository import (
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
 )
-from app.modules.student_academics.models import AcademicSessionStatus, StudentSubjectResult
+from app.modules.student_academics.models import (
+    AcademicSessionStatus,
+    AcademicTermStatus,
+    StudentSubjectResult,
+)
+from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import (
     AcademicStatus,
     ParentLinkVerifiedByType,
@@ -176,10 +181,51 @@ class StudentService:
                 student.tenant_id,
                 student.class_id,
             )
+        enrollment = await StudentEnrollmentRepository.get_current(
+            db,
+            student.tenant_id,
+            student.id,
+        )
+        current_session = None
+        if enrollment:
+            current_session = await StudentAcademicRepository.get_academic_session_by_id(
+                db,
+                student.tenant_id,
+                enrollment.academic_session_id,
+            )
+        if current_session is None:
+            current_session = await StudentAcademicRepository.get_current_academic_session(
+                db,
+                student.tenant_id,
+            )
+        if current_session is None:
+            sessions, _ = await StudentAcademicRepository.list_academic_sessions(
+                db,
+                student.tenant_id,
+                limit=1,
+                status=AcademicSessionStatus.CLOSING,
+                is_current=True,
+            )
+            current_session = sessions[0] if sessions else None
+        terms, _ = await StudentAcademicRepository.list_terms(
+            db,
+            student.tenant_id,
+            limit=1,
+            statuses={AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING},
+            is_current=True,
+        )
+        current_term = terms[0] if terms else None
         return StudentDetailResponse(
             **StudentResponse.model_validate(student).model_dump(),
             class_name=classroom.name if classroom else None,
             class_arm=classroom.arm if classroom else student.arm,
+            current_enrollment_id=enrollment.id if enrollment else None,
+            current_academic_session_id=current_session.id if current_session else None,
+            current_academic_session_name=current_session.name if current_session else None,
+            current_academic_term_id=current_term.id if current_term else None,
+            current_academic_term_name=(
+                current_term.name.value if current_term and current_term.name else None
+            ),
         )
 
     @staticmethod
@@ -536,6 +582,7 @@ class StudentService:
             completion_target="student",
             required_fields=["first_name", "last_name", "gender"],
             current_values={
+                "admission_number": student.admission_number,
                 "first_name": student.first_name,
                 "last_name": student.last_name,
                 "gender": student.gender,

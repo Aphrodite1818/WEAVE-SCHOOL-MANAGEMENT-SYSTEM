@@ -55,6 +55,19 @@ const normalizeAuthResponse = (response = {}) => {
     ),
     memberships: Array.isArray(meta.memberships) ? meta.memberships : [],
     onboarding_required: Boolean(meta.onboarding_required),
+    legal_compliance_required: Boolean(
+      response.legal_compliance_required ??
+        response.user?.legal_compliance_required ??
+        true,
+    ),
+    legal_compliance_policy_version:
+      response.legal_compliance_policy_version ||
+      response.user?.legal_compliance_policy_version ||
+      null,
+    legal_compliance_accepted_at:
+      response.legal_compliance_accepted_at ||
+      response.user?.legal_compliance_accepted_at ||
+      null,
     password_reset_required:
       response.user?.password_reset_required ??
       response.password_reset_required ??

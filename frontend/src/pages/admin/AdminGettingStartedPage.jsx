@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BookOpen,
@@ -8,30 +9,42 @@ import {
   CheckCircle2,
   CircleDashed,
   Clock3,
+  CreditCard,
   GraduationCap,
+  ImageIcon,
   Loader2,
   RefreshCw,
   Route,
   School,
+  Trash2,
+  UploadCloud,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import GuideProgressStepper from "../../components/guides/GuideProgressStepper";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ConfirmDialog from "../../components/shared/ConfirmDialog";
 import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import SearchableSelect from "../../components/ui/SearchableSelect";
+import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import { schoolCalendarService } from "../../features/schoolCalendar/api/schoolCalendarService";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import useRoleGuide from "../../features/guides/useRoleGuide";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
-import { getErrorMessage } from "../../services/api";
+import { authSession, getErrorMessage, parseApiError } from "../../services/api";
+import { mediaService } from "../../services/mediaService";
+import { tenantBrandingService } from "../../services/tenantBrandingService";
 import { subjectService } from "../../services/subject.service";
+
+const ACCEPTED_LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -55,6 +68,13 @@ const sessionLabel = (item) => item?.name || "Academic session";
 const termLabel = (item) => titleCase(item?.display_name || item?.name || "Term");
 const classLabel = (item) =>
   [item?.name, item?.arm].filter(Boolean).join(" ") || "Class";
+const schoolLogoFromUser = (user) =>
+  user?.tenant_logo_url || user?.tenant?.logo_url || "";
+const uploadedLogoUrl = (response) =>
+  response?.render_url ||
+  response?.media_asset?.cdn_url ||
+  response?.media_asset?.public_url ||
+  "";
 
 const today = new Date();
 const DEFAULT_SESSION = {
@@ -120,7 +140,10 @@ function StepHeading({ step, number, total, complete }) {
 
 function AdminGettingStartedPage() {
   const navigate = useNavigate();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showWarning } = useToast();
+  const { refreshSubscriptionState } = useSubscription();
+  const { applyResponse: applyBrandingResponse } = useTenantBranding();
+  const logoInputRef = useRef(null);
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [calendars, setCalendars] = useState([]);
@@ -139,6 +162,19 @@ function AdminGettingStartedPage() {
   const [classForm, setClassForm] = useState({ name: "", arm: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
   const [progressionDrafts, setProgressionDrafts] = useState({});
+  const [schoolLogoUrl, setSchoolLogoUrl] = useState(() =>
+    schoolLogoFromUser(authSession.getUser()),
+  );
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState("");
+  const [logoError, setLogoError] = useState("");
+  const [structureLimitNotice, setStructureLimitNotice] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
+  const [warningDialog, setWarningDialog] = useState(null);
+
+  useEffect(() => () => {
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+  }, [logoPreview]);
 
   const loadSetup = useCallback(async ({ quiet = false } = {}) => {
     if (quiet) setRefreshing(true);
@@ -156,8 +192,8 @@ function AdminGettingStartedPage() {
         academicService.listSessions({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
         schoolCalendarService.listAdminCalendars({ limit: 100 }),
-        classService.getClasses({ limit: 100, activeOnly: false }),
-        subjectService.getSubjects({ limit: 100, includeArchived: false }),
+        classService.getClasses({ limit: 500, activeOnly: false }),
+        subjectService.getSubjects({ limit: 500, includeArchived: false }),
         schoolCalendarService.getConfiguration().catch((requestError) => {
           if (requestError?.response?.status === 404) return null;
           throw requestError;
@@ -349,6 +385,7 @@ function AdminGettingStartedPage() {
   );
   const completionMap = useMemo(
     () => ({
+      school_logo: Boolean(schoolLogoUrl),
       session: Boolean(selectedSession),
       term: Boolean(selectedSession && selectedTerm),
       calendar: calendarPrepared,
@@ -364,6 +401,7 @@ function AdminGettingStartedPage() {
       activeClasses.length,
       activeSubjects.length,
       progressionComplete,
+      schoolLogoUrl,
       selectedSession,
       selectedTerm,
       sessionActive,
@@ -371,7 +409,12 @@ function AdminGettingStartedPage() {
       termActive,
     ],
   );
-  const guide = useRoleGuide({ role: "admin", completionMap });
+  const guide = useRoleGuide({
+    role: "admin",
+    completionMap,
+    allowCompletedCurrentStep: true,
+    allowSkippedCurrentStep: true,
+  });
 
   useEffect(() => {
     if (!guide.loading && guide.guideState?.status === "not_started") {
@@ -379,15 +422,139 @@ function AdminGettingStartedPage() {
     }
   }, [guide.guideState?.status, guide.loading, guide.start]);
 
+  useEffect(() => {
+    if (guide.loading || !guide.guideState || schoolLogoUrl) return;
+    if (guide.guideState.status !== "in_progress") return;
+    if (guide.guideState.current_step === "school_logo") return;
+    if ((guide.guideState.skipped_steps || []).includes("school_logo")) return;
+    guide.moveTo("school_logo");
+  }, [
+    guide.guideState,
+    guide.loading,
+    guide.moveTo,
+    schoolLogoUrl,
+  ]);
+
+  const persistSchoolLogo = (logoUrl) => {
+    const currentUser = authSession.getUser() || {};
+    const nextUser = {
+      ...currentUser,
+      tenant_logo_url: logoUrl || null,
+      tenant: {
+        ...(currentUser.tenant || {}),
+        logo_url: logoUrl || null,
+      },
+    };
+    authSession.setUser(nextUser, {
+      remember: authSession.getRememberPreference(),
+    });
+    setSchoolLogoUrl(logoUrl || "");
+  };
+
+  const refreshWorkspaceBranding = async () => {
+    try {
+      const response = await tenantBrandingService.getEffective();
+      applyBrandingResponse(response);
+    } catch {
+      // The local upload state is enough for this step; branding will refresh on reload.
+    }
+  };
+
+  const chooseLogoFile = (file) => {
+    if (!ACCEPTED_LOGO_TYPES.includes(file.type)) {
+      setLogoError("Choose a PNG, JPG, or WebP image.");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setLogoError("The school logo must be smaller than 1 MB.");
+      return;
+    }
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+    setLogoError("");
+  };
+
+  const uploadSchoolLogo = async () => {
+    if (!logoFile) return;
+    setSaving("school-logo");
+    setError("");
+    setLogoError("");
+    try {
+      const response = await mediaService.uploadSchoolLogo(logoFile);
+      const nextLogoUrl = uploadedLogoUrl(response);
+      persistSchoolLogo(nextLogoUrl);
+      setLogoFile(null);
+      if (logoPreview) URL.revokeObjectURL(logoPreview);
+      setLogoPreview("");
+      await refreshWorkspaceBranding();
+      showSuccess("School logo uploaded.");
+    } catch (uploadError) {
+      const parsed = parseApiError(uploadError, "The school logo could not be uploaded.");
+      setLogoError(parsed.message);
+      showError(parsed.message);
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const removeSchoolLogo = async () => {
+    setSaving("school-logo-remove");
+    setError("");
+    setLogoError("");
+    try {
+      await mediaService.deleteSchoolLogo();
+      persistSchoolLogo("");
+      setLogoFile(null);
+      if (logoPreview) URL.revokeObjectURL(logoPreview);
+      setLogoPreview("");
+      await refreshWorkspaceBranding();
+      showSuccess("School logo removed.");
+    } catch (removeError) {
+      const parsed = parseApiError(removeError, "The school logo could not be removed.");
+      setLogoError(parsed.message);
+      showError(parsed.message);
+    } finally {
+      setSaving("");
+    }
+  };
+
   const runAction = async (key, action, successMessage) => {
     setSaving(key);
     setError("");
+    setStructureLimitNotice(null);
     try {
       const result = await action();
       if (successMessage) showSuccess(successMessage);
       await loadSetup({ quiet: true });
       return result;
     } catch (requestError) {
+      const parsed = parseApiError(requestError, "Setup action failed.");
+      const detail = parsed.data?.detail || {};
+      if (detail?.reason === "resource_limit_reached") {
+        const resourceLabel = String(detail.resource || "resource").replaceAll("_", " ");
+        const notice = {
+          resource: resourceLabel,
+          used: detail.used,
+          limit: detail.limit,
+          message:
+            parsed.message ||
+            `Your current plan has reached its ${resourceLabel} limit.`,
+        };
+        setStructureLimitNotice(notice);
+        setWarningDialog({
+          title: "Plan limit reached",
+          message: notice.message,
+          detail:
+            notice.limit !== null && notice.limit !== undefined
+              ? `${notice.used} of ${notice.limit} ${notice.resource}`
+              : "",
+          actionLabel: "Upgrade plan",
+          onAction: () => navigate("/admin/billing/plans"),
+        });
+        return null;
+      }
+
       const message = getErrorMessage(requestError, "Setup action failed.");
       setError(message);
       showError(message);
@@ -412,7 +579,7 @@ function AdminGettingStartedPage() {
   const createTerm = async (event) => {
     event.preventDefault();
     if (!selectedSessionId) {
-      showError("Create or select an academic session first.");
+      showWarning("Create or select an academic session first.");
       return;
     }
     const created = await runAction(
@@ -432,7 +599,7 @@ function AdminGettingStartedPage() {
   const generateCalendar = async (event) => {
     event.preventDefault();
     if (!selectedSessionId || !selectedTerm?.id) {
-      showError("Create and select a session and term before generating the calendar.");
+      showWarning("Create and select a session and term before generating the calendar.");
       return;
     }
     const result = await runAction(
@@ -479,10 +646,45 @@ function AdminGettingStartedPage() {
     setSubjectForm({ name: "", code: "" });
   };
 
+  const removeClass = async (classroom, label = classLabel(classroom)) => {
+    const removed = await runAction(
+      `class-delete-${classroom.id}`,
+      () => classService.removeClassFromSetup(classroom.id),
+      `${label} removed from setup.`,
+    );
+    if (removed) await refreshSubscriptionState({ silent: true });
+  };
+
+  const removeSubject = async (subject, label = subject?.name || "Subject") => {
+    const removed = await runAction(
+      `subject-delete-${subject.id}`,
+      () => subjectService.removeSubjectFromSetup(subject.id),
+      `${label} removed from setup.`,
+    );
+    if (removed) await refreshSubscriptionState({ silent: true });
+  };
+
+  const requestSetupRemoval = (type, item) => {
+    const label = type === "class" ? classLabel(item) : item?.name || "Subject";
+    setDeleteConfirmation({ type, item, label });
+  };
+
+  const confirmSetupRemoval = async () => {
+    if (!deleteConfirmation) return;
+
+    const { type, item, label } = deleteConfirmation;
+    if (type === "class") {
+      await removeClass(item, label);
+    } else {
+      await removeSubject(item, label);
+    }
+    setDeleteConfirmation(null);
+  };
+
   const saveClassProgression = async (classroom) => {
     const draft = progressionDrafts[classroom.id] || {};
     if (!draft.is_terminal && !draft.next_class_id) {
-      showError(`Choose a next class or mark ${classLabel(classroom)} as terminal.`);
+      showWarning(`Choose a next class or mark ${classLabel(classroom)} as terminal.`);
       return;
     }
     await runAction(
@@ -541,6 +743,9 @@ function AdminGettingStartedPage() {
   const currentComplete = Boolean(completionMap[current.id]);
   const firstStep = guide.currentIndex === 0;
   const lastStep = guide.currentIndex >= guide.steps.length - 1;
+  const setupReadyToComplete =
+    guide.steps.length > 0 &&
+    guide.steps.every((step) => step.complete || step.skipped);
   const sessionOptions = sessions.map((item) => ({
     value: item.id,
     label: sessionLabel(item),
@@ -556,10 +761,15 @@ function AdminGettingStartedPage() {
     if (!firstStep) guide.moveTo(guide.steps[guide.currentIndex - 1].id);
   };
   const continueStep = async () => {
-    if (lastStep) {
-      if (completionMap.term_open) {
-        await guide.finish();
-        navigate("/admin/dashboard", { replace: true });
+    if (lastStep || setupReadyToComplete) {
+      if (currentComplete) {
+        try {
+          await guide.finish();
+          showSuccess("Assisted setup completed.");
+          navigate("/admin/dashboard", { replace: true });
+        } catch (completionError) {
+          showError(getErrorMessage(completionError, "Could not complete assisted setup."));
+        }
       }
       return;
     }
@@ -569,6 +779,131 @@ function AdminGettingStartedPage() {
     await guide.skipStep(current.id);
     if (lastStep) navigate("/admin/dashboard", { replace: true });
   };
+
+  const renderLogoStep = () => (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-border bg-surface-muted/25 p-4 text-sm leading-6 text-text-muted">
+        Upload the school logo once so it appears consistently in the workspace, student slips,
+        invitations, report cards, and printable records. PNG with a transparent background works best.
+      </div>
+
+      {logoError ? (
+        <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
+          {logoError}
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(18rem,0.65fr)]">
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <div
+            className="flex min-h-52 flex-col items-center justify-center rounded-2xl border border-dashed border-primary/55 bg-surface-muted/25 px-5 text-center transition hover:bg-primary-soft/20"
+            onDragEnter={(event) => event.preventDefault()}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const file = event.dataTransfer.files?.[0];
+              if (file) chooseLogoFile(file);
+            }}
+          >
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-primary-soft text-primary">
+              <UploadCloud className="h-6 w-6" />
+            </span>
+            <p className="mt-4 text-sm font-semibold text-text">
+              Drop the school logo here
+            </p>
+            <p className="mt-1 text-xs text-text-muted">
+              PNG, JPG, or WebP - Max 1 MB
+            </p>
+            <input
+              ref={logoInputRef}
+              className="sr-only"
+              type="file"
+              accept={ACCEPTED_LOGO_TYPES.join(",")}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) chooseLogoFile(file);
+                event.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 bg-surface"
+              disabled={saving === "school-logo" || saving === "school-logo-remove"}
+              onClick={() => logoInputRef.current?.click()}
+            >
+              Choose image
+            </Button>
+          </div>
+
+          {logoFile ? (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="truncate text-sm font-medium text-text-soft">
+                {logoFile.name}
+              </p>
+              <Button
+                type="button"
+                className="w-full sm:w-auto"
+                disabled={saving === "school-logo"}
+                onClick={uploadSchoolLogo}
+              >
+                {saving === "school-logo" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <UploadCloud className="h-4 w-4" />
+                )}
+                {saving === "school-logo" ? "Uploading..." : "Upload logo"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <p className="text-sm font-semibold text-text">Logo preview</p>
+          <div className="mt-4 flex min-h-44 items-center justify-center rounded-2xl border border-border bg-surface-muted/30 p-5">
+            {logoPreview || schoolLogoUrl ? (
+              <img
+                src={logoPreview || schoolLogoUrl}
+                alt="School logo preview"
+                className="max-h-32 max-w-full object-contain"
+              />
+            ) : (
+              <div className="text-center text-text-faint">
+                <ImageIcon className="mx-auto h-10 w-10" />
+                <p className="mt-2 text-sm">No logo uploaded yet</p>
+              </div>
+            )}
+          </div>
+          {schoolLogoUrl ? (
+            <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-text">School logo uploaded</p>
+                <p className="text-xs text-text-muted">Ready across school-facing records</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="justify-start text-error hover:bg-error-soft hover:text-error sm:justify-center"
+                disabled={saving === "school-logo-remove"}
+                onClick={removeSchoolLogo}
+              >
+                {saving === "school-logo-remove" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm leading-6 text-text-muted">
+              You can skip this step if the school does not have a logo ready yet.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   const renderSessionStep = () => (
     <div className="space-y-5">
@@ -808,6 +1143,31 @@ function AdminGettingStartedPage() {
       <div className="rounded-2xl border border-border bg-surface-muted/25 p-4 text-sm leading-6 text-text-muted">
         Add as many classes and subjects as the school needs. The forms remain available after each creation. Continue when the minimum structure is ready, or skip the stage and return later.
       </div>
+      {structureLimitNotice ? (
+        <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-text">Plan limit reached</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                {structureLimitNotice.message}
+              </p>
+              {structureLimitNotice.limit !== null && structureLimitNotice.limit !== undefined ? (
+                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  {structureLimitNotice.used} of {structureLimitNotice.limit} {structureLimitNotice.resource}
+                </p>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={() => navigate("/admin/billing/plans")}
+            >
+              <CreditCard className="h-4 w-4" />
+              Upgrade plan
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
@@ -822,8 +1182,22 @@ function AdminGettingStartedPage() {
           {activeClasses.length ? (
             <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
               {activeClasses.map((item) => (
-                <span key={item.id} className="rounded-full border border-border bg-surface-muted/40 px-3 py-1.5 text-xs font-semibold text-text-soft">
-                  {classLabel(item)}
+                <span key={item.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/40 py-1 pl-3 pr-1 text-xs font-semibold text-text-soft">
+                  <span>{classLabel(item)}</span>
+                  <button
+                    type="button"
+                    className="grid h-6 w-6 place-items-center rounded-full text-text-faint transition hover:bg-error-soft hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+                    title={`Remove ${classLabel(item)}`}
+                    aria-label={`Remove ${classLabel(item)}`}
+                    disabled={saving === `class-delete-${item.id}`}
+                    onClick={() => requestSetupRemoval("class", item)}
+                  >
+                    {saving === `class-delete-${item.id}` ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                 </span>
               ))}
             </div>
@@ -862,8 +1236,22 @@ function AdminGettingStartedPage() {
           {activeSubjects.length ? (
             <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
               {activeSubjects.map((item) => (
-                <span key={item.id} className="rounded-full border border-border bg-surface-muted/40 px-3 py-1.5 text-xs font-semibold text-text-soft">
-                  {item.name}
+                <span key={item.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/40 py-1 pl-3 pr-1 text-xs font-semibold text-text-soft">
+                  <span>{item.name}</span>
+                  <button
+                    type="button"
+                    className="grid h-6 w-6 place-items-center rounded-full text-text-faint transition hover:bg-error-soft hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+                    title={`Remove ${item.name}`}
+                    aria-label={`Remove ${item.name}`}
+                    disabled={saving === `subject-delete-${item.id}`}
+                    onClick={() => requestSetupRemoval("subject", item)}
+                  >
+                    {saving === `subject-delete-${item.id}` ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                 </span>
               ))}
             </div>
@@ -1183,6 +1571,7 @@ function AdminGettingStartedPage() {
   );
 
   const renderCurrentStep = () => {
+    if (current.id === "school_logo") return renderLogoStep();
     if (current.id === "session") return renderSessionStep();
     if (current.id === "term") return renderTermStep();
     if (current.id === "calendar") return renderCalendarStep();
@@ -1286,8 +1675,8 @@ function AdminGettingStartedPage() {
                   onClick={continueStep}
                   disabled={!currentComplete}
                 >
-                  {lastStep ? "Complete setup" : "Continue"}
-                  {lastStep ? (
+                  {lastStep || setupReadyToComplete ? "Complete setup" : "Continue"}
+                  {lastStep || setupReadyToComplete ? (
                     <CheckCircle2 className="h-4 w-4" />
                   ) : (
                     <ArrowRight className="h-4 w-4" />
@@ -1391,6 +1780,73 @@ function AdminGettingStartedPage() {
             </Card>
           </div>
         </div>
+
+        <ConfirmDialog
+          open={Boolean(deleteConfirmation)}
+          title={
+            deleteConfirmation?.type === "class"
+              ? "Remove class from setup?"
+              : "Remove subject from setup?"
+          }
+          description={
+            deleteConfirmation
+              ? `${deleteConfirmation.label} will be deactivated for the assisted setup and your plan usage will be refreshed.`
+              : ""
+          }
+          confirmLabel="Remove"
+          variant="danger"
+          isLoading={
+            deleteConfirmation
+              ? saving === `${deleteConfirmation.type}-delete-${deleteConfirmation.item.id}`
+              : false
+          }
+          onCancel={() => {
+            if (!saving) setDeleteConfirmation(null);
+          }}
+          onConfirm={confirmSetupRemoval}
+        />
+
+        <Modal
+          open={Boolean(warningDialog)}
+          title={warningDialog?.title || "Action needed"}
+          description={warningDialog?.message || ""}
+          onClose={() => setWarningDialog(null)}
+          placement="center"
+          footer={(
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setWarningDialog(null)}>
+                Stay here
+              </Button>
+              {warningDialog?.onAction ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const action = warningDialog.onAction;
+                    setWarningDialog(null);
+                    action();
+                  }}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  {warningDialog.actionLabel || "Continue"}
+                </Button>
+              ) : null}
+            </div>
+          )}
+        >
+          <div className="flex gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-4 text-sm leading-6 text-amber-900">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold text-amber-950">
+                This setup action is blocked by the current plan.
+              </p>
+              {warningDialog?.detail ? (
+                <p className="mt-1 text-xs font-semibold uppercase tracking-wide">
+                  {warningDialog.detail}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </Modal>
       </div>
     </DashboardLayout>
   );
