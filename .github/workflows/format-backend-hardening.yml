@@ -23,10 +23,6 @@ jobs:
           ref: Attendance
           fetch-depth: 0
 
-      - name: Apply frontend guide and import cleanup
-        working-directory: .
-        run: python .github/scripts/apply_frontend_guide_and_import_cleanup.py
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -54,15 +50,15 @@ jobs:
           printf 'Formatting %s backend Python files.\n' "${#files[@]}"
           uv run ruff format "${files[@]}"
 
-      - name: Commit cleanup and formatting
+      - name: Commit formatting
         working-directory: .
         run: |
           if git diff --quiet; then
-            echo "No changes required."
+            echo "No formatting changes required."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend frontend
-          git commit -m "feat: refine guides and prevent duplicate imports"
+          git add backend
+          git commit -m "style: format backend hardening changes"
           git push origin HEAD:Attendance
