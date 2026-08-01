@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: ["selector", '[data-theme="dark"]'],
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
@@ -61,6 +62,11 @@ export default {
           surface: "rgb(var(--color-header-surface) / <alpha-value>)",
           hover: "rgb(var(--color-header-surface-hover) / <alpha-value>)",
           border: "rgb(var(--color-header-border) / <alpha-value>)",
+        },
+        info: {
+          DEFAULT: "#2563EB",
+          hover: "#1D4ED8",
+          soft: "#DBEAFE",
         },
         success: {
           DEFAULT: "#10B981",
