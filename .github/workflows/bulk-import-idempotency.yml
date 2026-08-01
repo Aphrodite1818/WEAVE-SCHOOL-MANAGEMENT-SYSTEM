@@ -113,7 +113,7 @@ jobs:
       - name: Run idempotency regression tests
         run: uv run pytest tests/unit/bulk_imports/test_import_idempotency.py -q
 
-      - name: Upgrade fresh database
+      - name: Upgrade fresh database through 20260801_import_idempotency
         run: uv run alembic upgrade head
 
       - name: Verify fingerprint columns and indexes
