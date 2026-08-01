@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.security import create_access_token
 from app.core.dependencies.db import get_db
 from app.main import app
+from app.modules.auth.models import AuthSession, AuthSessionActorType
 from tests.integration.test_stabilization_flows import (
     create_parent,
     create_student,
@@ -33,7 +35,27 @@ async def api_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, No
     app.dependency_overrides.clear()
 
 
-def auth_headers(*, actor_id, actor_type: str, role: str, email: str, tenant_id=None) -> dict[str, str]:
+async def auth_headers(
+    db_session: AsyncSession,
+    *,
+    actor_id,
+    actor_type: str,
+    role: str,
+    email: str,
+    tenant_id=None,
+) -> dict[str, str]:
+    session_jti = f"test-{actor_type}-{actor_id}"
+    db_session.add(
+        AuthSession(
+            tenant_id=tenant_id,
+            actor_type=AuthSessionActorType(actor_type),
+            actor_id=actor_id,
+            session_jti=session_jti,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    )
+    await db_session.flush()
+
     payload = {
         "sub": str(actor_id),
         "actor_type": actor_type,
@@ -44,7 +66,7 @@ def auth_headers(*, actor_id, actor_type: str, role: str, email: str, tenant_id=
     if tenant_id is not None:
         payload["tenant_id"] = str(tenant_id)
 
-    token = create_access_token(data=payload)
+    token = create_access_token(data=payload, session_jti=session_jti)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -63,7 +85,8 @@ async def test_student_workspace_search_route_is_not_available(
 
     response = await api_client.get(
         "/api/v1/students/me/search?q=math",
-        headers=auth_headers(
+        headers=await auth_headers(
+            db_session,
             actor_id=student.id,
             actor_type="student",
             role="student",
@@ -81,20 +104,22 @@ async def test_parent_workspace_search_route_is_not_available(
     db_session: AsyncSession,
 ) -> None:
     tenant = await create_tenant(db_session, suffix="parent-search")
+    parent_email = "parent-search@example.com"
     parent = await create_parent(
         db_session,
         tenant=tenant,
-        email="parent-search@example.com",
+        email=parent_email,
     )
     await db_session.commit()
 
     response = await api_client.get(
         "/api/v1/parents/me/search?q=ada",
-        headers=auth_headers(
+        headers=await auth_headers(
+            db_session,
             actor_id=parent.id,
             actor_type="parent",
             role="parent",
-            email=parent.email,
+            email=parent_email,
             tenant_id=tenant.id,
         ),
     )
@@ -108,20 +133,22 @@ async def test_teacher_workspace_search_route_remains_available(
     db_session: AsyncSession,
 ) -> None:
     tenant = await create_tenant(db_session, suffix="teacher-search")
+    teacher_email = "teacher-search@example.com"
     teacher = await create_teacher(
         db_session,
         tenant=tenant,
-        email="teacher-search@example.com",
+        email=teacher_email,
     )
     await db_session.commit()
 
     response = await api_client.get(
         "/api/v1/teachers/me/search?q=tola",
-        headers=auth_headers(
+        headers=await auth_headers(
+            db_session,
             actor_id=teacher.id,
             actor_type="teacher",
             role="teacher",
-            email=teacher.email,
+            email=teacher_email,
             tenant_id=tenant.id,
         ),
     )
@@ -147,7 +174,8 @@ async def test_tenant_admin_workspace_search_route_remains_available(
 
     response = await api_client.get(
         "/api/v1/tenant-admin/search?q=ada",
-        headers=auth_headers(
+        headers=await auth_headers(
+            db_session,
             actor_id=admin.id,
             actor_type="tenant_admin",
             role="admin",
