@@ -274,25 +274,72 @@ function AdminGettingStartedPage() {
     selectedTerm && statusValue(selectedTerm) === "open" && selectedTerm.is_current,
   );
   const calendarActive = statusValue(selectedCalendar) === "active";
+  const sessionDraft = statusValue(selectedSession) === "draft";
+  const termDraft = statusValue(selectedTerm) === "draft";
+  const sessionDatesComplete = Boolean(
+    selectedSession?.start_date && selectedSession?.end_date,
+  );
+  const termDatesComplete = Boolean(selectedTerm?.start_date && selectedTerm?.end_date);
+  const calendarPrepared = Boolean(
+    calendarConfiguration &&
+      selectedCalendar &&
+      !selectedCalendar.configuration_outdated &&
+      Number(selectedCalendar.missing_dates || 0) === 0 &&
+      Number(selectedCalendar.extra_dates || 0) === 0 &&
+      Number(selectedCalendar.duplicate_dates || 0) === 0 &&
+      Number(selectedCalendar.invalid_days || 0) === 0 &&
+      Number(selectedCalendar.dependency_counts?.unresolved_days || 0) === 0,
+  );
+  const calendarBlockers = Array.isArray(selectedCalendar?.blocker_messages)
+    ? selectedCalendar.blocker_messages
+    : [];
+  const anotherOpenTerm = terms.find(
+    (item) =>
+      item.id !== selectedTerm?.id &&
+      statusValue(item) === "open" &&
+      item.is_current,
+  );
+  const sessionOpenReady = Boolean(
+    selectedSession &&
+      sessionDraft &&
+      sessionDatesComplete &&
+      selectedTerm &&
+      calendarConfiguration,
+  );
+  const calendarActivationReady = Boolean(
+    selectedCalendar &&
+      calendarPrepared &&
+      sessionActive &&
+      termDraft &&
+      selectedCalendar.can_activate !== false,
+  );
+  const termOpenReady = Boolean(
+    selectedTerm &&
+      termDraft &&
+      termDatesComplete &&
+      sessionActive &&
+      calendarActive &&
+      !anotherOpenTerm,
+  );
   const completionMap = useMemo(
     () => ({
-      session: sessions.length > 0,
-      term: Boolean(selectedSession && termsForSession.length > 0),
-      calendar: Boolean(selectedTerm && calendarsForTerm.length > 0),
+      session: Boolean(selectedSession),
+      term: Boolean(selectedSession && selectedTerm),
+      calendar: calendarPrepared,
       structure: classes.length > 0 && subjects.length > 0,
-      activation: sessionActive && termActive && calendarActive,
+      session_open: sessionActive,
+      calendar_active: calendarActive,
+      term_open: termActive,
     }),
     [
       calendarActive,
-      calendarsForTerm.length,
+      calendarPrepared,
       classes.length,
       selectedSession,
       selectedTerm,
       sessionActive,
       subjects.length,
       termActive,
-      termsForSession.length,
-      sessions.length,
     ],
   );
   const guide = useRoleGuide({ role: "admin", completionMap });
@@ -373,7 +420,7 @@ function AdminGettingStartedPage() {
         return schoolCalendarService.generateCalendar({
           academic_session_id: selectedSessionId,
           academic_term_id: selectedTerm.id,
-          overwrite_generated_days: false,
+          overwrite_generated_days: Boolean(selectedCalendar),
         });
       },
       "School calendar generated.",
@@ -390,7 +437,7 @@ function AdminGettingStartedPage() {
     );
     if (!created) return;
     setClassForm({ name: "", arm: "" });
-    if (subjects.length > 0) await guide.moveTo("activation");
+    if (subjects.length > 0) await guide.moveTo("session_open");
   };
 
   const createSubject = async (event) => {
@@ -402,25 +449,27 @@ function AdminGettingStartedPage() {
     );
     if (!created) return;
     setSubjectForm({ name: "", code: "" });
-    if (classes.length > 0) await guide.moveTo("activation");
-  };
-
-  const activateCalendar = async () => {
-    if (!selectedCalendar?.id) return;
-    await runAction(
-      "activate-calendar",
-      () => schoolCalendarService.activateCalendar(selectedCalendar.id),
-      "School calendar activated.",
-    );
+    if (classes.length > 0) await guide.moveTo("session_open");
   };
 
   const openSession = async () => {
     if (!selectedSession?.id) return;
-    await runAction(
+    const result = await runAction(
       "open-session",
       () => academicService.openSession(selectedSession.id),
       "Academic session opened.",
     );
+    if (result) await guide.moveTo("calendar_active");
+  };
+
+  const activateCalendar = async () => {
+    if (!selectedCalendar?.id) return;
+    const result = await runAction(
+      "activate-calendar",
+      () => schoolCalendarService.activateCalendar(selectedCalendar.id),
+      "School calendar activated.",
+    );
+    if (result) await guide.moveTo("term_open");
   };
 
   const openTerm = async () => {
@@ -430,7 +479,7 @@ function AdminGettingStartedPage() {
       () => academicService.openTerm(selectedTerm.id),
       "Academic term opened.",
     );
-    if (result && calendarActive && sessionActive) await guide.finish();
+    if (result) await guide.finish();
   };
 
   if (loading || guide.loading || !guide.config || !guide.currentStep) {
@@ -461,7 +510,7 @@ function AdminGettingStartedPage() {
   };
   const continueStep = async () => {
     if (lastStep) {
-      if (completionMap.activation) {
+      if (completionMap.term_open) {
         await guide.finish();
         navigate("/admin/dashboard", { replace: true });
       }
@@ -626,14 +675,14 @@ function AdminGettingStartedPage() {
         <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-soft">
           Create a term before generating its school calendar.
         </div>
-      ) : calendarsForTerm.length ? (
+      ) : calendarPrepared ? (
         <div className="rounded-2xl border border-success/25 bg-success-soft/50 p-4">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
             <div>
               <p className="font-semibold text-text">Calendar generated</p>
               <p className="mt-1 text-sm text-text-muted">
-                The calendar for {termLabel(selectedTerm)} is {titleCase(selectedCalendar?.status || "draft")}.
+                The calendar for {termLabel(selectedTerm)} matches the current saved configuration and is ready for lifecycle checks.
               </p>
             </div>
           </div>
@@ -700,7 +749,7 @@ function AdminGettingStartedPage() {
           </div>
           <Button type="submit" disabled={saving === "calendar"} className="w-full sm:w-auto">
             {saving === "calendar" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
-            {saving === "calendar" ? "Generating calendar..." : "Save defaults and generate calendar"}
+            {saving === "calendar" ? "Preparing calendar..." : selectedCalendar ? "Save defaults and regenerate calendar" : "Save defaults and generate calendar"}
           </Button>
         </form>
       )}
@@ -805,82 +854,185 @@ function AdminGettingStartedPage() {
     </div>
   );
 
-  const renderActivationStep = () => (
+  const renderSessionOpenStep = () => (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-border bg-surface-muted/20 p-4 sm:p-5">
-        <p className="font-semibold text-text">Recommended activation order</p>
+      <div className="rounded-2xl border border-primary/20 bg-primary-soft/35 p-4 sm:p-5">
+        <p className="font-semibold text-text">Why the session opens first</p>
         <p className="mt-1 text-sm leading-6 text-text-muted">
-          Activate the generated calendar first, open the session, then open the term. Each action is checked by the backend before it is applied.
+          The backend requires the session to be open and current before it will allow calendar activation. Opening the session requires complete dates, at least one term, and saved calendar defaults.
         </p>
       </div>
 
-      <div className="grid gap-3">
-        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-          <SetupCheck
-            label="School calendar"
-            complete={calendarActive}
-            detail={selectedCalendar ? `${termLabel(selectedTerm)} · ${titleCase(selectedCalendar.status)}` : "No generated calendar selected"}
-          />
-          <Button
-            type="button"
-            size="small"
-            variant={calendarActive ? "outline" : "primary"}
-            disabled={!selectedCalendar || calendarActive || saving === "activate-calendar"}
-            onClick={activateCalendar}
-            className="w-full sm:w-auto"
-          >
-            {saving === "activate-calendar" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck2 className="h-4 w-4" />}
-            {calendarActive ? "Calendar active" : "Activate calendar"}
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-          <SetupCheck
-            label="Academic session"
-            complete={sessionActive}
-            detail={selectedSession ? `${sessionLabel(selectedSession)} · ${titleCase(selectedSession.status)}` : "No session selected"}
-          />
-          <Button
-            type="button"
-            size="small"
-            variant={sessionActive ? "outline" : "primary"}
-            disabled={!selectedSession || !calendarActive || sessionActive || saving === "open-session"}
-            onClick={openSession}
-            className="w-full sm:w-auto"
-          >
-            {saving === "open-session" ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
-            {sessionActive ? "Session open" : "Open session"}
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-          <SetupCheck
-            label="Academic term"
-            complete={termActive}
-            detail={selectedTerm ? `${termLabel(selectedTerm)} · ${titleCase(selectedTerm.status)}` : "No term selected"}
-          />
-          <Button
-            type="button"
-            size="small"
-            variant={termActive ? "outline" : "primary"}
-            disabled={!selectedTerm || !calendarActive || !sessionActive || termActive || saving === "open-term"}
-            onClick={openTerm}
-            className="w-full sm:w-auto"
-          >
-            {saving === "open-term" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
-            {termActive ? "Term open" : "Open term"}
-          </Button>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SetupCheck
+          label="Draft session selected"
+          complete={sessionDraft || sessionActive}
+          detail={selectedSession ? `${sessionLabel(selectedSession)} · ${titleCase(selectedSession.status)}` : "No session selected"}
+        />
+        <SetupCheck
+          label="Session dates complete"
+          complete={sessionDatesComplete}
+          detail={sessionDatesComplete ? `${selectedSession.start_date} to ${selectedSession.end_date}` : "Start and end dates are required"}
+        />
+        <SetupCheck
+          label="At least one term exists"
+          complete={Boolean(selectedTerm)}
+          detail={selectedTerm ? termLabel(selectedTerm) : "Create a term in this session"}
+        />
+        <SetupCheck
+          label="Calendar defaults saved"
+          complete={Boolean(calendarConfiguration)}
+          detail={calendarConfiguration ? "Configuration is available" : "Save calendar defaults first"}
+        />
       </div>
 
-      {completionMap.activation ? (
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold text-text">Open {sessionLabel(selectedSession)}</p>
+          <p className="mt-1 text-sm text-text-muted">
+            This makes the session current. The term remains draft until the calendar is activated.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={sessionActive ? "outline" : "primary"}
+          disabled={!sessionOpenReady || sessionActive || saving === "open-session"}
+          onClick={openSession}
+          className="w-full sm:w-auto"
+        >
+          {saving === "open-session" ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
+          {sessionActive ? "Session open" : "Open session"}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderCalendarActivationStep = () => (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-primary/20 bg-primary-soft/35 p-4 sm:p-5">
+        <p className="font-semibold text-text">Activate the calendar while the term is draft</p>
+        <p className="mt-1 text-sm leading-6 text-text-muted">
+          Calendar activation requires the selected session to be open and current, the term to remain draft, and every calendar date to pass the backend readiness checks.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SetupCheck
+          label="Session open and current"
+          complete={sessionActive}
+          detail={selectedSession ? `${sessionLabel(selectedSession)} · ${titleCase(selectedSession.status)}` : "Open the session first"}
+        />
+        <SetupCheck
+          label="Term still draft"
+          complete={termDraft || termActive}
+          detail={selectedTerm ? `${termLabel(selectedTerm)} · ${titleCase(selectedTerm.status)}` : "No term selected"}
+        />
+        <SetupCheck
+          label="Calendar generated and current"
+          complete={calendarPrepared || calendarActive}
+          detail={selectedCalendar ? `${titleCase(selectedCalendar.status)} calendar` : "Generate the calendar first"}
+        />
+        <SetupCheck
+          label="Backend readiness passed"
+          complete={calendarActive || (calendarPrepared && selectedCalendar?.can_activate !== false)}
+          detail={calendarActive ? "Calendar is active" : calendarBlockers.length ? `${calendarBlockers.length} blocker${calendarBlockers.length === 1 ? "" : "s"} remain` : "No activation blockers"}
+        />
+      </div>
+
+      {!calendarActive && calendarBlockers.length ? (
+        <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4">
+          <p className="text-sm font-semibold text-text">Resolve these backend blockers</p>
+          <ul className="mt-2 space-y-1.5 text-sm leading-6 text-text-muted">
+            {calendarBlockers.map((blocker) => (
+              <li key={blocker} className="flex gap-2">
+                <span aria-hidden="true">•</span>
+                <span>{blocker}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold text-text">Activate {termLabel(selectedTerm)} calendar</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Activation locks in the operational calendar required by term opening.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={calendarActive ? "outline" : "primary"}
+          disabled={!calendarActivationReady || calendarActive || saving === "activate-calendar"}
+          onClick={activateCalendar}
+          className="w-full sm:w-auto"
+        >
+          {saving === "activate-calendar" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck2 className="h-4 w-4" />}
+          {calendarActive ? "Calendar active" : "Activate calendar"}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderTermOpenStep = () => (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-primary/20 bg-primary-soft/35 p-4 sm:p-5">
+        <p className="font-semibold text-text">Open the term last</p>
+        <p className="mt-1 text-sm leading-6 text-text-muted">
+          The backend will open a draft term only when its parent session is open and current and its generated school calendar is active and complete.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SetupCheck
+          label="Session open and current"
+          complete={sessionActive}
+          detail={selectedSession ? sessionLabel(selectedSession) : "No session selected"}
+        />
+        <SetupCheck
+          label="Calendar active"
+          complete={calendarActive}
+          detail={selectedCalendar ? titleCase(selectedCalendar.status) : "No calendar selected"}
+        />
+        <SetupCheck
+          label="Term ready to open"
+          complete={termDraft || termActive}
+          detail={selectedTerm ? `${termLabel(selectedTerm)} · ${titleCase(selectedTerm.status)}` : "No term selected"}
+        />
+        <SetupCheck
+          label="No other current term"
+          complete={!anotherOpenTerm}
+          detail={anotherOpenTerm ? `${termLabel(anotherOpenTerm)} is already open` : "No conflicting open term"}
+        />
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold text-text">Open {termLabel(selectedTerm)}</p>
+          <p className="mt-1 text-sm text-text-muted">
+            This is the final academic lifecycle transition in the setup assistant.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant={termActive ? "outline" : "primary"}
+          disabled={!termOpenReady || termActive || saving === "open-term"}
+          onClick={openTerm}
+          className="w-full sm:w-auto"
+        >
+          {saving === "open-term" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
+          {termActive ? "Term open" : "Open term"}
+        </Button>
+      </div>
+
+      {termActive ? (
         <div className="rounded-2xl border border-success/25 bg-success-soft/50 p-4 sm:p-5">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
             <div>
               <p className="font-semibold text-text">Academic setup is active</p>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                The minimum school foundation is complete. You can now continue from the Academic Hub and configure the remaining details at your own pace.
+                The session is current, the school calendar is active, and the term is open. The tenant can now continue from the Academic Hub.
               </p>
             </div>
           </div>
@@ -894,14 +1046,16 @@ function AdminGettingStartedPage() {
     if (current.id === "term") return renderTermStep();
     if (current.id === "calendar") return renderCalendarStep();
     if (current.id === "structure") return renderStructureStep();
-    return renderActivationStep();
+    if (current.id === "session_open") return renderSessionOpenStep();
+    if (current.id === "calendar_active") return renderCalendarActivationStep();
+    return renderTermOpenStep();
   };
 
   return (
     <DashboardLayout
       role="admin"
       title="School setup"
-      description="Complete the minimum academic foundation without leaving the guided workspace."
+      description="Follow the backend-safe setup sequence without leaving the guided workspace."
       actions={(
         <Button
           type="button"
@@ -1057,7 +1211,7 @@ function AdminGettingStartedPage() {
                   detail={selectedTerm ? termLabel(selectedTerm) : "Waiting for a term"}
                 />
                 <SetupCheck
-                  label="Calendar generated"
+                  label="Calendar prepared"
                   complete={completionMap.calendar}
                   detail={selectedCalendar ? titleCase(selectedCalendar.status) : "Waiting for a calendar"}
                 />
@@ -1067,9 +1221,19 @@ function AdminGettingStartedPage() {
                   detail={`${classes.length} classes · ${subjects.length} subjects`}
                 />
                 <SetupCheck
-                  label="Academic period active"
-                  complete={completionMap.activation}
-                  detail="Calendar, session, and term"
+                  label="Session open"
+                  complete={completionMap.session_open}
+                  detail={sessionActive ? "Current academic session" : "Waiting for session opening"}
+                />
+                <SetupCheck
+                  label="Calendar active"
+                  complete={completionMap.calendar_active}
+                  detail={calendarActive ? "Operational calendar active" : "Waiting for calendar activation"}
+                />
+                <SetupCheck
+                  label="Term open"
+                  complete={completionMap.term_open}
+                  detail={termActive ? "Current academic term" : "Waiting for term opening"}
                 />
               </div>
               <p className="mt-4 text-xs leading-5 text-text-faint">

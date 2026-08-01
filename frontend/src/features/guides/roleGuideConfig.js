@@ -17,14 +17,14 @@ export const ROLE_GUIDES = {
     eyebrow: "Academic setup",
     title: "Set up your school workspace",
     description:
-      "Build the minimum academic foundation in the correct order. Every stage is verified against your live school data.",
+      "Follow the backend-safe setup order. Every stage is verified against your live school data before the next lifecycle transition.",
     steps: [
       {
         id: "session",
         shortLabel: "Session",
         label: "Create an academic session",
         description:
-          "Define the academic year that terms, calendars, classes, and student records will belong to.",
+          "Define the dated academic year that the term and school calendar will belong to.",
         icon: CalendarDays,
       },
       {
@@ -32,15 +32,15 @@ export const ROLE_GUIDES = {
         shortLabel: "Term",
         label: "Create a term in the session",
         description:
-          "Add the first term to the session and define its operating dates.",
+          "Create the first draft term and keep its dates inside the academic session date range.",
         icon: CalendarCheck2,
       },
       {
         id: "calendar",
         shortLabel: "Calendar",
-        label: "Generate the school calendar",
+        label: "Configure and generate the calendar",
         description:
-          "Set the school timetable defaults and generate operational days for the selected term.",
+          "Save the school calendar defaults and generate complete operational days for the draft term.",
         icon: CalendarDays,
       },
       {
@@ -48,15 +48,31 @@ export const ROLE_GUIDES = {
         shortLabel: "Structure",
         label: "Create classes and subjects",
         description:
-          "Create at least one class and one subject so the academic workspace has a usable structure.",
+          "Create at least one active class and one active subject before launching normal academic work.",
         icon: School,
       },
       {
-        id: "activation",
-        shortLabel: "Activate",
-        label: "Activate the calendar, session, and term",
+        id: "session_open",
+        shortLabel: "Open session",
+        label: "Open the academic session",
         description:
-          "Complete the launch sequence so teachers and administrators can begin academic operations.",
+          "The backend requires a dated draft session, at least one term, and saved calendar configuration before the session can become current.",
+        icon: GraduationCap,
+      },
+      {
+        id: "calendar_active",
+        shortLabel: "Activate calendar",
+        label: "Activate the school calendar",
+        description:
+          "Calendar activation happens only after the session is open and while the selected term is still draft.",
+        icon: CalendarCheck2,
+      },
+      {
+        id: "term_open",
+        shortLabel: "Open term",
+        label: "Open the academic term",
+        description:
+          "Open the term last. The backend requires both the current open session and an active, complete calendar.",
         icon: GraduationCap,
       },
     ],
