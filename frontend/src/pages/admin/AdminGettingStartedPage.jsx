@@ -247,7 +247,7 @@ function AdminGettingStartedPage() {
       calendars.filter(
         (item) => !selectedTerm?.id || item.academic_term_id === selectedTerm.id,
       ),
-    [calendars, selectedTerm?.id],
+    [calendars, selectedTerm],
   );
   const selectedCalendar = useMemo(
     () =>
@@ -301,7 +301,7 @@ function AdminGettingStartedPage() {
     if (!guide.loading && guide.guideState?.status === "not_started") {
       guide.start();
     }
-  }, [guide]);
+  }, [guide.guideState?.status, guide.loading, guide.start]);
 
   const runAction = async (key, action, successMessage) => {
     setSaving(key);
