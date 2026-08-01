@@ -11,8 +11,10 @@ const buildSteps = (stats = {}) => [
   },
   {
     id: "structure",
-    label: "Classes and school structure",
-    complete: Number(stats.total_classes || 0) > 0,
+    label: "Classes and subjects",
+    complete:
+      Number(stats.total_classes || 0) > 0
+      && Number(stats.total_subjects || 0) > 0,
   },
   {
     id: "staff",
