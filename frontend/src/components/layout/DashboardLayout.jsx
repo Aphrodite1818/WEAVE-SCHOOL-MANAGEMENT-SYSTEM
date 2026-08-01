@@ -10,7 +10,11 @@ import {
 import { ArrowLeft, CreditCard, Loader2, X } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
-import { clearGuideReturn, readGuideReturn } from "../../features/guides/guideNavigation";
+import {
+  clearGuideReturn,
+  leaveGuideRoute,
+  readGuideReturn,
+} from "../../features/guides/guideNavigation";
 import {
   FEATURE_CODES,
   clearRegistrationCheckoutIntent,
@@ -582,6 +586,16 @@ function DashboardShellFrame({
       dismissed: true,
     }));
   };
+  const finishGuideLater = async () => {
+    const destination = roleGuide.config?.dashboardRoute || `/${role}/dashboard`;
+    try {
+      if (roleGuide.guideState?.status === "not_started") {
+        await roleGuide.start();
+      }
+    } finally {
+      leaveGuideRoute(role, destination, { replace: true });
+    }
+  };
 
   if (guidePageActive) {
     return (
@@ -604,7 +618,7 @@ function DashboardShellFrame({
               type="button"
               size="small"
               variant="outline"
-              onClick={() => navigate(roleGuide.config?.dashboardRoute || `/${role}/dashboard`)}
+              onClick={finishGuideLater}
             >
               Finish later
             </Button>

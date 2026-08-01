@@ -7,7 +7,10 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import { saveGuideReturn } from "../../features/guides/guideNavigation";
+import {
+  leaveGuideRoute,
+  saveGuideReturn,
+} from "../../features/guides/guideNavigation";
 import useRoleGuide from "../../features/guides/useRoleGuide";
 
 function RoleGettingStartedPage({ role }) {
@@ -32,6 +35,22 @@ function RoleGettingStartedPage({ role }) {
   const Icon = current.icon;
   const firstStep = guide.currentIndex === 0;
   const lastStep = guide.currentIndex >= guide.steps.length - 1;
+  const leaveToDashboard = () =>
+    leaveGuideRoute(role, guide.config.dashboardRoute, { replace: true });
+  const finishLater = async () => {
+    try {
+      if (guide.guideState?.status === "not_started") {
+        await guide.start();
+      } else if (
+        guide.guideState?.status !== "completed" &&
+        current?.id
+      ) {
+        await guide.moveTo(current.id);
+      }
+    } finally {
+      leaveToDashboard();
+    }
+  };
 
   const openWorkspace = async () => {
     await guide.moveTo(current.id);
@@ -47,7 +66,7 @@ function RoleGettingStartedPage({ role }) {
   const markComplete = async () => {
     if (lastStep || guide.guideState?.status === "completed") {
       await guide.finish();
-      navigate(guide.config.dashboardRoute, { replace: true });
+      leaveToDashboard();
       return;
     }
     await guide.advanceFrom(current.id);
@@ -55,7 +74,7 @@ function RoleGettingStartedPage({ role }) {
 
   const skipCurrent = async () => {
     await guide.skipStep(current.id);
-    if (lastStep) navigate(guide.config.dashboardRoute, { replace: true });
+    if (lastStep) leaveToDashboard();
   };
 
   const previous = async () => {
@@ -65,7 +84,7 @@ function RoleGettingStartedPage({ role }) {
 
   const hideGuide = async () => {
     await guide.dismiss();
-    navigate(guide.config.dashboardRoute, { replace: true });
+    leaveToDashboard();
   };
 
   return (
@@ -96,7 +115,7 @@ function RoleGettingStartedPage({ role }) {
                 type="button"
                 variant="ghost"
                 size="small"
-                onClick={() => navigate(guide.config.dashboardRoute)}
+                onClick={finishLater}
                 className="self-start lg:self-auto"
               >
                 Finish later

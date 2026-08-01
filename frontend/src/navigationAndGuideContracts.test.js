@@ -27,7 +27,10 @@ test("assisted class-limit warning routes admins to a working checkout page", ()
 
   assert.match(setupPage, /detail\?\.reason === "resource_limit_reached"/);
   assert.match(setupPage, /actionLabel:\s*"Upgrade plan"/);
-  assert.match(setupPage, /navigate\("\/admin\/billing\/plans"\)/);
+  assert.match(
+  setupPage,
+  /leaveGuideRoute\("admin", "\/admin\/billing\/plans", \{ replace: true \}\)/,
+);
   assert.match(plansPage, /initializeSubscriptionCheckout/);
   assert.match(plansPage, /window\.location\.assign\(response\.authorization_url\)/);
 });
@@ -48,11 +51,26 @@ test("new tenant admins enter assisted setup immediately after onboarding", () =
 });
 
 test("all guided setup exit actions return to the actor dashboard", () => {
+  const shell = readSource("components", "layout", "DashboardLayout.jsx");
   const adminGuide = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
   const roleGuide = readSource("pages", "shared", "RoleGettingStartedPage.jsx");
+  const navigation = readSource("features", "guides", "guideNavigation.js");
 
-  assert.match(adminGuide, /navigate\("\/admin\/dashboard", \{ replace: true \}\)/);
-  assert.match(adminGuide, /onClick=\{\(\) => navigate\("\/admin\/dashboard"\)\}/);
-  assert.match(roleGuide, /navigate\(guide\.config\.dashboardRoute, \{ replace: true \}\)/);
-  assert.match(roleGuide, /onClick=\{\(\) => navigate\(guide\.config\.dashboardRoute\)\}/);
+  assert.match(shell, /onClick=\{finishGuideLater\}/);
+  assert.match(adminGuide, /onClick=\{finishLater\}/);
+  assert.match(adminGuide, /leaveGuideRoute\("admin", "\/admin\/dashboard"/);
+  assert.match(roleGuide, /onClick=\{finishLater\}/);
+  assert.match(roleGuide, /leaveGuideRoute\(role, guide\.config\.dashboardRoute/);
+  assert.match(navigation, /window\.location\.replace\(destination\)/);
+});
+
+test("plan-limit upgrade action leaves setup and opens billing plans", () => {
+  const adminGuide = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
+
+  assert.match(adminGuide, /onClick=\{goToPlanUpgrade\}/);
+  assert.match(
+    adminGuide,
+    /leaveGuideRoute\("admin", "\/admin\/billing\/plans", \{ replace: true \}\)/,
+  );
+  assert.doesNotMatch(adminGuide, /warningDialog\.onAction/);
 });

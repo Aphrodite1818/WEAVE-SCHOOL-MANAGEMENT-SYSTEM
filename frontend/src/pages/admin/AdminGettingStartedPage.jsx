@@ -20,7 +20,6 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import GuideProgressStepper from "../../components/guides/GuideProgressStepper";
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -35,6 +34,7 @@ import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import { schoolCalendarService } from "../../features/schoolCalendar/api/schoolCalendarService";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { leaveGuideRoute } from "../../features/guides/guideNavigation";
 import useRoleGuide from "../../features/guides/useRoleGuide";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
@@ -139,7 +139,6 @@ function StepHeading({ step, number, total, complete }) {
 }
 
 function AdminGettingStartedPage() {
-  const navigate = useNavigate();
   const { showSuccess, showError, showWarning } = useToast();
   const { refreshSubscriptionState } = useSubscription();
   const { applyResponse: applyBrandingResponse } = useTenantBranding();
@@ -550,7 +549,6 @@ function AdminGettingStartedPage() {
               ? `${notice.used} of ${notice.limit} ${notice.resource}`
               : "",
           actionLabel: "Upgrade plan",
-          onAction: goToPlanUpgrade,
         });
         return null;
       }
@@ -727,7 +725,7 @@ function AdminGettingStartedPage() {
     );
     if (result) {
       await guide.finish();
-      navigate("/admin/dashboard", { replace: true });
+      leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
     }
   };
 
@@ -760,13 +758,36 @@ function AdminGettingStartedPage() {
   const goPrevious = () => {
     if (!firstStep) guide.moveTo(guide.steps[guide.currentIndex - 1].id);
   };
-  const goToPlanUpgrade = () => {
+  const persistGuideBeforeExit = async () => {
+    if (guide.guideState?.status === "not_started") {
+      await guide.start();
+      return;
+    }
+    if (
+      guide.guideState?.status !== "completed" &&
+      guide.currentStep?.id
+    ) {
+      await guide.moveTo(guide.currentStep.id);
+    }
+  };
+  const finishLater = async () => {
+    try {
+      await persistGuideBeforeExit();
+    } finally {
+      leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
+    }
+  };
+  const goToPlanUpgrade = async () => {
     setWarningDialog(null);
-    navigate("/admin/billing/plans");
+    try {
+      await persistGuideBeforeExit();
+    } finally {
+      leaveGuideRoute("admin", "/admin/billing/plans", { replace: true });
+    }
   };
   const continueStep = async () => {
     if (guide.guideState?.status === "completed") {
-      navigate("/admin/dashboard", { replace: true });
+      leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
       return;
     }
     if (lastStep || setupReadyToComplete) {
@@ -774,7 +795,7 @@ function AdminGettingStartedPage() {
       try {
         await guide.finish();
         showSuccess("Assisted setup completed.");
-        navigate("/admin/dashboard", { replace: true });
+        leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
       } catch (completionError) {
         showError(getErrorMessage(completionError, "Could not complete assisted setup."));
       }
@@ -784,7 +805,7 @@ function AdminGettingStartedPage() {
   };
   const skipStep = async () => {
     await guide.skipStep(current.id);
-    if (lastStep) navigate("/admin/dashboard", { replace: true });
+    if (lastStep) leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
   };
 
   const renderLogoStep = () => (
@@ -1629,7 +1650,7 @@ function AdminGettingStartedPage() {
                 type="button"
                 variant="ghost"
                 size="small"
-                onClick={() => navigate("/admin/dashboard")}
+                onClick={finishLater}
                 className="self-start lg:self-auto"
               >
                 Finish later
@@ -1824,17 +1845,10 @@ function AdminGettingStartedPage() {
               <Button type="button" variant="outline" onClick={() => setWarningDialog(null)}>
                 Stay here
               </Button>
-              {warningDialog?.onAction ? (
-                <Button
-                  type="button"
-                  onClick={() => {
-                    const action = warningDialog.onAction;
-                    setWarningDialog(null);
-                    action();
-                  }}
-                >
+              {warningDialog?.actionLabel ? (
+                <Button type="button" onClick={goToPlanUpgrade}>
                   <CreditCard className="h-4 w-4" />
-                  {warningDialog.actionLabel || "Continue"}
+                  {warningDialog.actionLabel}
                 </Button>
               ) : null}
             </div>
