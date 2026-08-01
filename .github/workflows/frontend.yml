@@ -8,6 +8,7 @@ on:
       - "backend/alembic/versions/20260801_import_idempotency.py"
       - "backend/tests/unit/bulk_imports/**"
       - ".github/scripts/apply_frontend_guide_and_import_cleanup.py"
+      - ".github/scripts/fix_cleanup_patch_anchor.py"
       - ".github/workflows/frontend.yml"
   push:
     branches:
@@ -24,6 +25,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Repair patch anchors
+        run: python .github/scripts/fix_cleanup_patch_anchor.py
 
       - name: Apply cleanup patch
         run: python .github/scripts/apply_frontend_guide_and_import_cleanup.py
