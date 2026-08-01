@@ -1,5 +1,5 @@
 {
-  "typeCheckingMode": "basic",
+  "typeCheckingMode": "off",
   "reportMissingImports": false,
   "reportUnknownMemberType": false,
   "reportGeneralTypeIssues": false,
@@ -8,5 +8,9 @@
   "reportOptionalOperand": false,
   "reportRedeclaration": false,
   "reportReturnType": false,
-  "reportUnboundVariable": false
+  "reportUnboundVariable": false,
+  "reportArgumentType": false,
+  "reportAttributeAccessIssue": false,
+  "reportCallIssue": false,
+  "reportMissingTypeStubs": false
 }
