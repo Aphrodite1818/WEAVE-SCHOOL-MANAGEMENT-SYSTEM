@@ -184,13 +184,19 @@ def build_import_source_fingerprint(
 ) -> str:
     """Hash canonical normalized rows so the same workbook cannot be confirmed twice."""
 
+    canonical_rows = sorted(
+        json.dumps(
+            normalized_row,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        for _, normalized_row in rows
+    )
     canonical_payload = {
         "resource_type": resource_type.value,
         "template_version": str(template_version or ""),
-        "rows": [
-            {"row_number": int(row_number), "data": normalized_row}
-            for row_number, normalized_row in sorted(rows, key=lambda item: item[0])
-        ],
+        "rows": canonical_rows,
     }
     encoded = json.dumps(
         canonical_payload,
@@ -1213,6 +1219,14 @@ class BulkImportService:
 
         if import_job.status in {ImportJobStatus.PENDING, ImportJobStatus.PROCESSING}:
             raise BadRequestException(detail="Active import jobs cannot be deleted.")
+
+        if import_job.confirmed_fingerprint:
+            raise BadRequestException(
+                detail=(
+                    "Processed import jobs cannot be deleted because their fingerprint "
+                    "protects the school from duplicate student creation."
+                )
+            )
 
         await ImportJobRepository.delete_job(db=db, import_job=import_job)
         await db.commit()
