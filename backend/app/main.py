@@ -95,7 +95,10 @@ from app.modules.superadmin.router import router as superadmin_router
 from app.modules.superadmin.bootstrap import SuperadminBootstrapService
 from app.modules.teachers.router import router as teacher_router
 from app.modules.tenant_admins.router import router as tenant_admin_router
-from app.modules.tenant_branding.router import router as tenant_branding_router
+from app.modules.tenant_branding.router import (
+    router as tenant_branding_router,
+    workspace_router as workspace_branding_router,
+)
 from app.tenant_management.router import router as tenant_router
 
 logger = get_logger(__name__)
@@ -217,6 +220,7 @@ def create_app() -> FastAPI:
     app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
     app.include_router(media_router, prefix="/api/v1/tenant-admin")
     app.include_router(tenant_branding_router, prefix="/api/v1/tenant-admin")
+    app.include_router(workspace_branding_router, prefix="/api/v1")
     app.include_router(bulk_import_router, prefix="/api/v1/tenant-admin")
     app.include_router(email_outbox_router, prefix="/api/v1/tenant-admin")
     app.include_router(tenant_router, prefix="/api/v1/tenants", tags=["Tenants"])

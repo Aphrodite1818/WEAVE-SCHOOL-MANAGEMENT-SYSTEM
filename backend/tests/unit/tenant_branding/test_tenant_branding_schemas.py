@@ -11,6 +11,7 @@ def test_tenant_branding_update_accepts_full_hex_colors() -> None:
         sidebar_color="#0F172A",
         header_color="#F8FAFC",
         background_color="#E2E8F0",
+        surface_color="#FFFFFF",
     )
 
     assert payload.primary_color == "#2563EB"
@@ -18,6 +19,7 @@ def test_tenant_branding_update_accepts_full_hex_colors() -> None:
     assert payload.sidebar_color == "#0F172A"
     assert payload.header_color == "#F8FAFC"
     assert payload.background_color == "#E2E8F0"
+    assert payload.surface_color == "#FFFFFF"
 
 
 @pytest.mark.parametrize(
@@ -28,6 +30,7 @@ def test_tenant_branding_update_accepts_full_hex_colors() -> None:
         ("sidebar_color", "blue"),
         ("header_color", "#123"),
         ("background_color", "slate"),
+        ("surface_color", "white"),
     ],
 )
 def test_tenant_branding_update_rejects_non_strict_hex_colors(

@@ -49,6 +49,10 @@ class TenantBranding(BaseModel):
         nullable=False,
     )
 
+    header_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="#FFFFFF")
+    background_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="#F8FAFC")
+    surface_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="#FFFFFF")
+
     theme_mode: Mapped[TenantBrandingThemeMode] = mapped_column(
         SQLEnum(
             TenantBrandingThemeMode,
@@ -61,7 +65,7 @@ class TenantBranding(BaseModel):
         server_default=TenantBrandingThemeMode.LIGHT.value,
     )
 
-    tokens: Mapped[dict[str, str]] = mapped_column(
+    tokens: Mapped[dict[str, object]] = mapped_column(
         JSONB,
         nullable=False,
         default=dict,
@@ -80,6 +84,13 @@ class TenantBranding(BaseModel):
         nullable=False,
         default=0,
         server_default="0",
+    )
+
+    token_schema_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
     )
 
     updated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(

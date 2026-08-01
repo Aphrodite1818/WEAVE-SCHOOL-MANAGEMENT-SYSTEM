@@ -16,6 +16,7 @@ class FeatureCode(StrEnum):
     AI_ASSISTANT = "ai_assistant"
     BULK_IMPORT = "bulk_import"
     BULK_ACADEMIC_OPERATIONS = "bulk_academic_operations"
+    TENANT_BRANDING = "tenant_branding"
 
 
 class ResourceLimitCode(StrEnum):

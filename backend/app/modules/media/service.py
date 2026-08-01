@@ -49,6 +49,7 @@ from app.modules.teachers.models import Teacher
 from app.modules.teachers.repository import TeacherRepository
 from app.modules.tenant_admins.models import TenantAdmin
 from app.modules.tenant_admins.repository import TenantAdminRepository
+from app.modules.tenant_branding.cache import invalidate_tenant_branding
 from app.tenant_management.models import Tenant
 from app.tenant_management.repository import TenantRepository
 
@@ -279,6 +280,7 @@ class MediaService:
             tenant = await MediaService._get_tenant(db=db, tenant_id=tenant_id)
             tenant.logo_url = attachment_url
             await TenantRepository.save(db=db, tenant=tenant)
+            await invalidate_tenant_branding(tenant_id, db=db)
             return
 
         if owner_type == MediaOwnerType.STUDENT and purpose == MediaPurpose.STUDENT_PASSPORT:
@@ -343,6 +345,7 @@ class MediaService:
             tenant = await MediaService._get_tenant(db=db, tenant_id=tenant_id)
             tenant.logo_url = None
             await TenantRepository.save(db=db, tenant=tenant)
+            await invalidate_tenant_branding(tenant_id, db=db)
             return
 
         if owner_type == MediaOwnerType.STUDENT and purpose == MediaPurpose.STUDENT_PASSPORT:

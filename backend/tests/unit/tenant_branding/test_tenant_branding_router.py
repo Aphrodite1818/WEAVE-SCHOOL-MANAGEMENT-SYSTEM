@@ -16,3 +16,5 @@ def test_tenant_branding_routes_are_registered() -> None:
     assert "/api/v1/tenant-admin/branding/effective" in paths
     assert "/api/v1/tenant-admin/branding/enable" in paths
     assert "/api/v1/tenant-admin/branding/disable" in paths
+    assert "/api/v1/tenant-admin/branding/reset" in paths
+    assert "/api/v1/workspace/branding" in paths
