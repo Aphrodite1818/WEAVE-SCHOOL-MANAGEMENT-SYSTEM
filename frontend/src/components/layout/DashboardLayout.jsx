@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
@@ -17,7 +17,7 @@ import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 import AiChatLauncher from "../ai/AiChatLauncher";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
-import RoleGuideModal from "../guides/RoleGuideModal";
+import GettingStartedBanner from "../guides/GettingStartedBanner";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
 import MobileDrawer from "./MobileDrawer";
@@ -82,6 +82,7 @@ function DashboardShellFrame({
 }) {
   const user = authSession.getUser() || {};
   const location = useLocation();
+  const navigate = useNavigate();
   const role = getRole(user, roleProp);
   const academicHubActive = location.pathname.startsWith("/admin/academic");
   const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
@@ -128,6 +129,36 @@ function DashboardShellFrame({
       !onboardingState.required &&
       !profileModalOpen,
   });
+  const gettingStartedRoute = roleGuide.config?.route || "";
+  const showGettingStartedBanner = Boolean(
+    roleGuide.shouldShowBanner &&
+      roleGuide.config?.dashboardRoute === location.pathname &&
+      gettingStartedRoute !== location.pathname,
+  );
+
+  useEffect(() => {
+    if (
+      !roleGuide.shouldAutoRedirect ||
+      !gettingStartedRoute ||
+      location.pathname === gettingStartedRoute
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    roleGuide.start().then(() => {
+      if (!cancelled) navigate(gettingStartedRoute, { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    gettingStartedRoute,
+    location.pathname,
+    navigate,
+    roleGuide.shouldAutoRedirect,
+    roleGuide.start,
+  ]);
 
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
@@ -473,6 +504,12 @@ function DashboardShellFrame({
                 ) : null}
               </section>
             )}
+            {showGettingStartedBanner ? (
+              <GettingStartedBanner
+                guide={roleGuide}
+                onContinue={() => navigate(gettingStartedRoute)}
+              />
+            ) : null}
             {children}
           </main>
         </div>
@@ -498,8 +535,6 @@ function DashboardShellFrame({
           />
         </Modal>
       ) : null}
-
-      <RoleGuideModal guide={roleGuide} />
 
       {shouldRenderAiLauncher ? <AiChatLauncher role={role} /> : null}
     </div>
