@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { guideService } from "../../services/guideService";
+import { hasGuideExitSuppression } from "./guideNavigation";
 import { guideForRole } from "./roleGuideConfig";
 
 export const GUIDE_STATE_CHANGED_EVENT = "weave:guide-state-changed";
@@ -226,7 +227,10 @@ export function useRoleGuide({
     guideState,
     loading,
     shouldAutoRedirect:
-      enabled && !loading && guideState?.status === "not_started",
+      enabled &&
+      !loading &&
+      guideState?.status === "not_started" &&
+      !hasGuideExitSuppression(role),
     shouldShowBanner:
       enabled && !loading && guideState?.status === "in_progress",
     start,
