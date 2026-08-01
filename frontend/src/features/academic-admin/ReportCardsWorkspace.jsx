@@ -1,4 +1,4 @@
-import { CheckCircle2, Eye, FileText, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Eye, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
