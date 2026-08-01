@@ -4,11 +4,6 @@ on:
   pull_request:
     paths:
       - "frontend/**"
-      - "backend/app/modules/bulk_imports/**"
-      - "backend/alembic/versions/20260801_import_idempotency.py"
-      - "backend/tests/unit/bulk_imports/**"
-      - ".github/scripts/apply_frontend_guide_and_import_cleanup.py"
-      - ".github/scripts/fix_cleanup_patch_anchor.py"
       - ".github/workflows/frontend.yml"
   push:
     branches:
@@ -19,39 +14,7 @@ on:
       - "frontend/**"
       - ".github/workflows/frontend.yml"
 
-permissions:
-  contents: write
-
 jobs:
-  commit-cleanup:
-    if: github.event_name == 'pull_request' && github.head_ref == 'Attendance'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Attendance branch
-        uses: actions/checkout@v4
-        with:
-          ref: Attendance
-          fetch-depth: 0
-
-      - name: Repair patch anchors
-        run: python .github/scripts/fix_cleanup_patch_anchor.py
-
-      - name: Apply validated cleanup
-        run: python .github/scripts/apply_frontend_guide_and_import_cleanup.py
-
-      - name: Commit application changes directly to Attendance
-        shell: bash
-        run: |
-          if git diff --quiet -- frontend backend; then
-            echo "No application changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend backend
-          git commit -m "feat: refine guides and prevent duplicate imports"
-          git push origin HEAD:Attendance
-
   validate:
     runs-on: ubuntu-latest
 
