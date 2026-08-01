@@ -27,6 +27,7 @@ import Card from "../../components/ui/Card";
 import Dropdown from "../../components/ui/Dropdown";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
+import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useToast } from "../../hooks/useToast";
 import academicService from "../../services/academicService";
 import { classService } from "../../services/academicsService";
@@ -137,26 +138,38 @@ const actionsForStudent = (student) => {
   return ["archive"];
 };
 
-function SelectField({ label, name, value, onChange, options, placeholder, error, required }) {
+function SelectField({
+  label,
+  name,
+  value,
+  onChange,
+  options,
+  placeholder,
+  error,
+  required,
+  searchable = true,
+}) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-semibold text-text-soft">{label}</span>
-      <select
-        className="input-base"
-        name={name}
-        value={value || ""}
-        onChange={onChange}
-        required={required}
-      >
-        <option value="">{placeholder || "Select"}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error ? <span className="mt-1 block text-xs text-error">{error}</span> : null}
-    </label>
+    <SearchableSelect
+      label={label}
+      name={name}
+      value={value || ""}
+      options={options}
+      placeholder={placeholder || "Select"}
+      searchPlaceholder={`Search ${String(label || "options").toLowerCase()}`}
+      searchable={searchable}
+      clearable={!required}
+      required={required}
+      error={error}
+      onChange={(nextValue) =>
+        onChange({
+          target: {
+            name,
+            value: nextValue,
+          },
+        })
+      }
+    />
   );
 }
 

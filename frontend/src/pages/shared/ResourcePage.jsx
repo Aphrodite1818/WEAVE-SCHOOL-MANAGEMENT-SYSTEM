@@ -5,6 +5,7 @@ import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import MultiSelect from "../../components/ui/MultiSelect";
+import SearchableSelect from "../../components/ui/SearchableSelect";
 import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage, parseApiError } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
@@ -46,20 +47,31 @@ function FormControl({ field, value, error, onChange, onValueChange }) {
 
   if (field.type === "select") {
     return (
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-text-soft">
-          {field.label}
-        </label>
-        <select className="input-base" {...commonProps}>
-          <option value="">{field.placeholder || "Select an option"}</option>
-          {(field.options || []).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {error && <p className="mt-1 text-sm text-error">{error}</p>}
-      </div>
+      <SearchableSelect
+        label={field.label}
+        name={field.name}
+        value={value ?? ""}
+        options={field.options || []}
+        placeholder={field.placeholder || "Select an option"}
+        searchPlaceholder={
+          field.searchPlaceholder || `Search ${String(field.label || "options").toLowerCase()}`
+        }
+        searchable={field.searchable !== false}
+        clearable={field.clearable !== false && !field.required}
+        disabled={field.disabled}
+        required={field.required}
+        error={error}
+        onChange={(nextValue) =>
+          onChange({
+            target: {
+              name: field.name,
+              value: nextValue,
+              multiple: false,
+              selectedOptions: [],
+            },
+          })
+        }
+      />
     );
   }
 
