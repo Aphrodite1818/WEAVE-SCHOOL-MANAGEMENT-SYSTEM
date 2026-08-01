@@ -121,10 +121,11 @@ jobs:
           uv run python - <<'PY'
           from app.main import app
 
-          methods_by_path = {
-              route.path: set(getattr(route, "methods", set()) or set())
-              for route in app.routes
-          }
+          methods_by_path = {}
+          for route in app.routes:
+              methods_by_path.setdefault(route.path, set()).update(
+                  getattr(route, "methods", set()) or set()
+              )
           path = "/api/v1/guides/{guide_key}"
           assert path in methods_by_path, f"Missing guide route: {path}"
           assert {"GET", "PATCH"}.issubset(methods_by_path[path])
