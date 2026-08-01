@@ -13,7 +13,9 @@ const inFuture = (value) => {
 
 const adminCompletion = (stats = {}) => ({
   foundation: Boolean(stats.active_academic_session && stats.active_academic_term),
-  structure: Number(stats.total_classes || 0) > 0,
+  structure:
+    Number(stats.total_classes || 0) > 0
+    && Number(stats.total_subjects || 0) > 0,
   staff: Number(stats.total_teachers || 0) > 0,
   students: Number(stats.total_students || 0) > 0,
 });
