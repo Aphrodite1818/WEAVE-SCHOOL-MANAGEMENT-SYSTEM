@@ -7,7 +7,6 @@ on:
       - "backend/app/modules/report_cards/**"
       - "backend/app/modules/student_academics/bulk_results_router.py"
       - "backend/app/core/queue/subscription_worker.py"
-      - "backend/alembic/versions/20260731_subscription_plan_changes.py"
       - "backend/tests/unit/subscriptions/**"
       - "backend/tests/unit/report_cards/test_report_card_print_security.py"
       - ".github/workflows/subscription-hardening.yml"
@@ -21,7 +20,6 @@ on:
       - "backend/app/modules/report_cards/**"
       - "backend/app/modules/student_academics/bulk_results_router.py"
       - "backend/app/core/queue/subscription_worker.py"
-      - "backend/alembic/versions/20260731_subscription_plan_changes.py"
       - "backend/tests/unit/subscriptions/**"
       - "backend/tests/unit/report_cards/test_report_card_print_security.py"
       - ".github/workflows/subscription-hardening.yml"
@@ -97,7 +95,6 @@ jobs:
             app/modules/report_cards/bulk_router.py \
             app/modules/student_academics/bulk_results_router.py \
             app/core/queue/subscription_worker.py \
-            alembic/versions/20260731_subscription_plan_changes.py \
             tests/unit/subscriptions \
             tests/unit/report_cards/test_report_card_print_security.py
 
@@ -111,7 +108,6 @@ jobs:
             app/modules/report_cards/bulk_router.py \
             app/modules/student_academics/bulk_results_router.py \
             app/core/queue/subscription_worker.py \
-            alembic/versions/20260731_subscription_plan_changes.py \
             tests/unit/subscriptions \
             tests/unit/report_cards/test_report_card_print_security.py
 

@@ -6,6 +6,14 @@ registered centrally and that the canonical HTTP entry points remain exposed.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 import app.models  # noqa: F401
 from app.main import app
 from app.modules.communications.models import NotificationDelivery
