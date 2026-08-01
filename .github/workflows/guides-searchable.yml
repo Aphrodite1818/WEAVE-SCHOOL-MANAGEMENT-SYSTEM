@@ -14,9 +14,15 @@ on:
       - "frontend/src/services/guideService.js"
       - "frontend/src/components/academic/AcademicSelectors.jsx"
       - "frontend/src/features/academic-admin/**"
-      - "frontend/src/pages/teacher/ResultsPage.jsx"
       - "frontend/src/pages/admin/AdminDashboardPage.jsx"
+      - "frontend/src/pages/admin/AdminGettingStartedPage.jsx"
+      - "frontend/src/pages/shared/RoleGettingStartedPage.jsx"
+      - "frontend/src/pages/teacher/ResultsPage.jsx"
       - "frontend/src/components/layout/DashboardLayout.jsx"
+      - "frontend/src/routes/adminRoutes.jsx"
+      - "frontend/src/routes/teacherRoutes.jsx"
+      - "frontend/src/routes/parentRoutes.jsx"
+      - "frontend/src/routes/studentRoutes.jsx"
       - ".github/workflows/guides-searchable.yml"
   push:
     branches:
@@ -35,9 +41,15 @@ on:
       - "frontend/src/services/guideService.js"
       - "frontend/src/components/academic/AcademicSelectors.jsx"
       - "frontend/src/features/academic-admin/**"
-      - "frontend/src/pages/teacher/ResultsPage.jsx"
       - "frontend/src/pages/admin/AdminDashboardPage.jsx"
+      - "frontend/src/pages/admin/AdminGettingStartedPage.jsx"
+      - "frontend/src/pages/shared/RoleGettingStartedPage.jsx"
+      - "frontend/src/pages/teacher/ResultsPage.jsx"
       - "frontend/src/components/layout/DashboardLayout.jsx"
+      - "frontend/src/routes/adminRoutes.jsx"
+      - "frontend/src/routes/teacherRoutes.jsx"
+      - "frontend/src/routes/parentRoutes.jsx"
+      - "frontend/src/routes/studentRoutes.jsx"
       - ".github/workflows/guides-searchable.yml"
 
 jobs:
@@ -174,6 +186,45 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify page guide architecture
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+
+          const read = (path) => fs.readFileSync(path, "utf8");
+          const routes = [
+            ["src/routes/adminRoutes.jsx", "/admin/getting-started"],
+            ["src/routes/teacherRoutes.jsx", "/teacher/getting-started"],
+            ["src/routes/parentRoutes.jsx", "/parent/getting-started"],
+            ["src/routes/studentRoutes.jsx", "/student/getting-started"],
+          ];
+          for (const [path, route] of routes) {
+            if (!read(path).includes(route)) throw new Error(`Missing route ${route}`);
+          }
+
+          const shell = read("src/components/layout/DashboardLayout.jsx");
+          if (shell.includes("RoleGuideModal")) {
+            throw new Error("Dashboard shell still references the removed modal guide");
+          }
+          if (!shell.includes("GettingStartedBanner")) {
+            throw new Error("Dashboard shell is missing the non-blocking guide banner");
+          }
+
+          const adminPage = read("src/pages/admin/AdminGettingStartedPage.jsx");
+          for (const action of [
+            "createSession",
+            "createTerm",
+            "generateCalendar",
+            "createClass",
+            "createSubject",
+            "activateCalendar",
+            "openSession",
+            "openTerm",
+          ]) {
+            if (!adminPage.includes(action)) throw new Error(`Missing admin setup action: ${action}`);
+          }
+          NODE
 
       - name: Lint
         run: npm run lint
