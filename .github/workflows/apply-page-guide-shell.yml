@@ -34,6 +34,8 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/components/layout/DashboardLayout.jsx frontend/src/pages/admin/AdminDashboardPage.jsx
-          git commit -m "refactor: replace dashboard guide modals with pages"
+          git add \
+            frontend/src/pages/admin/AdminGettingStartedPage.jsx \
+            frontend/src/components/guides/GettingStartedBanner.jsx
+          git commit -m "fix: validate page based getting started flow"
           git push origin HEAD:Attendance
