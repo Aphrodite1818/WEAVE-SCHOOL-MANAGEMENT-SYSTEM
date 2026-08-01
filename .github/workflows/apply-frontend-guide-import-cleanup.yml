@@ -37,3 +37,5 @@ jobs:
           git add frontend backend
           git commit -m "feat: refine guides and prevent duplicate imports"
           git push origin HEAD:Attendance
+
+# Triggered explicitly after workflow registration.
