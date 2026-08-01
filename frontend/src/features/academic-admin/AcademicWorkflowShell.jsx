@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
+import SearchableSelect from "../../components/ui/SearchableSelect";
 import { cn } from "../../utils/cn";
 import {
   AcademicLifecycleStepper,
@@ -111,25 +112,17 @@ function AcademicWorkflowShell({
               <ArrowLeft className="h-4 w-4" />
               Academic Hub
             </Link>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
-                Workspace
-              </span>
-              <select
-                value={workflow}
-                onChange={(event) => selectWorkflow(event.target.value)}
-                className="input-base"
-              >
-                {academicWorkflowOrder.map((key) => {
-                  const item = academicWorkflowConfig[key];
-                  return (
-                    <option key={key} value={key}>
-                      {item.title}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
+            <SearchableSelect
+              label="Workspace"
+              value={workflow}
+              onChange={selectWorkflow}
+              searchPlaceholder="Search academic workspaces"
+              options={academicWorkflowOrder.map((key) => ({
+                value: key,
+                label: academicWorkflowConfig[key].title,
+                description: academicWorkflowConfig[key].description,
+              }))}
+            />
           </Card>
 
           <Card className="overflow-hidden p-4 sm:p-5">

@@ -17,6 +17,7 @@ import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 import AiChatLauncher from "../ai/AiChatLauncher";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
+import RoleGuideModal from "../guides/RoleGuideModal";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
 import MobileDrawer from "./MobileDrawer";
@@ -24,6 +25,7 @@ import SidebarContent from "./Sidebar";
 import Topbar from "./Topbar";
 import { onboardingModalCopy } from "./navConfig";
 import useOnboardingGate from "./useOnboardingGate";
+import useRoleGuide from "../../features/guides/useRoleGuide";
 import { useTenantWorkspaceBranding } from "./useTenantWorkspaceName";
 
 const DashboardShellContext = createContext(null);
@@ -118,6 +120,14 @@ function DashboardShellFrame({
     handleProfileStateResolved,
     handleProfileSaved,
   } = useOnboardingGate({ role, enabled: onboardingModalEnabled });
+  const roleGuide = useRoleGuide({
+    role,
+    enabled:
+      onboardingModalEnabled &&
+      !onboardingState.loading &&
+      !onboardingState.required &&
+      !profileModalOpen,
+  });
 
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
@@ -488,6 +498,8 @@ function DashboardShellFrame({
           />
         </Modal>
       ) : null}
+
+      <RoleGuideModal guide={roleGuide} />
 
       {shouldRenderAiLauncher ? <AiChatLauncher role={role} /> : null}
     </div>

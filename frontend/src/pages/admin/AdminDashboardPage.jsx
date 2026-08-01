@@ -14,6 +14,7 @@ import {
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
+import AdminSetupProgressCard from "../../components/guides/AdminSetupProgressCard";
 import Button from "../../components/ui/Button";
 import {
   DashboardFocusCard,
@@ -176,6 +177,8 @@ function AdminDashboardPage() {
               { label: "Term", value: cleanText(stats.active_academic_term, "Not set"), tone: stats.active_academic_term ? "primary" : "warning" },
             ]}
           />
+
+          <AdminSetupProgressCard stats={stats} />
 
           <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard

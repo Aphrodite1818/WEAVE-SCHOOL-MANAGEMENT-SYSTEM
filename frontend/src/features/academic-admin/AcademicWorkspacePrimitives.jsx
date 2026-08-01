@@ -5,6 +5,7 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
+import SearchableSelect from "../../components/ui/SearchableSelect";
 import { cn } from "../../utils/cn";
 
 export function WorkspaceGrid({ editor, content, wide = false }) {
@@ -57,28 +58,26 @@ export function SelectControl({
   required = false,
   disabled = false,
   error,
+  searchPlaceholder,
+  searchable = true,
+  clearable = false,
 }) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-semibold text-text-soft">
-        {label}
-      </span>
-      <select
-        value={value || ""}
-        onChange={(event) => onChange(event.target.value)}
-        className="input-base"
-        required={required}
-        disabled={disabled}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error ? <span className="mt-1 block text-xs text-error">{error}</span> : null}
-    </label>
+    <SearchableSelect
+      label={label}
+      value={value || ""}
+      onChange={onChange}
+      options={options}
+      placeholder={placeholder}
+      searchPlaceholder={
+        searchPlaceholder || `Search ${String(label || "options").toLowerCase()}`
+      }
+      required={required}
+      disabled={disabled}
+      error={error}
+      searchable={searchable}
+      clearable={clearable}
+    />
   );
 }
 

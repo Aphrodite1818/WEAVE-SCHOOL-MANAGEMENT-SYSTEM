@@ -90,6 +90,7 @@ from app.modules.student_academics.write_guard import (
 from app.modules.students.router import router as student_router
 from app.modules.subjects.router import router as subject_router
 from app.modules.subscriptions.router import router as subscriptions_router
+from app.modules.user_guides.router import router as user_guides_router
 from app.modules.superadmin.router import router as superadmin_router
 from app.modules.superadmin.bootstrap import SuperadminBootstrapService
 from app.modules.teachers.router import router as teacher_router
@@ -292,6 +293,7 @@ def create_app() -> FastAPI:
     app.include_router(parent_report_card_router, prefix="/api/v1")
     app.include_router(tenant_search_router, prefix="/api/v1")
     app.include_router(subscriptions_router, prefix="/api/v1")
+    app.include_router(user_guides_router, prefix="/api/v1")
 
     @app.get("/health/live", tags=["Health"])
     async def liveness() -> dict[str, str]:

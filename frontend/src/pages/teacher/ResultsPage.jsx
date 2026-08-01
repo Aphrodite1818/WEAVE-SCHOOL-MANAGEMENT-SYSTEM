@@ -1,4 +1,4 @@
-import { Calculator, ClipboardList, Save, Send, Users } from "lucide-react";
+import { Calculator, ClipboardList, Save, Search, Send, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -52,6 +52,7 @@ function TeacherResultsPage() {
   const [academicSessionId, setAcademicSessionId] = useState("");
   const [academicTermId, setAcademicTermId] = useState("");
   const [students, setStudents] = useState([]);
+  const [studentSearch, setStudentSearch] = useState("");
   const [results, setResults] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -148,6 +149,7 @@ function TeacherResultsPage() {
 
   useEffect(() => {
     setDrafts({});
+    setStudentSearch("");
   }, [selectedAssignmentId, academicSessionId, academicTermId]);
 
   useEffect(() => {
@@ -216,6 +218,15 @@ function TeacherResultsPage() {
       ),
     [results],
   );
+  const visibleStudents = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    if (!query) return students;
+    return students.filter((student) =>
+      `${displayStudent(student)} ${student.admission_number || ""}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [studentSearch, students]);
 
   const maximumFor = (field) => {
     if (field === "test_score") return limits?.test_max;
@@ -492,6 +503,29 @@ function TeacherResultsPage() {
         </div>
       </Card>
 
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <label className="block min-w-0 flex-1">
+            <span className="mb-1.5 block text-sm font-semibold text-text-soft">
+              Search roster
+            </span>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
+              <input
+                type="search"
+                value={studentSearch}
+                onChange={(event) => setStudentSearch(event.target.value)}
+                placeholder="Student name or admission number"
+                className="input-base pl-10"
+              />
+            </div>
+          </label>
+          <p className="text-sm font-medium text-text-muted">
+            {visibleStudents.length} of {students.length} students
+          </p>
+        </div>
+      </Card>
+
       <section className="mobile-scroll-list grid gap-3">
         {students.length === 0 ? (
           <EmptyState
@@ -499,8 +533,14 @@ function TeacherResultsPage() {
             title="No students found"
             description="Select an assigned class-subject with enrolled students."
           />
+        ) : visibleStudents.length === 0 ? (
+          <EmptyState
+            icon={Search}
+            title="No matching students"
+            description="Try another student name or admission number. Unsaved scores remain in place."
+          />
         ) : (
-          students.map((student) => {
+          visibleStudents.map((student) => {
             const existing = resultByStudent[student.id];
             const editable = isEditable(existing);
             const draft = {
