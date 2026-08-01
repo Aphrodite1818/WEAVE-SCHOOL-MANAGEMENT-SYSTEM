@@ -9,6 +9,7 @@ import {
   Languages,
   Mail,
   Moon,
+  Palette,
   ShieldCheck,
   Sun,
   UserRound,
@@ -18,6 +19,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Avatar from "../../components/ui/Avatar";
 import Card from "../../components/ui/Card";
 import { authSession } from "../../services/api";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import {
   applyAccessibilityPreferences,
   getSavedAccessibilityPreferences,
@@ -91,6 +93,7 @@ function ToggleRow({ label, checked, onChange }) {
 function RoleSettingsPage({ role }) {
   const normalizedRole = String(role || "admin").toLowerCase();
   const user = authSession.getUser() || {};
+  const { planCode } = useSubscription();
   const copy = roleCopy[normalizedRole] || roleCopy.admin;
   const isStudent = normalizedRole === "student";
   const displayName = getUserDisplayName(user);
@@ -132,6 +135,12 @@ function RoleSettingsPage({ role }) {
             {isStudent ? <SettingsRow icon={IdCard} label="Admission number" value={admissionNumber || "Not assigned"} /> : <SettingsRow icon={Mail} label="Email" value={currentEmail || "No email on file"} />}
             <SettingsRow icon={UserRound} label="Profile" value={profileSummary || "Details and photo"} to="/profile" />
           </SettingsGroup>
+
+          {normalizedRole === "admin" && ["professional", "enterprise"].includes(String(planCode || "").toLowerCase()) ? (
+            <SettingsGroup title="School">
+              <SettingsRow icon={Palette} label="School branding" description="Manage the shared school identity and colour palette." to="/admin/settings/branding" />
+            </SettingsGroup>
+          ) : null}
 
           <SettingsGroup title="Appearance and accessibility">
             <ExpandableSettingsRow icon={Accessibility} label="Appearance" value={preferences.theme === "system" ? "System device preference" : preferences.theme} open={openPanel === "appearance"} onToggle={() => togglePanel("appearance")}>

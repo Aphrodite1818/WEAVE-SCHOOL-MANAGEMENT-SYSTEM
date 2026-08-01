@@ -18,6 +18,7 @@ import StudentsPage from "../pages/admin/StudentsPage";
 import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
 import SubscriptionVerifyPage from "../pages/admin/SubscriptionVerifyPage";
 import TeachersPage from "../pages/admin/TeachersPage";
+import TenantBrandingPage from "../pages/admin/TenantBrandingPage";
 import UsagePage from "../pages/admin/UsagePage";
 import AnnouncementManagementPage from "../pages/shared/AnnouncementManagementPage";
 import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
@@ -63,6 +64,7 @@ export const adminRoutes = (
       <Route path="/admin/messages" element={<RuntimeFeatureRoute feature="messaging" role="admin"><MessagesPage /></RuntimeFeatureRoute>} />
       <Route path="/admin/announcements" element={<AnnouncementManagementPage mode="tenant-admin" />} />
       <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
+      <Route path="/admin/settings/branding" element={<TenantBrandingPage />} />
     </Route>
   </Route>
 );
