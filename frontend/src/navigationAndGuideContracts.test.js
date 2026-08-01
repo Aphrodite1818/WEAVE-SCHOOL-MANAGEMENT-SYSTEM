@@ -24,10 +24,12 @@ test("installed mobile navigation stays close to the device bottom edge", () => 
 test("assisted class-limit warning routes admins to a working checkout page", () => {
   const setupPage = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
   const plansPage = readSource("pages", "admin", "SubscriptionOptionsPage.jsx");
+  const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
 
   assert.match(setupPage, /detail\?\.reason === "resource_limit_reached"/);
   assert.match(setupPage, /actionLabel:\s*"Upgrade plan"/);
-  assert.match(setupPage, /navigate\("\/admin\/billing\/plans"\)/);
+  assert.match(setupRoute, /label === "upgrade plan"/);
+  assert.match(setupRoute, /hardNavigate\("\/admin\/billing\/plans"\)/);
   assert.match(plansPage, /initializeSubscriptionCheckout/);
   assert.match(plansPage, /window\.location\.assign\(response\.authorization_url\)/);
 });
@@ -47,12 +49,23 @@ test("new tenant admins enter assisted setup immediately after onboarding", () =
   );
 });
 
-test("all guided setup exit actions return to the actor dashboard", () => {
-  const adminGuide = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
+test("tenant admin guide exits always leave the full-screen setup shell", () => {
+  const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
+  const adminRoutes = readSource("routes", "adminRoutes.jsx");
+
+  assert.match(setupRoute, /label === "finish later"/);
+  assert.match(setupRoute, /label === "complete setup"/);
+  assert.match(setupRoute, /await guide\.finish\(\)/);
+  assert.match(setupRoute, /hardNavigate\("\/admin\/dashboard"\)/);
+  assert.match(
+    adminRoutes,
+    /path="\/admin\/getting-started" element=\{<AdminGettingStartedRoute \/>\}/,
+  );
+});
+
+test("other actor guide exits return to the configured dashboard", () => {
   const roleGuide = readSource("pages", "shared", "RoleGettingStartedPage.jsx");
 
-  assert.match(adminGuide, /navigate\("\/admin\/dashboard", \{ replace: true \}\)/);
-  assert.match(adminGuide, /onClick=\{\(\) => navigate\("\/admin\/dashboard"\)\}/);
   assert.match(roleGuide, /navigate\(guide\.config\.dashboardRoute, \{ replace: true \}\)/);
   assert.match(roleGuide, /onClick=\{\(\) => navigate\(guide\.config\.dashboardRoute\)\}/);
 });
