@@ -1,0 +1,39 @@
+name: Apply role guide patch
+
+on:
+  push:
+    branches:
+      - Attendance
+    paths:
+      - ".github/workflows/apply-role-guide-patch.yml"
+      - ".github/scripts/apply_role_guide_patch.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Attendance
+        uses: actions/checkout@v4
+        with:
+          ref: Attendance
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: python .github/scripts/apply_role_guide_patch.py
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No patch changes were required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend frontend
+          git commit -m "feat: add searchable academic filters and role guides"
+          git push origin HEAD:Attendance
