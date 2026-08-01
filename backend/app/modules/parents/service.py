@@ -598,7 +598,7 @@ class ParentInvitationService:
         )
         if identity is None:
             return "register"
-        if identity.actor_type in {ActorType.PARENT_ACCOUNT, ActorType.PARENT}:
+        if identity.actor_type == ActorType.PARENT_ACCOUNT:
             return "login"
         return "contact_school"
 
@@ -619,7 +619,11 @@ class ParentInvitationService:
         if student is None:
             raise NotFoundException("Student not found.")
 
-        normalized_email = str(payload.email).casefold()
+        normalized_email = await AccountEmailGuard.ensure_available_for_invitation_role(
+            db=db,
+            email=str(payload.email),
+            invited_actor_type=ActorType.PARENT_ACCOUNT,
+        )
         pending = await ParentInvitationRepository.get_pending_for_student_email(
             db,
             actor.tenant_id,

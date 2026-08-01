@@ -7,8 +7,9 @@ import {
   useState,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bell, Home, Menu, BookOpen, FileText, BarChart3, Building2, ClipboardList, Users } from "lucide-react";
+import { Bell, Home, Menu, BookOpen, FileText, Building2, ClipboardList, Users, Mail } from "lucide-react";
 import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 
@@ -29,7 +30,7 @@ const isStandalonePwaDisplay = () => {
 const bottomNavConfig = {
   admin: [
     { label: "Academic", to: "/admin/academic", icon: ClipboardList },
-    { label: "Analytics", to: "/admin/analytics", icon: BarChart3 },
+    { label: "Messages", to: "/admin/messages", icon: Mail, runtimeFeature: "messaging" },
     { label: "Home", to: "/admin/dashboard", icon: Home, isHome: true },
     { label: "Notices", to: "/admin/announcements", icon: Bell },
   ],
@@ -41,7 +42,6 @@ const bottomNavConfig = {
   ],
   student: [
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
-    { label: "Progress", to: "/student/analytics", icon: BarChart3 },
     { label: "Home", to: "/student/dashboard", icon: Home, isHome: true },
     { label: "Reports", to: "/student/report-cards", icon: FileText },
   ],
@@ -53,7 +53,6 @@ const bottomNavConfig = {
   ],
   superadmin: [
     { label: "Verify", to: "/superadmin/verification", icon: BookOpen },
-    { label: "Analytics", to: "/superadmin/analytics", icon: BarChart3 },
     { label: "Home", to: "/superadmin/dashboard", icon: Home, isHome: true },
     { label: "Notices", to: "/superadmin/announcements", icon: Bell },
   ],
@@ -71,6 +70,7 @@ const getIndicatorStyleForElement = (element) => ({
 
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
+  const runtimeConfig = useRuntimeConfig();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -96,9 +96,10 @@ function BottomNav({ role, onOpenMenu }) {
     typeof window === "undefined" ? 0 : window.innerWidth
   );
   const configuredItems = bottomNavConfig[role] || bottomNavConfig.admin;
-  const items = isAccountScope
+  const items = (isAccountScope
     ? configuredItems.filter((item) => item.accountScope)
-    : configuredItems;
+    : configuredItems
+  ).filter((item) => !item.runtimeFeature || runtimeConfig?.features?.[item.runtimeFeature] !== false);
 
   const clearTimer = useCallback((timerRef) => {
     if (!timerRef.current) return;

@@ -1,34 +1,36 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  ArrowRight,
   BarChart3,
   BookOpen,
+  CalendarDays,
   CheckCircle2,
-  FileSearch,
   FileText,
+  GitBranch,
   GraduationCap,
-  Layers3,
-  Pencil,
+  Ruler,
+  School,
   Users,
 } from "lucide-react";
 
-import {
-  DashboardListCard,
-  DashboardMetricCard,
-  DashboardWelcomePanel,
-} from "../../components/dashboard/DashboardPrimitives";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import { isAbortError } from "../../services/api";
+import {
+  AcademicBlockerList,
+  AcademicNextActionCard,
+  AcademicOverviewCard,
+} from "../../features/academic-admin/AcademicWorkspacePrimitives";
+import { chooseAcademicHubNextAction } from "../../features/academic-admin/academicHubGuidance";
+import { academicWorkflowConfig, academicWorkflowOrder } from "../../features/academic-admin/academicWorkflowConfig";
+import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import {
   getCachedDashboardBundle,
   getDashboardSessionCacheKey,
 } from "../../services/dashboardSessionCache";
 import { cleanText } from "../../utils/academicDashboard";
-import { cn } from "../../utils/cn";
 
 const ACADEMIC_HUB_CACHE_KEY = getDashboardSessionCacheKey(
   "admin:academic-hub-overview",
@@ -39,91 +41,8 @@ const metricNumber = (value, fallback = "-") => {
   return Number.isFinite(nextValue) ? nextValue : fallback;
 };
 
-const workflowGroups = [
-  {
-    key: "foundation",
-    eyebrow: "1. Foundation",
-    title: "Build the academic structure",
-    description:
-      "Set the active academic period, grading rules, classes, and subject offerings before operational work begins.",
-    tone: "primary",
-    items: [
-      {
-        title: "Academic Setup",
-        description: "Sessions, terms, grading scales, and the subject catalog.",
-        to: "/admin/academic/setup",
-        icon: BookOpen,
-      },
-      {
-        title: "Class Structure",
-        description: "Classes, class teachers, progression visibility, and offered subjects.",
-        to: "/admin/academic/class-subjects",
-        icon: Layers3,
-      },
-    ],
-  },
-  {
-    key: "teaching",
-    eyebrow: "2. Teaching",
-    title: "Connect teachers to subjects",
-    description:
-      "Assign active teacher memberships to the class-subject records they are permitted to teach and score.",
-    tone: "warning",
-    items: [
-      {
-        title: "Teacher Assignments",
-        description: "Create, reassign, activate, or end class-subject assignments.",
-        to: "/admin/academic/assignments",
-        icon: Users,
-      },
-    ],
-  },
-  {
-    key: "assessment",
-    eyebrow: "3. Assessment",
-    title: "Record and publish academic performance",
-    description:
-      "Enter validated scores, submit complete results, generate report cards, and publish final records.",
-    tone: "accent",
-    items: [
-      {
-        title: "Results Management",
-        description: "Score entry, draft review, submission, correction, and reopening.",
-        to: "/admin/academic/results",
-        icon: Pencil,
-      },
-      {
-        title: "Report Cards",
-        description: "Readiness review, generation, regeneration, and publication.",
-        to: "/admin/academic/report-cards",
-        icon: FileText,
-      },
-    ],
-  },
-  {
-    key: "records",
-    eyebrow: "4. Records",
-    title: "Find academic information quickly",
-    description:
-      "Search school records without moving through every workflow manually.",
-    tone: "success",
-    items: [
-      {
-        title: "Academic Search",
-        description: "Find students, classes, subjects, report cards, and related records.",
-        to: "/admin/academic/search",
-        icon: FileSearch,
-      },
-    ],
-  },
-];
-
-const toneStyles = {
-  primary: "bg-primary-soft text-primary",
-  success: "bg-success-soft text-success",
-  warning: "bg-warning-soft text-amber-900",
-  accent: "bg-accent-soft text-accent",
-};
+const percentLabel = (value) =>
+  Number.isFinite(Number(value)) ? `${Number(value)}%` : "-";
 
 function scheduleBackgroundTask(callback) {
   if (typeof window === "undefined") return undefined;
@@ -136,7 +55,9 @@ function scheduleBackgroundTask(callback) {
 }
 
 function AcademicHubOverviewPage() {
+  const navigate = useNavigate();
   const [analytics, setAnalytics] = useState(null);
+  const [metricsError, setMetricsError] = useState(null);
   const [isMetricsRefreshing, setIsMetricsRefreshing] = useState(false);
 
   useEffect(() => {
@@ -146,6 +67,7 @@ function AcademicHubOverviewPage() {
     const cancelIdleTask = scheduleBackgroundTask(async () => {
       if (!mounted) return;
       setIsMetricsRefreshing(true);
+      setMetricsError(null);
       try {
         const data = await getCachedDashboardBundle(ACADEMIC_HUB_CACHE_KEY, () =>
           dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
@@ -154,7 +76,7 @@ function AcademicHubOverviewPage() {
         setAnalytics(data);
       } catch (err) {
         if (!mounted || isAbortError(err)) return;
-        setAnalytics(null);
+        setMetricsError(getErrorMessage(err, "Academic metrics could not be loaded."));
       } finally {
         if (mounted) setIsMetricsRefreshing(false);
       }
@@ -169,243 +91,209 @@ function AcademicHubOverviewPage() {
 
   const stats = analytics?.stats || {};
   const hasMetrics = Boolean(analytics?.stats);
-  const resultCompletion = metricNumber(stats.result_completion_percent);
-  const reportCardsPublished = metricNumber(stats.report_cards_published);
-  const reportCardsGenerated = metricNumber(stats.report_cards_generated);
-  const incompleteProfiles = Number(stats.student_profiles_incomplete || 0);
-  const needsSetup =
-    hasMetrics &&
-    (!stats.active_academic_session || !stats.active_academic_term);
+  const nextAction = useMemo(() => chooseAcademicHubNextAction(stats, hasMetrics), [hasMetrics, stats]);
+  const currentSession = cleanText(stats.active_academic_session, hasMetrics ? "Not set" : "Loading");
+  const currentTerm = cleanText(stats.active_academic_term, hasMetrics ? "Not set" : "Loading");
+  const submittedResults = metricNumber(stats.result_rows_submitted, 0);
+  const totalResults = metricNumber(stats.result_rows_total, 0);
+  const reportCardsGenerated = metricNumber(stats.report_cards_generated, 0);
+  const reportCardsPublished = metricNumber(stats.report_cards_published, 0);
+  const blockers = [
+    !stats.active_academic_session
+      ? {
+          key: "session",
+          label: "No current academic session",
+          description: "Open a session before managing terms, calendars, results, and report cards.",
+        }
+      : null,
+    !stats.active_academic_term
+      ? {
+          key: "term",
+          label: "No current academic term",
+          description: "Open a term so academic work is attached to the correct period.",
+        }
+      : null,
+    metricNumber(stats.total_classes, 0) === 0
+      ? {
+          key: "classes",
+          label: "No classes have been created",
+          description: "Create classes before attaching subjects or assigning teachers.",
+        }
+      : null,
+    metricNumber(stats.total_subjects, 0) === 0
+      ? {
+          key: "subjects",
+          label: "No subjects have been created",
+          description: "Create the subject catalog before setting class offerings.",
+        }
+      : null,
+    submittedResults > 0
+      ? {
+          key: "results",
+          label: `${submittedResults} submitted result${submittedResults === 1 ? "" : "s"} need review`,
+          description: "Approve or return submitted results before locking report cards.",
+        }
+      : null,
+  ];
 
-  const attentionItems = [
-    needsSetup
-      ? {
-          key: "setup",
-          title: "Academic period needs setup",
-          description:
-            "Open an academic session and set the current term before recording results.",
-          icon: BookOpen,
-          tone: "warning",
-          to: "/admin/academic/setup",
-        }
-      : null,
-    incompleteProfiles > 0
-      ? {
-          key: "profiles",
-          title: "Incomplete student profiles",
-          description: `${incompleteProfiles} student profile${incompleteProfiles === 1 ? "" : "s"} need updates.`,
-          icon: GraduationCap,
-          tone: "warning",
-          to: "/admin/students",
-          value: incompleteProfiles,
-        }
-      : null,
-    Number(reportCardsGenerated) > Number(reportCardsPublished)
-      ? {
-          key: "reports",
-          title: "Report cards pending publication",
-          description: `${reportCardsPublished} published from ${reportCardsGenerated} generated.`,
-          icon: FileText,
-          tone: "warning",
-          to: "/admin/academic/report-cards?tab=publish",
-        }
-      : null,
-  ].filter(Boolean);
+  const sections = academicWorkflowOrder.map((key) => ({
+    key,
+    ...academicWorkflowConfig[key],
+    to: `/admin/academic/${key}`,
+  }));
 
   return (
-    <DashboardLayout
-      role="admin"
-      title="Academic Hub"
-      description="Manage the complete academic lifecycle in a clear operational sequence."
-    >
-      <DashboardWelcomePanel
-        eyebrow="Academic operations"
-        title="Move from setup to published records without losing context"
-        description="Each workflow is now independent, URL-addressable, and designed for desktop and installed mobile PWA use."
-        chips={[
-          {
-            label: "Session",
-            value: cleanText(
-              stats.active_academic_session,
-              hasMetrics ? "Not set" : "Loading",
-            ),
-            tone: stats.active_academic_session ? "success" : "warning",
-          },
-          {
-            label: "Term",
-            value: cleanText(
-              stats.active_academic_term,
-              hasMetrics ? "Not set" : "Loading",
-            ),
-            tone: stats.active_academic_term ? "primary" : "warning",
-          },
-          isMetricsRefreshing
-            ? { label: "Metrics", value: "Refreshing", tone: "primary" }
-            : null,
-        ].filter(Boolean)}
-      />
-
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <DashboardMetricCard
-          label="Students"
-          value={metricNumber(stats.total_students)}
-          description="Active learner records"
-          icon={GraduationCap}
-          tone="primary"
-          to="/admin/students"
-        />
-        <DashboardMetricCard
-          label="Subjects"
-          value={metricNumber(stats.total_subjects)}
-          description="Tenant-scoped catalog items"
-          icon={BookOpen}
-          tone="success"
-          to="/admin/academic/setup?tab=subjects"
-        />
-        <DashboardMetricCard
-          label="Result completion"
-          value={
-            Number.isFinite(Number(resultCompletion))
-              ? `${resultCompletion}%`
-              : "-"
-          }
-          description="Submitted result rows"
-          icon={BarChart3}
-          tone={
-            Number(resultCompletion) >= 80
-              ? "success"
-              : Number(resultCompletion) > 0
-                ? "warning"
-                : "neutral"
-          }
-          to="/admin/academic/results?tab=submitted"
-        />
-        <DashboardMetricCard
-          label="Report cards"
-          value={reportCardsPublished}
-          description={
-            hasMetrics ? `${reportCardsGenerated} generated` : "Published records"
-          }
-          icon={FileText}
-          tone={
-            Number(reportCardsGenerated) > Number(reportCardsPublished)
-              ? "warning"
-              : "success"
-          }
-          to="/admin/academic/report-cards?tab=publish"
-        />
-      </section>
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="section-title">Academic operating flow</h2>
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            Follow the sequence for first-time setup, or open any module directly for daily operations.
-          </p>
-        </div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          {workflowGroups.map((group) => (
-            <WorkflowGroup key={group.key} {...group} />
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
-        <Card className="p-4 sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-success-soft text-success">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="section-title">Recommended setup order</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">
-                These dependencies prevent empty selectors and invalid academic records.
-              </p>
-            </div>
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {[
-              "Create and open an academic session",
-              "Create the current academic term",
-              "Create grading scales and subjects",
-              "Create classes and attach subjects",
-              "Invite teachers and assign memberships",
-              "Create students with class enrollment",
-              "Enter and submit complete results",
-              "Generate and publish report cards",
-            ].map((step, index) => (
-              <div
-                key={step}
-                className="flex items-start gap-3 rounded-2xl border border-border/70 bg-surface-muted/20 px-4 py-3"
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                  {index + 1}
-                </span>
-                <p className="text-sm leading-6 text-text-soft">{step}</p>
+    <DashboardLayout role="admin" title="Academic Hub">
+      <section className="space-y-4 sm:space-y-5">
+        <Card className="p-3 sm:p-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary sm:h-12 sm:w-12">
+                  <GraduationCap className="h-5 w-5 sm:h-6 sm:w-6" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-semibold leading-tight text-text sm:text-3xl">
+                    Academic Hub
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted sm:text-sm sm:leading-6">
+                    A guided workspace for sessions, terms, classes, subjects, teachers, results, calendars, and report cards.
+                  </p>
+                </div>
               </div>
-            ))}
+              <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
+                <Badge variant={stats.active_academic_session ? "success" : "warning"}>
+                  Session: {currentSession}
+                </Badge>
+                <Badge variant={stats.active_academic_term ? "primary" : "warning"}>
+                  Term: {currentTerm}
+                </Badge>
+                {isMetricsRefreshing ? <Badge variant="default">Refreshing</Badge> : null}
+                {metricsError ? <Badge variant="error">Metrics unavailable</Badge> : null}
+              </div>
+              {metricsError ? (
+                <p className="mt-3 max-w-2xl text-sm font-medium text-error">
+                  {metricsError}
+                </p>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              className="w-full justify-center sm:w-auto"
+              onClick={() => navigate("/admin/academic/sessions")}
+            >
+              Manage academic year
+            </Button>
           </div>
         </Card>
 
-        <DashboardListCard
-          title="Needs attention"
-          description={
-            hasMetrics
-              ? "Academic blockers and follow-ups stay visible here."
-              : "Metrics refresh quietly while workflows remain usable."
-          }
-          items={attentionItems}
-          emptyTitle={
-            hasMetrics ? "Academic operations look ready" : "Open a workflow now"
-          }
-          emptyDescription={
-            hasMetrics
-              ? "No active setup, profile, or publication issue is currently showing."
-              : "You do not need to wait for metrics before using the Academic Hub."
-          }
+        <AcademicNextActionCard
+          action={nextAction.action}
+          description={nextAction.description}
+          buttonLabel={nextAction.buttonLabel}
+          onAction={() => navigate(nextAction.to)}
         />
+
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+          <AcademicOverviewCard
+            icon={CalendarDays}
+            label="Current Session"
+            value={currentSession}
+            status={stats.active_academic_session ? "open" : "needs attention"}
+            description="The school year currently receiving academic work."
+          />
+          <AcademicOverviewCard
+            icon={CalendarDays}
+            label="Current Term"
+            value={currentTerm}
+            status={stats.active_academic_term ? "open" : "needs attention"}
+            description="The term used for calendars, results, and report cards."
+          />
+          <AcademicOverviewCard
+            icon={School}
+            label="Active Classes"
+            value={metricNumber(stats.total_classes)}
+            status={metricNumber(stats.total_classes, 0) > 0 ? "ready" : "needs attention"}
+            description="Classes available for students, subjects, and teachers."
+          />
+          <AcademicOverviewCard
+            icon={BookOpen}
+            label="Active Subjects"
+            value={metricNumber(stats.total_subjects)}
+            status={metricNumber(stats.total_subjects, 0) > 0 ? "ready" : "needs attention"}
+            description="Subjects available for class setup and score entry."
+          />
+          <AcademicOverviewCard
+            icon={Users}
+            label="Teacher Assignments"
+            value={metricNumber(stats.total_teachers)}
+            status={metricNumber(stats.total_teachers, 0) > 0 ? "ready" : "needs attention"}
+            description="Active teachers available for class and subject responsibilities."
+          />
+          <AcademicOverviewCard
+            icon={Ruler}
+            label="Grading"
+            value={percentLabel(stats.result_completion_percent)}
+            status={totalResults > 0 ? "active" : "not started"}
+            description="Result completion based on submitted rows."
+          />
+          <AcademicOverviewCard
+            icon={BarChart3}
+            label="Results"
+            value={`${submittedResults}/${totalResults}`}
+            status={submittedResults > 0 ? "submitted" : "draft"}
+            description="Submitted results waiting in the academic workflow."
+          />
+          <AcademicOverviewCard
+            icon={FileText}
+            label="Report Cards"
+            value={`${reportCardsPublished}/${reportCardsGenerated}`}
+            status={reportCardsGenerated > reportCardsPublished ? "needs attention" : "ready"}
+            description="Published report cards out of generated cards."
+          />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.8fr)]">
+          <Card className="p-3 sm:p-5">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-success" />
+              <h3 className="section-title">Academic Workspaces</h3>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:gap-3 xl:grid-cols-3">
+              {sections.map((section) => {
+                const Icon = section.icon || GitBranch;
+                return (
+                  <button
+                    key={section.key}
+                    type="button"
+                    onClick={() => navigate(section.to)}
+                    className="min-h-[6.75rem] rounded-2xl border border-border/70 bg-surface px-3 py-3 text-left transition hover:border-primary/40 hover:bg-primary-soft/20 sm:min-h-[8.75rem] sm:px-4 sm:py-4"
+                  >
+                    <div className="flex h-full flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-surface-muted text-text-soft sm:h-9 sm:w-9">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold leading-tight text-text sm:text-base">
+                          {section.title}
+                        </span>
+                        <span className="mt-1 hidden text-sm leading-5 text-text-muted sm:line-clamp-3 sm:block">
+                          {section.description}
+                        </span>
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <AcademicBlockerList blockers={blockers} />
+        </div>
       </section>
     </DashboardLayout>
-  );
-}
-
-function WorkflowGroup({ eyebrow, title, description, items, tone }) {
-  return (
-    <Card className="flex h-full flex-col p-4 sm:p-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={tone === "accent" ? "accent" : tone}>{eyebrow}</Badge>
-      </div>
-      <h3 className="mt-3 text-lg font-semibold text-text">{title}</h3>
-      <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p>
-      <div className="mt-4 grid flex-1 gap-3 sm:grid-cols-2">
-        {items.map((item) => (
-          <WorkflowLink key={item.to} {...item} tone={tone} />
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function WorkflowLink({ to, icon: Icon, title, description, tone }) {
-  return (
-    <Link
-      to={to}
-      className="group flex min-h-[9.5rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4 transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary-subtle/20 hover:shadow-sm"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <span
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
-            toneStyles[tone] || toneStyles.primary,
-          )}
-        >
-          <Icon className="h-5 w-5" />
-        </span>
-        <ArrowRight className="h-4 w-4 text-text-muted transition group-hover:translate-x-0.5 group-hover:text-primary" />
-      </div>
-      <p className="mt-4 font-semibold text-text">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p>
-    </Link>
   );
 }
 

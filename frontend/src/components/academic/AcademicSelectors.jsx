@@ -1,30 +1,67 @@
+import { Children, isValidElement } from "react";
+
+import SearchableSelect from "../ui/SearchableSelect";
+
 const fieldClass =
   "h-10 min-h-10 w-full rounded-xl border border-border bg-background/70 px-3 text-[13px] font-medium text-text outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted sm:h-[38px] sm:min-h-[38px]";
+
+const nodeText = (node) => {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (isValidElement(node)) return nodeText(node.props.children);
+  return "";
+};
+
+const optionsFromChildren = (children) => {
+  const options = [];
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child)) return;
+    if (child.type === "option") {
+      options.push({
+        value: child.props.value ?? "",
+        label: nodeText(child.props.children).trim(),
+        disabled: Boolean(child.props.disabled),
+      });
+      return;
+    }
+    if (child.props?.children) options.push(...optionsFromChildren(child.props.children));
+  });
+  return options;
+};
 
 export function SelectField({
   label,
   value,
   onChange,
   children,
+  options,
   disabled = false,
   required = false,
   className = "",
+  placeholder = "Select an option",
+  searchPlaceholder,
+  searchable = true,
 }) {
+  const normalizedOptions = options || optionsFromChildren(children);
+  const explicitPlaceholder = normalizedOptions.find((option) => String(option.value) === "");
+  const selectableOptions = normalizedOptions.filter(
+    (option) => String(option.value) !== "" && !option.disabled,
+  );
+
   return (
-    <label className={`block min-w-0 ${className}`}>
-      <span className="mb-1.5 block text-[11.5px] font-semibold uppercase tracking-wide text-text-muted">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        required={required}
-        className={fieldClass}
-      >
-        {children}
-      </select>
-    </label>
+    <SearchableSelect
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={selectableOptions}
+      disabled={disabled}
+      required={required}
+      className={className}
+      placeholder={explicitPlaceholder?.label || placeholder}
+      searchPlaceholder={searchPlaceholder || `Search ${String(label || "options").toLowerCase()}`}
+      searchable={searchable}
+      buttonClassName="h-10 min-h-10 bg-background/70 px-3 text-[13px] sm:h-[38px] sm:min-h-[38px]"
+    />
   );
 }
 

@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
-import { HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { useEffect } from "react";
+import { HelpCircle, ShieldCheck } from "lucide-react";
 
+import WeaveIcon from "../../components/brand/WeaveIcon";
 import Navbar from "../../components/layout/Navbar";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
@@ -18,7 +20,8 @@ const comparisonRows = [
   ["Subjects", (plan) => formatLimitValue(plan.limits.subjects)],
   ["Bulk import", (plan) => plan.features.some((feature) => /bulk import/i.test(feature)) ? "Included" : "—"],
   ["Advanced analytics", (plan) => plan.features.some((feature) => /advanced analytics/i.test(feature)) ? "Included" : "—"],
-  ["AI assistant", (plan) => plan.features.some((feature) => /ai assistant/i.test(feature)) ? "Included" : "—"],
+  ["AI assistant", (plan) => plan.features.some((feature) => /ai assistant/i.test(feature)) ? "Included" : "--"],
+  ["School branding", (plan) => plan.features.some((feature) => /branding/i.test(feature)) ? "Included" : "--"],
   ["Parent portal", (plan) => plan.planCode === "free_trial" ? "Limited" : "Included"],
   ["Support", (plan) => plan.planCode === "enterprise" ? "Priority" : "Standard"],
 ];
@@ -26,11 +29,15 @@ const comparisonRows = [
 const faqs = [
   ["Can I start free?", "Yes. Schools can begin with the Free Trial and move to a paid plan when they are ready."],
   ["Does bulk import work on every plan?", "Bulk import is available on paid plans. It uses backend-generated XLSX templates and dry-run validation before creating records."],
-  ["Can I upgrade later?", "Yes. Tenant admins can open billing from the dashboard and move to a higher plan when school usage grows."],
+  ["Can I upgrade later?", "Yes. Tenant admins can open subscription settings from the dashboard and move to a higher plan when school usage grows."],
   ["Are limits tenant-scoped?", "Yes. Limits are evaluated per school tenant so one school cannot leak into another school's capacity."],
 ];
 
 function PricingPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-text">
       <Navbar />
@@ -45,7 +52,7 @@ function PricingPage() {
                   Choose the plan that matches your school growth.
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-                  Start small, validate the workflow, then move into higher limits, bulk imports, analytics, and AI support as your school expands.
+                  Start small, validate the workflow, then move into higher limits, guided academic lifecycle operations, bulk imports, analytics, and AI support as your school expands.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <a href="#compare" className="w-full sm:w-auto">
@@ -57,13 +64,17 @@ function PricingPage() {
                 </div>
               </div>
               <Card className="border-white/10 bg-white/10 p-5 text-white backdrop-blur-xl">
-                <Sparkles className="h-8 w-8 text-primary-soft" />
-                <h2 className="mt-4 text-xl font-semibold text-white">Pay for the capacity you need.</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  Free Trial proves the product. Paid plans unlock higher limits and operational features like bulk import and advanced analytics.
-                </p>
+                <div className="flex items-center gap-4">
+                  <WeaveIcon className="h-20 w-20 shrink-0" decorative />
+                  <div className="min-w-0">
+                    <h2 className="text-xl font-semibold text-white">Pay for the capacity you need.</h2>
+                    <p className="mt-3 text-sm leading-6 text-slate-300">
+                      Free Trial proves the product. Paid plans unlock higher limits and operational features like lifecycle-guided setup, bulk import, advanced analytics, and school branding.
+                    </p>
+                  </div>
+                </div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                  {["Dry-run imports", "Tenant limits", "Safe billing"].map((item) => (
+                  {["Lifecycle controls", "Tenant limits", "School branding"].map((item) => (
                     <div key={item} className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold">
                       {item}
                     </div>
@@ -108,7 +119,7 @@ function PricingPage() {
             <div>
               <HelpCircle className="h-8 w-8 text-primary" />
               <h2 className="mt-4 text-3xl font-semibold tracking-tight">Common questions</h2>
-              <p className="mt-3 text-sm leading-6 text-text-muted">Simple answers for schools comparing plan capacity and billing behavior.</p>
+              <p className="mt-3 text-sm leading-6 text-text-muted">Simple answers for schools comparing plan capacity and subscription behavior.</p>
             </div>
             <div className="grid gap-3">
               {faqs.map(([question, answer]) => (

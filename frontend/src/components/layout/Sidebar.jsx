@@ -1,9 +1,10 @@
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import WeaveIcon from "../brand/WeaveIcon";
@@ -22,7 +23,11 @@ function resolveWorkspaceLogo(user) {
   );
 }
 
-function shouldHideNavItem(item, subscription) {
+function shouldHideNavItem(item, subscription, runtimeConfig) {
+  if (item.runtimeFeature && runtimeConfig?.features?.[item.runtimeFeature] === false) {
+    return true;
+  }
+
   if (!item.featureCode) return false;
 
   const featureGuard = subscription.getFeatureGuard(item.featureCode);
@@ -42,9 +47,11 @@ export default function SidebarContent({
   mobile = false,
   schoolName,
   schoolLogoUrl,
+  onToggleSidebar,
 }) {
   const location = useLocation();
   const subscription = useSubscription();
+  const runtimeConfig = useRuntimeConfig();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -59,7 +66,7 @@ export default function SidebarContent({
       ...group,
       items: group.items.filter((item) => {
         if (isAccountScope && !item.accountScope) return false;
-        return !shouldHideNavItem(item, subscription);
+        return !shouldHideNavItem(item, subscription, runtimeConfig);
       }),
     }))
     .filter((group) => group.items.length > 0);
@@ -89,6 +96,20 @@ export default function SidebarContent({
     window.sessionStorage.setItem(scrollStorageKey, String(navElement.scrollTop));
   };
 
+  const logoMark = hasCustomWorkspaceLogo ? (
+    <img
+      src={workspaceLogo}
+      alt={workspaceLogoAlt}
+      className={cn(
+        "h-10 w-10 shrink-0 rounded-xl border border-border/70 bg-surface object-contain p-1 shadow-sm",
+        collapsed && "h-11 w-11"
+      )}
+      onError={() => setFailedWorkspaceLogo(workspaceLogo)}
+    />
+  ) : (
+    <WeaveIcon className={cn("h-11 w-11 shrink-0", collapsed && "h-12 w-12")} />
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
@@ -98,42 +119,54 @@ export default function SidebarContent({
           collapsed ? "justify-center px-2" : mobile ? "gap-2 px-4" : "gap-2 px-3"
         )}
       >
-        <Link
-          to={isAccountScope ? `/${role}/schools` : "/"}
-          className={cn("flex min-w-0 items-center gap-2.5", collapsed && "justify-center")}
-          onClick={() => {
-            persistSidebarScroll();
-            onNavigate?.();
-          }}
-        >
-          {hasCustomWorkspaceLogo ? (
-            <img
-              src={workspaceLogo}
-              alt={workspaceLogoAlt}
-              className={cn(
-                "h-10 w-10 shrink-0 rounded-xl border border-border/70 bg-surface object-contain p-1 shadow-sm",
-                collapsed && "h-11 w-11"
-              )}
-              onError={() => setFailedWorkspaceLogo(workspaceLogo)}
-            />
-          ) : (
-            <WeaveIcon className={cn("h-11 w-11 shrink-0", collapsed && "h-12 w-12")} />
-          )}
-          {!collapsed && (
+        {collapsed && onToggleSidebar ? (
+          <button
+            type="button"
+            className="group relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-surface text-text-muted shadow-sm transition hover:border-primary/35 hover:bg-surface-muted focus:outline-none focus:ring-4 focus:ring-primary/15"
+            onClick={onToggleSidebar}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center transition duration-150 group-hover:scale-75 group-hover:opacity-0">
+              {logoMark}
+            </span>
+            <PanelLeftOpen className="h-4 w-4 opacity-0 transition duration-150 group-hover:opacity-100" />
+          </button>
+        ) : (
+          <Link
+            to={isAccountScope ? `/${role}/schools` : "/"}
+            className="flex min-w-0 flex-1 items-center gap-2.5"
+            onClick={() => {
+              persistSidebarScroll();
+              onNavigate?.();
+            }}
+          >
+            {logoMark}
             <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight text-text">
+              <span className={cn("block truncate text-[15px] font-bold leading-tight", isAccountScope ? "text-sidebar-text" : "tenant-school-name-sidebar")}>
                 {isAccountScope ? "Your schools" : schoolName || "Weave"}
               </span>
-              <span className="block truncate text-[11px] font-medium text-text-muted">School Management</span>
+              <span className="block truncate text-[11px] font-medium text-sidebar-text/65">School Management</span>
             </span>
-          )}
-        </Link>
+          </Link>
+        )}
+        {!collapsed && !mobile && onToggleSidebar ? (
+          <button
+            type="button"
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-surface text-text-muted shadow-sm transition hover:border-primary/35 hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-4 focus:ring-primary/15"
+            onClick={onToggleSidebar}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
 
       {!collapsed && (
         <div className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
-          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-text-faint">Workspace</p>
-          <p className="mt-1 truncate text-[13px] font-semibold text-text">
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-text/55">Workspace</p>
+          <p className="mt-1 truncate text-[13px] font-semibold text-sidebar-text">
             {isAccountScope ? "Select a school" : schoolName || "School workspace"}
           </p>
           <span className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
@@ -150,7 +183,7 @@ export default function SidebarContent({
         {groups.map((group) => (
           <div key={group.label}>
             {!collapsed && (
-              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-text-faint">{group.label}</p>
+              <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-sidebar-text/55">{group.label}</p>
             )}
             <div className="space-y-1">
               {group.items.map((item) => {
@@ -169,8 +202,8 @@ export default function SidebarContent({
                     className={cn(
                       "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
                       isActive
-                        ? "bg-primary text-white shadow-sm"
-                        : "text-text-soft hover:bg-surface-muted hover:text-text",
+                ? "bg-sidebar-active text-sidebar-active-text shadow-sm"
+                        : "text-sidebar-text/80 hover:bg-sidebar-active/10 hover:text-sidebar-text",
                       collapsed && "justify-center px-2"
                     )}
                   >
@@ -181,7 +214,7 @@ export default function SidebarContent({
                       </span>
                     )}
                     {!collapsed && <span className="truncate">{item.label}</span>}
-                    {!collapsed && isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white/70" />}
+                    {!collapsed && isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-sidebar-active-text/70" />}
                   </Link>
                 );
               })}
@@ -192,7 +225,7 @@ export default function SidebarContent({
 
       {!collapsed && (
         <div className="shrink-0 border-t border-border/60 p-2.5">
-          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] text-text-muted">
+          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] text-sidebar-text/65">
             <HelpCircle className="h-4 w-4" />
             Help & Support
           </div>

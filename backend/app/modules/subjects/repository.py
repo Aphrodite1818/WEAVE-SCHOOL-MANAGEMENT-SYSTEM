@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -184,12 +184,33 @@ class SubjectRepository:
         limit: int = 100,
         is_active: bool | None = None,
         search: str | None = None,
+        include_archived: bool = False,
+        lifecycle_status: str | None = None,
     ) -> tuple[list[Subject], int]:
         filters = [Subject.tenant_id == tenant_id]
-        if is_active is not None:
-            filters.append(Subject.is_active == is_active)
+        if lifecycle_status == "active":
+            filters.append(Subject.is_active.is_(True))
+            filters.append(Subject.archived_at.is_(None))
+        elif lifecycle_status == "inactive":
+            filters.append(Subject.is_active.is_(False))
+            filters.append(Subject.archived_at.is_(None))
+        elif lifecycle_status == "archived":
+            filters.append(Subject.archived_at.is_not(None))
+        elif is_active is not None:
+            filters.append(Subject.is_active.is_(is_active))
+            if is_active:
+                filters.append(Subject.archived_at.is_(None))
+        if not include_archived and lifecycle_status != "archived":
+            filters.append(Subject.archived_at.is_(None))
         if search:
-            filters.append(Subject.name.ilike(f"%{search.strip()}%"))
+            pattern = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Subject.name.ilike(pattern),
+                    Subject.code.ilike(pattern),
+                    Subject.description.ilike(pattern),
+                )
+            )
 
         total = (
             await db.execute(
@@ -219,14 +240,24 @@ class SubjectRepository:
     ) -> tuple[list[Subject], int]:
         filters = [
             Subject.tenant_id == tenant_id,
+            Subject.archived_at.is_(None),
             TeacherMembershipSubject.tenant_id == tenant_id,
             TeacherMembershipSubject.teacher_membership_id == teacher_id,
             TeacherMembershipSubject.is_active.is_(True),
         ]
         if is_active is not None:
-            filters.append(Subject.is_active == is_active)
+            filters.append(Subject.is_active.is_(is_active))
+            if is_active:
+                filters.append(Subject.archived_at.is_(None))
         if search:
-            filters.append(Subject.name.ilike(f"%{search.strip()}%"))
+            pattern = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Subject.name.ilike(pattern),
+                    Subject.code.ilike(pattern),
+                    Subject.description.ilike(pattern),
+                )
+            )
 
         joined = (
             select(Subject)
@@ -261,3 +292,115 @@ class SubjectRepository:
     async def delete_subject(db: AsyncSession, subject: Subject) -> None:
         await db.delete(subject)
         await db.flush()
+
+    @staticmethod
+    async def count_subject_dependencies(
+        db: AsyncSession,
+        tenant_id: UUID,
+        subject_id: UUID,
+    ) -> dict[str, int]:
+        from app.modules.report_cards.models import ReportCardSubjectLine
+        from app.modules.student_academics.models import (
+            ClassSubject,
+            StudentSubjectResult,
+            TeacherAssignment,
+        )
+
+        class_subject_count = (
+            await db.execute(
+                select(func.count()).select_from(ClassSubject).where(
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        teacher_link_count = (
+            await db.execute(
+                select(func.count()).select_from(TeacherMembershipSubject).where(
+                    TeacherMembershipSubject.tenant_id == tenant_id,
+                    TeacherMembershipSubject.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        teacher_assignment_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(TeacherAssignment)
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        result_count = (
+            await db.execute(
+                select(func.count()).select_from(StudentSubjectResult).where(
+                    StudentSubjectResult.tenant_id == tenant_id,
+                    StudentSubjectResult.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        report_card_line_count = (
+            await db.execute(
+                select(func.count()).select_from(ReportCardSubjectLine).where(
+                    ReportCardSubjectLine.tenant_id == tenant_id,
+                    ReportCardSubjectLine.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        return {
+            "class_subjects": int(class_subject_count),
+            "teacher_links": int(teacher_link_count),
+            "teacher_assignments": int(teacher_assignment_count),
+            "results": int(result_count),
+            "report_card_lines": int(report_card_line_count),
+        }
+
+    @staticmethod
+    async def count_live_subject_dependencies(
+        db: AsyncSession,
+        tenant_id: UUID,
+        subject_id: UUID,
+    ) -> dict[str, int]:
+        from app.modules.student_academics.models import ClassSubject, TeacherAssignment
+
+        active_class_subject_count = (
+            await db.execute(
+                select(func.count()).select_from(ClassSubject).where(
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.subject_id == subject_id,
+                    ClassSubject.is_active.is_(True),
+                    ClassSubject.archived_at.is_(None),
+                )
+            )
+        ).scalar_one()
+        active_teacher_link_count = (
+            await db.execute(
+                select(func.count()).select_from(TeacherMembershipSubject).where(
+                    TeacherMembershipSubject.tenant_id == tenant_id,
+                    TeacherMembershipSubject.subject_id == subject_id,
+                    TeacherMembershipSubject.is_active.is_(True),
+                )
+            )
+        ).scalar_one()
+        active_teacher_assignment_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(TeacherAssignment)
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    TeacherAssignment.is_active.is_(True),
+                    TeacherAssignment.effective_to.is_(None),
+                    ClassSubject.tenant_id == tenant_id,
+                    ClassSubject.subject_id == subject_id,
+                )
+            )
+        ).scalar_one()
+        return {
+            "active_class_subjects": int(active_class_subject_count),
+            "active_teacher_links": int(active_teacher_link_count),
+            "active_teacher_assignments": int(active_teacher_assignment_count),
+        }

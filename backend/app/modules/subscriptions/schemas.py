@@ -3,8 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
@@ -12,6 +13,8 @@ from app.modules.subscriptions.subscription_enums import (
     PaymentProvider,
     PaymentStatus,
     ResourceLimitCode,
+    SubscriptionPlanChangeStatus,
+    SubscriptionPlanChangeType,
     SubscriptionStatus,
 )
 
@@ -71,11 +74,7 @@ class TenantEntitlementsResponse(BaseModel):
 
 
 class FeatureCheckResponse(BaseModel):
-    """Internal feature-check result.
-
-    Keep enums as enum objects because the service reads `.value` when building
-    HTTP error details.
-    """
+    """Internal feature-check result."""
 
     allowed: bool
     feature: FeatureCode
@@ -85,11 +84,7 @@ class FeatureCheckResponse(BaseModel):
 
 
 class ResourceLimitCheckResponse(BaseModel):
-    """Internal resource-limit result.
-
-    Keep enums as enum objects because the service reads `.value` when building
-    HTTP error details.
-    """
+    """Internal resource-limit result."""
 
     allowed: bool
     resource: ResourceLimitCode
@@ -99,6 +94,13 @@ class ResourceLimitCheckResponse(BaseModel):
     limit: int | None
     remaining: int | None
     reason: str | None = None
+
+
+class SubscriptionCancellationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    confirmation: Literal["CANCEL_SUBSCRIPTION"]
+    reason: str | None = Field(default=None, min_length=3, max_length=500)
 
 
 class SubscriptionCheckoutCreate(BaseModel):
@@ -142,8 +144,65 @@ class PaymentTransactionResponse(BaseModel):
     amount: Decimal
     amount_kobo: int
     currency: str
-    authorization_url: str | None
     paid_at: datetime | None
+    failure_reason: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaymentTransactionListResponse(BaseModel):
+    items: list[PaymentTransactionResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+class PlanLimitBlocker(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
+    resource: ResourceLimitCode
+    used: int
+    limit: int
+    excess: int
+
+
+class SubscriptionPlanChangeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    target_plan_code: str
+    confirmation: Literal["CHANGE_SUBSCRIPTION_PLAN"]
+
+
+class SubscriptionPlanChangePreviewResponse(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
+    current_plan_code: str
+    target_plan_code: str
+    change_type: SubscriptionPlanChangeType
+    eligible: bool
+    effective_at: datetime | None = None
+    usage_snapshot: dict[ResourceLimitCode, int]
+    blockers: list[PlanLimitBlocker]
+
+
+class SubscriptionPlanChangeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    subscription_id: uuid.UUID | None
+    current_plan_code: str
+    target_plan_code: str
+    change_type: SubscriptionPlanChangeType
+    status: SubscriptionPlanChangeStatus
+    requested_by_admin_id: uuid.UUID | None
+    requested_at: datetime
+    effective_at: datetime | None
+    applied_at: datetime | None
+    cancelled_at: datetime | None
+    usage_snapshot_json: dict | None
+    blockers_json: list | None
+    provider_reference: str | None
     failure_reason: str | None
     created_at: datetime
     updated_at: datetime

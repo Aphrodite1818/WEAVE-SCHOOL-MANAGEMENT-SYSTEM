@@ -163,6 +163,18 @@ function MembershipDirectoryPage({ role }) {
     loadPage();
   }, [loadPage]);
 
+  useEffect(() => {
+    if (activeTab === "requests") return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearch(draftSearch);
+      setAppliedStatus(draftStatus);
+    }, draftSearch.trim() ? 250 : 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeTab, draftSearch, draftStatus]);
+
   const selectTab = (tabId) => {
     const nextStatus = defaultStatusForTab(tabId);
     setActiveTab(tabId);
@@ -171,13 +183,6 @@ function MembershipDirectoryPage({ role }) {
     setAppliedSearch("");
     setDraftStatus(nextStatus);
     setAppliedStatus(nextStatus);
-  };
-
-  const applyFilters = (event) => {
-    event.preventDefault();
-    setPage(1);
-    setAppliedSearch(draftSearch);
-    setAppliedStatus(draftStatus);
   };
 
   const clearFilters = () => {
@@ -404,7 +409,7 @@ function MembershipDirectoryPage({ role }) {
               key={tab.id}
               type="button"
               onClick={() => selectTab(tab.id)}
-              className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${activeTab === tab.id ? "bg-primary text-white" : "bg-surface-muted/40 text-text-muted hover:text-text"}`}
+              className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${activeTab === tab.id ? "bg-primary text-primary-foreground" : "bg-surface-muted/40 text-text-muted hover:text-text"}`}
             >
               {tab.label}
             </button>
@@ -412,7 +417,7 @@ function MembershipDirectoryPage({ role }) {
         </div>
 
         {activeTab !== "requests" ? (
-          <form onSubmit={applyFilters} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]">
+          <form onSubmit={(event) => event.preventDefault()} className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]">
             <div className="relative">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <Input value={draftSearch} onChange={(event) => setDraftSearch(event.target.value)} placeholder={activeTab === "memberships" ? `Search ${role} email or name` : "Search invited email"} className="pl-11" />
@@ -421,8 +426,7 @@ function MembershipDirectoryPage({ role }) {
               <option value="">All statuses</option>
               {statusOptions.map((status) => <option key={status} value={status}>{titleCase(status)}</option>)}
             </select>
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="submit" size="small">Apply</Button>
+            <div className="grid gap-2">
               <Button type="button" variant="outline" size="small" onClick={clearFilters}>Clear</Button>
             </div>
           </form>
@@ -521,9 +525,12 @@ function MembershipDirectoryPage({ role }) {
         </section>
       )}
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" size="small" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-4 w-4" />Previous</Button>
-        <Button type="button" size="small" variant="outline" disabled={page >= pageCount || loading} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next<ChevronRight className="h-4 w-4" /></Button>
+      <div className="mobile-list-pagination flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-text-muted sm:hidden">Page {page}/{pageCount}</span>
+        <div className="ml-auto grid grid-cols-2 gap-2 sm:flex">
+          <Button type="button" size="small" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}><ChevronLeft className="h-4 w-4" />Previous</Button>
+          <Button type="button" size="small" variant="outline" disabled={page >= pageCount || loading} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>Next<ChevronRight className="h-4 w-4" /></Button>
+        </div>
       </div>
 
       <Modal open={Boolean(lifecycleState)} title={lifecycleState ? `${titleCase(lifecycleState.action)} membership` : "Membership lifecycle"} description="This changes access to this school only; the global account remains intact." onClose={() => !actionId && setLifecycleState(null)} closeOnOverlay={!actionId}>

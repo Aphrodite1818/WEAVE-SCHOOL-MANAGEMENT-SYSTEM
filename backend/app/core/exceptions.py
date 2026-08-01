@@ -153,9 +153,17 @@ class SecurityBlockException(AppException):
 
 class ConflictException(AppException):
     """Raised when a conflicting resource already exists."""
-    def __init__(self, detail: str = "Resource conflict") -> None:
+    def __init__(
+        self,
+        detail: str = "Resource conflict",
+        payload: dict[str, Any] | None = None,
+    ) -> None:
         """Initialize the ConflictException instance."""
-        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail,
+            payload=payload,
+        )
 
 
 

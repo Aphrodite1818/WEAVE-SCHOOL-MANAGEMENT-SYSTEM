@@ -1,0 +1,240 @@
+name: Guides and searchable filters
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/modules/user_guides/**"
+      - "backend/alembic/versions/*guide*.py"
+      - "backend/app/models.py"
+      - "backend/app/main.py"
+      - "backend/tests/unit/user_guides/**"
+      - "frontend/src/components/ui/SearchableSelect.jsx"
+      - "frontend/src/components/guides/**"
+      - "frontend/src/features/guides/**"
+      - "frontend/src/services/guideService.js"
+      - "frontend/src/components/academic/AcademicSelectors.jsx"
+      - "frontend/src/features/academic-admin/**"
+      - "frontend/src/pages/admin/AdminDashboardPage.jsx"
+      - "frontend/src/pages/admin/AdminGettingStartedPage.jsx"
+      - "frontend/src/pages/shared/RoleGettingStartedPage.jsx"
+      - "frontend/src/pages/teacher/ResultsPage.jsx"
+      - "frontend/src/components/layout/DashboardLayout.jsx"
+      - "frontend/src/routes/adminRoutes.jsx"
+      - "frontend/src/routes/teacherRoutes.jsx"
+      - "frontend/src/routes/parentRoutes.jsx"
+      - "frontend/src/routes/studentRoutes.jsx"
+      - ".github/workflows/guides-searchable.yml"
+  push:
+    branches:
+      - Attendance
+      - staging
+      - master
+    paths:
+      - "backend/app/modules/user_guides/**"
+      - "backend/alembic/versions/*guide*.py"
+      - "backend/app/models.py"
+      - "backend/app/main.py"
+      - "backend/tests/unit/user_guides/**"
+      - "frontend/src/components/ui/SearchableSelect.jsx"
+      - "frontend/src/components/guides/**"
+      - "frontend/src/features/guides/**"
+      - "frontend/src/services/guideService.js"
+      - "frontend/src/components/academic/AcademicSelectors.jsx"
+      - "frontend/src/features/academic-admin/**"
+      - "frontend/src/pages/admin/AdminDashboardPage.jsx"
+      - "frontend/src/pages/admin/AdminGettingStartedPage.jsx"
+      - "frontend/src/pages/shared/RoleGettingStartedPage.jsx"
+      - "frontend/src/pages/teacher/ResultsPage.jsx"
+      - "frontend/src/components/layout/DashboardLayout.jsx"
+      - "frontend/src/routes/adminRoutes.jsx"
+      - "frontend/src/routes/teacherRoutes.jsx"
+      - "frontend/src/routes/parentRoutes.jsx"
+      - "frontend/src/routes/studentRoutes.jsx"
+      - ".github/workflows/guides-searchable.yml"
+
+jobs:
+  backend-guides:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d weave_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint guide files
+        shell: bash
+        run: |
+          guide_paths=(app/modules/user_guides tests/unit/user_guides)
+          while IFS= read -r migration; do
+            guide_paths+=("$migration")
+          done < <(find alembic/versions -maxdepth 1 -type f -iname '*guide*.py' -print)
+          uv run ruff check "${guide_paths[@]}"
+
+      - name: Check guide formatting
+        shell: bash
+        run: |
+          guide_paths=(app/modules/user_guides tests/unit/user_guides)
+          while IFS= read -r migration; do
+            guide_paths+=("$migration")
+          done < <(find alembic/versions -maxdepth 1 -type f -iname '*guide*.py' -print)
+          uv run ruff format --check "${guide_paths[@]}"
+
+      - name: Import application and assert guide routes
+        run: |
+          uv run python - <<'PY'
+          from app.main import app
+
+          methods_by_path = {}
+          for route in app.routes:
+              methods_by_path.setdefault(route.path, set()).update(
+                  getattr(route, "methods", set()) or set()
+              )
+          path = "/api/v1/guides/{guide_key}"
+          assert path in methods_by_path, f"Missing guide route: {path}"
+          assert {"GET", "PATCH"}.issubset(methods_by_path[path])
+          PY
+
+      - name: Upgrade fresh database
+        run: uv run alembic upgrade head
+
+      - name: Verify guide table
+        run: |
+          uv run python - <<'PY'
+          import asyncio
+          from sqlalchemy import inspect
+          from app.config.database import engine
+
+          async def main():
+              async with engine.begin() as connection:
+                  tables = await connection.run_sync(
+                      lambda sync_connection: inspect(sync_connection).get_table_names(schema="public")
+                  )
+                  assert "user_guide_states" in tables
+              await engine.dispose()
+
+          asyncio.run(main())
+          PY
+
+      - name: Run guide regression tests
+        run: uv run pytest tests/unit/user_guides -q
+
+  frontend-guides:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify page guide architecture
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+
+          const read = (path) => fs.readFileSync(path, "utf8");
+          const routes = [
+            ["src/routes/adminRoutes.jsx", "/admin/getting-started"],
+            ["src/routes/teacherRoutes.jsx", "/teacher/getting-started"],
+            ["src/routes/parentRoutes.jsx", "/parent/getting-started"],
+            ["src/routes/studentRoutes.jsx", "/student/getting-started"],
+          ];
+          for (const [path, route] of routes) {
+            if (!read(path).includes(route)) throw new Error(`Missing route ${route}`);
+          }
+
+          const shell = read("src/components/layout/DashboardLayout.jsx");
+          if (shell.includes("RoleGuideModal")) {
+            throw new Error("Dashboard shell still references the removed modal guide");
+          }
+          if (!shell.includes("GettingStartedBanner")) {
+            throw new Error("Dashboard shell is missing the non-blocking guide banner");
+          }
+
+          const adminPage = read("src/pages/admin/AdminGettingStartedPage.jsx");
+          for (const action of [
+            "createSession",
+            "createTerm",
+            "generateCalendar",
+            "createClass",
+            "createSubject",
+            "openSession",
+            "activateCalendar",
+            "openTerm",
+          ]) {
+            if (!adminPage.includes(action)) throw new Error(`Missing admin setup action: ${action}`);
+          }
+          NODE
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Production build
+        run: npm run build

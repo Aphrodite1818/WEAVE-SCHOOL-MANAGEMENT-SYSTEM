@@ -13,6 +13,7 @@ function Modal({
   className = "",
   closeOnOverlay = true,
   showClose = true,
+  placement = "responsive",
 }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -44,7 +45,10 @@ function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm sm:items-center"
+      className={cn(
+        "fixed inset-0 z-50 flex justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm",
+        placement === "center" ? "items-center" : "items-end sm:items-center",
+      )}
       onClick={handleOverlayClick}
     >
       <div

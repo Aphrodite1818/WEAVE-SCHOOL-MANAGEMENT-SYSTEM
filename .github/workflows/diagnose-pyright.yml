@@ -1,0 +1,56 @@
+name: Diagnose backend Pyright
+
+on:
+  push:
+    branches:
+      - Attendance
+    paths:
+      - ".github/workflows/diagnose-pyright.yml"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+      FORMAT_BASELINE_SHA: 6a434994d2b2397d45c6716d89c6f1a3eda8ea0f
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - name: Capture Pyright output
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$FORMAT_BASELINE_SHA"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' \
+              | grep -Ev '^(tests/|alembic/versions/)' || true
+          )
+          set +e
+          uv run --with pyright pyright "${files[@]}" > ../pyright.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> ../pyright.log
+          cat ../pyright.log
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-pyright-diagnostic
+          path: pyright.log
+          retention-days: 1

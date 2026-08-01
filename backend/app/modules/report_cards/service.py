@@ -20,7 +20,7 @@ from app.modules.report_cards.schemas import (
     ReportCardResponse,
     ReportCardSubjectLineResponse,
 )
-from app.modules.student_academics.models import ClassSubject
+from app.modules.student_academics.models import AcademicResultStatus, ClassSubject
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import Student
 from app.modules.students.repository import StudentParentLinkRepository, StudentRepository
@@ -63,7 +63,7 @@ class ReportCardService:
         return items
 
     @staticmethod
-    async def _submitted_results_for_student(
+    async def _finalized_results_for_student(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         student_id: uuid.UUID,
@@ -76,7 +76,7 @@ class ReportCardService:
             student_id=student_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
-            published_only=True,
+            finalized_only=True,
             limit=500,
         )
         return results
@@ -91,7 +91,7 @@ class ReportCardService:
         academic_term_id: uuid.UUID,
     ) -> list[str]:
         expected = await ReportCardService._expected_class_subjects(db, tenant_id, class_id)
-        submitted = await ReportCardService._submitted_results_for_student(
+        submitted = await ReportCardService._finalized_results_for_student(
             db, tenant_id, student_id, academic_session_id, academic_term_id
         )
         submitted_subject_ids = {result.subject_id for result in submitted}
@@ -158,6 +158,8 @@ class ReportCardService:
     ) -> ReportCard:
         if student.class_id is None:
             raise BadRequestException("Student class is required for report card generation.")
+        if not results:
+            raise BadRequestException("No locked scores are available for this student.")
 
         missing = await ReportCardService._missing_subjects(
             db,
@@ -168,13 +170,17 @@ class ReportCardService:
             academic_term_id,
         )
         if missing:
-            raise BadRequestException(f"Missing submitted scores for: {', '.join(missing)}")
+            raise BadRequestException(f"Missing locked scores for: {', '.join(missing)}")
+        if any(result.status != AcademicResultStatus.LOCKED for result in results):
+            raise BadRequestException("Report cards can only be generated from locked scores.")
 
         total_score = sum((result.total_score for result in results), Decimal("0"))
         average_score = total_score / Decimal(str(len(results)))
 
         if replace_existing is not None:
             replace_existing.superseded_at = datetime.now(timezone.utc)
+            replace_existing.is_outdated = True
+            replace_existing.status = ReportCardStatus.ARCHIVED
             await ReportCardRepository.save(db, replace_existing)
             version = replace_existing.version + 1
             class_teacher_comment = class_teacher_comment or replace_existing.class_teacher_comment
@@ -327,11 +333,11 @@ class ReportCardService:
         if existing is not None:
             raise BadRequestException("A report card already exists for this student and academic period.")
 
-        results = await ReportCardService._submitted_results_for_student(
+        results = await ReportCardService._finalized_results_for_student(
             db, actor.tenant_id, student_id, academic_session_id, academic_term_id
         )
         if not results:
-            raise BadRequestException("No submitted scores are available for this student.")
+            raise BadRequestException("No locked scores are available for this student.")
 
         card = await ReportCardService._create_card_from_results(
             db,
@@ -360,6 +366,8 @@ class ReportCardService:
         existing = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if existing is None or existing.superseded_at is not None:
             raise NotFoundException("Report card not found.")
+        if existing.status == ReportCardStatus.ARCHIVED:
+            raise BadRequestException("Archived report cards cannot be regenerated.")
 
         student = await StudentRepository.get_student_by_id(
             db=db,
@@ -369,7 +377,7 @@ class ReportCardService:
         if student is None:
             raise NotFoundException("Student not found.")
 
-        results = await ReportCardService._submitted_results_for_student(
+        results = await ReportCardService._finalized_results_for_student(
             db,
             actor.tenant_id,
             existing.student_id,
@@ -377,7 +385,7 @@ class ReportCardService:
             existing.academic_term_id,
         )
         if not results:
-            raise BadRequestException("No submitted scores are available for regeneration.")
+            raise BadRequestException("No locked scores are available for regeneration.")
 
         card = await ReportCardService._create_card_from_results(
             db,
@@ -408,12 +416,12 @@ class ReportCardService:
         card = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if card is None or card.superseded_at is not None:
             raise NotFoundException("Report card not found.")
+        if card.status != ReportCardStatus.DRAFT:
+            raise BadRequestException("Only draft report cards can be edited.")
 
         update_data = payload.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(card, field, value)
-        if card.status == ReportCardStatus.PUBLISHED and card.published_at is not None:
-            card.is_outdated = True
         saved = await ReportCardRepository.save(db, card)
         await db.commit()
         return await ReportCardService.get(db, actor, saved.id)
@@ -441,7 +449,7 @@ class ReportCardService:
 
         rows: list[ReportCardClassOverviewRow] = []
         for student in students:
-            submitted = await ReportCardService._submitted_results_for_student(
+            submitted = await ReportCardService._finalized_results_for_student(
                 db,
                 actor.tenant_id,
                 student.id,
@@ -487,13 +495,31 @@ class ReportCardService:
     async def publish(
         db: AsyncSession,
         actor: TenantAdmin,
-        report_card_id: uuid.UUID,
+            report_card_id: uuid.UUID,
     ) -> ReportCardResponse:
         card = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if card is None:
             raise NotFoundException("Report card not found.")
-        if card.status == ReportCardStatus.PUBLISHED:
-            return await ReportCardService.get(db, actor, card.id)
+        if card.status != ReportCardStatus.DRAFT:
+            raise BadRequestException("Only draft report cards can be published.")
+        if card.superseded_at is not None:
+            raise BadRequestException("Superseded report cards cannot be published.")
+        if card.is_outdated:
+            raise BadRequestException("Outdated report cards must be regenerated before publication.")
+        lines = await ReportCardRepository.list_lines(db, actor.tenant_id, card.id)
+        expected = await ReportCardService._expected_class_subjects(db, actor.tenant_id, card.class_id)
+        expected_subject_ids = {class_subject.subject_id for class_subject in expected}
+        line_subject_ids = {line.subject_id for line in lines}
+        if line_subject_ids != expected_subject_ids:
+            raise BadRequestException("Report card is missing expected subject lines.")
+        for line in lines:
+            result = await StudentAcademicRepository.get_result_by_id(
+                db,
+                actor.tenant_id,
+                line.student_subject_result_id,
+            )
+            if result is None or result.status != AcademicResultStatus.LOCKED:
+                raise BadRequestException("Report card source scores must be locked before publication.")
         card.status = ReportCardStatus.PUBLISHED
         card.published_at = datetime.now(timezone.utc)
         card.published_by = actor.id
@@ -551,6 +577,7 @@ class ReportCardService:
             published_at=card.published_at,
             published_by=card.published_by,
             is_outdated=card.is_outdated,
+            superseded_at=card.superseded_at,
             status=card.status,
             lines=[ReportCardSubjectLineResponse.model_validate(line) for line in lines],
             created_at=card.created_at,
@@ -581,6 +608,11 @@ class ReportCardService:
         actor: TenantAdmin | Parent | Student,
         *,
         student_id: uuid.UUID | None = None,
+        class_id: uuid.UUID | None = None,
+        academic_session_id: uuid.UUID | None = None,
+        academic_term_id: uuid.UUID | None = None,
+        status: ReportCardStatus | None = None,
+        is_outdated: bool | None = None,
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[list[ReportCardResponse], int]:
@@ -598,6 +630,11 @@ class ReportCardService:
             skip=skip,
             limit=min(limit, 100),
             student_id=student_id,
+            class_id=class_id,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+            status=status,
+            is_outdated=is_outdated,
             published_only=published_only,
         )
         return [await ReportCardService._response(db, card) for card in cards], total

@@ -39,14 +39,13 @@ class ClassRoomBase(InputBase):
 
 
 class ClassRoomCreate(ClassRoomBase):
-    is_active: bool = True
+    pass
 
 
 class ClassRoomUpdate(InputBase):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     arm: str | None = Field(default=None, max_length=20)
     teacher_membership_id: uuid.UUID | None = None
-    is_active: bool | None = None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -63,16 +62,36 @@ class ClassRoomUpdate(InputBase):
     def normalize_arm(cls, value: str | None) -> str | None:
         return normalize_class_arm(value)
 
+class ClassRoomArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_CLASSROOM"]
+
+
+class ClassRoomActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_CLASSROOM"]
+
+
+class ClassRoomDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_CLASSROOM"]
+
+
+class ClassRoomRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_CLASSROOM"]
+
 
 class ClassRoomResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
+
     name: str
     arm: str | None
+
     next_class_id: uuid.UUID | None
     is_terminal: bool
+
     teacher_membership_id: uuid.UUID | None
     is_active: bool
+    archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

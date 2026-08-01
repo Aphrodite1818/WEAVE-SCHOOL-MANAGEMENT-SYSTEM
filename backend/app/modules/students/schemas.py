@@ -715,6 +715,11 @@ class StudentDetailResponse(StudentResponse):
 
     class_name: str | None = None
     class_arm: str | None = None
+    current_enrollment_id: uuid.UUID | None = None
+    current_academic_session_id: uuid.UUID | None = None
+    current_academic_session_name: str | None = None
+    current_academic_term_id: uuid.UUID | None = None
+    current_academic_term_name: str | None = None
 
 
 class StudentListResponse(OutputBase):

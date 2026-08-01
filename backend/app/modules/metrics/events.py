@@ -14,11 +14,11 @@ from app.core.cache.events import (
     CacheInvalidationEvent,
 )
 from app.core.cache.base import build_cache_key, tenant_prefix
-from app.modules.announcements.models import (
+from app.modules.communications.enums import CommunicationActorType
+from app.modules.communications.models import (
     Announcement,
-    AnnouncementRead,
-    AnnouncementRecipientRole,
-    AnnouncementTarget,
+    AnnouncementAudience,
+    NotificationDelivery,
 )
 from app.modules.classes.models import ClassRoom
 from app.modules.metrics.cache import (
@@ -53,8 +53,8 @@ TENANT_ADMIN_METRIC_MODELS = (
     AcademicSession,
     AcademicTerm,
     Announcement,
-    AnnouncementRead,
-    AnnouncementTarget,
+    AnnouncementAudience,
+    NotificationDelivery,
     ClassRoom,
     ClassSubject,
     ClassSubjectTeacher,
@@ -206,11 +206,11 @@ def _queue_metric_invalidations_for_object(session: Session, obj: object) -> Non
     if isinstance(obj, ParentMembership):
         _queue_parent_dashboard(session, tenant_id, _coerce_uuid(obj.id))
 
-    if isinstance(obj, AnnouncementRead):
-        actor_id = _coerce_uuid(obj.actor_id)
-        if obj.actor_type == AnnouncementRecipientRole.PARENT:
+    if isinstance(obj, NotificationDelivery):
+        actor_id = _coerce_uuid(obj.recipient_actor_id)
+        if obj.recipient_actor_type == CommunicationActorType.PARENT:
             _queue_parent_dashboard(session, tenant_id, actor_id)
-        elif obj.actor_type == AnnouncementRecipientRole.STUDENT:
+        elif obj.recipient_actor_type == CommunicationActorType.STUDENT:
             _queue_student_dashboard(session, tenant_id, actor_id)
 
 

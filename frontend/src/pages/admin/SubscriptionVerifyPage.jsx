@@ -7,7 +7,11 @@ import Button from "../../components/ui/Button";
 import LoadingState from "../../components/shared/LoadingState";
 import { parseApiError } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
-import { clearSelectedSubscriptionPlan } from "../../features/subscriptions/subscriptionConfig";
+import {
+  clearRegistrationCheckoutIntent,
+  clearSelectedSubscriptionPlan,
+  consumeRegistrationCheckoutRedirect,
+} from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 
 function SubscriptionVerifyPage() {
@@ -16,6 +20,7 @@ function SubscriptionVerifyPage() {
   const { refreshSubscriptionState } = useSubscription();
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Verifying your payment...");
+  const [successRoute, setSuccessRoute] = useState("/admin/billing");
   const reference = searchParams.get("reference");
 
   useEffect(() => {
@@ -42,10 +47,14 @@ function SubscriptionVerifyPage() {
         if (!mounted) return;
 
         clearSelectedSubscriptionPlan();
+        const registrationCheckout = consumeRegistrationCheckoutRedirect();
+        const nextSuccessRoute = registrationCheckout ? "/admin/dashboard" : "/admin/billing";
+        setSuccessRoute(nextSuccessRoute);
+        clearRegistrationCheckoutIntent();
         setStatus("success");
         setMessage("Payment verified. Your subscription is now active.");
         redirectTimer = window.setTimeout(() => {
-          navigate("/admin/billing", { replace: true });
+          navigate(nextSuccessRoute, { replace: true });
         }, 1800);
       } catch (error) {
         if (!mounted) return;
@@ -109,7 +118,7 @@ function SubscriptionVerifyPage() {
                 variant={status === "success" ? "primary" : "outline"}
                 onClick={() =>
                   navigate(
-                    status === "success" ? "/admin/billing" : "/admin/dashboard",
+                    status === "success" ? successRoute : "/admin/dashboard",
                     { replace: true }
                   )
                 }

@@ -5,7 +5,7 @@ import uuid
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.modules import import_model_modules
+import app.models  # noqa: F401
 from app.modules.students.models import StudentParentLinkStatus
 from app.modules.students.repository import StudentParentLinkRepository
 
@@ -34,7 +34,7 @@ class _CapturingSession:
 
 @pytest.mark.asyncio
 async def test_list_for_student_lock_targets_student_parent_links_only() -> None:
-    import_model_modules()
+    
     db = _CapturingSession()
 
     await StudentParentLinkRepository.list_for_student(
@@ -54,7 +54,7 @@ async def test_list_for_student_lock_targets_student_parent_links_only() -> None
 
 @pytest.mark.asyncio
 async def test_list_for_membership_lock_targets_student_parent_links_only() -> None:
-    import_model_modules()
+    
     db = _CapturingSession()
 
     await StudentParentLinkRepository.list_for_membership(

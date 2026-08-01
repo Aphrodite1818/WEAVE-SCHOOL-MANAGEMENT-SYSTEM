@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
@@ -17,25 +18,49 @@ from app.core.dependencies.route_guards import (
 from app.core.exceptions import ForbiddenException, NotFoundException
 from app.modules.parents.models import Parent
 from app.modules.student_academics.repository import StudentAcademicRepository
+from app.modules.student_academics.models import (
+    AcademicResultStatus,
+    AcademicSessionStatus,
+    AcademicTermName,
+    AcademicTermStatus,
+)
+from app.modules.student_academics.progression_service import AcademicProgressionService
 from app.modules.student_academics.schemas import (
+    AcademicSessionCloseRequest,
+    AcademicSessionCloseResponse,
     AcademicSessionCreate,
+    AcademicSessionDeleteRequest,
+    AcademicSessionDependencyPreview,
     AcademicSessionListResponse,
+    AcademicSessionOpenRequest,
     AcademicSessionResponse,
     AcademicSessionUpdate,
+    AcademicTermCloseRequest,
+    AcademicTermCancelClosureRequest,
     AcademicTermCreate,
+    AcademicTermDeleteRequest,
+    AcademicTermDependencyPreview,
+    AcademicTermFinalizeCloseRequest,
     AcademicTermListResponse,
+    AcademicTermOpenRequest,
     AcademicTermResponse,
+    AcademicTermStartClosingRequest,
     AcademicTermUpdate,
     GradingScaleCreate,
     GradingScaleListResponse,
+    GradingScaleReadiness,
     GradingScaleResponse,
     GradingScaleUpdate,
     StudentSubjectCardListResponse,
     StudentSubjectResultListResponse,
+    StudentSubjectResultReopenRequest,
     StudentSubjectResultResponse,
     StudentSubjectResultStatusUpdate,
     StudentSubjectResultUpsert,
     TeacherAssignmentCreate,
+    TeacherAssignmentDelete,
+    TeacherAssignmentDependencyPreview,
+    TeacherAssignmentEnd,
     TeacherAssignmentListResponse,
     TeacherAssignmentReassign,
     TeacherAssignmentResponse,
@@ -111,6 +136,7 @@ async def create_academic_session(
         db,
         current_admin.tenant_id,
         payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -121,6 +147,11 @@ async def create_academic_session(
 async def list_academic_sessions(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
+    search: str | None = Query(default=None, max_length=100),
+    status_filter: AcademicSessionStatus | None = Query(default=None, alias="status"),
+    is_current: bool | None = Query(default=None),
+    start_date_from: date | None = Query(default=None),
+    start_date_to: date | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> AcademicSessionListResponse:
@@ -129,6 +160,11 @@ async def list_academic_sessions(
         current_admin.tenant_id,
         skip,
         limit,
+        search=search,
+        status=status_filter,
+        is_current=is_current,
+        start_date_from=start_date_from,
+        start_date_to=start_date_to,
     )
     return AcademicSessionListResponse(items=items, total=total)
 
@@ -151,6 +187,78 @@ async def update_academic_session(
     )
 
 
+@tenant_admin_router.get(
+    "/sessions/{session_id}/dependencies",
+    response_model=AcademicSessionDependencyPreview,
+)
+async def academic_session_dependencies(
+    session_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionDependencyPreview:
+    return await StudentAcademicService.academic_session_dependency_preview(
+        db,
+        current_admin.tenant_id,
+        session_id,
+    )
+
+
+@tenant_admin_router.post(
+    "/sessions/{session_id}/open",
+    response_model=AcademicSessionResponse,
+)
+async def open_academic_session(
+    session_id: UUID,
+    payload: AcademicSessionOpenRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionResponse:
+    _ = payload.confirmation
+    return await AcademicProgressionService.open_session(
+        db,
+        actor=current_admin,
+        session_id=session_id,
+    )
+
+
+@tenant_admin_router.post(
+    "/sessions/{session_id}/close-and-progress",
+    response_model=AcademicSessionCloseResponse,
+)
+async def close_academic_session_and_progress(
+    session_id: UUID,
+    payload: AcademicSessionCloseRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionCloseResponse:
+    _ = payload.confirmation
+    return await AcademicProgressionService.close_and_progress(
+        db,
+        actor=current_admin,
+        session_id=session_id,
+        idempotency_key=payload.idempotency_key,
+    )
+
+
+@tenant_admin_router.delete(
+    "/sessions/{session_id}",
+    response_model=AcademicSessionResponse,
+)
+async def delete_academic_session(
+    session_id: UUID,
+    payload: AcademicSessionDeleteRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicSessionResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.delete_academic_session(
+        db,
+        current_admin.tenant_id,
+        session_id,
+        acting_admin_id=current_admin.id,
+    )
+
+
 @tenant_admin_router.post(
     "/terms",
     response_model=AcademicTermResponse,
@@ -166,6 +274,7 @@ async def create_academic_term(
         db,
         current_admin.tenant_id,
         payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -177,6 +286,11 @@ async def list_academic_terms(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
     academic_session_id: UUID | None = Query(default=None),
+    status_filter: AcademicTermStatus | None = Query(default=None, alias="status"),
+    is_current: bool | None = Query(default=None),
+    name: AcademicTermName | None = Query(default=None),
+    start_date_from: date | None = Query(default=None),
+    start_date_to: date | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> AcademicTermListResponse:
@@ -186,6 +300,11 @@ async def list_academic_terms(
         skip=skip,
         limit=limit,
         academic_session_id=academic_session_id,
+        statuses={status_filter} if status_filter is not None else None,
+        name=name,
+        is_current=is_current,
+        start_date_from=start_date_from,
+        start_date_to=start_date_to,
     )
     return AcademicTermListResponse(items=items, total=total)
 
@@ -205,6 +324,135 @@ async def update_academic_term(
         current_admin.tenant_id,
         term_id,
         payload,
+    )
+
+
+@tenant_admin_router.get(
+    "/terms/{term_id}/dependencies",
+    response_model=AcademicTermDependencyPreview,
+)
+async def academic_term_dependencies(
+    term_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermDependencyPreview:
+    return await StudentAcademicService.academic_term_dependency_preview(
+        db,
+        current_admin.tenant_id,
+        term_id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/open",
+    response_model=AcademicTermResponse,
+)
+async def open_academic_term(
+    term_id: UUID,
+    payload: AcademicTermOpenRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    return await StudentAcademicService.open_academic_term(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/close",
+    response_model=AcademicTermResponse,
+)
+async def close_academic_term(
+    term_id: UUID,
+    payload: AcademicTermCloseRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    return await StudentAcademicService.close_academic_term(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/start-closing",
+    response_model=AcademicTermResponse,
+)
+async def start_academic_term_closing(
+    term_id: UUID,
+    payload: AcademicTermStartClosingRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.start_academic_term_closure(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/finalize-close",
+    response_model=AcademicTermResponse,
+)
+async def finalize_academic_term_close(
+    term_id: UUID,
+    payload: AcademicTermFinalizeCloseRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.finalize_academic_term_closure(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/terms/{term_id}/cancel-closure",
+    response_model=AcademicTermResponse,
+)
+async def cancel_academic_term_closure(
+    term_id: UUID,
+    payload: AcademicTermCancelClosureRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.cancel_academic_term_closure(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
+        reason=payload.reason,
+    )
+
+
+@tenant_admin_router.delete(
+    "/terms/{term_id}",
+    response_model=AcademicTermResponse,
+)
+async def delete_academic_term(
+    term_id: UUID,
+    payload: AcademicTermDeleteRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> AcademicTermResponse:
+    _ = payload.confirmation
+    return await StudentAcademicService.delete_academic_term(
+        db,
+        current_admin.tenant_id,
+        term_id,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -266,11 +514,59 @@ async def update_grading_scale(
 
 
 @tenant_admin_router.post(
-    "/teacher-assignments",
+    "/grading-scales/{scale_id}/activate",
+    response_model=GradingScaleResponse,
+)
+async def activate_grading_scale(
+    scale_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> GradingScaleResponse:
+    return await StudentAcademicService.activate_grading_scale(
+        db,
+        current_admin.tenant_id,
+        scale_id,
+    )
+
+
+@tenant_admin_router.post(
+    "/grading-scales/{scale_id}/deactivate",
+    response_model=GradingScaleResponse,
+)
+async def deactivate_grading_scale(
+    scale_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> GradingScaleResponse:
+    return await StudentAcademicService.deactivate_grading_scale(
+        db,
+        current_admin.tenant_id,
+        scale_id,
+    )
+
+
+@tenant_admin_router.get(
+    "/grading-scales/readiness-preview",
+    response_model=GradingScaleReadiness,
+)
+async def preview_grading_scale_readiness(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> GradingScaleReadiness:
+    return await StudentAcademicService.preview_grading_scale_readiness(
+        db,
+        current_admin.tenant_id,
+    )
+
+
+
+@tenant_admin_router.post(
+    "/class-subjects/{class_subject_id}/teacher-assignments",
     response_model=TeacherAssignmentResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_teacher_assignment(
+    class_subject_id: UUID,
     payload: TeacherAssignmentCreate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
@@ -280,6 +576,8 @@ async def create_teacher_assignment(
         db,
         current_admin.tenant_id,
         payload,
+        class_subject_id=class_subject_id,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -292,17 +590,29 @@ async def list_teacher_assignments(
     current_admin: CurrentTenantAdmin,
     teacher_membership_id: UUID | None = Query(default=None),
     class_id: UUID | None = Query(default=None),
+    class_subject_id: UUID | None = Query(default=None),
+    subject_id: UUID | None = Query(default=None),
+    status: str | None = Query(default=None, pattern="^(active|ended)$"),
+    effective_from_from: date | None = Query(default=None),
+    effective_from_to: date | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     active_only: bool = Query(default=False),
     skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=100),
+    limit: int = Query(default=25, ge=1, le=100),
 ) -> TeacherAssignmentListResponse:
+    resolved_status = "active" if active_only and status is None else status
     items, total = (
         await StudentAcademicService.list_teacher_assignment_responses(
             db,
             current_admin.tenant_id,
             teacher_id=teacher_membership_id,
             class_id=class_id,
-            active_only=active_only,
+            class_subject_id=class_subject_id,
+            subject_id=subject_id,
+            status=resolved_status,
+            effective_from_from=effective_from_from,
+            effective_from_to=effective_from_to,
+            search=search,
             skip=skip,
             limit=limit,
         )
@@ -310,16 +620,16 @@ async def list_teacher_assignments(
     return TeacherAssignmentListResponse(items=items, total=total)
 
 
-@tenant_admin_router.post(
-    "/teacher-assignments/{assignment_id}/activate",
-    response_model=TeacherAssignmentResponse,
+@tenant_admin_router.get(
+    "/teacher-assignments/{assignment_id}/dependencies",
+    response_model=TeacherAssignmentDependencyPreview,
 )
-async def activate_teacher_assignment(
+async def teacher_assignment_dependencies(
     assignment_id: UUID,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> TeacherAssignmentResponse:
-    return await StudentAcademicService.activate_teacher_assignment(
+) -> TeacherAssignmentDependencyPreview:
+    return await StudentAcademicService.teacher_assignment_dependency_preview(
         db,
         current_admin.tenant_id,
         assignment_id,
@@ -327,36 +637,66 @@ async def activate_teacher_assignment(
 
 
 @tenant_admin_router.post(
-    "/teacher-assignments/{assignment_id}/deactivate",
+    "/teacher-assignments/{assignment_id}/end",
     response_model=TeacherAssignmentResponse,
 )
-async def deactivate_teacher_assignment(
+async def end_teacher_assignment(
     assignment_id: UUID,
+    payload: TeacherAssignmentEnd,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherAssignmentResponse:
-    return await StudentAcademicService.deactivate_teacher_assignment(
-        db,
-        current_admin.tenant_id,
-        assignment_id,
-    )
-
-
-@tenant_admin_router.post(
-    "/teacher-assignments/{assignment_id}/reassign",
-    response_model=TeacherAssignmentResponse,
-)
-async def reassign_teacher_assignment(
-    assignment_id: UUID,
-    payload: TeacherAssignmentReassign,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> TeacherAssignmentResponse:
-    return await StudentAcademicService.reassign_teacher_assignment(
+    return await StudentAcademicService.end_teacher_assignment(
         db,
         current_admin.tenant_id,
         assignment_id,
         payload,
+        acting_admin_id=current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/class-subjects/{class_subject_id}/reassign-teacher",
+    response_model=TeacherAssignmentResponse,
+)
+async def reassign_teacher_assignment(
+    class_subject_id: UUID,
+    payload: TeacherAssignmentReassign,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherAssignmentResponse:
+    active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+        db,
+        current_admin.tenant_id,
+        class_subject_id,
+    )
+    if active is None:
+        raise NotFoundException("Active teacher assignment not found.")
+    return await StudentAcademicService.reassign_teacher_assignment(
+        db,
+        current_admin.tenant_id,
+        active.id,
+        payload,
+        acting_admin_id=current_admin.id,
+    )
+
+
+@tenant_admin_router.delete(
+    "/teacher-assignments/{assignment_id}",
+    response_model=TeacherAssignmentResponse,
+)
+async def delete_teacher_assignment(
+    assignment_id: UUID,
+    payload: TeacherAssignmentDelete,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherAssignmentResponse:
+    return await StudentAcademicService.delete_teacher_assignment(
+        db,
+        current_admin.tenant_id,
+        assignment_id,
+        payload,
+        acting_admin_id=current_admin.id,
     )
 
 
@@ -385,8 +725,15 @@ async def list_admin_results(
     current_admin: CurrentTenantAdmin,
     student_id: UUID | None = Query(default=None),
     class_id: UUID | None = Query(default=None),
+    teacher_id: UUID | None = Query(default=None),
+    subject_id: UUID | None = Query(default=None),
+    teacher_assignment_id: UUID | None = Query(default=None),
     academic_session_id: UUID | None = Query(default=None),
     academic_term_id: UUID | None = Query(default=None),
+    status: AcademicResultStatus | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
+    is_complete: bool | None = Query(default=None),
+    has_grade: bool | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> StudentSubjectResultListResponse:
@@ -397,8 +744,15 @@ async def list_admin_results(
         limit=limit,
         student_id=student_id,
         class_id=class_id,
+        teacher_id=teacher_id,
+        subject_id=subject_id,
+        teacher_assignment_id=teacher_assignment_id,
         academic_session_id=academic_session_id,
         academic_term_id=academic_term_id,
+        status=status,
+        search=search,
+        is_complete=is_complete,
+        has_grade=has_grade,
     )
     return StudentSubjectResultListResponse(items=items, total=total)
 
@@ -421,6 +775,24 @@ async def update_student_result_status(
     )
 
 
+@tenant_admin_router.post(
+    "/results/{result_id}/reopen",
+    response_model=StudentSubjectResultResponse,
+)
+async def reopen_student_result(
+    result_id: UUID,
+    payload: StudentSubjectResultReopenRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentSubjectResultResponse:
+    return await StudentAcademicService.reopen_result(
+        db,
+        current_admin,
+        result_id,
+        payload,
+    )
+
+
 @teacher_router.get(
     "/assignments",
     response_model=TeacherAssignmentListResponse,
@@ -434,7 +806,7 @@ async def list_my_assignments(
             db,
             current_teacher.tenant_id,
             teacher_id=current_teacher.id,
-            active_only=True,
+            status="active",
         )
     )
     return TeacherAssignmentListResponse(items=items, total=total)

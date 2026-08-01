@@ -1,6 +1,6 @@
-#==========================#
+# ==========================#
 #        cache.py          #
-#==========================#
+# ==========================#
 """
 Cache helpers for subscription entitlements, usage, and billing state.
 
@@ -17,7 +17,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.cache.base import build_cache_key , tenant_prefix
+from app.core.cache.base import build_cache_key, tenant_prefix
 from app.core.cache.events import (
     invalidate_cache_key_now,
     invalidate_cache_pattern_now,
@@ -28,8 +28,7 @@ from app.core.cache.manager import CacheManager
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 
 
-
-def tenant_subscription_cache_prefix(tenant_id : uuid.UUID) -> str:
+def tenant_subscription_cache_prefix(tenant_id: uuid.UUID) -> str:
     """
     Base prefix for all subscription-related cache keys for one tenant
 
@@ -37,10 +36,7 @@ def tenant_subscription_cache_prefix(tenant_id : uuid.UUID) -> str:
         tenant:{tenant_id} : subscription
     """
 
-    return build_cache_key(
-        tenant_prefix(str(tenant_id)),
-        "subscriptions"
-    )
+    return build_cache_key(tenant_prefix(str(tenant_id)), "subscriptions")
 
 
 def tenant_billing_cache_key(tenant_id: uuid.UUID) -> str:
@@ -52,8 +48,7 @@ def tenant_billing_cache_key(tenant_id: uuid.UUID) -> str:
     )
 
 
-
-def tenant_entitlements_cache_key(tenant_id : uuid.UUID) -> str:
+def tenant_entitlements_cache_key(tenant_id: uuid.UUID) -> str:
     """
     Cache Key for a tenant's full entitlement response
 
@@ -64,17 +59,10 @@ def tenant_entitlements_cache_key(tenant_id : uuid.UUID) -> str:
         tenant"{tenant_id}:subscriptions:entitlements
     """
 
-    return build_cache_key(
-        tenant_subscription_cache_prefix(tenant_id),
-        "entitlements"
-    )
+    return build_cache_key(tenant_subscription_cache_prefix(tenant_id), "entitlements")
 
 
-
-def tenant_resource_usage_cache_key(
-        tenant_id : uuid.UUID,
-        resource : ResourceLimitCode
-) -> str:
+def tenant_resource_usage_cache_key(tenant_id: uuid.UUID, resource: ResourceLimitCode) -> str:
     """
     Cache Key for one resource usage count
 
@@ -82,16 +70,10 @@ def tenant_resource_usage_cache_key(
         tenant:{tenant_id}:subscriptions:usage:students
     """
 
-    return build_cache_key(
-        tenant_subscription_cache_prefix(tenant_id),
-        "usage",
-        resource.value
-    )
+    return build_cache_key(tenant_subscription_cache_prefix(tenant_id), "usage", resource.value)
 
 
-
-
-def tenant_all_resource_usage_cache_key(tenant_id : uuid.UUID) -> str:
+def tenant_all_resource_usage_cache_key(tenant_id: uuid.UUID) -> str:
     """
     Cache Key for all resource usage counts
 
@@ -99,13 +81,7 @@ def tenant_all_resource_usage_cache_key(tenant_id : uuid.UUID) -> str:
         tenant:{tenant_id}:subscriptions:usage:all
     """
 
-    return build_cache_key(
-        tenant_subscription_cache_prefix(tenant_id),
-        "usage",
-        "all"
-    )
-
-
+    return build_cache_key(tenant_subscription_cache_prefix(tenant_id), "usage", "all")
 
 
 def tenant_subscription_cache_pattern(tenant_id: uuid.UUID) -> str:
@@ -123,9 +99,7 @@ def tenant_subscription_cache_pattern(tenant_id: uuid.UUID) -> str:
 
 
 async def get_cached_entitlements(tenant_id: uuid.UUID) -> Any | None:
-    return await CacheManager.get_json(
-        tenant_entitlements_cache_key(tenant_id)
-    )
+    return await CacheManager.get_json(tenant_entitlements_cache_key(tenant_id))
 
 
 async def set_cached_entitlements(
@@ -141,9 +115,7 @@ async def set_cached_entitlements(
 
 
 async def get_cached_billing(tenant_id: uuid.UUID) -> Any | None:
-    return await CacheManager.get_json(
-        tenant_billing_cache_key(tenant_id)
-    )
+    return await CacheManager.get_json(tenant_billing_cache_key(tenant_id))
 
 
 async def set_cached_billing(
@@ -162,9 +134,7 @@ async def get_cached_resource_usage(
     tenant_id: uuid.UUID,
     resource: ResourceLimitCode,
 ) -> int | None:
-    value = await CacheManager.get_json(
-        tenant_resource_usage_cache_key(tenant_id, resource)
-    )
+    value = await CacheManager.get_json(tenant_resource_usage_cache_key(tenant_id, resource))
 
     if value is None:
         return None
@@ -188,9 +158,7 @@ async def set_cached_resource_usage(
 async def get_cached_all_resource_usage(
     tenant_id: uuid.UUID,
 ) -> dict[str, int] | None:
-    value = await CacheManager.get_json(
-        tenant_all_resource_usage_cache_key(tenant_id)
-    )
+    value = await CacheManager.get_json(tenant_all_resource_usage_cache_key(tenant_id))
 
     if value is None:
         return None

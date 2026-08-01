@@ -106,7 +106,7 @@ async def get_tenant_admin_analytics_overview(
 ) -> dict[str, object]:
     return await TenantAdminService.get_analytics_overview(
         db,
-        current_admin.tenant_id,
+        tenant_id=current_admin.tenant_id,
     )
 
 
@@ -130,9 +130,7 @@ async def create_student(
         current_admin,
         payload,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-        current_admin.tenant_id
-    )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
     return student
 
 
@@ -434,9 +432,7 @@ async def hard_delete_unused_student(
         actor=current_admin,
         student_id=student_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-        current_admin.tenant_id
-    )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
 
 
 @router.patch(

@@ -10,6 +10,7 @@ import {
   DashboardQuickActions,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { cn } from "../../utils/cn";
 import { academicService } from "../../services/academicService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
@@ -28,6 +29,7 @@ import useParentChildren from "./useParentChildren";
 function ParentDashboardPage() {
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Parent";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
   const {
     children,
     selectedChildId,
@@ -152,11 +154,11 @@ function ParentDashboardPage() {
     unreadNotices > 0
       ? {
           key: "unread-notices",
-          title: "Unread school notices",
-          description: `${unreadNotices} school update${unreadNotices === 1 ? "" : "s"} waiting for you.`,
+          title: "Unread notifications",
+          description: `${unreadNotices} update${unreadNotices === 1 ? "" : "s"} waiting for you.`,
           icon: Bell,
           tone: "primary",
-          to: "/parent/notices",
+          to: "/parent/inbox",
           value: unreadNotices,
         }
       : null,
@@ -234,12 +236,12 @@ function ParentDashboardPage() {
               to="/parent/report-cards"
             />
             <DashboardMetricCard
-              label="Unread notices"
+              label="Unread notifications"
               value={unreadNotices}
               description="School updates"
               icon={Bell}
               tone={unreadNotices > 0 ? "warning" : "success"}
-              to="/parent/notices"
+              to="/parent/inbox"
             />
           </section>
 
@@ -265,7 +267,18 @@ function ParentDashboardPage() {
               description="Parent tasks or updates that need a quick look."
               items={attentionItems}
               emptyTitle="Everything looks calm"
-              emptyDescription="No unread notices, linking issues, or report-card actions need attention right now."
+              emptyDescription="No unread notifications, linking issues, or report-card actions need attention right now."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="parent" actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
+            <DashboardListCard
+              title="Family calendar"
+              description="Parent-visible events and school day status."
+              items={[]}
+              emptyTitle="No parent action needed"
+              emptyDescription="Published holidays, meetings, closures, and school events will appear in the calendar card."
             />
           </section>
 
@@ -276,7 +289,7 @@ function ParentDashboardPage() {
               { label: "Student linking", description: "Request or manage child access", to: "/parent/student-linking", icon: Link2, tone: "primary" },
               { label: "Results", description: "View academic scores", to: "/parent/results", icon: BarChart3, tone: "success" },
               { label: "Report cards", description: "Open published reports", to: "/parent/report-cards", icon: FileText, tone: "warning" },
-              { label: "Notices", description: "School updates", to: "/parent/notices", icon: Bell, tone: "accent" },
+              { label: "Inbox", description: "Notifications and updates", to: "/parent/inbox", icon: Bell, tone: "accent" },
             ]}
           />
         </>
@@ -319,7 +332,7 @@ function ChildSwitcher({ linkedChildren = [], selectedChildId, onSelectChild, ac
                 className={cn(
                   "min-h-10 shrink-0 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition",
                   isActive
-                    ? "border-primary bg-primary text-white shadow-sm"
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
                     : "border-border/70 bg-surface text-text-soft hover:border-primary/40 hover:text-text",
                 )}
               >

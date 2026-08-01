@@ -38,7 +38,11 @@ let refreshTimerId = null;
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
   error?.code === 20 ||
-  error?.isAbortError === true;
+  error?.isAbortError === true ||
+  (
+    typeof error?.message === "string" &&
+    /abort|aborted|cancelled|canceled/i.test(error.message)
+  );
 
 const normalizeDetail = (detail) => {
   if (!detail) return null;
@@ -496,9 +500,6 @@ const logUnexpectedApiError = (endpoint, error) => {
 
   const status = error?.response?.status;
   if (status && (status < 500 || status === 503)) {
-    if (import.meta.env.DEV && status !== 401 && status !== 403) {
-      console.debug(`Handled API response on ${endpoint}: ${status}`);
-    }
     return;
   }
 
@@ -672,6 +673,13 @@ export const api = {
   patch: (endpoint, body, options) =>
     request(endpoint, {
       method: "PATCH",
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...options,
+    }),
+
+  put: (endpoint, body, options) =>
+    request(endpoint, {
+      method: "PUT",
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       ...options,
     }),

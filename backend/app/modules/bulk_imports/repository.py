@@ -15,7 +15,6 @@ from sqlalchemy.orm import selectinload
 from app.modules.bulk_imports.models import (
     ImportJob,
     ImportJobStatus,
-    ImportNotification,
     ImportResourceType,
     ImportRowError,
     ImportStagedRow,
@@ -23,7 +22,6 @@ from app.modules.bulk_imports.models import (
 from app.modules.bulk_imports.schemas import (
     ImportJobCreate,
     ImportJobUpdate,
-    ImportNotificationCreate,
     ImportRowErrorCreate,
 )
 from app.modules.bulk_imports.validators import ImportRowValidationResult
@@ -49,6 +47,8 @@ class ImportJobRepository:
             stored_filename=job_data.stored_filename,
             source_file_path=job_data.source_file_path,
             file_size_bytes=job_data.file_size_bytes,
+            source_fingerprint=job_data.source_fingerprint,
+            confirmed_fingerprint=job_data.confirmed_fingerprint,
             created_by_admin_id=job_data.created_by_admin_id,
             metadata_json=job_data.metadata_json or {},
         )
@@ -75,14 +75,35 @@ class ImportJobRepository:
         )
 
         if include_children:
-            query = query.options(
-                selectinload(ImportJob.row_errors),
-                selectinload(ImportJob.notifications),
-            )
+            query = query.options(selectinload(ImportJob.row_errors))
 
         if lock:
             query = query.with_for_update()
 
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_confirmed_job_by_fingerprint(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        resource_type: ImportResourceType,
+        source_fingerprint: str,
+        exclude_job_id: UUID | None = None,
+        lock: bool = False,
+    ) -> ImportJob | None:
+        """Return the job that already claimed a canonical import fingerprint."""
+
+        query = select(ImportJob).where(
+            ImportJob.tenant_id == tenant_id,
+            ImportJob.resource_type == resource_type,
+            ImportJob.confirmed_fingerprint == source_fingerprint,
+        )
+        if exclude_job_id is not None:
+            query = query.where(ImportJob.id != exclude_job_id)
+        if lock:
+            query = query.with_for_update()
         result = await db.execute(query)
         return result.scalar_one_or_none()
 
@@ -162,7 +183,7 @@ class ImportJobRepository:
     ) -> None:
         """Delete an import job.
 
-        Row errors, staged rows, and notifications should be deleted by cascade.
+        Row errors and staged rows are deleted by cascade.
         """
 
         await db.delete(import_job)
@@ -354,99 +375,3 @@ class ImportStagedRowRepository:
             )
         )
         await db.flush()
-
-
-class ImportNotificationRepository:
-    """Database operations for import notifications."""
-
-    @staticmethod
-    async def create_notification(
-        db: AsyncSession,
-        *,
-        tenant_id: UUID,
-        notification_data: ImportNotificationCreate,
-    ) -> ImportNotification:
-        """Create an import notification."""
-
-        notification = ImportNotification(
-            tenant_id=tenant_id,
-            import_job_id=notification_data.import_job_id,
-            recipient_admin_id=notification_data.recipient_admin_id,
-            channel=notification_data.channel,
-            status=notification_data.status,
-            title=notification_data.title,
-            message=notification_data.message,
-            failure_reason=notification_data.failure_reason,
-        )
-
-        db.add(notification)
-        await db.flush()
-        await db.refresh(notification)
-        return notification
-
-    @staticmethod
-    async def get_notification_by_id(
-        db: AsyncSession,
-        *,
-        tenant_id: UUID,
-        notification_id: UUID,
-    ) -> ImportNotification | None:
-        """Get an import notification by ID within a tenant."""
-
-        result = await db.execute(
-            select(ImportNotification).where(
-                ImportNotification.tenant_id == tenant_id,
-                ImportNotification.id == notification_id,
-            )
-        )
-
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def list_notifications_for_admin(
-        db: AsyncSession,
-        *,
-        tenant_id: UUID,
-        recipient_admin_id: UUID,
-        skip: int = 0,
-        limit: int = 50,
-        unread_only: bool = False,
-    ) -> tuple[list[ImportNotification], int]:
-        """List import notifications for an admin."""
-
-        conditions = [
-            ImportNotification.tenant_id == tenant_id,
-            ImportNotification.recipient_admin_id == recipient_admin_id,
-        ]
-
-        if unread_only:
-            conditions.append(ImportNotification.is_read.is_(False))
-
-        result = await db.execute(
-            select(ImportNotification)
-            .where(*conditions)
-            .order_by(ImportNotification.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        notifications = list(result.scalars().all())
-
-        total_result = await db.execute(
-            select(func.count()).select_from(ImportNotification).where(*conditions)
-        )
-        total = total_result.scalar_one()
-
-        return notifications, total
-
-    @staticmethod
-    async def save(
-        db: AsyncSession,
-        *,
-        notification: ImportNotification,
-    ) -> ImportNotification:
-        """Persist notification changes."""
-
-        db.add(notification)
-        await db.flush()
-        await db.refresh(notification)
-        return notification

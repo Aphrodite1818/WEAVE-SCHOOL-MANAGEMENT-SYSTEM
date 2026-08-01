@@ -278,8 +278,8 @@ function StudentCreatePage() {
               <p className="mt-1 leading-6">
                 Student creation also creates the initial enrollment, so an open current session is required.
               </p>
-              <Link to="/admin/academic/setup?tab=sessions" className="mt-3 inline-flex font-semibold text-primary">
-                Open Academic Setup
+              <Link to="/admin/academic/sessions" className="mt-3 inline-flex font-semibold text-primary">
+                Open Academic Sessions
               </Link>
             </div>
           ) : null}

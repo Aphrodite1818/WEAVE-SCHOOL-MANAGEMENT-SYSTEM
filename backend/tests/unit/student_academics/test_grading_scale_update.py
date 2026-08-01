@@ -9,7 +9,7 @@ import pytest
 from app.core.exceptions import BadRequestException
 from app.modules.student_academics.models import GradingScale
 from app.modules.student_academics.schemas import GradingScaleUpdate
-from app.modules.student_academics.service_impl import StudentAcademicService
+from app.modules.student_academics.service import StudentAcademicService
 
 
 def _scale(tenant_id: uuid.UUID) -> GradingScale:
@@ -20,7 +20,7 @@ def _scale(tenant_id: uuid.UUID) -> GradingScale:
         max_score=Decimal("100"),
         grade="A",
         remark="Excellent",
-        is_active=True,
+        is_active=False,
     )
 
 
@@ -32,15 +32,15 @@ async def test_update_grading_scale_ignores_null_scores_before_comparison() -> N
 
     with (
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.get_grading_scale_by_id",
+            "app.modules.student_academics.service.StudentAcademicRepository.get_grading_scale_by_id",
             new=AsyncMock(return_value=scale),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.list_grading_scales",
+            "app.modules.student_academics.service.StudentAcademicRepository.list_grading_scales",
             new=AsyncMock(return_value=([], 0)),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.save_grading_scale",
+            "app.modules.student_academics.service.StudentAcademicRepository.save_grading_scale",
             new=AsyncMock(return_value=scale),
         ),
     ):
@@ -65,15 +65,15 @@ async def test_update_grading_scale_applies_explicit_scores() -> None:
 
     with (
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.get_grading_scale_by_id",
+            "app.modules.student_academics.service.StudentAcademicRepository.get_grading_scale_by_id",
             new=AsyncMock(return_value=scale),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.list_grading_scales",
+            "app.modules.student_academics.service.StudentAcademicRepository.list_grading_scales",
             new=AsyncMock(return_value=([], 0)),
         ),
         patch(
-            "app.modules.student_academics.service_impl.StudentAcademicRepository.save_grading_scale",
+            "app.modules.student_academics.service.StudentAcademicRepository.save_grading_scale",
             new=AsyncMock(return_value=scale),
         ),
     ):
@@ -95,7 +95,7 @@ async def test_update_grading_scale_rejects_invalid_effective_range() -> None:
     db = AsyncMock()
 
     with patch(
-        "app.modules.student_academics.service_impl.StudentAcademicRepository.get_grading_scale_by_id",
+        "app.modules.student_academics.service.StudentAcademicRepository.get_grading_scale_by_id",
         new=AsyncMock(return_value=scale),
     ):
         with pytest.raises(BadRequestException):

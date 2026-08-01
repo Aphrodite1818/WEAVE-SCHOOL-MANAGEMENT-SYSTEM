@@ -5,11 +5,12 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.exceptions import UnauthorizedException
+from app.core.exceptions import AccountNotVerifiedException, UnauthorizedException
 from app.modules.auth import login_service
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.schemas import LoginRequest
-from app.modules.auth_identity.models import IdentifierType
+from app.modules.auth_identity.models import ActorType, IdentifierType
+from app.modules.tenant_admins.models import TenantAdminStatus
 
 
 @pytest.mark.asyncio
@@ -98,6 +99,65 @@ async def test_missing_email_identity_raises_invalid_credentials(monkeypatch) ->
         ("superadmin", "missing@example.com"),
         ("identity", "missing@example.com"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_unverified_tenant_admin_login_returns_verification_metadata(monkeypatch) -> None:
+    """Pending registrations must send the login form to OTP verification."""
+
+    tenant_id = uuid4()
+    admin_id = uuid4()
+    admin = SimpleNamespace(
+        id=admin_id,
+        tenant_id=tenant_id,
+        email="pending@example.com",
+        password_hash="hashed",
+        is_verified=False,
+        account_status=TenantAdminStatus.PENDING,
+    )
+
+    async def get_superadmin_by_email(_db, _email):
+        return None
+
+    async def resolve_identifier(_db, *, identifier, identifier_type):
+        assert identifier == "pending@example.com"
+        assert identifier_type == IdentifierType.EMAIL
+        return SimpleNamespace(
+            actor_type=ActorType.TENANT_ADMIN,
+            actor_id=admin_id,
+            tenant_id=tenant_id,
+        )
+
+    async def get_admin_by_id(_db, actor_id):
+        assert actor_id == admin_id
+        return admin
+
+    monkeypatch.setattr(
+        login_service.SuperAdminRepository,
+        "get_by_email",
+        get_superadmin_by_email,
+    )
+    monkeypatch.setattr(
+        login_service.AuthIdentityService,
+        "resolve_identifier",
+        resolve_identifier,
+    )
+    monkeypatch.setattr(login_service.TenantAdminRepository, "get_by_id", get_admin_by_id)
+    monkeypatch.setattr(login_service, "verify_password", lambda password, hashed: True)
+
+    with pytest.raises(AccountNotVerifiedException) as exc_info:
+        await login_service.AuthService.authenticate_actor(
+            object(),
+            LoginRequest(identifier="Pending@example.com", password="secret"),
+        )
+
+    assert exc_info.value.payload == {
+        "verification_required": True,
+        "email": "pending@example.com",
+        "purpose": "verification",
+        "redirect_to": "/verify-otp",
+        "resend_otp_available": True,
+    }
 
 
 @pytest.mark.asyncio

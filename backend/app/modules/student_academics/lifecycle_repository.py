@@ -43,7 +43,6 @@ class AcademicSessionLifecycleRepository:
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.is_current.is_(True),
-            AcademicSession.is_active.is_(True),
             AcademicSession.status == AcademicSessionStatus.OPEN,
         )
         if lock:

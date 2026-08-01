@@ -1,0 +1,161 @@
+name: Validate Attendance release candidate
+
+on:
+  push:
+    branches: [Attendance]
+    paths:
+      - .github/workflows/one-time-release-validation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d weave_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      TWILIO_ACCOUNT_SID: ci-test-account
+      TWILIO_AUTH_TOKEN: ci-test-token
+      TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886"
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+      FORMAT_BASELINE_SHA: 6a434994d2b2397d45c6716d89c6f1a3eda8ea0f
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: Attendance
+          fetch-depth: 0
+
+      - name: Apply final UI consistency corrections
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file_path = Path(path)
+              text = file_path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected one match in {path}, found {count}")
+              file_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "frontend/src/pages/admin/BillingPage.jsx",
+              '''  if (daysUntilRenewal === 0) {\n    return normalizedStatus === "cancelled" || normalizedStatus === "canceled"\n      ? "Ends today"\n      : "Renews today";\n  }''',
+              '''  if (daysUntilRenewal === 0) {\n    return ["cancelled", "canceled", "non_renewing"].includes(normalizedStatus)\n      ? "Ends today"\n      : "Renews today";\n  }''',
+          )
+
+          replace_once(
+              "frontend/src/pages/shared/MessagesPage.jsx",
+              '''  useEffect(() => {\n    load();\n  }, [load]);\n\n  useEffect(() => {\n    if (!selectedId) {''',
+              '''  useEffect(() => {\n    load();\n  }, [load]);\n\n  useEffect(() => {\n    if (requestedConversationId) setSelectedId(requestedConversationId);\n  }, [requestedConversationId]);\n\n  useEffect(() => {\n    if (!selectedId) {''',
+          )
+          PY
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Backend repository hygiene
+        working-directory: backend
+        run: uv run python scripts/verify_repository_hygiene.py
+
+      - name: Backend lint
+        working-directory: backend
+        run: uv run --with ruff ruff check .
+
+      - name: Backend format check
+        working-directory: backend
+        run: uv run --with ruff ruff format --check app alembic tests
+
+      - name: Fresh database migration
+        working-directory: backend
+        run: |
+          uv run --with alembic alembic heads
+          uv run --with alembic alembic upgrade head
+          uv run --with alembic alembic check
+
+      - name: Focused regression tests
+        working-directory: backend
+        run: |
+          uv run pytest tests/unit/subscriptions/test_subscription_cancellation.py
+          uv run pytest tests/unit/school_calendar/test_school_calendar_lifecycle.py
+          uv run pytest tests/unit/communications
+
+      - name: Full backend tests
+        working-directory: backend
+        run: |
+          uv run pytest tests/unit
+          uv run pytest tests/integration
+
+      - name: Backend application import
+        working-directory: backend
+        run: uv run python -c "from app.main import app; print(app.title)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend lint test and build
+        working-directory: frontend
+        run: |
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Commit validated corrections and remove workflow
+        shell: bash
+        run: |
+          rm .github/workflows/one-time-release-validation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test: validate release candidate and finalize UI consistency"
+          git push origin HEAD:Attendance

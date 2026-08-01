@@ -56,7 +56,7 @@ export const parentService = {
     ),
 
   getParents: (options = {}) =>
-    api.get(`/tenant-admin/parents?${buildParentQuery(options)}`),
+    api.get(`/parents/memberships?${buildParentQuery(options)}`),
 
   createParent: (payload) =>
     api.post("/tenant-admin/parents", payload),
@@ -113,7 +113,7 @@ export const parentService = {
     api.get("/parents/me/student-link-requests", requestOptions),
 
   getParent: (parentId) =>
-    api.get(`/tenant-admin/parents/${parentId}`),
+    api.get(`/parents/memberships/${parentId}`),
 
   updateParent: (parentId, payload) =>
     api.patch(`/tenant-admin/parents/${parentId}`, payload),

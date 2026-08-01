@@ -1,10 +1,10 @@
-import { Bell, Building2, ChevronDown, FileText, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Settings, Sparkles, Sun, UserRound } from "lucide-react";
+import { Bell, Building2, ChevronDown, CreditCard, FileText, LogOut, Menu, Moon, Settings, Sun, Trash2, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { formatPlanName } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { announcementService } from "../../services/announcementService";
+import { NOTIFICATIONS_CHANGED_EVENT, emitNotificationsChanged, notificationService } from "../../services/communicationService";
 import { authSession } from "../../services/api";
 import { authService } from "../../services/auth.service";
 import { cn } from "../../utils/cn";
@@ -21,10 +21,10 @@ import WeaveIcon from "../brand/WeaveIcon";
 import Avatar from "../ui/Avatar";
 import Dropdown from "../ui/Dropdown";
 import WorkspaceSearch from "./WorkspaceSearch";
-import { announcementPaths, roleLabels, workspaceSearchRoles } from "./navConfig";
+import { inboxPaths, roleLabels, workspaceSearchRoles } from "./navConfig";
 
 const headerIconButtonClass =
-  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface/90 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text sm:h-10 sm:w-10";
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-header-surface/90 text-header-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-header-hover hover:text-header-text sm:h-10 sm:w-10";
 
 function notificationTimestamp(value) {
   if (!value) return "";
@@ -51,8 +51,6 @@ const schoolSwitchPaths = {
 export default function Topbar({
   role,
   onOpenMobileNav,
-  sidebarCollapsed = false,
-  onToggleSidebar,
   schoolName,
   schoolLogoUrl = "",
 }) {
@@ -67,6 +65,9 @@ export default function Topbar({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
+  const [notificationRefreshKey, setNotificationRefreshKey] = useState(0);
   const [failedSchoolLogoUrl, setFailedSchoolLogoUrl] = useState("");
   const [themeHint, setThemeHint] = useState(() =>
     typeof document === "undefined"
@@ -76,9 +77,10 @@ export default function Topbar({
   const userName = getUserLabel(user);
   const avatarSrc = getUserAvatarSrc(user);
   const canSearchWorkspace = !isAccountScope && workspaceSearchRoles.has(role);
+  const isSuperadmin = role === "superadmin";
   const notificationPath = isAccountScope
     ? schoolSwitchPaths[role] || "/profile"
-    : announcementPaths[role] || "/profile";
+    : inboxPaths[role] || "/profile";
   const showPlanBadge = role === "admin" && isTenantAdmin;
   const settingsPath = isAccountScope
     ? "/profile"
@@ -100,22 +102,29 @@ export default function Topbar({
     if (isAccountScope) {
       setNotifications([]);
       setUnreadCount(0);
+      setNotificationsError("");
+      setNotificationsLoading(false);
       return () => {
         mounted = false;
       };
     }
 
     async function loadNotificationPreview() {
+      setNotificationsLoading(true);
+      setNotificationsError("");
       try {
-        const response = await announcementService.getFeed({ limit: 5 });
+        const response = await notificationService.list({ limit: 5 });
         if (!mounted) return;
         const items = response?.items || [];
         setNotifications(items.slice(0, 5));
-        setUnreadCount(items.filter((item) => !item.is_read).length);
+        setUnreadCount(Number(response?.unread_count || 0));
       } catch {
         if (!mounted) return;
         setNotifications([]);
         setUnreadCount(0);
+        setNotificationsError("Could not load notifications.");
+      } finally {
+        if (mounted) setNotificationsLoading(false);
       }
     }
 
@@ -124,7 +133,20 @@ export default function Topbar({
     return () => {
       mounted = false;
     };
-  }, [isAccountScope, role]);
+  }, [isAccountScope, isSuperadmin, notificationRefreshKey, role]);
+
+  useEffect(() => {
+    if (isAccountScope) return undefined;
+
+    const refreshNotifications = () => setNotificationRefreshKey((value) => value + 1);
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
+    window.addEventListener("focus", refreshNotifications);
+
+    return () => {
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
+      window.removeEventListener("focus", refreshNotifications);
+    };
+  }, [isAccountScope]);
 
   useEffect(() => {
     const syncThemeHint = () => {
@@ -151,8 +173,19 @@ export default function Topbar({
     setThemeHint(nextTheme);
   };
 
+  const deleteReadNotification = async (id) => {
+    try {
+      await notificationService.dismiss(id);
+      setNotifications((current) => current.filter((item) => item.id !== id));
+      setNotificationRefreshKey((value) => value + 1);
+      emitNotificationsChanged();
+    } catch {
+      setNotificationsError("Could not delete notification.");
+    }
+  };
+
   return (
-    <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-border bg-surface pt-[env(safe-area-inset-top)]">
+    <header className="dashboard-topbar sticky top-0 z-50 shrink-0 border-b border-header-border bg-header-background text-header-text pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex h-[3.75rem] w-full max-w-[1320px] items-center gap-1.5 px-2 sm:gap-2 sm:px-5 md:h-16 md:px-4 lg:px-5">
         <button
           type="button"
@@ -173,21 +206,10 @@ export default function Topbar({
                 onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
               />
             ) : null}
-            <p className="truncate text-base font-bold text-text">
+            <p className={cn("truncate text-base font-bold", isAccountScope ? "text-header-text" : "text-primary")}>
               {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
             </p>
           </div>
-          {onToggleSidebar ? (
-            <button
-              type="button"
-              className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-surface text-text-muted shadow-sm transition hover:border-primary/35 hover:bg-primary/10 hover:text-primary focus:outline-none focus:ring-4 focus:ring-primary/15 md:inline-flex"
-              onClick={onToggleSidebar}
-              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
-            </button>
-          ) : null}
           {hasSchoolLogo ? (
             <img
               src={resolvedSchoolLogoUrl}
@@ -199,7 +221,7 @@ export default function Topbar({
             <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
           )}
           <div className="hidden min-w-0 sm:block">
-            <p className="brand-wordmark truncate text-sm font-bold sm:text-lg">
+            <p className={cn("truncate text-sm font-bold sm:text-lg", hasSchoolLogo ? "text-primary" : "brand-wordmark")}>
               {hasSchoolLogo ? schoolName || "School workspace" : "Weave"}
             </p>
           </div>
@@ -241,12 +263,31 @@ export default function Topbar({
                   <p className="text-sm font-semibold text-text">Notifications</p>
                   <Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>View all</Link>
                 </div>
-                {notifications.length > 0 ? (
+                {notificationsLoading ? (
+                  <p className="rounded-xl border border-border px-3 py-4 text-sm text-text-muted">Loading notifications...</p>
+                ) : notificationsError ? (
+                  <div className="rounded-xl border border-error/30 bg-error-soft px-3 py-4 text-sm text-error">
+                    <p>{notificationsError}</p>
+                    <button type="button" className="mt-2 text-xs font-semibold underline" onClick={() => setNotificationRefreshKey((value) => value + 1)}>Retry</button>
+                  </div>
+                ) : notifications.length > 0 ? (
                   notifications.map((item) => (
                     <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2">
-                      <p className="line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.message}</p>
-                      <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.created_at)}</p>
+                      <div className="flex items-start gap-2">
+                        <p className="min-w-0 flex-1 line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
+                        {item.status !== "unread" ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-faint transition hover:bg-error-soft hover:text-error"
+                            aria-label="Delete notification"
+                            onClick={() => deleteReadNotification(item.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.preview}</p>
+                      <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.delivered_at)}</p>
                     </div>
                   ))
                 ) : (
@@ -322,7 +363,7 @@ export default function Topbar({
                     className="flex min-h-11 items-center gap-3 rounded-2xl border border-border/70 bg-surface px-3 py-2 text-sm font-semibold text-text transition hover:border-primary/30 hover:bg-primary-subtle/35"
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                      <Sparkles className="h-4 w-4" />
+                      <CreditCard className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1 truncate">Upgrade</span>
                   </Link>

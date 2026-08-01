@@ -1,0 +1,8 @@
+/* The full subject-card experience lives on /student/subjects.
+   Hide the legacy duplicate snapshot section that remains in the dashboard
+   markup without changing the subject card component or its behavior. */
+[data-dashboard-role="student"]
+  #dashboard-content
+  > section.space-y-4:last-child:has(a[href="/student/subjects"]):has(> div.grid) {
+  display: none;
+}

@@ -1,7 +1,7 @@
 import { API_BASE_URL, api, authSession } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
 
-const ACTIVE_IMPORT_JOB_STORAGE_KEY = "weave:active-import-job";
+const STUDENT_RESOURCE_TYPE = "students";
 
 const getAuthHeaders = () => {
   const token = authSession.getToken();
@@ -56,22 +56,27 @@ const downloadBlob = async (endpoint, filename, signal) => {
   window.URL.revokeObjectURL(url);
 };
 
+const invalidateImportRelatedCaches = () => {
+  clearDashboardMetricsCache();
+  window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
+};
+
 export const bulkImportService = {
   listTemplates: (requestOptions) => api.get("/tenant-admin/imports/templates", requestOptions),
 
-  downloadTemplate: (resourceType, requestOptions = {}) =>
+  downloadTemplate: (requestOptions = {}) =>
     downloadBlob(
-      `/tenant-admin/imports/templates/${resourceType}/download`,
-      `${resourceType}_import_template.xlsx`,
+      `/tenant-admin/imports/templates/${STUDENT_RESOURCE_TYPE}/download`,
+      "students_import_template.xlsx",
       requestOptions.signal,
     ),
 
-  dryRun: (resourceType, file, requestOptions = {}) => {
+  dryRun: (file, requestOptions = {}) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("notify_on_completion", "true");
 
-    return fetchJsonWithBody(`/tenant-admin/imports/${resourceType}/dry-run`, {
+    return fetchJsonWithBody(`/tenant-admin/imports/${STUDENT_RESOURCE_TYPE}/dry-run`, {
       method: "POST",
       body: formData,
       signal: requestOptions.signal,
@@ -81,43 +86,81 @@ export const bulkImportService = {
 
   confirm: async (jobId, requestOptions = {}) => {
     const result = await api.post(`/tenant-admin/imports/${jobId}/confirm`, undefined, requestOptions);
-    clearDashboardMetricsCache();
-    window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
+    invalidateImportRelatedCaches();
+    return result;
+  },
+
+  retry: async (jobId, requestOptions = {}) => {
+    const result = await api.post(`/tenant-admin/imports/${jobId}/retry`, undefined, requestOptions);
+    invalidateImportRelatedCaches();
     return result;
   },
 
   getJob: (jobId, requestOptions) => api.get(`/tenant-admin/imports/${jobId}`, requestOptions),
 
-  listJobs: (requestOptions) => api.get("/tenant-admin/imports?limit=20", requestOptions),
+  listJobs: ({ skip = 0, limit = 20, status, signal } = {}) => {
+    const params = new URLSearchParams({
+      skip: String(skip),
+      limit: String(limit),
+    });
+    if (status) params.set("status", status);
+    return api.get(`/tenant-admin/imports?${params.toString()}`, { signal });
+  },
+
+  deleteJob: async (jobId, requestOptions = {}) => {
+    const result = await api.delete(`/tenant-admin/imports/${jobId}`, requestOptions);
+    invalidateImportRelatedCaches();
+    return result;
+  },
 
   getErrors: (jobId, requestOptions) =>
     api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, requestOptions),
 
-  downloadResult: (jobId, { format = "spreadsheet", resourceType = "import", signal } = {}) => {
-    const safeFormat = format === "slip" ? "slip" : "spreadsheet";
-    const extension = safeFormat === "slip" ? "html" : "xlsx";
-    const label = safeFormat === "slip" ? "student_access_slips" : "result";
+  getSlipSummary: (jobId, requestOptions) =>
+    api.get(`/tenant-admin/imports/${jobId}/slips/summary`, requestOptions),
+
+  listSlips: (
+    jobId,
+    {
+      search = "",
+      classKey = "",
+      page = 1,
+      pageSize = 50,
+      signal,
+    } = {},
+  ) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    if (search) params.set("search", search);
+    if (classKey) params.set("class_key", classKey);
+    return api.get(`/tenant-admin/imports/${jobId}/slips?${params.toString()}`, { signal });
+  },
+
+  getSlip: (jobId, rowNumber, requestOptions) =>
+    api.get(`/tenant-admin/imports/${jobId}/slips/${rowNumber}`, requestOptions),
+
+  getSlipPrintData: (jobId, payload, requestOptions) =>
+    api.post(`/tenant-admin/imports/${jobId}/slips/print`, payload, requestOptions),
+
+  downloadResult: (jobId, { format = "spreadsheet", signal } = {}) => {
+    if (format === "slip") {
+      window.location.assign(`/admin/imports/${jobId}/student-slips`);
+      return Promise.resolve();
+    }
 
     return downloadBlob(
-      `/tenant-admin/imports/${jobId}/result?format=${safeFormat}`,
-      `${resourceType}_${jobId}_${label}.${extension}`,
+      `/tenant-admin/imports/${jobId}/result?format=spreadsheet`,
+      `students_${jobId}_result.xlsx`,
       signal,
     );
   },
 
-  getEmailSummary: ({ importJobId, source = "bulk_import" } = {}, requestOptions = {}) => {
-    const resolvedImportJobId =
-      importJobId || window.sessionStorage.getItem(ACTIVE_IMPORT_JOB_STORAGE_KEY);
-    const params = new URLSearchParams();
-    if (source) params.set("source", source);
-    if (resolvedImportJobId) params.set("import_job_id", resolvedImportJobId);
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    return api.get(`/tenant-admin/email-outbox/summary${suffix}`, requestOptions);
-  },
-
-  recoverStaleEmails: (requestOptions) =>
-    api.post("/tenant-admin/email-outbox/recover-stale", undefined, requestOptions),
-
-  retryFailedEmails: (requestOptions) =>
-    api.post("/tenant-admin/email-outbox/retry-failed", undefined, requestOptions),
+  downloadErrors: (jobId, { signal } = {}) =>
+    downloadBlob(
+      `/tenant-admin/imports/${jobId}/errors/download`,
+      `students_${jobId}_errors.csv`,
+      signal,
+    ),
 };

@@ -20,7 +20,7 @@ class ErrorBoundary extends Component {
             <p className="mt-2 text-sm text-text-muted">
               Refresh the page and try again. If the issue continues, check the latest action that triggered it.
             </p>
-            <Button className="mt-5" onClick={() => window.location.reload()}>
+            <Button className="mt-5 hidden md:inline-flex" onClick={() => window.location.reload()}>
               Refresh page
             </Button>
           </div>

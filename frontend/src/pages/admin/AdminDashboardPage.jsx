@@ -22,6 +22,7 @@ import {
   DashboardQuickActions,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
@@ -47,6 +48,7 @@ function AdminDashboardPage() {
   const { getFeatureGuard, planCode } = useSubscription();
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
   const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
   const bulkImportGuard = getFeatureGuard(FEATURE_CODES.BULK_IMPORT);
   const canShowBulkImport = bulkImportGuard.allowed && String(planCode || "").toLowerCase() !== "free_trial";
@@ -198,7 +200,7 @@ function AdminDashboardPage() {
               description="Academic groups"
               icon={BookOpen}
               tone="warning"
-              to="/admin/classes"
+              to="/admin/academic/classes"
             />
             <DashboardMetricCard
               label="Parents"
@@ -235,6 +237,32 @@ function AdminDashboardPage() {
               items={schoolOverviewItems}
               emptyTitle="School setup looks calm"
               emptyDescription="No pending account or publishing issue is showing on the dashboard."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="admin" admin actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
+            <DashboardListCard
+              title="Calendar quick actions"
+              description="Use backend blockers and capability states before changing lifecycle."
+              items={[
+                {
+                  key: "open-calendar",
+                  title: "Open Calendar",
+                  description: "Manage term calendar setup, days, and events.",
+                  icon: BookOpen,
+                  tone: "primary",
+                  to: "/admin/academic/school-calendar",
+                },
+                {
+                  key: "review-blockers",
+                  title: "Review Blockers",
+                  description: "Use term and session dependency previews before closure.",
+                  icon: FileText,
+                  tone: "warning",
+                  to: "/admin/academic/terms",
+                },
+              ]}
             />
           </section>
 

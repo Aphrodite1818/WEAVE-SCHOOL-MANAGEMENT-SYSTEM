@@ -14,7 +14,6 @@ arq==0.25.0
 asttokens==3.0.1
 asyncpg==0.31.0
 attrs==26.1.0
-bcrypt==4.2.0
 beautifulsoup4==4.14.3
 boto3==1.43.45
 botocore==1.43.45
@@ -61,7 +60,6 @@ openpyxl==3.1.5
 packaging==26.2
 pandas==3.0.3
 parso==0.8.7
-passlib==1.7.4
 pillow==12.3.0
 platformdirs==4.10.0
 pluggy==1.6.0
@@ -69,6 +67,7 @@ prompt-toolkit==3.0.52
 propcache==0.5.2
 psutil==7.2.2
 pure-eval==0.2.3
+pwdlib==0.3.0
 pyasn1==0.6.3
 pyasn1-modules==0.4.2
 pycparser==3.0

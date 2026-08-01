@@ -25,8 +25,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v2",
-    ImportResourceType.TEACHERS: "teachers_v1",
+    ImportResourceType.STUDENTS: "students_v4",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -38,14 +37,10 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "class_name",
         "class_arm",
         "state_of_origin",
-    ],
-    ImportResourceType.TEACHERS: [
-        "email",
-        "first_name",
-        "last_name",
-        "staff_id",
-        "qualification",
-        "specialization",
+        "parent_email_1",
+        "parent_relationship_1",
+        "parent_email_2",
+        "parent_relationship_2",
     ],
 }
 
@@ -119,9 +114,9 @@ def create_student_template() -> ImportTemplateDefinition:
             create_template_column(
                 name="class_name",
                 label="Class Name",
-                required=False,
+                required=True,
                 example="JSS1",
-                description="Optional. Use the class name visible to admins, for example JSS1 or Primary 4.",
+                description="Required. Use the class name visible to admins, for example JSS1 or Primary 4.",
             ),
             create_template_column(
                 name="class_arm",
@@ -131,38 +126,46 @@ def create_student_template() -> ImportTemplateDefinition:
                 description="Optional. Leave blank for classes without arms, or enter an existing arm such as A or Science.",
             ),
             create_template_column(name="state_of_origin", label="State of Origin", required=False, example="Lagos"),
+            create_template_column(
+                name="parent_email_1",
+                label="Parent or Guardian Email 1",
+                required=False,
+                example="parent.one@example.com",
+                description="Optional. Provide one or two parent or guardian email addresses.",
+            ),
+            create_template_column(
+                name="parent_relationship_1",
+                label="Parent or Guardian Relationship 1",
+                required=False,
+                example="mother",
+                accepted_values=["father", "mother", "guardian", "sponsor", "other"],
+            ),
+            create_template_column(
+                name="parent_email_2",
+                label="Parent or Guardian Email 2",
+                required=False,
+                example="parent.two@example.com",
+                description="Optional second parent or guardian. A third parent column is not supported.",
+            ),
+            create_template_column(
+                name="parent_relationship_2",
+                label="Parent or Guardian Relationship 2",
+                required=False,
+                example="father",
+                accepted_values=["father", "mother", "guardian", "sponsor", "other"],
+            ),
         ],
         notes=[
             "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
+            "Class name is required. Class arm is optional for classes without an arm.",
             "Use class_name and optional class_arm for student class placement. Do not enter internal class UUIDs.",
-            "The backend resolves class_name + optional class_arm to the real class record during dry-run.",
-            "Student setup/access codes are generated automatically and included once in the result report.",
-            "Students can complete remaining profile details through onboarding.",
-        ],
-    )
-
-
-def create_teacher_template() -> ImportTemplateDefinition:
-    """Create the teacher import template definition."""
-
-    return ImportTemplateDefinition(
-        resource_type=ImportResourceType.TEACHERS,
-        filename="teachers_import_template.xlsx",
-        columns=[
-            create_template_column(name="email", label="Email", required=True, example="mary.adebayo@example.com"),
-            create_template_column(name="first_name", label="First Name", required=False, example="Mary"),
-            create_template_column(name="last_name", label="Last Name", required=False, example="Adebayo"),
-            create_template_column(name="staff_id", label="Staff ID", required=False, example="TCH-001"),
-            create_template_column(name="qualification", label="Qualification", required=False, example="B.Ed"),
-            create_template_column(name="specialization", label="Specialization", required=False, example="Mathematics"),
-        ],
-        notes=[
-            "Use the downloaded backend-generated template file. Do not recreate headers manually.",
-            "Teacher email is required and must be unique.",
-            "Teacher invite emails are queued through the email outbox worker instead of sent inline.",
-            "Only fields accepted by manual teacher creation are allowed.",
+            "The backend resolves class_name + class_arm to the real active class during dry-run.",
+            "Parent or guardian emails are optional in the current student-creation workflow. If an email is supplied, its matching relationship column is required.",
+            "A maximum of two parents or guardians is supported per imported student.",
+            "Accepted date formats include YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY, MM-DD-YYYY, and YYYY/MM/DD.",
+            "Student setup/access codes are generated automatically and included once in the result report and access slips.",
         ],
     )
 
@@ -172,7 +175,6 @@ def build_template_definitions() -> dict[ImportResourceType, ImportTemplateDefin
 
     templates = [
         create_student_template(),
-        create_teacher_template(),
     ]
 
     return {template.resource_type: template for template in templates}

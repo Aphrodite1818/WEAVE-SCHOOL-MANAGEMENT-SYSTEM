@@ -4,7 +4,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +22,8 @@ from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
     PaymentProvider,
     PaymentStatus,
+    SubscriptionPlanChangeStatus,
+    SubscriptionPlanChangeType,
     SubscriptionStatus,
 )
 from app.shared.base_model import Base, BaseModel, PUBLIC_SCHEMA
@@ -62,11 +74,17 @@ class TenantSubscription(BaseModel):
         default=PaymentProvider.MANUAL,
         server_default=PaymentProvider.MANUAL.value,
     )
-    current_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     grace_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    cancel_at_period_end: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    cancel_at_period_end: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_current: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
@@ -95,6 +113,80 @@ class TenantSubscription(BaseModel):
             "provider_subscription_code",
             unique=True,
             postgresql_where=text("provider_subscription_code IS NOT NULL"),
+        ),
+    )
+
+
+class SubscriptionPlanChange(BaseModel):
+    """Auditable upgrade or downgrade request for one tenant."""
+
+    __tablename__ = "subscription_plan_changes"
+
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    current_plan_code: Mapped[SubscriptionPlan] = mapped_column(
+        SQLEnum(
+            SubscriptionPlan,
+            name="subscriptionplan",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+    target_plan_code: Mapped[SubscriptionPlan] = mapped_column(
+        SQLEnum(
+            SubscriptionPlan,
+            name="subscriptionplan",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+    change_type: Mapped[SubscriptionPlanChangeType] = mapped_column(
+        SQLEnum(
+            SubscriptionPlanChangeType,
+            name="subscription_plan_change_type",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+    status: Mapped[SubscriptionPlanChangeStatus] = mapped_column(
+        SQLEnum(
+            SubscriptionPlanChangeStatus,
+            name="subscription_plan_change_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=SubscriptionPlanChangeStatus.PENDING,
+        server_default=SubscriptionPlanChangeStatus.PENDING.value,
+    )
+    requested_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    usage_snapshot_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    blockers_json: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    provider_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_subscription_plan_changes_tenant_status", "tenant_id", "status"),
+        Index("ix_subscription_plan_changes_effective_at", "status", "effective_at"),
+        Index(
+            "uq_subscription_plan_changes_open_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'scheduled', 'awaiting_payment')"),
         ),
     )
 
@@ -151,7 +243,9 @@ class PaymentTransaction(BaseModel):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     amount_kobo: Mapped[int] = mapped_column(nullable=False)
-    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="NGN", server_default="NGN")
+    currency: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="NGN", server_default="NGN"
+    )
     authorization_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

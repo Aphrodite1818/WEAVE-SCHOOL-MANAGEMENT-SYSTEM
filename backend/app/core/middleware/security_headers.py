@@ -36,11 +36,17 @@ DOCS_PATHS = ("/docs", "/redoc")
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Attach conservative browser security headers to every response."""
 
-    def __init__(self, app, allow_docs_cdn: bool = False):  # type: ignore[no-untyped-def]
+    def __init__(
+        self,
+        app,
+        allow_docs_cdn: bool = False,
+        strict_transport_security: bool = False,
+    ):  # type: ignore[no-untyped-def]
         super().__init__(app)
         self.allow_docs_cdn = allow_docs_cdn
+        self.strict_transport_security = strict_transport_security
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
         response = await call_next(request)
         policy = CONTENT_SECURITY_POLICY
         if self.allow_docs_cdn and request.url.path.startswith(DOCS_PATHS):
@@ -48,5 +54,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         response.headers.setdefault("Content-Security-Policy", policy)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), payment=(), usb=()",
+        )
+        if self.strict_transport_security:
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000",
+            )
         return response

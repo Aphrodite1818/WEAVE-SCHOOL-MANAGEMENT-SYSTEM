@@ -701,7 +701,7 @@ class TeacherInvitationService:
         )
         if identity is None:
             return "register"
-        if identity.actor_type in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}:
+        if identity.actor_type == ActorType.TEACHER_ACCOUNT:
             return "login"
         return "contact_school"
 
@@ -754,7 +754,11 @@ class TeacherInvitationService:
         payload: TeacherInvitationCreateCommand,
         background_tasks: BackgroundTasks | None = None,
     ) -> TeacherInvitationResponse:
-        normalized_email = str(payload.email).casefold()
+        normalized_email = await AccountEmailGuard.ensure_available_for_invitation_role(
+            db=db,
+            email=str(payload.email),
+            invited_actor_type=ActorType.TEACHER_ACCOUNT,
+        )
         pending = await TeacherInvitationRepository.get_pending_for_email(
             db,
             actor.tenant_id,

@@ -15,6 +15,7 @@ from app.modules.student_academics.models import (
     AcademicResultStatus,
     AcademicSessionStatus,
     AcademicTermName,
+    AcademicTermStatus,
     StudentProgressionItemAction,
     StudentProgressionItemStatus,
     StudentProgressionRunStatus,
@@ -99,6 +100,10 @@ class AcademicSessionCloseRequest(InputBase):
     confirmation: Literal["CLOSE_AND_PROGRESS"]
 
 
+class AcademicSessionDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_ACADEMIC_SESSION"]
+
+
 class AcademicSessionResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -107,7 +112,6 @@ class AcademicSessionResponse(OutputBase):
     end_date: date | None = None
     status: AcademicSessionStatus
     is_current: bool
-    is_active: bool
     closing_started_at: datetime | None = None
     closed_at: datetime | None = None
     closed_by_admin_id: uuid.UUID | None = None
@@ -121,16 +125,62 @@ class AcademicTermCreate(InputBase):
     name: AcademicTermName
     start_date: date | None = None
     end_date: date | None = None
-    is_current: bool = False
-    is_active: bool = True
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> AcademicTermCreate:
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date <= self.start_date
+        ):
+            raise ValueError("end_date must be after start_date")
+
+        return self
 
 
 class AcademicTermUpdate(InputBase):
     name: AcademicTermName | None = None
     start_date: date | None = None
     end_date: date | None = None
-    is_current: bool | None = None
-    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_update(self) -> AcademicTermUpdate:
+        if not self.model_fields_set:
+            raise ValueError("at least one term field must be provided")
+
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date <= self.start_date
+        ):
+            raise ValueError("end_date must be after start_date")
+
+        return self
+
+
+class AcademicTermOpenRequest(InputBase):
+    confirmation: Literal["OPEN_ACADEMIC_TERM"]
+
+
+class AcademicTermCloseRequest(InputBase):
+    confirmation: Literal["CLOSE_ACADEMIC_TERM"]
+
+
+class AcademicTermStartClosingRequest(InputBase):
+    confirmation: Literal["START_TERM_CLOSING"]
+
+
+class AcademicTermFinalizeCloseRequest(InputBase):
+    confirmation: Literal["FINALIZE_TERM_CLOSE"]
+
+
+class AcademicTermCancelClosureRequest(InputBase):
+    confirmation: Literal["CANCEL_TERM_CLOSURE"]
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AcademicTermDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_ACADEMIC_TERM"]
 
 
 class AcademicTermResponse(OutputBase):
@@ -140,8 +190,76 @@ class AcademicTermResponse(OutputBase):
     name: AcademicTermName
     start_date: date | None = None
     end_date: date | None = None
+
+    status: AcademicTermStatus
     is_current: bool
-    is_active: bool
+
+    opened_at: datetime | None = None
+    closing_started_at: datetime | None = None
+    closed_at: datetime | None = None
+    opened_by_admin_id: uuid.UUID | None = None
+    closed_by_admin_id: uuid.UUID | None = None
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class GradingScaleCreate(InputBase):
+    min_score: Decimal = Field(ge=0, le=100)
+    max_score: Decimal = Field(ge=0, le=100)
+    grade: str = Field(min_length=1, max_length=10)
+    remark: str | None = Field(default=None, max_length=100)
+    is_active: bool = True
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str) -> str:
+        normalized = normalize_grade(value)
+        if normalized is None:
+            raise ValueError("grade cannot be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if self.min_score > self.max_score:
+            raise ValueError("minimum score cannot exceed maximum score")
+        return self
+
+
+class GradingScaleUpdate(InputBase):
+    min_score: Decimal | None = Field(default=None, ge=0, le=100)
+    max_score: Decimal | None = Field(default=None, ge=0, le=100)
+    grade: str | None = Field(default=None, min_length=1, max_length=10)
+    remark: str | None = Field(default=None, max_length=100)
+    is_active: bool | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def normalize_grade_value(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_grade(value)
+
+
+class AcademicTermResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    name: AcademicTermName
+    start_date: date | None = None
+    end_date: date | None = None
+
+    status: AcademicTermStatus
+    is_current: bool
+
+    opened_at: datetime | None = None
+    closing_started_at: datetime | None = None
+    closed_at: datetime | None = None
+    opened_by_admin_id: uuid.UUID | None = None
+    closed_by_admin_id: uuid.UUID | None = None
+
+    created_at: datetime
+    updated_at: datetime
 
 
 class GradingScaleCreate(InputBase):
@@ -194,9 +312,40 @@ class GradingScaleResponse(OutputBase):
     is_active: bool
 
 
+class GradingScaleDependencyPreview(OutputBase):
+    scale_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    can_deactivate: bool
+    can_delete: bool
+    blocker_messages: list[str] = []
+
+
+class GradingScaleReadiness(OutputBase):
+    is_ready: bool
+    missing_coverage: list[str] = []
+    overlaps: list[str] = []
+    messages: list[str] = []
+
+
 class ClassSubjectCreate(InputBase):
     subject_id: uuid.UUID
     is_core: bool = False
+
+
+class ClassSubjectBulkCreate(InputBase):
+    subject_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    is_core: bool = False
+
+    @field_validator("subject_ids")
+    @classmethod
+    def subject_ids_must_be_unique(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("subject_ids must not contain duplicates")
+        return value
+
+
+class ClassSubjectUpdate(InputBase):
+    is_core: bool
 
 
 class ClassSubjectResponse(OutputBase):
@@ -208,17 +357,88 @@ class ClassSubjectResponse(OutputBase):
     subject_code: str | None = None
     is_core: bool
     is_active: bool
+    lifecycle_status: Literal["active", "inactive", "archived"]
+    archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
+    class_is_active: bool | None = None
+    class_is_archived: bool | None = None
+    subject_is_active: bool | None = None
+    subject_is_archived: bool | None = None
+    can_activate: bool
+    activation_blocker: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
+class ClassSubjectActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_CLASS_SUBJECT"]
+
+
+class ClassSubjectDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_CLASS_SUBJECT"]
+
+
+class ClassSubjectArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_CLASS_SUBJECT"]
+
+
+class ClassSubjectRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_CLASS_SUBJECT"]
+
+
+class ClassSubjectDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_CLASS_SUBJECT"]
+
+
 class TeacherAssignmentCreate(InputBase):
     teacher_membership_id: uuid.UUID
-    class_subject_id: uuid.UUID
+    class_subject_id: uuid.UUID | None = None
+    effective_from: date | None = None
 
 
 class TeacherAssignmentReassign(InputBase):
     teacher_membership_id: uuid.UUID
+    effective_from: date | None = None
+
+
+class TeacherAssignmentEnd(InputBase):
+    effective_to: date | None = None
+
+
+class TeacherAssignmentDelete(InputBase):
+    confirmation: Literal["DELETE_TEACHER_ASSIGNMENT"]
+
+
+class TeacherAssignmentDependencyPreview(OutputBase):
+    assignment_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    can_end: bool
+    can_reassign: bool
+    can_delete: bool
+    blocker_messages: list[str] = []
+
+
+class AcademicSessionDependencyPreview(OutputBase):
+    session_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    blocker_messages: list[str] = []
+    can_open: bool
+    can_close: bool
+    can_start_closing: bool
+    can_progress: bool
+    can_delete: bool
+
+
+class AcademicTermDependencyPreview(OutputBase):
+    term_id: uuid.UUID
+    dependency_counts: dict[str, int]
+    blocker_messages: list[str] = []
+    can_open: bool
+    can_close: bool
+    can_start_closing: bool = False
+    can_finalize_close: bool = False
+    can_cancel_closure: bool = False
+    can_delete: bool
 
 
 class TeacherAssignmentResponse(OutputBase):
@@ -280,29 +500,15 @@ class StudentSubjectResultUpsert(InputBase):
     class_subject_teacher_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
-    test_score: Decimal | None = Field(default=None, ge=0, le=100)
-    assessment_score: Decimal | None = Field(default=None, ge=0, le=100)
-    exam_score: Decimal | None = Field(default=None, ge=0, le=100)
+    test_score: Decimal | None = Field(default=None, ge=0)
+    assessment_score: Decimal | None = Field(default=None, ge=0)
+    exam_score: Decimal | None = Field(default=None, ge=0)
     status: AcademicResultStatus = AcademicResultStatus.DRAFT
 
     @model_validator(mode="after")
     def validate_result(self):
         if self.teacher_assignment_id is None and self.class_subject_teacher_id is None:
             raise ValueError("an assignment reference is required")
-        total = sum(
-            (
-                score
-                for score in (
-                    self.test_score,
-                    self.assessment_score,
-                    self.exam_score,
-                )
-                if score is not None
-            ),
-            Decimal("0"),
-        )
-        if total > 100:
-            raise ValueError("combined score cannot exceed 100")
         if self.status == AcademicResultStatus.SUBMITTED and any(
             score is None
             for score in (
@@ -317,6 +523,19 @@ class StudentSubjectResultUpsert(InputBase):
 
 class StudentSubjectResultStatusUpdate(InputBase):
     status: AcademicResultStatus
+
+
+class StudentSubjectResultFilter(InputBase):
+    subject_id: uuid.UUID | None = None
+    status: AcademicResultStatus | None = None
+    search: str | None = None
+    is_complete: bool | None = None
+    has_grade: bool | None = None
+    teacher_assignment_id: uuid.UUID | None = None
+
+
+class StudentSubjectResultReopenRequest(InputBase):
+    reason: str = Field(min_length=3, max_length=1000)
 
 
 class StudentSubjectResultResponse(OutputBase):
@@ -348,6 +567,13 @@ class StudentSubjectResultResponse(OutputBase):
     status: AcademicResultStatus
     recorded_by_actor_type: str
     recorded_by_actor_id: uuid.UUID
+    submitted_at: datetime | None = None
+    submitted_by_actor_type: str | None = None
+    submitted_by_actor_id: uuid.UUID | None = None
+    approved_at: datetime | None = None
+    approved_by_admin_id: uuid.UUID | None = None
+    locked_at: datetime | None = None
+    locked_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

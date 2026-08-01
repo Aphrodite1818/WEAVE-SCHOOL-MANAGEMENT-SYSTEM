@@ -24,6 +24,7 @@ def build_tenant_branding_cache_key(tenant_id: UUID) -> str:
     return build_cache_key(
         tenant_prefix(str(tenant_id)),
         "branding",
+        "v4",
     )
 
 

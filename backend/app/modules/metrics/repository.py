@@ -8,11 +8,14 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.modules.announcements.models import (
+from app.modules.communications.enums import (
+    CommunicationActorType,
+    NotificationSourceType,
+    NotificationStatus,
+)
+from app.modules.communications.models import (
     Announcement,
-    AnnouncementActorType,
-    AnnouncementRead,
-    AnnouncementReadStatus,
+    NotificationDelivery,
 )
 from app.modules.classes.models import ClassRoom
 from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus
@@ -21,7 +24,9 @@ from app.modules.subjects.models import Subject
 from app.modules.student_academics.models import (
     AcademicResultStatus,
     AcademicSession,
+    AcademicSessionStatus,
     AcademicTerm,
+    AcademicTermStatus,
     StudentSubjectResult,
     TeacherAssignment,
 )
@@ -71,9 +76,7 @@ class MetricsRepository:
 
     @staticmethod
     async def count(db: AsyncSession, model: Any, *filters: ColumnElement[bool]) -> int:
-        result = await db.execute(
-            select(func.count()).select_from(model).where(*filters)
-        )
+        result = await db.execute(select(func.count()).select_from(model).where(*filters))
         return int(result.scalar_one())
 
     @staticmethod
@@ -94,8 +97,7 @@ class MetricsRepository:
                     .label("active_tenants"),
                     func.count(Tenant.id)
                     .filter(
-                        Tenant.verification_status
-                        == TenantVerificationStatus.PENDING_VERIFICATION,
+                        Tenant.verification_status == TenantVerificationStatus.PENDING_VERIFICATION,
                         Tenant.is_deleted.is_(False),
                     )
                     .label("pending_tenants"),
@@ -127,10 +129,7 @@ class MetricsRepository:
                 .order_by(growth_period)
             )
         ).all()
-        return [
-            PeriodCount(period=row.period, value=int(row.value))
-            for row in rows
-        ]
+        return [PeriodCount(period=row.period, value=int(row.value)) for row in rows]
 
     @staticmethod
     async def subscription_plan_distribution(db: AsyncSession) -> dict[SubscriptionPlan, int]:
@@ -231,7 +230,7 @@ class MetricsRepository:
                 select(AcademicSession).where(
                     AcademicSession.tenant_id == tenant_id,
                     AcademicSession.is_current.is_(True),
-                    AcademicSession.is_active.is_(True),
+                    AcademicSession.status == AcademicSessionStatus.OPEN,
                 )
             )
         ).scalar_one_or_none()
@@ -246,7 +245,7 @@ class MetricsRepository:
                 select(AcademicTerm).where(
                     AcademicTerm.tenant_id == tenant_id,
                     AcademicTerm.is_current.is_(True),
-                    AcademicTerm.is_active.is_(True),
+                    AcademicTerm.status == AcademicTermStatus.OPEN,
                 )
             )
         ).scalar_one_or_none()
@@ -286,10 +285,7 @@ class MetricsRepository:
                 .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
-        return [
-            ClassPopulation(name=row.name, arm=row.arm, value=int(row[2]))
-            for row in rows
-        ]
+        return [ClassPopulation(name=row.name, arm=row.arm, value=int(row[2])) for row in rows]
 
     @staticmethod
     async def result_grade_counts(
@@ -334,8 +330,7 @@ class MetricsRepository:
             )
         ).all()
         return [
-            SubjectPerformance(name=row[0], average=round(float(row[1] or 0), 2))
-            for row in rows
+            SubjectPerformance(name=row[0], average=round(float(row[1] or 0), 2)) for row in rows
         ]
 
     @staticmethod
@@ -364,10 +359,7 @@ class MetricsRepository:
                 .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
-        return [
-            ClassPopulation(name=row.name, arm=row.arm, value=int(row[3]))
-            for row in rows
-        ]
+        return [ClassPopulation(name=row.name, arm=row.arm, value=int(row[3])) for row in rows]
 
     @staticmethod
     async def active_teacher_assignment_count(
@@ -430,7 +422,7 @@ class MetricsRepository:
                 await db.execute(
                     select(Announcement.id).where(
                         Announcement.tenant_id == tenant_id,
-                        Announcement.created_by_actor_type == AnnouncementActorType.TEACHER,
+                        Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
                         Announcement.created_by_actor_id == teacher_id,
                     )
                 )
@@ -451,7 +443,7 @@ class MetricsRepository:
                 select(Announcement.category, func.count(Announcement.id))
                 .where(
                     Announcement.tenant_id == tenant_id,
-                    Announcement.created_by_actor_type == AnnouncementActorType.TEACHER,
+                    Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
                     Announcement.created_by_actor_id == teacher_id,
                 )
                 .group_by(Announcement.category)
@@ -465,17 +457,57 @@ class MetricsRepository:
         *,
         tenant_id: uuid.UUID,
         announcement_ids: list[uuid.UUID],
-        statuses: list[AnnouncementReadStatus],
+        statuses: list[NotificationStatus],
     ) -> int:
         if not announcement_ids:
             return 0
 
         return await MetricsRepository.count(
             db,
-            AnnouncementRead,
-            AnnouncementRead.tenant_id == tenant_id,
-            AnnouncementRead.announcement_id.in_(announcement_ids),
-            AnnouncementRead.status.in_(statuses),
+            NotificationDelivery,
+            NotificationDelivery.tenant_id == tenant_id,
+            NotificationDelivery.source_type == NotificationSourceType.ANNOUNCEMENT,
+            NotificationDelivery.source_id.in_(announcement_ids),
+            NotificationDelivery.status.in_(statuses),
+        )
+
+    @staticmethod
+    async def notification_summary_for_actor(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        actor_type: CommunicationActorType,
+        actor_id: uuid.UUID,
+    ) -> tuple[int, int, list[LabelCount]]:
+        rows = (
+            await db.execute(
+                select(
+                    NotificationDelivery.source_type,
+                    NotificationDelivery.status,
+                    func.count(NotificationDelivery.id),
+                )
+                .where(
+                    NotificationDelivery.tenant_id == tenant_id,
+                    NotificationDelivery.recipient_actor_type == actor_type,
+                    NotificationDelivery.recipient_actor_id == actor_id,
+                    NotificationDelivery.status != NotificationStatus.DISMISSED,
+                )
+                .group_by(NotificationDelivery.source_type, NotificationDelivery.status)
+            )
+        ).all()
+        total = 0
+        read_count = 0
+        by_source: dict[object, int] = {}
+        for source_type, status, count in rows:
+            value = int(count or 0)
+            total += value
+            if status in {NotificationStatus.READ, NotificationStatus.ACKNOWLEDGED}:
+                read_count += value
+            by_source[source_type] = by_source.get(source_type, 0) + value
+        return (
+            total,
+            read_count,
+            [LabelCount(label=label, value=value) for label, value in by_source.items()],
         )
 
     @staticmethod
@@ -487,15 +519,11 @@ class MetricsRepository:
     ) -> list[StudentResultMetric]:
         rows = (
             await db.execute(
-                select(StudentSubjectResult.grade, StudentSubjectResult.total_score)
-                .where(
+                select(StudentSubjectResult.grade, StudentSubjectResult.total_score).where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.student_id == student_id,
                     StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
                 )
             )
         ).all()
-        return [
-            StudentResultMetric(grade=row.grade, total_score=row.total_score)
-            for row in rows
-        ]
+        return [StudentResultMetric(grade=row.grade, total_score=row.total_score) for row in rows]

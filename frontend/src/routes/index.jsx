@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 
 import SubscriptionProvider from "../features/subscriptions/SubscriptionProvider";
 import { APP_NAVIGATE_EVENT, NAVIGATION_ABORT_EVENT } from "../services/api";
+import { loadRuntimeConfig } from "../services/runtimeConfigService";
 import ProtectedRoute from "./ProtectedRoute";
 import { adminRoutes } from "./adminRoutes";
 import { parentRoutes } from "./parentRoutes";
@@ -39,6 +40,21 @@ function RouteChangeAbortBridge() {
     return () => window.removeEventListener(APP_NAVIGATE_EVENT, handleAppNavigation);
   }, [location.pathname, navigate]);
 
+  useEffect(() => {
+    loadRuntimeConfig();
+  }, []);
+
+  return null;
+}
+
+function ScrollToTopOnRouteChange() {
+  const { hash, pathname, search } = useLocation();
+
+  useEffect(() => {
+    if (hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [hash, pathname, search]);
+
   return null;
 }
 
@@ -47,6 +63,7 @@ function AppRoutes() {
     <BrowserRouter>
       <SubscriptionProvider>
         <RouteChangeAbortBridge />
+        <ScrollToTopOnRouteChange />
         <Routes>
           {publicRoutes}
 

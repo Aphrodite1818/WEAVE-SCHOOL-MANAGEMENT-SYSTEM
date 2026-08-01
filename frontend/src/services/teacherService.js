@@ -1,4 +1,5 @@
 import { API_BASE_URL, api, authSession } from "./api";
+import { clearDashboardMetricsCache } from "./dashboard.service";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
 
@@ -71,6 +72,27 @@ const subjectsFromAssignments = (assignments = []) => [
   ).values(),
 ];
 
+const normalizeTeacherMembership = (teacher) => {
+  if (!teacher || typeof teacher !== "object") return teacher;
+  const account = teacher.teacher_account || {};
+
+  return {
+    ...account,
+    ...teacher,
+    first_name: teacher.first_name ?? account.first_name,
+    last_name: teacher.last_name ?? account.last_name,
+    email: teacher.email ?? account.email,
+    phone_number: teacher.phone_number ?? account.phone_number,
+    qualification: teacher.qualification ?? account.qualification,
+    specialization: teacher.specialization ?? account.specialization,
+    passport_photo_url: teacher.passport_photo_url ?? account.passport_photo_url,
+    account_status: teacher.account_status ?? account.account_status,
+    is_verified: teacher.is_verified ?? account.is_verified,
+    is_active: teacher.is_active ?? account.is_active,
+    profile_completed: teacher.profile_completed ?? account.profile_completed,
+  };
+};
+
 export const teacherService = {
   registerAccount: (payload) =>
     api.post("/teachers/accounts/register", payload, {
@@ -138,8 +160,8 @@ export const teacherService = {
       subject_ids: subjectIds,
     }),
 
-  getMyTeacher: (requestOptions) =>
-    api.get("/teachers/me", requestOptions),
+  getMyTeacher: async (requestOptions) =>
+    normalizeTeacherMembership(await api.get("/teachers/me", requestOptions)),
 
   getMySubjects: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;
@@ -173,8 +195,11 @@ export const teacherService = {
   updateTeacher: (teacherId, payload) =>
     api.patch(`/tenant-admin/teachers/${teacherId}`, payload),
 
-  updateMyTeacherProfile: (payload) =>
-    api.patch("/teachers/accounts/me/profile", payload),
+  updateMyTeacherProfile: async (payload) => {
+    const response = await api.patch("/teachers/accounts/me/profile", payload);
+    clearDashboardMetricsCache();
+    return response;
+  },
 
   deleteTeacher: (teacherId) =>
     api.delete(`/tenant-admin/teachers/${teacherId}`),

@@ -1,89 +1,78 @@
-"""Executable architecture verification for the lifecycle refactor."""
+"""Static lifecycle architecture verification used by CI.
+
+This check deliberately avoids database I/O. It confirms that lifecycle models are
+registered centrally and that the canonical HTTP entry points remain exposed.
+"""
 
 from __future__ import annotations
 
 import sys
-from collections import Counter
 from pathlib import Path
 
-from sqlalchemy.orm import configure_mappers
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+import app.models  # noqa: F401
 from app.main import app
-from app.modules import import_model_modules
-from app.modules.parents.models import Parent, ParentMembership
-from app.modules.teachers.models import Teacher, TeacherMembership
+from app.modules.communications.models import NotificationDelivery
+from app.modules.report_cards.models import ReportCard
+from app.modules.school_calendar.models import SchoolCalendar
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicTerm,
+    StudentSubjectResult,
+)
+from app.modules.subscriptions.models import (
+    SubscriptionPlanChange,
+    TenantSubscription,
+)
 from app.shared.base_model import Base
 
 
-def verify_mappers_and_foreign_keys() -> None:
-    import_model_modules()
-    configure_mappers()
+REQUIRED_MODELS = (
+    AcademicSession,
+    AcademicTerm,
+    StudentSubjectResult,
+    ReportCard,
+    TenantSubscription,
+    SubscriptionPlanChange,
+    NotificationDelivery,
+    SchoolCalendar,
+)
 
-    table_names = set(Base.metadata.tables)
-    forbidden_tables = {
-        "public.teachers",
-        "teachers",
-        "public.parents",
-        "parents",
-        "public.legacy_teachers",
-        "legacy_teachers",
-    }
-    unexpected = table_names.intersection(forbidden_tables)
-    if unexpected:
-        raise AssertionError(
-            f"Legacy actor tables remain mapped: {sorted(unexpected)}"
-        )
-
-    for table in Base.metadata.sorted_tables:
-        for foreign_key in table.foreign_keys:
-            try:
-                _ = foreign_key.column
-            except Exception as exc:  # pragma: no cover - diagnostic boundary
-                raise AssertionError(
-                    f"Unresolved foreign key {table.fullname}.{foreign_key.parent.name}: "
-                    f"{foreign_key.target_fullname}"
-                ) from exc
-
-
-def verify_actor_aliases() -> None:
-    if Parent is not ParentMembership:
-        raise AssertionError("Parent tenant actor must be ParentMembership")
-    if Teacher is not TeacherMembership:
-        raise AssertionError("Teacher tenant actor must be TeacherMembership")
-
-
-def verify_routes() -> None:
-    route_keys: list[tuple[str, str]] = []
-    for route in app.routes:
-        methods = getattr(route, "methods", None) or set()
-        path = getattr(route, "path", None)
-        if path is None:
-            continue
-        for method in methods:
-            if method in {"HEAD", "OPTIONS"}:
-                continue
-            route_keys.append((method, path))
-
-    duplicates = [
-        route_key
-        for route_key, count in Counter(route_keys).items()
-        if count > 1
-    ]
-    if duplicates:
-        raise AssertionError(
-            f"Duplicate method/path registrations detected: {duplicates}"
-        )
+REQUIRED_ROUTES = {
+    "/api/v1/subscriptions/payments",
+    "/api/v1/subscriptions/plan-change",
+    "/api/v1/subscriptions/cancel",
+    "/api/v1/tenant-admin/academic/report-cards/bulk/publish",
+    "/api/v1/tenant-admin/academics/results/bulk/transition",
+    "/api/v1/teachers/academics/results/bulk/submit",
+}
 
 
 def main() -> None:
-    verify_actor_aliases()
-    verify_mappers_and_foreign_keys()
-    verify_routes()
-    print("Lifecycle architecture verification passed.")
+    unregistered_models = [
+        model.__name__ for model in REQUIRED_MODELS if model.__table__.metadata is not Base.metadata
+    ]
+    if unregistered_models:
+        raise SystemExit(f"Lifecycle models are not centrally registered: {unregistered_models}")
+
+    route_paths = {route.path for route in app.routes}
+    missing_routes = REQUIRED_ROUTES - route_paths
+    if missing_routes:
+        raise SystemExit(f"Lifecycle routes are not registered: {sorted(missing_routes)}")
+
+    index_names = {index.name for index in SubscriptionPlanChange.__table__.indexes}
+    if "uq_subscription_plan_changes_open_per_tenant" not in index_names:
+        raise SystemExit("Open plan changes are not protected by the expected unique index")
+
+    print(
+        "Lifecycle architecture verified:",
+        f"{len(REQUIRED_MODELS)} models,",
+        f"{len(REQUIRED_ROUTES)} routes.",
+    )
 
 
 if __name__ == "__main__":

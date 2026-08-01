@@ -212,7 +212,7 @@ function ParentLinkManagementPage() {
                     key={membership.id}
                     type="button"
                     onClick={() => loadLinks(membership)}
-                    className={`w-full rounded-2xl border px-3 py-3 text-left transition ${active ? "border-primary bg-primary-subtle" : "border-border bg-surface hover:border-primary/40"}`}
+                    className={`w-full rounded-2xl border px-3 py-3 text-left transition ${active ? "is-selected-highlight" : "border-border bg-surface hover:border-primary/40"}`}
                   >
                     <div className="flex items-start gap-3">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary"><UserRound className="h-4 w-4" /></span>

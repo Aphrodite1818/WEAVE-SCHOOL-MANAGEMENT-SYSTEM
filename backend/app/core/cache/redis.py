@@ -1,7 +1,8 @@
-#==========================#
-#        core.redis        #
-#==========================#
-"""this file is responsible for redis cache connection and operations"""
+# ========================== #
+#        core.redis          #
+# ========================== #
+
+"""Redis cache connection and health operations."""
 
 from __future__ import annotations
 
@@ -15,24 +16,10 @@ logger = get_logger(__name__)
 _redis_client: Redis | None = None
 
 
-async def connect_redis() -> None:
-    """
-    Create and verify the Redis connection.
-
-    This should run once when the FastAPI app starts.
-    """
-
-    global _redis_client
-
-    if not settings.CACHE_ENABLED:
-        logger.info("Cache is disabled. Redis connection skipped.")
-        return
-
+def _build_redis_client() -> Redis | None:
     if not settings.REDIS_URL:
-        logger.warning("Cache enabled but Redis URL is not set. Redis connection skipped.")
-        return
-
-    _redis_client = Redis.from_url(
+        return None
+    return Redis.from_url(
         settings.REDIS_URL,
         encoding="utf-8",
         decode_responses=True,
@@ -41,31 +28,54 @@ async def connect_redis() -> None:
         health_check_interval=30,
     )
 
+
+async def connect_redis() -> None:
+    """Verify Redis and retain a shared client when caching is enabled."""
+
+    global _redis_client
+
+    client = _build_redis_client()
+    if client is None:
+        message = "REDIS_URL is not set."
+        if settings.is_production_like:
+            raise RuntimeError(message)
+        logger.warning(message)
+        return
+
     try:
-        await _redis_client.ping()
-        logger.info("Successfully connected to Redis.")
-    except Exception:
-        logger.error("Failed to connect to Redis. Please check the Redis server and configuration.")
-        await close_redis()
+        await client.ping()
+    except Exception as exc:
+        await client.aclose()
+        logger.exception("Failed to connect to Redis.")
+        if settings.is_production_like:
+            raise RuntimeError("Redis is unavailable during application startup.") from exc
+        return
+
+    if settings.CACHE_ENABLED:
+        _redis_client = client
+        logger.info("Successfully connected to Redis cache.")
+        return
+
+    await client.aclose()
+    logger.info("Redis verified; shared application cache is disabled.")
+
+
+async def create_redis_health_client() -> Redis | None:
+    """Return a temporary Redis client for readiness checks."""
+
+    return _build_redis_client()
 
 
 def get_redis() -> Redis | None:
-    """
-    Return the active Redis client.
+    """Return the active shared Redis client, when cache is enabled."""
 
-    Returns None when cache is disabled or Redis failed to connect.
-    """
     return _redis_client
 
 
 async def close_redis() -> None:
-    """
-    Close the Redis connection.
+    """Close the shared Redis connection."""
 
-    This should run once when the FastAPI app shuts down.
-    """
     global _redis_client
-
     if _redis_client is None:
         return
 
@@ -75,18 +85,22 @@ async def close_redis() -> None:
 
 
 async def redis_health_check() -> bool:
-    """
-    Check the health of the Redis connection.
+    """Check Redis even when the optional shared cache client is disabled."""
 
-    Returns True if Redis is healthy, False otherwise.
-    """
-    if _redis_client is None:
-        logger.warning("Redis client is not initialized.")
-        return False
+    client = _redis_client
+    temporary_client = False
+    if client is None:
+        client = await create_redis_health_client()
+        temporary_client = client is not None
+    if client is None:
+        return not settings.is_production_like
 
     try:
-        await _redis_client.ping()
+        await client.ping()
         return True
-    except Exception as e:
-        logger.error(f"Redis health check failed: {e}")
+    except Exception:
+        logger.exception("Redis health check failed.")
         return False
+    finally:
+        if temporary_client:
+            await client.aclose()

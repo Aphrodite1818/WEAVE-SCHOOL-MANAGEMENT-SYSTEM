@@ -1,15 +1,7 @@
-import ResourceModulePage from "../shared/ResourceModulePage";
-import { getAttendanceResourceConfig } from "../shared/resourceConfigs";
+import AttendanceWorkspace from "../../features/attendance/components/AttendanceWorkspace";
 
 function AttendancePage() {
-  return (
-    <ResourceModulePage
-      role="admin"
-      title="Attendance"
-      description="Mark, review, and audit daily student attendance by class and date."
-      config={getAttendanceResourceConfig({ writable: true, canDelete: true })}
-    />
-  );
+  return <AttendanceWorkspace role="admin" />;
 }
 
 export default AttendancePage;

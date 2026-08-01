@@ -61,7 +61,9 @@ const mergeClassSubjectPickerOptions = (classId, classSubjectResponse, subjectRe
 };
 
 const activateClassSubject = (classId, classSubjectId) =>
-  api.patch(`/classes/${classId}/subjects/${classSubjectId}/activate`, {});
+  api.patch(`/classes/${classId}/subjects/${classSubjectId}/activate`, {
+    confirmation: "ACTIVATE_CLASS_SUBJECT",
+  });
 
 const resolveExistingClassSubjectId = async (classId, subjectId) => {
   const response = await api.get(`/classes/${classId}/subjects${queryString({ active_only: false, limit: 100 })}`);
@@ -70,9 +72,12 @@ const resolveExistingClassSubjectId = async (classId, subjectId) => {
     throw new Error("Subject is already attached to this class, but the existing class-subject could not be loaded.");
   }
 
-  if (existing.is_active === false) {
-    const activated = await activateClassSubject(classId, existing.id);
-    return activated?.id || existing.id;
+  if (existing.is_active === false || existing.archived_at) {
+    throw new Error(
+      existing.archived_at
+        ? "This subject is archived for the class. Restore it before assigning a teacher."
+        : "This subject is inactive for the class. Activate it before assigning a teacher.",
+    );
   }
 
   return existing.id;
@@ -104,31 +109,22 @@ const stripTermCreateOnlyFields = (payload = {}) => {
   return updatablePayload;
 };
 
-const buildTeacherAssignmentPayload = (payload = {}, classSubjectId) => ({
+const buildTeacherAssignmentPayload = (payload = {}) => ({
   teacher_membership_id:
     payload.teacher_membership_id || payload.teacher_id,
-  class_subject_id: classSubjectId,
+  ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
 });
 
-const activateTeacherAssignment = (assignmentId) =>
-  api.post(`/tenant-admin/academics/teacher-assignments/${assignmentId}/activate`);
-
-const reassignTeacherAssignment = async (assignmentId, payload) => {
+const reassignTeacherAssignment = async (classSubjectId, payload) => {
   const teacherMembershipId =
     payload.teacher_membership_id || payload.teacher_id;
-  const response = await api.post(
-    `/tenant-admin/academics/teacher-assignments/${assignmentId}/reassign`,
-    { teacher_membership_id: teacherMembershipId },
+  return api.post(
+    `/tenant-admin/academics/class-subjects/${classSubjectId}/reassign-teacher`,
+    {
+      teacher_membership_id: teacherMembershipId,
+      ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
+    },
   );
-
-  if (
-    response?.is_active === false &&
-    response?.teacher_membership_id === teacherMembershipId
-  ) {
-    return activateTeacherAssignment(assignmentId);
-  }
-
-  return response;
 };
 
 export const academicService = {
@@ -145,6 +141,20 @@ export const academicService = {
     api.post(`/tenant-admin/academics/sessions/${sessionId}/open`, {
       confirmation: "OPEN_ACADEMIC_SESSION",
     }),
+  getSessionDependencies: (sessionId) =>
+    api.get(`/tenant-admin/academics/sessions/${sessionId}/dependencies`),
+  closeSessionAndProgress: (sessionId, payload) =>
+    api.post(`/tenant-admin/academics/sessions/${sessionId}/close-and-progress`, {
+      confirmation: "CLOSE_AND_PROGRESS",
+      ...payload,
+    }),
+  deleteSession: (sessionId) =>
+    api.delete(`/tenant-admin/academics/sessions/${sessionId}`, {
+      body: JSON.stringify({
+        confirmation: "DELETE_ACADEMIC_SESSION",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }),
   listTeacherSessions: (params) =>
     api.get(`/teachers/academics/sessions${queryString(params)}`),
 
@@ -153,8 +163,43 @@ export const academicService = {
   createTerm: (payload) => api.post("/tenant-admin/academics/terms", payload),
   updateTerm: (termId, payload) =>
     api.patch(`/tenant-admin/academics/terms/${termId}`, stripTermCreateOnlyFields(payload)),
+  openTerm: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/open`, {
+      confirmation: "OPEN_ACADEMIC_TERM",
+    }),
+  getTermDependencies: (termId) =>
+    api.get(`/tenant-admin/academics/terms/${termId}/dependencies`),
+  closeTerm: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/close`, {
+      confirmation: "CLOSE_ACADEMIC_TERM",
+    }),
+  startTermClosing: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/start-closing`, {
+      confirmation: "START_TERM_CLOSING",
+    }),
+  finalizeTermClose: (termId) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/finalize-close`, {
+      confirmation: "FINALIZE_TERM_CLOSE",
+    }),
+  cancelTermClosure: (termId, reason) =>
+    api.post(`/tenant-admin/academics/terms/${termId}/cancel-closure`, {
+      confirmation: "CANCEL_TERM_CLOSURE",
+      reason,
+    }),
+  deleteTerm: (termId) =>
+    api.delete(`/tenant-admin/academics/terms/${termId}`, {
+      body: JSON.stringify({
+        confirmation: "DELETE_ACADEMIC_TERM",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }),
   listTeacherTerms: (params) =>
     api.get(`/teachers/academics/terms${queryString(params)}`),
+
+  getAssessmentConfig: () =>
+    api.get("/tenant-admin/academics/assessment-config"),
+  updateAssessmentConfig: (payload) =>
+    api.patch("/tenant-admin/academics/assessment-config", payload),
 
   listGradingScales: (params) =>
     api.get(`/tenant-admin/academics/grading-scales${queryString(params)}`),
@@ -162,6 +207,19 @@ export const academicService = {
     api.post("/tenant-admin/academics/grading-scales", payload),
   updateGradingScale: (scaleId, payload) =>
     api.patch(`/tenant-admin/academics/grading-scales/${scaleId}`, payload),
+  activateGradingScale: (scaleId) =>
+    api.post(`/tenant-admin/academics/grading-scales/${scaleId}/activate`, {}),
+  deactivateGradingScale: (scaleId) =>
+    api.post(`/tenant-admin/academics/grading-scales/${scaleId}/deactivate`, {}),
+  getGradingScaleDependencies: (scaleId) =>
+    api.get(`/tenant-admin/academics/grading-scales/${scaleId}/dependencies`),
+  deleteGradingScale: (scaleId) =>
+    api.delete(`/tenant-admin/academics/grading-scales/${scaleId}`, {
+      body: JSON.stringify({ confirmation: "DELETE_GRADING_SCALE" }),
+      headers: { "Content-Type": "application/json" },
+    }),
+  getGradingReadiness: () =>
+    api.get("/tenant-admin/academics/grading-scales/readiness-preview"),
 
   listClassSubjects: async (classId, params) => {
     const [classSubjectResponse, subjectResponse] = await Promise.all([
@@ -174,12 +232,35 @@ export const academicService = {
     api.get(`/classes/${classId}/subjects${queryString(params)}`),
   addClassSubject: (classId, payload) =>
     api.post(`/classes/${classId}/subjects`, payload),
+  addClassSubjectsBulk: (classId, payload) =>
+    api.post(`/classes/${classId}/subjects/bulk`, payload),
   activateClassSubject,
   deactivateClassSubject: (classSubjectId) =>
-    api.delete(`/class-subjects/${classSubjectId}`),
+    api.post(`/class-subjects/${classSubjectId}/deactivate`, {
+      confirmation: "DEACTIVATE_CLASS_SUBJECT",
+    }),
+  updateClassSubject: (classSubjectId, payload) =>
+    api.patch(`/class-subjects/${classSubjectId}`, payload),
+  archiveClassSubject: (classSubjectId) =>
+    api.post(`/class-subjects/${classSubjectId}/archive`, {
+      confirmation: "ARCHIVE_CLASS_SUBJECT",
+    }),
+  restoreClassSubject: (classSubjectId) =>
+    api.post(`/class-subjects/${classSubjectId}/restore`, {
+      confirmation: "RESTORE_CLASS_SUBJECT",
+    }),
+  deleteClassSubject: (classSubjectId) =>
+    api.delete(`/class-subjects/${classSubjectId}`, {
+      body: JSON.stringify({
+        confirmation: "DELETE_CLASS_SUBJECT",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }),
 
   listTeacherAssignments: (params) =>
     api.get(`/tenant-admin/academics/teacher-assignments${queryString(params)}`),
+  getTeacherAssignmentDependencies: (assignmentId) =>
+    api.get(`/tenant-admin/academics/teacher-assignments/${assignmentId}/dependencies`),
   createTeacherAssignment: async (payload) => {
     const classSubjectId = await resolveClassSubjectId(
       payload.class_subject_id,
@@ -187,20 +268,34 @@ export const academicService = {
     );
 
     return api.post(
-      "/tenant-admin/academics/teacher-assignments",
-      buildTeacherAssignmentPayload(payload, classSubjectId),
+      `/tenant-admin/academics/class-subjects/${classSubjectId}/teacher-assignments`,
+      buildTeacherAssignmentPayload(payload),
     );
   },
   deactivateTeacherAssignment: (assignmentId) =>
-    api.post(`/tenant-admin/academics/teacher-assignments/${assignmentId}/deactivate`),
-  activateTeacherAssignment,
+    api.post(`/tenant-admin/academics/teacher-assignments/${assignmentId}/end`, {
+      effective_to: new Date().toISOString().slice(0, 10),
+    }),
+  endTeacherAssignment: (assignmentId, payload) =>
+    api.post(`/tenant-admin/academics/teacher-assignments/${assignmentId}/end`, payload),
+  deleteTeacherAssignment: (assignmentId, payload) =>
+    api.delete(`/tenant-admin/academics/teacher-assignments/${assignmentId}`, {
+      body: JSON.stringify({
+        confirmation: "DELETE_TEACHER_ASSIGNMENT",
+        ...payload,
+      }),
+      headers: { "Content-Type": "application/json" },
+    }),
   reassignTeacherAssignment,
+  reassignClassSubjectTeacher: reassignTeacherAssignment,
 
   listAdminResults: (params, requestOptions) =>
     api.get(`/tenant-admin/academics/results${queryString(params)}`, requestOptions),
   saveAdminResult: (payload) => api.post("/tenant-admin/academics/results", payload),
   updateResultStatus: (resultId, payload) =>
     api.patch(`/tenant-admin/academics/results/${resultId}/status`, payload),
+  reopenResult: (resultId, payload) =>
+    api.post(`/tenant-admin/academics/results/${resultId}/reopen`, payload),
 
   listMyTeacherAssignments: (requestOptions) =>
     api.get("/teachers/academics/assignments", requestOptions),
