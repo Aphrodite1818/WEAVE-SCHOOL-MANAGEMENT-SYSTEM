@@ -5,7 +5,12 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.subjects.models import Subject
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.subjects.schemas import SubjectCreate, SubjectResponse, SubjectUpdate
@@ -290,9 +295,7 @@ class SubjectService:
             raise NotFoundException(detail="Subject not found.")
 
         if subject.archived_at is not None:
-            raise ConflictException(
-                "Archived subjects must be restored before activation."
-            )
+            raise ConflictException("Archived subjects must be restored before activation.")
 
         if subject.is_active:
             return subject
@@ -309,10 +312,6 @@ class SubjectService:
         if not subject_with_teachers:
             raise NotFoundException(detail="Subject not found after activation.")
         return subject_with_teachers
-
-
-
-
 
     @staticmethod
     async def archive_subject(
@@ -374,9 +373,7 @@ class SubjectService:
             raise NotFoundException(detail="Subject not found.")
 
         if subject.archived_at is not None:
-            raise ConflictException(
-                "Archived records cannot be deactivated. Restore them first."
-            )
+            raise ConflictException("Archived records cannot be deactivated. Restore them first.")
 
         if not subject.is_active:
             return subject
@@ -433,9 +430,6 @@ class SubjectService:
         await db.commit()
         return response
 
-
-
-
     @staticmethod
     async def restore_subject(
         db: AsyncSession,
@@ -468,9 +462,6 @@ class SubjectService:
         await db.commit()
         return subject
 
-
-
-
     @staticmethod
     async def delete_subject(
         db: AsyncSession,
@@ -489,7 +480,9 @@ class SubjectService:
             raise NotFoundException(detail="Subject not found.")
 
         if subject.is_active:
-            raise ConflictException("Active subjects cannot be deleted. Deactivate the subject first.")
+            raise ConflictException(
+                "Active subjects cannot be deleted. Deactivate the subject first."
+            )
         if subject.archived_at is not None:
             raise ConflictException("Archived subjects cannot be deleted. Restore them first.")
 

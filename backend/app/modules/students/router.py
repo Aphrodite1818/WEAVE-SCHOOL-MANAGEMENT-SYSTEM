@@ -156,11 +156,9 @@ async def list_my_parent_link_requests(
     db: DbSession,
     current_user: CurrentOnboardedStudent,
 ) -> StudentParentLinkRequestListResponse:
-    requests, total = (
-        await StudentParentLinkRequestService.list_student_requests(
-            db,
-            current_user,
-        )
+    requests, total = await StudentParentLinkRequestService.list_student_requests(
+        db,
+        current_user,
     )
     return StudentParentLinkRequestListResponse(
         items=requests,
@@ -211,9 +209,7 @@ async def get_student_profile(
         # Student self-access is intentionally limited to /me.
         from app.core.exceptions import ForbiddenException
 
-        raise ForbiddenException(
-            "Students cannot view another student's profile."
-        )
+        raise ForbiddenException("Students cannot view another student's profile.")
     return await StudentService.get_student_profile(
         db,
         current_user,

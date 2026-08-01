@@ -93,10 +93,14 @@ class ClassRoomRepository:
         lock: bool = False,
         include_archived: bool = False,
     ) -> list[ClassRoom]:
-        query = select(ClassRoom).where(
-            ClassRoom.tenant_id == tenant_id,
-            ClassRoom.teacher_membership_id == teacher_membership_id,
-        ).order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+        query = (
+            select(ClassRoom)
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.teacher_membership_id == teacher_membership_id,
+            )
+            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+        )
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
         if lock:
@@ -133,22 +137,30 @@ class ClassRoomRepository:
         *,
         lock: bool = False,
     ) -> list[ClassRoom]:
-        query = select(ClassRoom).where(
-            ClassRoom.tenant_id == tenant_id,
-            ClassRoom.is_active.is_(True),
-            ClassRoom.archived_at.is_(None),
-        ).order_by(ClassRoom.id)
+        query = (
+            select(ClassRoom)
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.is_active.is_(True),
+                ClassRoom.archived_at.is_(None),
+            )
+            .order_by(ClassRoom.id)
+        )
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)
         return list(result.scalars().all())
 
     @staticmethod
-    async def count_current_students(db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID) -> int:
+    async def count_current_students(
+        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID
+    ) -> int:
         from app.modules.students.models import Student
 
         result = await db.execute(
-            select(func.count()).select_from(Student).where(
+            select(func.count())
+            .select_from(Student)
+            .where(
                 Student.tenant_id == tenant_id,
                 Student.class_id == class_id,
                 Student.is_archived.is_(False),
@@ -166,7 +178,9 @@ class ClassRoomRepository:
         from app.modules.students.models import Student
 
         result = await db.execute(
-            select(func.count()).select_from(Student).where(
+            select(func.count())
+            .select_from(Student)
+            .where(
                 Student.tenant_id == tenant_id,
                 Student.class_id == class_id,
                 Student.status == status,
@@ -184,7 +198,9 @@ class ClassRoomRepository:
         from app.modules.students.models import StudentEnrollment
 
         result = await db.execute(
-            select(func.count()).select_from(StudentEnrollment).where(
+            select(func.count())
+            .select_from(StudentEnrollment)
+            .where(
                 StudentEnrollment.tenant_id == tenant_id,
                 StudentEnrollment.class_id == class_id,
                 StudentEnrollment.is_current.is_(True),
@@ -202,7 +218,9 @@ class ClassRoomRepository:
         from app.modules.student_academics.models import ClassSubject
 
         result = await db.execute(
-            select(func.count()).select_from(ClassSubject).where(
+            select(func.count())
+            .select_from(ClassSubject)
+            .where(
                 ClassSubject.tenant_id == tenant_id,
                 ClassSubject.class_id == class_id,
                 ClassSubject.is_active.is_(True),
@@ -258,7 +276,9 @@ class ClassRoomRepository:
 
         student_count = (
             await db.execute(
-                select(func.count()).select_from(Student).where(
+                select(func.count())
+                .select_from(Student)
+                .where(
                     Student.tenant_id == tenant_id,
                     Student.class_id == class_id,
                 )
@@ -266,7 +286,9 @@ class ClassRoomRepository:
         ).scalar_one()
         enrollment_count = (
             await db.execute(
-                select(func.count()).select_from(StudentEnrollment).where(
+                select(func.count())
+                .select_from(StudentEnrollment)
+                .where(
                     StudentEnrollment.tenant_id == tenant_id,
                     StudentEnrollment.class_id == class_id,
                 )
@@ -286,7 +308,9 @@ class ClassRoomRepository:
         ).scalar_one()
         result_count = (
             await db.execute(
-                select(func.count()).select_from(StudentSubjectResult).where(
+                select(func.count())
+                .select_from(StudentSubjectResult)
+                .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.class_id == class_id,
                 )
@@ -294,7 +318,9 @@ class ClassRoomRepository:
         ).scalar_one()
         report_card_count = (
             await db.execute(
-                select(func.count()).select_from(ReportCard).where(
+                select(func.count())
+                .select_from(ReportCard)
+                .where(
                     ReportCard.tenant_id == tenant_id,
                     ReportCard.class_id == class_id,
                 )
@@ -302,7 +328,9 @@ class ClassRoomRepository:
         ).scalar_one()
         progression_item_count = (
             await db.execute(
-                select(func.count()).select_from(StudentProgressionItem).where(
+                select(func.count())
+                .select_from(StudentProgressionItem)
+                .where(
                     StudentProgressionItem.tenant_id == tenant_id,
                     or_(
                         StudentProgressionItem.from_class_id == class_id,
@@ -313,7 +341,9 @@ class ClassRoomRepository:
         ).scalar_one()
         attendance_sheet_count = (
             await db.execute(
-                select(func.count()).select_from(StudentAttendanceSheet).where(
+                select(func.count())
+                .select_from(StudentAttendanceSheet)
+                .where(
                     StudentAttendanceSheet.tenant_id == tenant_id,
                     StudentAttendanceSheet.class_id == class_id,
                 )
@@ -321,7 +351,9 @@ class ClassRoomRepository:
         ).scalar_one()
         temporary_assignment_count = (
             await db.execute(
-                select(func.count()).select_from(TemporaryAttendanceAssignment).where(
+                select(func.count())
+                .select_from(TemporaryAttendanceAssignment)
+                .where(
                     TemporaryAttendanceAssignment.tenant_id == tenant_id,
                     TemporaryAttendanceAssignment.class_id == class_id,
                 )
@@ -329,7 +361,9 @@ class ClassRoomRepository:
         ).scalar_one()
         announcement_audience_count = (
             await db.execute(
-                select(func.count()).select_from(AnnouncementAudience).where(
+                select(func.count())
+                .select_from(AnnouncementAudience)
+                .where(
                     AnnouncementAudience.tenant_id == tenant_id,
                     AnnouncementAudience.class_id == class_id,
                 )

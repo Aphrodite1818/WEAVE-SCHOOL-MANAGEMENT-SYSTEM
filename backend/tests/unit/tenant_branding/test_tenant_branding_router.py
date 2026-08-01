@@ -2,11 +2,7 @@ from app.main import app
 
 
 def _collect_api_paths() -> set[str]:
-    return {
-        path
-        for route in app.routes
-        if (path := getattr(route, "path", None))
-    }
+    return {path for route in app.routes if (path := getattr(route, "path", None))}
 
 
 def test_tenant_branding_routes_are_registered() -> None:

@@ -34,7 +34,9 @@ router = APIRouter(tags=["Subjects"])
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
-CurrentSubjectViewer: TypeAlias = Annotated[TenantAdmin | Teacher, Depends(get_current_tenant_member)]
+CurrentSubjectViewer: TypeAlias = Annotated[
+    TenantAdmin | Teacher, Depends(get_current_tenant_member)
+]
 
 
 async def _subject_response(

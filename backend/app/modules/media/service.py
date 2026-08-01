@@ -194,8 +194,7 @@ class MediaService:
         if purpose not in valid_pairs.get(owner_type, set()):
             raise BadRequestException(
                 detail=(
-                    f"Media purpose {purpose.value} is not valid for "
-                    f"owner type {owner_type.value}"
+                    f"Media purpose {purpose.value} is not valid for owner type {owner_type.value}"
                 )
             )
 
@@ -313,7 +312,10 @@ class MediaService:
             await TeacherRepository.save(db=db, teacher=teacher)
             return
 
-        if owner_type == MediaOwnerType.TENANT_ADMIN and purpose == MediaPurpose.TENANT_ADMIN_PASSPORT:
+        if (
+            owner_type == MediaOwnerType.TENANT_ADMIN
+            and purpose == MediaPurpose.TENANT_ADMIN_PASSPORT
+        ):
             tenant_admin = await MediaService._get_tenant_admin_for_tenant(
                 db=db,
                 tenant_id=tenant_id,
@@ -378,7 +380,10 @@ class MediaService:
             await TeacherRepository.save(db=db, teacher=teacher)
             return
 
-        if owner_type == MediaOwnerType.TENANT_ADMIN and purpose == MediaPurpose.TENANT_ADMIN_PASSPORT:
+        if (
+            owner_type == MediaOwnerType.TENANT_ADMIN
+            and purpose == MediaPurpose.TENANT_ADMIN_PASSPORT
+        ):
             tenant_admin = await MediaService._get_tenant_admin_for_tenant(
                 db=db,
                 tenant_id=tenant_id,

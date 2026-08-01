@@ -181,9 +181,7 @@ async def _build_session_bootstrap_response(
         account_type=account_type,
         role=role,
         password_reset_required=getattr(actor, "password_reset_required", None),
-        profile_status=(
-            getattr(getattr(actor, "profile_status", None), "value", None)
-        ),
+        profile_status=(getattr(getattr(actor, "profile_status", None), "value", None)),
         meta=meta,
         passport_photo_url=passport_photo_url,
         tenant_logo_url=tenant.logo_url if tenant else None,

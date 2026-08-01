@@ -119,6 +119,7 @@ class AcademicSessionResponse(OutputBase):
     created_at: datetime
     updated_at: datetime
 
+
 class AcademicTermCreate(InputBase):
     academic_session_id: uuid.UUID
     name: AcademicTermName
@@ -143,7 +144,7 @@ class AcademicTermUpdate(InputBase):
     end_date: date | None = None
 
     @model_validator(mode="after")
-    def validate_update(self)->AcademicTermUpdate:
+    def validate_update(self) -> AcademicTermUpdate:
         if not self.model_fields_set:
             raise ValueError("at least one term field must be provided")
 
@@ -155,7 +156,6 @@ class AcademicTermUpdate(InputBase):
             raise ValueError("end_date must be after start_date")
 
         return self
-
 
 
 class AcademicTermOpenRequest(InputBase):
@@ -183,8 +183,6 @@ class AcademicTermDeleteRequest(InputBase):
     confirmation: Literal["DELETE_ACADEMIC_TERM"]
 
 
-
-
 class AcademicTermResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -204,8 +202,6 @@ class AcademicTermResponse(OutputBase):
 
     created_at: datetime
     updated_at: datetime
-
-
 
 
 class GradingScaleCreate(InputBase):
@@ -245,8 +241,6 @@ class GradingScaleUpdate(InputBase):
         normalized = normalize_grade(value)
 
 
-
-
 class AcademicTermResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -266,8 +260,6 @@ class AcademicTermResponse(OutputBase):
 
     created_at: datetime
     updated_at: datetime
-
-
 
 
 class GradingScaleCreate(InputBase):
