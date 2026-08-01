@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 
-import AdminGettingStartedPage from "../pages/admin/AdminGettingStartedPage";
+import { leaveGuideRoute } from "../features/guides/guideNavigation";
 import useRoleGuide from "../features/guides/useRoleGuide";
+import AdminGettingStartedPage from "../pages/admin/AdminGettingStartedPage";
 
 const normalizeButtonText = (button) =>
   String(button?.textContent || "")
@@ -9,13 +10,14 @@ const normalizeButtonText = (button) =>
     .trim()
     .toLowerCase();
 
-const hardNavigate = (path) => {
-  window.location.assign(path);
+const leaveAdminSetup = (destination) => {
+  leaveGuideRoute("admin", destination, { replace: true });
 };
 
 /**
- * Keeps the assisted setup actions reliable even though dialogs are rendered
- * through portals and the getting-started page uses a dedicated full-screen shell.
+ * Handles setup exit actions at the route boundary. Dialogs use portals and
+ * the getting-started page has a dedicated full-screen shell, so this capture
+ * handler guarantees that exit actions cannot be swallowed by either layer.
  */
 function AdminGettingStartedRoute() {
   const guide = useRoleGuide({ role: "admin" });
@@ -30,14 +32,14 @@ function AdminGettingStartedRoute() {
       if (label === "upgrade plan") {
         event.preventDefault();
         event.stopPropagation();
-        hardNavigate("/admin/billing/plans");
+        leaveAdminSetup("/admin/billing/plans");
         return;
       }
 
       if (label === "finish later") {
         event.preventDefault();
         event.stopPropagation();
-        hardNavigate("/admin/dashboard");
+        leaveAdminSetup("/admin/dashboard");
         return;
       }
 
@@ -47,7 +49,7 @@ function AdminGettingStartedRoute() {
         try {
           await guide.finish();
         } finally {
-          hardNavigate("/admin/dashboard");
+          leaveAdminSetup("/admin/dashboard");
         }
       }
     };
