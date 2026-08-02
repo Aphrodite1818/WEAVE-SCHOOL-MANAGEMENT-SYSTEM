@@ -48,93 +48,6 @@ def _compare_type(
     return None
 
 
-def _normalized_schema(value: str | None) -> str:
-    return value or "public"
-
-
-def _normalized_fk_action(value: str | None) -> str:
-    normalized = (value or "").strip().upper().replace("_", " ")
-    return "" if normalized in {"", "NO ACTION"} else normalized
-
-
-def _fk_signature(
-    *,
-    source_schema: str | None,
-    source_table: str,
-    local_columns: tuple[str, ...] | list[str],
-    referent_schema: str | None,
-    referent_table: str,
-    remote_columns: tuple[str, ...] | list[str],
-    ondelete: str | None = None,
-    onupdate: str | None = None,
-    deferrable: bool | None = None,
-    initially: str | None = None,
-) -> tuple[Any, ...]:
-    return (
-        _normalized_schema(source_schema),
-        source_table,
-        tuple(local_columns),
-        _normalized_schema(referent_schema),
-        referent_table,
-        tuple(remote_columns),
-        _normalized_fk_action(ondelete),
-        _normalized_fk_action(onupdate),
-        bool(deferrable),
-        (initially or "").strip().upper(),
-    )
-
-
-def _constraint_fk_signature(
-    constraint: sa.ForeignKeyConstraint,
-) -> tuple[Any, ...]:
-    elements = tuple(constraint.elements)
-    referred_table = elements[0].column.table
-    return _fk_signature(
-        source_schema=constraint.table.schema,
-        source_table=constraint.table.name,
-        local_columns=tuple(column.name for column in constraint.columns),
-        referent_schema=referred_table.schema,
-        referent_table=referred_table.name,
-        remote_columns=tuple(element.column.name for element in elements),
-        ondelete=elements[0].ondelete if elements else None,
-        onupdate=elements[0].onupdate if elements else None,
-        deferrable=constraint.deferrable,
-        initially=constraint.initially,
-    )
-
-
-def _database_fk_signatures(connection: Any) -> set[tuple[Any, ...]]:
-    inspector = sa.inspect(connection)
-    available_tables = set(inspector.get_table_names(schema="public"))
-    signatures: set[tuple[Any, ...]] = set()
-
-    for table in target_metadata.tables.values():
-        if table.name not in available_tables:
-            continue
-        schema = table.schema or "public"
-        for reflected_fk in inspector.get_foreign_keys(table.name, schema=schema):
-            referred_table = reflected_fk.get("referred_table")
-            if not referred_table:
-                continue
-            options = reflected_fk.get("options") or {}
-            signatures.add(
-                _fk_signature(
-                    source_schema=schema,
-                    source_table=table.name,
-                    local_columns=reflected_fk.get("constrained_columns") or (),
-                    referent_schema=reflected_fk.get("referred_schema"),
-                    referent_table=referred_table,
-                    remote_columns=reflected_fk.get("referred_columns") or (),
-                    ondelete=options.get("ondelete"),
-                    onupdate=options.get("onupdate"),
-                    deferrable=options.get("deferrable"),
-                    initially=options.get("initially"),
-                )
-            )
-
-    return signatures
-
-
 def _schema_neutral_index_name(name: str | None) -> str:
     return (name or "").replace("ix_public_", "ix_", 1)
 
@@ -173,50 +86,36 @@ def _include_name(
     return True
 
 
-def _include_object(existing_fk_signatures: set[tuple[Any, ...]]):
-    def include_object(
-        obj: Any,
-        name: str | None,
-        type_: str,
-        reflected: bool,
-        compare_to: Any,
-    ) -> bool:
-        """Suppress representation noise while preserving genuine schema drift."""
+def _include_object(
+    obj: Any,
+    name: str | None,
+    type_: str,
+    reflected: bool,
+    compare_to: Any,
+) -> bool:
+    """Suppress known representation noise without hiding real schema drift."""
 
-        if type_ == "table" and name == "alembic_version":
+    _ = reflected
+
+    if type_ == "table" and name == "alembic_version":
+        return False
+
+    if type_ == "index" and isinstance(obj, sa.Index) and compare_to is None:
+        if obj.name != _schema_neutral_index_name(obj.name):
+            return False
+        if _index_signature(obj) in PUBLIC_SCHEMA_INDEX_SIGNATURES:
             return False
 
-        if type_ == "index" and isinstance(obj, sa.Index) and compare_to is None:
-            if obj.name != _schema_neutral_index_name(obj.name):
-                return False
-            if _index_signature(obj) in PUBLIC_SCHEMA_INDEX_SIGNATURES:
-                return False
-
-        if type_ == "unique_constraint" and isinstance(obj, sa.UniqueConstraint):
-            columns = tuple(column.name for column in obj.columns)
-            primary_key_columns = tuple(column.name for column in obj.table.primary_key.columns)
-            if columns == ("id",) and primary_key_columns == ("id",):
-                return False
-
-        if (
-            type_ == "foreign_key_constraint"
-            and not reflected
-            and compare_to is None
-            and isinstance(obj, sa.ForeignKeyConstraint)
-            and _constraint_fk_signature(obj) in existing_fk_signatures
-        ):
+    if type_ == "unique_constraint" and isinstance(obj, sa.UniqueConstraint):
+        columns = tuple(column.name for column in obj.columns)
+        primary_key_columns = tuple(column.name for column in obj.table.primary_key.columns)
+        if columns == ("id",) and primary_key_columns == ("id",):
             return False
 
-        return True
-
-    return include_object
+    return True
 
 
-def _configure_context(
-    *,
-    connection: Any | None = None,
-    existing_fk_signatures: set[tuple[Any, ...]] | None = None,
-) -> None:
+def _configure_context(*, connection: Any | None = None) -> None:
     """Apply one comparison policy to online and offline migration runs."""
 
     options: dict[str, Any] = {
@@ -226,7 +125,7 @@ def _configure_context(
         "version_table_schema": "public",
         "compare_type": _compare_type,
         "compare_server_default": False,
-        "include_object": _include_object(existing_fk_signatures or set()),
+        "include_object": _include_object,
     }
     if connection is None:
         options.update(
@@ -257,26 +156,14 @@ def run_migrations_online() -> None:
     config.set_main_option("sqlalchemy.url", database_url)
 
     def do_run_migrations(sync_connection: Any) -> None:
-        # Reflection starts an implicit SQLAlchemy transaction before Alembic
-        # configures its own migration transaction. Close that read-only
-        # transaction first so the migration transaction is not rolled back when
-        # the async connection leaves its context manager.
-        existing_fk_signatures = _database_fk_signatures(sync_connection)
-        if sync_connection.in_transaction():
-            sync_connection.commit()
-
-        _configure_context(
-            connection=sync_connection,
-            existing_fk_signatures=existing_fk_signatures,
-        )
+        _configure_context(connection=sync_connection)
 
         try:
             with context.begin_transaction():
                 context.run_migrations()
 
-            # Depending on whether Alembic joined an existing transaction, its
-            # transaction context may not own the final commit. Explicitly commit
-            # any remaining transaction so DDL and alembic_version persist.
+            # Persist both transactional DDL and the alembic_version update when
+            # Alembic joins SQLAlchemy's implicit transaction on an async bridge.
             if sync_connection.in_transaction():
                 sync_connection.commit()
         except Exception:
