@@ -15,6 +15,7 @@ from app.config.logging import get_logger
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
 from app.core.exception_handlers import register_exception_handlers
+from app.core.middleware.cookie_request_protection import CookieRequestProtectionMiddleware
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
@@ -205,6 +206,7 @@ def create_app() -> FastAPI:
         middleware_options["allow_origin_regex"] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     app.add_middleware(PlatformLockdownMiddleware)
+    app.add_middleware(CookieRequestProtectionMiddleware)
     app.add_middleware(RequestTimingMiddleware)
     app.add_middleware(
         SecurityHeadersMiddleware,
