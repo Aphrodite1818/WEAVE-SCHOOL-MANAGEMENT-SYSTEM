@@ -51,9 +51,13 @@
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
-  /* Keep the installed-app dock low and fixed across every actor page. */
+  /*
+   * The dashboard shell is already fixed to the viewport. Anchor the PWA dock
+   * to that shell instead of the iOS visual viewport so rubber-band swipes
+   * cannot permanently move it down.
+   */
   [data-mobile-bottom-nav="true"] {
-    position: fixed !important;
+    position: absolute !important;
     left: 0 !important;
     right: 0 !important;
     top: auto !important;
@@ -66,8 +70,8 @@
     box-shadow: none !important;
     padding: 0 1rem 0.35rem !important;
     translate: none !important;
-    transform: translate3d(0, 0, 0) !important;
-    -webkit-transform: translate3d(0, 0, 0) !important;
+    transform: none !important;
+    -webkit-transform: none !important;
     touch-action: none !important;
     overscroll-behavior: none !important;
     -webkit-overflow-scrolling: auto !important;
@@ -90,6 +94,17 @@
 
   [data-mobile-bottom-nav="true"] * {
     touch-action: manipulation;
+  }
+
+  html[data-standalone-pwa="true"],
+  html[data-standalone-pwa="true"] body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
+    overscroll-behavior-y: none;
   }
 }
 
