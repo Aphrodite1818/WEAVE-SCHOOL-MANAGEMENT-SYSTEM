@@ -89,8 +89,31 @@ def _metadata_foreign_key_signature(
     )
 
 
+def _metadata_foreign_key_count() -> int:
+    return sum(
+        len(table.foreign_key_constraints) for table in Base.metadata.tables.values()
+    )
+
+
+def _database_foreign_key_count(bind: Any) -> int:
+    return int(
+        bind.execute(
+            sa.text(
+                """
+                SELECT count(*)
+                FROM pg_constraint constraint_row
+                JOIN pg_namespace namespace_row
+                  ON namespace_row.oid = constraint_row.connamespace
+                WHERE constraint_row.contype = 'f'
+                  AND namespace_row.nspname = 'public'
+                """
+            )
+        ).scalar_one()
+    )
+
+
 def _create_missing_foreign_keys(bind: Any) -> None:
-    """Install metadata foreign keys that table creation did not emit."""
+    """Install every metadata FK and verify PostgreSQL persisted it."""
 
     existing = _database_foreign_keys(bind)
     for table in Base.metadata.sorted_tables:
@@ -98,8 +121,26 @@ def _create_missing_foreign_keys(bind: Any) -> None:
             signature = _metadata_foreign_key_signature(constraint)
             if signature in existing:
                 continue
-            bind.execute(sa.schema.AddConstraint(constraint))
+
+            ddl = str(
+                sa.schema.AddConstraint(
+                    constraint,
+                    isolate_from_table=False,
+                ).compile(
+                    dialect=bind.dialect,
+                    compile_kwargs={"literal_binds": True},
+                )
+            )
+            bind.exec_driver_sql(ddl)
             existing.add(signature)
+
+    expected = _metadata_foreign_key_count()
+    actual = _database_foreign_key_count(bind)
+    if actual != expected:
+        raise RuntimeError(
+            "Incomplete baseline foreign-key installation: "
+            f"expected {expected}, PostgreSQL contains {actual}."
+        )
 
 
 def upgrade() -> None:
