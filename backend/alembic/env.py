@@ -352,9 +352,7 @@ def run_migrations_online() -> None:
         existing_fk_signatures = _database_fk_signatures(sync_connection)
         _configure_context(
             connection=sync_connection,
-            process_revision_directives=_process_revision_directives(
-                existing_fk_signatures
-            ),
+            process_revision_directives=_process_revision_directives(existing_fk_signatures),
         )
         with context.begin_transaction():
             context.run_migrations()
