@@ -14,6 +14,14 @@ const resolveRequestUrl = (input) => {
 const resolveRequestMethod = (input, init) =>
   String(init?.method || input?.method || "GET").toUpperCase();
 
+const resolveRequestPathname = (requestUrl) => {
+  try {
+    return new URL(requestUrl, window.location.origin).pathname;
+  } catch {
+    return null;
+  }
+};
+
 export function installCookieCsrfFetchGuard() {
   if (typeof window === "undefined" || window[INSTALL_FLAG]) return;
 
@@ -22,15 +30,13 @@ export function installCookieCsrfFetchGuard() {
   window.fetch = (input, init = {}) => {
     const requestUrl = resolveRequestUrl(input);
     const method = resolveRequestMethod(input, init);
-    let pathname = "";
+    const pathname = resolveRequestPathname(requestUrl);
 
-    try {
-      pathname = new URL(requestUrl, window.location.origin).pathname;
-    } catch {
-      return nativeFetch(input, init);
-    }
-
-    if (method !== "POST" || !PROTECTED_AUTH_PATHS.has(pathname)) {
+    if (
+      pathname === null ||
+      method !== "POST" ||
+      !PROTECTED_AUTH_PATHS.has(pathname)
+    ) {
       return nativeFetch(input, init);
     }
 
