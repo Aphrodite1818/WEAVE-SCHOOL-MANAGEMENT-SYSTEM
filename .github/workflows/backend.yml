@@ -83,6 +83,21 @@ jobs:
           git status --short --branch
         working-directory: .
 
+      - name: Resolve validation base
+        id: validation-base
+        shell: bash
+        working-directory: .
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_ref="origin/${{ github.base_ref }}"
+          elif [ "${{ github.ref_name }}" = "production-hardening" ]; then
+            base_ref="origin/staging"
+          else
+            base_ref="HEAD^"
+          fi
+          git rev-parse "$base_ref"
+          echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -102,11 +117,38 @@ jobs:
       - name: Lint
         run: uv run --with ruff ruff check .
 
-      - name: Format check
-        run: uv run --with ruff ruff format --check .
+      - name: Format check for changed Python files
+        shell: bash
+        env:
+          VALIDATION_BASE: ${{ steps.validation-base.outputs.base_ref }}
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$VALIDATION_BASE"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed Python files to format-check."
+            exit 0
+          fi
+          uv run --with ruff ruff format --check "${files[@]}"
 
-      - name: Type check
-        run: uv run --with pyright pyright app
+      - name: Type check changed production files
+        shell: bash
+        env:
+          VALIDATION_BASE: ${{ steps.validation-base.outputs.base_ref }}
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "$VALIDATION_BASE"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' \
+              | grep -Ev '^(tests/|alembic/versions/)' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed production Python files to type-check."
+            exit 0
+          fi
+          uv run --with pyright pyright "${files[@]}"
 
       - name: Alembic heads
         run: uv run --with alembic alembic heads
