@@ -8,6 +8,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from alembic import context
+from alembic.operations import ops
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -46,6 +47,191 @@ def _compare_type(
         if inspected_name == metadata_name:
             return False
     return None
+
+
+def _normalized_schema(value: str | None) -> str:
+    return value or "public"
+
+
+def _normalized_fk_action(value: str | None) -> str:
+    normalized = (value or "").strip().upper().replace("_", " ")
+    return "" if normalized in {"", "NO ACTION"} else normalized
+
+
+def _fk_signature(
+    *,
+    source_schema: str | None,
+    source_table: str,
+    local_columns: list[str] | tuple[str, ...],
+    referent_schema: str | None,
+    referent_table: str,
+    remote_columns: list[str] | tuple[str, ...],
+    ondelete: str | None = None,
+    onupdate: str | None = None,
+    deferrable: bool | None = None,
+    initially: str | None = None,
+) -> tuple[Any, ...]:
+    return (
+        _normalized_schema(source_schema),
+        source_table,
+        tuple(local_columns),
+        _normalized_schema(referent_schema),
+        referent_table,
+        tuple(remote_columns),
+        _normalized_fk_action(ondelete),
+        _normalized_fk_action(onupdate),
+        bool(deferrable),
+        (initially or "").strip().upper(),
+    )
+
+
+def _create_fk_op_signature(operation: ops.CreateForeignKeyOp) -> tuple[Any, ...]:
+    return _fk_signature(
+        source_schema=operation.kw.get("source_schema"),
+        source_table=operation.source_table,
+        local_columns=operation.local_cols,
+        referent_schema=operation.kw.get("referent_schema"),
+        referent_table=operation.referent_table,
+        remote_columns=operation.remote_cols,
+        ondelete=operation.kw.get("ondelete"),
+        onupdate=operation.kw.get("onupdate"),
+        deferrable=operation.kw.get("deferrable"),
+        initially=operation.kw.get("initially"),
+    )
+
+
+def _constraint_fk_signature(
+    constraint: sa.ForeignKeyConstraint,
+) -> tuple[Any, ...]:
+    elements = tuple(constraint.elements)
+    referred_table = elements[0].column.table
+    return _fk_signature(
+        source_schema=constraint.table.schema,
+        source_table=constraint.table.name,
+        local_columns=tuple(column.name for column in constraint.columns),
+        referent_schema=referred_table.schema,
+        referent_table=referred_table.name,
+        remote_columns=tuple(element.column.name for element in elements),
+        ondelete=elements[0].ondelete if elements else None,
+        onupdate=elements[0].onupdate if elements else None,
+        deferrable=constraint.deferrable,
+        initially=constraint.initially,
+    )
+
+
+def _database_fk_signatures(connection: Any) -> set[tuple[Any, ...]]:
+    inspector = sa.inspect(connection)
+    available_tables = set(inspector.get_table_names(schema="public"))
+    signatures: set[tuple[Any, ...]] = set()
+
+    for table in target_metadata.tables.values():
+        if table.name not in available_tables:
+            continue
+        schema = table.schema or "public"
+        for reflected_fk in inspector.get_foreign_keys(table.name, schema=schema):
+            options = reflected_fk.get("options") or {}
+            referred_table = reflected_fk.get("referred_table")
+            if not referred_table:
+                continue
+            signatures.add(
+                _fk_signature(
+                    source_schema=schema,
+                    source_table=table.name,
+                    local_columns=reflected_fk.get("constrained_columns") or (),
+                    referent_schema=reflected_fk.get("referred_schema"),
+                    referent_table=referred_table,
+                    remote_columns=reflected_fk.get("referred_columns") or (),
+                    ondelete=options.get("ondelete"),
+                    onupdate=options.get("onupdate"),
+                    deferrable=options.get("deferrable"),
+                    initially=options.get("initially"),
+                )
+            )
+
+    return signatures
+
+
+def _filter_duplicate_fk_creates(
+    container: ops.OpContainer,
+    existing_signatures: set[tuple[Any, ...]],
+    removed_signatures: set[tuple[Any, ...]],
+) -> None:
+    retained: list[ops.MigrateOperation] = []
+
+    for operation in container.ops:
+        if isinstance(operation, ops.OpContainer):
+            _filter_duplicate_fk_creates(
+                operation,
+                existing_signatures,
+                removed_signatures,
+            )
+            if operation.ops:
+                retained.append(operation)
+            continue
+
+        if isinstance(operation, ops.CreateForeignKeyOp):
+            signature = _create_fk_op_signature(operation)
+            if signature in existing_signatures:
+                removed_signatures.add(signature)
+                continue
+
+        retained.append(operation)
+
+    container.ops[:] = retained
+
+
+def _filter_reverse_fk_drops(
+    container: ops.OpContainer,
+    removed_signatures: set[tuple[Any, ...]],
+) -> None:
+    retained: list[ops.MigrateOperation] = []
+
+    for operation in container.ops:
+        if isinstance(operation, ops.OpContainer):
+            _filter_reverse_fk_drops(operation, removed_signatures)
+            if operation.ops:
+                retained.append(operation)
+            continue
+
+        if (
+            isinstance(operation, ops.DropConstraintOp)
+            and operation.constraint_type == "foreignkey"
+        ):
+            try:
+                signature = _constraint_fk_signature(operation.to_constraint())
+            except (ValueError, sa.exc.SQLAlchemyError):
+                signature = None
+            if signature in removed_signatures:
+                continue
+
+        retained.append(operation)
+
+    container.ops[:] = retained
+
+
+def _process_revision_directives(
+    existing_fk_signatures: set[tuple[Any, ...]],
+):
+    def process_revision_directives(
+        migration_context: Any,
+        revision: Any,
+        directives: list[Any],
+    ) -> None:
+        _ = migration_context, revision
+        for script in directives:
+            removed_signatures: set[tuple[Any, ...]] = set()
+            for upgrade_ops in script.upgrade_ops_list:
+                _filter_duplicate_fk_creates(
+                    upgrade_ops,
+                    existing_fk_signatures,
+                    removed_signatures,
+                )
+            if not removed_signatures:
+                continue
+            for downgrade_ops in script.downgrade_ops_list:
+                _filter_reverse_fk_drops(downgrade_ops, removed_signatures)
+
+    return process_revision_directives
 
 
 def _schema_neutral_index_name(name: str | None) -> str:
@@ -115,7 +301,11 @@ def _include_object(
     return True
 
 
-def _configure_context(*, connection: Any | None = None) -> None:
+def _configure_context(
+    *,
+    connection: Any | None = None,
+    process_revision_directives: Any | None = None,
+) -> None:
     """Apply one comparison policy to online and offline migration runs."""
 
     options: dict[str, Any] = {
@@ -127,6 +317,9 @@ def _configure_context(*, connection: Any | None = None) -> None:
         "compare_server_default": False,
         "include_object": _include_object,
     }
+    if process_revision_directives is not None:
+        options["process_revision_directives"] = process_revision_directives
+
     if connection is None:
         options.update(
             {
@@ -156,7 +349,13 @@ def run_migrations_online() -> None:
     config.set_main_option("sqlalchemy.url", database_url)
 
     def do_run_migrations(sync_connection: Any) -> None:
-        _configure_context(connection=sync_connection)
+        existing_fk_signatures = _database_fk_signatures(sync_connection)
+        _configure_context(
+            connection=sync_connection,
+            process_revision_directives=_process_revision_directives(
+                existing_fk_signatures
+            ),
+        )
         with context.begin_transaction():
             context.run_migrations()
 
