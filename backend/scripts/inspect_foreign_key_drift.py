@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+from pathlib import Path
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-import app.models  # noqa: F401
-from app.config.settings import settings
-from app.shared.base_model import Base
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+import app.models  # noqa: E402,F401
+from app.config.settings import settings  # noqa: E402
+from app.shared.base_model import Base  # noqa: E402
 
 
 def _schema(value: str | None) -> str:
