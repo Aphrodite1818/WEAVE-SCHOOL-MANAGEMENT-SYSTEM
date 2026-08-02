@@ -1,23 +1,30 @@
-/* Mobile directory cards: keep admin student, parent, and teacher cards inside the viewport. */
+/* Mobile and installed-PWA directory cards: full-width cards in a bounded, scrollable list. */
 @media (max-width: 639px) {
   .directory-card-grid.mobile-scroll-list {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
     grid-auto-flow: row !important;
     grid-auto-columns: auto !important;
+    align-content: start;
     width: 100% !important;
     max-width: 100% !important;
+    max-height: min(64dvh, 42rem);
     margin-inline: 0 !important;
-    padding-inline: 0 !important;
-    overflow: visible !important;
-    scroll-snap-type: none !important;
+    padding: 0 0.25rem 0.5rem 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    scroll-snap-type: y proximity !important;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
   }
 
   .directory-card-grid.mobile-scroll-list > * {
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
-    scroll-snap-align: none !important;
+    scroll-snap-align: start !important;
+    scroll-snap-stop: normal;
   }
 
   .directory-card-grid .card-base {
@@ -36,6 +43,12 @@
   .directory-card-grid .card-base h3,
   .directory-card-grid .card-base span {
     overflow-wrap: anywhere;
+  }
+
+  html[data-standalone-pwa="true"] .directory-card-grid.mobile-scroll-list {
+    max-height: calc(100dvh - 18rem - env(safe-area-inset-bottom, 0px));
+    min-height: 14rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
 
