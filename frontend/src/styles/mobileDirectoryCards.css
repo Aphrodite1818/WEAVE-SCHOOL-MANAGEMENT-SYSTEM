@@ -50,6 +50,22 @@
     min-height: 14rem;
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+    position: fixed !important;
+    inset-inline: 0 !important;
+    top: auto !important;
+    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: 0 !important;
+    transform: translate3d(0, 0, 0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+    touch-action: none !important;
+    overscroll-behavior: none !important;
+    contain: layout paint;
+    isolation: isolate;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 @media (max-width: 374px) {
