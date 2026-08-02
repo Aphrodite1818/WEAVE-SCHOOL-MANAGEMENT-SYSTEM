@@ -146,7 +146,9 @@ async def main() -> None:
 
 asyncio.run(main())
 PY
-run_stage "required-table assertion" uv run python /tmp/assert_baseline_tables.py
+run_stage \
+  "required-table assertion" \
+  env PYTHONPATH="$PWD" uv run python /tmp/assert_baseline_tables.py
 
 rm -f \
   generate_explicit_baseline.py \
