@@ -83,8 +83,7 @@ def _metadata_foreign_key_signatures() -> set[tuple[Any, ...]]:
     signatures: set[tuple[Any, ...]] = set()
     for table in target_metadata.tables.values():
         signatures.update(
-            _foreign_key_signature(constraint)
-            for constraint in table.foreign_key_constraints
+            _foreign_key_signature(constraint) for constraint in table.foreign_key_constraints
         )
     return signatures
 
