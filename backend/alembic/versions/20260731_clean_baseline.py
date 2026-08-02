@@ -3,6 +3,11 @@
 This revision intentionally replaces the previous development migration chain.
 It is for fresh databases only: drop/recreate or migrate data manually before
 using it against an existing database.
+
+The baseline currently builds the first production schema from the registered
+SQLAlchemy metadata. It must be replaced with explicit Alembic operations before
+adding the next schema revision so future fresh databases cannot inherit model
+changes twice.
 """
 
 from __future__ import annotations
@@ -22,10 +27,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    """Create the complete initial schema on a fresh database."""
+
     bind = op.get_bind()
     Base.metadata.create_all(bind=bind)
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    Base.metadata.drop_all(bind=bind)
+    """Refuse an operation that would erase the complete application schema."""
+
+    raise RuntimeError(
+        "Downgrading below the Weave baseline is not supported. "
+        "Restore a backup or recreate the database explicitly."
+    )
