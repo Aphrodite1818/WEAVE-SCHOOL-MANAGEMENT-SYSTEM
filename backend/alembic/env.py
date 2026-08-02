@@ -194,9 +194,7 @@ def _include_object(existing_fk_signatures: set[tuple[Any, ...]]):
 
         if type_ == "unique_constraint" and isinstance(obj, sa.UniqueConstraint):
             columns = tuple(column.name for column in obj.columns)
-            primary_key_columns = tuple(
-                column.name for column in obj.table.primary_key.columns
-            )
+            primary_key_columns = tuple(column.name for column in obj.table.primary_key.columns)
             if columns == ("id",) and primary_key_columns == ("id",):
                 return False
 
