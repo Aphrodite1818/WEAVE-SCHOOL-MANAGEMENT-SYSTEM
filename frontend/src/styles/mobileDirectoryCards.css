@@ -1,0 +1,46 @@
+/* Mobile directory cards: keep admin student, parent, and teacher cards inside the viewport. */
+@media (max-width: 639px) {
+  .directory-card-grid.mobile-scroll-list {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-flow: row !important;
+    grid-auto-columns: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-inline: 0 !important;
+    padding-inline: 0 !important;
+    overflow: visible !important;
+    scroll-snap-type: none !important;
+  }
+
+  .directory-card-grid.mobile-scroll-list > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    scroll-snap-align: none !important;
+  }
+
+  .directory-card-grid .card-base {
+    min-height: auto !important;
+    padding: 1rem !important;
+  }
+
+  .directory-card-grid .card-base button,
+  .directory-card-grid .card-base .btn-base {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .directory-card-grid .card-base p,
+  .directory-card-grid .card-base h3,
+  .directory-card-grid .card-base span {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 374px) {
+  .directory-card-grid .card-base {
+    padding: 0.875rem !important;
+  }
+}
