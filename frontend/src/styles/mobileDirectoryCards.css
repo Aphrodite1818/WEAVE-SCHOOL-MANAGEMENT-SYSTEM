@@ -51,21 +51,36 @@
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
+  /* Float the installed-app nav just above the iOS home indicator, like a native app dock. */
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
     position: fixed !important;
     inset-inline: 0 !important;
     top: auto !important;
     bottom: 0 !important;
+    z-index: 70 !important;
     margin: 0 !important;
-    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+    border-top: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 0.75rem calc(env(safe-area-inset-bottom, 0px) + 0.45rem) !important;
     translate: none !important;
-    transform: none !important;
-    -webkit-transform: none !important;
+    transform: translate3d(0, 0, 0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
     touch-action: none !important;
     overscroll-behavior: none !important;
     isolation: isolate;
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
+    max-width: 30rem !important;
+    border: 1px solid rgb(var(--color-border) / 0.72);
+    border-radius: 2rem !important;
+    background: rgb(var(--color-surface) / 0.96) !important;
+    box-shadow: 0 12px 30px rgb(15 23 42 / 0.16) !important;
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] * {
