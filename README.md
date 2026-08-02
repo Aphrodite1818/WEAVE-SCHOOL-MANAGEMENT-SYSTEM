@@ -172,7 +172,7 @@ cd backend
 uv run alembic upgrade head
 ```
 
-The current clean baseline is intended only for the first fresh production database. Before adding the next schema revision, replace its dynamic metadata creation with explicit Alembic operations and then treat the baseline as immutable.
+`20260731_clean_baseline` is a frozen, explicit description of the initial production schema. After it has been used by staging or production, never edit or regenerate it. Every later model or schema change must be represented by a new forward Alembic revision whose `down_revision` points to the current head.
 
 Before production rollout, run migrations against a current production-like database, verify critical workflows, and confirm backup and restore procedures.
 
