@@ -51,7 +51,7 @@
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
-  /* Shared installed-app dock position for every actor and dashboard page. */
+  /* Keep the installed-app dock low and fixed across every actor page. */
   [data-mobile-bottom-nav="true"] {
     position: fixed !important;
     left: 0 !important;
@@ -64,7 +64,7 @@
     border: 0 !important;
     background: transparent !important;
     box-shadow: none !important;
-    padding: 0 1rem calc(max(0.35rem, env(safe-area-inset-bottom, 0px)) + 0.55rem) !important;
+    padding: 0 1rem 0.35rem !important;
     translate: none !important;
     transform: translate3d(0, 0, 0) !important;
     -webkit-transform: translate3d(0, 0, 0) !important;
