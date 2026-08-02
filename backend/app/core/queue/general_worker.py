@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from arq import cron
@@ -10,6 +11,7 @@ from arq import cron
 import app.models  # noqa: F401
 
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402
+from app.config.logging import get_logger  # noqa: E402
 from app.core.queue.arq import (  # noqa: E402
     DEFAULT_EMAIL_OUTBOX_BATCH_SIZE,
     GENERAL_QUEUE_NAME,
@@ -22,6 +24,12 @@ from app.modules.subscriptions.plan_change_service import (  # noqa: E402
 )
 from app.modules.subscriptions.service import (  # noqa: E402
     SubscriptionLifecycleService,
+)
+
+
+logger = get_logger(__name__)
+SUBSCRIPTION_RECONCILIATION_SUCCESS_KEY = (
+    "weave:ops:subscription-reconciliation:last-success"
 )
 
 
@@ -45,7 +53,12 @@ async def process_attendance_retention_job(
             tenant_id=parsed_tenant_id,
         )
         await db.commit()
-        return result
+
+    logger.info(
+        "attendance.retention.completed",
+        extra={"tenant_id": tenant_id, **result},
+    )
+    return result
 
 
 async def poll_attendance_retention(ctx: dict[str, Any]) -> dict[str, int]:
@@ -57,15 +70,25 @@ async def process_subscription_lifecycle_job(
 ) -> dict[str, int]:
     """Advance expired billing periods and due scheduled downgrades."""
 
-    _ = ctx
     async with AsyncSessionLocal() as db:
         lifecycle = await SubscriptionLifecycleService.sync_expired_subscriptions(db=db)
         plan_changes = await SubscriptionPlanChangeService.sync_due_changes(db=db)
-        return {
+        result = {
             **lifecycle,
             "plan_changes_awaiting_payment": plan_changes["awaiting_payment"],
             "plan_changes_blocked": plan_changes["blocked"],
         }
+
+    completed_at = datetime.now(timezone.utc).isoformat()
+    redis = ctx.get("redis")
+    if redis is not None:
+        await redis.set(SUBSCRIPTION_RECONCILIATION_SUCCESS_KEY, completed_at)
+
+    logger.info(
+        "subscription.reconciliation.completed",
+        extra={"completed_at": completed_at, **result},
+    )
+    return result
 
 
 async def poll_subscription_lifecycle(ctx: dict[str, Any]) -> dict[str, int]:
