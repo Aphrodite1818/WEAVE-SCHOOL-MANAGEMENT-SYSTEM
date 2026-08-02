@@ -12,12 +12,12 @@ Weave is a multi-tenant school management SaaS for running core school operation
 
 ## Architecture
 
-- `backend/` contains the FastAPI application, SQLAlchemy models/repositories, Pydantic schemas, services, routers, Alembic migrations, Redis cache utilities, and dedicated ARQ workers.
+- `backend/` contains the FastAPI application, SQLAlchemy models/repositories, Pydantic schemas, services, routers, Alembic migrations, Redis cache utilities, and ARQ workers.
 - `frontend/` contains the React application built with Vite, React Router, feature modules, shared UI, and service clients.
 - PostgreSQL is the system of record.
 - Redis supports caching, rate limiting, background queues, and worker health keys.
 - Alembic owns schema migrations.
-- Railway hosts the backend API, PostgreSQL, Redis, and dedicated worker services.
+- Railway hosts the backend API, PostgreSQL, Redis, and worker services.
 - Vercel hosts the frontend.
 
 ## Repository Structure
@@ -91,27 +91,29 @@ cd backend
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
-### Start Dedicated ARQ Workers
+### Start ARQ Workers
 
-Each worker consumes a different queue. Running only the legacy worker alias starts email processing and does not process the other queues.
+The general worker handles lightweight and recurring work. The heavy worker serializes imports and progression so they cannot compete for database capacity.
 
 ```bash
 cd backend
 
-# Email outbox
-uv run arq app.core.queue.email_worker.WorkerSettings
+# Email delivery, attendance retention, and subscription reconciliation
+uv run arq app.core.queue.general_worker.WorkerSettings
 
-# Confirmed student bulk imports
-uv run arq app.core.queue.bulk_import_worker.WorkerSettings
-
-# Academic-session progression
-uv run arq app.core.queue.progression_worker.WorkerSettings
-
-# Attendance retention and scheduled attendance work
-uv run arq app.core.queue.attendance_worker.WorkerSettings
+# Confirmed student bulk imports and academic-session progression
+uv run arq app.core.queue.heavy_worker.WorkerSettings
 ```
 
-In production, deploy these as four separate Railway worker services with restart policies and health monitoring. Configure conservative database pool values independently for the API and every worker.
+Recommended initial database pool values:
+
+```text
+API:            DB_POOL_SIZE=5  DB_MAX_OVERFLOW=3
+General worker: DB_POOL_SIZE=2  DB_MAX_OVERFLOW=1
+Heavy worker:   DB_POOL_SIZE=1  DB_MAX_OVERFLOW=1
+```
+
+See `docs/background-workers.md` for the deployment sequence and health keys.
 
 ### Start the Frontend
 
@@ -128,7 +130,7 @@ npm run dev
 cd backend
 uv run --with ruff ruff check .
 uv run --with ruff ruff format --check .
-uv run --with pyright pyright
+uv run --with pyright pyright app
 uv run alembic heads
 uv run alembic history
 uv run alembic upgrade head
@@ -136,6 +138,8 @@ uv run alembic check
 uv run pytest tests/unit
 uv run pytest tests/integration
 uv run python -c "from app.main import app; print(app.title)"
+uv run python -c "from app.core.queue.general_worker import WorkerSettings; print(WorkerSettings.queue_name)"
+uv run python -c "from app.core.queue.heavy_worker import WorkerSettings; print(WorkerSettings.queue_name)"
 ```
 
 ### Frontend
@@ -152,12 +156,14 @@ npm run check
 
 - `/health/live` proves that the API process is running.
 - `/health` and `/health/ready` verify PostgreSQL and Redis and return HTTP 503 when either dependency is unavailable.
+- `weave:queue:general:health` proves the general worker is alive.
+- `weave:queue:heavy:health` proves the heavy worker is alive.
 
 Use `/health/ready` for deployment readiness and `/health/live` for process liveness.
 
 ## PostgreSQL and Alembic
 
-Alembic migrations live in `backend/alembic/versions/` and must be treated as protected history. Do not delete, rename, rewrite, squash, or rebase existing migration files. Create forward migrations for schema changes.
+Alembic migrations live in `backend/alembic/versions/` and must be treated as protected history after the first production database is created. Create forward migrations for later schema changes.
 
 For a new database:
 
@@ -166,7 +172,9 @@ cd backend
 uv run alembic upgrade head
 ```
 
-Before production rollout, run migrations against a current production-like database clone, verify critical workflows, and confirm rollback procedures.
+The current clean baseline is intended only for the first fresh production database. Before adding the next schema revision, replace its dynamic metadata creation with explicit Alembic operations and then treat the baseline as immutable.
+
+Before production rollout, run migrations against a current production-like database, verify critical workflows, and confirm backup and restore procedures.
 
 ## Production Configuration
 
@@ -180,6 +188,10 @@ Production-like environments fail startup when required infrastructure or securi
 - durable R2 media storage in production;
 - conservative database pool sizes for each deployed process.
 
+Production logs are emitted as single-line JSON to standard output for Railway collection. Development keeps readable console output and rotating `backend/logs/app.log` files.
+
+Refresh and logout requests use the HttpOnly refresh cookie and require both an approved browser origin and the `X-Weave-CSRF: 1` request header.
+
 Student setup codes created by bulk import are encrypted at rest and available for access-slip generation only for the configured retention window.
 
 ## Deployment
@@ -187,22 +199,22 @@ Student setup codes created by bulk import are encrypted at rest and available f
 - Backend API: Railway
 - PostgreSQL: Railway
 - Redis: Railway
-- Email worker: Railway
-- Bulk-import worker: Railway
-- Session-progression worker: Railway
-- Attendance worker: Railway
+- General worker: Railway
+- Heavy worker: Railway
 - Frontend: Vercel
 
 ### Release Checklist
 
 1. Remove or rotate any credentials that have appeared in repository history.
 2. Configure all production environment variables and verify startup validation.
-3. Run backend and frontend CI, including migration upgrades and integration tests.
-4. Deploy migrations before application processes that require the new schema.
-5. Deploy the API and all four workers.
-6. Verify `/health/ready` and each ARQ worker health key.
-7. Run authentication, invitation, student creation, bulk-import, attendance, academic-session, report-card, and notification smoke tests in staging.
-8. Promote staging only after test evidence and rollback steps are recorded.
+3. Run backend and frontend CI, including fresh migration upgrades and integration tests.
+4. Deploy migrations before application processes that require the schema.
+5. Deploy the API, general worker, and heavy worker.
+6. Verify `/health/ready` and both ARQ worker health keys.
+7. Confirm the subscription reconciliation cron executes successfully.
+8. Run authentication, invitation, student creation, bulk-import, academic-session, report-card, and notification smoke tests in staging.
+9. Verify Railway receives structured API and worker logs with service and release context.
+10. Promote staging only after test evidence and rollback steps are recorded.
 
 ## Branching and Pull Requests
 
