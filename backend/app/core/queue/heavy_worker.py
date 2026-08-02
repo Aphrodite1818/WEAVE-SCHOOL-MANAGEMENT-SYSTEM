@@ -10,6 +10,7 @@ from uuid import UUID
 import app.models  # noqa: F401
 
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402
+from app.config.logging import get_logger  # noqa: E402
 from app.core.queue.arq import HEAVY_QUEUE_NAME, get_arq_redis_settings  # noqa: E402
 from app.core.queue.context import (  # noqa: E402
     reset_current_bulk_import_job_id,
@@ -27,6 +28,9 @@ from app.modules.student_academics.session_closure_service import (  # noqa: E40
 )
 
 
+logger = get_logger(__name__)
+
+
 async def process_bulk_import_job(
     ctx: dict[str, Any],
     job_id: str,
@@ -38,17 +42,33 @@ async def process_bulk_import_job(
 
     _ = ctx
     context_token = set_current_bulk_import_job_id(job_id)
+    logger.info(
+        "bulk_import.started",
+        extra={"job_id": job_id, "tenant_id": tenant_id, "actor_id": actor_id},
+    )
     try:
         async with AsyncSessionLocal() as db:
-            return await BulkImportLiveService.process_confirmed_import_job(
+            result = await BulkImportLiveService.process_confirmed_import_job(
                 db=db,
                 tenant_id=UUID(tenant_id),
                 actor_id=UUID(actor_id),
                 job_id=UUID(job_id),
                 notify_on_completion=notify_on_completion,
             )
+    except Exception:
+        logger.exception(
+            "bulk_import.failed",
+            extra={"job_id": job_id, "tenant_id": tenant_id, "actor_id": actor_id},
+        )
+        raise
     finally:
         reset_current_bulk_import_job_id(context_token)
+
+    logger.info(
+        "bulk_import.completed",
+        extra={"job_id": job_id, "tenant_id": tenant_id, **result},
+    )
+    return result
 
 
 async def process_session_progression_job(
@@ -63,9 +83,14 @@ async def process_session_progression_job(
     parsed_tenant_id = uuid.UUID(tenant_id)
     failure_exception: Exception | None = None
 
+    logger.info(
+        "session_progression.started",
+        extra={"run_id": run_id, "tenant_id": tenant_id},
+    )
+
     async with AsyncSessionLocal() as db:
         try:
-            return await SessionClosureService.process_progression_run(
+            result = await SessionClosureService.process_progression_run(
                 db,
                 tenant_id=parsed_tenant_id,
                 run_id=parsed_run_id,
@@ -73,9 +98,25 @@ async def process_session_progression_job(
         except Exception as exc:
             failure_exception = exc
             await db.rollback()
+        else:
+            logger.info(
+                "session_progression.completed",
+                extra={"run_id": run_id, "tenant_id": tenant_id, **result},
+            )
+            return result
 
     if failure_exception is None:
         raise RuntimeError("Session progression failed without an exception.")
+
+    logger.exception(
+        "session_progression.failed",
+        exc_info=(
+            type(failure_exception),
+            failure_exception,
+            failure_exception.__traceback__,
+        ),
+        extra={"run_id": run_id, "tenant_id": tenant_id},
+    )
 
     async with AsyncSessionLocal() as failure_db:
         run = await StudentProgressionRepository.get_run_by_id(
