@@ -257,12 +257,32 @@ def run_migrations_online() -> None:
     config.set_main_option("sqlalchemy.url", database_url)
 
     def do_run_migrations(sync_connection: Any) -> None:
+        # Reflection starts an implicit SQLAlchemy transaction before Alembic
+        # configures its own migration transaction. Close that read-only
+        # transaction first so the migration transaction is not rolled back when
+        # the async connection leaves its context manager.
+        existing_fk_signatures = _database_fk_signatures(sync_connection)
+        if sync_connection.in_transaction():
+            sync_connection.commit()
+
         _configure_context(
             connection=sync_connection,
-            existing_fk_signatures=_database_fk_signatures(sync_connection),
+            existing_fk_signatures=existing_fk_signatures,
         )
-        with context.begin_transaction():
-            context.run_migrations()
+
+        try:
+            with context.begin_transaction():
+                context.run_migrations()
+
+            # Depending on whether Alembic joined an existing transaction, its
+            # transaction context may not own the final commit. Explicitly commit
+            # any remaining transaction so DDL and alembic_version persist.
+            if sync_connection.in_transaction():
+                sync_connection.commit()
+        except Exception:
+            if sync_connection.in_transaction():
+                sync_connection.rollback()
+            raise
 
     async def run_async_migrations() -> None:
         connectable = async_engine_from_config(
