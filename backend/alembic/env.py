@@ -106,9 +106,6 @@ def _include_object(
     if type_ == "table" and name == "alembic_version":
         return False
 
-    if type_ == "foreign_key_constraint":
-        return False
-
     if type_ == "index" and isinstance(obj, sa.Index) and compare_to is None:
         if obj.name != _schema_neutral_index_name(obj.name):
             return False
