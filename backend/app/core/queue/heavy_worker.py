@@ -1,19 +1,22 @@
-"""Dedicated ARQ worker for academic-session student progression."""
+"""ARQ worker for database-heavy bulk import and progression jobs."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 import app.models  # noqa: F401
 
-
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402
-from app.core.queue.arq import (  # noqa: E402
-    SESSION_PROGRESSION_QUEUE_NAME,
-    get_arq_redis_settings,
+from app.config.logging import get_logger  # noqa: E402
+from app.core.queue.arq import HEAVY_QUEUE_NAME, get_arq_redis_settings  # noqa: E402
+from app.core.queue.context import (  # noqa: E402
+    reset_current_bulk_import_job_id,
+    set_current_bulk_import_job_id,
 )
+from app.modules.bulk_imports.live_service import BulkImportLiveService  # noqa: E402
 from app.modules.student_academics.lifecycle_repository import (  # noqa: E402
     StudentProgressionRepository,
 )
@@ -25,32 +28,69 @@ from app.modules.student_academics.session_closure_service import (  # noqa: E40
 )
 
 
+logger = get_logger(__name__)
+
+
+async def process_bulk_import_job(
+    ctx: dict[str, Any],
+    job_id: str,
+    tenant_id: str,
+    actor_id: str,
+    notify_on_completion: bool = True,
+) -> dict[str, int | str]:
+    """Process one confirmed bulk-import job."""
+
+    _ = ctx
+    context_token = set_current_bulk_import_job_id(job_id)
+    logger.info(
+        "bulk_import.started",
+        extra={"job_id": job_id, "tenant_id": tenant_id, "actor_id": actor_id},
+    )
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await BulkImportLiveService.process_confirmed_import_job(
+                db=db,
+                tenant_id=UUID(tenant_id),
+                actor_id=UUID(actor_id),
+                job_id=UUID(job_id),
+                notify_on_completion=notify_on_completion,
+            )
+    except Exception:
+        logger.exception(
+            "bulk_import.failed",
+            extra={"job_id": job_id, "tenant_id": tenant_id, "actor_id": actor_id},
+        )
+        raise
+    finally:
+        reset_current_bulk_import_job_id(context_token)
+
+    logger.info(
+        "bulk_import.completed",
+        extra={"job_id": job_id, "tenant_id": tenant_id, **result},
+    )
+    return result
+
+
 async def process_session_progression_job(
     ctx: dict[str, Any],
     run_id: str,
     tenant_id: str,
 ) -> dict[str, int | str]:
-    """Progress all eligible students without closing the academic session.
-
-    Responsibilities:
-    - validate that the session is still in CLOSING;
-    - promote students into next-session enrollments;
-    - graduate terminal-class students;
-    - preserve historical enrollment records;
-    - skip ineligible or held students;
-    - isolate per-student failures;
-    - persist a complete progression audit;
-    - notify the tenant when progression finishes;
-    - leave final session closure to the tenant administrator.
-    """
+    """Progress eligible students while preserving the existing lifecycle rules."""
 
     _ = ctx
     parsed_run_id = uuid.UUID(run_id)
     parsed_tenant_id = uuid.UUID(tenant_id)
     failure_exception: Exception | None = None
+
+    logger.info(
+        "session_progression.started",
+        extra={"run_id": run_id, "tenant_id": tenant_id},
+    )
+
     async with AsyncSessionLocal() as db:
         try:
-            return await SessionClosureService.process_progression_run(
+            result = await SessionClosureService.process_progression_run(
                 db,
                 tenant_id=parsed_tenant_id,
                 run_id=parsed_run_id,
@@ -58,10 +98,26 @@ async def process_session_progression_job(
         except Exception as exc:
             failure_exception = exc
             await db.rollback()
+        else:
+            logger.info(
+                "session_progression.completed",
+                extra={"run_id": run_id, "tenant_id": tenant_id, **result},
+            )
+            return result
 
-    # Persist terminal worker failure outside the rolled-back processing transaction.
     if failure_exception is None:
         raise RuntimeError("Session progression failed without an exception.")
+
+    logger.exception(
+        "session_progression.failed",
+        exc_info=(
+            type(failure_exception),
+            failure_exception,
+            failure_exception.__traceback__,
+        ),
+        extra={"run_id": run_id, "tenant_id": tenant_id},
+    )
+
     async with AsyncSessionLocal() as failure_db:
         run = await StudentProgressionRepository.get_run_by_id(
             failure_db,
@@ -92,21 +148,24 @@ async def process_session_progression_job(
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
+    """Dispose this worker process's database engine."""
+
     _ = ctx
     await engine.dispose()
 
 
 class WorkerSettings:
-    """Settings for the dedicated session-progression worker."""
+    """Settings for serialized database-heavy jobs."""
 
     redis_settings = get_arq_redis_settings()
-    queue_name = SESSION_PROGRESSION_QUEUE_NAME
-    functions = [process_session_progression_job]
+    queue_name = HEAVY_QUEUE_NAME
+    functions = [
+        process_bulk_import_job,
+        process_session_progression_job,
+    ]
     on_shutdown = shutdown
-
-    # Session progression is intentionally serialized per worker process.
     max_jobs = 1
     job_timeout = 3600
     keep_result = 3600
     max_tries = 3
-    health_check_key = f"{SESSION_PROGRESSION_QUEUE_NAME}:health"
+    health_check_key = f"{HEAVY_QUEUE_NAME}:health"

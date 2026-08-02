@@ -7,8 +7,10 @@ import './styles/notificationDropdown.css'
 import './styles/studentDashboardCleanup.css'
 import './styles/mobileDirectoryCards.css'
 import App from './App.jsx'
+import { installCookieCsrfFetchGuard } from './services/installCookieCsrfFetchGuard'
 import { applyAccessibilityPreferences, getSavedAccessibilityPreferences, syncSystemThemePreference } from './utils/accessibilityPreferences'
 
+installCookieCsrfFetchGuard();
 applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 syncSystemThemePreference();
 

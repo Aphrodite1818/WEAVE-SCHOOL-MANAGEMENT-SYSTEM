@@ -6,23 +6,32 @@ on:
       - "backend/app/modules/subscriptions/**"
       - "backend/app/modules/report_cards/**"
       - "backend/app/modules/student_academics/bulk_results_router.py"
-      - "backend/app/core/queue/subscription_worker.py"
+      - "backend/app/core/queue/general_worker.py"
       - "backend/tests/unit/subscriptions/**"
       - "backend/tests/unit/report_cards/test_report_card_print_security.py"
+      - "backend/tests/unit/test_worker_settings.py"
       - ".github/workflows/subscription-hardening.yml"
   push:
     branches:
-      - Attendance
+      - production-hardening
       - staging
       - master
     paths:
       - "backend/app/modules/subscriptions/**"
       - "backend/app/modules/report_cards/**"
       - "backend/app/modules/student_academics/bulk_results_router.py"
-      - "backend/app/core/queue/subscription_worker.py"
+      - "backend/app/core/queue/general_worker.py"
       - "backend/tests/unit/subscriptions/**"
       - "backend/tests/unit/report_cards/test_report_card_print_security.py"
+      - "backend/tests/unit/test_worker_settings.py"
       - ".github/workflows/subscription-hardening.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscriptions-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-subscriptions:
@@ -69,7 +78,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - name: Checkout
+      - name: Checkout triggering commit
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -94,9 +103,10 @@ jobs:
             app/modules/report_cards/fixed_router.py \
             app/modules/report_cards/bulk_router.py \
             app/modules/student_academics/bulk_results_router.py \
-            app/core/queue/subscription_worker.py \
+            app/core/queue/general_worker.py \
             tests/unit/subscriptions \
-            tests/unit/report_cards/test_report_card_print_security.py
+            tests/unit/report_cards/test_report_card_print_security.py \
+            tests/unit/test_worker_settings.py
 
       - name: Check hardening formatting
         run: |
@@ -107,9 +117,10 @@ jobs:
             app/modules/report_cards/fixed_router.py \
             app/modules/report_cards/bulk_router.py \
             app/modules/student_academics/bulk_results_router.py \
-            app/core/queue/subscription_worker.py \
+            app/core/queue/general_worker.py \
             tests/unit/subscriptions \
-            tests/unit/report_cards/test_report_card_print_security.py
+            tests/unit/report_cards/test_report_card_print_security.py \
+            tests/unit/test_worker_settings.py
 
       - name: Import application and assert routes
         run: |

@@ -14,11 +14,8 @@ from arq.connections import RedisSettings
 from app.config.settings import settings
 
 
-EMAIL_QUEUE_NAME = "weave:queue:email"
-BULK_IMPORT_QUEUE_NAME = "weave:queue:bulk-import"
-SESSION_PROGRESSION_QUEUE_NAME = "weave:queue:session-progression"
-ATTENDANCE_QUEUE_NAME = "weave:queue:attendance"
-SUBSCRIPTION_QUEUE_NAME = "weave:queue:subscriptions"
+GENERAL_QUEUE_NAME = "weave:queue:general"
+HEAVY_QUEUE_NAME = "weave:queue:heavy"
 DEFAULT_EMAIL_OUTBOX_BATCH_SIZE = 20
 
 
@@ -48,13 +45,13 @@ async def enqueue_email_outbox_batch(
     safe_batch_size = max(1, min(int(batch_size), DEFAULT_EMAIL_OUTBOX_BATCH_SIZE))
     redis = await create_pool(
         get_arq_redis_settings(),
-        default_queue_name=EMAIL_QUEUE_NAME,
+        default_queue_name=GENERAL_QUEUE_NAME,
     )
     try:
         job = await redis.enqueue_job(
             "process_email_outbox_batch",
             safe_batch_size,
-            _queue_name=EMAIL_QUEUE_NAME,
+            _queue_name=GENERAL_QUEUE_NAME,
         )
     finally:
         await redis.close()
@@ -73,7 +70,7 @@ async def enqueue_bulk_import_job(
 
     redis = await create_pool(
         get_arq_redis_settings(),
-        default_queue_name=BULK_IMPORT_QUEUE_NAME,
+        default_queue_name=HEAVY_QUEUE_NAME,
     )
     queue_job_id = f"bulk-import:{job_id}"
     if retry_attempt is not None:
@@ -86,7 +83,7 @@ async def enqueue_bulk_import_job(
             tenant_id,
             actor_id,
             notify_on_completion,
-            _queue_name=BULK_IMPORT_QUEUE_NAME,
+            _queue_name=HEAVY_QUEUE_NAME,
             _job_id=queue_job_id,
         )
     finally:
@@ -102,7 +99,7 @@ async def enqueue_session_progression_job(
 ) -> bool:
     redis = await create_pool(
         get_arq_redis_settings(),
-        default_queue_name=SESSION_PROGRESSION_QUEUE_NAME,
+        default_queue_name=HEAVY_QUEUE_NAME,
     )
     job_id = f"session-progression:{run_id}"
     if retry:
@@ -113,7 +110,7 @@ async def enqueue_session_progression_job(
             "process_session_progression_job",
             run_id,
             tenant_id,
-            _queue_name=SESSION_PROGRESSION_QUEUE_NAME,
+            _queue_name=HEAVY_QUEUE_NAME,
             _job_id=job_id,
         )
     finally:
@@ -124,13 +121,13 @@ async def enqueue_session_progression_job(
 async def enqueue_attendance_retention_job(*, tenant_id: str | None = None) -> bool:
     redis = await create_pool(
         get_arq_redis_settings(),
-        default_queue_name=ATTENDANCE_QUEUE_NAME,
+        default_queue_name=GENERAL_QUEUE_NAME,
     )
     try:
         job = await redis.enqueue_job(
             "process_attendance_retention_job",
             tenant_id,
-            _queue_name=ATTENDANCE_QUEUE_NAME,
+            _queue_name=GENERAL_QUEUE_NAME,
         )
     finally:
         await redis.close()
