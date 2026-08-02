@@ -7,7 +7,18 @@ import {
   useState,
 } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bell, Home, Menu, BookOpen, FileText, Building2, ClipboardList, Users, Mail } from "lucide-react";
+import {
+  Bell,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  ClipboardList,
+  FileText,
+  Home,
+  Mail,
+  Menu,
+  Users,
+} from "lucide-react";
 import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { cn } from "../../utils/cn";
@@ -42,6 +53,7 @@ const bottomNavConfig = {
   ],
   student: [
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
+    { label: "Calendar", to: "/student/calendar", icon: CalendarDays },
     { label: "Home", to: "/student/dashboard", icon: Home, isHome: true },
     { label: "Reports", to: "/student/report-cards", icon: FileText },
   ],
@@ -53,6 +65,7 @@ const bottomNavConfig = {
   ],
   superadmin: [
     { label: "Verify", to: "/superadmin/verification", icon: BookOpen },
+    { label: "Calendar", to: "/superadmin/calendar", icon: CalendarDays },
     { label: "Home", to: "/superadmin/dashboard", icon: Home, isHome: true },
     { label: "Notices", to: "/superadmin/announcements", icon: Bell },
   ],
@@ -200,8 +213,6 @@ function BottomNav({ role, onOpenMenu }) {
   }, []);
 
   useLayoutEffect(() => {
-    if (!isStandalonePwa) return undefined;
-
     clearTimer(indicatorTimerRef);
 
     if (!hasMountedRef.current) {
@@ -214,7 +225,7 @@ function BottomNav({ role, onOpenMenu }) {
       scheduleIndicatorUpdate();
       finishNavigationFeedback();
       indicatorTimerRef.current = null;
-    }, NAV_INDICATOR_COMMIT_DELAY_MS);
+    }, isStandalonePwa ? NAV_INDICATOR_COMMIT_DELAY_MS : 0);
 
     return () => {
       clearTimer(indicatorTimerRef);
@@ -222,8 +233,6 @@ function BottomNav({ role, onOpenMenu }) {
   }, [clearTimer, finishNavigationFeedback, isStandalonePwa, location.pathname, scheduleIndicatorUpdate]);
 
   useLayoutEffect(() => {
-    if (!isStandalonePwa) return undefined;
-
     const handleResize = () => {
       if (window.innerWidth === lastViewportWidth.current) return;
       lastViewportWidth.current = window.innerWidth;
@@ -248,7 +257,7 @@ function BottomNav({ role, onOpenMenu }) {
       window.removeEventListener("pageshow", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isStandalonePwa, scheduleIndicatorUpdate]);
+  }, [scheduleIndicatorUpdate]);
 
   useEffect(() => {
     return () => {
@@ -273,8 +282,6 @@ function BottomNav({ role, onOpenMenu }) {
     },
     [abortStalePageRequests, clearLoadingTimers, location.pathname, startNavigationFeedback]
   );
-
-  if (!isStandalonePwa) return null;
 
   return (
     <>
@@ -301,7 +308,7 @@ function BottomNav({ role, onOpenMenu }) {
           willChange: "auto",
         }}
         onTouchMove={(event) => event.preventDefault()}
-        aria-label="Primary installed app navigation"
+        aria-label="Primary mobile navigation"
       >
         <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface p-1.5 shadow-sm">
           <span

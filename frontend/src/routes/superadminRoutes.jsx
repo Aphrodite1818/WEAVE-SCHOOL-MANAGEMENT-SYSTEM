@@ -10,6 +10,7 @@ import SuperadminTrafficMonitorPage from "../pages/superadmin/SuperadminTrafficM
 import AnnouncementManagementPage from "../pages/shared/AnnouncementManagementPage";
 import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
 import MessagesPage from "../pages/shared/MessagesPage";
+import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
@@ -21,6 +22,7 @@ export const superadminRoutes = (
       <Route path="/superadmin/control-center" element={<SuperadminControlCenterPage />} />
       <Route path="/superadmin/usage" element={<SuperadminTenantUsagePage />} />
       <Route path="/superadmin/traffic" element={<SuperadminTrafficMonitorPage />} />
+      <Route path="/superadmin/calendar" element={<SchoolCalendarPage role="superadmin" />} />
       <Route path="/superadmin/inbox" element={<CommunicationInboxPage />} />
       <Route path="/superadmin/messages" element={<RuntimeFeatureRoute feature="messaging" role="superadmin"><MessagesPage /></RuntimeFeatureRoute>} />
       <Route path="/superadmin/announcements" element={<AnnouncementManagementPage mode="superadmin" />} />
