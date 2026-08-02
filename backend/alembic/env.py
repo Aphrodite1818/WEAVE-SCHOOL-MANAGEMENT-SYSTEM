@@ -55,10 +55,9 @@ def _compare_type(
         if inspected_name == metadata_name:
             return False
 
-    # SQLAlchemy may reflect a non-native Enum, including an Enum used as an
-    # ARRAY item type, as its VARCHAR implementation. If both sides compile to
-    # the same PostgreSQL type, they are semantically identical even though
-    # Alembic's generic token comparison reports Enum versus VARCHAR.
+    # SQLAlchemy may reflect a non-native Enum, including one used as an ARRAY
+    # item type, as its VARCHAR implementation. Equal dialect output means the
+    # two declarations use the same PostgreSQL storage type.
     try:
         inspected_compiled = _normalized_compiled_type(
             migration_context.dialect,
@@ -75,6 +74,104 @@ def _compare_type(
         return False
 
     return None
+
+
+def _normalized_schema(value: str | None) -> str:
+    return value or "public"
+
+
+def _normalized_fk_action(value: str | None) -> str:
+    normalized = (value or "").strip().upper().replace("_", " ")
+    return "" if normalized in {"", "NO ACTION"} else normalized
+
+
+def _fk_signature(
+    *,
+    source_schema: str | None,
+    source_table: str,
+    local_columns: tuple[str, ...] | list[str],
+    referent_schema: str | None,
+    referent_table: str,
+    remote_columns: tuple[str, ...] | list[str],
+    ondelete: str | None = None,
+    onupdate: str | None = None,
+    deferrable: bool | None = None,
+    initially: str | None = None,
+) -> tuple[Any, ...]:
+    return (
+        _normalized_schema(source_schema),
+        source_table,
+        tuple(local_columns),
+        _normalized_schema(referent_schema),
+        referent_table,
+        tuple(remote_columns),
+        _normalized_fk_action(ondelete),
+        _normalized_fk_action(onupdate),
+        bool(deferrable),
+        (initially or "").strip().upper(),
+    )
+
+
+def _constraint_fk_signature(
+    constraint: sa.ForeignKeyConstraint,
+) -> tuple[Any, ...]:
+    elements = tuple(constraint.elements)
+    if not elements:
+        raise ValueError("Foreign-key constraint has no elements.")
+
+    referred_table = elements[0].column.table
+    return _fk_signature(
+        source_schema=constraint.table.schema,
+        source_table=constraint.table.name,
+        local_columns=tuple(column.name for column in constraint.columns),
+        referent_schema=referred_table.schema,
+        referent_table=referred_table.name,
+        remote_columns=tuple(element.column.name for element in elements),
+        ondelete=elements[0].ondelete,
+        onupdate=elements[0].onupdate,
+        deferrable=constraint.deferrable,
+        initially=constraint.initially,
+    )
+
+
+def _metadata_fk_signatures() -> set[tuple[Any, ...]]:
+    return {
+        _constraint_fk_signature(constraint)
+        for table in target_metadata.tables.values()
+        for constraint in table.foreign_key_constraints
+    }
+
+
+def _database_fk_signatures(connection: Any) -> set[tuple[Any, ...]]:
+    inspector = sa.inspect(connection)
+    signatures: set[tuple[Any, ...]] = set()
+
+    for table_name in inspector.get_table_names(schema="public"):
+        for reflected_fk in inspector.get_foreign_keys(table_name, schema="public"):
+            referred_table = reflected_fk.get("referred_table")
+            if not referred_table:
+                continue
+
+            options = reflected_fk.get("options") or {}
+            signatures.add(
+                _fk_signature(
+                    source_schema="public",
+                    source_table=table_name,
+                    local_columns=reflected_fk.get("constrained_columns") or (),
+                    referent_schema=reflected_fk.get("referred_schema"),
+                    referent_table=referred_table,
+                    remote_columns=reflected_fk.get("referred_columns") or (),
+                    ondelete=options.get("ondelete"),
+                    onupdate=options.get("onupdate"),
+                    deferrable=options.get("deferrable"),
+                    initially=options.get("initially"),
+                )
+            )
+
+    return signatures
+
+
+METADATA_FK_SIGNATURES = _metadata_fk_signatures()
 
 
 def _schema_neutral_index_name(name: str | None) -> str:
@@ -115,36 +212,56 @@ def _include_name(
     return True
 
 
-def _include_object(
-    obj: Any,
-    name: str | None,
-    type_: str,
-    reflected: bool,
-    compare_to: Any,
-) -> bool:
-    """Suppress known representation noise without hiding real schema drift."""
+def _include_object(database_fk_signatures: set[tuple[Any, ...]]):
+    def include_object(
+        obj: Any,
+        name: str | None,
+        type_: str,
+        reflected: bool,
+        compare_to: Any,
+    ) -> bool:
+        """Suppress known representation noise without hiding real schema drift."""
 
-    _ = reflected
-
-    if type_ == "table" and name == "alembic_version":
-        return False
-
-    if type_ == "index" and isinstance(obj, sa.Index) and compare_to is None:
-        if obj.name != _schema_neutral_index_name(obj.name):
-            return False
-        if _index_signature(obj) in PUBLIC_SCHEMA_INDEX_SIGNATURES:
+        if type_ == "table" and name == "alembic_version":
             return False
 
-    if type_ == "unique_constraint" and isinstance(obj, sa.UniqueConstraint):
-        columns = tuple(column.name for column in obj.columns)
-        primary_key_columns = tuple(column.name for column in obj.table.primary_key.columns)
-        if columns == ("id",) and primary_key_columns == ("id",):
-            return False
+        if type_ == "index" and isinstance(obj, sa.Index) and compare_to is None:
+            if obj.name != _schema_neutral_index_name(obj.name):
+                return False
+            if _index_signature(obj) in PUBLIC_SCHEMA_INDEX_SIGNATURES:
+                return False
 
-    return True
+        if type_ == "unique_constraint" and isinstance(obj, sa.UniqueConstraint):
+            columns = tuple(column.name for column in obj.columns)
+            primary_key_columns = tuple(column.name for column in obj.table.primary_key.columns)
+            if columns == ("id",) and primary_key_columns == ("id",):
+                return False
+
+        # PostgreSQL reflection may represent an unqualified public-schema FK as
+        # a different object from the metadata FK. Alembic then reports the same
+        # constraint once as removed and once as added. Suppress both unmatched
+        # halves only when their full normalized signatures are identical.
+        if (
+            type_ == "foreign_key_constraint"
+            and compare_to is None
+            and isinstance(obj, sa.ForeignKeyConstraint)
+        ):
+            signature = _constraint_fk_signature(obj)
+            if reflected and signature in METADATA_FK_SIGNATURES:
+                return False
+            if not reflected and signature in database_fk_signatures:
+                return False
+
+        return True
+
+    return include_object
 
 
-def _configure_context(*, connection: Any | None = None) -> None:
+def _configure_context(
+    *,
+    connection: Any | None = None,
+    database_fk_signatures: set[tuple[Any, ...]] | None = None,
+) -> None:
     """Apply one comparison policy to online and offline migration runs."""
 
     options: dict[str, Any] = {
@@ -154,7 +271,7 @@ def _configure_context(*, connection: Any | None = None) -> None:
         "version_table_schema": "public",
         "compare_type": _compare_type,
         "compare_server_default": False,
-        "include_object": _include_object,
+        "include_object": _include_object(database_fk_signatures or set()),
     }
     if connection is None:
         options.update(
@@ -185,7 +302,17 @@ def run_migrations_online() -> None:
     config.set_main_option("sqlalchemy.url", database_url)
 
     def do_run_migrations(sync_connection: Any) -> None:
-        _configure_context(connection=sync_connection)
+        # FK reflection opens an implicit read transaction. Close it before
+        # Alembic begins its migration transaction so DDL is not rolled back when
+        # the async connection context exits.
+        database_fk_signatures = _database_fk_signatures(sync_connection)
+        if sync_connection.in_transaction():
+            sync_connection.commit()
+
+        _configure_context(
+            connection=sync_connection,
+            database_fk_signatures=database_fk_signatures,
+        )
 
         try:
             with context.begin_transaction():
