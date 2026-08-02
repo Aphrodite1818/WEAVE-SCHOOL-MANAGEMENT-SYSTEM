@@ -213,6 +213,8 @@ function BottomNav({ role, onOpenMenu }) {
   }, []);
 
   useLayoutEffect(() => {
+    if (!isStandalonePwa) return undefined;
+
     clearTimer(indicatorTimerRef);
 
     if (!hasMountedRef.current) {
@@ -225,7 +227,7 @@ function BottomNav({ role, onOpenMenu }) {
       scheduleIndicatorUpdate();
       finishNavigationFeedback();
       indicatorTimerRef.current = null;
-    }, isStandalonePwa ? NAV_INDICATOR_COMMIT_DELAY_MS : 0);
+    }, NAV_INDICATOR_COMMIT_DELAY_MS);
 
     return () => {
       clearTimer(indicatorTimerRef);
@@ -233,6 +235,8 @@ function BottomNav({ role, onOpenMenu }) {
   }, [clearTimer, finishNavigationFeedback, isStandalonePwa, location.pathname, scheduleIndicatorUpdate]);
 
   useLayoutEffect(() => {
+    if (!isStandalonePwa) return undefined;
+
     const handleResize = () => {
       if (window.innerWidth === lastViewportWidth.current) return;
       lastViewportWidth.current = window.innerWidth;
@@ -257,7 +261,7 @@ function BottomNav({ role, onOpenMenu }) {
       window.removeEventListener("pageshow", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [scheduleIndicatorUpdate]);
+  }, [isStandalonePwa, scheduleIndicatorUpdate]);
 
   useEffect(() => {
     return () => {
@@ -282,6 +286,8 @@ function BottomNav({ role, onOpenMenu }) {
     },
     [abortStalePageRequests, clearLoadingTimers, location.pathname, startNavigationFeedback]
   );
+
+  if (!isStandalonePwa) return null;
 
   return (
     <>
@@ -308,7 +314,7 @@ function BottomNav({ role, onOpenMenu }) {
           willChange: "auto",
         }}
         onTouchMove={(event) => event.preventDefault()}
-        aria-label="Primary mobile navigation"
+        aria-label="Primary installed app navigation"
       >
         <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface p-1.5 shadow-sm">
           <span
