@@ -17,18 +17,32 @@ import {
 } from "./academicWorkflowConfig";
 
 const lifecycleSteps = [
-  { id: "draft", label: "Draft", helper: "Setup can still change before school work starts." },
-  { id: "open", label: "Open", helper: "This period is active for normal academic work." },
-  { id: "closing", label: "Closing", helper: "Final checks are being completed before closure." },
-  { id: "closed", label: "Closed", helper: "This period is read-only for history and reports." },
+  {
+    id: "draft",
+    label: "Draft",
+    helper: "Setup can still change before school work starts.",
+  },
+  {
+    id: "open",
+    label: "Open",
+    helper: "This period is active for normal academic work.",
+  },
+  {
+    id: "closing",
+    label: "Closing",
+    helper: "Final checks are being completed before closure.",
+  },
+  {
+    id: "closed",
+    label: "Closed",
+    helper: "This period is read-only for history and reports.",
+  },
 ];
 
 const normalizeTab = (workflow, tab) => {
   const config = academicWorkflowConfig[workflow];
   if (!config) return "";
-  return config.tabs.some((item) => item.id === tab)
-    ? tab
-    : config.defaultTab;
+  return config.tabs.some((item) => item.id === tab) ? tab : config.defaultTab;
 };
 
 function AcademicWorkflowShell({
@@ -95,7 +109,9 @@ function AcademicWorkflowShell({
                   )}
                 >
                   <ItemIcon className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">{item.shortTitle}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {item.shortTitle}
+                  </span>
                   {active ? <ChevronRight className="h-4 w-4" /> : null}
                 </Link>
               );
@@ -131,7 +147,8 @@ function AcademicWorkflowShell({
                 <div
                   className={cn(
                     "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl",
-                    academicToneStyles[config.tone] || academicToneStyles.primary,
+                    academicToneStyles[config.tone] ||
+                      academicToneStyles.primary,
                   )}
                 >
                   <Icon className="h-5 w-5" />
@@ -146,15 +163,25 @@ function AcademicWorkflowShell({
                   <div className="mt-3 flex flex-wrap gap-2">
                     <AcademicStatusBadge
                       label="Session"
-                      status={currentSession?.status || (currentSession ? "ready" : "not configured")}
+                      status={
+                        currentSession?.status ||
+                        (currentSession ? "ready" : "not configured")
+                      }
                       helper={currentSession?.name || ""}
                     />
                     <AcademicStatusBadge
                       label="Term"
-                      status={currentTerm?.status || (currentTerm ? "ready" : "not configured")}
-                      helper={currentTerm?.display_name || currentTerm?.name || ""}
+                      status={
+                        currentTerm?.status ||
+                        (currentTerm ? "ready" : "not configured")
+                      }
+                      helper={
+                        currentTerm?.display_name || currentTerm?.name || ""
+                      }
                     />
-                    {loading ? <Badge variant="default">Refreshing</Badge> : null}
+                    {loading ? (
+                      <Badge variant="default">Refreshing</Badge>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -175,14 +202,14 @@ function AcademicWorkflowShell({
 
           {config.tabs.length > 1 ? (
             <div className="pb-1">
-              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:inline-flex sm:min-w-0">
+              <div className="flex gap-2 overflow-x-auto rounded-2xl border border-border/70 bg-surface-muted/30 p-1">
                 {config.tabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => selectTab(tab.id)}
                     className={cn(
-                      "min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition sm:flex-none sm:px-4",
+                      "min-h-11 min-w-max whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition sm:px-4",
                       activeTab === tab.id
                         ? "bg-surface text-primary shadow-sm"
                         : "text-text-muted hover:bg-surface/60 hover:text-text",
