@@ -55,16 +55,22 @@
     position: fixed !important;
     inset-inline: 0 !important;
     top: auto !important;
-    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.55rem) !important;
+    margin: 0 !important;
     padding-bottom: 0 !important;
+    translate: none !important;
     transform: translate3d(0, 0, 0) !important;
     -webkit-transform: translate3d(0, 0, 0) !important;
     touch-action: none !important;
     overscroll-behavior: none !important;
-    contain: layout paint;
+    contain: layout paint style;
     isolation: isolate;
     -webkit-user-select: none;
     user-select: none;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] * {
+    touch-action: manipulation;
   }
 }
 
