@@ -63,12 +63,10 @@ def _foreign_key_signature(constraint: sa.ForeignKeyConstraint) -> tuple[Any, ..
         element.target_fullname.removeprefix("public.") for element in constraint.elements
     )
     ondelete = tuple(
-        _normalize_foreign_key_action(element.ondelete)
-        for element in constraint.elements
+        _normalize_foreign_key_action(element.ondelete) for element in constraint.elements
     )
     onupdate = tuple(
-        _normalize_foreign_key_action(element.onupdate)
-        for element in constraint.elements
+        _normalize_foreign_key_action(element.onupdate) for element in constraint.elements
     )
     return (
         constraint.table.name,
