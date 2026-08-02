@@ -7,6 +7,7 @@ import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import CalendarEventCard from "../../features/schoolCalendar/components/CalendarEventCard";
 import CalendarStatusBadge from "../../features/schoolCalendar/components/CalendarStatusBadge";
 import { schoolCalendarService } from "../../features/schoolCalendar/api/schoolCalendarService";
@@ -232,7 +233,7 @@ function SchoolCalendarPage({ role = "student" }) {
                   <CalendarDayTile
                     key={day.id || day.date || day.calendar_date}
                     day={day}
-                    eventCount={eventsForDay(events, day.calendar_date || day.date).length}
+                    dayEvents={eventsForDay(events, day.calendar_date || day.date)}
                   />
                 ))}
               </div>
@@ -274,35 +275,67 @@ function eventsForDay(events, value) {
   return events.filter((event) => String(event.starts_at || "").slice(0, 10) === isoDate);
 }
 
-function CalendarDayTile({ day, eventCount = 0 }) {
+function CalendarDayTile({ day, dayEvents = [] }) {
+  const [modalOpen, setModalOpen] = useState(false);
   const date = day.calendar_date || day.date;
   const schoolOpen = Boolean(day.school_open);
+  const eventCount = dayEvents.length;
 
   return (
-    <div className="min-h-32 rounded-xl border border-border/70 bg-surface px-3 py-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-2xl font-semibold leading-none text-text">{dayNumber(date)}</p>
-          <p className="mt-1 text-xs font-medium text-text-muted">
-            {formatCalendarDate(date)}
-          </p>
+    <>
+      <div 
+        className="min-h-32 rounded-xl border border-border/70 bg-surface px-3 py-3 cursor-pointer transition-colors hover:border-primary/50"
+        onClick={() => setModalOpen(true)}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-2xl font-semibold leading-none text-text">{dayNumber(date)}</p>
+            <p className="mt-1 text-xs font-medium text-text-muted">
+              {formatCalendarDate(date)}
+            </p>
+          </div>
+          <CalendarStatusBadge status={schoolOpen ? "active" : "closed"}>
+            {schoolOpen ? "Open" : "Closed"}
+          </CalendarStatusBadge>
         </div>
-        <CalendarStatusBadge status={schoolOpen ? "active" : "closed"}>
-          {schoolOpen ? "Open" : "Closed"}
-        </CalendarStatusBadge>
-      </div>
-      <p className="mt-3 text-xs font-semibold text-text-soft">
-        {dayTypeLabel(day.day_type)}
-      </p>
-      {day.title ? (
-        <p className="mt-1 line-clamp-2 text-xs text-text-muted">{day.title}</p>
-      ) : null}
-      {eventCount ? (
-        <p className="mt-3 inline-flex rounded-full bg-primary-soft px-2.5 py-1 text-xs font-semibold text-primary">
-          {eventCount} event{eventCount === 1 ? "" : "s"}
+        <p className="mt-3 text-xs font-semibold text-text-soft">
+          {dayTypeLabel(day.day_type)}
         </p>
-      ) : null}
-    </div>
+        {day.title ? (
+          <p className="mt-1 line-clamp-2 text-xs text-text-muted">{day.title}</p>
+        ) : null}
+        {eventCount ? (
+          <p className="mt-3 inline-flex rounded-full bg-primary-soft px-2.5 py-1 text-xs font-semibold text-primary">
+            {eventCount} event{eventCount === 1 ? "" : "s"}
+          </p>
+        ) : null}
+      </div>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={formatCalendarDate(date)} placement="center">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-lg font-semibold text-text">{dayTypeLabel(day.day_type)}</span>
+            <CalendarStatusBadge status={schoolOpen ? "active" : "closed"}>
+              {schoolOpen ? "Open" : "Closed"}
+            </CalendarStatusBadge>
+          </div>
+          {day.title && (
+            <p className="text-sm text-text-muted">{day.title}</p>
+          )}
+          {dayEvents.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold uppercase tracking-wide text-text-muted">Events</h4>
+              {dayEvents.map(event => (
+                <CalendarEventCard key={event.id} event={event} compact />
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button type="button" onClick={() => setModalOpen(false)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 

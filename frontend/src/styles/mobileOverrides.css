@@ -18,11 +18,7 @@
     min-height: calc(100dvh - 4.4rem);
   }
 
-  html:not([data-standalone-pwa="true"]) [data-mobile-bottom-nav="true"] {
-    display: none !important;
-  }
-
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+  [data-mobile-bottom-nav="true"] {
     display: block !important;
     bottom: calc(-0.45 * env(safe-area-inset-bottom)) !important;
     padding-bottom: max(

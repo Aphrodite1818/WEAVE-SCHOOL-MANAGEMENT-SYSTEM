@@ -687,3 +687,8 @@ export const api = {
   delete: (endpoint, options) =>
     request(endpoint, { method: "DELETE", ...options }),
 };
+
+const initialToken = authSession.getToken();
+if (initialToken) {
+  scheduleAccessTokenRefresh(initialToken);
+}

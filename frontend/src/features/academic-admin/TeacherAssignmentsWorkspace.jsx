@@ -137,16 +137,29 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       return;
     }
     try {
-      const response = await academicService.listOfferedClassSubjects(form.class_id, {
-        active_only: true,
-        limit: 100,
-      });
-      setClassSubjects(asItems(response));
+      const [subjectsResponse, assignmentsResponse] = await Promise.all([
+        academicService.listOfferedClassSubjects(form.class_id, {
+          active_only: true,
+          limit: 100,
+        }),
+        academicService.listTeacherAssignments({
+          class_id: form.class_id,
+          status: "active",
+          limit: 100,
+        }),
+      ]);
+      const subjects = asItems(subjectsResponse);
+      const activeAssignments = asItems(assignmentsResponse);
+      const assignedSubjectIds = new Set(activeAssignments.map((a) => a.class_subject_id));
+
+      setClassSubjects(
+        subjects.filter((s) => !assignedSubjectIds.has(s.id) || s.id === form.class_subject_id)
+      );
     } catch (err) {
       setClassSubjects([]);
       showError(getErrorMessage(err, "Could not load class subjects."));
     }
-  }, [form.class_id, showError]);
+  }, [form.class_id, form.class_subject_id, showError]);
 
   useEffect(() => {
     loadBase();

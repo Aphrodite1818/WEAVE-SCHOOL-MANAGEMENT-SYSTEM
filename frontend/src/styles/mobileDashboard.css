@@ -232,10 +232,6 @@
   }
 
   [data-mobile-bottom-nav="true"] {
-    display: none !important;
-  }
-
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
     display: block !important;
     position: fixed !important;
     inset-inline: 0 !important;
@@ -258,10 +254,6 @@
     padding-left: 0.75rem;
     padding-right: 0.75rem;
     padding-top: 0.75rem;
-    padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
-  }
-
-  html[data-standalone-pwa="true"] #dashboard-content {
     padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)) !important;
   }
 
@@ -541,21 +533,21 @@
     padding-inline: 1rem !important;
   }
 
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
+  [data-mobile-bottom-nav="true"] > div {
     max-width: 30rem !important;
     gap: 0.35rem !important;
     border-radius: 2.15rem !important;
     padding: 0.4rem !important;
   }
 
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] a,
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] button {
+  [data-mobile-bottom-nav="true"] a,
+  [data-mobile-bottom-nav="true"] button {
     min-height: 3.45rem !important;
     border-radius: 1.8rem !important;
     touch-action: manipulation !important;
   }
 
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] svg {
+  [data-mobile-bottom-nav="true"] svg {
     width: 1.35rem !important;
     height: 1.35rem !important;
   }

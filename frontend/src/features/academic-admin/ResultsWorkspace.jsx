@@ -1,5 +1,6 @@
 import { ClipboardList, GraduationCap, LockKeyhole } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -53,6 +54,7 @@ const statusDescription = (status, item) =>
   })[status] || "Confirm this lifecycle action.";
 
 function ResultsWorkspace({ activeTab, onContextChange }) {
+  const [, setSearchParams] = useSearchParams();
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -81,6 +83,25 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   const { showSuccess, showError, showWarning } = useToast();
 
   const resetForm = () => setForm(BLANK_FORM);
+
+  const handleEditScore = (item) => {
+    setForm({
+      result_id: item.id,
+      student_id: item.student_id || "",
+      teacher_assignment_id: item.teacher_assignment_id || "",
+      test_score: item.test_score ?? "",
+      assessment_score: item.assessment_score ?? "",
+      exam_score: item.exam_score ?? "",
+    });
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("view", "entry");
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   const loadBase = useCallback(async () => {
     setLoading(true);
@@ -406,7 +427,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
               <div className="mt-auto flex flex-wrap gap-2 pt-4">
                 {item.status === "draft" ? (
                   <>
-                    <Button type="button" size="small" variant="outline" disabled={!periodEditable} onClick={() => setForm({ result_id: item.id, student_id: item.student_id || "", teacher_assignment_id: item.teacher_assignment_id || "", test_score: item.test_score ?? "", assessment_score: item.assessment_score ?? "", exam_score: item.exam_score ?? "" })}>Edit scores</Button>
+                    <Button type="button" size="small" variant="outline" disabled={!periodEditable} onClick={() => handleEditScore(item)}>Edit scores</Button>
                     <Button type="button" size="small" variant="success" disabled={!periodEditable || saving === item.id} onClick={() => setPendingAction({ item, status: "submitted" })}>Submit</Button>
                   </>
                 ) : null}

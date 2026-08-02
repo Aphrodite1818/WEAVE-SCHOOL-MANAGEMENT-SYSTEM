@@ -1,13 +1,4 @@
 import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import { Link, useLocation } from "react-router-dom";
-import {
   Bell,
   BookOpen,
   Building2,
@@ -19,8 +10,17 @@ import {
   Menu,
   Users,
 } from "lucide-react";
-import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
+import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 
@@ -34,14 +34,19 @@ const isStandalonePwaDisplay = () => {
 
   return Boolean(
     window.matchMedia?.("(display-mode: standalone)")?.matches ||
-      window.navigator?.standalone === true
+    window.navigator?.standalone === true,
   );
 };
 
 const bottomNavConfig = {
   admin: [
     { label: "Academic", to: "/admin/academic", icon: ClipboardList },
-    { label: "Messages", to: "/admin/messages", icon: Mail, runtimeFeature: "messaging" },
+    {
+      label: "Messages",
+      to: "/admin/messages",
+      icon: Mail,
+      runtimeFeature: "messaging",
+    },
     { label: "Home", to: "/admin/dashboard", icon: Home, isHome: true },
     { label: "Notices", to: "/admin/announcements", icon: Bell },
   ],
@@ -49,7 +54,12 @@ const bottomNavConfig = {
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
     { label: "Scores", to: "/teacher/score-entry", icon: FileText },
     { label: "Home", to: "/teacher/dashboard", icon: Home, isHome: true },
-    { label: "Schools", to: "/teacher/schools", icon: Building2, accountScope: true },
+    {
+      label: "Schools",
+      to: "/teacher/schools",
+      icon: Building2,
+      accountScope: true,
+    },
   ],
   student: [
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
@@ -61,7 +71,12 @@ const bottomNavConfig = {
     { label: "Results", to: "/parent/results", icon: BookOpen },
     { label: "Children", to: "/parent/student-linking", icon: Users },
     { label: "Home", to: "/parent/dashboard", icon: Home, isHome: true },
-    { label: "Schools", to: "/parent/schools", icon: Building2, accountScope: true },
+    {
+      label: "Schools",
+      to: "/parent/schools",
+      icon: Building2,
+      accountScope: true,
+    },
   ],
   superadmin: [
     { label: "Verify", to: "/superadmin/verification", icon: BookOpen },
@@ -89,7 +104,6 @@ function BottomNav({ role, onOpenMenu }) {
   const isAccountScope =
     ["parent_account", "teacher_account"].includes(actorType) &&
     !user?.tenant_id;
-  const [isStandalonePwa, setIsStandalonePwa] = useState(isStandalonePwaDisplay);
   const [indicatorStyle, setIndicatorStyle] = useState({
     width: 0,
     transform: "translateX(0px)",
@@ -106,19 +120,28 @@ function BottomNav({ role, onOpenMenu }) {
   const isTransitioningRef = useRef(false);
   const hasMountedRef = useRef(false);
   const lastViewportWidth = useRef(
-    typeof window === "undefined" ? 0 : window.innerWidth
+    typeof window === "undefined" ? 0 : window.innerWidth,
   );
   const configuredItems = bottomNavConfig[role] || bottomNavConfig.admin;
-  const items = (isAccountScope
-    ? configuredItems.filter((item) => item.accountScope)
-    : configuredItems
-  ).filter((item) => !item.runtimeFeature || runtimeConfig?.features?.[item.runtimeFeature] !== false);
+  const items = (
+    isAccountScope
+      ? configuredItems.filter((item) => item.accountScope)
+      : configuredItems
+  ).filter(
+    (item) =>
+      !item.runtimeFeature ||
+      runtimeConfig?.features?.[item.runtimeFeature] !== false,
+  );
 
   const clearTimer = useCallback((timerRef) => {
     if (!timerRef.current) return;
     window.clearTimeout(timerRef.current);
     timerRef.current = null;
   }, []);
+
+  const [isPwaDisplay, setIsPwaDisplay] = useState(() =>
+    isStandalonePwaDisplay(),
+  );
 
   const clearLoadingTimers = useCallback(() => {
     clearTimer(loadingShowTimerRef);
@@ -133,7 +156,7 @@ function BottomNav({ role, onOpenMenu }) {
   const updateIndicator = useCallback(() => {
     const navElement = navRef.current;
     const activeItem = items.find((item) =>
-      isRouteActive(location.pathname, item.to)
+      isRouteActive(location.pathname, item.to),
     );
 
     const activeElement = activeItem ? itemRefs.current[activeItem.to] : null;
@@ -193,7 +216,7 @@ function BottomNav({ role, onOpenMenu }) {
     const syncStandalonePwaMode = () => {
       const nextValue = isStandalonePwaDisplay();
       document.documentElement.dataset.standalonePwa = String(nextValue);
-      setIsStandalonePwa(nextValue);
+      setIsPwaDisplay(nextValue);
     };
 
     const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
@@ -213,8 +236,6 @@ function BottomNav({ role, onOpenMenu }) {
   }, []);
 
   useLayoutEffect(() => {
-    if (!isStandalonePwa) return undefined;
-
     clearTimer(indicatorTimerRef);
 
     if (!hasMountedRef.current) {
@@ -232,11 +253,14 @@ function BottomNav({ role, onOpenMenu }) {
     return () => {
       clearTimer(indicatorTimerRef);
     };
-  }, [clearTimer, finishNavigationFeedback, isStandalonePwa, location.pathname, scheduleIndicatorUpdate]);
+  }, [
+    clearTimer,
+    finishNavigationFeedback,
+    location.pathname,
+    scheduleIndicatorUpdate,
+  ]);
 
   useLayoutEffect(() => {
-    if (!isStandalonePwa) return undefined;
-
     const handleResize = () => {
       if (window.innerWidth === lastViewportWidth.current) return;
       lastViewportWidth.current = window.innerWidth;
@@ -261,7 +285,7 @@ function BottomNav({ role, onOpenMenu }) {
       window.removeEventListener("pageshow", handleVisibilityChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isStandalonePwa, scheduleIndicatorUpdate]);
+  }, [scheduleIndicatorUpdate]);
 
   useEffect(() => {
     return () => {
@@ -284,10 +308,15 @@ function BottomNav({ role, onOpenMenu }) {
       abortStalePageRequests();
       startNavigationFeedback();
     },
-    [abortStalePageRequests, clearLoadingTimers, location.pathname, startNavigationFeedback]
+    [
+      abortStalePageRequests,
+      clearLoadingTimers,
+      location.pathname,
+      startNavigationFeedback,
+    ],
   );
 
-  if (!isStandalonePwa) return null;
+  if (!isPwaDisplay) return null;
 
   return (
     <>
@@ -305,18 +334,17 @@ function BottomNav({ role, onOpenMenu }) {
 
       <nav
         data-mobile-bottom-nav="true"
-        className="fixed inset-x-0 bottom-0 z-40 touch-none overscroll-none border-t border-border/70 bg-background px-2 pt-0.5 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 touch-none overscroll-none border-t border-border/70 bg-background px-2 pt-0.5 pb-3 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
         style={{
           bottom: 0,
-          paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))",
-          transform: "translate3d(0, 0, 0)",
-          WebkitTransform: "translate3d(0, 0, 0)",
-          willChange: "auto",
         }}
         onTouchMove={(event) => event.preventDefault()}
         aria-label="Primary installed app navigation"
       >
-        <div ref={navRef} className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface p-1.5 shadow-sm">
+        <div
+          ref={navRef}
+          className="relative mx-auto flex w-full max-w-[30rem] flex-row items-center gap-1.5 rounded-[2.1rem] bg-surface p-1.5 shadow-sm"
+        >
           <span
             aria-hidden="true"
             className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary/10"
@@ -338,13 +366,23 @@ function BottomNav({ role, onOpenMenu }) {
                 aria-label={item.label}
                 className={cn(
                   "relative z-10 flex min-h-[3.45rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.75rem] px-1.5 py-1.5 text-center transition-colors duration-150 ease-out",
-                  isActive ? "text-primary" : "text-text-muted hover:text-text"
+                  isActive ? "text-primary" : "text-text-muted hover:text-text",
                 )}
               >
                 <span className="flex h-6 w-6 items-center justify-center">
-                  <Icon className={cn("h-[1.35rem] w-[1.35rem] shrink-0 transition-transform duration-150", isActive && "scale-110")} />
+                  <Icon
+                    className={cn(
+                      "h-[1.35rem] w-[1.35rem] shrink-0 transition-transform duration-150",
+                      isActive && "scale-110",
+                    )}
+                  />
                 </span>
-                <span className={cn("max-w-full truncate text-[10.5px] font-semibold leading-none transition-colors duration-150", isActive ? "text-primary" : "text-text-muted")}>
+                <span
+                  className={cn(
+                    "max-w-full truncate text-[10.5px] font-semibold leading-none transition-colors duration-150",
+                    isActive ? "text-primary" : "text-text-muted",
+                  )}
+                >
                   {item.label}
                 </span>
               </Link>
@@ -358,7 +396,9 @@ function BottomNav({ role, onOpenMenu }) {
             aria-label="Open full navigation menu"
           >
             <Menu className="h-[1.35rem] w-[1.35rem] shrink-0" />
-            <span className="max-w-full truncate text-[10.5px] font-semibold leading-none">Menu</span>
+            <span className="max-w-full truncate text-[10.5px] font-semibold leading-none">
+              Menu
+            </span>
           </button>
         </div>
       </nav>

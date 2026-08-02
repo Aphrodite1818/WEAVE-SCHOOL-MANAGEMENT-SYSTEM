@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -9,13 +8,9 @@ import {
   Megaphone,
   UserRound,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import DashboardLayout from "../../components/layout/DashboardLayout";
-import EmptyState from "../../components/shared/EmptyState";
-import LoadingState from "../../components/shared/LoadingState";
-import Button from "../../components/ui/Button";
-import Card from "../../components/ui/Card";
 import {
   DashboardFocusCard,
   DashboardListCard,
@@ -24,11 +19,19 @@ import {
   DashboardSectionHeader,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import EmptyState from "../../components/shared/EmptyState";
+import LoadingState from "../../components/shared/LoadingState";
+import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
 import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { academicService } from "../../services/academicService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
-import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
+import {
+  getCachedDashboardBundle,
+  getDashboardSessionCacheKey,
+} from "../../services/dashboardSessionCache";
 import { reportCardService } from "../../services/reportCardService";
 import { studentService } from "../../services/studentService";
 import {
@@ -69,7 +72,9 @@ const emptyDashboardBundle = (studentProfile) => ({
 const studentClassLabel = (student, fallback = null) => {
   if (!student) return fallback;
   return cleanText(
-    [student.class_name, student.class_arm || student.arm].filter(Boolean).join(" "),
+    [student.class_name, student.class_arm || student.arm]
+      .filter(Boolean)
+      .join(" "),
     fallback ?? (student.class_id ? "Class assigned" : "No class assigned yet"),
   );
 };
@@ -137,7 +142,9 @@ function StudentDashboardPage() {
           ] = await Promise.all([
             studentService.getMyStudent({ signal: controller.signal }),
             studentService.getMyParentLinks({ signal: controller.signal }),
-            studentService.getMyParentLinkRequests({ signal: controller.signal }),
+            studentService.getMyParentLinkRequests({
+              signal: controller.signal,
+            }),
             dashboardService.getStudentAnalytics({ signal: controller.signal }),
             academicService.listMyResults({ signal: controller.signal }),
             reportCardService.listMyReportCards({ signal: controller.signal }),
@@ -167,7 +174,9 @@ function StudentDashboardPage() {
         setSubjectContext(bundle.subjectContext);
       } catch (error) {
         if (mounted && !isAbortError(error)) {
-          setLoadError(getErrorMessage(error, "Failed to load student dashboard."));
+          setLoadError(
+            getErrorMessage(error, "Failed to load student dashboard."),
+          );
         }
       } finally {
         if (mounted && !controller.signal.aborted) setIsLoading(false);
@@ -186,14 +195,18 @@ function StudentDashboardPage() {
     const stats = metrics?.stats || {};
     const chartSource = metrics?.charts || {};
     const publishedResults = academicResults.filter(isPublishedResult);
-    const pendingResults = academicResults.filter((result) => !isPublishedResult(result));
+    const pendingResults = academicResults.filter(
+      (result) => !isPublishedResult(result),
+    );
     const fallbackContext = getAcademicContext(academicResults, reportCards);
     const context = subjectContext
       ? {
           classLabel:
             studentClassLabel(student) ||
             (subjectContext.class_name || subjectContext.class_arm
-              ? [subjectContext.class_name, subjectContext.class_arm].filter(Boolean).join(" ")
+              ? [subjectContext.class_name, subjectContext.class_arm]
+                  .filter(Boolean)
+                  .join(" ")
               : null),
           sessionLabel:
             student?.current_academic_session_name ||
@@ -211,8 +224,7 @@ function StudentDashboardPage() {
             student?.current_academic_session_name ||
             fallbackContext.sessionLabel,
           termLabel:
-            student?.current_academic_term_name ||
-            fallbackContext.termLabel,
+            student?.current_academic_term_name || fallbackContext.termLabel,
         };
     const currentAverage = hasValue(stats.current_average)
       ? stats.current_average
@@ -230,7 +242,9 @@ function StudentDashboardPage() {
         reportCards.length > 0 ? reportCards : publishedResults,
         reportCards.length > 0 ? "average_score" : "total_score",
       );
-    const gradeDistribution = chartSource.grade_distribution || chartFromCounts(publishedResults, "grade", "ungraded");
+    const gradeDistribution =
+      chartSource.grade_distribution ||
+      chartFromCounts(publishedResults, "grade", "ungraded");
 
     return {
       stats,
@@ -238,16 +252,28 @@ function StudentDashboardPage() {
       publishedResults,
       pendingResults,
       subjectHighlights,
-      subjectsCount: hasValue(stats.subjects_count) ? stats.subjects_count : subjectCards.length,
+      subjectsCount: hasValue(stats.subjects_count)
+        ? stats.subjects_count
+        : subjectCards.length,
       context,
       latestReportCard: reportCards[0],
-      pendingParentRequests: parentLinkRequests.filter((request) => request.status === "pending"),
+      pendingParentRequests: parentLinkRequests.filter(
+        (request) => request.status === "pending",
+      ),
       subjectCards,
       subjectChart,
       performanceTrend,
       gradeDistribution,
     };
-  }, [academicResults, metrics, parentLinkRequests, reportCards, student, subjectCards, subjectContext]);
+  }, [
+    academicResults,
+    metrics,
+    parentLinkRequests,
+    reportCards,
+    student,
+    subjectCards,
+    subjectContext,
+  ]);
 
   if (isLoading) {
     return (
@@ -282,7 +308,8 @@ function StudentDashboardPage() {
       ? {
           key: "no-report-card",
           title: "Report card awaiting release",
-          description: "Your latest report card will appear when the school publishes it.",
+          description:
+            "Your latest report card will appear when the school publishes it.",
           icon: FileText,
           tone: "neutral",
           to: "/student/report-cards",
@@ -328,18 +355,35 @@ function StudentDashboardPage() {
             )}
             profileCompletion={student.profile_status}
             chips={[
-              { label: "Admission", value: cleanText(student.admission_number, "Not assigned"), tone: "primary" },
-              { label: cleanText(dashboardData.context.sessionLabel, "No session"), value: formatAcademicTermLabel(dashboardData.context.termLabel), tone: "primary" },
+              {
+                label: "Admission",
+                value: cleanText(student.admission_number, "Not assigned"),
+                tone: "primary",
+              },
+              {
+                label: cleanText(
+                  dashboardData.context.sessionLabel,
+                  "No session",
+                ),
+                value: formatAcademicTermLabel(dashboardData.context.termLabel),
+                tone: "primary",
+              },
             ]}
           />
 
           <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Current average"
-              value={hasValue(dashboardData.currentAverage) ? formatMetricNumber(dashboardData.currentAverage) : "-"}
+              value={
+                hasValue(dashboardData.currentAverage)
+                  ? formatMetricNumber(dashboardData.currentAverage)
+                  : "-"
+              }
               description="Published academic results"
               icon={BarChart3}
-              tone={hasValue(dashboardData.currentAverage) ? "success" : "warning"}
+              tone={
+                hasValue(dashboardData.currentAverage) ? "success" : "warning"
+              }
               to="/student/analytics"
             />
             <DashboardMetricCard
@@ -355,7 +399,9 @@ function StudentDashboardPage() {
               value={dashboardData.publishedResults.length}
               description={`${dashboardData.pendingResults.length} pending`}
               icon={ClipboardList}
-              tone={dashboardData.pendingResults.length > 0 ? "warning" : "success"}
+              tone={
+                dashboardData.pendingResults.length > 0 ? "warning" : "success"
+              }
               to="/student/report-cards"
             />
             <DashboardMetricCard
@@ -374,14 +420,47 @@ function StudentDashboardPage() {
               description="Your next useful academic step."
               icon={GraduationCap}
               tone="primary"
-              primaryAction={{ to: "/student/subjects", label: "Open subjects", icon: BookOpen }}
-              secondaryAction={{ to: "/student/report-cards", label: "Report cards", icon: FileText }}
+              primaryAction={{
+                to: "/student/subjects",
+                label: "Open subjects",
+                icon: BookOpen,
+              }}
+              secondaryAction={{
+                to: "/student/report-cards",
+                label: "Report cards",
+                icon: FileText,
+              }}
             >
               <div className="grid grid-cols-2 gap-3">
-                <InfoTile label="Best subject" value={dashboardData.subjectHighlights.best?.label || "Awaiting results"} />
-                <InfoTile label="Needs support" value={dashboardData.subjectHighlights.weakest?.label || "No weak spot yet"} />
-                <InfoTile label="Latest report" value={dashboardData.latestReportCard ? cleanText(dashboardData.latestReportCard.academic_term_name, "Published") : "Awaiting release"} />
-                <InfoTile label="Unread notifications" value={dashboardData.stats.unread_count ?? 0} />
+                <InfoTile
+                  label="Best subject"
+                  value={
+                    dashboardData.subjectHighlights.best?.label ||
+                    "Awaiting results"
+                  }
+                />
+                <InfoTile
+                  label="Needs support"
+                  value={
+                    dashboardData.subjectHighlights.weakest?.label ||
+                    "No weak spot yet"
+                  }
+                />
+                <InfoTile
+                  label="Latest report"
+                  value={
+                    dashboardData.latestReportCard
+                      ? cleanText(
+                          dashboardData.latestReportCard.academic_term_name,
+                          "Published",
+                        )
+                      : "Awaiting release"
+                  }
+                />
+                <InfoTile
+                  label="Unread notifications"
+                  value={dashboardData.stats.unread_count ?? 0}
+                />
               </div>
             </DashboardFocusCard>
 
@@ -395,7 +474,12 @@ function StudentDashboardPage() {
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <DashboardCalendarPanel role="student" actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
+            <DashboardCalendarPanel
+              role="student"
+              actorId={user?.id || user?.email || ""}
+              membershipId={user?.membership_id || ""}
+              tenantId={user?.tenant_id || calendarScope}
+            />
             <DashboardListCard
               title="Student calendar"
               description="Published student-visible dates and school status."
@@ -411,10 +495,34 @@ function StudentDashboardPage() {
               title="Quick actions"
               description="Common student workflows."
               actions={[
-                { label: "Subjects", description: "View scores and components", to: "/student/subjects", icon: BookOpen, tone: "primary" },
-                { label: "Performance", description: "Open full analytics", to: "/student/analytics", icon: BarChart3, tone: "success" },
-                { label: "Report cards", description: "Published term reports", to: "/student/report-cards", icon: FileText, tone: "warning" },
-                { label: "Inbox", description: "Notifications and updates", to: "/student/inbox", icon: Megaphone, tone: "accent" },
+                {
+                  label: "Subjects",
+                  description: "View scores and components",
+                  to: "/student/subjects",
+                  icon: BookOpen,
+                  tone: "primary",
+                },
+                {
+                  label: "Performance",
+                  description: "Open full analytics",
+                  to: "/student/analytics",
+                  icon: BarChart3,
+                  tone: "success",
+                },
+                {
+                  label: "Report cards",
+                  description: "Published term reports",
+                  to: "/student/report-cards",
+                  icon: FileText,
+                  tone: "warning",
+                },
+                {
+                  label: "Inbox",
+                  description: "Notifications and updates",
+                  to: "/student/inbox",
+                  icon: Megaphone,
+                  tone: "accent",
+                },
               ]}
             />
           </section>
@@ -426,30 +534,52 @@ function StudentDashboardPage() {
                 description="A short preview of class subjects."
                 action={
                   <Link to="/student/subjects">
-                    <Button variant="outline" size="sm">Open all subjects</Button>
+                    <Button variant="outline" size="sm">
+                      Open all subjects
+                    </Button>
                   </Link>
                 }
               />
               <div className="grid grid-cols-2 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {dashboardData.subjectCards.slice(0, 4).map((card) => (
-                  <Card key={card.id} as={card.result_id ? Link : "div"} to={card.result_id ? `/student/subjects/${card.result_id}` : undefined} className="p-3 transition hover:border-primary/30 hover:shadow-premium sm:p-4">
+                  <Card
+                    key={card.id}
+                    as={Link}
+                    to={`/student/subjects/${card.id}`}
+                    className="p-3 transition hover:border-primary/30 hover:shadow-premium sm:p-4"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-text">{cleanText(card.subject_name, "Subject")}</p>
-                        <p className="mt-1 truncate text-xs text-text-muted">{cleanText(card.teacher_name, "Teacher not assigned")}</p>
+                        <p className="truncate text-sm font-semibold text-text">
+                          {cleanText(card.subject_name, "Subject")}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-text-muted">
+                          {cleanText(card.teacher_name, "Teacher not assigned")}
+                        </p>
                       </div>
                       <span className="rounded-full bg-surface-muted px-2 py-1 text-[10px] font-semibold text-text-muted">
-                        {displayStatusLabel(card.status, card.result_id ? "Pending" : "Awaiting marks")}
+                        {displayStatusLabel(
+                          card.status,
+                          card.result_id ? "Pending" : "Awaiting marks",
+                        )}
                       </span>
                     </div>
                     <div className="mt-4 flex items-end justify-between gap-3 rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3">
                       <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Total</p>
-                        <p className="mt-1 text-lg font-semibold text-text">{scoreDisplayValue(card.total_score)}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                          Total
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-text">
+                          {scoreDisplayValue(card.total_score)}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Grade</p>
-                        <p className="mt-1 text-lg font-semibold text-text">{cleanText(card.grade, "--")}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                          Grade
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-text">
+                          {cleanText(card.grade, "--")}
+                        </p>
                       </div>
                     </div>
                   </Card>
@@ -477,9 +607,14 @@ function SubjectProgressPreview({ data = [] }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="section-title">Subject progress</h3>
-          <p className="mt-1 text-sm text-text-muted">Latest published scores.</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Latest published scores.
+          </p>
         </div>
-        <Link to="/student/analytics" className="shrink-0 text-xs font-semibold text-primary hover:underline">
+        <Link
+          to="/student/analytics"
+          className="shrink-0 text-xs font-semibold text-primary hover:underline"
+        >
           View all
         </Link>
       </div>
@@ -492,15 +627,20 @@ function SubjectProgressPreview({ data = [] }) {
           {items.map((item, index) => (
             <div key={`${item.label}-${index}`} className="space-y-2">
               <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
-                <span className="min-w-0 truncate font-semibold text-text">{item.label}</span>
-                <span className="shrink-0 font-semibold text-text-muted">{item.value}%</span>
+                <span className="min-w-0 truncate font-semibold text-text">
+                  {item.label}
+                </span>
+                <span className="shrink-0 font-semibold text-text-muted">
+                  {item.value}%
+                </span>
               </div>
               <div className="h-2.5 rounded-full bg-surface-muted">
                 <div
                   className="h-2.5 rounded-full"
                   style={{
                     width: `${item.value}%`,
-                    backgroundColor: PROGRESS_COLORS[index % PROGRESS_COLORS.length],
+                    backgroundColor:
+                      PROGRESS_COLORS[index % PROGRESS_COLORS.length],
                   }}
                 />
               </div>
@@ -515,7 +655,9 @@ function SubjectProgressPreview({ data = [] }) {
 function InfoTile({ label, value }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">
+        {label}
+      </p>
       <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
     </div>
   );

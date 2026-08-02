@@ -45,14 +45,14 @@
     overflow-wrap: anywhere;
   }
 
-  html[data-standalone-pwa="true"] .directory-card-grid.mobile-scroll-list {
+  .directory-card-grid.mobile-scroll-list {
     max-height: calc(100dvh - 18rem - env(safe-area-inset-bottom, 0px));
     min-height: 14rem;
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* Shared installed-app dock position for every actor and dashboard page. */
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+  [data-mobile-bottom-nav="true"] {
     position: fixed !important;
     left: 0 !important;
     right: 0 !important;
@@ -76,7 +76,7 @@
     user-select: none;
   }
 
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
+  [data-mobile-bottom-nav="true"] > div {
     width: 100% !important;
     max-width: 30rem !important;
     margin-inline: auto !important;
@@ -88,7 +88,7 @@
     backdrop-filter: blur(18px);
   }
 
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] * {
+  [data-mobile-bottom-nav="true"] * {
     touch-action: manipulation;
   }
 }
@@ -98,7 +98,7 @@
     padding: 0.875rem !important;
   }
 
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+  [data-mobile-bottom-nav="true"] {
     padding-inline: 0.75rem !important;
   }
 }
