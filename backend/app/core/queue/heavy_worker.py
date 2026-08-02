@@ -1,0 +1,130 @@
+"""ARQ worker for database-heavy bulk import and progression jobs."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+from uuid import UUID
+
+import app.models  # noqa: F401
+
+from app.config.database import AsyncSessionLocal, engine  # noqa: E402
+from app.core.queue.arq import HEAVY_QUEUE_NAME, get_arq_redis_settings  # noqa: E402
+from app.core.queue.context import (  # noqa: E402
+    reset_current_bulk_import_job_id,
+    set_current_bulk_import_job_id,
+)
+from app.modules.bulk_imports.live_service import BulkImportLiveService  # noqa: E402
+from app.modules.student_academics.lifecycle_repository import (  # noqa: E402
+    StudentProgressionRepository,
+)
+from app.modules.student_academics.models import (  # noqa: E402
+    StudentProgressionRunStatus,
+)
+from app.modules.student_academics.session_closure_service import (  # noqa: E402
+    SessionClosureService,
+)
+
+
+async def process_bulk_import_job(
+    ctx: dict[str, Any],
+    job_id: str,
+    tenant_id: str,
+    actor_id: str,
+    notify_on_completion: bool = True,
+) -> dict[str, int | str]:
+    """Process one confirmed bulk-import job."""
+
+    _ = ctx
+    context_token = set_current_bulk_import_job_id(job_id)
+    try:
+        async with AsyncSessionLocal() as db:
+            return await BulkImportLiveService.process_confirmed_import_job(
+                db=db,
+                tenant_id=UUID(tenant_id),
+                actor_id=UUID(actor_id),
+                job_id=UUID(job_id),
+                notify_on_completion=notify_on_completion,
+            )
+    finally:
+        reset_current_bulk_import_job_id(context_token)
+
+
+async def process_session_progression_job(
+    ctx: dict[str, Any],
+    run_id: str,
+    tenant_id: str,
+) -> dict[str, int | str]:
+    """Progress eligible students while preserving the existing lifecycle rules."""
+
+    _ = ctx
+    parsed_run_id = uuid.UUID(run_id)
+    parsed_tenant_id = uuid.UUID(tenant_id)
+    failure_exception: Exception | None = None
+
+    async with AsyncSessionLocal() as db:
+        try:
+            return await SessionClosureService.process_progression_run(
+                db,
+                tenant_id=parsed_tenant_id,
+                run_id=parsed_run_id,
+            )
+        except Exception as exc:
+            failure_exception = exc
+            await db.rollback()
+
+    if failure_exception is None:
+        raise RuntimeError("Session progression failed without an exception.")
+
+    async with AsyncSessionLocal() as failure_db:
+        run = await StudentProgressionRepository.get_run_by_id(
+            failure_db,
+            parsed_tenant_id,
+            parsed_run_id,
+            lock=True,
+        )
+        if run is not None and run.status != StudentProgressionRunStatus.COMPLETED:
+            run.status = StudentProgressionRunStatus.FAILED
+            run.completed_at = datetime.now(timezone.utc)
+            run.failed_students = max(run.failed_students, 1)
+            run.failure_reason = str(failure_exception)[:1000]
+            await StudentProgressionRepository.save_run(failure_db, run)
+            if run.initiated_by_admin_id is not None:
+                await SessionClosureService._broadcast(
+                    failure_db,
+                    tenant_id=parsed_tenant_id,
+                    actor_id=run.initiated_by_admin_id,
+                    title="Academic session progression failed",
+                    body=(
+                        "The session remains in closing and academic writes remain paused. "
+                        f"Review the progression status before retrying. Reason: {str(failure_exception)[:500]}"
+                    ),
+                    priority="urgent",
+                )
+            await failure_db.commit()
+        raise failure_exception
+
+
+async def shutdown(ctx: dict[str, Any]) -> None:
+    """Dispose this worker process's database engine."""
+
+    _ = ctx
+    await engine.dispose()
+
+
+class WorkerSettings:
+    """Settings for serialized database-heavy jobs."""
+
+    redis_settings = get_arq_redis_settings()
+    queue_name = HEAVY_QUEUE_NAME
+    functions = [
+        process_bulk_import_job,
+        process_session_progression_job,
+    ]
+    on_shutdown = shutdown
+    max_jobs = 1
+    job_timeout = 3600
+    keep_result = 3600
+    max_tries = 3
+    health_check_key = f"{HEAVY_QUEUE_NAME}:health"
