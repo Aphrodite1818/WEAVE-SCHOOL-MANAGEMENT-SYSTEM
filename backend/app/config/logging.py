@@ -115,9 +115,7 @@ class ContextFormatter(logging.Formatter):
         if not extras:
             return message
 
-        extra_part = " | ".join(
-            f"{key}={value!r}" for key, value in sorted(extras)
-        )
+        extra_part = " | ".join(f"{key}={value!r}" for key, value in sorted(extras))
         return f"{message} | {extra_part}"
 
 
@@ -160,8 +158,7 @@ def _build_console_handler(console_level: int) -> logging.Handler:
     if is_development():
         handler.setFormatter(
             ContextFormatter(
-                "%(asctime)s | %(levelname)-8s | source=%(source)s | "
-                "%(name)s | %(message)s",
+                "%(asctime)s | %(levelname)-8s | source=%(source)s | %(name)s | %(message)s",
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
         )
@@ -181,8 +178,7 @@ def _build_file_handler() -> logging.Handler:
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(
         ContextFormatter(
-            "%(asctime)s | %(levelname)-8s | source=%(source)s | "
-            "%(name)s | %(message)s",
+            "%(asctime)s | %(levelname)-8s | source=%(source)s | %(name)s | %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     )
