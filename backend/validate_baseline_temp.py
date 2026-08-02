@@ -1,3 +1,0 @@
-# Temporary CI diagnostic. Remove after fixing the baseline freeze.
-DIAGNOSTIC_STAGE = 'required-table assertion'
-DIAGNOSTIC_LOG_BASE64 = 'VHJhY2ViYWNrIChtb3N0IHJlY2VudCBjYWxsIGxhc3QpOgogIEZpbGUgIi90bXAvYXNzZXJ0X2Jhc2VsaW5lX3RhYmxlcy5weSIsIGxpbmUgNSwgaW4gPG1vZHVsZT4KICAgIGZyb20gYXBwLmNvbmZpZy5kYXRhYmFzZSBpbXBvcnQgZW5naW5lCk1vZHVsZU5vdEZvdW5kRXJyb3I6IE5vIG1vZHVsZSBuYW1lZCAnYXBwJwo='

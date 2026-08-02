@@ -1,160 +1,5360 @@
-"""Clean baseline schema for Weave.
+"""Frozen initial production baseline for Weave.
 
-This revision intentionally replaces the previous development migration chain.
-It is for fresh databases only: drop/recreate or migrate data manually before
-using it against an existing database.
+Revision ID: 20260731_clean_baseline
+Revises:
+Create Date: 2026-08-02 22:54:27.990217
 
-The baseline currently builds the first production schema from the registered
-SQLAlchemy metadata. It must be replaced with explicit Alembic operations before
-adding the next schema revision so future fresh databases cannot inherit model
-changes twice.
 """
 
-from __future__ import annotations
+from typing import Sequence, Union
 
-from collections.abc import Sequence
-from typing import Any
-
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
-import app.models  # noqa: F401
-from app.shared.base_model import Base
-
-
+# revision identifiers, used by Alembic.
 revision: str = "20260731_clean_baseline"
-down_revision: str | Sequence[str] | None = None
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
-
-
-def _schema(value: str | None) -> str:
-    return value or "public"
-
-
-def _foreign_key_signature(
-    *,
-    source_schema: str | None,
-    source_table: str,
-    local_columns: Sequence[str],
-    referent_schema: str | None,
-    referent_table: str,
-    remote_columns: Sequence[str],
-) -> tuple[Any, ...]:
-    return (
-        _schema(source_schema),
-        source_table,
-        tuple(local_columns),
-        _schema(referent_schema),
-        referent_table,
-        tuple(remote_columns),
-    )
-
-
-def _database_foreign_keys(bind: Any) -> set[tuple[Any, ...]]:
-    inspector = sa.inspect(bind)
-    signatures: set[tuple[Any, ...]] = set()
-
-    for table_name in inspector.get_table_names(schema="public"):
-        for foreign_key in inspector.get_foreign_keys(table_name, schema="public"):
-            referred_table = foreign_key.get("referred_table")
-            if not referred_table:
-                continue
-            signatures.add(
-                _foreign_key_signature(
-                    source_schema="public",
-                    source_table=table_name,
-                    local_columns=foreign_key.get("constrained_columns") or (),
-                    referent_schema=foreign_key.get("referred_schema"),
-                    referent_table=referred_table,
-                    remote_columns=foreign_key.get("referred_columns") or (),
-                )
-            )
-
-    return signatures
-
-
-def _metadata_foreign_key_signature(
-    constraint: sa.ForeignKeyConstraint,
-) -> tuple[Any, ...]:
-    elements = tuple(constraint.elements)
-    referred_table = elements[0].column.table
-    return _foreign_key_signature(
-        source_schema=constraint.table.schema,
-        source_table=constraint.table.name,
-        local_columns=tuple(column.name for column in constraint.columns),
-        referent_schema=referred_table.schema,
-        referent_table=referred_table.name,
-        remote_columns=tuple(element.column.name for element in elements),
-    )
-
-
-def _metadata_foreign_key_count() -> int:
-    return sum(
-        len(table.foreign_key_constraints) for table in Base.metadata.tables.values()
-    )
-
-
-def _database_foreign_key_count(bind: Any) -> int:
-    return int(
-        bind.execute(
-            sa.text(
-                """
-                SELECT count(*)
-                FROM pg_constraint constraint_row
-                JOIN pg_namespace namespace_row
-                  ON namespace_row.oid = constraint_row.connamespace
-                WHERE constraint_row.contype = 'f'
-                  AND namespace_row.nspname = 'public'
-                """
-            )
-        ).scalar_one()
-    )
-
-
-def _create_missing_foreign_keys(bind: Any) -> None:
-    """Install every metadata FK and verify PostgreSQL persisted it."""
-
-    existing = _database_foreign_keys(bind)
-    for table in Base.metadata.sorted_tables:
-        for constraint in table.foreign_key_constraints:
-            signature = _metadata_foreign_key_signature(constraint)
-            if signature in existing:
-                continue
-
-            ddl = str(
-                sa.schema.AddConstraint(
-                    constraint,
-                    isolate_from_table=False,
-                ).compile(
-                    dialect=bind.dialect,
-                    compile_kwargs={"literal_binds": True},
-                )
-            )
-            bind.exec_driver_sql(ddl)
-            existing.add(signature)
-
-    expected = _metadata_foreign_key_count()
-    actual = _database_foreign_key_count(bind)
-    if actual != expected:
-        raise RuntimeError(
-            "Incomplete baseline foreign-key installation: "
-            f"expected {expected}, PostgreSQL contains {actual}."
-        )
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create the complete initial schema on a fresh database."""
-
-    bind = op.get_bind()
-    Base.metadata.create_all(bind=bind)
-    _create_missing_foreign_keys(bind)
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table(
+        "legal_compliance_acceptances",
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column("actor_type", sa.String(length=50), nullable=False),
+        sa.Column("actor_id", sa.UUID(), nullable=False),
+        sa.Column("policy_version", sa.String(length=40), nullable=False),
+        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "actor_type", "actor_id", "policy_version", name="uq_legal_acceptance_actor_policy"
+        ),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_legal_acceptances_actor_latest",
+        "legal_compliance_acceptances",
+        ["actor_type", "actor_id", "accepted_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "parent_accounts",
+        sa.Column("email", sa.String(length=300), nullable=False),
+        sa.Column("password_hash", sa.String(length=300), nullable=False),
+        sa.Column("first_name", sa.String(length=100), nullable=True),
+        sa.Column("last_name", sa.String(length=100), nullable=True),
+        sa.Column("phone_number", sa.String(length=30), nullable=True),
+        sa.Column("occupation", sa.String(length=150), nullable=True),
+        sa.Column("address", sa.String(length=500), nullable=True),
+        sa.Column("emergency_phone", sa.String(length=30), nullable=True),
+        sa.Column(
+            "account_status",
+            sa.Enum(
+                "pending",
+                "active",
+                "inactive",
+                "locked",
+                name="parent_account_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("is_verified", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("email", name="uq_parent_accounts_email"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_accounts_account_status",
+        "parent_accounts",
+        ["account_status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_accounts_active_verified",
+        "parent_accounts",
+        ["is_active", "is_verified"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_accounts_email", "parent_accounts", ["email"], unique=False, schema="public"
+    )
+    op.create_table(
+        "payment_webhook_events",
+        sa.Column(
+            "provider",
+            sa.Enum("paystack", "manual", name="payment_provider", schema="public"),
+            nullable=False,
+        ),
+        sa.Column("event_type", sa.String(length=120), nullable=False),
+        sa.Column("event_key", sa.String(length=255), nullable=False),
+        sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("error_message", sa.Text(), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "provider",
+            "event_type",
+            "event_key",
+            name="uq_payment_webhook_events_provider_type_key",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_payment_webhook_events_provider_type",
+        "payment_webhook_events",
+        ["provider", "event_type"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "superadmins",
+        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column("password_hash", sa.String(length=255), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_table(
+        "teacher_accounts",
+        sa.Column("email", sa.String(length=300), nullable=False),
+        sa.Column("password_hash", sa.String(length=300), nullable=False),
+        sa.Column("first_name", sa.String(length=100), nullable=True),
+        sa.Column("last_name", sa.String(length=100), nullable=True),
+        sa.Column("phone_number", sa.String(length=30), nullable=True),
+        sa.Column("qualification", sa.String(length=100), nullable=True),
+        sa.Column("specialization", sa.String(length=150), nullable=True),
+        sa.Column("passport_photo_url", sa.String(length=500), nullable=True),
+        sa.Column(
+            "account_status",
+            sa.Enum(
+                "pending",
+                "active",
+                "locked",
+                "inactive",
+                name="teacher_account_status_v2",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("is_verified", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("email", name="uq_teacher_accounts_email"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_accounts_email", "teacher_accounts", ["email"], unique=False, schema="public"
+    )
+    op.create_index(
+        "ix_teacher_accounts_status_active",
+        "teacher_accounts",
+        ["account_status", "is_active"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "tenants",
+        sa.Column("school_name", sa.String(length=255), nullable=False),
+        sa.Column(
+            "slug",
+            sa.String(length=100),
+            nullable=False,
+            comment="URL/subdomain slug e.g. 'greenfield-lagos'. Used by tenant middleware to resolve the school.",
+        ),
+        sa.Column(
+            "admission_number_prefix",
+            sa.String(length=20),
+            nullable=True,
+            comment="Tenant-specific prefix used to generate student admission numbers.",
+        ),
+        sa.Column("school_bot_whatssap_number", sa.String(length=20), nullable=True),
+        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column("phone", sa.String(length=20), nullable=True),
+        sa.Column("address", sa.Text(), nullable=True),
+        sa.Column("city", sa.String(length=100), nullable=True),
+        sa.Column("state", sa.String(length=100), nullable=True),
+        sa.Column("country", sa.String(length=100), server_default="Nigeria", nullable=False),
+        sa.Column("logo_url", sa.Text(), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "active",
+                "inactive",
+                "suspended",
+                "trial",
+                "expired",
+                name="tenantstatus",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "plan",
+            sa.Enum(
+                "free_trial",
+                "plus",
+                "professional",
+                "enterprise",
+                name="subscriptionplan",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("trial_ends_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("subscription_ends_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("is_deleted", sa.Boolean(), nullable=False),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "max_students",
+            sa.Integer(),
+            nullable=False,
+            comment="Hard cap on student count for this tenant's plan.",
+        ),
+        sa.Column("max_teachers", sa.Integer(), nullable=False),
+        sa.Column("feature_flags", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("timezone", sa.String(length=50), server_default="Africa/Lagos", nullable=False),
+        sa.Column("language", sa.String(length=10), server_default="en", nullable=False),
+        sa.Column("onboarding_completed", sa.Boolean(), nullable=False),
+        sa.Column("branches", postgresql.ARRAY(sa.String()), nullable=True),
+        sa.Column(
+            "verification_status",
+            sa.Enum(
+                "pending_verification",
+                "active",
+                "rejected",
+                name="tenantverificationstatus",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("school_bot_whatssap_number"),
+        schema="public",
+    )
+    op.create_table(
+        "attendance_audit_logs",
+        sa.Column(
+            "actor_type",
+            sa.Enum(
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                "system",
+                name="attendance_audit_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("actor_id", sa.UUID(), nullable=True),
+        sa.Column("action", sa.String(length=120), nullable=False),
+        sa.Column("entity_type", sa.String(length=120), nullable=False),
+        sa.Column("entity_id", sa.UUID(), nullable=True),
+        sa.Column("details", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_attendance_audit_logs_tenant_actor",
+        "attendance_audit_logs",
+        ["tenant_id", "actor_type", "actor_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_attendance_audit_logs_tenant_entity",
+        "attendance_audit_logs",
+        ["tenant_id", "entity_type", "entity_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "attendance_notifications",
+        sa.Column("notification_key", sa.String(length=220), nullable=False),
+        sa.Column(
+            "channel",
+            sa.Enum("email", "in_app", name="attendance_notification_channel", schema="public"),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "sent",
+                "skipped",
+                "failed",
+                name="attendance_notification_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column(
+            "recipient_actor_type",
+            sa.Enum(
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                "system",
+                name="attendance_notification_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("recipient_actor_id", sa.UUID(), nullable=True),
+        sa.Column("recipient_email", sa.String(length=255), nullable=True),
+        sa.Column("subject", sa.String(length=255), nullable=True),
+        sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("scheduled_for", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("failure_reason", sa.Text(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "notification_key", name="uq_attendance_notifications_tenant_key"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_attendance_notifications_tenant_status",
+        "attendance_notifications",
+        ["tenant_id", "status", "scheduled_for"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "auth",
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column("email", sa.String(length=100), nullable=False),
+        sa.Column("hashed_value", sa.String(length=255), nullable=False),
+        sa.Column(
+            "purpose",
+            sa.Enum(
+                "verification",
+                "password_reset",
+                "tenant_activation",
+                name="otppurpose",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("is_used", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_active_email_purpose",
+        "auth",
+        ["tenant_id", "email", "purpose", "expires_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("is_used = false"),
+    )
+    op.create_table(
+        "auth_identities",
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column("identifier", sa.String(length=255), nullable=False),
+        sa.Column(
+            "identifier_type",
+            sa.Enum("email", "admission_number", name="identifier_type", schema="public"),
+            nullable=False,
+        ),
+        sa.Column(
+            "actor_type",
+            sa.Enum(
+                "tenant_admin",
+                "teacher_account",
+                "staff",
+                "parent_account",
+                "student",
+                "teacher",
+                "parent",
+                name="actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("actor_id", sa.UUID(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                actor_type IN ('teacher_account', 'parent_account')\n                AND tenant_id IS NULL\n            )\n            OR\n            (\n                actor_type IN ('tenant_admin', 'staff', 'student')\n                AND tenant_id IS NOT NULL\n            )\n            OR actor_type IN ('teacher', 'parent')\n            ",
+            name="ck_auth_identity_actor_scope",
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"], ondelete="RESTRICT"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("actor_type", "actor_id", name="uq_auth_identities_actor"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("identifier_type", "identifier", name="uq_auth_identities_identifier"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_identities_active_identifier",
+        "auth_identities",
+        ["identifier_type", "identifier", "is_active"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "auth_sessions",
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "actor_type",
+            sa.Enum(
+                "superadmin",
+                "tenant_admin",
+                "teacher_account",
+                "teacher",
+                "staff",
+                "parent_account",
+                "parent",
+                "student",
+                name="auth_session_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("actor_id", sa.UUID(), nullable=False),
+        sa.Column("session_jti", sa.String(length=64), nullable=False),
+        sa.Column("user_agent", sa.Text(), nullable=True),
+        sa.Column("ip_address", sa.String(length=45), nullable=True),
+        sa.Column("remember_me", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_reason", sa.String(length=100), nullable=True),
+        sa.Column("compromised_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                actor_type = 'superadmin'\n                AND tenant_id IS NULL\n            )\n            OR\n            (\n                actor_type IN ('teacher_account', 'parent_account')\n                AND tenant_id IS NULL\n            )\n            OR\n            (\n                actor_type NOT IN ('superadmin', 'teacher_account', 'parent_account')\n                AND tenant_id IS NOT NULL\n            )\n            ",
+            name="ck_auth_sessions_tenant_scope",
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_sessions_active_lookup",
+        "auth_sessions",
+        ["actor_type", "actor_id", "revoked_at", "expires_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_sessions_actor",
+        "auth_sessions",
+        ["actor_type", "actor_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_sessions_tenant_actor",
+        "auth_sessions",
+        ["tenant_id", "actor_type", "actor_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "communication_announcements",
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "created_by_actor_type",
+            sa.Enum(
+                "superadmin",
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                name="communication_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("created_by_actor_id", sa.UUID(), nullable=False),
+        sa.Column("title", sa.String(length=200), nullable=False),
+        sa.Column("body", sa.Text(), nullable=False),
+        sa.Column(
+            "category",
+            sa.Enum(
+                "general",
+                "academic",
+                "attendance",
+                "event",
+                "finance",
+                "emergency",
+                "system",
+                name="communication_announcement_category",
+                schema="public",
+            ),
+            server_default="general",
+            nullable=False,
+        ),
+        sa.Column(
+            "priority",
+            sa.Enum(
+                "low",
+                "normal",
+                "high",
+                "urgent",
+                name="communication_announcement_priority",
+                schema="public",
+            ),
+            server_default="normal",
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "draft",
+                "scheduled",
+                "published",
+                "archived",
+                "cancelled",
+                name="communication_announcement_status",
+                schema="public",
+            ),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("publish_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("is_pinned", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_comm_announcements_tenant_status",
+        "communication_announcements",
+        ["tenant_id", "status", "publish_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "communication_conversations",
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "conversation_type",
+            sa.Enum("direct", "support", name="communication_conversation_type", schema="public"),
+            server_default="direct",
+            nullable=False,
+        ),
+        sa.Column(
+            "created_by_actor_type",
+            sa.Enum(
+                "superadmin",
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                name="communication_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("created_by_actor_id", sa.UUID(), nullable=False),
+        sa.Column("subject", sa.String(length=200), nullable=True),
+        sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_table(
+        "communication_notification_deliveries",
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "recipient_actor_type",
+            sa.Enum(
+                "superadmin",
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                name="communication_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("recipient_actor_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "source_type",
+            sa.Enum(
+                "announcement",
+                "message",
+                "system_event",
+                "attendance_reminder",
+                "attendance_correction",
+                "bulk_import",
+                "calendar_event",
+                "academic_lifecycle",
+                "subscription",
+                "account_alert",
+                name="communication_notification_source_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("source_id", sa.UUID(), nullable=False),
+        sa.Column("title", sa.String(length=200), nullable=False),
+        sa.Column("preview", sa.String(length=500), server_default="", nullable=False),
+        sa.Column("action_path", sa.String(length=500), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "unread",
+                "read",
+                "acknowledged",
+                "dismissed",
+                name="communication_notification_status",
+                schema="public",
+            ),
+            server_default="unread",
+            nullable=False,
+        ),
+        sa.Column(
+            "delivered_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column("read_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("acknowledged_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("dismissed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "recipient_actor_type",
+            "recipient_actor_id",
+            "source_type",
+            "source_id",
+            name="uq_comm_notification_delivery_source",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_comm_notifications_inbox",
+        "communication_notification_deliveries",
+        ["tenant_id", "recipient_actor_type", "recipient_actor_id", "status", "delivered_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "email_outbox",
+        sa.Column("recipient_email", sa.String(length=255), nullable=False),
+        sa.Column("recipient_name", sa.String(length=255), nullable=True),
+        sa.Column("subject", sa.String(length=255), nullable=False),
+        sa.Column("template_name", sa.String(length=120), nullable=False),
+        sa.Column("template_context", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "processing",
+                "sent",
+                "failed",
+                "cancelled",
+                name="email_outbox_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("attempts", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("max_attempts", sa.Integer(), server_default="4", nullable=False),
+        sa.Column("next_retry_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("processing_started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("failure_reason", sa.Text(), nullable=True),
+        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_email_outbox_pending_claim",
+        "email_outbox",
+        ["next_retry_at", "created_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.create_index(
+        "ix_email_outbox_processing_recovery",
+        "email_outbox",
+        ["processing_started_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("status = 'processing'"),
+    )
+    op.create_index(
+        "ix_email_outbox_recipient_status",
+        "email_outbox",
+        ["recipient_email", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_email_outbox_template_status",
+        "email_outbox",
+        ["template_name", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_email_outbox_tenant_retry",
+        "email_outbox",
+        ["tenant_id", "status", "next_retry_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_email_outbox_tenant_status",
+        "email_outbox",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "grading_scales",
+        sa.Column("min_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("max_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("grade", sa.String(length=10), nullable=False),
+        sa.Column("remark", sa.String(length=100), nullable=True),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),
+        schema="public",
+    )
+    op.create_table(
+        "media_assets",
+        sa.Column(
+            "owner_type",
+            sa.Enum(
+                "tenant",
+                "student",
+                "teacher",
+                "tenant_admin",
+                name="media_owner_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "owner_id",
+            sa.UUID(),
+            nullable=False,
+            comment="Polymorphic owner ID. References tenant/student/teacher/tenant_admin depending on owner_type.",
+        ),
+        sa.Column(
+            "purpose",
+            sa.Enum(
+                "school_logo",
+                "student_passport",
+                "teacher_passport",
+                "tenant_admin_passport",
+                name="media_purpose",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "visibility",
+            sa.Enum("public", "private", name="media_visibility", schema="public"),
+            server_default="private",
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum("active", "replaced", "deleted", name="media_status", schema="public"),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column(
+            "storage_provider",
+            sa.Enum("local", "r2", name="media_storage_provider", schema="public"),
+            server_default="local",
+            nullable=False,
+        ),
+        sa.Column(
+            "bucket",
+            sa.String(length=255),
+            nullable=False,
+            comment="Storage bucket/container name.",
+        ),
+        sa.Column(
+            "object_key",
+            sa.Text(),
+            nullable=False,
+            comment="Provider object key/path, for example tenants/{tenant_id}/students/{id}/passport/{media_id}.webp.",
+        ),
+        sa.Column(
+            "public_url",
+            sa.Text(),
+            nullable=True,
+            comment="Stable public or CDN URL when the object is public.",
+        ),
+        sa.Column(
+            "cdn_url",
+            sa.Text(),
+            nullable=True,
+            comment="Cached CDN URL for fast public delivery when available.",
+        ),
+        sa.Column(
+            "signed_url_expires_at",
+            sa.DateTime(timezone=True),
+            nullable=True,
+            comment="Expiry time when public_url stores a temporary signed URL.",
+        ),
+        sa.Column("original_filename", sa.String(length=255), nullable=True),
+        sa.Column(
+            "content_type",
+            sa.String(length=120),
+            nullable=False,
+            comment="Validated MIME type, for example image/jpeg or image/webp.",
+        ),
+        sa.Column(
+            "extension",
+            sa.String(length=20),
+            nullable=True,
+            comment="Normalized file extension without a leading dot.",
+        ),
+        sa.Column("size_bytes", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "checksum_sha256",
+            sa.String(length=64),
+            nullable=True,
+            comment="SHA-256 checksum of the uploaded file bytes.",
+        ),
+        sa.Column(
+            "etag",
+            sa.String(length=255),
+            nullable=True,
+            comment="Object storage ETag returned by the backend when available.",
+        ),
+        sa.Column(
+            "cache_control",
+            sa.String(length=255),
+            nullable=True,
+            comment="Cache-Control policy applied to the stored object.",
+        ),
+        sa.Column("width_px", sa.Integer(), nullable=True),
+        sa.Column("height_px", sa.Integer(), nullable=True),
+        sa.Column(
+            "metadata_json",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=True,
+            comment="Provider-specific metadata, image processing metadata, or audit details.",
+        ),
+        sa.Column(
+            "uploaded_by_actor_type",
+            sa.Enum(
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                "superadmin",
+                name="media_uploaded_by_actor_type",
+                schema="public",
+            ),
+            nullable=True,
+        ),
+        sa.Column("uploaded_by_actor_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "is_current",
+            sa.Boolean(),
+            server_default="true",
+            nullable=False,
+            comment="Marks the latest active media for a given owner/purpose.",
+        ),
+        sa.Column("replaced_by_media_asset_id", sa.UUID(), nullable=True),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["replaced_by_media_asset_id"], ["public.media_assets.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_media_assets_tenant_object_key",
+        "media_assets",
+        ["tenant_id", "object_key"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_media_assets_tenant_owner_purpose_current",
+        "media_assets",
+        ["tenant_id", "owner_type", "owner_id", "purpose", "is_current"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_media_assets_tenant_purpose_status",
+        "media_assets",
+        ["tenant_id", "purpose", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_media_assets_tenant_visibility_status",
+        "media_assets",
+        ["tenant_id", "visibility", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "parent_memberships",
+        sa.Column("parent_account_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "active", "read_only", "inactive", name="parent_membership_status", schema="public"
+            ),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("joined_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("end_reason", sa.String(length=500), nullable=True),
+        sa.Column(
+            "receive_email_notifications", sa.Boolean(), server_default="true", nullable=False
+        ),
+        sa.Column(
+            "receive_push_notifications", sa.Boolean(), server_default="true", nullable=False
+        ),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status IN ('active', 'read_only')\n                AND ended_at IS NULL\n            )\n            OR\n            (\n                status = 'inactive'\n                AND ended_at IS NOT NULL\n            )\n            ",
+            name="ck_parent_membership_status_end_consistency",
+        ),
+        sa.ForeignKeyConstraint(
+            ["parent_account_id"], ["public.parent_accounts.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "parent_account_id", "tenant_id", name="uq_parent_memberships_account_tenant"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_memberships_account_status",
+        "parent_memberships",
+        ["parent_account_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_memberships_tenant_account",
+        "parent_memberships",
+        ["tenant_id", "parent_account_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_memberships_tenant_status",
+        "parent_memberships",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "platform_controls",
+        sa.Column("lockdown_enabled", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("lockdown_reason", sa.String(length=255), nullable=True),
+        sa.Column(
+            "lockdown_message",
+            sa.Text(),
+            server_default="Weave is temporarily in maintenance mode. Please try again later.",
+            nullable=False,
+        ),
+        sa.Column("enabled_by_superadmin_id", sa.UUID(), nullable=True),
+        sa.Column("enabled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("disabled_by_superadmin_id", sa.UUID(), nullable=True),
+        sa.Column("disabled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["disabled_by_superadmin_id"], ["public.superadmins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["enabled_by_superadmin_id"], ["public.superadmins.id"], ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_table(
+        "school_assessment_configs",
+        sa.Column("test_max", sa.Integer(), server_default="20", nullable=False),
+        sa.Column("assessment_max", sa.Integer(), server_default="20", nullable=False),
+        sa.Column("exam_max", sa.Integer(), server_default="60", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "test_max + assessment_max + exam_max = 100", name="ck_school_assessment_config_total"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", name="uq_school_assessment_config_tenant"),
+        schema="public",
+    )
+    op.create_table(
+        "school_calendar_configurations",
+        sa.Column("timezone", sa.String(length=80), server_default="Africa/Lagos", nullable=False),
+        sa.Column("instructional_weekdays", sa.ARRAY(sa.Integer()), nullable=False),
+        sa.Column("default_open_time", sa.Time(), nullable=True),
+        sa.Column("default_close_time", sa.Time(), nullable=True),
+        sa.Column(
+            "default_student_attendance_required",
+            sa.Boolean(),
+            server_default="true",
+            nullable=False,
+        ),
+        sa.Column(
+            "default_workforce_attendance_required",
+            sa.Boolean(),
+            server_default="true",
+            nullable=False,
+        ),
+        sa.Column("revision", sa.Integer(), server_default="1", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "cardinality(instructional_weekdays) > 0",
+            name="ck_school_calendar_config_weekdays_not_empty",
+        ),
+        sa.CheckConstraint(
+            "default_open_time IS NULL OR default_close_time IS NULL OR default_close_time > default_open_time",
+            name="ck_school_calendar_config_open_close_order",
+        ),
+        sa.CheckConstraint(
+            "instructional_weekdays <@ ARRAY[0,1,2,3,4,5,6]",
+            name="ck_school_calendar_config_weekdays_range",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", name="uq_school_calendar_configurations_tenant"),
+        schema="public",
+    )
+    op.create_table(
+        "security_ip_blocks",
+        sa.Column("ip_address_hash", sa.String(length=255), nullable=False),
+        sa.Column("ip_address_label", sa.String(length=64), nullable=False),
+        sa.Column("reason", sa.String(length=255), nullable=False),
+        sa.Column("blocked_by_superadmin_id", sa.UUID(), nullable=True),
+        sa.Column("blocked_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("unblocked_by_superadmin_id", sa.UUID(), nullable=True),
+        sa.Column("unblocked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("unblock_reason", sa.String(length=255), nullable=True),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["blocked_by_superadmin_id"], ["public.superadmins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["unblocked_by_superadmin_id"], ["public.superadmins.id"], ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_security_ip_blocks_active_hash",
+        "security_ip_blocks",
+        ["ip_address_hash", "is_active", "expires_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "superadmin_invites",
+        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column("hashed_token", sa.String(length=255), nullable=False),
+        sa.Column("invited_by_superadmin_id", sa.UUID(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("is_used", sa.Boolean(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["invited_by_superadmin_id"],
+            ["public.superadmins.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("hashed_token"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_table(
+        "teacher_memberships",
+        sa.Column("teacher_account_id", sa.UUID(), nullable=False),
+        sa.Column("staff_id", sa.String(length=50), nullable=True),
+        sa.Column("job_title", sa.String(length=100), nullable=True),
+        sa.Column("department", sa.String(length=100), nullable=True),
+        sa.Column("employment_type", sa.String(length=50), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "active", "suspended", "inactive", name="teacher_membership_status", schema="public"
+            ),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("joined_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("end_reason", sa.String(length=500), nullable=True),
+        sa.Column(
+            "receive_email_notifications", sa.Boolean(), server_default="true", nullable=False
+        ),
+        sa.Column(
+            "receive_push_notifications", sa.Boolean(), server_default="true", nullable=False
+        ),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (status IN ('active', 'suspended') AND ended_at IS NULL)\n            OR (status = 'inactive' AND ended_at IS NOT NULL)\n            ",
+            name="ck_teacher_membership_status_end_consistency",
+        ),
+        sa.ForeignKeyConstraint(
+            ["teacher_account_id"], ["public.teacher_accounts.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "teacher_account_id", "tenant_id", name="uq_teacher_memberships_account_tenant"
+        ),
+        sa.UniqueConstraint("tenant_id", "staff_id", name="uq_teacher_memberships_tenant_staff_id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_memberships_account_status",
+        "teacher_memberships",
+        ["teacher_account_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_memberships_tenant_status",
+        "teacher_memberships",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "tenant_admins",
+        sa.Column("email", sa.String(length=300), nullable=False),
+        sa.Column("password_hash", sa.String(length=255), nullable=False),
+        sa.Column("passport_photo_url", sa.String(length=500), nullable=True),
+        sa.Column(
+            "account_status",
+            sa.Enum("pending", "active", "inactive", name="tenant_admin_status", schema="public"),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("is_verified", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_tenant_admins_tenant_email",
+        "tenant_admins",
+        ["tenant_id", "email"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "tenant_subscriptions",
+        sa.Column(
+            "plan_code",
+            sa.Enum(
+                "free_trial",
+                "plus",
+                "professional",
+                "enterprise",
+                name="subscriptionplan",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "trialing",
+                "active",
+                "non_renewing",
+                "past_due",
+                "grace_period",
+                "expired",
+                "cancelled",
+                name="subscription_status",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "billing_interval",
+            sa.Enum("monthly", name="billing_interval", schema="public"),
+            nullable=False,
+        ),
+        sa.Column(
+            "provider",
+            sa.Enum("paystack", "manual", name="payment_provider", schema="public"),
+            server_default="manual",
+            nullable=False,
+        ),
+        sa.Column("current_period_start", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("current_period_end", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("trial_ends_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("grace_ends_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("cancel_at_period_end", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("expired_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("is_current", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("provider_customer_code", sa.String(length=120), nullable=True),
+        sa.Column("provider_subscription_code", sa.String(length=120), nullable=True),
+        sa.Column("provider_email_token", sa.String(length=255), nullable=True),
+        sa.Column("last_payment_reference", sa.String(length=120), nullable=True),
+        sa.Column("last_payment_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("next_payment_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("notes", sa.Text(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_tenant_subscriptions_status_grace_ends_at",
+        "tenant_subscriptions",
+        ["status", "grace_ends_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_tenant_subscriptions_status_period_end",
+        "tenant_subscriptions",
+        ["status", "current_period_end"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_tenant_subscriptions_tenant_current",
+        "tenant_subscriptions",
+        ["tenant_id", "is_current"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_tenant_subscriptions_current_per_tenant",
+        "tenant_subscriptions",
+        ["tenant_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("is_current = true"),
+    )
+    op.create_index(
+        "uq_tenant_subscriptions_provider_subscription_code",
+        "tenant_subscriptions",
+        ["provider", "provider_subscription_code"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("provider_subscription_code IS NOT NULL"),
+    )
+    op.create_table(
+        "user_guide_states",
+        sa.Column("actor_type", sa.String(length=40), nullable=False),
+        sa.Column("actor_id", sa.UUID(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column("scope_key", sa.String(length=40), server_default="global", nullable=False),
+        sa.Column("guide_key", sa.String(length=100), nullable=False),
+        sa.Column("status", sa.String(length=20), server_default="not_started", nullable=False),
+        sa.Column("current_step", sa.String(length=100), nullable=True),
+        sa.Column(
+            "skipped_steps",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'[]'::jsonb"),
+            nullable=False,
+        ),
+        sa.Column("remind_after", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("dismissed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "status IN ('not_started', 'in_progress', 'dismissed', 'completed')",
+            name="ck_user_guide_states_status",
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "actor_type",
+            "actor_id",
+            "scope_key",
+            "guide_key",
+            name="uq_user_guide_states_actor_scope_guide",
+        ),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_user_guide_states_actor_scope",
+        "user_guide_states",
+        ["actor_type", "actor_id", "scope_key"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "academic_lifecycle_audits",
+        sa.Column("entity_type", sa.String(length=20), nullable=False),
+        sa.Column("entity_id", sa.UUID(), nullable=False),
+        sa.Column("action", sa.String(length=60), nullable=False),
+        sa.Column("previous_status", sa.String(length=30), nullable=True),
+        sa.Column("new_status", sa.String(length=30), nullable=True),
+        sa.Column("acting_admin_id", sa.UUID(), nullable=True),
+        sa.Column("reason", sa.String(length=500), nullable=True),
+        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["acting_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_academic_lifecycle_audits_tenant_action",
+        "academic_lifecycle_audits",
+        ["tenant_id", "action"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_academic_lifecycle_audits_tenant_entity",
+        "academic_lifecycle_audits",
+        ["tenant_id", "entity_type", "entity_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "academic_sessions",
+        sa.Column("name", sa.String(length=30), nullable=False),
+        sa.Column("start_date", sa.Date(), nullable=True),
+        sa.Column("end_date", sa.Date(), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "draft",
+                "open",
+                "closed",
+                "closing",
+                name="academic_session_status",
+                schema="public",
+            ),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("is_current", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("closing_started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("closed_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("next_academic_session_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (status IN ('draft', 'open') AND closing_started_at IS NULL AND closed_at IS NULL)\n            OR (status = 'closing' AND closing_started_at IS NOT NULL AND closed_at IS NULL)\n            OR (status = 'closed' AND closing_started_at IS NOT NULL AND closed_at IS NOT NULL)\n            ",
+            name="ck_academic_session_status_timestamps",
+        ),
+        sa.CheckConstraint(
+            "status <> 'closed' OR is_current = false",
+            name="ck_closed_academic_session_not_current",
+        ),
+        sa.CheckConstraint(
+            "next_academic_session_id IS NULL OR next_academic_session_id <> id",
+            name="ck_academic_session_next_not_self",
+        ),
+        sa.ForeignKeyConstraint(
+            ["closed_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["next_academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", "name", name="uq_academic_session_tenant_name"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_academic_sessions_tenant_next",
+        "academic_sessions",
+        ["tenant_id", "next_academic_session_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_academic_sessions_tenant_status",
+        "academic_sessions",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_academic_sessions_current_per_tenant",
+        "academic_sessions",
+        ["tenant_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("is_current = true AND status = 'open'"),
+    )
+    op.create_table(
+        "attendance_corrections",
+        sa.Column(
+            "target_type",
+            sa.Enum(
+                "student_record",
+                "workforce_record",
+                name="attendance_correction_target",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("target_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "approved",
+                "rejected",
+                "cancelled",
+                name="attendance_correction_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column(
+            "requested_by_actor_type",
+            sa.Enum(
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                "system",
+                name="attendance_correction_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("requested_by_actor_id", sa.UUID(), nullable=False),
+        sa.Column("reviewed_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("reason", sa.Text(), nullable=False),
+        sa.Column("admin_note", sa.Text(), nullable=True),
+        sa.Column("previous_state", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("requested_state", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("applied_state", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["reviewed_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_attendance_corrections_tenant_status",
+        "attendance_corrections",
+        ["tenant_id", "status", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_attendance_corrections_tenant_target",
+        "attendance_corrections",
+        ["tenant_id", "target_type", "target_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "attendance_settings",
+        sa.Column(
+            "status",
+            sa.Enum("active", "archived", name="attendance_settings_status", schema="public"),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("timezone", sa.String(length=80), server_default="Africa/Lagos", nullable=False),
+        sa.Column("student_marking_opens_at", sa.Time(), nullable=True),
+        sa.Column("student_marking_closes_at", sa.Time(), nullable=True),
+        sa.Column("workforce_check_in_opens_at", sa.Time(), nullable=True),
+        sa.Column("workforce_check_in_closes_at", sa.Time(), nullable=True),
+        sa.Column("workforce_check_out_opens_at", sa.Time(), nullable=True),
+        sa.Column("workforce_check_out_closes_at", sa.Time(), nullable=True),
+        sa.Column("late_after_time", sa.Time(), nullable=True),
+        sa.Column(
+            "require_geofence_for_workforce", sa.Boolean(), server_default="false", nullable=False
+        ),
+        sa.Column(
+            "geofence_accuracy_threshold_m", sa.Integer(), server_default="100", nullable=False
+        ),
+        sa.Column("geofence_tolerance_m", sa.Integer(), server_default="25", nullable=False),
+        sa.Column("location_raw_retention_days", sa.Integer(), server_default="7", nullable=False),
+        sa.Column(
+            "location_evidence_retention_days", sa.Integer(), server_default="365", nullable=False
+        ),
+        sa.Column(
+            "require_student_sheet_submission", sa.Boolean(), server_default="true", nullable=False
+        ),
+        sa.Column("notify_absent_parents", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("notify_absent_staff", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("configuration_revision", sa.Integer(), server_default="1", nullable=False),
+        sa.Column("updated_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "geofence_accuracy_threshold_m > 0", name="ck_attendance_settings_accuracy_positive"
+        ),
+        sa.CheckConstraint(
+            "geofence_tolerance_m >= 0", name="ck_attendance_settings_tolerance_nonnegative"
+        ),
+        sa.CheckConstraint(
+            "location_evidence_retention_days BETWEEN 30 AND 2555",
+            name="ck_attendance_settings_evidence_retention_range",
+        ),
+        sa.CheckConstraint(
+            "location_raw_retention_days BETWEEN 0 AND 90",
+            name="ck_attendance_settings_raw_retention_range",
+        ),
+        sa.CheckConstraint(
+            "student_marking_opens_at IS NULL OR student_marking_closes_at IS NULL OR student_marking_closes_at > student_marking_opens_at",
+            name="ck_attendance_settings_student_window",
+        ),
+        sa.CheckConstraint(
+            "workforce_check_in_opens_at IS NULL OR workforce_check_in_closes_at IS NULL OR workforce_check_in_closes_at > workforce_check_in_opens_at",
+            name="ck_attendance_settings_workforce_in_window",
+        ),
+        sa.CheckConstraint(
+            "workforce_check_out_opens_at IS NULL OR workforce_check_out_closes_at IS NULL OR workforce_check_out_closes_at > workforce_check_out_opens_at",
+            name="ck_attendance_settings_workforce_out_window",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["updated_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", name="uq_attendance_settings_tenant"),
+        schema="public",
+    )
+    op.create_table(
+        "auth_refresh_tokens",
+        sa.Column("session_id", sa.UUID(), nullable=False),
+        sa.Column("token_hash", sa.String(length=255), nullable=False),
+        sa.Column("token_jti", sa.String(length=64), nullable=False),
+        sa.Column("issued_ip_address", sa.String(length=45), nullable=True),
+        sa.Column("issued_user_agent", sa.Text(), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_reason", sa.String(length=100), nullable=True),
+        sa.Column("replaced_by_token_id", sa.UUID(), nullable=True),
+        sa.Column("reuse_detected_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["replaced_by_token_id"], ["public.auth_refresh_tokens.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["session_id"], ["public.auth_sessions.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_refresh_tokens_rotation_state",
+        "auth_refresh_tokens",
+        ["session_id", "used_at", "revoked_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_refresh_tokens_session_active",
+        "auth_refresh_tokens",
+        ["session_id", "revoked_at", "expires_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "classes",
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("normalized_name", sa.String(length=120), nullable=False),
+        sa.Column("arm", sa.String(length=20), nullable=True),
+        sa.Column("normalized_arm", sa.String(length=40), server_default="", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("archived_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=True),
+        sa.Column("next_class_id", sa.UUID(), nullable=True),
+        sa.Column("is_terminal", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "(is_terminal = true AND next_class_id IS NULL) OR is_terminal = false",
+            name="ck_classes_terminal_has_no_next_class",
+        ),
+        sa.CheckConstraint(
+            "archived_at IS NULL OR is_active = false", name="ck_classes_archived_requires_inactive"
+        ),
+        sa.CheckConstraint(
+            "next_class_id IS NULL OR next_class_id <> id", name="ck_classes_next_class_not_self"
+        ),
+        sa.ForeignKeyConstraint(
+            ["archived_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["next_class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "normalized_name",
+            "normalized_arm",
+            name="uq_classes_tenant_normalized_name_arm",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_classes_tenant_active",
+        "classes",
+        ["tenant_id", "is_active"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_classes_tenant_archived",
+        "classes",
+        ["tenant_id", "archived_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_classes_tenant_next_class",
+        "classes",
+        ["tenant_id", "next_class_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_classes_tenant_teacher_membership",
+        "classes",
+        ["tenant_id", "teacher_membership_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_classes_tenant_terminal_active",
+        "classes",
+        ["tenant_id", "is_terminal", "is_active"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "communication_conversation_participants",
+        sa.Column("conversation_id", sa.UUID(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "actor_type",
+            sa.Enum(
+                "superadmin",
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                name="communication_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("actor_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "joined_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
+        sa.Column("left_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_read_message_id", sa.UUID(), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["conversation_id"], ["public.communication_conversations.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_comm_participants_actor",
+        "communication_conversation_participants",
+        ["tenant_id", "actor_type", "actor_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_comm_participant_active",
+        "communication_conversation_participants",
+        ["conversation_id", "actor_type", "actor_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("left_at IS NULL"),
+    )
+    op.create_table(
+        "communication_messages",
+        sa.Column("conversation_id", sa.UUID(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "sender_actor_type",
+            sa.Enum(
+                "superadmin",
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                name="communication_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("sender_actor_id", sa.UUID(), nullable=False),
+        sa.Column("body", sa.Text(), nullable=False),
+        sa.Column("edited_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["conversation_id"], ["public.communication_conversations.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_table(
+        "import_jobs",
+        sa.Column(
+            "resource_type",
+            sa.Enum("students", name="import_resource_type", schema="public"),
+            nullable=False,
+        ),
+        sa.Column(
+            "file_type",
+            sa.Enum("csv", "xlsx", name="import_file_type", schema="public"),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "processing",
+                "completed",
+                "partially_completed",
+                "failed",
+                "cancelled",
+                name="import_job_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("created_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("original_filename", sa.String(length=255), nullable=False),
+        sa.Column("stored_filename", sa.String(length=255), nullable=True),
+        sa.Column("source_file_path", sa.Text(), nullable=True),
+        sa.Column("result_file_path", sa.Text(), nullable=True),
+        sa.Column("file_size_bytes", sa.Integer(), nullable=True),
+        sa.Column("source_fingerprint", sa.String(length=64), nullable=True),
+        sa.Column("confirmed_fingerprint", sa.String(length=64), nullable=True),
+        sa.Column("total_rows", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("processed_rows", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("successful_rows", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("failed_rows", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("skipped_rows", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("error_message", sa.Text(), nullable=True),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_admin_id"],
+            ["public.tenant_admins.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_jobs_status_created_at",
+        "import_jobs",
+        ["status", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_jobs_tenant_created_at",
+        "import_jobs",
+        ["tenant_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_jobs_tenant_created_by",
+        "import_jobs",
+        ["tenant_id", "created_by_admin_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_jobs_tenant_resource_type",
+        "import_jobs",
+        ["tenant_id", "resource_type"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_jobs_tenant_source_fingerprint",
+        "import_jobs",
+        ["tenant_id", "resource_type", "source_fingerprint"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_jobs_tenant_status",
+        "import_jobs",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_import_jobs_tenant_confirmed_fingerprint",
+        "import_jobs",
+        ["tenant_id", "resource_type", "confirmed_fingerprint"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("confirmed_fingerprint IS NOT NULL"),
+    )
+    op.create_table(
+        "payment_transactions",
+        sa.Column("subscription_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "provider",
+            sa.Enum("paystack", "manual", name="payment_provider", schema="public"),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending", "success", "failed", "abandoned", name="payment_status", schema="public"
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("reference", sa.String(length=120), nullable=False),
+        sa.Column("provider_transaction_id", sa.String(length=120), nullable=True),
+        sa.Column(
+            "plan_code",
+            sa.Enum(
+                "free_trial",
+                "plus",
+                "professional",
+                "enterprise",
+                name="subscriptionplan",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "billing_interval",
+            sa.Enum("monthly", name="billing_interval", schema="public"),
+            nullable=False,
+        ),
+        sa.Column("amount", sa.Numeric(precision=12, scale=2), nullable=False),
+        sa.Column("amount_kobo", sa.Integer(), nullable=False),
+        sa.Column("currency", sa.String(length=10), server_default="NGN", nullable=False),
+        sa.Column("authorization_url", sa.Text(), nullable=True),
+        sa.Column("access_code", sa.String(length=120), nullable=True),
+        sa.Column("paid_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("failure_reason", sa.Text(), nullable=True),
+        sa.Column("raw_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["subscription_id"],
+            ["public.tenant_subscriptions.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("reference"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_payment_transactions_tenant_status",
+        "payment_transactions",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_payment_transactions_tenant_subscription",
+        "payment_transactions",
+        ["tenant_id", "subscription_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "school_calendar_lifecycle_audits",
+        sa.Column("entity_type", sa.String(length=40), nullable=False),
+        sa.Column("entity_id", sa.UUID(), nullable=False),
+        sa.Column("action", sa.String(length=60), nullable=False),
+        sa.Column("previous_state", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("new_state", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("acting_admin_id", sa.UUID(), nullable=True),
+        sa.Column("reason", sa.String(length=500), nullable=True),
+        sa.Column("metadata_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["acting_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_school_calendar_lifecycle_audits_tenant_action",
+        "school_calendar_lifecycle_audits",
+        ["tenant_id", "action"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_school_calendar_lifecycle_audits_tenant_entity",
+        "school_calendar_lifecycle_audits",
+        ["tenant_id", "entity_type", "entity_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "school_geofences",
+        sa.Column("name", sa.String(length=120), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("latitude", sa.Numeric(precision=9, scale=6), nullable=False),
+        sa.Column("longitude", sa.Numeric(precision=9, scale=6), nullable=False),
+        sa.Column("radius_m", sa.Integer(), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "active", "inactive", "archived", name="school_geofence_status", schema="public"
+            ),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("is_primary", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("created_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("archived_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "latitude BETWEEN -90 AND 90", name="ck_school_geofences_latitude_range"
+        ),
+        sa.CheckConstraint(
+            "longitude BETWEEN -180 AND 180", name="ck_school_geofences_longitude_range"
+        ),
+        sa.CheckConstraint("radius_m > 0", name="ck_school_geofences_radius_positive"),
+        sa.ForeignKeyConstraint(
+            ["archived_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_school_geofences_tenant_status",
+        "school_geofences",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_school_geofences_primary_active",
+        "school_geofences",
+        ["tenant_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("is_primary = true AND status = 'active'"),
+    )
+    op.create_table(
+        "subjects",
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("normalized_name", sa.String(length=120), nullable=False),
+        sa.Column("code", sa.String(length=30), nullable=True),
+        sa.Column("normalized_code", sa.String(length=40), nullable=True),
+        sa.Column("description", sa.String(length=500), nullable=True),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("archived_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_subjects_archived_requires_inactive",
+        ),
+        sa.ForeignKeyConstraint(
+            ["archived_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", "code", name="uq_subject_tenant_code"),
+        sa.UniqueConstraint("tenant_id", "name", name="uq_subject_tenant_name"),
+        sa.UniqueConstraint(
+            "tenant_id", "normalized_code", name="uq_subject_tenant_normalized_code"
+        ),
+        sa.UniqueConstraint(
+            "tenant_id", "normalized_name", name="uq_subject_tenant_normalized_name"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_subjects_tenant_archived",
+        "subjects",
+        ["tenant_id", "archived_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "subscription_plan_changes",
+        sa.Column("subscription_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "current_plan_code",
+            sa.Enum(
+                "free_trial",
+                "plus",
+                "professional",
+                "enterprise",
+                name="subscriptionplan",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "target_plan_code",
+            sa.Enum(
+                "free_trial",
+                "plus",
+                "professional",
+                "enterprise",
+                name="subscriptionplan",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "change_type",
+            sa.Enum("upgrade", "downgrade", name="subscription_plan_change_type", schema="public"),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "blocked",
+                "scheduled",
+                "awaiting_payment",
+                "applied",
+                "cancelled",
+                "failed",
+                name="subscription_plan_change_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("requested_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("requested_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("effective_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("applied_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("usage_snapshot_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("blockers_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("provider_reference", sa.String(length=120), nullable=True),
+        sa.Column("failure_reason", sa.Text(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["requested_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["subscription_id"], ["public.tenant_subscriptions.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_subscription_plan_changes_effective_at",
+        "subscription_plan_changes",
+        ["status", "effective_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_subscription_plan_changes_tenant_status",
+        "subscription_plan_changes",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_subscription_plan_changes_open_per_tenant",
+        "subscription_plan_changes",
+        ["tenant_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("status IN ('pending', 'scheduled', 'awaiting_payment')"),
+    )
+    op.create_table(
+        "teacher_invitations",
+        sa.Column("invited_email", sa.String(length=300), nullable=False),
+        sa.Column("token_digest", sa.String(length=255), nullable=False),
+        sa.Column("staff_id", sa.String(length=50), nullable=True),
+        sa.Column("job_title", sa.String(length=100), nullable=True),
+        sa.Column("department", sa.String(length=100), nullable=True),
+        sa.Column("employment_type", sa.String(length=50), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "accepted",
+                "expired",
+                "revoked",
+                name="teacher_invitation_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("accepted_by_teacher_account_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'accepted'\n                AND accepted_at IS NOT NULL\n                AND accepted_by_teacher_account_id IS NOT NULL\n            )\n            OR status <> 'accepted'\n            ",
+            name="ck_teacher_invitation_acceptance_consistency",
+        ),
+        sa.CheckConstraint(
+            "\n            (status = 'revoked' AND revoked_at IS NOT NULL)\n            OR status <> 'revoked'\n            ",
+            name="ck_teacher_invitation_revocation_consistency",
+        ),
+        sa.ForeignKeyConstraint(
+            ["accepted_by_teacher_account_id"], ["public.teacher_accounts.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("token_digest", name="uq_teacher_invitations_token_digest"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_invitations_tenant_email_status",
+        "teacher_invitations",
+        ["tenant_id", "invited_email", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_teacher_invitations_pending_email",
+        "teacher_invitations",
+        ["tenant_id", "invited_email"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.create_table(
+        "tenant_branding",
+        sa.Column("logo_url", sa.Text(), nullable=True),
+        sa.Column("primary_color", sa.String(length=7), nullable=False),
+        sa.Column("accent_color", sa.String(length=7), nullable=False),
+        sa.Column("sidebar_color", sa.String(length=7), nullable=False),
+        sa.Column("header_color", sa.String(length=7), server_default="#FFFFFF", nullable=False),
+        sa.Column("surface_color", sa.String(length=7), server_default="#FFFFFF", nullable=False),
+        sa.Column("palette_key", sa.String(length=32), server_default="blue", nullable=False),
+        sa.Column(
+            "theme_mode",
+            sa.Enum("light", "dark", name="tenant_branding_theme_mode", schema="public"),
+            server_default="light",
+            nullable=False,
+        ),
+        sa.Column(
+            "tokens",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'{}'::jsonb"),
+            nullable=False,
+        ),
+        sa.Column("is_enabled", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("theme_version", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("token_schema_version", sa.Integer(), server_default="4", nullable=False),
+        sa.Column("updated_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "palette_key IN ('blue', 'royal_gold', 'navy', 'navy_gold', 'indigo_gold', 'gold', 'black_gold', 'orange', 'emerald', 'green_gold', 'forest', 'teal_gold', 'violet', 'purple_gold', 'plum', 'burgundy_cream', 'maroon_gold', 'rose', 'crimson_gray', 'red_navy', 'teal', 'cyan', 'sky_navy', 'slate', 'charcoal_red')",
+            name="ck_tenant_branding_palette_key",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["updated_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", name="uq_tenant_branding_tenant_id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_tenant_branding_tenant_enabled",
+        "tenant_branding",
+        ["tenant_id", "is_enabled"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "academic_terms",
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "name",
+            sa.Enum(
+                "first_term",
+                "second_term",
+                "third_term",
+                name="academic_term_name",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("start_date", sa.Date(), nullable=True),
+        sa.Column("end_date", sa.Date(), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "draft", "open", "closing", "closed", name="academic_term_status", schema="public"
+            ),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("is_current", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("opened_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("closing_started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("closed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("opened_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("closed_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (status = 'draft'\n                AND opened_at IS NULL\n                AND closing_started_at IS NULL\n                AND closed_at IS NULL)\n            OR\n            (status = 'open'\n                AND opened_at IS NOT NULL\n                AND closing_started_at IS NULL\n                AND closed_at IS NULL)\n            OR\n            (status = 'closing'\n                AND opened_at IS NOT NULL\n                AND closing_started_at IS NOT NULL\n                AND closed_at IS NULL)\n            OR\n            (status = 'closed'\n                AND opened_at IS NOT NULL\n                AND closing_started_at IS NOT NULL\n                AND closed_at IS NOT NULL)\n            ",
+            name="ck_academic_term_status_timestamps",
+        ),
+        sa.CheckConstraint(
+            "is_current = false OR status IN ('open', 'closing')",
+            name="ck_academic_term_current_requires_open",
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["closed_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["opened_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "academic_session_id", "name", name="uq_academic_term_tenant_session_name"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "uq_academic_terms_current_per_tenant",
+        "academic_terms",
+        ["tenant_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("is_current = true AND status = 'open'"),
+    )
+    op.create_table(
+        "auth_refresh_token_reuse_events",
+        sa.Column("refresh_token_id", sa.UUID(), nullable=True),
+        sa.Column("session_id", sa.UUID(), nullable=True),
+        sa.Column("detected_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["refresh_token_id"], ["public.auth_refresh_tokens.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["session_id"], ["public.auth_sessions.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_auth_refresh_token_reuse_events_window",
+        "auth_refresh_token_reuse_events",
+        ["detected_at", "id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "class_subject_teachers",
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("subject_id", sa.UUID(), nullable=False),
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=False),
+        sa.Column("is_core", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("sort_order", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["subject_id"], ["public.subjects.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "class_id",
+            "subject_id",
+            name="uq_class_subject_teacher_tenant_class_subject",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_class_subject_teachers_tenant_membership_active",
+        "class_subject_teachers",
+        ["tenant_id", "teacher_membership_id", "is_active"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "class_subjects",
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("subject_id", sa.UUID(), nullable=False),
+        sa.Column("is_core", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("archived_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_class_subjects_archived_requires_inactive",
+        ),
+        sa.ForeignKeyConstraint(
+            ["archived_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["subject_id"], ["public.subjects.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "class_id", "subject_id", name="uq_class_subject_tenant_class_subject"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_class_subjects_tenant_archived",
+        "class_subjects",
+        ["tenant_id", "archived_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "communication_announcement_audiences",
+        sa.Column("announcement_id", sa.UUID(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "audience_type",
+            sa.Enum(
+                "all_tenant_admins",
+                "selected_tenant_admins",
+                "tenant_admins_of_tenants",
+                "all_teachers",
+                "selected_teachers",
+                "all_students",
+                "selected_students",
+                "class_students",
+                "all_parents",
+                "selected_parents",
+                "class_parents",
+                name="communication_audience_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("tenant_target_id", sa.UUID(), nullable=True),
+        sa.Column("actor_id", sa.UUID(), nullable=True),
+        sa.Column("class_id", sa.UUID(), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["announcement_id"], ["public.communication_announcements.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["class_id"],
+            ["public.classes.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_target_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "announcement_id",
+            "audience_type",
+            "tenant_target_id",
+            "actor_id",
+            "class_id",
+            name="uq_comm_announcement_audience",
+        ),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_table(
+        "geofence_evaluations",
+        sa.Column("geofence_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "actor_type",
+            sa.Enum(
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                "system",
+                name="attendance_actor_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("actor_id", sa.UUID(), nullable=False),
+        sa.Column("purpose", sa.String(length=80), nullable=False),
+        sa.Column(
+            "decision",
+            sa.Enum(
+                "inside",
+                "outside",
+                "inaccurate",
+                "unavailable",
+                "invalid",
+                name="geofence_decision",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("distance_m", sa.Integer(), nullable=True),
+        sa.Column("accuracy_m", sa.Integer(), nullable=True),
+        sa.Column("tolerance_m", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("provided_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("latitude_raw", sa.Numeric(precision=9, scale=6), nullable=True),
+        sa.Column("longitude_raw", sa.Numeric(precision=9, scale=6), nullable=True),
+        sa.Column("raw_location_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("evidence_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("device_context", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("reason", sa.String(length=300), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "accuracy_m IS NULL OR accuracy_m > 0", name="ck_geofence_evaluations_accuracy_positive"
+        ),
+        sa.CheckConstraint(
+            "distance_m IS NULL OR distance_m >= 0",
+            name="ck_geofence_evaluations_distance_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "latitude_raw IS NULL OR latitude_raw BETWEEN -90 AND 90",
+            name="ck_geofence_evaluations_latitude_range",
+        ),
+        sa.CheckConstraint(
+            "longitude_raw IS NULL OR longitude_raw BETWEEN -180 AND 180",
+            name="ck_geofence_evaluations_longitude_range",
+        ),
+        sa.ForeignKeyConstraint(
+            ["geofence_id"], ["public.school_geofences.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_geofence_evaluations_tenant_actor",
+        "geofence_evaluations",
+        ["tenant_id", "actor_type", "actor_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_geofence_evaluations_tenant_decision",
+        "geofence_evaluations",
+        ["tenant_id", "decision", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_geofence_evaluations_tenant_expiry",
+        "geofence_evaluations",
+        ["tenant_id", "raw_location_expires_at", "evidence_expires_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "import_row_errors",
+        sa.Column("import_job_id", sa.UUID(), nullable=False),
+        sa.Column("row_number", sa.Integer(), nullable=False),
+        sa.Column("field_name", sa.String(length=120), nullable=True),
+        sa.Column("error_code", sa.String(length=120), nullable=True),
+        sa.Column("error_message", sa.Text(), nullable=False),
+        sa.Column("raw_row", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("normalized_row", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["import_job_id"], ["public.import_jobs.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_row_errors_tenant_error_code",
+        "import_row_errors",
+        ["tenant_id", "error_code"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_row_errors_tenant_job",
+        "import_row_errors",
+        ["tenant_id", "import_job_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_row_errors_tenant_job_row",
+        "import_row_errors",
+        ["tenant_id", "import_job_id", "row_number"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "import_staged_rows",
+        sa.Column("import_job_id", sa.UUID(), nullable=False),
+        sa.Column("row_number", sa.Integer(), nullable=False),
+        sa.Column("raw_row", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("normalized_row", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["import_job_id"], ["public.import_jobs.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("import_job_id", "row_number", name="uq_import_staged_rows_job_row"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_staged_rows_job_row",
+        "import_staged_rows",
+        ["import_job_id", "row_number"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_import_staged_rows_tenant_job",
+        "import_staged_rows",
+        ["tenant_id", "import_job_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "student_progression_runs",
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("next_academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("idempotency_key", sa.String(length=150), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "processing",
+                "completed",
+                "failed",
+                name="student_progression_run_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("total_students", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("promoted_students", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("graduated_students", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("skipped_students", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("failed_students", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("initiated_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("failure_reason", sa.String(length=1000), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "(status IN ('pending', 'processing') AND completed_at IS NULL) OR (status IN ('completed', 'failed') AND completed_at IS NOT NULL)",
+            name="ck_progression_run_completion_consistency",
+        ),
+        sa.CheckConstraint(
+            "promoted_students + graduated_students + skipped_students + failed_students <= total_students",
+            name="ck_progression_run_count_total",
+        ),
+        sa.CheckConstraint(
+            "total_students >= 0 AND promoted_students >= 0 AND graduated_students >= 0 AND skipped_students >= 0 AND failed_students >= 0",
+            name="ck_progression_run_nonnegative_counts",
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["initiated_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["next_academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "academic_session_id", name="uq_student_progression_run_tenant_session"
+        ),
+        sa.UniqueConstraint(
+            "tenant_id", "idempotency_key", name="uq_student_progression_run_tenant_idempotency"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_progression_runs_tenant_session",
+        "student_progression_runs",
+        ["tenant_id", "academic_session_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_progression_runs_tenant_status",
+        "student_progression_runs",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "students",
+        sa.Column("admission_number", sa.String(length=50), nullable=False),
+        sa.Column("password_hash", sa.String(length=255), nullable=True),
+        sa.Column("first_name", sa.String(length=100), nullable=True),
+        sa.Column("last_name", sa.String(length=100), nullable=True),
+        sa.Column(
+            "account_status",
+            sa.Enum(
+                "pending", "active", "inactive", name="student_account_status", schema="public"
+            ),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("is_verified", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("password_reset_required", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("date_of_birth", sa.Date(), nullable=True),
+        sa.Column(
+            "gender",
+            sa.Enum("male", "female", name="studentgender", schema="public"),
+            nullable=True,
+        ),
+        sa.Column("state_of_origin", sa.String(length=100), nullable=True),
+        sa.Column("passport_photo_url", sa.String(length=500), nullable=True),
+        sa.Column(
+            "admission_date", sa.Date(), server_default=sa.text("CURRENT_DATE"), nullable=False
+        ),
+        sa.Column("graduation_date", sa.Date(), nullable=True),
+        sa.Column("class_id", sa.UUID(), nullable=True),
+        sa.Column("arm", sa.String(length=20), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "active",
+                "withdrawn",
+                "suspended",
+                "graduated",
+                "expelled",
+                name="academicstatus",
+                schema="public",
+            ),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("promotion_hold", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_archived", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("archived_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("archive_reason", sa.String(length=500), nullable=True),
+        sa.Column(
+            "profile_status",
+            sa.Enum("incomplete", "complete", name="studentprofilestatus", schema="public"),
+            server_default="incomplete",
+            nullable=False,
+        ),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            status <> 'graduated'\n            OR graduation_date IS NOT NULL\n            ",
+            name="ck_students_graduated_has_date",
+        ),
+        sa.CheckConstraint(
+            "\n            status NOT IN ('withdrawn', 'expelled', 'graduated')\n            OR class_id IS NULL\n            ",
+            name="ck_students_terminal_status_has_no_current_class",
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                is_archived = false\n                AND archived_at IS NULL\n                AND archived_by_admin_id IS NULL\n                AND archive_reason IS NULL\n            )\n            OR\n            (\n                is_archived = true\n                AND archived_at IS NOT NULL\n                AND archive_reason IS NOT NULL\n            )\n            ",
+            name="ck_students_archive_consistency",
+        ),
+        sa.ForeignKeyConstraint(
+            ["archived_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "admission_number", name="uq_students_tenant_admission_number"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_students_tenant_account_status",
+        "students",
+        ["tenant_id", "account_status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_students_tenant_admission_number",
+        "students",
+        ["tenant_id", "admission_number"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_students_tenant_archived",
+        "students",
+        ["tenant_id", "is_archived"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_students_tenant_class",
+        "students",
+        ["tenant_id", "class_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_students_tenant_class_status_archived",
+        "students",
+        ["tenant_id", "class_id", "status", "is_archived"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_students_tenant_status",
+        "students",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "teacher_membership_subjects",
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=False),
+        sa.Column("subject_id", sa.UUID(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["subject_id"], ["public.subjects.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "teacher_membership_id",
+            "subject_id",
+            name="uq_teacher_membership_subjects_tenant_membership_subject",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_membership_subjects_membership",
+        "teacher_membership_subjects",
+        ["tenant_id", "teacher_membership_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_membership_subjects_subject",
+        "teacher_membership_subjects",
+        ["tenant_id", "subject_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "temporary_attendance_assignments",
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=False),
+        sa.Column("starts_on", sa.Date(), nullable=False),
+        sa.Column("ends_on", sa.Date(), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "active",
+                "ended",
+                "cancelled",
+                name="temporary_attendance_assignment_status",
+                schema="public",
+            ),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("assigned_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("reason", sa.String(length=300), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "ends_on >= starts_on", name="ck_temporary_attendance_assignment_date_order"
+        ),
+        sa.ForeignKeyConstraint(
+            ["assigned_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_temporary_attendance_assignments_tenant_class",
+        "temporary_attendance_assignments",
+        ["tenant_id", "class_id", "starts_on", "ends_on"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_temporary_attendance_assignments_tenant_teacher",
+        "temporary_attendance_assignments",
+        ["tenant_id", "teacher_membership_id", "starts_on", "ends_on"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "parent_invitations",
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("invited_email", sa.String(length=300), nullable=False),
+        sa.Column(
+            "relationship_type",
+            sa.Enum(
+                "father",
+                "mother",
+                "guardian",
+                "sponsor",
+                "other",
+                name="parentrelationship",
+                schema="public",
+            ),
+            server_default="guardian",
+            nullable=False,
+        ),
+        sa.Column("admission_number_snapshot", sa.String(length=100), nullable=False),
+        sa.Column("token_digest", sa.String(length=255), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "accepted",
+                "expired",
+                "revoked",
+                name="parent_invitation_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("accepted_by_parent_account_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'accepted'\n                AND accepted_at IS NOT NULL\n                AND accepted_by_parent_account_id IS NOT NULL\n            )\n            OR status <> 'accepted'\n            ",
+            name="ck_parent_invitation_acceptance_consistency",
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'revoked'\n                AND revoked_at IS NOT NULL\n            )\n            OR status <> 'revoked'\n            ",
+            name="ck_parent_invitation_revocation_consistency",
+        ),
+        sa.ForeignKeyConstraint(
+            ["accepted_by_parent_account_id"], ["public.parent_accounts.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("token_digest", name="uq_parent_invitations_token_digest"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_invitations_expires_at",
+        "parent_invitations",
+        ["expires_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_invitations_tenant_email_status",
+        "parent_invitations",
+        ["tenant_id", "invited_email", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_parent_invitations_tenant_student",
+        "parent_invitations",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_parent_invitations_pending_student_email",
+        "parent_invitations",
+        ["tenant_id", "student_id", "invited_email"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.create_table(
+        "report_cards",
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=False),
+        sa.Column("total_score", sa.Numeric(precision=7, scale=2), nullable=False),
+        sa.Column("average_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("position", sa.Integer(), nullable=True),
+        sa.Column("position_out_of", sa.Integer(), nullable=True),
+        sa.Column("class_teacher_comment", sa.Text(), nullable=True),
+        sa.Column("principal_comment", sa.Text(), nullable=True),
+        sa.Column("version", sa.Integer(), server_default="1", nullable=False),
+        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("published_by", sa.UUID(), nullable=True),
+        sa.Column("is_outdated", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("superseded_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum("draft", "published", "archived", name="report_card_status", schema="public"),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("generated_by_actor_type", sa.String(length=50), nullable=False),
+        sa.Column("generated_by_actor_id", sa.UUID(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "status <> 'published' OR (published_at IS NOT NULL AND published_by IS NOT NULL)",
+            name="ck_report_cards_published_metadata",
+        ),
+        sa.CheckConstraint(
+            "superseded_at IS NULL OR is_outdated = true",
+            name="ck_report_cards_superseded_is_outdated",
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["published_by"], ["public.tenant_admins.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_report_cards_active_student_period",
+        "report_cards",
+        ["tenant_id", "student_id", "academic_session_id", "academic_term_id"],
+        unique=True,
+        schema="public",
+        postgresql_where="superseded_at IS NULL",
+    )
+    op.create_index(
+        "ix_report_cards_tenant_status",
+        "report_cards",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_report_cards_tenant_student",
+        "report_cards",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "school_calendars",
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum("draft", "active", "archived", name="school_calendar_status", schema="public"),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("generated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("generated_from_configuration_revision", sa.Integer(), nullable=True),
+        sa.Column("activated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("activated_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("archived_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (status = 'draft' AND activated_at IS NULL AND archived_at IS NULL)\n            OR (status = 'active' AND activated_at IS NOT NULL AND archived_at IS NULL)\n            OR (status = 'archived' AND archived_at IS NOT NULL)\n            ",
+            name="ck_school_calendars_status_timestamps",
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["activated_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["archived_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "academic_term_id", name="uq_school_calendars_tenant_term"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_school_calendars_tenant_status",
+        "school_calendars",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_school_calendars_active_term",
+        "school_calendars",
+        ["tenant_id", "academic_term_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("status = 'active'"),
+    )
+    op.create_table(
+        "student_access_codes",
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("code_digest", sa.String(length=255), nullable=False),
+        sa.Column(
+            "purpose",
+            sa.Enum(
+                "initial_setup",
+                "password_reset",
+                name="student_access_code_purpose",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("is_used", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_access_codes_expires_at",
+        "student_access_codes",
+        ["expires_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_access_codes_is_used",
+        "student_access_codes",
+        ["is_used"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_access_codes_tenant_code_digest",
+        "student_access_codes",
+        ["tenant_id", "code_digest"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_access_codes_tenant_student",
+        "student_access_codes",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_access_codes_tenant_student_used",
+        "student_access_codes",
+        ["tenant_id", "student_id", "is_used"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "student_enrollments",
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("started_on", sa.Date(), nullable=False),
+        sa.Column("ended_on", sa.Date(), nullable=True),
+        sa.Column("is_current", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column(
+            "outcome",
+            sa.Enum(
+                "enrolled",
+                "promoted",
+                "repeated",
+                "reclassified",
+                "withdrawn",
+                "expelled",
+                "graduated",
+                "archived",
+                name="student_enrollment_outcome",
+                schema="public",
+            ),
+            server_default="enrolled",
+            nullable=False,
+        ),
+        sa.Column("reason", sa.String(length=500), nullable=True),
+        sa.Column("changed_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                is_current = true\n                AND ended_on IS NULL\n            )\n            OR\n            (\n                is_current = false\n                AND ended_on IS NOT NULL\n            )\n            ",
+            name="ck_student_enrollment_current_end_consistency",
+        ),
+        sa.CheckConstraint(
+            "ended_on IS NULL OR ended_on >= started_on", name="ck_student_enrollment_date_order"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["changed_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_enrollments_student_session",
+        "student_enrollments",
+        ["student_id", "academic_session_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_enrollments_tenant_class",
+        "student_enrollments",
+        ["tenant_id", "class_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_enrollments_tenant_session",
+        "student_enrollments",
+        ["tenant_id", "academic_session_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_enrollments_tenant_student",
+        "student_enrollments",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_student_enrollments_one_current",
+        "student_enrollments",
+        ["tenant_id", "student_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("is_current = true"),
+    )
+    op.create_table(
+        "student_parent_links",
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("parent_membership_id", sa.UUID(), nullable=False),
+        sa.Column(
+            "relationship_type",
+            sa.Enum(
+                "father",
+                "mother",
+                "guardian",
+                "sponsor",
+                "other",
+                name="parentrelationship",
+                schema="public",
+            ),
+            server_default="guardian",
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "active",
+                "read_only",
+                "alumni_read_only",
+                "ended",
+                name="student_parent_link_status",
+                schema="public",
+            ),
+            server_default="active",
+            nullable=False,
+        ),
+        sa.Column("is_primary_contact", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("receives_academic_updates", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("receives_fee_updates", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("verified_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "verified_by_type",
+            sa.Enum(
+                "student",
+                "tenant_admin",
+                "system",
+                name="parent_link_verified_by_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("verified_by_id", sa.UUID(), nullable=True),
+        sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("end_reason", sa.String(length=500), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'ended'\n                AND end_reason IS NOT NULL\n            )\n            OR status <> 'ended'\n            ",
+            name="ck_student_parent_link_ended_reason",
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status IN ('active', 'read_only', 'alumni_read_only')\n                AND ended_at IS NULL\n            )\n            OR\n            (\n                status = 'ended'\n                AND ended_at IS NOT NULL\n            )\n            ",
+            name="ck_student_parent_link_status_end_consistency",
+        ),
+        sa.ForeignKeyConstraint(
+            ["parent_membership_id"], ["public.parent_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "student_id",
+            "parent_membership_id",
+            name="uq_student_parent_link_tenant_student_membership",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_parent_links_tenant_membership",
+        "student_parent_links",
+        ["tenant_id", "parent_membership_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_parent_links_tenant_status",
+        "student_parent_links",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_parent_links_tenant_student",
+        "student_parent_links",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_student_parent_links_primary_contact",
+        "student_parent_links",
+        ["tenant_id", "student_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text(
+            "is_primary_contact = true AND status IN ('active', 'read_only', 'alumni_read_only')"
+        ),
+    )
+    op.create_table(
+        "teacher_assignments",
+        sa.Column("class_subject_id", sa.UUID(), nullable=False),
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column(
+            "effective_from", sa.Date(), server_default=sa.text("CURRENT_DATE"), nullable=False
+        ),
+        sa.Column("effective_to", sa.Date(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "effective_to IS NULL OR effective_to >= effective_from",
+            name="ck_teacher_assignments_effective_range",
+        ),
+        sa.ForeignKeyConstraint(
+            ["class_subject_id"], ["public.class_subjects.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_assignments_tenant_membership",
+        "teacher_assignments",
+        ["tenant_id", "teacher_membership_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_teacher_assignment_active_class_subject",
+        "teacher_assignments",
+        ["class_subject_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("is_active = true"),
+    )
+    op.create_table(
+        "school_calendar_days",
+        sa.Column("calendar_id", sa.UUID(), nullable=False),
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=False),
+        sa.Column("calendar_date", sa.Date(), nullable=False),
+        sa.Column(
+            "day_type",
+            sa.Enum(
+                "instructional_day",
+                "examination_day",
+                "weekend",
+                "public_holiday",
+                "school_holiday",
+                "mid_term_break",
+                "staff_training_day",
+                "special_school_day",
+                "emergency_closure",
+                name="school_calendar_day_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("title", sa.String(length=150), nullable=True),
+        sa.Column("description", sa.String(length=1000), nullable=True),
+        sa.Column("school_open", sa.Boolean(), nullable=False),
+        sa.Column("student_activity_allowed", sa.Boolean(), nullable=False),
+        sa.Column("student_attendance_required", sa.Boolean(), nullable=False),
+        sa.Column("workforce_attendance_required", sa.Boolean(), nullable=False),
+        sa.Column("opens_at", sa.Time(), nullable=True),
+        sa.Column("closes_at", sa.Time(), nullable=True),
+        sa.Column(
+            "source",
+            sa.Enum(
+                "generated", "manual", "system", name="school_calendar_day_source", schema="public"
+            ),
+            server_default="generated",
+            nullable=False,
+        ),
+        sa.Column("is_manual_override", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("created_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("updated_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "opens_at IS NULL OR closes_at IS NULL OR closes_at > opens_at",
+            name="ck_school_calendar_days_open_close_order",
+        ),
+        sa.CheckConstraint(
+            "school_open = true OR student_attendance_required = false",
+            name="ck_school_calendar_days_closed_no_student_attendance",
+        ),
+        sa.CheckConstraint(
+            "student_attendance_required = false OR student_activity_allowed = true",
+            name="ck_school_calendar_days_attendance_requires_activity",
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["calendar_id"], ["public.school_calendars.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["updated_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "calendar_id",
+            "calendar_date",
+            name="uq_school_calendar_days_tenant_calendar_date",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_school_calendar_days_tenant_date",
+        "school_calendar_days",
+        ["tenant_id", "calendar_date"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_school_calendar_days_tenant_term_date",
+        "school_calendar_days",
+        ["tenant_id", "academic_term_id", "calendar_date"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "school_calendar_events",
+        sa.Column("calendar_id", sa.UUID(), nullable=False),
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=False),
+        sa.Column("title", sa.String(length=150), nullable=False),
+        sa.Column("description", sa.String(length=1000), nullable=True),
+        sa.Column(
+            "event_type",
+            sa.Enum(
+                "academic",
+                "holiday",
+                "examination",
+                "meeting",
+                "activity",
+                "emergency",
+                "other",
+                name="school_calendar_event_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("starts_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("ends_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("is_all_day", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column(
+            "audience",
+            sa.Enum(
+                "all",
+                "tenant_admins",
+                "teachers",
+                "parents",
+                "students",
+                name="school_calendar_event_audience",
+                schema="public",
+            ),
+            server_default="all",
+            nullable=False,
+        ),
+        sa.Column("location", sa.String(length=200), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "draft",
+                "published",
+                "cancelled",
+                name="school_calendar_event_status",
+                schema="public",
+            ),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("created_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "status <> 'cancelled' OR cancelled_at IS NOT NULL",
+            name="ck_school_calendar_events_cancelled_at",
+        ),
+        sa.CheckConstraint(
+            "status <> 'published' OR published_at IS NOT NULL",
+            name="ck_school_calendar_events_published_at",
+        ),
+        sa.CheckConstraint(
+            "ends_at > starts_at", name="ck_school_calendar_events_ends_after_start"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["calendar_id"], ["public.school_calendars.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["created_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_school_calendar_events_tenant_status_start",
+        "school_calendar_events",
+        ["tenant_id", "status", "starts_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "student_attendance_sheets",
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("attendance_date", sa.Date(), nullable=False),
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=True),
+        sa.Column("calendar_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "draft",
+                "submitted",
+                "approved",
+                "locked",
+                "cancelled",
+                name="student_attendance_sheet_status",
+                schema="public",
+            ),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("opened_by_teacher_membership_id", sa.UUID(), nullable=True),
+        sa.Column("submitted_by_teacher_membership_id", sa.UUID(), nullable=True),
+        sa.Column("approved_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("locked_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("locked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("notes", sa.Text(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["approved_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["calendar_id"], ["public.school_calendars.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["locked_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["opened_by_teacher_membership_id"],
+            ["public.teacher_memberships.id"],
+            ondelete="SET NULL",
+        ),
+        sa.ForeignKeyConstraint(
+            ["submitted_by_teacher_membership_id"],
+            ["public.teacher_memberships.id"],
+            ondelete="SET NULL",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "class_id",
+            "attendance_date",
+            name="uq_student_attendance_sheet_class_date",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_attendance_sheets_tenant_date",
+        "student_attendance_sheets",
+        ["tenant_id", "attendance_date"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_attendance_sheets_tenant_status",
+        "student_attendance_sheets",
+        ["tenant_id", "status", "attendance_date"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "student_parent_link_requests",
+        sa.Column("invitation_id", sa.UUID(), nullable=False),
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("parent_account_id", sa.UUID(), nullable=False),
+        sa.Column("parent_membership_id", sa.UUID(), nullable=True),
+        sa.Column("admission_number_snapshot", sa.String(length=50), nullable=False),
+        sa.Column(
+            "relationship_type",
+            sa.Enum(
+                "father",
+                "mother",
+                "guardian",
+                "sponsor",
+                "other",
+                name="parentrelationship",
+                schema="public",
+            ),
+            server_default="guardian",
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "approved",
+                "rejected",
+                "cancelled",
+                "expired",
+                name="student_parent_link_request_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("requested_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("responded_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "responded_by_type",
+            sa.Enum(
+                "student",
+                "tenant_admin",
+                "system",
+                name="parent_link_verified_by_type",
+                schema="public",
+            ),
+            nullable=True,
+        ),
+        sa.Column("responded_by_id", sa.UUID(), nullable=True),
+        sa.Column("rejection_reason", sa.String(length=500), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'pending'\n                AND responded_at IS NULL\n                AND responded_by_type IS NULL\n                AND responded_by_id IS NULL\n            )\n            OR\n            (\n                status <> 'pending'\n                AND responded_at IS NOT NULL\n            )\n            ",
+            name="ck_parent_link_request_response_consistency",
+        ),
+        sa.CheckConstraint(
+            "status <> 'rejected' OR rejection_reason IS NOT NULL",
+            name="ck_parent_link_request_rejection_reason",
+        ),
+        sa.ForeignKeyConstraint(
+            ["invitation_id"], ["public.parent_invitations.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["parent_account_id"], ["public.parent_accounts.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["parent_membership_id"], ["public.parent_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("invitation_id", name="uq_student_parent_link_requests_invitation"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_parent_link_requests_tenant_account",
+        "student_parent_link_requests",
+        ["tenant_id", "parent_account_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_parent_link_requests_tenant_membership",
+        "student_parent_link_requests",
+        ["tenant_id", "parent_membership_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_parent_link_requests_tenant_status",
+        "student_parent_link_requests",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_parent_link_requests_tenant_student",
+        "student_parent_link_requests",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_student_parent_link_requests_pending_account_student",
+        "student_parent_link_requests",
+        ["tenant_id", "student_id", "parent_account_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.create_table(
+        "student_progression_items",
+        sa.Column("progression_run_id", sa.UUID(), nullable=False),
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("from_enrollment_id", sa.UUID(), nullable=True),
+        sa.Column("to_enrollment_id", sa.UUID(), nullable=True),
+        sa.Column("from_class_id", sa.UUID(), nullable=False),
+        sa.Column("to_class_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "action",
+            sa.Enum(
+                "promote",
+                "graduate",
+                "skip",
+                name="student_progression_item_action",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "promoted",
+                "graduated",
+                "skipped",
+                "failed",
+                name="student_progression_item_status",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("reason", sa.String(length=1000), nullable=True),
+        sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "action <> 'graduate' OR to_class_id IS NULL",
+            name="ck_progression_item_graduation_no_target",
+        ),
+        sa.CheckConstraint(
+            "action <> 'promote' OR to_class_id IS NOT NULL",
+            name="ck_progression_item_promotion_has_target",
+        ),
+        sa.ForeignKeyConstraint(["from_class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["from_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["progression_run_id"], ["public.student_progression_runs.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.ForeignKeyConstraint(["to_class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["to_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "progression_run_id", "student_id", name="uq_progression_item_run_student"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_progression_items_tenant_run",
+        "student_progression_items",
+        ["tenant_id", "progression_run_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_progression_items_tenant_status",
+        "student_progression_items",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_progression_items_tenant_student",
+        "student_progression_items",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "student_subject_results",
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("subject_id", sa.UUID(), nullable=False),
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=False),
+        sa.Column("class_subject_teacher_id", sa.UUID(), nullable=False),
+        sa.Column("teacher_assignment_id", sa.UUID(), nullable=True),
+        sa.Column("student_enrollment_id", sa.UUID(), nullable=True),
+        sa.Column("academic_session_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=False),
+        sa.Column("grading_scale_id", sa.UUID(), nullable=True),
+        sa.Column("test_score", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("assessment_score", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("exam_score", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("total_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("grade", sa.String(length=10), nullable=True),
+        sa.Column("remark", sa.String(length=100), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "draft",
+                "submitted",
+                "approved",
+                "locked",
+                name="academic_result_status",
+                schema="public",
+            ),
+            server_default="draft",
+            nullable=False,
+        ),
+        sa.Column("recorded_by_actor_type", sa.String(length=50), nullable=False),
+        sa.Column("recorded_by_actor_id", sa.UUID(), nullable=False),
+        sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("submitted_by_actor_type", sa.String(length=50), nullable=True),
+        sa.Column("submitted_by_actor_id", sa.UUID(), nullable=True),
+        sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("approved_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("locked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("locked_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            status = 'draft'\n            OR (submitted_at IS NOT NULL\n                AND submitted_by_actor_type IS NOT NULL\n                AND submitted_by_actor_id IS NOT NULL)\n            ",
+            name="ck_student_subject_results_submitted_metadata",
+        ),
+        sa.CheckConstraint(
+            "\n            status = 'draft'\n            OR (total_score IS NOT NULL \n                AND grade IS NOT NULL \n                AND grading_scale_id IS NOT NULL)\n            ",
+            name="ck_student_subject_results_completeness",
+        ),
+        sa.CheckConstraint(
+            "status <> 'locked' OR (locked_at IS NOT NULL AND locked_by_admin_id IS NOT NULL)",
+            name="ck_student_subject_results_locked_metadata",
+        ),
+        sa.CheckConstraint(
+            "status NOT IN ('approved', 'locked') OR (approved_at IS NOT NULL AND approved_by_admin_id IS NOT NULL)",
+            name="ck_student_subject_results_approved_metadata",
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["approved_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["class_subject_teacher_id"], ["public.class_subject_teachers.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["grading_scale_id"], ["public.grading_scales.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["locked_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["student_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["subject_id"], ["public.subjects.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["teacher_assignment_id"], ["public.teacher_assignments.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "student_id",
+            "class_subject_teacher_id",
+            "academic_session_id",
+            "academic_term_id",
+            name="uq_student_subject_result_scope",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_subject_results_class_period_status",
+        "student_subject_results",
+        ["tenant_id", "class_id", "academic_session_id", "academic_term_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_subject_results_student_period",
+        "student_subject_results",
+        ["tenant_id", "student_id", "academic_session_id", "academic_term_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_subject_results_teacher_period",
+        "student_subject_results",
+        ["tenant_id", "teacher_membership_id", "academic_session_id", "academic_term_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_subject_results_tenant_class",
+        "student_subject_results",
+        ["tenant_id", "class_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_subject_results_tenant_status",
+        "student_subject_results",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_subject_results_tenant_student",
+        "student_subject_results",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_subject_results_tenant_teacher_membership",
+        "student_subject_results",
+        ["tenant_id", "teacher_membership_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "teacher_assignment_lifecycle_audits",
+        sa.Column("assignment_id", sa.UUID(), nullable=True),
+        sa.Column("class_subject_id", sa.UUID(), nullable=False),
+        sa.Column("action", sa.String(length=60), nullable=False),
+        sa.Column("previous_teacher_membership_id", sa.UUID(), nullable=True),
+        sa.Column("new_teacher_membership_id", sa.UUID(), nullable=True),
+        sa.Column("previous_state", sa.String(length=30), nullable=True),
+        sa.Column("new_state", sa.String(length=30), nullable=True),
+        sa.Column("previous_effective_from", sa.Date(), nullable=True),
+        sa.Column("previous_effective_to", sa.Date(), nullable=True),
+        sa.Column("new_effective_from", sa.Date(), nullable=True),
+        sa.Column("new_effective_to", sa.Date(), nullable=True),
+        sa.Column("acting_admin_id", sa.UUID(), nullable=True),
+        sa.Column("reason", sa.String(length=500), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["acting_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["assignment_id"], ["public.teacher_assignments.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["class_subject_id"], ["public.class_subjects.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["new_teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["previous_teacher_membership_id"],
+            ["public.teacher_memberships.id"],
+            ondelete="SET NULL",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_assignment_lifecycle_audits_tenant_assignment",
+        "teacher_assignment_lifecycle_audits",
+        ["tenant_id", "assignment_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_teacher_assignment_lifecycle_audits_tenant_class_subject",
+        "teacher_assignment_lifecycle_audits",
+        ["tenant_id", "class_subject_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "workforce_attendance_records",
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=False),
+        sa.Column("attendance_date", sa.Date(), nullable=False),
+        sa.Column("academic_session_id", sa.UUID(), nullable=True),
+        sa.Column("academic_term_id", sa.UUID(), nullable=True),
+        sa.Column("calendar_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "checked_in",
+                "checked_out",
+                "absent",
+                "excused",
+                "corrected",
+                name="workforce_attendance_status",
+                schema="public",
+            ),
+            server_default="checked_in",
+            nullable=False,
+        ),
+        sa.Column("check_in_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("check_out_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("check_in_geofence_evaluation_id", sa.UUID(), nullable=True),
+        sa.Column("check_out_geofence_evaluation_id", sa.UUID(), nullable=True),
+        sa.Column("check_in_notes", sa.Text(), nullable=True),
+        sa.Column("check_out_notes", sa.Text(), nullable=True),
+        sa.Column("corrected_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("corrected_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "check_out_at IS NULL OR check_in_at IS NULL OR check_out_at >= check_in_at",
+            name="ck_workforce_attendance_checkout_after_checkin",
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_session_id"], ["public.academic_sessions.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["calendar_id"], ["public.school_calendars.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["check_in_geofence_evaluation_id"],
+            ["public.geofence_evaluations.id"],
+            ondelete="SET NULL",
+        ),
+        sa.ForeignKeyConstraint(
+            ["check_out_geofence_evaluation_id"],
+            ["public.geofence_evaluations.id"],
+            ondelete="SET NULL",
+        ),
+        sa.ForeignKeyConstraint(
+            ["corrected_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "teacher_membership_id",
+            "attendance_date",
+            name="uq_workforce_attendance_teacher_date",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_workforce_attendance_tenant_date",
+        "workforce_attendance_records",
+        ["tenant_id", "attendance_date"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_workforce_attendance_tenant_teacher",
+        "workforce_attendance_records",
+        ["tenant_id", "teacher_membership_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "report_card_subject_lines",
+        sa.Column("report_card_id", sa.UUID(), nullable=False),
+        sa.Column("student_subject_result_id", sa.UUID(), nullable=False),
+        sa.Column("subject_id", sa.UUID(), nullable=False),
+        sa.Column("subject_name", sa.String(length=100), nullable=False),
+        sa.Column("subject_code", sa.String(length=30), nullable=True),
+        sa.Column("teacher_name", sa.String(length=210), nullable=True),
+        sa.Column("test_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("assessment_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("exam_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("total_score", sa.Numeric(precision=5, scale=2), nullable=False),
+        sa.Column("grade", sa.String(length=10), nullable=False),
+        sa.Column("remark", sa.String(length=100), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["report_card_id"], ["public.report_cards.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["student_subject_result_id"],
+            ["public.student_subject_results.id"],
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(["subject_id"], ["public.subjects.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "report_card_id", "subject_id", name="uq_report_card_lines_card_subject"
+        ),
+        schema="public",
+    )
+    op.create_table(
+        "student_attendance_records",
+        sa.Column("sheet_id", sa.UUID(), nullable=False),
+        sa.Column("student_id", sa.UUID(), nullable=False),
+        sa.Column("student_enrollment_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "unmarked",
+                "present",
+                "absent",
+                "late",
+                "excused",
+                name="student_attendance_status",
+                schema="public",
+            ),
+            server_default="unmarked",
+            nullable=False,
+        ),
+        sa.Column("marked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "marked_by_actor_type",
+            sa.Enum(
+                "tenant_admin",
+                "teacher",
+                "student",
+                "parent",
+                "system",
+                name="student_attendance_marked_by_type",
+                schema="public",
+            ),
+            nullable=True,
+        ),
+        sa.Column("marked_by_actor_id", sa.UUID(), nullable=True),
+        sa.Column("reason", sa.String(length=300), nullable=True),
+        sa.Column("notes", sa.Text(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["sheet_id"], ["public.student_attendance_sheets.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["student_enrollment_id"], ["public.student_enrollments.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "sheet_id", "student_id", name="uq_student_attendance_record_sheet_student"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_attendance_records_tenant_status",
+        "student_attendance_records",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_student_attendance_records_tenant_student",
+        "student_attendance_records",
+        ["tenant_id", "student_id"],
+        unique=False,
+        schema="public",
+    )
+    # ### end Alembic commands ###
 
 
 def downgrade() -> None:
-    """Refuse an operation that would erase the complete application schema."""
+    """Never erase the complete Weave schema through Alembic."""
 
     raise RuntimeError(
-        "Downgrading below the Weave baseline is not supported. "
-        "Restore a backup or recreate the database explicitly."
+        "Downgrading below the initial Weave production baseline is not "
+        "supported. Restore a backup or recreate the database explicitly."
     )
