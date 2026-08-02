@@ -160,7 +160,20 @@ jobs:
         run: uv run --with alembic alembic upgrade head
 
       - name: Alembic drift check
-        run: uv run --with alembic alembic check
+        shell: bash
+        run: |
+          if uv run --with alembic alembic check; then
+            exit 0
+          fi
+
+          echo "Alembic detected drift. Generating a disposable diagnostic revision:"
+          rm -f alembic/versions/ci_drift_probe.py
+          uv run --with alembic alembic revision \
+            --autogenerate \
+            --rev-id ci_drift_probe \
+            -m "CI drift probe"
+          cat alembic/versions/ci_drift_probe.py
+          exit 1
 
       - name: Unit tests
         run: uv run pytest tests/unit
