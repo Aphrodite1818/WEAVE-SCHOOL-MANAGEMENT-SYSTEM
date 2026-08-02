@@ -4,11 +4,17 @@
 
 """Application logging configuration."""
 
+from __future__ import annotations
+
+import json
 import logging
 import logging.handlers
+import os
 import sys
 from copy import copy
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 try:
     from app.config.settings import BASE_DIR, settings
@@ -52,8 +58,29 @@ def resolve_log_level() -> int:
     return logging.DEBUG if is_development() else logging.INFO
 
 
+def _source_path(record: logging.LogRecord) -> str:
+    try:
+        path = Path(record.pathname).resolve().relative_to(BASE_DIR)
+    except ValueError:
+        path = Path(record.pathname).name
+    return f"{path}:{record.lineno}"
+
+
+def _deployment_context() -> dict[str, str]:
+    return {
+        "service": os.getenv("RAILWAY_SERVICE_NAME", "weave-backend"),
+        "environment": os.getenv(
+            "RAILWAY_ENVIRONMENT_NAME",
+            str(getattr(settings, "ENV", "unknown")),
+        ),
+        "release": os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
+        "deployment_id": os.getenv("RAILWAY_DEPLOYMENT_ID", "unknown"),
+        "replica_id": os.getenv("RAILWAY_REPLICA_ID", "unknown"),
+    }
+
+
 class ContextFormatter(logging.Formatter):
-    """Format application records with structured context."""
+    """Format development records with readable structured context."""
 
     _ACCESS_LOGGER_NAME = "uvicorn.access"
     _PLAIN_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
@@ -77,7 +104,7 @@ class ContextFormatter(logging.Formatter):
         if record_copy.name == self._ACCESS_LOGGER_NAME:
             return self._plain_formatter.format(record_copy)
 
-        record_copy.source = self._source_path(record_copy)
+        record_copy.source = _source_path(record_copy)
         message = super().format(record_copy)
         extras = [
             (key, value)
@@ -93,25 +120,53 @@ class ContextFormatter(logging.Formatter):
         )
         return f"{message} | {extra_part}"
 
-    @staticmethod
-    def _source_path(record: logging.LogRecord) -> str:
-        try:
-            path = Path(record.pathname).resolve().relative_to(BASE_DIR)
-        except ValueError:
-            path = Path(record.pathname).name
-        return f"{path}:{record.lineno}"
+
+class JsonFormatter(logging.Formatter):
+    """Emit one JSON object per production log record."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(
+                record.created,
+                tz=timezone.utc,
+            ).isoformat(),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "message": record.getMessage(),
+            "source": _source_path(record),
+            **_deployment_context(),
+        }
+
+        for key, value in record.__dict__.items():
+            if key not in _STANDARD_RECORD_ATTRS:
+                payload[key] = value
+
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            payload["stack"] = self.formatStack(record.stack_info)
+
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            default=str,
+            separators=(",", ":"),
+        )
 
 
 def _build_console_handler(console_level: int) -> logging.Handler:
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(console_level)
-    handler.setFormatter(
-        ContextFormatter(
-            "%(asctime)s | %(levelname)-8s | source=%(source)s | "
-            "%(name)s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+    if is_development():
+        handler.setFormatter(
+            ContextFormatter(
+                "%(asctime)s | %(levelname)-8s | source=%(source)s | "
+                "%(name)s | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
         )
-    )
+    else:
+        handler.setFormatter(JsonFormatter())
     return handler
 
 
@@ -164,8 +219,6 @@ def configure_logging() -> None:
     app_logger.setLevel(logging.DEBUG)
     _attach_handlers(app_logger, handlers)
 
-    # RequestTimingMiddleware is the canonical HTTP request log. Keeping
-    # uvicorn.access at WARNING avoids logging every request twice.
     for name in ("uvicorn", "uvicorn.error"):
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.setLevel(logging.INFO)
@@ -175,8 +228,6 @@ def configure_logging() -> None:
     access_logger.setLevel(logging.WARNING)
     _attach_handlers(access_logger, handlers)
 
-    # SQL statement logging is extremely noisy and can expose parameter values.
-    # Enable it manually during a focused diagnostic session instead of by default.
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -186,7 +237,7 @@ def configure_logging() -> None:
     app_logger.info(
         "Logging configured",
         extra={
-            "env": settings.ENV,
+            "env": str(getattr(settings, "ENV", "unknown")),
             "console_level": logging.getLevelName(console_level),
             "file_logging": is_development(),
         },
