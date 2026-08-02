@@ -48,46 +48,6 @@ def _compare_type(
     return None
 
 
-def _normalize_foreign_key_action(action: str | None) -> str:
-    """Normalize PostgreSQL's implicit NO ACTION to SQLAlchemy's empty value."""
-
-    normalized = (action or "").strip().upper().replace("_", " ")
-    return "" if normalized in {"", "NO ACTION"} else normalized
-
-
-def _foreign_key_signature(constraint: sa.ForeignKeyConstraint) -> tuple[Any, ...]:
-    """Return a schema-neutral semantic signature for one foreign key."""
-
-    local_columns = tuple(column.name for column in constraint.columns)
-    remote_columns = tuple(
-        element.target_fullname.removeprefix("public.") for element in constraint.elements
-    )
-    ondelete = tuple(
-        _normalize_foreign_key_action(element.ondelete) for element in constraint.elements
-    )
-    onupdate = tuple(
-        _normalize_foreign_key_action(element.onupdate) for element in constraint.elements
-    )
-    return (
-        constraint.table.name,
-        local_columns,
-        remote_columns,
-        ondelete,
-        onupdate,
-        bool(constraint.deferrable),
-        (constraint.initially or "").upper(),
-    )
-
-
-def _metadata_foreign_key_signatures() -> set[tuple[Any, ...]]:
-    signatures: set[tuple[Any, ...]] = set()
-    for table in target_metadata.tables.values():
-        signatures.update(
-            _foreign_key_signature(constraint) for constraint in table.foreign_key_constraints
-        )
-    return signatures
-
-
 def _schema_neutral_index_name(name: str | None) -> str:
     return (name or "").replace("ix_public_", "ix_", 1)
 
@@ -110,8 +70,20 @@ def _public_schema_index_signatures() -> set[tuple[Any, ...]]:
     return signatures
 
 
-METADATA_FOREIGN_KEY_SIGNATURES = _metadata_foreign_key_signatures()
 PUBLIC_SCHEMA_INDEX_SIGNATURES = _public_schema_index_signatures()
+
+
+def _include_name(
+    name: str | None,
+    type_: str,
+    parent_names: dict[str, str | None],
+) -> bool:
+    """Limit autogeneration to the application's public PostgreSQL schema."""
+
+    _ = parent_names
+    if type_ == "schema":
+        return name in {None, "public"}
+    return True
 
 
 def _include_object(
@@ -122,6 +94,8 @@ def _include_object(
     compare_to: Any,
 ) -> bool:
     """Suppress representation noise while preserving genuine schema drift."""
+
+    _ = reflected
 
     if type_ == "table" and name == "alembic_version":
         return False
@@ -138,21 +112,6 @@ def _include_object(
         if columns == ("id",) and primary_key_columns == ("id",):
             return False
 
-    if type_ == "foreign_key_constraint" and isinstance(
-        obj,
-        sa.ForeignKeyConstraint,
-    ):
-        signature = _foreign_key_signature(obj)
-        if isinstance(compare_to, sa.ForeignKeyConstraint):
-            return signature != _foreign_key_signature(compare_to)
-
-        # Alembic occasionally fails to pair a reflected public-schema FK with
-        # its schema-neutral metadata equivalent. Suppress only the reflected
-        # side when an identical semantic FK exists in metadata. A missing
-        # metadata FK, or an extra database FK, remains visible as drift.
-        if reflected and compare_to is None and signature in METADATA_FOREIGN_KEY_SIGNATURES:
-            return False
-
     return True
 
 
@@ -161,7 +120,8 @@ def _configure_context(*, connection: Any | None = None) -> None:
 
     options: dict[str, Any] = {
         "target_metadata": target_metadata,
-        "include_schemas": False,
+        "include_schemas": True,
+        "include_name": _include_name,
         "version_table_schema": "public",
         "compare_type": _compare_type,
         "compare_server_default": False,
