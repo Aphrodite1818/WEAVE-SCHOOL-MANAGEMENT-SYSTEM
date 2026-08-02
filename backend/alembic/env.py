@@ -28,6 +28,14 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _normalized_compiled_type(dialect: Any, column_type: Any) -> str:
+    """Compile a type through the active dialect for semantic comparison."""
+
+    implementation = column_type.dialect_impl(dialect)
+    compiled = dialect.type_compiler.process(implementation)
+    return " ".join(compiled.upper().split())
+
+
 def _compare_type(
     migration_context: Any,
     inspected_column: Any,
@@ -35,9 +43,10 @@ def _compare_type(
     inspected_type: Any,
     metadata_type: Any,
 ) -> bool | None:
-    """Ignore schema-only differences for otherwise identical PostgreSQL enums."""
+    """Suppress PostgreSQL reflection noise while preserving real type drift."""
 
-    _ = migration_context, inspected_column, metadata_column
+    _ = inspected_column, metadata_column
+
     inspected_enums = tuple(getattr(inspected_type, "enums", ()) or ())
     metadata_enums = tuple(getattr(metadata_type, "enums", ()) or ())
     if inspected_enums and set(inspected_enums) == set(metadata_enums):
@@ -45,6 +54,26 @@ def _compare_type(
         metadata_name = getattr(metadata_type, "name", None)
         if inspected_name == metadata_name:
             return False
+
+    # SQLAlchemy may reflect a non-native Enum, including an Enum used as an
+    # ARRAY item type, as its VARCHAR implementation. If both sides compile to
+    # the same PostgreSQL type, they are semantically identical even though
+    # Alembic's generic token comparison reports Enum versus VARCHAR.
+    try:
+        inspected_compiled = _normalized_compiled_type(
+            migration_context.dialect,
+            inspected_type,
+        )
+        metadata_compiled = _normalized_compiled_type(
+            migration_context.dialect,
+            metadata_type,
+        )
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+    if inspected_compiled == metadata_compiled:
+        return False
+
     return None
 
 
