@@ -11,10 +11,10 @@ import AttendancePage from "../pages/admin/AttendancePage";
 import BillingPage from "../pages/admin/BillingPage";
 import ParentLinkManagementPage from "../pages/admin/ParentLinkManagementPage";
 import ParentsPage from "../pages/admin/ParentsPage";
+import ResponsiveSubscriptionOptionsPage from "../pages/admin/ResponsiveSubscriptionOptionsPage";
 import StudentCreatePage from "../pages/admin/StudentCreatePage";
 import StudentSlipsPage from "../pages/admin/StudentSlipsPage";
 import StudentsPage from "../pages/admin/StudentsPage";
-import SubscriptionOptionsPage from "../pages/admin/SubscriptionOptionsPage";
 import SubscriptionVerifyPage from "../pages/admin/SubscriptionVerifyPage";
 import TeachersPage from "../pages/admin/TeachersPage";
 import TenantBrandingPage from "../pages/admin/TenantBrandingPage";
@@ -36,7 +36,7 @@ const protectedWorkflow = (element) => (
 
 export const adminRoutes = (
   <Route element={<RoleGuard allowedRoles={["ADMIN"]} />}>
-    <Route path="/admin/billing/plans" element={<SubscriptionOptionsPage />} />
+    <Route path="/admin/billing/plans" element={<ResponsiveSubscriptionOptionsPage />} />
     <Route path="/billing/subscription/verify" element={<SubscriptionVerifyPage />} />
 
     <Route element={<DashboardShell role="admin" />}>
