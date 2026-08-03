@@ -33,6 +33,17 @@ const detectPwaPlatform = () => {
   return "other";
 };
 
+const getLayoutViewportHeight = () => {
+  const innerHeight = Number(window.innerHeight || 0);
+  if (innerHeight > 0) return Math.round(innerHeight);
+
+  const visualHeight = Number(window.visualViewport?.height || 0)
+    + Number(window.visualViewport?.offsetTop || 0);
+  if (visualHeight > 0) return Math.round(visualHeight);
+
+  return Math.round(Number(document.documentElement.clientHeight || 0));
+};
+
 const isEditableElement = (element) => Boolean(
   element instanceof Element && element.matches(EDITABLE_SELECTOR),
 );
@@ -72,10 +83,7 @@ export const installMobilePwaStability = () => {
   const setStableLayoutHeight = ({ force = false } = {}) => {
     if (!isStandalonePwa() || (keyboardOpen && !force)) return;
 
-    const nextHeight = Math.max(
-      Number(window.innerHeight || 0),
-      Number(document.documentElement.clientHeight || 0),
-    );
+    const nextHeight = getLayoutViewportHeight();
     if (nextHeight <= 0) return;
 
     stableLayoutHeight = nextHeight;
