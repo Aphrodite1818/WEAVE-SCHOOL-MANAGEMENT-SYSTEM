@@ -1,4 +1,8 @@
 @media (max-width: 767px) {
+  /*
+   * Installed mode must use the same scroll model as the mobile browser.
+   * The only intentional difference is the fixed bottom navigation.
+   */
   html[data-standalone-pwa="true"],
   html[data-standalone-pwa="true"] body,
   html[data-standalone-pwa="true"] #root {
@@ -6,13 +10,13 @@
   }
 
   html[data-standalone-pwa="true"] body {
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: auto !important;
     -webkit-overflow-scrolling: touch;
   }
 
   html[data-standalone-pwa="true"] #root {
-    height: auto;
     min-height: 100dvh;
     overflow: visible;
   }
@@ -21,8 +25,8 @@
   html[data-standalone-pwa="true"] [data-pwa-scroll-root="true"],
   html[data-standalone-pwa="true"] [data-guide-page="true"] {
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
-    touch-action: auto !important;
+    overscroll-behavior-y: contain !important;
+    touch-action: pan-y !important;
   }
 
   html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
@@ -35,16 +39,11 @@
     overflow-y: auto !important;
   }
 
-  html[data-standalone-pwa="true"] [data-guide-page="true"] > main {
-    min-height: max-content;
-    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
-  }
-
   html[data-standalone-pwa="true"] .public-page-shell,
   html[data-standalone-pwa="true"] .auth-surface {
     min-height: 100dvh;
     overflow-x: hidden;
-    overflow-y: visible;
+    overflow-y: visible !important;
     touch-action: auto;
   }
 
@@ -55,7 +54,6 @@
   html[data-standalone-pwa="true"] .table-wrap,
   html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
     -webkit-overflow-scrolling: touch;
-    touch-action: auto !important;
   }
 
   html[data-modal-open="true"] body,
@@ -68,5 +66,64 @@
     overflow-y: auto !important;
     overscroll-behavior: contain;
     touch-action: pan-y pinch-zoom !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+    position: fixed !important;
+    inset-inline: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    transform: none !important;
+    -webkit-transform: none !important;
+  }
+
+  /* Admin PWA navigation: Academics, Notices, Home, Calendar, Menu. */
+  [data-mobile-bottom-nav="true"] a[href="/admin/messages"] {
+    display: none !important;
+  }
+
+  [data-mobile-bottom-nav="true"] a[href="/admin/academic"] {
+    order: 1;
+  }
+
+  [data-mobile-bottom-nav="true"] a[href="/admin/announcements"] {
+    order: 2;
+  }
+
+  [data-mobile-bottom-nav="true"] a[href="/admin/dashboard"] {
+    order: 3;
+  }
+
+  [data-mobile-bottom-nav="true"] a[href="/admin/calendar"] {
+    order: 4;
+  }
+
+  [data-mobile-bottom-nav="true"] button[aria-label="Open full navigation menu"] {
+    order: 5;
+  }
+
+  [data-mobile-bottom-nav="true"] a[href="/admin/academic"] > span:last-child {
+    font-size: 0 !important;
+  }
+
+  [data-mobile-bottom-nav="true"] a[href="/admin/academic"] > span:last-child::after {
+    content: "Academics";
+    font-size: 10.5px;
+  }
+
+  /* Restore the original vertical subscription-card layout on mobile. */
+  section:has(> article[id^="subscription-plan-"]) {
+    grid-auto-flow: row !important;
+    grid-auto-columns: auto !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    overflow-x: visible !important;
+    overscroll-behavior-x: auto !important;
+    scroll-snap-type: none !important;
+    padding-bottom: 0 !important;
+  }
+
+  article[id^="subscription-plan-"] {
+    scroll-snap-align: none !important;
   }
 }
