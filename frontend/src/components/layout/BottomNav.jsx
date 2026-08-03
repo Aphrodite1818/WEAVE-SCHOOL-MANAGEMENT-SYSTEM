@@ -28,6 +28,14 @@ const NAV_INDICATOR_COMMIT_DELAY_MS = 350;
 const NAV_LOADING_SHOW_DELAY_MS = 80;
 const NAV_LOADING_MIN_VISIBLE_MS = 300;
 const NAV_LOADING_MAX_MS = 1200;
+const PWA_SCROLLABLE_SELECTOR = [
+  "#dashboard-scroll-viewport",
+  "#dashboard-scroll-viewport [class*='overflow-x-auto']",
+  "#dashboard-scroll-viewport [class*='overflow-y-auto']",
+  "#dashboard-scroll-viewport .chart-interactive-scroll",
+  "#dashboard-scroll-viewport .mobile-scroll-list",
+  "#dashboard-scroll-viewport .table-wrap",
+].join(", ");
 
 const isStandalonePwaDisplay = () => {
   if (typeof window === "undefined") return false;
@@ -49,6 +57,7 @@ const bottomNavConfig = {
     },
     { label: "Home", to: "/admin/dashboard", icon: Home, isHome: true },
     { label: "Notices", to: "/admin/announcements", icon: Bell },
+    { label: "Calendar", to: "/admin/calendar", icon: CalendarDays },
   ],
   teacher: [
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
@@ -234,6 +243,55 @@ function BottomNav({ role, onOpenMenu }) {
       document.removeEventListener("visibilitychange", syncStandalonePwaMode);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isPwaDisplay) return undefined;
+
+    const originalStyles = new Map();
+    const applyPwaScrolling = () => {
+      document.querySelectorAll(PWA_SCROLLABLE_SELECTOR).forEach((element) => {
+        if (!originalStyles.has(element)) {
+          originalStyles.set(element, {
+            overflowY: element.style.overflowY,
+            overscrollBehavior: element.style.overscrollBehavior,
+            touchAction: element.style.touchAction,
+            webkitOverflowScrolling: element.style.webkitOverflowScrolling,
+          });
+        }
+
+        element.style.webkitOverflowScrolling = "touch";
+        if (element.id === "dashboard-scroll-viewport") {
+          element.style.overflowY = "scroll";
+          element.style.overscrollBehavior = "contain";
+          element.style.touchAction = "auto";
+        }
+      });
+    };
+
+    applyPwaScrolling();
+    const frameId = window.requestAnimationFrame(applyPwaScrolling);
+    const rootElement = document.getElementById("root");
+    const observer = new MutationObserver(applyPwaScrolling);
+    if (rootElement) {
+      observer.observe(rootElement, { childList: true, subtree: true });
+    }
+    window.addEventListener("pageshow", applyPwaScrolling);
+    window.addEventListener("orientationchange", applyPwaScrolling);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+      window.removeEventListener("pageshow", applyPwaScrolling);
+      window.removeEventListener("orientationchange", applyPwaScrolling);
+      originalStyles.forEach((styles, element) => {
+        if (!element?.style) return;
+        element.style.overflowY = styles.overflowY;
+        element.style.overscrollBehavior = styles.overscrollBehavior;
+        element.style.touchAction = styles.touchAction;
+        element.style.webkitOverflowScrolling = styles.webkitOverflowScrolling;
+      });
+    };
+  }, [isPwaDisplay, location.pathname]);
 
   useLayoutEffect(() => {
     clearTimer(indicatorTimerRef);
