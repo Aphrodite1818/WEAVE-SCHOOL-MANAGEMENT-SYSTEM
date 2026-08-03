@@ -91,7 +91,10 @@
     isolation: isolate;
     overscroll-behavior: contain !important;
     touch-action: pan-y pinch-zoom !important;
-    padding-bottom: max(0.35rem, env(safe-area-inset-bottom)) !important;
+    padding-bottom: max(
+      0.2rem,
+      calc(env(safe-area-inset-bottom, 0px) - 0.15rem)
+    ) !important;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
