@@ -1,0 +1,207 @@
+name: Master Gate
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: master-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d weave_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      TWILIO_ACCOUNT_SID: ci-test-account
+      TWILIO_AUTH_TOKEN: ci-test-token
+      TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886"
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Repository hygiene
+        run: uv run python scripts/verify_repository_hygiene.py
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check changed Python files
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed Python files to format-check."
+            exit 0
+          fi
+          uv run ruff format --check "${files[@]}"
+
+      - name: Type check changed production files
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}"...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' \
+              | grep -Ev '^(tests/|alembic/versions/)' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed production Python files to type-check."
+            exit 0
+          fi
+          uv run --with pyright pyright "${files[@]}"
+
+      - name: Alembic heads
+        run: uv run --with alembic alembic heads
+
+      - name: Alembic history
+        run: uv run --with alembic alembic history
+
+      - name: Upgrade fresh database
+        run: uv run --with alembic alembic upgrade head
+
+      - name: Alembic drift check
+        shell: bash
+        run: |
+          if uv run --with alembic alembic check; then
+            exit 0
+          fi
+
+          echo "Alembic detected drift. Comparing metadata and PostgreSQL foreign keys:"
+          uv run python scripts/inspect_foreign_key_drift.py
+          exit 1
+
+      - name: Unit tests
+        run: uv run pytest tests/unit
+
+      - name: Integration tests
+        run: uv run pytest tests/integration
+
+      - name: Application import check
+        run: uv run python -c "from app.main import app; print(app.title)"
+
+      - name: Worker import checks
+        run: |
+          uv run python -c "from app.core.queue.general_worker import WorkerSettings; print(WorkerSettings.queue_name)"
+          uv run python -c "from app.core.queue.heavy_worker import WorkerSettings; print(WorkerSettings.queue_name)"
+
+  required:
+    name: Required
+    if: always()
+    needs:
+      - frontend
+      - backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Assert all master validations passed
+        shell: bash
+        run: |
+          echo "Frontend result: ${{ needs.frontend.result }}"
+          echo "Backend result: ${{ needs.backend.result }}"
+
+          if [ "${{ needs.frontend.result }}" != "success" ] || [ "${{ needs.backend.result }}" != "success" ]; then
+            echo "Master validation failed."
+            exit 1
+          fi
+
+          echo "All master validations passed."
