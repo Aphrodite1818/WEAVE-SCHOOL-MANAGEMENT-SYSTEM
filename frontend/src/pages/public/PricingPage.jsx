@@ -20,7 +20,6 @@ const comparisonRows = [
   ["Subjects", (plan) => formatLimitValue(plan.limits.subjects)],
   ["Bulk import", (plan) => plan.features.some((feature) => /bulk import/i.test(feature)) ? "Included" : "—"],
   ["Advanced analytics", (plan) => plan.features.some((feature) => /advanced analytics/i.test(feature)) ? "Included" : "—"],
-  ["AI assistant", (plan) => plan.features.some((feature) => /ai assistant/i.test(feature)) ? "Included" : "--"],
   ["School branding", (plan) => plan.features.some((feature) => /branding/i.test(feature)) ? "Included" : "--"],
   ["Parent portal", (plan) => plan.planCode === "free_trial" ? "Limited" : "Included"],
   ["Support", (plan) => plan.planCode === "enterprise" ? "Priority" : "Standard"],
@@ -52,7 +51,7 @@ function PricingPage() {
                   Choose the plan that matches your school growth.
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-                  Start small, validate the workflow, then move into higher limits, guided academic lifecycle operations, bulk imports, analytics, and AI support as your school expands.
+                  Start small, validate the workflow, then move into higher limits, guided academic lifecycle operations, bulk imports, advanced analytics, and school branding as your school expands.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <a href="#compare" className="w-full sm:w-auto">
