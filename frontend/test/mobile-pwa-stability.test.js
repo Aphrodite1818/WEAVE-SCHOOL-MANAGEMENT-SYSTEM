@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("mobile PWA stability is initialized after the existing interaction styles", async () => {
+test("mobile PWA stability is initialized after the interaction-only styles", async () => {
   const mainSource = await read("src/main.jsx");
 
   const interactionStyleIndex = mainSource.indexOf("./styles/pwaInteractions.css");
@@ -15,7 +15,7 @@ test("mobile PWA stability is initialized after the existing interaction styles"
   assert.match(mainSource, /installMobilePwaStability\(\)/);
 });
 
-test("the runtime separates platform, keyboard, and stable layout state", async () => {
+test("the runtime separates platform, keyboard, and stable layout state without pricing DOM patching", async () => {
   const source = await read("src/utils/mobilePwaStability.js");
 
   assert.match(source, /dataset\.pwaPlatform/);
@@ -27,21 +27,14 @@ test("the runtime separates platform, keyboard, and stable layout state", async 
   assert.match(source, /visibilitychange/);
   assert.match(source, /focusin/);
   assert.match(source, /focusout/);
+  assert.doesNotMatch(source, /pricingCardCarousel/);
+  assert.doesNotMatch(source, /pricingTabsScroll/);
+  assert.doesNotMatch(source, /MutationObserver/);
+  assert.doesNotMatch(source, /pushState/);
+  assert.doesNotMatch(source, /replaceState/);
 });
 
-test("pricing scroll regions are explicitly marked and horizontal state is reset", async () => {
-  const source = await read("src/utils/mobilePwaStability.js");
-
-  assert.match(source, /\/admin\/billing\/plans/);
-  assert.match(source, /pricingCardCarousel/);
-  assert.match(source, /pricingTabsScroll/);
-  assert.match(source, /scrollTo\(\{[\s\S]*?left:\s*0/);
-  assert.match(source, /MutationObserver/);
-  assert.match(source, /pushState/);
-  assert.match(source, /replaceState/);
-});
-
-test("platform offsets and keyboard compensation do not change the dock layout contract", async () => {
+test("iOS dock spacing is lower while Android keeps its existing safe-area contract", async () => {
   const css = await read("src/styles/mobilePwaStability.css");
 
   assert.match(
@@ -50,7 +43,7 @@ test("platform offsets and keyboard compensation do not change the dock layout c
   );
   assert.match(
     css,
-    /data-pwa-platform="ios"[\s\S]*?calc\(env\(safe-area-inset-bottom, 0px\) - 1rem\)/,
+    /data-pwa-platform="ios"[\s\S]*?calc\(env\(safe-area-inset-bottom, 0px\) - 1\.45rem\)/,
   );
   assert.match(
     css,
@@ -62,24 +55,76 @@ test("platform offsets and keyboard compensation do not change the dock layout c
   );
   assert.match(
     css,
-    /data-mobile-bottom-nav="true"\]\s*>\s*div[\s\S]*?pointer-events:\s*auto/,
+    /data-modal-open="true"[\s\S]*?data-mobile-bottom-nav="true"[\s\S]*?visibility:\s*hidden\s*!important/,
   );
 });
 
-test("the public shell is horizontally clipped while pricing regions remain swipeable", async () => {
+test("every actor dashboard receives shared navbar clearance", async () => {
   const css = await read("src/styles/mobilePwaStability.css");
+  const routeFiles = [
+    "src/routes/adminRoutes.jsx",
+    "src/routes/teacherRoutes.jsx",
+    "src/routes/studentRoutes.jsx",
+    "src/routes/parentRoutes.jsx",
+    "src/routes/superadminRoutes.jsx",
+  ];
 
-  assert.match(css, /\.public-page-shell[\s\S]*?overflow-x:\s*clip\s*!important/);
+  assert.match(css, /--mobile-bottom-nav-clearance/);
   assert.match(
     css,
-    /data-pricing-card-carousel="true"[\s\S]*?overflow-x:\s*auto\s*!important/,
+    /#dashboard-content[\s\S]*?padding-bottom:\s*var\(--mobile-bottom-nav-clearance\)\s*!important/,
   );
   assert.match(
     css,
-    /data-pricing-card-carousel="true"[\s\S]*?overscroll-behavior-inline:\s*contain\s*!important/,
+    /#dashboard-scroll-viewport[\s\S]*?scroll-padding-bottom:\s*var\(--mobile-bottom-nav-clearance\)/,
+  );
+
+  for (const path of routeFiles) {
+    const source = await read(path);
+    assert.match(source, /DashboardShell/);
+  }
+});
+
+test("the shared modal owns the screen and only its body scrolls", async () => {
+  const [modalSource, css] = await Promise.all([
+    read("src/components/ui/Modal.jsx"),
+    read("src/styles/mobilePwaStability.css"),
+  ]);
+
+  assert.match(modalSource, /z-\[100\]/);
+  assert.match(modalSource, /data-modal-panel="true"/);
+  assert.match(modalSource, /data-modal-header="true"/);
+  assert.match(modalSource, /data-modal-scroll-container="true"/);
+  assert.match(modalSource, /data-modal-footer="true"/);
+  assert.match(modalSource, /min-h-0 flex-1 overflow-y-auto/);
+  assert.match(
+    css,
+    /data-modal-scroll-container="true"[\s\S]*?min-height:\s*0[\s\S]*?overflow-y:\s*auto\s*!important/,
   );
   assert.match(
     css,
-    /data-pricing-card-carousel="true"[\s\S]*?scroll-snap-type:\s*inline mandatory\s*!important/,
+    /data-modal-panel="true"[\s\S]*?display:\s*flex[\s\S]*?overflow:\s*hidden/,
   );
+});
+
+test("mobile billing is an explicit mobile-first view while desktop retains the existing page", async () => {
+  const [routeSource, billingSource] = await Promise.all([
+    read("src/routes/adminRoutes.jsx"),
+    read("src/pages/admin/ResponsiveSubscriptionOptionsPage.jsx"),
+  ]);
+
+  assert.match(routeSource, /ResponsiveSubscriptionOptionsPage/);
+  assert.match(billingSource, /MobileSubscriptionOptionsPage/);
+  assert.match(billingSource, /SubscriptionOptionsPage/);
+  assert.match(billingSource, /data-mobile-billing-page="true"/);
+  assert.match(billingSource, /data-mobile-billing-action="true"/);
+  assert.match(billingSource, /Everything included/);
+  assert.match(billingSource, /Plan capacity/);
+  assert.doesNotMatch(billingSource, /grid-flow-col/);
+  assert.doesNotMatch(billingSource, /overflow-x-auto/);
+});
+
+test("superadmin bottom navigation has a valid verification route", async () => {
+  const routes = await read("src/routes/superadminRoutes.jsx");
+  assert.match(routes, /path="\/superadmin\/verification"/);
 });
