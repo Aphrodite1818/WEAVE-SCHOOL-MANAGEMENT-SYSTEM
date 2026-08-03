@@ -284,7 +284,7 @@ function SubscriptionOptionsPage() {
           </div>
         </div>
 
-        <section className="mt-8 grid items-stretch gap-5 lg:grid-cols-3">
+        <section className="mt-8 grid auto-cols-[100%] grid-flow-col items-stretch gap-5 overflow-x-auto overscroll-x-contain pb-3 snap-x snap-mandatory touch-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:auto-cols-auto lg:grid-flow-row lg:grid-cols-3 lg:overflow-visible lg:pb-0 lg:snap-none">
           {paidPlans.map((plan) => {
             const context = getPlanContext(plan.planCode);
             const current = context.samePlan && !context.retryCurrentPlan;
@@ -300,7 +300,7 @@ function SubscriptionOptionsPage() {
               <article
                 id={`subscription-plan-${plan.planCode}`}
                 key={plan.planCode}
-                className={`flex min-h-[34rem] scroll-mt-28 flex-col rounded-[1.6rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
+                className={`flex min-h-[34rem] snap-start scroll-mt-28 flex-col rounded-[1.6rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
                   activePricingPlan === plan.planCode
                     ? "border-primary/60 ring-4 ring-primary/10"
                     : "border-border/70"
