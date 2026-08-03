@@ -1,7 +1,5 @@
 const KEYBOARD_THRESHOLD_PX = 120;
-const ROUTE_CHANGE_EVENT = "weave:routechange";
 const INSTALLATION_KEY = "__weaveMobilePwaStabilityCleanup";
-const PRICING_ROUTE = "/admin/billing/plans";
 const EDITABLE_SELECTOR = [
   "input:not([type='button']):not([type='checkbox']):not([type='file']):not([type='hidden']):not([type='radio']):not([type='reset']):not([type='submit'])",
   "textarea",
@@ -39,65 +37,13 @@ const isEditableElement = (element) => Boolean(
   element instanceof Element && element.matches(EDITABLE_SELECTOR),
 );
 
-const resetHorizontalScroll = () => {
+const resetHorizontalDocumentState = () => {
   const scrollingElement = document.scrollingElement;
   if (scrollingElement) {
-    scrollingElement.scrollTo({
-      left: 0,
-      top: scrollingElement.scrollTop,
-      behavior: "auto",
-    });
+    scrollingElement.scrollLeft = 0;
   }
-
   document.documentElement.scrollLeft = 0;
   document.body.scrollLeft = 0;
-  document.querySelectorAll(".public-page-shell").forEach((shell) => {
-    shell.scrollLeft = 0;
-  });
-};
-
-const removePricingMarkers = () => {
-  document.querySelectorAll("[data-pricing-tabs-scroll='true']").forEach((element) => {
-    delete element.dataset.pricingTabsScroll;
-  });
-  document.querySelectorAll("[data-pricing-card-carousel='true']").forEach((element) => {
-    delete element.dataset.pricingCardCarousel;
-  });
-};
-
-const markPricingScrollRegions = () => {
-  if (window.location.pathname !== PRICING_ROUTE) return;
-
-  const planCards = [...document.querySelectorAll("article[id^='subscription-plan-']")];
-  const cardCarousel = planCards[0]?.parentElement;
-  if (cardCarousel) cardCarousel.dataset.pricingCardCarousel = "true";
-
-  const firstPlanTab = document.querySelector("a[href^='#subscription-plan-']");
-  const tabsScrollRegion = firstPlanTab?.parentElement?.parentElement;
-  if (tabsScrollRegion) tabsScrollRegion.dataset.pricingTabsScroll = "true";
-};
-
-const patchHistory = (onRouteChange) => {
-  const originalPushState = window.history.pushState;
-  const originalReplaceState = window.history.replaceState;
-
-  const wrap = (original) => function wrappedHistoryMethod(...args) {
-    const result = original.apply(this, args);
-    window.dispatchEvent(new Event(ROUTE_CHANGE_EVENT));
-    return result;
-  };
-
-  window.history.pushState = wrap(originalPushState);
-  window.history.replaceState = wrap(originalReplaceState);
-  window.addEventListener("popstate", onRouteChange);
-  window.addEventListener(ROUTE_CHANGE_EVENT, onRouteChange);
-
-  return () => {
-    window.history.pushState = originalPushState;
-    window.history.replaceState = originalReplaceState;
-    window.removeEventListener("popstate", onRouteChange);
-    window.removeEventListener(ROUTE_CHANGE_EVENT, onRouteChange);
-  };
 };
 
 export const installMobilePwaStability = () => {
@@ -114,9 +60,14 @@ export const installMobilePwaStability = () => {
   let stableLayoutHeight = 0;
   let stableViewportWidth = 0;
   let keyboardOpen = false;
-  let currentPath = window.location.pathname;
   let frameId = 0;
   let orientationTimer = 0;
+
+  const clearKeyboardState = () => {
+    keyboardOpen = false;
+    root.dataset.keyboardOpen = "false";
+    root.style.setProperty("--virtual-keyboard-height", "0px");
+  };
 
   const setStableLayoutHeight = ({ force = false } = {}) => {
     if (!isStandalonePwa() || (keyboardOpen && !force)) return;
@@ -137,7 +88,12 @@ export const installMobilePwaStability = () => {
     root.dataset.standalonePwa = String(standalone);
     root.dataset.pwaPlatform = detectPwaPlatform();
 
-    if (standalone && stableLayoutHeight <= 0) {
+    if (!standalone) {
+      clearKeyboardState();
+      return;
+    }
+
+    if (stableLayoutHeight <= 0) {
       setStableLayoutHeight({ force: true });
     }
   };
@@ -150,8 +106,11 @@ export const installMobilePwaStability = () => {
     if (!scrollContainer) return;
 
     const rect = activeElement.getBoundingClientRect();
-    const visibleTop = visualViewport.offsetTop + 16;
-    const visibleBottom = visualViewport.offsetTop + visualViewport.height - 16;
+    const visibleTop = Number(visualViewport.offsetTop || 0) + 16;
+    const visibleBottom =
+      Number(visualViewport.offsetTop || 0)
+      + Number(visualViewport.height || 0)
+      - 16;
     let delta = 0;
 
     if (rect.bottom > visibleBottom) delta = rect.bottom - visibleBottom;
@@ -167,9 +126,7 @@ export const installMobilePwaStability = () => {
 
   const syncKeyboardState = () => {
     if (!isStandalonePwa() || !visualViewport || stableLayoutHeight <= 0) {
-      keyboardOpen = false;
-      root.dataset.keyboardOpen = "false";
-      root.style.setProperty("--virtual-keyboard-height", "0px");
+      clearKeyboardState();
       return;
     }
 
@@ -182,6 +139,7 @@ export const installMobilePwaStability = () => {
           - Number(visualViewport.offsetTop || 0),
       ),
     );
+
     keyboardOpen = isEditableElement(activeElement)
       && keyboardHeight >= KEYBOARD_THRESHOLD_PX;
 
@@ -191,48 +149,37 @@ export const installMobilePwaStability = () => {
       keyboardOpen ? `${keyboardHeight}px` : "0px",
     );
 
-    if (keyboardOpen) {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(keepFocusedElementVisible);
-    }
-  };
+    if (!keyboardOpen) return;
 
-  const syncPricingRoute = () => {
-    const nextPath = window.location.pathname;
-    const pricingBoundaryChanged =
-      currentPath === PRICING_ROUTE || nextPath === PRICING_ROUTE;
-
-    if (pricingBoundaryChanged) resetHorizontalScroll();
-    if (nextPath !== PRICING_ROUTE) removePricingMarkers();
-
-    currentPath = nextPath;
-    window.requestAnimationFrame(markPricingScrollRegions);
+    window.cancelAnimationFrame(frameId);
+    frameId = window.requestAnimationFrame(keepFocusedElementVisible);
   };
 
   const handleViewportResize = () => {
     const widthChanged = Number(window.innerWidth || 0) !== stableViewportWidth;
     syncKeyboardState();
-    if (!keyboardOpen && widthChanged) setStableLayoutHeight({ force: true });
+    if (!keyboardOpen && widthChanged) {
+      setStableLayoutHeight({ force: true });
+    }
   };
 
   const handleOrientationChange = () => {
     window.clearTimeout(orientationTimer);
     orientationTimer = window.setTimeout(() => {
-      keyboardOpen = false;
-      root.dataset.keyboardOpen = "false";
-      root.style.setProperty("--virtual-keyboard-height", "0px");
+      clearKeyboardState();
       setStableLayoutHeight({ force: true });
       syncKeyboardState();
-      resetHorizontalScroll();
+      resetHorizontalDocumentState();
     }, 250);
   };
 
   const handleVisibilityChange = () => {
     if (document.hidden) return;
     syncEnvironmentMarkers();
+    clearKeyboardState();
     setStableLayoutHeight({ force: true });
     syncKeyboardState();
-    syncPricingRoute();
+    resetHorizontalDocumentState();
   };
 
   const handleFocusChange = () => {
@@ -240,23 +187,10 @@ export const installMobilePwaStability = () => {
     frameId = window.requestAnimationFrame(syncKeyboardState);
   };
 
-  const observer = new MutationObserver(() => {
-    if (window.location.pathname === PRICING_ROUTE) {
-      window.requestAnimationFrame(markPricingScrollRegions);
-    }
-  });
-
-  const unpatchHistory = patchHistory(syncPricingRoute);
-
   syncEnvironmentMarkers();
   setStableLayoutHeight({ force: true });
   syncKeyboardState();
-  syncPricingRoute();
 
-  observer.observe(document.getElementById("root") || document.body, {
-    childList: true,
-    subtree: true,
-  });
   standaloneQuery?.addEventListener?.("change", syncEnvironmentMarkers);
   visualViewport?.addEventListener("resize", syncKeyboardState);
   visualViewport?.addEventListener("scroll", syncKeyboardState);
@@ -268,8 +202,6 @@ export const installMobilePwaStability = () => {
   document.addEventListener("focusout", handleFocusChange);
 
   const cleanup = () => {
-    observer.disconnect();
-    unpatchHistory();
     standaloneQuery?.removeEventListener?.("change", syncEnvironmentMarkers);
     visualViewport?.removeEventListener("resize", syncKeyboardState);
     visualViewport?.removeEventListener("scroll", syncKeyboardState);
@@ -281,7 +213,7 @@ export const installMobilePwaStability = () => {
     document.removeEventListener("focusout", handleFocusChange);
     window.clearTimeout(orientationTimer);
     window.cancelAnimationFrame(frameId);
-    removePricingMarkers();
+    clearKeyboardState();
     delete window[INSTALLATION_KEY];
   };
 
