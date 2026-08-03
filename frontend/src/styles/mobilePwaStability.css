@@ -1,0 +1,124 @@
+@media (max-width: 767px) {
+  html[data-standalone-pwa="true"] {
+    --pwa-layout-height: 100dvh;
+    --virtual-keyboard-height: 0px;
+    height: var(--pwa-layout-height);
+    max-height: var(--pwa-layout-height);
+    overflow: hidden !important;
+  }
+
+  html[data-standalone-pwa="true"] body,
+  html[data-standalone-pwa="true"] #root {
+    width: 100%;
+    height: 100%;
+    min-height: 0 !important;
+    max-height: 100%;
+    overflow: hidden !important;
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-scroll-viewport,
+  html[data-standalone-pwa="true"] [data-pwa-scroll-root="true"],
+  html[data-standalone-pwa="true"] [data-guide-page="true"],
+  html[data-standalone-pwa="true"] .public-page-shell,
+  html[data-standalone-pwa="true"] .auth-surface {
+    width: 100%;
+    max-width: 100%;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-x: clip !important;
+    overflow-y: auto !important;
+    overscroll-behavior-x: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom !important;
+  }
+
+  html[data-standalone-pwa="true"] .public-page-shell {
+    position: relative;
+    isolation: isolate;
+  }
+
+  html[data-standalone-pwa="true"][data-pwa-platform="android"]
+    [data-mobile-bottom-nav="true"] {
+    padding-bottom: max(
+      0.5rem,
+      env(safe-area-inset-bottom, 0px)
+    ) !important;
+  }
+
+  html[data-standalone-pwa="true"][data-pwa-platform="ios"]
+    [data-mobile-bottom-nav="true"] {
+    padding-bottom: max(
+      0.25rem,
+      calc(env(safe-area-inset-bottom, 0px) - 1rem)
+    ) !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+    position: fixed !important;
+    inset-inline: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    pointer-events: none;
+    touch-action: pan-y pinch-zoom !important;
+    will-change: transform;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
+    pointer-events: auto;
+  }
+
+  html[data-standalone-pwa="true"][data-keyboard-open="true"]
+    [data-mobile-bottom-nav="true"] {
+    transition: none !important;
+    translate: none !important;
+    transform: translate3d(
+      0,
+      var(--virtual-keyboard-height),
+      0
+    ) !important;
+    -webkit-transform: translate3d(
+      0,
+      var(--virtual-keyboard-height),
+      0
+    ) !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
+    max-height: 100%;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-pricing-tabs-scroll="true"],
+  html[data-standalone-pwa="true"] [data-pricing-card-carousel="true"] {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y pinch-zoom !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-pricing-card-carousel="true"] {
+    grid-auto-flow: column !important;
+    grid-auto-columns: 100% !important;
+    grid-template-columns: none !important;
+    overflow-y: visible !important;
+    scroll-snap-type: inline mandatory !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  html[data-standalone-pwa="true"]
+    [data-pricing-card-carousel="true"]
+    > article[id^="subscription-plan-"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    scroll-snap-align: start !important;
+  }
+}

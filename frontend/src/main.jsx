@@ -7,13 +7,16 @@ import './styles/notificationDropdown.css'
 import './styles/studentDashboardCleanup.css'
 import './styles/mobileDirectoryCards.css'
 import './styles/pwaInteractions.css'
+import './styles/mobilePwaStability.css'
 import App from './App.jsx'
 import { installCookieCsrfFetchGuard } from './services/installCookieCsrfFetchGuard'
 import { applyAccessibilityPreferences, getSavedAccessibilityPreferences, syncSystemThemePreference } from './utils/accessibilityPreferences'
+import { installMobilePwaStability } from './utils/mobilePwaStability'
 
 installCookieCsrfFetchGuard();
 applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 syncSystemThemePreference();
+installMobilePwaStability();
 
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 
