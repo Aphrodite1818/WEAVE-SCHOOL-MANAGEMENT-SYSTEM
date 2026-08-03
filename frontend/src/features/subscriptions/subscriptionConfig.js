@@ -106,7 +106,6 @@ export const LANDING_PRICING_PLANS = [
     features: [
       "Academic lifecycle controls",
       "Advanced analytics",
-      "AI assistant enabled",
       "Bulk import enabled",
       "Parent and student portals",
     ],
@@ -129,7 +128,6 @@ export const LANDING_PRICING_PLANS = [
     features: [
       "Academic lifecycle controls",
       "Advanced analytics",
-      "AI assistant enabled",
       "Bulk import enabled",
       "Higher school limits",
       "School colour branding",
@@ -154,7 +152,6 @@ export const LANDING_PRICING_PLANS = [
     features: [
       "Academic lifecycle controls",
       "Advanced analytics",
-      "AI assistant enabled",
       "Bulk import enabled",
       "Custom limits",
       "School colour branding",
