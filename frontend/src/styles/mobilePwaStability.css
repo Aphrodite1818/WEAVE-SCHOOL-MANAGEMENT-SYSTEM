@@ -20,34 +20,108 @@
     overflow: hidden !important;
   }
 
+  /*
+   * Shared mobile scroll primitives. The document stays locked and each app
+   * surface owns exactly one vertical scroll viewport.
+   */
   html[data-standalone-pwa="true"] #dashboard-scroll-viewport,
   html[data-standalone-pwa="true"] [data-pwa-scroll-root="true"],
-  html[data-standalone-pwa="true"] [data-guide-page="true"],
   html[data-standalone-pwa="true"] .public-page-shell,
   html[data-standalone-pwa="true"] .auth-surface {
     width: 100%;
     max-width: 100%;
-    height: 100% !important;
     min-height: 0 !important;
-    max-height: 100% !important;
     overflow-x: clip !important;
-    overflow-y: auto !important;
-    overscroll-behavior-x: none;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y pinch-zoom !important;
   }
 
+  /* Normal actor dashboards use the flex-owned viewport below the top bar. */
   html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
+    flex: 1 1 0% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
     scroll-padding-bottom: var(--mobile-bottom-nav-clearance);
   }
 
   html[data-standalone-pwa="true"] #dashboard-content {
+    width: 100%;
+    min-height: 100%;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     padding-bottom: var(--mobile-bottom-nav-clearance) !important;
+  }
+
+  /* Explicit nested PWA roots retain their own bounded scroll context. */
+  html[data-standalone-pwa="true"] [data-pwa-scroll-root="true"] {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
+  }
+
+  /*
+   * Getting-started pages bypass the normal dashboard frame. Pin their shell
+   * to the visible PWA viewport and make that shell the scroll owner.
+   */
+  html[data-standalone-pwa="true"] [data-guide-page="true"] {
+    position: fixed !important;
+    inset: 0 !important;
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: var(--pwa-layout-height) !important;
+    min-height: 0 !important;
+    max-height: var(--pwa-layout-height) !important;
+    overflow-x: clip !important;
+    overflow-y: auto !important;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: contain !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom !important;
+    scroll-padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+    scroll-padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  html[data-standalone-pwa="true"] [data-guide-page="true"] > header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  html[data-standalone-pwa="true"] [data-guide-page="true"] > main {
+    width: 100%;
+    min-height: max-content;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding-bottom: max(
+      2rem,
+      calc(env(safe-area-inset-bottom, 0px) + 1.5rem)
+    ) !important;
+  }
+
+  /* Public and authentication pages scroll inside their own root surface. */
+  html[data-standalone-pwa="true"] .public-page-shell,
+  html[data-standalone-pwa="true"] .auth-surface {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
   }
 
   html[data-standalone-pwa="true"] .public-page-shell {
     position: relative;
     isolation: isolate;
+  }
+
+  /* A modal temporarily owns scrolling and freezes the page beneath it. */
+  html[data-modal-open="true"] #dashboard-scroll-viewport,
+  html[data-modal-open="true"] [data-guide-page="true"],
+  html[data-modal-open="true"] [data-pwa-scroll-root="true"] {
+    overflow: hidden !important;
+    touch-action: none !important;
   }
 
   html[data-standalone-pwa="true"][data-pwa-platform="android"]
