@@ -6,10 +6,13 @@
   html[data-standalone-pwa="true"],
   html[data-standalone-pwa="true"] body,
   html[data-standalone-pwa="true"] #root {
-    touch-action: auto;
+    touch-action: pan-y pinch-zoom !important;
   }
 
+  html[data-standalone-pwa="true"],
   html[data-standalone-pwa="true"] body {
+    min-height: 100%;
+    height: auto !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior-y: auto !important;
@@ -18,7 +21,7 @@
 
   html[data-standalone-pwa="true"] #root {
     min-height: 100dvh;
-    overflow: visible;
+    overflow: visible !important;
   }
 
   html[data-standalone-pwa="true"] #dashboard-scroll-viewport,
@@ -26,7 +29,7 @@
   html[data-standalone-pwa="true"] [data-guide-page="true"] {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain !important;
-    touch-action: pan-y !important;
+    touch-action: pan-y pinch-zoom !important;
   }
 
   html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
@@ -44,7 +47,7 @@
     min-height: 100dvh;
     overflow-x: hidden;
     overflow-y: visible !important;
-    touch-action: auto;
+    touch-action: pan-y pinch-zoom !important;
   }
 
   html[data-standalone-pwa="true"] [class*="overflow-x-auto"],
@@ -76,6 +79,7 @@
     width: 100% !important;
     transform: none !important;
     -webkit-transform: none !important;
+    touch-action: pan-y pinch-zoom !important;
   }
 
   /* Admin PWA navigation: Academics, Notices, Home, Calendar, Menu. */
