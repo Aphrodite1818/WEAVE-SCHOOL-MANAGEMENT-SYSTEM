@@ -2,9 +2,13 @@
   html[data-standalone-pwa="true"] {
     --pwa-layout-height: 100dvh;
     --virtual-keyboard-height: 0px;
+    --mobile-bottom-nav-clearance: calc(
+      6.25rem + env(safe-area-inset-bottom, 0px)
+    );
     height: var(--pwa-layout-height);
     max-height: var(--pwa-layout-height);
     overflow: hidden !important;
+    overscroll-behavior: none;
   }
 
   html[data-standalone-pwa="true"] body,
@@ -26,12 +30,19 @@
     height: 100% !important;
     min-height: 0 !important;
     max-height: 100% !important;
-    overflow-x: hidden !important;
     overflow-x: clip !important;
     overflow-y: auto !important;
     overscroll-behavior-x: none;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y pinch-zoom !important;
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
+    scroll-padding-bottom: var(--mobile-bottom-nav-clearance);
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-content {
+    padding-bottom: var(--mobile-bottom-nav-clearance) !important;
   }
 
   html[data-standalone-pwa="true"] .public-page-shell {
@@ -50,8 +61,8 @@
   html[data-standalone-pwa="true"][data-pwa-platform="ios"]
     [data-mobile-bottom-nav="true"] {
     padding-bottom: max(
-      0.25rem,
-      calc(env(safe-area-inset-bottom, 0px) - 1rem)
+      0.1rem,
+      calc(env(safe-area-inset-bottom, 0px) - 1.45rem)
     ) !important;
   }
 
@@ -60,16 +71,42 @@
     inset-inline: 0 !important;
     top: auto !important;
     bottom: 0 !important;
-    pointer-events: none;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding-inline: 0.75rem !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    z-index: 70 !important;
+    translate: none !important;
+    transform: translate3d(0, 0, 0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    contain: layout paint;
+    isolation: isolate;
+    overscroll-behavior: contain !important;
     touch-action: pan-y pinch-zoom !important;
-    will-change: transform;
+    pointer-events: none;
+    transition: opacity 120ms ease, visibility 120ms ease;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
+    width: 100% !important;
+    max-width: 30rem !important;
+    margin-inline: auto !important;
+    border: 1px solid rgb(var(--color-border) / 0.62) !important;
+    border-radius: 2.2rem !important;
+    background: rgb(var(--color-surface) / 0.96) !important;
+    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18) !important;
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    overflow: hidden;
     pointer-events: auto;
   }
 
-  html[data-standalone-pwa="true"][data-keyboard-open="true"]
+  html[data-standalone-pwa="true"][data-keyboard-open="true"]:not([data-modal-open="true"])
     [data-mobile-bottom-nav="true"] {
     transition: none !important;
     translate: none !important;
@@ -85,8 +122,38 @@
     ) !important;
   }
 
-  html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
+  html[data-modal-open="true"] [data-mobile-bottom-nav="true"] {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transform: translate3d(0, 0, 0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-modal-overlay="true"] {
+    height: 100%;
     max-height: 100%;
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    overscroll-behavior: contain;
+  }
+
+  html[data-standalone-pwa="true"] [data-modal-panel="true"] {
+    display: flex;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  html[data-standalone-pwa="true"] [data-modal-header="true"],
+  html[data-standalone-pwa="true"] [data-modal-footer="true"] {
+    flex: 0 0 auto;
+  }
+
+  html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior: contain;
@@ -94,31 +161,15 @@
     touch-action: pan-y pinch-zoom !important;
   }
 
-  html[data-standalone-pwa="true"] [data-pricing-tabs-scroll="true"],
-  html[data-standalone-pwa="true"] [data-pricing-card-carousel="true"] {
-    width: 100%;
-    max-width: 100%;
-    overflow-x: auto !important;
-    overscroll-behavior-inline: contain !important;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x pan-y pinch-zoom !important;
+  html[data-standalone-pwa="true"] [data-mobile-billing-page="true"] {
+    min-height: 100%;
+    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
   }
 
-  html[data-standalone-pwa="true"] [data-pricing-card-carousel="true"] {
-    grid-auto-flow: column !important;
-    grid-auto-columns: 100% !important;
-    grid-template-columns: none !important;
-    overflow-y: visible !important;
-    scroll-snap-type: inline mandatory !important;
-    padding-bottom: 0.75rem !important;
-  }
-
-  html[data-standalone-pwa="true"]
-    [data-pricing-card-carousel="true"]
-    > article[id^="subscription-plan-"] {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    scroll-snap-align: start !important;
+  html[data-standalone-pwa="true"] [data-mobile-billing-action="true"] {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   }
 }
