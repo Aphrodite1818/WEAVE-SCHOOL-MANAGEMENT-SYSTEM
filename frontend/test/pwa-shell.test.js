@@ -3,6 +3,21 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+const readBytes = (path) => readFile(new URL(`../${path}`, import.meta.url));
+
+const readPngDimensions = (buffer) => {
+  assert.deepEqual(
+    [...buffer.subarray(0, 8)],
+    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  );
+  assert.equal(buffer.subarray(12, 16).toString("ascii"), "IHDR");
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+    bitDepth: buffer[24],
+    colorType: buffer[25],
+  };
+};
 
 test("the installed bottom navigation never cancels page touch movement", async () => {
   const source = await read("src/components/layout/BottomNav.jsx");
@@ -13,7 +28,7 @@ test("the installed bottom navigation never cancels page touch movement", async 
   assert.match(source, /data-mobile-bottom-nav="true"/);
 });
 
-test("standalone PWA scrolling and dock geometry have one final authority", async () => {
+test("standalone PWA scrolling and floating dock geometry have one final authority", async () => {
   const [pwaCss, directoryCss, mainSource] = await Promise.all([
     read("src/styles/pwaInteractions.css"),
     read("src/styles/mobileDirectoryCards.css"),
@@ -25,6 +40,22 @@ test("standalone PWA scrolling and dock geometry have one final authority", asyn
     /data-mobile-bottom-nav="true"[\s\S]*?position:\s*fixed\s*!important/,
   );
   assert.match(pwaCss, /transform:\s*translate3d\(0, 0, 0\)\s*!important/);
+  assert.match(
+    pwaCss,
+    /data-mobile-bottom-nav="true"[\s\S]*?background:\s*transparent\s*!important/,
+  );
+  assert.match(
+    pwaCss,
+    /data-mobile-bottom-nav="true"[\s\S]*?pointer-events:\s*none/,
+  );
+  assert.match(
+    pwaCss,
+    /data-mobile-bottom-nav="true"\]\s*>\s*div[\s\S]*?pointer-events:\s*auto/,
+  );
+  assert.match(
+    pwaCss,
+    /padding:\s*0 0\.75rem max\(0\.5rem, env\(safe-area-inset-bottom, 0px\)\)\s*!important/,
+  );
   assert.match(
     pwaCss,
     /#dashboard-scroll-viewport[\s\S]*?overflow-y:\s*auto\s*!important/,
@@ -42,7 +73,7 @@ test("standalone PWA scrolling and dock geometry have one final authority", asyn
   assert.ok(pwaIndex > dashboardIndex && pwaIndex > directoryIndex);
 });
 
-test("Android and iOS receive installable PNG app metadata", async () => {
+test("Android and iOS receive versioned installable app metadata", async () => {
   const [manifestSource, html] = await Promise.all([
     read("public/manifest.json"),
     read("index.html"),
@@ -59,7 +90,8 @@ test("Android and iOS receive installable PNG app metadata", async () => {
       (icon) =>
         icon.type === "image/png" &&
         icon.sizes === "192x192" &&
-        icon.purpose === "any",
+        icon.purpose === "any" &&
+        icon.src.includes("weave-pwa-3"),
     ),
   );
   assert.ok(
@@ -67,7 +99,8 @@ test("Android and iOS receive installable PNG app metadata", async () => {
       (icon) =>
         icon.type === "image/png" &&
         icon.sizes === "512x512" &&
-        icon.purpose === "any",
+        icon.purpose === "any" &&
+        icon.src.includes("weave-pwa-3"),
     ),
   );
   assert.ok(
@@ -75,14 +108,32 @@ test("Android and iOS receive installable PNG app metadata", async () => {
       (icon) =>
         icon.type === "image/png" &&
         icon.sizes === "512x512" &&
-        icon.purpose === "maskable",
+        icon.purpose === "maskable" &&
+        icon.src.includes("weave-pwa-3"),
     ),
   );
-  assert.match(html, /rel="manifest"[^>]+manifest\.json/);
-  assert.match(html, /rel="apple-touch-icon"[^>]+weave-192\.png/);
-  assert.match(html, /rel="icon"[^>]+image\/png[^>]+weave-192\.png/);
+  assert.match(html, /rel="manifest"[^>]+manifest\.json\?v=weave-pwa-3/);
+  assert.match(html, /rel="apple-touch-icon"[^>]+weave-180\.png\?v=weave-pwa-3/);
+  assert.match(html, /rel="icon"[^>]+image\/png[^>]+weave-192\.png\?v=weave-pwa-3/);
   assert.match(html, /name="mobile-web-app-capable" content="yes"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
+});
+
+test("generated Android and iOS app icons are valid opaque PNGs", async () => {
+  const expectedIcons = [
+    ["public/icons/weave-180.png", 180],
+    ["public/icons/weave-192.png", 192],
+    ["public/icons/weave-512.png", 512],
+    ["public/icons/weave-maskable-512.png", 512],
+  ];
+
+  for (const [path, expectedSize] of expectedIcons) {
+    const dimensions = readPngDimensions(await readBytes(path));
+    assert.equal(dimensions.width, expectedSize);
+    assert.equal(dimensions.height, expectedSize);
+    assert.equal(dimensions.bitDepth, 8);
+    assert.equal(dimensions.colorType, 2);
+  }
 });
 
 test("the service worker enables detection without caching or intercepting the app", async () => {
