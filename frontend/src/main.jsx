@@ -16,7 +16,6 @@ applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 syncSystemThemePreference();
 
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
-const visualViewport = window.visualViewport;
 const rootElement = document.getElementById('root');
 const PWA_SCROLLABLE_SELECTOR = [
   "#root",
@@ -33,59 +32,16 @@ const PWA_SCROLLABLE_SELECTOR = [
   ".table-wrap",
 ].join(", ");
 
-let stableViewportHeight = Math.max(
-  window.innerHeight,
-  visualViewport?.height || 0,
-);
-let stableViewportWidth = visualViewport?.width || window.innerWidth;
-
 const isStandalonePwa = () => Boolean(
   standaloneQuery?.matches || window.navigator?.standalone === true
 );
 
-const isFormControlFocused = () => {
-  const element = document.activeElement;
-  return Boolean(
-    element &&
-    ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName)
-  );
-};
-
-const syncPwaViewportMetrics = () => {
-  const standalone = isStandalonePwa();
-  document.documentElement.dataset.standalonePwa = String(standalone);
-
-  if (!standalone) {
-    document.documentElement.style.removeProperty(
-      "--pwa-fixed-bottom-compensation",
-    );
-    return;
-  }
-
-  const viewportHeight = visualViewport?.height || window.innerHeight;
-  const viewportWidth = visualViewport?.width || window.innerWidth;
-  const viewportOffsetTop = visualViewport?.offsetTop || 0;
-
-  if (Math.abs(viewportWidth - stableViewportWidth) > 48) {
-    stableViewportWidth = viewportWidth;
-    stableViewportHeight = Math.max(window.innerHeight, viewportHeight);
-  }
-
-  const keyboardGap = stableViewportHeight - viewportHeight - viewportOffsetTop;
-  const keyboardOpen = isFormControlFocused() && keyboardGap > 120;
-
-  if (!keyboardOpen) {
-    stableViewportHeight = Math.max(window.innerHeight, viewportHeight);
-  }
-
-  document.documentElement.style.setProperty(
-    "--pwa-fixed-bottom-compensation",
-    `${keyboardOpen ? Math.max(0, keyboardGap) : 0}px`,
-  );
+const syncStandaloneDisplayMode = () => {
+  document.documentElement.dataset.standalonePwa = String(isStandalonePwa());
 };
 
 const applyStandaloneScrollSupport = () => {
-  syncPwaViewportMetrics();
+  syncStandaloneDisplayMode();
   if (!isStandalonePwa()) return;
 
   document.documentElement.style.touchAction = "auto";
@@ -129,14 +85,7 @@ if (rootElement) {
 standaloneQuery?.addEventListener?.("change", applyStandaloneScrollSupport);
 window.addEventListener("pageshow", applyStandaloneScrollSupport);
 window.addEventListener("orientationchange", applyStandaloneScrollSupport);
-window.addEventListener("resize", syncPwaViewportMetrics);
-visualViewport?.addEventListener?.("resize", syncPwaViewportMetrics);
-visualViewport?.addEventListener?.("scroll", syncPwaViewportMetrics);
 document.addEventListener("visibilitychange", applyStandaloneScrollSupport);
-document.addEventListener("focusin", syncPwaViewportMetrics);
-document.addEventListener("focusout", () => {
-  window.setTimeout(syncPwaViewportMetrics, 80);
-});
 document.addEventListener("click", handlePwaPlanNavigation, true);
 
 createRoot(rootElement).render(<App />)
