@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BookOpen } from "lucide-react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import Card from "../../components/ui/Card";
-import Badge from "../../components/ui/Badge";
-import Button from "../../components/ui/Button";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
-import { getErrorMessage } from "../../services/api";
+import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
 import { academicService } from "../../services/academicService";
+import { getErrorMessage } from "../../services/api";
 import { cleanText } from "../../utils/academicDashboard";
-import { displayStatusLabel, getAcademicContext, scoreDisplayValue, statusVariant } from "./studentPageUtils";
+import {
+  displayStatusLabel,
+  getAcademicContext,
+  scoreDisplayValue,
+  statusVariant,
+} from "./studentPageUtils";
 
 function metricValue(value) {
   return scoreDisplayValue(value);
@@ -30,11 +35,14 @@ function StudentSubjectDetailsPage() {
       setLoadError(null);
 
       try {
-        const response = await academicService.listMyResults();
+        const response = await academicService.listMySubjectCards();
         if (!mounted) return;
         setResults(response?.items || []);
       } catch (error) {
-        if (mounted) setLoadError(getErrorMessage(error, "Failed to load subject breakdown."));
+        if (mounted)
+          setLoadError(
+            getErrorMessage(error, "Failed to load subject breakdown."),
+          );
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -48,10 +56,18 @@ function StudentSubjectDetailsPage() {
   }, []);
 
   const result = useMemo(
-    () => results.find((item) => String(item.id) === String(subjectResultId)) || null,
-    [results, subjectResultId]
+    () =>
+      results.find(
+        (item) =>
+          String(item.id) === String(subjectResultId) ||
+          String(item.result_id) === String(subjectResultId),
+      ) || null,
+    [results, subjectResultId],
   );
-  const context = useMemo(() => getAcademicContext(result ? [result] : results, []), [result, results]);
+  const context = useMemo(
+    () => getAcademicContext(result ? [result] : results, []),
+    [result, results],
+  );
 
   if (isLoading) {
     return (
@@ -59,10 +75,6 @@ function StudentSubjectDetailsPage() {
         <LoadingState label="Loading subject breakdown..." />
       </DashboardLayout>
     );
-  }
-
-  if (!loadError && !result) {
-    return <Navigate to="/student/subjects" replace />;
   }
 
   return (
@@ -98,13 +110,19 @@ function StudentSubjectDetailsPage() {
                     <h2 className="truncate text-xl font-semibold text-text">
                       {cleanText(result.subject_name, "Subject")}
                     </h2>
-                    <Badge variant={statusVariant(result.status)}>{displayStatusLabel(result.status)}</Badge>
+                    <Badge variant={statusVariant(result.status)}>
+                      {displayStatusLabel(result.status)}
+                    </Badge>
                   </div>
                   <p className="mt-1 text-sm font-medium text-text-muted">
-                    {cleanText(result.class_name, cleanText(context.classLabel, "Class"))}
+                    {cleanText(
+                      result.class_name,
+                      cleanText(context.classLabel, "Class"),
+                    )}
                   </p>
                   <p className="mt-2 text-sm text-text-muted">
-                    Teacher: {cleanText(result.teacher_name, "Teacher not assigned")}
+                    Teacher:{" "}
+                    {cleanText(result.teacher_name, "Teacher not assigned")}
                   </p>
                 </div>
               </div>
@@ -112,20 +130,36 @@ function StudentSubjectDetailsPage() {
 
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
               <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Total score</p>
-                <p className="mt-2 text-2xl font-semibold text-text">{metricValue(result.total_score)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Total score
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-text">
+                  {metricValue(result.total_score)}
+                </p>
               </div>
               <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Grade</p>
-                <p className="mt-2 text-2xl font-semibold text-text">{cleanText(result.grade, "-")}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Grade
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-text">
+                  {cleanText(result.grade, "-")}
+                </p>
               </div>
               <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Session</p>
-                <p className="mt-2 text-base font-semibold text-text">{cleanText(result.academic_session_name)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Session
+                </p>
+                <p className="mt-2 text-base font-semibold text-text">
+                  {cleanText(result.academic_session_name)}
+                </p>
               </div>
               <div className="rounded-[1.15rem] border border-border/70 bg-surface-muted/20 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Term</p>
-                <p className="mt-2 text-base font-semibold text-text">{cleanText(result.academic_term_name)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Term
+                </p>
+                <p className="mt-2 text-base font-semibold text-text">
+                  {cleanText(result.academic_term_name)}
+                </p>
               </div>
             </div>
           </Card>
@@ -133,29 +167,50 @@ function StudentSubjectDetailsPage() {
           <Card className="p-5 sm:p-6">
             <h3 className="section-title">Score Breakdown</h3>
             <p className="mt-1 text-sm text-text-muted">
-              The detailed subject marks live here so the subject index can stay compact and easy to scan.
+              The detailed subject marks live here so the subject index can stay
+              compact and easy to scan.
             </p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Test</p>
-                <p className="mt-2 text-xl font-semibold text-text">{metricValue(result.test_score)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Test
+                </p>
+                <p className="mt-2 text-xl font-semibold text-text">
+                  {metricValue(result.test_score)}
+                </p>
               </div>
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Assessment</p>
-                <p className="mt-2 text-xl font-semibold text-text">{metricValue(result.assessment_score)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Assessment
+                </p>
+                <p className="mt-2 text-xl font-semibold text-text">
+                  {metricValue(result.assessment_score)}
+                </p>
               </div>
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Exam</p>
-                <p className="mt-2 text-xl font-semibold text-text">{metricValue(result.exam_score)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Exam
+                </p>
+                <p className="mt-2 text-xl font-semibold text-text">
+                  {metricValue(result.exam_score)}
+                </p>
               </div>
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Status</p>
-                    <p className="mt-2 text-base font-semibold capitalize text-text">{displayStatusLabel(result.status)}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Status
+                </p>
+                <p className="mt-2 text-base font-semibold capitalize text-text">
+                  {displayStatusLabel(result.status)}
+                </p>
               </div>
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3 sm:col-span-2 xl:col-span-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Remark</p>
-                <p className="mt-2 text-base font-semibold text-text">{cleanText(result.remark, "No remark")}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  Remark
+                </p>
+                <p className="mt-2 text-base font-semibold text-text">
+                  {cleanText(result.remark, "No remark")}
+                </p>
               </div>
             </div>
           </Card>

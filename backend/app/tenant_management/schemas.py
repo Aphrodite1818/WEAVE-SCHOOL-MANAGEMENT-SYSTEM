@@ -144,13 +144,11 @@ class TenantBase(InputBase):
 
 
 class TenantRegisterRequest(InputBase):
-    """Schema for public tenant registration.
+    """Public tenant registration request.
 
-    This request creates:
-    - Tenant
-    - TenantAdmin
-    - AuthIdentity
-    - Verification OTP
+    Registration accepts only the school name, workspace email, and initial
+    tenant-admin password. The tenant slug is generated internally and the
+    admission-number prefix is collected during onboarding.
     """
 
     school_name: str = Field(
@@ -164,14 +162,13 @@ class TenantRegisterRequest(InputBase):
         ...,
         min_length=8,
         max_length=64,
-        description="Tenant admin password",
+        description="Initial tenant administrator password",
     )
-    slug: str | None = None
-    admission_number_prefix: str | None = Field(
-        default=None,
-        min_length=2,
-        max_length=20,
+    selected_plan_code: SubscriptionPlan = Field(
+        default=SubscriptionPlan.FREE_TRIAL,
+        description="Plan selected on the public pricing page before registration.",
     )
+    billing_interval: Literal["monthly"] = "monthly"
 
     @field_validator("school_name")
     @classmethod
@@ -181,32 +178,6 @@ class TenantRegisterRequest(InputBase):
         if not value.strip():
             raise ValueError("school_name cannot be empty")
         return value.strip()
-
-    @field_validator("slug", mode="before")
-    @classmethod
-    def clean_slug(cls, value: str | None) -> str | None:
-        """Clean optional slug."""
-
-        return _clean_optional_string(value)
-
-    @field_validator("admission_number_prefix", mode="before")
-    @classmethod
-    def clean_admission_number_prefix(cls, value: str | None) -> str | None:
-        """Clean optional admission number prefix."""
-
-        return _clean_optional_string(value)
-
-    @field_validator("admission_number_prefix")
-    @classmethod
-    def normalize_register_admission_number_prefix(
-        cls,
-        value: str | None,
-    ) -> str | None:
-        """Uppercase admission number prefix when provided."""
-
-        if value is None:
-            return None
-        return value.upper()
 
 
 class TenantCreate(TenantBase):

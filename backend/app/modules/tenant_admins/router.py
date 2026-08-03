@@ -1,46 +1,53 @@
-"""Tenant-admin route boundary for tenant-scoped management."""
+"""Tenant-admin boundary for school-owned lifecycle operations."""
+
+from __future__ import annotations
 
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.parents.schemas import (
-    ParentCreate,
-    ParentListResponse,
-    ParentResponse,
-    ParentUpdate,
+from app.modules.students.admin_contracts import StudentAdminContractService
+from app.modules.students.creation_service import StudentCreationService
+from app.modules.students.models import (
+    AcademicStatus,
+    StudentAccessCodePurpose,
 )
-from app.modules.parents.service import ParentService
-from app.modules.students.models import AcademicStatus
 from app.modules.students.schemas import (
+    StudentAccessCodeGenerateRequest,
+    StudentAdminAccessCodeResponse,
+    StudentAdminProfileUpdate,
+    StudentArchiveRequest,
+    StudentClassChangeRequest,
     StudentCreate,
-    StudentLinkCodeCreate,
-    StudentLinkCodeResponse,
+    StudentDetailResponse,
+    StudentEnrollmentListResponse,
+    StudentExpelRequest,
+    StudentExpelledReinstatementRequest,
+    StudentGraduateRequest,
+    StudentHardDeleteEligibilityResponse,
+    StudentHardDeleteRequest,
+    StudentLifecycleTransitionResponse,
     StudentListResponse,
-    StudentParentLinkCreate,
+    StudentParentLinkRequestDecision,
+    StudentParentLinkRequestResponse,
     StudentParentLinkResponse,
-    StudentParentLinkUpdate,
-    StudentResponse,
-    StudentUpdate,
-    StudentAdminAccessCodeResponse
+    StudentParentLinkUpdateRequest,
+    StudentReinstateRequest,
+    StudentRestoreFromArchiveRequest,
+    StudentSuspendRequest,
+    StudentWithdrawRequest,
 )
 from app.modules.students.service import (
-    StudentLinkCodeService,
+    StudentAccessCodeService,
+    StudentEnrollmentService,
+    StudentLifecycleService,
+    StudentParentLinkRequestService,
     StudentParentLinkService,
     StudentService,
 )
-from app.modules.teachers.schemas import (
-    TeacherCreate,
-    TeacherListResponse,
-    TeacherResponse,
-    TeacherUpdate,
-)
-from app.modules.teachers.service import TeacherService
-from app.modules.student_academics.schemas import TeacherAssignmentListResponse
-from app.modules.student_academics.service import StudentAcademicService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.tenant_admins.models import TenantAdmin
@@ -51,530 +58,414 @@ from app.tenant_management.schemas import (
 )
 from app.tenant_management.service import TenantService
 
-
 router = APIRouter()
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin,
+    Depends(get_current_tenant_admin),
+]
 
 
 @router.get(
     "/onboarding-status",
     response_model=TenantOnboardingStatusResponse,
-    summary="Get tenant-admin onboarding status",
 )
 async def get_tenant_admin_onboarding_status(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TenantOnboardingStatusResponse:
-    """Return the current tenant-admin onboarding status."""
-
     return await TenantService.get_tenant_onboarding_status(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-    )
-
-
-@router.get(
-    "/analytics/overview",
-    status_code=status.HTTP_200_OK,
-    summary="Get tenant-admin analytics overview",
-)
-async def get_tenant_admin_analytics_overview(
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> dict[str, object]:
-    """Return analytics data for the current tenant admin dashboard."""
-
-    return await TenantAdminService.get_analytics_overview(
-        db=db,
-        tenant_id=current_admin.tenant_id,
+        db,
+        current_admin.tenant_id,
     )
 
 
 @router.patch(
     "/tenant/onboarding",
     response_model=TenantOnboardingStatusResponse,
-    summary="Complete tenant-admin school onboarding",
 )
 async def complete_tenant_admin_onboarding(
     payload: TenantOnboardingUpdate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TenantOnboardingStatusResponse:
-    """Update the current tenant's onboarding fields."""
-
     await TenantService.update_tenant_onboarding(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        payload=payload,
+        db,
+        current_admin.tenant_id,
+        payload,
     )
     return await TenantService.get_tenant_onboarding_status(
-        db=db,
+        db,
+        current_admin.tenant_id,
+    )
+
+
+@router.get("/analytics/overview")
+async def get_tenant_admin_analytics_overview(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> dict[str, object]:
+    return await TenantAdminService.get_analytics_overview(
+        db,
         tenant_id=current_admin.tenant_id,
     )
-
-
-@router.post(
-    "/teachers",
-    response_model=TeacherResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a teacher",
-)
-async def create_teacher(
-    payload: TeacherCreate,
-    background_tasks: BackgroundTasks,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> TeacherResponse:
-    """Create a teacher through the tenant-admin boundary."""
-
-    await SubscriptionFeatureService.ensure_resource_limit_available(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        resource=ResourceLimitCode.TEACHERS,
-    )
-    teacher = await TeacherService.create_teacher(
-        db=db,
-        actor=current_admin,
-        teacher_data=payload,
-        background_tasks=background_tasks,
-    )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
-    return teacher
-
-
-@router.get(
-    "/teachers",
-    response_model=TeacherListResponse,
-    summary="List teachers",
-)
-async def list_teachers(
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=100),
-    search: str | None = Query(default=None, min_length=1, max_length=200),
-) -> TeacherListResponse:
-    """List teachers for the current tenant."""
-
-    teachers, total = await TeacherService.list_teachers(
-        db=db,
-        actor=current_admin,
-        skip=skip,
-        limit=limit,
-        search=search,
-    )
-    return TeacherListResponse(
-        items=[TeacherResponse.model_validate(teacher) for teacher in teachers],
-        total=total,
-    )
-
-
-@router.get(
-    "/teachers/{teacher_id}",
-    response_model=TeacherResponse,
-    summary="Get a teacher",
-)
-async def get_teacher(
-    teacher_id: UUID,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> TeacherResponse:
-    """Return a teacher in the current tenant."""
-
-    return await TeacherService.get_teacher(
-        db=db,
-        actor=current_admin,
-        teacher_id=teacher_id,
-    )
-
-
-@router.get(
-    "/teachers/{teacher_id}/assignments",
-    response_model=TeacherAssignmentListResponse,
-    summary="List teacher class-subject assignments",
-)
-async def list_teacher_class_assignments(
-    teacher_id: UUID,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-    active_only: bool = Query(default=True),
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=100),
-) -> TeacherAssignmentListResponse:
-    items, total = await StudentAcademicService.list_teacher_assignment_responses(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        teacher_id=teacher_id,
-        active_only=active_only,
-        skip=skip,
-        limit=limit,
-    )
-    return TeacherAssignmentListResponse(items=items, total=total)
-
-
-@router.patch(
-    "/teachers/{teacher_id}",
-    response_model=TeacherResponse,
-    summary="Update a teacher",
-)
-async def update_teacher(
-    teacher_id: UUID,
-    payload: TeacherUpdate,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> TeacherResponse:
-    """Update a teacher in the current tenant."""
-
-    return await TeacherService.update_teacher(
-        db=db,
-        actor=current_admin,
-        teacher_id=teacher_id,
-        teacher_data=payload,
-    )
-
-
-@router.delete(
-    "/teachers/{teacher_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Archive a teacher",
-)
-async def delete_teacher(
-    teacher_id: UUID,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> None:
-    """Archive a teacher in the current tenant."""
-
-    await TeacherService.delete_teacher(
-        db=db,
-        actor=current_admin,
-        teacher_id=teacher_id,
-    )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
-
-
-@router.post(
-    "/parents",
-    response_model=ParentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a parent",
-)
-async def create_parent(
-    payload: ParentCreate,
-    background_tasks: BackgroundTasks,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> ParentResponse:
-    """Create a parent through the tenant-admin boundary."""
-
-    await SubscriptionFeatureService.ensure_resource_limit_available(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        resource=ResourceLimitCode.PARENTS,
-    )
-    parent = await ParentService.create_parent(
-        db=db,
-        actor=current_admin,
-        payload=payload,
-        background_tasks=background_tasks,
-    )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
-    return parent
-
-
-@router.get(
-    "/parents",
-    response_model=ParentListResponse,
-    summary="List parents",
-)
-async def list_parents(
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=100),
-    search: str | None = Query(default=None, min_length=1, max_length=200),
-) -> ParentListResponse:
-    """List parents for the current tenant."""
-
-    parents, total = await ParentService.get_all_parents(
-        db=db,
-        actor=current_admin,
-        skip=skip,
-        limit=limit,
-        search=search,
-    )
-    return ParentListResponse(items=parents, total=total)
-
-
-@router.get(
-    "/parents/{parent_id}",
-    response_model=ParentResponse,
-    summary="Get a parent",
-)
-async def get_parent(
-    parent_id: UUID,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> ParentResponse:
-    """Return a parent in the current tenant."""
-
-    return await ParentService.get_parent_profile(
-        db=db,
-        actor=current_admin,
-        parent_id=parent_id,
-    )
-
-
-@router.patch(
-    "/parents/{parent_id}",
-    response_model=ParentResponse,
-    summary="Update a parent",
-)
-async def update_parent(
-    parent_id: UUID,
-    payload: ParentUpdate,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> ParentResponse:
-    """Update a parent in the current tenant."""
-
-    return await ParentService.update_parent_profile(
-        db=db,
-        actor=current_admin,
-        parent_id=parent_id,
-        payload=payload,
-    )
-
-
-@router.delete(
-    "/parents/{parent_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a parent",
-)
-async def delete_parent(
-    parent_id: UUID,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> None:
-    """Delete a parent in the current tenant."""
-
-    await ParentService.delete_parent_profile(
-        db=db,
-        actor=current_admin,
-        parent_id=parent_id,
-    )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
 
 
 @router.post(
     "/students",
-    response_model=StudentResponse,
+    response_model=StudentDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a student",
 )
 async def create_student(
     payload: StudentCreate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> StudentResponse:
-    """Create a student through the tenant-admin boundary."""
-
+) -> StudentDetailResponse:
     await SubscriptionFeatureService.ensure_resource_limit_available(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        resource=ResourceLimitCode.STUDENTS,
+        db,
+        current_admin.tenant_id,
+        ResourceLimitCode.STUDENTS,
     )
-    student = await StudentService.create_student_profile(
-        db=db,
-        actor=current_admin,
-        payload=payload,
+    student = await StudentCreationService.create_student_profile(
+        db,
+        current_admin,
+        payload,
     )
     await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
     return student
 
 
-@router.get(
-    "/students",
-    response_model=StudentListResponse,
-    summary="List students",
-)
+@router.get("/students", response_model=StudentListResponse)
 async def list_students(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
-    search: str | None = Query(default=None, min_length=1, max_length=200),
+    search: str | None = Query(default=None, max_length=200),
     class_id: UUID | None = Query(default=None),
-    status_filter: AcademicStatus | None = Query(default=None, alias="status"),
+    status_filter: AcademicStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
+    include_archived: bool = Query(default=False),
 ) -> StudentListResponse:
-    """List students for the current tenant."""
-
-    students, total = await StudentService.list_students(
-        db=db,
+    students, total = await StudentAdminContractService.list_students(
+        db,
         actor=current_admin,
         skip=skip,
         limit=limit,
         search=search,
         class_id=class_id,
         status=status_filter,
+        include_archived=include_archived,
     )
     return StudentListResponse(items=students, total=total)
 
 
 @router.get(
     "/students/{student_id}",
-    response_model=StudentResponse,
-    summary="Get a student",
+    response_model=StudentDetailResponse,
 )
 async def get_student(
     student_id: UUID,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> StudentResponse:
-    """Return a student in the current tenant."""
-
+) -> StudentDetailResponse:
     return await StudentService.get_student_profile(
-        db=db,
-        actor=current_admin,
-        student_id=student_id,
-    )
-
-
-@router.post(
-        "/students/{student_id}/reset-access-code",
-        response_model = StudentAdminAccessCodeResponse,
-        summary = "Generate a new student access code"
-)
-async def reset_student_access_code(
-    student_id : UUID,
-    db : DbSession,
-    current_admin : CurrentTenantAdmin
-) -> StudentAdminAccessCodeResponse:
-    """Generate a temporary access code for student"""
-
-    return await StudentService.admin_reset_student_access_code(
-        db = db ,
-        actor = current_admin,
-        student_id = student_id
+        db,
+        current_admin,
+        student_id,
     )
 
 
 @router.patch(
-    "/students/{student_id}",
-    response_model=StudentResponse,
-    summary="Update a student",
+    "/students/{student_id}/profile",
+    response_model=StudentDetailResponse,
 )
-async def update_student(
+async def update_student_profile(
     student_id: UUID,
-    payload: StudentUpdate,
+    payload: StudentAdminProfileUpdate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> StudentResponse:
-    """Update a student in the current tenant."""
-
-    return await StudentService.update_student_profile(
-        db=db,
+) -> StudentDetailResponse:
+    return await StudentAdminContractService.update_profile(
+        db,
         actor=current_admin,
         student_id=student_id,
         payload=payload,
     )
 
 
-@router.delete(
-    "/students/{student_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a student",
+@router.post(
+    "/students/{student_id}/access-codes",
+    response_model=StudentAdminAccessCodeResponse,
+    status_code=status.HTTP_201_CREATED,
 )
-async def delete_student(
+async def generate_student_access_code(
+    student_id: UUID,
+    payload: StudentAccessCodeGenerateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentAdminAccessCodeResponse:
+    return await StudentAccessCodeService.generate_for_admin(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        purpose=StudentAccessCodePurpose(payload.purpose),
+    )
+
+
+@router.get(
+    "/students/{student_id}/enrollments",
+    response_model=StudentEnrollmentListResponse,
+)
+async def list_student_enrollments(
     student_id: UUID,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> None:
-    """Delete a student in the current tenant."""
+) -> StudentEnrollmentListResponse:
+    items = await StudentEnrollmentService.list_history(
+        db,
+        tenant_id=current_admin.tenant_id,
+        student_id=student_id,
+    )
+    return StudentEnrollmentListResponse(items=items, total=len(items))
 
-    await StudentService.delete_student_profile(
-        db=db,
+
+@router.post(
+    "/students/{student_id}/class-change",
+    response_model=StudentDetailResponse,
+)
+async def change_student_class(
+    student_id: UUID,
+    payload: StudentClassChangeRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentDetailResponse:
+    return await StudentEnrollmentService.change_class(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/students/{student_id}/suspend",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def suspend_student(
+    student_id: UUID,
+    payload: StudentSuspendRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.suspend(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        reason=payload.reason,
+        promotion_hold=payload.promotion_hold,
+    )
+
+
+@router.post(
+    "/students/{student_id}/reinstate",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def reinstate_suspended_student(
+    student_id: UUID,
+    payload: StudentReinstateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.reinstate(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        reason=payload.reason,
+    )
+
+
+@router.post(
+    "/students/{student_id}/reinstate-expelled",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def reinstate_expelled_student(
+    student_id: UUID,
+    payload: StudentExpelledReinstatementRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.reinstate_expelled(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        target_class_id=payload.target_class_id,
+        academic_session_id=payload.academic_session_id,
+        effective_date=payload.effective_date,
+        reason=payload.reason,
+    )
+
+
+@router.post(
+    "/students/{student_id}/withdraw",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def withdraw_student(
+    student_id: UUID,
+    payload: StudentWithdrawRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.withdraw(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        reason=payload.reason,
+        effective_date=payload.effective_date,
+    )
+
+
+@router.post(
+    "/students/{student_id}/expel",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def expel_student(
+    student_id: UUID,
+    payload: StudentExpelRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.expel(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        reason=payload.reason,
+        effective_date=payload.effective_date,
+    )
+
+
+@router.post(
+    "/students/{student_id}/graduate",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def graduate_student(
+    student_id: UUID,
+    payload: StudentGraduateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.graduate(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        reason=payload.reason,
+        graduation_date=payload.graduation_date,
+    )
+
+
+@router.post(
+    "/students/{student_id}/archive",
+    response_model=StudentDetailResponse,
+)
+async def archive_student(
+    student_id: UUID,
+    payload: StudentArchiveRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentDetailResponse:
+    return await StudentLifecycleService.archive(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        reason=payload.reason,
+    )
+
+
+@router.post(
+    "/students/{student_id}/restore",
+    response_model=StudentDetailResponse,
+)
+async def restore_student(
+    student_id: UUID,
+    payload: StudentRestoreFromArchiveRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentDetailResponse:
+    return await StudentLifecycleService.restore(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        reason=payload.reason,
+    )
+
+
+@router.get(
+    "/students/{student_id}/hard-delete-eligibility",
+    response_model=StudentHardDeleteEligibilityResponse,
+)
+async def get_student_hard_delete_eligibility(
+    student_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentHardDeleteEligibilityResponse:
+    return await StudentLifecycleService.hard_delete_eligibility(
+        db,
+        tenant_id=current_admin.tenant_id,
+        student_id=student_id,
+    )
+
+
+@router.post(
+    "/students/{student_id}/hard-delete",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def hard_delete_unused_student(
+    student_id: UUID,
+    payload: StudentHardDeleteRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> None:
+    _ = payload.reason
+    await StudentLifecycleService.hard_delete(
+        db,
         actor=current_admin,
         student_id=student_id,
     )
     await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
 
 
-@router.post(
-    "/student-parent-links",
-    response_model=StudentParentLinkResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a student-parent link",
-)
-async def create_student_parent_link(
-    payload: StudentParentLinkCreate,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> StudentParentLinkResponse:
-    """Create a student-parent link for the current tenant."""
-
-    return await StudentParentLinkService.create_student_parent_link(
-        db=db,
-        actor=current_admin,
-        payload=payload,
-    )
-
-
 @router.patch(
     "/student-parent-links/{link_id}",
     response_model=StudentParentLinkResponse,
-    summary="Update a student-parent link",
 )
 async def update_student_parent_link(
     link_id: UUID,
-    payload: StudentParentLinkUpdate,
+    payload: StudentParentLinkUpdateRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentParentLinkResponse:
-    """Update a student-parent link for the current tenant."""
-
-    return await StudentParentLinkService.update_student_parent_link(
-        db=db,
+    return await StudentParentLinkService.update(
+        db,
         actor=current_admin,
         link_id=link_id,
         payload=payload,
-    )
-
-
-@router.delete(
-    "/student-parent-links/{link_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a student-parent link",
-)
-async def delete_student_parent_link(
-    link_id: UUID,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> None:
-    """Delete a student-parent link for the current tenant."""
-
-    await StudentParentLinkService.delete_student_parent_link(
-        db=db,
-        actor=current_admin,
-        link_id=link_id,
     )
 
 
 @router.post(
-    "/student-link-codes",
-    response_model=StudentLinkCodeResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a student link code",
+    "/student-parent-link-requests/{request_id}/decision",
+    response_model=StudentParentLinkRequestResponse,
 )
-async def create_student_link_code(
-    payload: StudentLinkCodeCreate,
+async def decide_student_parent_link_request(
+    request_id: UUID,
+    payload: StudentParentLinkRequestDecision,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> StudentLinkCodeResponse:
-    """Create a student link code for the current tenant."""
-
-    return await StudentLinkCodeService.create_student_link_code(
-        db=db,
-        actor=current_admin,
-        payload=payload,
+) -> StudentParentLinkRequestResponse:
+    return await StudentParentLinkRequestService.respond_to_request(
+        db,
+        current_admin,
+        request_id,
+        payload,
     )

@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 
 class InputBase(BaseModel):
     """Base for all request/input schemas."""
@@ -108,6 +108,26 @@ class SubjectStatusUpdate(InputBase):
     is_active: bool
 
 
+class SubjectActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_SUBJECT"]
+
+
+class SubjectDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_SUBJECT"]
+
+
+class SubjectArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_SUBJECT"]
+
+
+class SubjectRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_SUBJECT"]
+
+
+class SubjectDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_SUBJECT"]
+
+
 class SubjectTeacherResponse(OutputBase):
     """Teacher summary inside subject responses."""
 
@@ -127,6 +147,10 @@ class SubjectResponse(OutputBase):
     code: str | None
     description: str | None
     is_active: bool
+    archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
+    can_delete: bool = False
+    dependency_counts: dict[str, int] | None = None
     teachers: list[SubjectTeacherResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

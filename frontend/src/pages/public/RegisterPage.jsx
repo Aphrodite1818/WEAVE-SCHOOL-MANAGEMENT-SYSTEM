@@ -7,7 +7,11 @@ import Button from "../../components/ui/Button";
 import { tenantService } from "../../services/tenant.service";
 import { authService } from "../../services/auth.service";
 import { parseApiError, remapFieldErrors } from "../../services/api";
-import { getSelectedSubscriptionPlan, saveSelectedSubscriptionPlan } from "../../features/subscriptions/subscriptionConfig";
+import {
+  getSelectedSubscriptionPlan,
+  saveRegistrationCheckoutIntent,
+  saveSelectedSubscriptionPlan,
+} from "../../features/subscriptions/subscriptionConfig";
 
 const REGISTER_FIELD_MAP = {
   school_name: "schoolName",
@@ -94,9 +98,12 @@ function RegisterPage() {
         school_name: formData.schoolName,
         email: formData.email,
         password: formData.password,
+        selected_plan_code: selectedPlan.planCode,
+        billing_interval: selectedPlan.billingInterval,
       });
 
       if (result?.verification_required) {
+        saveRegistrationCheckoutIntent(selectedPlan);
         redirectToVerification(
           result.email || formData.email,
           result.message || "Please check your email for the verification code.",

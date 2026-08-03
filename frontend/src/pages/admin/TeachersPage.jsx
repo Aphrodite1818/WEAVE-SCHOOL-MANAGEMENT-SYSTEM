@@ -1,15 +1,7 @@
-import ResourceModulePage from "../shared/ResourceModulePage";
-import { teacherResourceConfig } from "../shared/resourceConfigs";
+import MembershipDirectoryPage from "./MembershipDirectoryPage";
 
 function TeachersPage() {
-  return (
-    <ResourceModulePage
-      role="admin"
-      title="Teacher Directory"
-      description="Manage teacher profiles, qualifications, specializations, and class assignments."
-      config={teacherResourceConfig}
-    />
-  );
+  return <MembershipDirectoryPage role="teacher" />;
 }
 
 export default TeachersPage;

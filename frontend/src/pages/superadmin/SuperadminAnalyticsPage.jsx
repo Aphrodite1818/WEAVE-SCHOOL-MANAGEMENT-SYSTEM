@@ -6,7 +6,6 @@ import {
   KeyRound,
   LockKeyhole,
   Radar,
-  RefreshCw,
   Server,
   Shield,
   ShieldAlert,
@@ -18,7 +17,6 @@ import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
 import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
-import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import { getErrorMessage } from "../../services/api";
 import { superadminService } from "../../services/superadmin.service";
@@ -133,12 +131,6 @@ function SuperadminAnalyticsPage() {
     <DashboardLayout
       role="superadmin"
       title="Security Analytics"
-      actions={
-        <Button variant="outline" onClick={loadSecurityAnalytics} disabled={isLoading}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh data
-        </Button>
-      }
     >
       {error ? (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">

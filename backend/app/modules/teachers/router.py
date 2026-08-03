@@ -1,279 +1,479 @@
-from datetime import datetime, timezone
+"""Canonical teacher account, membership, invitation, and capability routes."""
+
+from __future__ import annotations
+
 from typing import Annotated, TypeAlias
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import selectinload
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_teacher
-from app.core.exceptions import NotFoundException
-from app.modules.announcements.models import (
-    Announcement,
-    AnnouncementActorType,
-    AnnouncementRead,
-    AnnouncementReadStatus,
-    AnnouncementRecipientRole,
-    AnnouncementStatus,
-    AnnouncementTarget,
-    AnnouncementTargetType,
+from app.core.dependencies.route_guards import (
+    get_current_teacher,
+    get_current_teacher_account,
+    get_current_tenant_admin,
 )
-from app.modules.announcements.repository import AnnouncementReadRepository
-from app.modules.announcements.schemas import (
-    AnnouncementFeedItemResponse,
-    AnnouncementFeedResponse,
-    AnnouncementReadResponse,
+from app.modules.auth.membership_summary_service import (
+    AccountMembershipSummaryList,
+    AccountMembershipSummaryService,
 )
-from app.modules.subjects.schemas import SubjectListResponse, SubjectResponse
-from app.modules.teachers.models import Teacher
+from app.modules.teachers.capability_service import (
+    TeacherSubjectCapabilityListResponse,
+    TeacherSubjectCapabilityService,
+)
+from app.modules.teachers.invitation_workflow_service import (
+    TeacherInvitationWorkflowService,
+)
+from app.modules.teachers.models import (
+    Teacher,
+    TeacherAccount,
+    TeacherInvitationStatus,
+    TeacherMembershipStatus,
+)
+from app.modules.teachers.offboarding_service import (
+    TeacherOffboardingImpactResponse,
+    TeacherOffboardingRequest,
+    TeacherOffboardingService,
+)
+from app.modules.teachers.patch_service import TeacherPatchService
+from app.modules.teachers.registration_service import (
+    TeacherRegistrationService,
+)
 from app.modules.teachers.schemas import (
-    TeacherOnboardingStatusResponse,
-    TeacherOnboardingUpdate,
-    TeacherResponse,
+    TeacherAccountOnboardingRequest,
+    TeacherAccountProfileUpdateRequest,
+    TeacherAccountRegisterRequest,
+    TeacherAccountResponse,
+    TeacherInvitationAcceptanceRequest,
+    TeacherInvitationCreateRequest,
+    TeacherInvitationPublicContextResponse,
+    TeacherInvitationResponse,
+    TeacherMembershipListResponse,
+    TeacherMembershipReactivateRequest,
+    TeacherMembershipResponse,
+    TeacherMembershipSubjectUpdateRequest,
+    TeacherMembershipSuspendRequest,
+    TeacherMembershipUpdateRequest,
+    TeacherMembershipWithAccountResponse,
+    TeacherPasswordChangeRequest,
 )
-from app.modules.teachers.service import TeacherService
+from app.modules.teachers.service import (
+    TeacherAccountService,
+    TeacherInvitationService,
+    TeacherMembershipService,
+)
+from app.modules.tenant_admins.models import TenantAdmin
 
 
 router = APIRouter(tags=["Teachers"])
 
-CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
+CurrentTeacherAccount: TypeAlias = Annotated[
+    TeacherAccount,
+    Depends(get_current_teacher_account),
+]
+CurrentTeacherMembership: TypeAlias = Annotated[
+    Teacher,
+    Depends(get_current_teacher),
+]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin,
+    Depends(get_current_tenant_admin),
+]
 
 
-def _teacher_direct_message_query(current_user: Teacher):
-    now = datetime.now(timezone.utc)
-    return (
-        select(Announcement)
-        .join(AnnouncementTarget, AnnouncementTarget.announcement_id == Announcement.id)
-        .options(selectinload(Announcement.targets), selectinload(Announcement.reads))
-        .where(
-            Announcement.tenant_id == current_user.tenant_id,
-            Announcement.status == AnnouncementStatus.PUBLISHED,
-            Announcement.created_by_actor_type != AnnouncementActorType.SUPERADMIN,
-            or_(Announcement.publish_at.is_(None), Announcement.publish_at <= now),
-            or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
-            AnnouncementTarget.target_type == AnnouncementTargetType.SPECIFIC_TEACHER,
-            AnnouncementTarget.teacher_id == current_user.id,
-        )
-        .distinct()
-    )
-
-
-async def _ensure_teacher_direct_message(
+@router.post(
+    "/accounts/register",
+    response_model=None,
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_teacher_account(
+    payload: TeacherAccountRegisterRequest,
     db: DbSession,
-    current_user: Teacher,
-    announcement_id: UUID,
-) -> None:
-    exists = (
-        await db.execute(
-            _teacher_direct_message_query(current_user).where(Announcement.id == announcement_id)
+    background_tasks: BackgroundTasks,
+) -> dict[str, object] | JSONResponse:
+    result = await TeacherRegistrationService.register_account(
+        db,
+        payload,
+        background_tasks,
+    )
+    if result.get("created") is False:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=jsonable_encoder(result),
+            background=background_tasks,
         )
-    ).scalar_one_or_none()
-
-    if exists is None:
-        raise NotFoundException(detail="Message not found")
+    return result
 
 
 @router.get(
-    "/me",
-    response_model=TeacherResponse,
-    summary="Get my teacher profile",
+    "/accounts/me",
+    response_model=TeacherAccountResponse,
 )
-async def get_my_teacher_profile(
+async def get_my_teacher_account(
     db: DbSession,
-    current_user: CurrentTeacher,
-) -> Teacher:
-    """Return the current teacher profile."""
+    current_account: CurrentTeacherAccount,
+) -> TeacherAccountResponse:
+    return await TeacherAccountService.get_account(
+        db,
+        account_id=current_account.id,
+    )
 
-    return await TeacherService.get_my_teacher_profile(
-        db=db,
-        actor=current_user,
+
+@router.get("/accounts/me/onboarding-status")
+async def get_my_teacher_account_onboarding_status(
+    db: DbSession,
+    current_account: CurrentTeacherAccount,
+) -> dict[str, object]:
+    return await TeacherAccountService.get_onboarding_status(
+        db,
+        account_id=current_account.id,
+    )
+
+
+@router.post(
+    "/accounts/me/onboarding",
+    response_model=TeacherAccountResponse,
+)
+async def complete_my_teacher_account_onboarding(
+    payload: TeacherAccountOnboardingRequest,
+    db: DbSession,
+    current_account: CurrentTeacherAccount,
+) -> TeacherAccountResponse:
+    return await TeacherAccountService.complete_onboarding(
+        db,
+        account_id=current_account.id,
+        payload=payload,
     )
 
 
 @router.patch(
-    "/me/profile",
-    response_model=TeacherResponse,
-    summary="Update my teacher profile",
+    "/accounts/me/profile",
+    response_model=TeacherAccountResponse,
 )
-async def update_my_teacher_profile(
-    payload: TeacherOnboardingUpdate,
+async def update_my_teacher_account_profile(
+    payload: TeacherAccountProfileUpdateRequest,
     db: DbSession,
-    current_user: CurrentTeacher,
-) -> Teacher:
-    """Allow a teacher to update their own profile."""
+    current_account: CurrentTeacherAccount,
+) -> TeacherAccountResponse:
+    return await TeacherPatchService.update_account_profile(
+        db,
+        account_id=current_account.id,
+        payload=payload,
+    )
 
-    return await TeacherService.update_my_teacher_profile(
-        db=db,
-        actor=current_user,
-        teacher_data=payload,
+
+@router.post(
+    "/accounts/me/change-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def change_my_teacher_account_password(
+    payload: TeacherPasswordChangeRequest,
+    db: DbSession,
+    current_account: CurrentTeacherAccount,
+) -> None:
+    await TeacherAccountService.change_password(
+        db,
+        account_id=current_account.id,
+        payload=payload,
     )
 
 
 @router.get(
-    "/me/onboarding-status",
-    response_model=TeacherOnboardingStatusResponse,
-    summary="Get my teacher onboarding status",
+    "/accounts/me/memberships",
+    response_model=AccountMembershipSummaryList,
 )
-async def get_my_teacher_onboarding_status(
+async def list_my_teacher_memberships(
     db: DbSession,
-    current_user: CurrentTeacher,
-) -> TeacherOnboardingStatusResponse:
-    """Return the current teacher onboarding status."""
+    current_account: CurrentTeacherAccount,
+) -> AccountMembershipSummaryList:
+    return await AccountMembershipSummaryService.list_teacher_memberships(
+        db,
+        account_id=current_account.id,
+    )
 
-    return await TeacherService.get_my_onboarding_status(
-        db=db,
-        actor=current_user,
+
+@router.post(
+    "/accounts/me/invitations/accept",
+    response_model=TeacherMembershipWithAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def accept_teacher_invitation(
+    payload: TeacherInvitationAcceptanceRequest,
+    db: DbSession,
+    current_account: CurrentTeacherAccount,
+) -> TeacherMembershipWithAccountResponse:
+    return await TeacherInvitationWorkflowService.accept_invitation(
+        db,
+        account=current_account,
+        payload=payload,
     )
 
 
 @router.get(
-    "/me/messages",
-    response_model=AnnouncementFeedResponse,
-    summary="List my direct admin messages",
+    "/invitations/context",
+    response_model=TeacherInvitationPublicContextResponse,
 )
-async def get_my_teacher_messages(
+async def get_teacher_invitation_context(
+    token: str = Query(min_length=20, max_length=500),
+    db: DbSession = None,
+) -> TeacherInvitationPublicContextResponse:
+    return await TeacherInvitationService.get_public_context(
+        db,
+        invitation_token=token,
+    )
+
+
+@router.get(
+    "/me",
+    response_model=TeacherMembershipWithAccountResponse,
+)
+async def get_my_teacher_membership(
     db: DbSession,
-    current_user: CurrentTeacher,
+    current_membership: CurrentTeacherMembership,
+) -> TeacherMembershipWithAccountResponse:
+    return await TeacherMembershipService.get_membership(
+        db,
+        tenant_id=current_membership.tenant_id,
+        membership_id=current_membership.id,
+    )
+
+
+@router.patch(
+    "/me/membership",
+    response_model=TeacherMembershipResponse,
+)
+async def update_my_teacher_membership_preferences(
+    payload: TeacherMembershipUpdateRequest,
+    db: DbSession,
+    current_membership: CurrentTeacherMembership,
+) -> TeacherMembershipResponse:
+    return await TeacherPatchService.update_membership(
+        db,
+        actor=current_membership,
+        membership_id=current_membership.id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/invitations",
+    response_model=TeacherInvitationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_teacher_invitation(
+    payload: TeacherInvitationCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherInvitationResponse:
+    return await TeacherInvitationWorkflowService.create_invitation(
+        db,
+        actor=current_admin,
+        payload=payload,
+        background_tasks=background_tasks,
+    )
+
+
+@router.get(
+    "/invitations",
+    response_model=list[TeacherInvitationResponse],
+)
+async def list_teacher_invitations(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
-) -> AnnouncementFeedResponse:
-    """Return published direct messages targeted to the current teacher."""
-
-    base_query = _teacher_direct_message_query(current_user)
-
-    total = (
-        await db.execute(select(func.count()).select_from(base_query.subquery()))
-    ).scalar_one()
-
-    announcements = (
-        await db.execute(
-            base_query
-            .order_by(Announcement.is_pinned.desc(), Announcement.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-    ).scalars().unique().all()
-
-    read_by_id = {}
-    if announcements:
-        reads = (
-            await db.execute(
-                select(AnnouncementRead).where(
-                    AnnouncementRead.tenant_id == current_user.tenant_id,
-                    AnnouncementRead.actor_type == AnnouncementRecipientRole.TEACHER,
-                    AnnouncementRead.actor_id == current_user.id,
-                    AnnouncementRead.announcement_id.in_([item.id for item in announcements]),
-                )
-            )
-        ).scalars().all()
-        read_by_id = {read.announcement_id: read for read in reads}
-
-    items = []
-    unread_count = 0
-    for announcement in announcements:
-        read = read_by_id.get(announcement.id)
-        is_read = read is not None and read.status in {
-            AnnouncementReadStatus.READ,
-            AnnouncementReadStatus.ACKNOWLEDGED,
-        }
-        is_acknowledged = read is not None and read.status == AnnouncementReadStatus.ACKNOWLEDGED
-        if not is_read:
-            unread_count += 1
-
-        items.append(
-            AnnouncementFeedItemResponse(
-                id=announcement.id,
-                title=announcement.title,
-                body=announcement.body,
-                category=announcement.category,
-                priority=announcement.priority,
-                status=announcement.status,
-                publish_at=announcement.publish_at,
-                expires_at=announcement.expires_at,
-                is_pinned=announcement.is_pinned,
-                is_read=is_read,
-                is_acknowledged=is_acknowledged,
-                read_at=read.read_at if read else None,
-                acknowledged_at=read.acknowledged_at if read else None,
-                created_at=announcement.created_at,
-                updated_at=announcement.updated_at,
-            )
-        )
-
-    return AnnouncementFeedResponse(items=items, total=int(total), unread_count=unread_count)
+    invitation_status: TeacherInvitationStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
+) -> list[TeacherInvitationResponse]:
+    invitations, _ = await TeacherInvitationService.list_for_tenant(
+        db,
+        tenant_id=current_admin.tenant_id,
+        skip=skip,
+        limit=limit,
+        status=invitation_status,
+    )
+    return invitations
 
 
 @router.post(
-    "/me/messages/{announcement_id}/read",
-    response_model=AnnouncementReadResponse,
-    summary="Mark my direct message as read",
+    "/invitations/{invitation_id}/revoke",
+    response_model=TeacherInvitationResponse,
 )
-async def mark_my_teacher_message_read(
-    announcement_id: UUID,
+async def revoke_teacher_invitation(
+    invitation_id: UUID,
     db: DbSession,
-    current_user: CurrentTeacher,
-) -> AnnouncementReadResponse:
-    await _ensure_teacher_direct_message(db, current_user, announcement_id)
-    read = await AnnouncementReadRepository.upsert_read_state(
+    current_admin: CurrentTenantAdmin,
+) -> TeacherInvitationResponse:
+    return await TeacherInvitationService.revoke_invitation(
         db,
-        tenant_id=current_user.tenant_id,
-        announcement_id=announcement_id,
-        actor_type=AnnouncementRecipientRole.TEACHER,
-        actor_id=current_user.id,
-        status=AnnouncementReadStatus.READ,
+        actor=current_admin,
+        invitation_id=invitation_id,
     )
-    await db.commit()
-    return AnnouncementReadResponse.model_validate(read)
-
-
-@router.post(
-    "/me/messages/{announcement_id}/acknowledge",
-    response_model=AnnouncementReadResponse,
-    summary="Acknowledge my direct message",
-)
-async def acknowledge_my_teacher_message(
-    announcement_id: UUID,
-    db: DbSession,
-    current_user: CurrentTeacher,
-) -> AnnouncementReadResponse:
-    await _ensure_teacher_direct_message(db, current_user, announcement_id)
-    read = await AnnouncementReadRepository.upsert_read_state(
-        db,
-        tenant_id=current_user.tenant_id,
-        announcement_id=announcement_id,
-        actor_type=AnnouncementRecipientRole.TEACHER,
-        actor_id=current_user.id,
-        status=AnnouncementReadStatus.ACKNOWLEDGED,
-    )
-    await db.commit()
-    return AnnouncementReadResponse.model_validate(read)
 
 
 @router.get(
-    "/me/subjects",
-    response_model=SubjectListResponse,
-    summary="List my assigned subjects",
+    "/memberships",
+    response_model=TeacherMembershipListResponse,
 )
-async def get_my_subjects(
+async def list_teacher_memberships(
     db: DbSession,
-    current_user: CurrentTeacher,
+    current_admin: CurrentTenantAdmin,
     skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=100),
-    is_active: bool | None = Query(default=None),
-    search: str | None = Query(default=None, min_length=1, max_length=100),
-) -> SubjectListResponse:
-    """Return subjects assigned to the current teacher."""
-
-    subjects, total = await TeacherService.get_my_subjects(
-        db=db,
-        actor=current_user,
+    limit: int = Query(default=50, ge=1, le=100),
+    search: str | None = Query(default=None, max_length=200),
+    membership_status: TeacherMembershipStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
+) -> TeacherMembershipListResponse:
+    return await TeacherMembershipService.list_for_tenant(
+        db,
+        tenant_id=current_admin.tenant_id,
         skip=skip,
         limit=limit,
-        is_active=is_active,
         search=search,
+        status=membership_status,
     )
-    return SubjectListResponse(
-        items=[SubjectResponse.model_validate(subject) for subject in subjects],
-        total=total,
+
+
+@router.get(
+    "/memberships/{membership_id}",
+    response_model=TeacherMembershipWithAccountResponse,
+)
+async def get_teacher_membership(
+    membership_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherMembershipWithAccountResponse:
+    return await TeacherMembershipService.get_membership(
+        db,
+        tenant_id=current_admin.tenant_id,
+        membership_id=membership_id,
+    )
+
+
+@router.patch(
+    "/memberships/{membership_id}",
+    response_model=TeacherMembershipResponse,
+)
+async def update_teacher_membership(
+    membership_id: UUID,
+    payload: TeacherMembershipUpdateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherMembershipResponse:
+    return await TeacherPatchService.update_membership(
+        db,
+        actor=current_admin,
+        membership_id=membership_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/memberships/{membership_id}/suspend",
+    response_model=TeacherMembershipResponse,
+)
+async def suspend_teacher_membership(
+    membership_id: UUID,
+    payload: TeacherMembershipSuspendRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherMembershipResponse:
+    return await TeacherMembershipService.suspend_membership(
+        db,
+        actor=current_admin,
+        membership_id=membership_id,
+        payload=payload,
+    )
+
+
+@router.get(
+    "/memberships/{membership_id}/offboarding-impact",
+    response_model=TeacherOffboardingImpactResponse,
+)
+async def inspect_teacher_offboarding_impact(
+    membership_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherOffboardingImpactResponse:
+    return await TeacherOffboardingService.inspect(
+        db,
+        tenant_id=current_admin.tenant_id,
+        membership_id=membership_id,
+    )
+
+
+@router.post(
+    "/memberships/{membership_id}/end",
+    response_model=TeacherMembershipResponse,
+)
+async def end_teacher_membership(
+    membership_id: UUID,
+    payload: TeacherOffboardingRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherMembershipResponse:
+    return await TeacherOffboardingService.end_membership_and_release_responsibilities(
+        db,
+        actor=current_admin,
+        membership_id=membership_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/memberships/{membership_id}/reactivate",
+    response_model=TeacherMembershipResponse,
+)
+async def reactivate_teacher_membership(
+    membership_id: UUID,
+    payload: TeacherMembershipReactivateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherMembershipResponse:
+    return await TeacherMembershipService.reactivate_membership(
+        db,
+        actor=current_admin,
+        membership_id=membership_id,
+        payload=payload,
+    )
+
+
+@router.get(
+    "/memberships/{membership_id}/subject-capabilities",
+    response_model=TeacherSubjectCapabilityListResponse,
+)
+async def list_teacher_subject_capabilities(
+    membership_id: UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherSubjectCapabilityListResponse:
+    return await TeacherSubjectCapabilityService.list_capabilities(
+        db,
+        tenant_id=current_admin.tenant_id,
+        membership_id=membership_id,
+    )
+
+
+@router.put(
+    "/memberships/{membership_id}/subject-capabilities",
+    response_model=TeacherMembershipResponse,
+)
+async def replace_teacher_subject_capabilities(
+    membership_id: UUID,
+    payload: TeacherMembershipSubjectUpdateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherMembershipResponse:
+    return await TeacherSubjectCapabilityService.replace_capabilities(
+        db,
+        actor=current_admin,
+        membership_id=membership_id,
+        payload=payload,
     )

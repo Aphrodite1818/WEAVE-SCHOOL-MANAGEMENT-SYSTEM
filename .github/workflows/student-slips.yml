@@ -1,0 +1,104 @@
+name: Student slips
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/modules/bulk_imports/router.py"
+      - "backend/app/modules/bulk_imports/slip_schemas.py"
+      - "backend/app/modules/bulk_imports/slip_service.py"
+      - "backend/tests/unit/bulk_imports/test_student_slip_service.py"
+      - "frontend/src/features/bulkImports/studentSlips/**"
+      - "frontend/src/pages/admin/StudentSlipsPage.jsx"
+      - "frontend/src/routes/BulkImportRouteGuard.jsx"
+      - "frontend/src/routes/adminRoutes.jsx"
+      - "frontend/src/services/bulkImport.service.js"
+      - ".github/workflows/student-slips.yml"
+  push:
+    branches:
+      - Attendance
+      - staging
+      - master
+    paths:
+      - "backend/app/modules/bulk_imports/router.py"
+      - "backend/app/modules/bulk_imports/slip_schemas.py"
+      - "backend/app/modules/bulk_imports/slip_service.py"
+      - "backend/tests/unit/bulk_imports/test_student_slip_service.py"
+      - "frontend/src/features/bulkImports/studentSlips/**"
+      - "frontend/src/pages/admin/StudentSlipsPage.jsx"
+      - "frontend/src/routes/BulkImportRouteGuard.jsx"
+      - "frontend/src/routes/adminRoutes.jsx"
+      - "frontend/src/services/bulkImport.service.js"
+      - ".github/workflows/student-slips.yml"
+
+jobs:
+  validate-student-slips:
+    runs-on: ubuntu-latest
+
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint student slip backend
+        run: |
+          uv run ruff check \
+            app/modules/bulk_imports/router.py \
+            app/modules/bulk_imports/slip_schemas.py \
+            app/modules/bulk_imports/slip_service.py \
+            tests/unit/bulk_imports/test_student_slip_service.py
+
+      - name: Check student slip formatting
+        run: |
+          uv run ruff format --check \
+            app/modules/bulk_imports/router.py \
+            app/modules/bulk_imports/slip_schemas.py \
+            app/modules/bulk_imports/slip_service.py \
+            tests/unit/bulk_imports/test_student_slip_service.py
+
+      - name: Import application and assert routes
+        run: |
+          uv run python - <<'PY'
+          from app.main import app
+
+          paths = {route.path for route in app.routes}
+          expected = {
+              "/api/v1/tenant-admin/imports/{job_id}/slips/summary",
+              "/api/v1/tenant-admin/imports/{job_id}/slips",
+              "/api/v1/tenant-admin/imports/{job_id}/slips/{row_number}",
+              "/api/v1/tenant-admin/imports/{job_id}/slips/print",
+          }
+          missing = expected - paths
+          assert not missing, f"Missing student slip routes: {sorted(missing)}"
+          print("student slip routes registered")
+          PY
+
+      - name: Run student slip regression tests
+        run: uv run pytest tests/unit/bulk_imports/test_student_slip_service.py -q

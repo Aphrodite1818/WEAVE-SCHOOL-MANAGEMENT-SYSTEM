@@ -27,6 +27,7 @@ router = APIRouter(
     prefix="/branding",
     tags=["Tenant Branding"],
 )
+workspace_router = APIRouter(tags=["Workspace Branding"])
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentTenantMember: TypeAlias = Annotated[
@@ -62,6 +63,23 @@ async def get_effective_tenant_branding(
     current_user: CurrentTenantMember,
 ) -> TenantBrandingEffectiveResponse:
     """Return the effective workspace branding for the authenticated tenant actor."""
+
+    return await TenantBrandingService.get_effective_tenant_branding(
+        db=db,
+        actor=current_user,
+    )
+
+
+@workspace_router.get(
+    "/workspace/branding",
+    response_model=TenantBrandingEffectiveResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_workspace_branding(
+    db: DbSession,
+    current_user: CurrentTenantMember,
+) -> TenantBrandingEffectiveResponse:
+    """Return branding only for the tenant in the authenticated membership."""
 
     return await TenantBrandingService.get_effective_tenant_branding(
         db=db,
@@ -126,4 +144,21 @@ async def disable_tenant_branding(
         db=db,
         actor=current_user,
         payload=TenantBrandingUpdate(is_enabled=False),
+    )
+
+
+@router.post(
+    "/reset",
+    response_model=TenantBrandingEffectiveResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def reset_tenant_branding(
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> TenantBrandingEffectiveResponse:
+    """Restore default colours without deleting the tenant logo or profile."""
+
+    return await TenantBrandingService.reset_tenant_branding(
+        db=db,
+        actor=current_user,
     )

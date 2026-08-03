@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 
 import SidebarContent from "./Sidebar";
 
-export default function MobileDrawer({ open, role, schoolName, onClose }) {
+export default function MobileDrawer({ open, role, schoolName, schoolLogoUrl, onClose }) {
   if (!open) return null;
 
   return (
@@ -10,7 +10,7 @@ export default function MobileDrawer({ open, role, schoolName, onClose }) {
       <div className="absolute inset-0 bg-black/35 backdrop-blur-sm" onClick={onClose} />
       <aside
         data-mobile-drawer="true"
-        className="absolute inset-y-0 left-0 flex h-full w-[min(88vw,20rem)] flex-col overflow-hidden border-r border-border bg-surface pt-[max(0.75rem,env(safe-area-inset-top))] shadow-2xl"
+        className="absolute inset-y-0 left-0 flex h-full w-[min(88vw,20rem)] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar-background text-sidebar-text pt-[max(0.75rem,env(safe-area-inset-top))] shadow-2xl"
       >
         <div className="flex h-12 shrink-0 items-center justify-end px-4">
           <button
@@ -29,6 +29,7 @@ export default function MobileDrawer({ open, role, schoolName, onClose }) {
             collapsed={false}
             onNavigate={onClose}
             schoolName={schoolName}
+            schoolLogoUrl={schoolLogoUrl}
           />
         </div>
       </aside>

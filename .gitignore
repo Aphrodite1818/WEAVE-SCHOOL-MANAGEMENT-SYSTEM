@@ -58,9 +58,12 @@ Thumbs.db
 *.log.*
 backend/logs/
 
-# Generated maintenance reports
+# Generated maintenance reports and credentials
 backend/migration_report.json
 backend/unmatched_teacher_subjects.csv
+backend/weave_demo_credentials.json
+backend/*credentials*.json
+backend/scripts/seed_live_demo.py
 
 # Celery
 celerybeat-schedule

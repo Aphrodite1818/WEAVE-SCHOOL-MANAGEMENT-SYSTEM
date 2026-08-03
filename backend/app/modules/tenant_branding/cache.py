@@ -5,7 +5,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.cache.base import build_cache_key, tenant_prefix
+from app.core.cache.events import (
+    invalidate_cache_key_now,
+    queue_cache_key_invalidation,
+)
 from app.core.cache.manager import CacheManager
 
 
@@ -18,6 +24,7 @@ def build_tenant_branding_cache_key(tenant_id: UUID) -> str:
     return build_cache_key(
         tenant_prefix(str(tenant_id)),
         "branding",
+        "v4",
     )
 
 
@@ -45,7 +52,14 @@ async def set_cached_branding(
     )
 
 
-async def invalidate_tenant_branding(tenant_id: UUID) -> None:
+async def invalidate_tenant_branding(
+    tenant_id: UUID,
+    db: AsyncSession | None = None,
+) -> None:
     """Invalidate a tenant branding cache entry."""
 
-    await CacheManager.delete(build_tenant_branding_cache_key(tenant_id))
+    key = build_tenant_branding_cache_key(tenant_id)
+    if db is not None:
+        queue_cache_key_invalidation(db, key)
+        return
+    await invalidate_cache_key_now(key)

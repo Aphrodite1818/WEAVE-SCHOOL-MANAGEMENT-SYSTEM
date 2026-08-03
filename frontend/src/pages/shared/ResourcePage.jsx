@@ -3,8 +3,9 @@ import { ChevronRight, Filter, X } from "lucide-react";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import MultiSelect from "../../components/ui/MultiSelect";
-import EmptyState from "../../components/shared/EmptyState";
+import SearchableSelect from "../../components/ui/SearchableSelect";
 import LoadingState from "../../components/shared/LoadingState";
 import { getErrorMessage, parseApiError } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
@@ -46,20 +47,31 @@ function FormControl({ field, value, error, onChange, onValueChange }) {
 
   if (field.type === "select") {
     return (
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-text-soft">
-          {field.label}
-        </label>
-        <select className="input-base" {...commonProps}>
-          <option value="">{field.placeholder || "Select an option"}</option>
-          {(field.options || []).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {error && <p className="mt-1 text-sm text-error">{error}</p>}
-      </div>
+      <SearchableSelect
+        label={field.label}
+        name={field.name}
+        value={value ?? ""}
+        options={field.options || []}
+        placeholder={field.placeholder || "Select an option"}
+        searchPlaceholder={
+          field.searchPlaceholder || `Search ${String(field.label || "options").toLowerCase()}`
+        }
+        searchable={field.searchable !== false}
+        clearable={field.clearable !== false && !field.required}
+        disabled={field.disabled}
+        required={field.required}
+        error={error}
+        onChange={(nextValue) =>
+          onChange({
+            target: {
+              name: field.name,
+              value: nextValue,
+              multiple: false,
+              selectedOptions: [],
+            },
+          })
+        }
+      />
     );
   }
 
@@ -124,8 +136,8 @@ function ResourcePage({ config }) {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [isUnavailable, setIsUnavailable] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const contextRef = useRef(context);
   const filtersRef = useRef(filters);
@@ -181,7 +193,6 @@ function ResourcePage({ config }) {
     ) => {
       setIsLoading(true);
       setError(null);
-      setIsUnavailable(false);
 
       try {
         const result = await config.fetchItems(activeFilters, activeContext);
@@ -193,13 +204,7 @@ function ResourcePage({ config }) {
           `Failed to load ${config.pluralLabel}.`
         );
 
-        if (config.allowUnavailable && parsed.status === 404) {
-          setItems([]);
-          setTotal(0);
-          setIsUnavailable(true);
-        } else {
-          setError(parsed.message);
-        }
+        setError(parsed.message);
       } finally {
         setHasLoadedOnce(true);
         setIsLoading(false);
@@ -221,13 +226,7 @@ function ResourcePage({ config }) {
         if (isMounted) {
           const parsed = parseApiError(err, "Failed to load page data.");
 
-          if (config.allowUnavailable && parsed.status === 404) {
-            setItems([]);
-            setTotal(0);
-            setIsUnavailable(true);
-          } else {
-            setError(parsed.message);
-          }
+          setError(parsed.message);
           setHasLoadedOnce(true);
           setIsLoading(false);
         }
@@ -239,7 +238,7 @@ function ResourcePage({ config }) {
     return () => {
       isMounted = false;
     };
-  }, [config.allowUnavailable, filters, loadContext, loadItems]);
+  }, [filters, loadContext, loadItems]);
 
   const updateFormValue = (name, nextValue) => {
     setFormData((current) => ({ ...current, [name]: nextValue }));
@@ -333,12 +332,7 @@ function ResourcePage({ config }) {
   };
 
   const handleDelete = async (item) => {
-    const label = config.getItemLabel ? config.getItemLabel(item, context) : item.id;
-
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) {
-      return;
-    }
-
+    if (!item) return;
     setBusyId(item.id);
 
     try {
@@ -351,25 +345,7 @@ function ResourcePage({ config }) {
       showError(message);
     } finally {
       setBusyId(null);
-    }
-  };
-
-  const handleRefresh = async () => {
-    try {
-      const nextContext = await loadContext();
-      await loadItems(filters, nextContext);
-      showSuccess(`${config.pluralLabel} refreshed successfully.`);
-    } catch (err) {
-      const parsed = parseApiError(err, "Failed to refresh page data.");
-
-      if (config.allowUnavailable && parsed.status === 404) {
-        setItems([]);
-        setTotal(0);
-        setIsUnavailable(true);
-        showError(parsed.message);
-      } else {
-        showError(parsed.message);
-      }
+      setDeleteTarget(null);
     }
   };
 
@@ -386,12 +362,8 @@ function ResourcePage({ config }) {
   const sheetFilterFields = filterFields.filter((field) => field.name !== "search");
   const hasNonSearchFilters = sheetFilterFields.length > 0;
 
-  const showForm =
-    !isUnavailable && (config.canCreate || (config.canUpdate && editingItem));
-  const unavailableMessage =
-    config.unavailableMessage ||
-    `${config.pluralLabel} are not available yet.`;
-  const isInitialLoading = isLoading && !hasLoadedOnce && !error && !isUnavailable;
+  const showForm = config.canCreate || (config.canUpdate && editingItem);
+  const isInitialLoading = isLoading && !hasLoadedOnce && !error;
 
   if (isInitialLoading) {
     return <LoadingState label={`Loading ${config.pluralLabel.toLowerCase()}...`} fullPage />;
@@ -451,19 +423,9 @@ function ResourcePage({ config }) {
                 {total} record{total === 1 ? "" : "s"} found.
               </p>
             </div>
-            <Button variant="outline" onClick={handleRefresh} disabled={isLoading} className="w-full md:w-auto">
-              Refresh
-            </Button>
           </div>
 
-          {isUnavailable ? (
-            <div className="mt-5">
-              <EmptyState
-                title="Not available"
-                description={unavailableMessage}
-              />
-            </div>
-          ) : filterFields.length > 0 && (
+          {filterFields.length > 0 && (
             <>
               <div className="mt-5 flex items-end gap-2 md:hidden">
                 {searchableField ? (
@@ -519,9 +481,8 @@ function ResourcePage({ config }) {
             </>
           )}
 
-          {!isUnavailable && (
-            <>
-            <div className="mt-5 grid gap-2 md:hidden">
+          <>
+            <div className="resource-page-mobile-list mobile-scroll-list mt-5 grid gap-2 md:hidden">
               {items.length === 0 ? (
                 <div className="rounded-xl border border-border bg-surface-muted/30 px-4 py-5 text-sm text-text-muted">
                   No records found.
@@ -566,7 +527,7 @@ function ResourcePage({ config }) {
                               size="xs"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                handleDelete(item);
+                                setDeleteTarget(item);
                               }}
                               disabled={busyId === item.id}
                               className="ml-auto"
@@ -634,7 +595,7 @@ function ResourcePage({ config }) {
                                   type="button"
                                   variant="danger"
                                   size="small"
-                                  onClick={() => handleDelete(item)}
+                                  onClick={() => setDeleteTarget(item)}
                                   disabled={busyId === item.id}
                                   className="w-full sm:w-auto"
                                 >
@@ -650,8 +611,7 @@ function ResourcePage({ config }) {
                 </tbody>
               </table>
             </div>
-            </>
-          )}
+          </>
         </Card>
       </div>
 
@@ -692,6 +652,31 @@ function ResourcePage({ config }) {
           </div>
         </div>
       )}
+      <Modal
+        open={Boolean(deleteTarget)}
+        title={`Delete ${config.singularLabel.toLowerCase()}`}
+        description={
+          deleteTarget
+            ? `Delete ${config.getItemLabel ? config.getItemLabel(deleteTarget, context) : deleteTarget.id}? This cannot be undone.`
+            : ""
+        }
+        onClose={() => !busyId && setDeleteTarget(null)}
+        closeOnOverlay={!busyId}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" disabled={Boolean(busyId)} onClick={() => handleDelete(deleteTarget)}>
+              {busyId ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-6 text-text-muted">
+          This action permanently removes the record from this workspace.
+        </p>
+      </Modal>
     </div>
   );
 }

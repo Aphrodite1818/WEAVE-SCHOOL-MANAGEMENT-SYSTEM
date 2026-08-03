@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, ImageOff } from "lucide-react";
 import Button from "../ui/Button";
 import Input from "../ui/Input";
+import PhoneNumberInput from "../ui/PhoneNumberInput";
 import { parseApiError } from "../../services/api";
+import { clearDashboardMetricsCache } from "../../services/dashboard.service";
 import { onboardingService } from "../../services/onboardingService";
 import { getAvatarSrcFromRecord } from "../../utils/user";
 import { useToast } from "../../hooks/useToast";
@@ -21,17 +23,17 @@ const ROLE_FORM_CONFIG = {
     {
       key: "school_profile",
       title: "School profile",
-      description: "Complete the school profile fields required for onboarding and student admission setup.",
+      description: "School details used for student admission setup.",
       fields: [
         { name: "admission_number_prefix", label: "Admission prefix", required: true, placeholder: "WVS" },
-        { name: "phone", label: "School phone", placeholder: "+2348012345678" },
+        { name: "phone", label: "School phone", type: "phone", placeholder: "8012345678" },
         { name: "address", label: "Address", type: "textarea", required: true },
         { name: "city", label: "City", required: true },
         { name: "state", label: "State", required: true },
         { name: "country", label: "Country" },
         { name: "timezone", label: "Timezone" },
         { name: "language", label: "Language" },
-        { name: "school_bot_whatssap_number", label: "School WhatsApp bot number", placeholder: "+2348012345678" },
+        { name: "school_bot_whatssap_number", label: "School WhatsApp bot number", type: "phone", placeholder: "8012345678" },
       ],
     },
   ],
@@ -39,7 +41,7 @@ const ROLE_FORM_CONFIG = {
     {
       key: "teacher_profile",
       title: "Teacher profile",
-      description: "Complete the teacher profile fields used in your self-service onboarding.",
+      description: "Profile details for your teacher account.",
       fields: [
         { name: "email", label: "Email", type: "email", readOnly: true },
         { name: "first_name", label: "First name", required: true },
@@ -53,15 +55,15 @@ const ROLE_FORM_CONFIG = {
     {
       key: "parent_profile",
       title: "Parent profile",
-      description: "Complete the parent profile fields used in your self-service onboarding.",
+      description: "Profile details for your parent account.",
       fields: [
         { name: "email", label: "Email", type: "email", readOnly: true },
         { name: "first_name", label: "First name", required: true },
         { name: "last_name", label: "Last name", required: true },
-        { name: "phone_number", label: "Phone number", placeholder: "+2348012345678" },
+        { name: "phone_number", label: "Phone number", type: "phone", placeholder: "8012345678" },
         { name: "occupation", label: "Occupation" },
         { name: "address", label: "Address", type: "textarea" },
-        { name: "emergency_phone", label: "Emergency phone", placeholder: "+2348012345678" },
+        { name: "emergency_phone", label: "Emergency phone", type: "phone", placeholder: "8012345678" },
       ],
     },
   ],
@@ -69,7 +71,7 @@ const ROLE_FORM_CONFIG = {
     {
       key: "student_profile",
       title: "Student profile",
-      description: "Complete the student profile fields exposed by the backend. School-managed fields stay read-only.",
+      description: "Profile details available for this student account.",
       fields: [
         { name: "admission_number", label: "Admission number", readOnly: true },
         { name: "first_name", label: "First name", required: true },
@@ -121,6 +123,21 @@ function ReadOnlyField({ field, value }) {
 }
 
 function EditableField({ field, value, error, onChange }) {
+  if (field.type === "phone") {
+    return (
+      <PhoneNumberInput
+        label={field.label}
+        name={field.name}
+        value={value ?? ""}
+        onChange={(event) => onChange(field.name, event.target.value)}
+        error={error}
+        required={field.required}
+        placeholder={field.placeholder}
+        fixedCountryCode
+      />
+    );
+  }
+
   if (field.type === "select") {
     return (
       <div>
@@ -329,6 +346,7 @@ function ProfileCompletionForm({
       }, {});
 
       await onboardingService.submitOnboarding(normalizedRole, payload);
+      clearDashboardMetricsCache();
       const nextStatus = await onboardingService.getOnboardingStatus(normalizedRole);
       const nextUser = onboardingService.updateSessionUserFromStatus(normalizedRole, nextStatus);
 

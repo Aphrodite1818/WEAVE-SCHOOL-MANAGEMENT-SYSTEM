@@ -1,23 +1,53 @@
 import { useEffect } from "react";
 
-import ReportCardLinesTable from "./ReportCardLinesTable";
 import { cleanText } from "../../utils/academicDashboard";
 
 const formatClassLabel = (card) =>
   [card?.class_name, card?.class_arm].filter(Boolean).join(" ") || "Not assigned";
 
-function ReportCardPrintSheet({ card, schoolName = "Weave", onAfterPrint }) {
+const formatPosition = (card) => {
+  if (card?.position === null || card?.position === undefined) return "--";
+  return card?.position_out_of
+    ? `${card.position} of ${card.position_out_of}`
+    : String(card.position);
+};
+
+const formatPublishedDate = (value) => {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+};
+
+function ReportCardPrintSheet({ card, onAfterPrint }) {
   useEffect(() => {
     if (!card) return undefined;
 
     const clearAfterPrint = () => onAfterPrint?.();
     window.addEventListener("afterprint", clearAfterPrint, { once: true });
 
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 50);
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const root = document.querySelector(".report-card-print-root");
+      const images = root ? [...root.querySelectorAll("img")] : [];
+      await Promise.all(
+        images.map((image) => {
+          if (image.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            image.addEventListener("load", resolve, { once: true });
+            image.addEventListener("error", resolve, { once: true });
+          });
+        }),
+      );
+      if (!cancelled) window.print();
+    }, 80);
 
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", clearAfterPrint);
     };
@@ -25,142 +55,253 @@ function ReportCardPrintSheet({ card, schoolName = "Weave", onAfterPrint }) {
 
   if (!card) return null;
 
+  const schoolName = cleanText(card.school_name, "Weave School");
+  const schoolLogo = card.school_logo_url || "/icons/weave-email-icon.png";
+  const studentPhoto = card.student_passport_photo_url;
+  const lines = Array.isArray(card.lines) ? card.lines : [];
+
   return (
     <section className="report-card-print-root" aria-hidden="true">
       <style>
         {`
           .report-card-print-root { display: none; }
+          @page { size: A4 portrait; margin: 10mm; }
           @media print {
             body * { visibility: hidden; }
+            .report-card-print-root,
+            .report-card-print-root * { visibility: visible; }
             .report-card-print-root {
               display: block;
               position: absolute;
               inset: 0;
-              color: #0f172a;
-              font-family: Arial, sans-serif;
-              line-height: 1.45;
-              visibility: visible;
+              color: #172033;
+              background: #ffffff;
+              font-family: Arial, Helvetica, sans-serif;
+              line-height: 1.35;
             }
-            .report-card-print-root * {
-              visibility: visible;
-            }
-            .report-card-print-sheet { padding: 24px; }
-            .report-card-print-brand {
-              background: #1a237e;
-              color: #ffffff;
-              margin-bottom: 20px;
-              padding: 18px 20px;
-            }
-            .report-card-print-brand h1,
-            .report-card-print-title { margin: 0; }
-            .report-card-print-status {
-              display: inline-block;
-              margin-top: 8px;
-              background: #e5e7eb;
-              color: #374151;
-              padding: 6px 10px;
-              font-size: 12px;
-              font-weight: 700;
-            }
-            .report-card-print-meta,
-            .report-card-print-summary {
+            .rc-sheet { width: 100%; }
+            .rc-header {
               display: grid;
-              gap: 12px;
-              grid-template-columns: repeat(4, minmax(0, 1fr));
-              margin: 20px 0;
+              grid-template-columns: 82px 1fr auto;
+              gap: 16px;
+              align-items: center;
+              border-bottom: 3px solid #1d4ed8;
+              padding-bottom: 16px;
             }
-            .report-card-print-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .report-card-print-card {
+            .rc-school-logo {
+              width: 76px;
+              height: 76px;
+              object-fit: contain;
+              border: 1px solid #dbe4f0;
+              border-radius: 14px;
+              padding: 7px;
+            }
+            .rc-school-name { margin: 0; color: #0f2454; font-size: 25px; line-height: 1.12; }
+            .rc-school-meta { margin: 4px 0 0; color: #667085; font-size: 10px; }
+            .rc-title { text-align: right; }
+            .rc-title h2 { margin: 0; font-size: 17px; letter-spacing: .08em; text-transform: uppercase; }
+            .rc-title p { margin: 5px 0 0; color: #667085; font-size: 10px; }
+            .rc-student {
+              display: grid;
+              grid-template-columns: 78px 1fr;
+              gap: 14px;
+              margin-top: 16px;
               border: 1px solid #cbd5e1;
+              border-radius: 14px;
               background: #f8fafc;
-              padding: 12px;
+              padding: 14px;
+              break-inside: avoid;
             }
-            .report-card-print-card span {
-              color: #64748b;
-              display: block;
-              font-size: 11px;
-              font-weight: 800;
-              text-transform: uppercase;
-            }
-            .report-card-print-card strong {
-              display: block;
-              font-size: 15px;
-              margin-top: 3px;
-            }
-            .report-card-print-root table {
-              border-collapse: collapse;
-              width: 100%;
-              font-size: 12px;
-            }
-            .report-card-print-root th,
-            .report-card-print-root td {
+            .rc-student-photo {
+              width: 74px;
+              height: 88px;
+              object-fit: cover;
               border: 1px solid #cbd5e1;
-              padding: 8px;
-              text-align: left;
-              vertical-align: top;
+              border-radius: 9px;
+              background: #ffffff;
             }
-            .report-card-print-root th {
-              background: #e8eaf6;
-              color: #1a237e;
-              font-size: 10px;
+            .rc-photo-placeholder {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: #667085;
+              font-size: 9px;
+              text-align: center;
+            }
+            .rc-student-name { margin: 0 0 8px; font-size: 19px; }
+            .rc-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+            .rc-field { border-left: 3px solid #bfdbfe; padding-left: 8px; min-width: 0; }
+            .rc-field span,
+            .rc-metric span {
+              display: block;
+              color: #667085;
+              font-size: 8px;
+              font-weight: 700;
+              letter-spacing: .06em;
               text-transform: uppercase;
             }
-            .report-card-print-footer {
-              margin-top: 20px;
-              border-top: 1px solid #cbd5e1;
-              color: #64748b;
-              font-size: 12px;
-              padding-top: 12px;
-            }
+            .rc-field strong { display: block; margin-top: 3px; font-size: 10px; overflow-wrap: anywhere; }
+            .rc-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 14px 0; break-inside: avoid; }
+            .rc-metric { border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; padding: 9px; text-align: center; }
+            .rc-metric strong { display: block; margin-top: 4px; color: #0f2454; font-size: 15px; }
+            .rc-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+            .rc-table thead { display: table-header-group; }
+            .rc-table tr { break-inside: avoid; page-break-inside: avoid; }
+            .rc-table th,
+            .rc-table td { border: 1px solid #cbd5e1; padding: 6px 5px; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+            .rc-table th { background: #eaf1ff; color: #173a77; font-size: 7px; letter-spacing: .04em; text-transform: uppercase; }
+            .rc-table .left { text-align: left; }
+            .rc-table .strong { font-weight: 700; }
+            .rc-comments { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px; break-inside: avoid; }
+            .rc-comment { min-height: 82px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px; }
+            .rc-comment h3 { margin: 0 0 6px; color: #173a77; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+            .rc-comment p { margin: 0; font-size: 9px; white-space: pre-wrap; }
+            .rc-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; margin-top: 30px; break-inside: avoid; }
+            .rc-signature { border-top: 1px solid #475569; padding-top: 5px; color: #667085; font-size: 9px; text-align: center; }
+            .rc-footer { display: flex; justify-content: space-between; gap: 14px; margin-top: 17px; border-top: 1px solid #dbe4f0; padding-top: 8px; color: #667085; font-size: 8px; }
           }
         `}
       </style>
-      <main>
-        <section className="report-card-print-sheet">
-          <section className="report-card-print-brand">
-            <h1>{schoolName}</h1>
-            <p>Termly academic report</p>
-          </section>
-          <h1 className="report-card-print-title">Report Card</h1>
-          <p>
-            <strong>{cleanText(card.student_name, card.admission_number || "Student")}</strong>
-          </p>
-          <div className="report-card-print-status">{cleanText(card.status)}</div>
-          <section className="report-card-print-meta">
-            <div className="report-card-print-card">
-              <span>Admission No.</span>
-              <strong>{cleanText(card.admission_number, "Not assigned")}</strong>
+
+      <main className="rc-sheet">
+        <header className="rc-header">
+          <img className="rc-school-logo" src={schoolLogo} alt="School logo" />
+          <div>
+            <h1 className="rc-school-name">{schoolName}</h1>
+            {card.school_address ? <p className="rc-school-meta">{card.school_address}</p> : null}
+            {(card.school_phone || card.school_email) ? (
+              <p className="rc-school-meta">
+                {[card.school_phone, card.school_email].filter(Boolean).join(" · ")}
+              </p>
+            ) : null}
+          </div>
+          <div className="rc-title">
+            <h2>Termly Academic Report</h2>
+            <p>
+              {cleanText(card.academic_session_name)} · {cleanText(card.academic_term_name)}
+            </p>
+          </div>
+        </header>
+
+        <section className="rc-student">
+          {studentPhoto ? (
+            <img className="rc-student-photo" src={studentPhoto} alt="Student passport" />
+          ) : (
+            <div className="rc-student-photo rc-photo-placeholder">No photo</div>
+          )}
+          <div>
+            <h2 className="rc-student-name">
+              {cleanText(card.student_name, card.admission_number || "Student")}
+            </h2>
+            <div className="rc-meta">
+              <PrintField label="Admission number" value={cleanText(card.admission_number, "Not assigned")} />
+              <PrintField label="Class" value={formatClassLabel(card)} />
+              <PrintField label="Session" value={cleanText(card.academic_session_name)} />
+              <PrintField label="Term" value={cleanText(card.academic_term_name)} />
+              <PrintField label="Status" value={cleanText(card.status)} />
+              <PrintField label="Published" value={formatPublishedDate(card.published_at)} />
+              <PrintField label="Version" value={cleanText(card.version, "1")} />
+              <PrintField label="Report ID" value={String(card.id || "").slice(0, 8).toUpperCase()} />
             </div>
-            <div className="report-card-print-card">
-              <span>Class</span>
-              <strong>{formatClassLabel(card)}</strong>
-            </div>
-            <div className="report-card-print-card">
-              <span>Session</span>
-              <strong>{cleanText(card.academic_session_name)}</strong>
-            </div>
-            <div className="report-card-print-card">
-              <span>Term</span>
-              <strong>{cleanText(card.academic_term_name)}</strong>
-            </div>
-          </section>
-          <section className="report-card-print-summary">
-            <div className="report-card-print-card">
-              <span>Total score</span>
-              <strong>{cleanText(card.total_score)}</strong>
-            </div>
-            <div className="report-card-print-card">
-              <span>Average</span>
-              <strong>{cleanText(card.average_score)}</strong>
-            </div>
-          </section>
-          <ReportCardLinesTable lines={card.lines} />
-          <footer className="report-card-print-footer">
-            Generated by Weave - {cleanText(card.academic_session_name)} academic session
-          </footer>
+          </div>
         </section>
+
+        <section className="rc-summary">
+          <PrintMetric label="Total score" value={cleanText(card.total_score)} />
+          <PrintMetric label="Average" value={cleanText(card.average_score)} />
+          <PrintMetric label="Position" value={formatPosition(card)} />
+          <PrintMetric label="Subjects" value={lines.length} />
+          <PrintMetric label="Term" value={cleanText(card.academic_term_name)} />
+        </section>
+
+        <table className="rc-table">
+          <colgroup>
+            <col style={{ width: "23%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "27%" }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Code</th>
+              <th>Test</th>
+              <th>Assessment</th>
+              <th>Exam</th>
+              <th>Total</th>
+              <th>Grade</th>
+              <th>Remark</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line) => (
+              <tr key={line.id || line.subject_id}>
+                <td className="left">{cleanText(line.subject_name)}</td>
+                <td>{cleanText(line.subject_code)}</td>
+                <td>{cleanText(line.test_score)}</td>
+                <td>{cleanText(line.assessment_score)}</td>
+                <td>{cleanText(line.exam_score)}</td>
+                <td className="strong">{cleanText(line.total_score)}</td>
+                <td>{cleanText(line.grade)}</td>
+                <td className="left">{cleanText(line.remark, "")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <section className="rc-comments">
+          <PrintComment
+            title="Class teacher's comment"
+            value={cleanText(card.class_teacher_comment, "No class teacher comment provided.")}
+          />
+          <PrintComment
+            title="Principal's comment"
+            value={cleanText(card.principal_comment, "No principal comment provided.")}
+          />
+        </section>
+
+        <section className="rc-signatures">
+          <div className="rc-signature">Class teacher signature</div>
+          <div className="rc-signature">Principal signature</div>
+        </section>
+
+        <footer className="rc-footer">
+          <span>{schoolName}</span>
+          <span>Generated securely by Weave · Report {card.id}</span>
+        </footer>
       </main>
     </section>
+  );
+}
+
+function PrintField({ label, value }) {
+  return (
+    <div className="rc-field">
+      <span>{label}</span>
+      <strong>{value || "--"}</strong>
+    </div>
+  );
+}
+
+function PrintMetric({ label, value }) {
+  return (
+    <div className="rc-metric">
+      <span>{label}</span>
+      <strong>{value ?? "--"}</strong>
+    </div>
+  );
+}
+
+function PrintComment({ title, value }) {
+  return (
+    <article className="rc-comment">
+      <h3>{title}</h3>
+      <p>{value}</p>
+    </article>
   );
 }
 

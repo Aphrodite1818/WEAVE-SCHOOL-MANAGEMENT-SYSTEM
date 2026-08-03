@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
+from app.core.cache.events import flush_cache_invalidation_events
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.modules.subscriptions.cache import (
     get_cached_all_resource_usage,
@@ -32,13 +33,23 @@ from app.modules.subscriptions.constants import (
     PAYSTACK_AMOUNT_SETTING_FIELDS,
     PAYSTACK_PLAN_SETTING_FIELDS,
 )
-from app.modules.subscriptions.models import PaymentTransaction, PaymentWebhookEvent, TenantSubscription
-from app.modules.subscriptions.plans import coerce_subscription_plan, get_plan_entitlements, normalize_plan_code
-from app.modules.subscriptions.providers.paystack import PaystackClient, PaystackProviderError
+from app.modules.subscriptions.models import (
+    PaymentTransaction,
+    PaymentWebhookEvent,
+    TenantSubscription,
+)
+from app.modules.subscriptions.plans import (
+    coerce_subscription_plan,
+    get_plan_entitlements,
+    normalize_plan_code,
+)
+from app.modules.subscriptions.providers.paystack import (
+    PaystackClient,
+    PaystackProviderError,
+)
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
     FeatureCheckResponse,
-    PaymentTransactionResponse,
     ResourceLimitCheckResponse,
     ResourceUsageResponse,
     SubscriptionCheckoutCreate,
@@ -164,11 +175,17 @@ class SubscriptionLifecycleService:
             current.expired_at = None
             current.is_current = True
             current.notes = _append_note(current.notes, notes)
-            subscription = await SubscriptionRepository.save_subscription(db=db, subscription=current)
+            subscription = await SubscriptionRepository.save_subscription(
+                db=db,
+                subscription=current,
+            )
         else:
             if current is not None:
                 current.is_current = False
-                await SubscriptionRepository.save_subscription(db=db, subscription=current)
+                await SubscriptionRepository.save_subscription(
+                    db=db,
+                    subscription=current,
+                )
 
             subscription = await SubscriptionRepository.create_subscription(
                 db=db,
@@ -194,7 +211,10 @@ class SubscriptionLifecycleService:
             current_period_end=trial_ends_at,
             trial_ends_at=trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            tenant_id,
+            db=db,
+        )
         return subscription
 
     @staticmethod
@@ -233,6 +253,16 @@ class SubscriptionLifecycleService:
             tenant_id=tenant_id,
             for_update=True,
         )
+        if current is None or coerce_subscription_plan(current.plan_code) != plan_code:
+            from app.modules.subscriptions.plan_change_service import (
+                SubscriptionPlanChangeService,
+            )
+
+            await SubscriptionPlanChangeService.ensure_target_plan_eligible(
+                db,
+                tenant_id=tenant_id,
+                target_plan=plan_code,
+            )
 
         target_subscription: TenantSubscription | None = None
         if current is not None:
@@ -247,7 +277,10 @@ class SubscriptionLifecycleService:
                 target_subscription = current
             else:
                 current.is_current = False
-                await SubscriptionRepository.save_subscription(db=db, subscription=current)
+                await SubscriptionRepository.save_subscription(
+                    db=db,
+                    subscription=current,
+                )
 
         if target_subscription is None and subscription_id is not None:
             target_subscription = await SubscriptionRepository.get_subscription_by_id(
@@ -285,16 +318,23 @@ class SubscriptionLifecycleService:
         target_subscription.cancelled_at = None
         target_subscription.expired_at = None
         target_subscription.is_current = True
-        target_subscription.provider_customer_code = provider_customer_code or target_subscription.provider_customer_code
+        target_subscription.provider_customer_code = (
+            provider_customer_code or target_subscription.provider_customer_code
+        )
         target_subscription.provider_subscription_code = (
             provider_subscription_code or target_subscription.provider_subscription_code
         )
-        target_subscription.provider_email_token = provider_email_token or target_subscription.provider_email_token
+        target_subscription.provider_email_token = (
+            provider_email_token or target_subscription.provider_email_token
+        )
         target_subscription.last_payment_reference = payment_reference
         target_subscription.last_payment_at = payment_at or now
         target_subscription.next_payment_at = next_payment_at or period_end
         target_subscription.metadata_json = metadata_json or target_subscription.metadata_json
-        target_subscription.notes = _append_note(target_subscription.notes, notes)
+        target_subscription.notes = _append_note(
+            target_subscription.notes,
+            notes,
+        )
 
         subscription = await SubscriptionRepository.save_subscription(
             db=db,
@@ -309,7 +349,19 @@ class SubscriptionLifecycleService:
             current_period_end=subscription.current_period_end,
             trial_ends_at=None,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
+        from app.modules.subscriptions.plan_change_service import (
+            SubscriptionPlanChangeService,
+        )
+
+        await SubscriptionPlanChangeService.mark_applied(
+            db,
+            tenant_id=tenant_id,
+            plan_code=plan_code,
+        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            tenant_id,
+            db=db,
+        )
         return subscription
 
     @staticmethod
@@ -321,9 +373,14 @@ class SubscriptionLifecycleService:
     ) -> TenantSubscription:
         subscription.status = SubscriptionStatus.NON_RENEWING
         subscription.cancel_at_period_end = True
-        subscription.cancelled_at = subscription.cancelled_at or SubscriptionLifecycleService.utc_now()
+        subscription.cancelled_at = (
+            subscription.cancelled_at or SubscriptionLifecycleService.utc_now()
+        )
         subscription.notes = _append_note(subscription.notes, notes)
-        saved = await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
+        saved = await SubscriptionRepository.save_subscription(
+            db=db,
+            subscription=subscription,
+        )
         await SubscriptionRepository.update_tenant_plan_snapshot(
             db=db,
             tenant_id=saved.tenant_id,
@@ -332,7 +389,10 @@ class SubscriptionLifecycleService:
             current_period_end=saved.current_period_end,
             trial_ends_at=saved.trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            saved.tenant_id,
+            db=db,
+        )
         return saved
 
     @staticmethod
@@ -344,8 +404,14 @@ class SubscriptionLifecycleService:
     ) -> TenantSubscription:
         subscription.status = SubscriptionStatus.PAST_DUE
         subscription.notes = _append_note(subscription.notes, notes)
-        saved = await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        saved = await SubscriptionRepository.save_subscription(
+            db=db,
+            subscription=subscription,
+        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            saved.tenant_id,
+            db=db,
+        )
         return saved
 
     @staticmethod
@@ -358,10 +424,25 @@ class SubscriptionLifecycleService:
     ) -> TenantSubscription:
         now = SubscriptionLifecycleService.utc_now()
         subscription.status = SubscriptionStatus.GRACE_PERIOD
-        subscription.grace_ends_at = now + timedelta(days=grace_days)
+        if subscription.grace_ends_at is None:
+            subscription.grace_ends_at = now + timedelta(days=grace_days)
         subscription.notes = _append_note(subscription.notes, notes)
-        saved = await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        saved = await SubscriptionRepository.save_subscription(
+            db=db,
+            subscription=subscription,
+        )
+        await SubscriptionRepository.update_tenant_plan_snapshot(
+            db=db,
+            tenant_id=saved.tenant_id,
+            plan_code=saved.plan_code,
+            subscription_status=saved.status,
+            current_period_end=saved.current_period_end,
+            trial_ends_at=saved.trial_ends_at,
+        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            saved.tenant_id,
+            db=db,
+        )
         return saved
 
     @staticmethod
@@ -376,7 +457,10 @@ class SubscriptionLifecycleService:
         subscription.expired_at = now
         subscription.cancel_at_period_end = False
         subscription.notes = _append_note(subscription.notes, notes)
-        saved = await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
+        saved = await SubscriptionRepository.save_subscription(
+            db=db,
+            subscription=subscription,
+        )
         await SubscriptionRepository.update_tenant_plan_snapshot(
             db=db,
             tenant_id=saved.tenant_id,
@@ -385,7 +469,10 @@ class SubscriptionLifecycleService:
             current_period_end=saved.current_period_end,
             trial_ends_at=saved.trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            saved.tenant_id,
+            db=db,
+        )
         return saved
 
     @staticmethod
@@ -401,7 +488,10 @@ class SubscriptionLifecycleService:
         subscription.expired_at = now
         subscription.cancel_at_period_end = False
         subscription.notes = _append_note(subscription.notes, notes)
-        saved = await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
+        saved = await SubscriptionRepository.save_subscription(
+            db=db,
+            subscription=subscription,
+        )
         await SubscriptionRepository.update_tenant_plan_snapshot(
             db=db,
             tenant_id=saved.tenant_id,
@@ -410,7 +500,10 @@ class SubscriptionLifecycleService:
             current_period_end=saved.current_period_end,
             trial_ends_at=saved.trial_ends_at,
         )
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(saved.tenant_id)
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            saved.tenant_id,
+            db=db,
+        )
         return saved
 
     @staticmethod
@@ -467,7 +560,9 @@ class SubscriptionLifecycleService:
                 )
                 updated["grace_period"] += 1
 
-        for subscription in await SubscriptionRepository.get_grace_period_subscriptions_due_for_expiry(
+        for (
+            subscription
+        ) in await SubscriptionRepository.get_grace_period_subscriptions_due_for_expiry(
             db=db,
             as_of=now,
             limit=limit,
@@ -480,6 +575,7 @@ class SubscriptionLifecycleService:
             updated["expired"] += 1
 
         await db.commit()
+        await flush_cache_invalidation_events(db)
         return updated
 
 
@@ -522,7 +618,9 @@ class SubscriptionFeatureService:
         return normalized
 
     @staticmethod
-    def _resolve_effective_status(state: ResolvedSubscriptionState) -> SubscriptionStatus:
+    def _resolve_effective_status(
+        state: ResolvedSubscriptionState,
+    ) -> SubscriptionStatus:
         now = _utc_now()
 
         if state.status == SubscriptionStatus.TRIALING:
@@ -561,6 +659,7 @@ class SubscriptionFeatureService:
             SubscriptionStatus.TRIALING,
             SubscriptionStatus.ACTIVE,
             SubscriptionStatus.NON_RENEWING,
+            SubscriptionStatus.GRACE_PERIOD,
         }
 
     @staticmethod
@@ -613,7 +712,10 @@ class SubscriptionFeatureService:
                 subscription=current,
             )
 
-        tenant = await SubscriptionRepository.get_tenant(db=db, tenant_id=tenant_id)
+        tenant = await SubscriptionRepository.get_tenant(
+            db=db,
+            tenant_id=tenant_id,
+        )
         if tenant is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -736,9 +838,7 @@ class SubscriptionFeatureService:
     ) -> dict[ResourceLimitCode, int]:
         if use_cache:
             cached_usage = await get_cached_all_resource_usage(tenant_id)
-            normalized_usage = SubscriptionFeatureService._normalize_cached_usage(
-                cached_usage
-            )
+            normalized_usage = SubscriptionFeatureService._normalize_cached_usage(cached_usage)
             if normalized_usage is not None:
                 return normalized_usage
 
@@ -781,7 +881,19 @@ class SubscriptionFeatureService:
         )
 
         usage: dict[ResourceLimitCode, ResourceUsageResponse] = {}
-        for resource, limit in entitlements.limits.items():
+        effective_limits: dict[ResourceLimitCode, int | None] = {}
+        from app.modules.subscriptions.plan_change_service import (
+            SubscriptionPlanChangeService,
+        )
+
+        for resource, configured_limit in entitlements.limits.items():
+            limit = await SubscriptionPlanChangeService.effective_resource_limit(
+                db,
+                tenant_id=tenant_id,
+                resource=resource,
+                current_limit=configured_limit,
+            )
+            effective_limits[resource] = limit
             used = usage_counts.get(resource, 0)
             usage[resource] = SubscriptionFeatureService._build_resource_usage_response(
                 resource=resource,
@@ -794,7 +906,7 @@ class SubscriptionFeatureService:
             plan=state.plan_code,
             subscription_status=effective_status,
             features=entitlements.features,
-            limits=entitlements.limits,
+            limits=effective_limits,
             usage=usage,
             current_period_end=state.current_period_end,
             grace_ends_at=state.grace_ends_at,
@@ -839,7 +951,7 @@ class SubscriptionFeatureService:
             feature=feature,
             plan=status_response.plan_code,
             status=status_response.status,
-            reason=None if allowed else SubscriptionBlockReason.FEATURE_NOT_INCLUDED.value,
+            reason=(None if allowed else SubscriptionBlockReason.FEATURE_NOT_INCLUDED.value),
         )
 
     @staticmethod
@@ -900,7 +1012,17 @@ class SubscriptionFeatureService:
             )
 
         entitlements = get_plan_entitlements(status_response.plan_code)
-        limit = entitlements.limits.get(resource)
+        configured_limit = entitlements.limits.get(resource)
+        from app.modules.subscriptions.plan_change_service import (
+            SubscriptionPlanChangeService,
+        )
+
+        limit = await SubscriptionPlanChangeService.effective_resource_limit(
+            db,
+            tenant_id=tenant_id,
+            resource=resource,
+            current_limit=configured_limit,
+        )
         used = await SubscriptionFeatureService.get_resource_usage(
             db=db,
             tenant_id=tenant_id,
@@ -931,7 +1053,7 @@ class SubscriptionFeatureService:
             used=used,
             limit=limit,
             remaining=remaining,
-            reason=None if allowed else SubscriptionBlockReason.RESOURCE_LIMIT_REACHED.value,
+            reason=(None if allowed else SubscriptionBlockReason.RESOURCE_LIMIT_REACHED.value),
         )
 
     @staticmethod
@@ -956,7 +1078,10 @@ class SubscriptionFeatureService:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "message": "Your subscription does not currently allow this write operation.",
+                "message": (
+                    f"Your current plan has reached its {check.resource.value} limit. "
+                    f"Upgrade your subscription to add more {check.resource.value}."
+                ),
                 "resource": check.resource.value,
                 "plan": check.plan,
                 "status": check.status.value,
@@ -970,8 +1095,9 @@ class SubscriptionFeatureService:
     @staticmethod
     async def invalidate_tenant_subscription_state(
         tenant_id: uuid.UUID,
+        db: AsyncSession | None = None,
     ) -> int:
-        return await invalidate_tenant_subscription_cache(tenant_id)
+        return await invalidate_tenant_subscription_cache(tenant_id, db=db)
 
 
 class SubscriptionPaymentService:
@@ -1034,27 +1160,48 @@ class SubscriptionPaymentService:
         subscription = data.get("subscription")
         if isinstance(subscription, dict):
             return subscription.get("subscription_code") or subscription.get("code")
-        return data.get("subscription_code")
+        if isinstance(subscription, str):
+            return subscription
+        authorization = data.get("authorization")
+        plan = data.get("plan")
+        return (
+            data.get("subscription_code")
+            or (authorization.get("subscription_code") if isinstance(authorization, dict) else None)
+            or (plan.get("subscription_code") if isinstance(plan, dict) else None)
+        )
 
     @staticmethod
     def _extract_email_token(data: dict[str, Any]) -> str | None:
         subscription = data.get("subscription")
         if isinstance(subscription, dict):
             return subscription.get("email_token")
-        return data.get("email_token")
+        authorization = data.get("authorization")
+        plan = data.get("plan")
+        return (
+            data.get("email_token")
+            or (authorization.get("email_token") if isinstance(authorization, dict) else None)
+            or (plan.get("email_token") if isinstance(plan, dict) else None)
+        )
 
     @staticmethod
     def _extract_next_payment_at(data: dict[str, Any]) -> datetime | None:
         return _to_utc_datetime(
-            data.get("next_payment_date")
-            or data.get("next_payment_at")
-            or data.get("paid_until")
+            data.get("next_payment_date") or data.get("next_payment_at") or data.get("paid_until")
         )
 
     @staticmethod
-    def _extract_event_key(event_type: str, payload: dict[str, Any]) -> str:
+    def _extract_event_key(
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> str:
         data = SubscriptionPaymentService._extract_data(payload)
-        for key in ("id", "reference", "subscription_code", "invoice_code", "domain"):
+        for key in (
+            "id",
+            "reference",
+            "subscription_code",
+            "invoice_code",
+            "domain",
+        ):
             value = data.get(key)
             if value is not None:
                 return f"{event_type}:{value}"
@@ -1081,6 +1228,16 @@ class SubscriptionPaymentService:
         plan_code = coerce_subscription_plan(payload.plan_code)
         if plan_code not in PAID_PLAN_CODES:
             raise BadRequestException("Only paid plans require checkout.")
+
+        from app.modules.subscriptions.plan_change_service import (
+            SubscriptionPlanChangeService,
+        )
+
+        await SubscriptionPlanChangeService.validate_checkout_target(
+            db,
+            tenant_id=tenant_id,
+            target_plan=plan_code,
+        )
 
         billing_interval = payload.billing_interval
         amount_kobo = SubscriptionPaymentService._get_amount_kobo(
@@ -1135,6 +1292,7 @@ class SubscriptionPaymentService:
                 raw_payload={"initialize_error": str(exc)},
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Unable to initialize subscription checkout.",
@@ -1144,9 +1302,16 @@ class SubscriptionPaymentService:
         transaction.authorization_url = data.get("authorization_url")
         transaction.access_code = data.get("access_code")
         transaction.raw_payload = provider_response
-        await SubscriptionRepository.save_payment_transaction(db=db, transaction=transaction)
+        await SubscriptionRepository.save_payment_transaction(
+            db=db,
+            transaction=transaction,
+        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            tenant_id,
+            db=db,
+        )
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
+        await flush_cache_invalidation_events(db)
 
         return SubscriptionCheckoutResponse(
             reference=reference,
@@ -1197,9 +1362,12 @@ class SubscriptionPaymentService:
                 status=mapped_status,
                 failure_reason=str(data.get("gateway_response") or "Payment not successful"),
                 raw_payload=provider_response,
-                provider_transaction_id=str(data.get("id")) if data.get("id") is not None else None,
+                provider_transaction_id=(
+                    str(data.get("id")) if data.get("id") is not None else None
+                ),
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             raise BadRequestException("Payment has not been completed successfully.")
 
         await SubscriptionPaymentService.handle_charge_success(
@@ -1208,6 +1376,7 @@ class SubscriptionPaymentService:
             transaction=transaction,
         )
         await db.commit()
+        await flush_cache_invalidation_events(db)
 
         return await SubscriptionFeatureService.get_subscription_status(
             db=db,
@@ -1233,7 +1402,10 @@ class SubscriptionPaymentService:
 
         payload = SubscriptionPaymentService.provider.parse_webhook_body(body)
         event_type = str(payload.get("event") or "unknown")
-        event_key = SubscriptionPaymentService._extract_event_key(event_type, payload)
+        event_key = SubscriptionPaymentService._extract_event_key(
+            event_type,
+            payload,
+        )
 
         webhook_event = await SubscriptionRepository.get_webhook_event_by_provider(
             db=db,
@@ -1276,6 +1448,7 @@ class SubscriptionPaymentService:
                 processed_at=_utc_now(),
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             return WebhookProcessingResponse(
                 success=True,
                 provider=PaymentProvider.PAYSTACK,
@@ -1291,6 +1464,7 @@ class SubscriptionPaymentService:
                 error_message=str(exc),
             )
             await db.commit()
+            await flush_cache_invalidation_events(db)
             raise
 
     @staticmethod
@@ -1302,27 +1476,45 @@ class SubscriptionPaymentService:
         event_type = str(payload.get("event") or "")
 
         if event_type == "charge.success":
-            await SubscriptionPaymentService.handle_charge_success(db=db, payload=payload)
+            await SubscriptionPaymentService.handle_charge_success(
+                db=db,
+                payload=payload,
+            )
             return
 
         if event_type == "subscription.create":
-            await SubscriptionPaymentService.handle_subscription_create(db=db, payload=payload)
+            await SubscriptionPaymentService.handle_subscription_create(
+                db=db,
+                payload=payload,
+            )
             return
 
         if event_type == "invoice.payment_failed":
-            await SubscriptionPaymentService.handle_invoice_payment_failed(db=db, payload=payload)
+            await SubscriptionPaymentService.handle_invoice_payment_failed(
+                db=db,
+                payload=payload,
+            )
             return
 
         if event_type == "subscription.not_renew":
-            await SubscriptionPaymentService.handle_subscription_not_renew(db=db, payload=payload)
+            await SubscriptionPaymentService.handle_subscription_not_renew(
+                db=db,
+                payload=payload,
+            )
             return
 
         if event_type == "subscription.disable":
-            await SubscriptionPaymentService.handle_subscription_disable(db=db, payload=payload)
+            await SubscriptionPaymentService.handle_subscription_disable(
+                db=db,
+                payload=payload,
+            )
             return
 
         if event_type == "invoice.update":
-            await SubscriptionPaymentService.handle_invoice_update(db=db, payload=payload)
+            await SubscriptionPaymentService.handle_invoice_update(
+                db=db,
+                payload=payload,
+            )
             return
 
         if event_type == "invoice.create":
@@ -1350,16 +1542,20 @@ class SubscriptionPaymentService:
 
         existing_subscription = None
         if provider_subscription_code:
-            existing_subscription = await SubscriptionRepository.find_subscription_by_provider_subscription_code(
-                db=db,
-                provider=PaymentProvider.PAYSTACK,
-                provider_subscription_code=provider_subscription_code,
+            existing_subscription = (
+                await SubscriptionRepository.find_subscription_by_provider_subscription_code(
+                    db=db,
+                    provider=PaymentProvider.PAYSTACK,
+                    provider_subscription_code=provider_subscription_code,
+                )
             )
         if existing_subscription is None and provider_customer_code:
-            existing_subscription = await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
-                db=db,
-                provider=PaymentProvider.PAYSTACK,
-                provider_customer_code=provider_customer_code,
+            existing_subscription = (
+                await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
+                    db=db,
+                    provider=PaymentProvider.PAYSTACK,
+                    provider_customer_code=provider_customer_code,
+                )
             )
 
         tenant_id_raw = metadata.get("tenant_id")
@@ -1375,21 +1571,31 @@ class SubscriptionPaymentService:
         plan_source = (
             metadata.get("plan_code")
             or (transaction.plan_code.value if transaction is not None else None)
-            or (existing_subscription.plan_code.value if existing_subscription is not None else None)
+            or (
+                existing_subscription.plan_code.value if existing_subscription is not None else None
+            )
         )
         plan_code = coerce_subscription_plan(plan_source)
 
         interval_source = (
             metadata.get("billing_interval")
             or (transaction.billing_interval.value if transaction is not None else None)
-            or (existing_subscription.billing_interval.value if existing_subscription is not None else None)
+            or (
+                existing_subscription.billing_interval.value
+                if existing_subscription is not None
+                else None
+            )
         )
         billing_interval = BillingInterval(str(interval_source or BillingInterval.MONTHLY.value))
 
-        amount_kobo = int(data.get("amount") or (transaction.amount_kobo if transaction is not None else 0))
+        amount_kobo = int(
+            data.get("amount") or (transaction.amount_kobo if transaction is not None else 0)
+        )
         amount = Decimal(amount_kobo) / Decimal("100")
         provider_transaction_id = str(data.get("id")) if data.get("id") is not None else None
-        paid_at = _to_utc_datetime(data.get("paid_at") or data.get("transaction_date")) or _utc_now()
+        paid_at = (
+            _to_utc_datetime(data.get("paid_at") or data.get("transaction_date")) or _utc_now()
+        )
         next_payment_at = SubscriptionPaymentService._extract_next_payment_at(data)
 
         if transaction is None:
@@ -1399,7 +1605,9 @@ class SubscriptionPaymentService:
                     tenant_id=tenant_id,
                     provider=PaymentProvider.PAYSTACK,
                     status=PaymentStatus.SUCCESS,
-                    reference=str(reference or SubscriptionPaymentService._build_reference(tenant_id)),
+                    reference=str(
+                        reference or SubscriptionPaymentService._build_reference(tenant_id)
+                    ),
                     provider_transaction_id=provider_transaction_id,
                     plan_code=plan_code,
                     billing_interval=billing_interval,
@@ -1431,12 +1639,16 @@ class SubscriptionPaymentService:
             next_payment_at=next_payment_at,
             provider_customer_code=provider_customer_code,
             provider_subscription_code=provider_subscription_code,
-            provider_email_token=SubscriptionPaymentService._extract_email_token(data),
+            provider_email_token=(SubscriptionPaymentService._extract_email_token(data)),
             payment_reference=transaction.reference,
             payment_at=paid_at,
             metadata_json=metadata or payload,
             notes="Activated from Paystack charge.success.",
-            subscription_id=existing_subscription.id if existing_subscription is not None else transaction.subscription_id,
+            subscription_id=(
+                existing_subscription.id
+                if existing_subscription is not None
+                else transaction.subscription_id
+            ),
         )
 
         await SubscriptionRepository.mark_transaction_success(
@@ -1462,22 +1674,30 @@ class SubscriptionPaymentService:
 
         subscription = None
         if provider_subscription_code:
-            subscription = await SubscriptionRepository.find_subscription_by_provider_subscription_code(
-                db=db,
-                provider=PaymentProvider.PAYSTACK,
-                provider_subscription_code=provider_subscription_code,
+            subscription = (
+                await SubscriptionRepository.find_subscription_by_provider_subscription_code(
+                    db=db,
+                    provider=PaymentProvider.PAYSTACK,
+                    provider_subscription_code=provider_subscription_code,
+                )
             )
         if subscription is None and provider_customer_code:
-            subscription = await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
-                db=db,
-                provider=PaymentProvider.PAYSTACK,
-                provider_customer_code=provider_customer_code,
+            subscription = (
+                await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
+                    db=db,
+                    provider=PaymentProvider.PAYSTACK,
+                    provider_customer_code=provider_customer_code,
+                )
             )
         if subscription is None:
             return
 
-        subscription.provider_subscription_code = provider_subscription_code or subscription.provider_subscription_code
-        subscription.provider_customer_code = provider_customer_code or subscription.provider_customer_code
+        subscription.provider_subscription_code = (
+            provider_subscription_code or subscription.provider_subscription_code
+        )
+        subscription.provider_customer_code = (
+            provider_customer_code or subscription.provider_customer_code
+        )
         subscription.provider_email_token = (
             SubscriptionPaymentService._extract_email_token(data)
             or subscription.provider_email_token
@@ -1487,8 +1707,14 @@ class SubscriptionPaymentService:
             subscription.next_payment_at = next_payment_at
             subscription.current_period_end = next_payment_at
 
-        await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(subscription.tenant_id)
+        await SubscriptionRepository.save_subscription(
+            db=db,
+            subscription=subscription,
+        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+            subscription.tenant_id,
+            db=db,
+        )
 
     @staticmethod
     async def handle_invoice_payment_failed(
@@ -1502,19 +1728,63 @@ class SubscriptionPaymentService:
 
         subscription = None
         if provider_subscription_code:
-            subscription = await SubscriptionRepository.find_subscription_by_provider_subscription_code(
-                db=db,
-                provider=PaymentProvider.PAYSTACK,
-                provider_subscription_code=provider_subscription_code,
+            subscription = (
+                await SubscriptionRepository.find_subscription_by_provider_subscription_code(
+                    db=db,
+                    provider=PaymentProvider.PAYSTACK,
+                    provider_subscription_code=provider_subscription_code,
+                )
             )
         if subscription is None and provider_customer_code:
-            subscription = await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
-                db=db,
-                provider=PaymentProvider.PAYSTACK,
-                provider_customer_code=provider_customer_code,
+            subscription = (
+                await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
+                    db=db,
+                    provider=PaymentProvider.PAYSTACK,
+                    provider_customer_code=provider_customer_code,
+                )
             )
         if subscription is None:
             return
+
+        invoice_code = str(
+            data.get("invoice_code")
+            or data.get("id")
+            or hashlib.sha256(
+                json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()[:24]
+        )
+        reference = f"invoice_{invoice_code}"
+        transaction = await SubscriptionRepository.get_transaction_by_reference(
+            db,
+            reference,
+        )
+        if transaction is None:
+            amount_kobo = int(data.get("amount") or data.get("amount_due") or 0)
+            transaction = PaymentTransaction(
+                tenant_id=subscription.tenant_id,
+                subscription_id=subscription.id,
+                provider=PaymentProvider.PAYSTACK,
+                status=PaymentStatus.FAILED,
+                reference=reference,
+                provider_transaction_id=(
+                    str(data.get("transaction")) if data.get("transaction") is not None else None
+                ),
+                plan_code=subscription.plan_code,
+                billing_interval=subscription.billing_interval,
+                amount=Decimal(amount_kobo) / Decimal("100"),
+                amount_kobo=amount_kobo,
+                currency=str(data.get("currency") or "NGN"),
+                failure_reason=str(
+                    data.get("gateway_response")
+                    or data.get("description")
+                    or "Recurring subscription payment failed."
+                ),
+                raw_payload=payload,
+            )
+            await SubscriptionRepository.create_pending_payment_transaction(
+                db,
+                transaction,
+            )
 
         await SubscriptionLifecycleService.mark_past_due(
             db=db,
@@ -1571,10 +1841,10 @@ class SubscriptionPaymentService:
         if subscription is None:
             return
 
-        await SubscriptionLifecycleService.cancel_subscription(
+        await SubscriptionLifecycleService.mark_non_renewing(
             db=db,
             subscription=subscription,
-            notes="Paystack disabled subscription.",
+            notes="Paystack disabled automatic renewal.",
         )
 
     @staticmethod
@@ -1600,5 +1870,11 @@ class SubscriptionPaymentService:
         if next_payment_at is not None:
             subscription.next_payment_at = next_payment_at
             subscription.current_period_end = next_payment_at
-            await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
-            await SubscriptionFeatureService.invalidate_tenant_subscription_state(subscription.tenant_id)
+            await SubscriptionRepository.save_subscription(
+                db=db,
+                subscription=subscription,
+            )
+            await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+                subscription.tenant_id,
+                db=db,
+            )

@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 
-from fastapi import Request, Response, status
+from fastapi import Request, status
 from fastapi.responses import JSONResponse
+from jose import JWTError, jwt
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config.database import AsyncSessionLocal
-
 from app.config.logging import get_logger
+from app.config.settings import settings
+from app.modules.auth.models import AuthSessionActorType
+from app.modules.auth.repository import AuthSessionRepository
 from app.modules.superadmin.platform_control_service import (
     DEFAULT_MAINTENANCE_MESSAGE,
     PlatformControlService,
 )
+from app.modules.superadmin.repository import SuperAdminRepository
 from app.modules.superadmin.security_response_service import SecurityResponseService
 
 
@@ -19,6 +24,8 @@ logger = get_logger(__name__)
 
 _ALLOWED_EXACT_PATHS = {
     "/health",
+    "/health/live",
+    "/health/ready",
     "/api/v1/auth/login",
     "/api/v1/auth/refresh",
     "/api/v1/auth/logout",
@@ -27,6 +34,7 @@ _ALLOWED_EXACT_PATHS = {
 }
 _ALLOWED_PREFIXES = (
     "/api/v1/superadmin",
+    "/api/v1/metrics/superadmin",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -40,12 +48,20 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _bearer_token(request: Request) -> str | None:
+    authorization = request.headers.get("authorization") or ""
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
+
+
 class PlatformLockdownMiddleware:
     """Block non-superadmin platform traffic during emergency controls."""
 
     _last_known_lockdown_state: dict[str, object] | None = None
 
-    def __init__(self, app: Callable[[Request], Awaitable[Response]]) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     @staticmethod
@@ -71,6 +87,42 @@ class PlatformLockdownMiddleware:
         )
 
     @staticmethod
+    async def _has_active_superadmin_session(db, request: Request) -> bool:
+        token = _bearer_token(request)
+        if token is None:
+            return False
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            if payload.get("token_type") != "access":
+                return False
+            if (
+                payload.get("actor_type") or payload.get("account_type")
+            ) != AuthSessionActorType.SUPERADMIN.value:
+                return False
+            session_jti = payload.get("sid")
+            if not session_jti:
+                return False
+            session = await AuthSessionRepository.get_session_by_jti(db, session_jti)
+            if session is None or session.actor_type != AuthSessionActorType.SUPERADMIN:
+                return False
+            now = datetime.now(timezone.utc)
+            expires_at = (
+                session.expires_at
+                if session.expires_at.tzinfo
+                else session.expires_at.replace(tzinfo=timezone.utc)
+            )
+            if (
+                session.revoked_at is not None
+                or session.compromised_at is not None
+                or expires_at <= now
+            ):
+                return False
+            superadmin = await SuperAdminRepository.get_by_id(db, session.actor_id)
+            return bool(superadmin and superadmin.is_active)
+        except (JWTError, ValueError, TypeError):
+            return False
+
+    @staticmethod
     def _ip_block_response(state: dict[str, object]) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -85,8 +137,8 @@ class PlatformLockdownMiddleware:
             },
         )
 
-    async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
-        if scope.get("type") != "http":
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
@@ -97,6 +149,10 @@ class PlatformLockdownMiddleware:
 
         try:
             async with AsyncSessionLocal() as db:
+                if await self._has_active_superadmin_session(db, request):
+                    await self.app(scope, receive, send)
+                    return
+
                 ip_state = await SecurityResponseService.is_ip_blocked(db, _client_ip(request))
                 if ip_state.get("blocked"):
                     response = self._ip_block_response(ip_state)
@@ -123,14 +179,10 @@ class PlatformLockdownMiddleware:
                 },
                 exc_info=True,
             )
-            # Preserve availability when there is no prior signal, but keep a
-            # known active lockdown enforced during temporary control-store
-            # failures so the emergency control does not silently fail open.
             if last_known_state is not None and last_known_state.get("lockdown_enabled"):
                 response = self._maintenance_response(last_known_state)
                 await response(scope, receive, send)
                 return
-
             await self.app(scope, receive, send)
             return
 

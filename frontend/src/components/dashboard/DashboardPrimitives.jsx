@@ -1,9 +1,13 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, ChevronRight } from "lucide-react";
+import { useState } from "react";
 
 import Card from "../ui/Card";
 import Button from "../ui/Button";
+import WeaveIcon from "../brand/WeaveIcon";
 import { cn } from "../../utils/cn";
+import { authSession } from "../../services/api";
+import { useTenantWorkspaceBranding } from "../layout/useTenantWorkspaceName";
 
 const toneStyles = {
   primary: {
@@ -62,7 +66,13 @@ export function DashboardWelcomePanel({
   profileCompletion,
   variant = "default",
 }) {
+  const user = authSession.getUser() || {};
+  const role = String(user?.role || authSession.getRole() || "").toLowerCase();
+  const { schoolName, logoUrl } = useTenantWorkspaceBranding({ user, role });
+  const [failedLogoUrl, setFailedLogoUrl] = useState("");
   const isBlueHero = variant === "student" || variant === "blue";
+  const hasSchoolLogo = Boolean(logoUrl) && failedLogoUrl !== logoUrl;
+  const brandLabel = hasSchoolLogo ? schoolName || "School workspace" : "Weave";
   const visibleChips = [
     isProfileIncomplete(profileCompletion)
       ? { label: "Profile incomplete", tone: "warning" }
@@ -80,9 +90,36 @@ export function DashboardWelcomePanel({
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          {eyebrow ? <p className={cn("text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs", isBlueHero && "text-white/75")}>{eyebrow}</p> : null}
+          <div
+            className={cn(
+              "mb-5 flex min-w-0 items-center gap-3 sm:inline-flex sm:max-w-full",
+              isBlueHero ? "text-white" : "text-text",
+            )}
+          >
+            {hasSchoolLogo ? (
+              <img
+                src={logoUrl}
+                alt={`${brandLabel} logo`}
+                className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16"
+                onError={() => setFailedLogoUrl(logoUrl)}
+              />
+            ) : (
+              <WeaveIcon className="h-12 w-12 shrink-0 sm:h-14 sm:w-14" />
+            )}
+            <div className="min-w-0">
+              {!hasSchoolLogo ? (
+                <p className={cn("text-[10px] font-bold uppercase tracking-[0.16em]", isBlueHero ? "text-white/75" : "text-text-faint")}>
+                  Powered by
+                </p>
+              ) : null}
+              <p className="mt-0.5 max-w-[min(30rem,100%)] truncate text-lg font-bold leading-tight sm:text-2xl">
+                {brandLabel}
+              </p>
+            </div>
+          </div>
+          {eyebrow ? <p className={cn("text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs", isBlueHero && "text-white/80")}>{eyebrow}</p> : null}
           <h2 className={cn("mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl", isBlueHero && "text-white")}>{title}</h2>
-          {description ? <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/80")}>{description}</p> : null}
+          {description ? <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/85")}>{description}</p> : null}
           {visibleChips.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {visibleChips.map((chip) => {
@@ -93,7 +130,7 @@ export function DashboardWelcomePanel({
                     key={`${chip.label}-${chip.value || ""}`}
                     className={cn(
                       "inline-flex max-w-full items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold sm:text-xs",
-                      isBlueHero ? "border border-white/20 bg-white/15 text-white" : chipToneStyle.badge,
+                      isBlueHero ? "border border-white/25 bg-white/15 text-white" : chipToneStyle.badge,
                     )}
                   >
                     <span className="truncate">{chip.label}</span>
@@ -110,7 +147,17 @@ export function DashboardWelcomePanel({
   );
 }
 
-export function DashboardMetricCard({ label, value, description, icon: Icon, tone = "primary", to, badge }) {
+export function DashboardMetricCard({
+  label,
+  value,
+  description,
+  icon: Icon,
+  tone = "primary",
+  to,
+  badge,
+  compact = false,
+  className = "",
+}) {
   const Wrapper = to ? Link : "div";
   const toneStyle = toneStyles[tone] || toneStyles.primary;
 
@@ -119,20 +166,32 @@ export function DashboardMetricCard({ label, value, description, icon: Icon, ton
       as={Wrapper}
       to={to}
       className={cn(
-        "group flex min-h-[7.6rem] flex-col justify-between p-3 transition hover:border-primary/30 hover:shadow-premium sm:min-h-[8.25rem] sm:p-5",
+        "group flex flex-col justify-between transition hover:border-primary/30 hover:shadow-premium",
+        compact
+          ? "min-h-[5.75rem] p-3"
+          : "min-h-[7.6rem] p-3 sm:min-h-[8.25rem] sm:p-5",
         to ? "cursor-pointer" : "",
+        className,
       )}
     >
       <div className="flex items-start justify-between gap-2 sm:gap-3">
-        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-11 sm:w-11", toneStyle.icon)}>
-          {Icon ? <Icon className="h-4 w-4 sm:h-5 sm:w-5" /> : null}
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded-2xl",
+            compact ? "h-8 w-8" : "h-10 w-10 sm:h-11 sm:w-11",
+            toneStyle.icon,
+          )}
+        >
+          {Icon ? (
+            <Icon className={compact ? "h-4 w-4" : "h-4 w-4 sm:h-5 sm:w-5"} />
+          ) : null}
         </div>
         {badge ? <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px]", toneStyle.badge)}>{badge}</span> : null}
       </div>
-      <div className="mt-3 sm:mt-4">
-        <p className="line-clamp-2 text-xs font-semibold leading-4 text-text-muted sm:text-sm">{label}</p>
-        <p className="mt-1 break-words text-xl font-semibold tracking-tight text-text sm:text-2xl">{value}</p>
-        {description ? <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-muted sm:text-xs sm:leading-5">{description}</p> : null}
+      <div className={compact ? "mt-2" : "mt-3 sm:mt-4"}>
+        <p className={cn("line-clamp-2 font-semibold text-text-muted", compact ? "text-[11px] leading-4" : "text-xs leading-4 sm:text-sm")}>{label}</p>
+        <p className={cn("mt-1 break-words font-semibold tracking-tight text-text", compact ? "text-lg" : "text-xl sm:text-2xl")}>{value}</p>
+        {description ? <p className={cn("mt-1 line-clamp-2 text-text-muted", compact ? "text-[11px] leading-4" : "text-[11px] leading-4 sm:text-xs sm:leading-5")}>{description}</p> : null}
       </div>
     </Card>
   );
@@ -186,7 +245,7 @@ export function DashboardListCard({ title, description, items = [], emptyTitle =
   return (
     <Card className={cn("flex h-full flex-col p-4 sm:p-6", className)}>
       <DashboardSectionHeader title={title} description={description} action={action} />
-      <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(10rem, 100%), 1fr))" }}>
+      <div className="mobile-scroll-list mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(10rem, 100%), 1fr))" }}>
         {items.length > 0 ? (
           items.map((item) => <DashboardListItem key={item.key || item.title} {...item} />)
         ) : (

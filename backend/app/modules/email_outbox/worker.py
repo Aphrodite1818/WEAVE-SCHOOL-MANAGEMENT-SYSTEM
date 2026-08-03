@@ -11,7 +11,7 @@ from typing import Any
 from app.config.database import AsyncSessionLocal
 from app.core.queue.arq import (
     DEFAULT_EMAIL_OUTBOX_BATCH_SIZE,
-    EMAIL_QUEUE_NAME,
+    GENERAL_QUEUE_NAME,
 )
 from app.modules.email_outbox.service import EmailOutboxService
 
@@ -36,12 +36,11 @@ async def process_email_outbox_batch(
     remaining = int(result.get("remaining") or 0)
     redis = ctx.get("redis")
 
-    # Continue draining the email queue without involving the import worker.
     if remaining > 0 and redis is not None:
         await redis.enqueue_job(
             "process_email_outbox_batch",
             safe_batch_size,
-            _queue_name=EMAIL_QUEUE_NAME,
+            _queue_name=GENERAL_QUEUE_NAME,
             _defer_by=1,
         )
 

@@ -1,0 +1,157 @@
+name: Subscription hardening
+
+on:
+  pull_request:
+    paths:
+      - "backend/app/modules/subscriptions/**"
+      - "backend/app/modules/report_cards/**"
+      - "backend/app/modules/student_academics/bulk_results_router.py"
+      - "backend/app/core/queue/general_worker.py"
+      - "backend/tests/unit/subscriptions/**"
+      - "backend/tests/unit/report_cards/test_report_card_print_security.py"
+      - "backend/tests/unit/test_worker_settings.py"
+      - ".github/workflows/subscription-hardening.yml"
+  push:
+    branches:
+      - production-hardening
+      - staging
+      - master
+    paths:
+      - "backend/app/modules/subscriptions/**"
+      - "backend/app/modules/report_cards/**"
+      - "backend/app/modules/student_academics/bulk_results_router.py"
+      - "backend/app/core/queue/general_worker.py"
+      - "backend/tests/unit/subscriptions/**"
+      - "backend/tests/unit/report_cards/test_report_card_print_security.py"
+      - "backend/tests/unit/test_worker_settings.py"
+      - ".github/workflows/subscription-hardening.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscriptions-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-subscriptions:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d weave_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout triggering commit
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint hardening files
+        run: |
+          uv run ruff check \
+            app/modules/subscriptions \
+            app/modules/report_cards/print_service.py \
+            app/modules/report_cards/router.py \
+            app/modules/report_cards/fixed_router.py \
+            app/modules/report_cards/bulk_router.py \
+            app/modules/student_academics/bulk_results_router.py \
+            app/core/queue/general_worker.py \
+            tests/unit/subscriptions \
+            tests/unit/report_cards/test_report_card_print_security.py \
+            tests/unit/test_worker_settings.py
+
+      - name: Check hardening formatting
+        run: |
+          uv run ruff format --check \
+            app/modules/subscriptions \
+            app/modules/report_cards/print_service.py \
+            app/modules/report_cards/router.py \
+            app/modules/report_cards/fixed_router.py \
+            app/modules/report_cards/bulk_router.py \
+            app/modules/student_academics/bulk_results_router.py \
+            app/core/queue/general_worker.py \
+            tests/unit/subscriptions \
+            tests/unit/report_cards/test_report_card_print_security.py \
+            tests/unit/test_worker_settings.py
+
+      - name: Import application and assert routes
+        run: |
+          uv run python - <<'PY'
+          from app.main import app
+
+          paths = {route.path for route in app.routes}
+          expected = {
+              "/api/v1/subscriptions/actor-entitlements",
+              "/api/v1/subscriptions/payments",
+              "/api/v1/subscriptions/plan-change/preview",
+              "/api/v1/subscriptions/plan-change/current",
+              "/api/v1/subscriptions/plan-change",
+              "/api/v1/subscriptions/cancel",
+              "/api/v1/tenant-admin/academic/report-cards/bulk/publish",
+              "/api/v1/tenant-admin/academics/results/bulk/transition",
+              "/api/v1/teachers/academics/results/bulk/submit",
+          }
+          missing = expected - paths
+          assert not missing, f"Missing routes: {sorted(missing)}"
+          PY
+
+      - name: Upgrade fresh database
+        run: uv run alembic upgrade head
+
+      - name: Run focused regression tests
+        run: |
+          uv run pytest \
+            tests/unit/subscriptions/test_subscription_cancellation.py \
+            tests/unit/subscriptions/test_subscription_cancellation_recovery.py \
+            tests/unit/subscriptions/test_subscription_plan_changes.py \
+            tests/unit/report_cards/test_report_card_print_security.py \
+            tests/unit/test_worker_settings.py \
+            -q

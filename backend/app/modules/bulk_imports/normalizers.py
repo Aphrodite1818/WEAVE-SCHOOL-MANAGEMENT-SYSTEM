@@ -9,15 +9,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.core.utils.normalization import normalize_class_arm, normalize_class_name
 from app.modules.bulk_imports.models import ImportResourceType
 
 
-BULK_IMPORT_NO_ARM_SENTINEL = "NO_ARM"
-
 SUPPORTED_IMPORT_RESOURCE_TYPES = {
     ImportResourceType.STUDENTS,
-    ImportResourceType.TEACHERS,
-    ImportResourceType.PARENTS,
 }
 
 
@@ -42,35 +39,18 @@ class BulkImportNormalizer:
             "arm": "class_arm",
             "state": "state_of_origin",
             "state_of_origin": "state_of_origin",
-        },
-        ImportResourceType.TEACHERS: {
-            "email": "email",
-            "email_address": "email",
-            "first_name": "first_name",
-            "firstname": "first_name",
-            "first": "first_name",
-            "last_name": "last_name",
-            "lastname": "last_name",
-            "last": "last_name",
-            "staff_id": "staff_id",
-            "staffid": "staff_id",
-            "qualification": "qualification",
-            "specialization": "specialization",
-        },
-        ImportResourceType.PARENTS: {
-            "email": "email",
-            "email_address": "email",
-            "first_name": "first_name",
-            "firstname": "first_name",
-            "first": "first_name",
-            "last_name": "last_name",
-            "lastname": "last_name",
-            "last": "last_name",
-            "phone": "phone_number",
-            "phone_number": "phone_number",
-            "occupation": "occupation",
-            "address": "address",
-            "emergency_phone": "emergency_phone",
+            "parent_email_1": "parent_email_1",
+            "parent_1_email": "parent_email_1",
+            "guardian_email_1": "parent_email_1",
+            "parent_relationship_1": "parent_relationship_1",
+            "parent_1_relationship": "parent_relationship_1",
+            "guardian_relationship_1": "parent_relationship_1",
+            "parent_email_2": "parent_email_2",
+            "parent_2_email": "parent_email_2",
+            "guardian_email_2": "parent_email_2",
+            "parent_relationship_2": "parent_relationship_2",
+            "parent_2_relationship": "parent_relationship_2",
+            "guardian_relationship_2": "parent_relationship_2",
         },
     }
 
@@ -83,23 +63,10 @@ class BulkImportNormalizer:
             "class_name",
             "class_arm",
             "state_of_origin",
-        },
-        ImportResourceType.TEACHERS: {
-            "email",
-            "first_name",
-            "last_name",
-            "staff_id",
-            "qualification",
-            "specialization",
-        },
-        ImportResourceType.PARENTS: {
-            "email",
-            "first_name",
-            "last_name",
-            "phone_number",
-            "occupation",
-            "address",
-            "emergency_phone",
+            "parent_email_1",
+            "parent_relationship_1",
+            "parent_email_2",
+            "parent_relationship_2",
         },
     }
 
@@ -179,14 +146,23 @@ class BulkImportNormalizer:
             if not value:
                 return None
 
-        if field_name == "email":
+        if field_name in {"email", "parent_email_1", "parent_email_2"}:
             return BulkImportNormalizer.normalize_email(value)
+
+        if field_name in {"parent_relationship_1", "parent_relationship_2"}:
+            return BulkImportNormalizer.normalize_key(value)
 
         if field_name in {"phone_number", "emergency_phone"}:
             return BulkImportNormalizer.normalize_phone(value)
 
         if field_name == "gender":
             return BulkImportNormalizer.normalize_gender(value)
+
+        if field_name == "class_name":
+            return normalize_class_name(value)
+
+        if field_name == "class_arm":
+            return normalize_class_arm(value)
 
         return BulkImportNormalizer.normalize_text(value)
 
@@ -216,13 +192,6 @@ class BulkImportNormalizer:
                 field_name=canonical_field_name,
                 value=raw_value,
             )
-
-        if (
-            resource_type == ImportResourceType.STUDENTS
-            and normalized_row.get("class_name") is not None
-            and normalized_row.get("class_arm") is None
-        ):
-            normalized_row["class_arm"] = BULK_IMPORT_NO_ARM_SENTINEL
 
         return normalized_row, ignored_fields
 

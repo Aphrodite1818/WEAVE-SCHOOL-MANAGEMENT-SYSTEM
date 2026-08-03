@@ -1,4 +1,4 @@
-"""Authentication and authorization dependencies for tenant actors and superadmins."""
+"""Session-backed authentication and authorization dependencies."""
 
 from __future__ import annotations
 
@@ -18,15 +18,34 @@ from app.core.dependencies.db import get_db
 from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.repository import AuthSessionRepository
-from app.modules.auth_identity.models import ActorType
-from app.modules.parents.models import Parent, ParentAccountStatus
-from app.modules.parents.repository import ParentRepository
-from app.modules.students.models import Student, StudentAccountStatus
+from app.modules.parents.models import (
+    Parent,
+    ParentAccount,
+    ParentAccountStatus,
+    ParentMembershipStatus,
+)
+from app.modules.parents.repository import (
+    ParentAccountRepository,
+    ParentMembershipRepository,
+)
+from app.modules.students.models import (
+    Student,
+    StudentAccountStatus,
+    StudentProfileStatus,
+)
 from app.modules.students.repository import StudentRepository
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
-from app.modules.teachers.models import Teacher, TeacherAccountStatus
-from app.modules.teachers.repository import TeacherRepository
+from app.modules.teachers.models import (
+    Teacher,
+    TeacherAccount,
+    TeacherAccountStatus,
+    TeacherMembershipStatus,
+)
+from app.modules.teachers.repository import (
+    TeacherAccountRepository,
+    TeacherMembershipRepository,
+)
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import TenantStatus, TenantVerificationStatus
@@ -38,45 +57,31 @@ TokenDependency: TypeAlias = Annotated[str, Depends(oauth2_scheme)]
 DbDependency: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
 
 TenantActor: TypeAlias = TenantAdmin | Teacher | Parent | Student
-CurrentActor: TypeAlias = TenantActor | SuperAdmin
+GlobalAccountActor: TypeAlias = TeacherAccount | ParentAccount
+CurrentActor: TypeAlias = TenantActor | GlobalAccountActor | SuperAdmin
 
 
-def _ensure_timezone_aware(value: datetime) -> datetime:
-    """Return a timezone-aware datetime."""
-
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value
+def _as_aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
-def _session_actor_type_from_token(
-    *,
-    actor_type: str | None,
-    account_type: str | None,
-) -> AuthSessionActorType:
-    """Map token actor/account claims to a session actor type."""
-
-    resolved_type = actor_type or account_type
-    if resolved_type is None:
+def _resolve_session_actor_type(payload: dict) -> AuthSessionActorType:
+    raw_type = payload.get("actor_type") or payload.get("account_type")
+    if raw_type is None:
         raise UnauthorizedException("Could not validate credentials")
-
     try:
-        return AuthSessionActorType(resolved_type)
+        return AuthSessionActorType(raw_type)
     except ValueError as exc:
         raise UnauthorizedException("Could not validate credentials") from exc
 
 
-async def _ensure_active_session(
+async def _validate_session(
     db: AsyncSession,
     *,
     payload: dict,
     actor_id: uuid.UUID,
-    actor_type: str | None,
-    account_type: str | None,
     tenant_id: uuid.UUID | None,
 ) -> AuthSessionActorType:
-    """Ensure the access token belongs to an active, non-revoked DB session."""
-
     if payload.get("token_type") != "access":
         raise UnauthorizedException("Could not validate credentials")
 
@@ -84,11 +89,7 @@ async def _ensure_active_session(
     if not session_jti:
         raise UnauthorizedException("Session is no longer valid. Please log in again.")
 
-    expected_actor_type = _session_actor_type_from_token(
-        actor_type=actor_type,
-        account_type=account_type,
-    )
-
+    actor_type = _resolve_session_actor_type(payload)
     session = await AuthSessionRepository.get_session_by_jti(db, session_jti)
     if session is None:
         raise UnauthorizedException("Session is no longer valid. Please log in again.")
@@ -97,34 +98,36 @@ async def _ensure_active_session(
     if (
         session.revoked_at is not None
         or session.compromised_at is not None
-        or _ensure_timezone_aware(session.expires_at) <= now
+        or _as_aware(session.expires_at) <= now
     ):
         raise UnauthorizedException("Session is no longer valid. Please log in again.")
 
-    if session.actor_id != actor_id or session.actor_type != expected_actor_type:
+    if session.actor_id != actor_id or session.actor_type != actor_type:
         raise UnauthorizedException("Could not validate credentials")
 
-    if expected_actor_type == AuthSessionActorType.SUPERADMIN:
+    global_actor_types = {
+        AuthSessionActorType.SUPERADMIN,
+        AuthSessionActorType.TEACHER_ACCOUNT,
+        AuthSessionActorType.PARENT_ACCOUNT,
+    }
+    if actor_type in global_actor_types:
         if session.tenant_id is not None or tenant_id is not None:
             raise UnauthorizedException("Could not validate credentials")
-        return expected_actor_type
-
-    if tenant_id is None or session.tenant_id != tenant_id:
+    elif tenant_id is None or session.tenant_id != tenant_id:
         raise UnauthorizedException("Could not validate credentials")
 
-    return expected_actor_type
+    return actor_type
 
 
-async def _ensure_active_tenant(
-    db: AsyncSession,
-    tenant_id: uuid.UUID | None,
-) -> None:
-    """Ensure the tenant attached to the actor is active and usable."""
-
+async def _ensure_active_tenant(db: AsyncSession, tenant_id: uuid.UUID | None) -> None:
     if tenant_id is None:
         raise ForbiddenException("Actor is not attached to a tenant")
 
-    cache_key = build_cache_key(tenant_prefix(str(tenant_id)), "auth", "active-tenant")
+    cache_key = build_cache_key(
+        tenant_prefix(str(tenant_id)),
+        "auth",
+        "active-tenant",
+    )
 
     async def fetch_tenant_state() -> dict[str, str | bool]:
         tenant = await TenantRepository.get_by_id(db, tenant_id)
@@ -132,7 +135,7 @@ async def _ensure_active_tenant(
             return {"allowed": False, "reason": "Inactive tenant"}
         if tenant.verification_status != TenantVerificationStatus.ACTIVE:
             return {"allowed": False, "reason": "Tenant is not verified"}
-        if tenant.status not in (TenantStatus.ACTIVE, TenantStatus.TRIAL):
+        if tenant.status not in {TenantStatus.ACTIVE, TenantStatus.TRIAL}:
             return {"allowed": False, "reason": "Inactive tenant"}
         return {"allowed": True, "reason": ""}
 
@@ -141,106 +144,144 @@ async def _ensure_active_tenant(
         fetcher=fetch_tenant_state,
         ttl=settings.CACHE_SHORT_TTL_SECONDS,
     )
-
     if not tenant_state.get("allowed"):
         raise ForbiddenException(str(tenant_state.get("reason") or "Inactive tenant"))
 
 
-async def get_current_actor(
-    token: TokenDependency,
-    db: DbDependency,
-) -> CurrentActor:
-    """Return the authenticated actor from a session-backed JWT."""
-
+async def get_current_actor(token: TokenDependency, db: DbDependency) -> CurrentActor:
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        actor_id_str: str | None = payload.get("sub")
-        actor_type: str | None = payload.get("actor_type")
-        account_type: str | None = payload.get("account_type")
-        tenant_id_str: str | None = payload.get("tenant_id")
-
-        if actor_id_str is None:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+        subject = payload.get("sub")
+        if subject is None:
             raise UnauthorizedException("Could not validate credentials")
 
-        actor_id = uuid.UUID(actor_id_str)
-        tenant_id = uuid.UUID(tenant_id_str) if tenant_id_str else None
-
-        session_actor_type = await _ensure_active_session(
+        actor_id = uuid.UUID(subject)
+        raw_tenant_id = payload.get("tenant_id")
+        tenant_id = uuid.UUID(raw_tenant_id) if raw_tenant_id else None
+        actor_type = await _validate_session(
             db,
             payload=payload,
             actor_id=actor_id,
-            actor_type=actor_type,
-            account_type=account_type,
             tenant_id=tenant_id,
         )
-    except (JWTError, ValueError):
-        raise UnauthorizedException("Could not validate credentials")
+    except (JWTError, ValueError, TypeError) as exc:
+        raise UnauthorizedException("Could not validate credentials") from exc
 
-    if session_actor_type == AuthSessionActorType.TENANT_ADMIN:
-        actor = await TenantAdminRepository.get_by_id(db, actor_id)
-        if actor is None:
-            raise UnauthorizedException("Tenant admin not found")
-        return actor
-
-    if session_actor_type == AuthSessionActorType.TEACHER:
-        actor = await TeacherRepository.get_by_id(db, actor_id)
-        if actor is None:
-            raise UnauthorizedException("Teacher not found")
-        return actor
-
-    if session_actor_type == AuthSessionActorType.PARENT:
-        actor = await ParentRepository.get_by_id(db, actor_id)
-        if actor is None:
-            raise UnauthorizedException("Parent not found")
-        return actor
-
-    if session_actor_type == AuthSessionActorType.STUDENT:
-        actor = await StudentRepository.get_by_id(db, actor_id)
-        if actor is None:
-            raise UnauthorizedException("Student not found")
-        return actor
-
-    if session_actor_type == AuthSessionActorType.SUPERADMIN:
+    if actor_type == AuthSessionActorType.SUPERADMIN:
         actor = await SuperAdminRepository.get_by_id(db, actor_id)
-        if actor is None:
-            raise UnauthorizedException("Superadmin not found")
-        return actor
+    elif actor_type == AuthSessionActorType.TENANT_ADMIN:
+        actor = await TenantAdminRepository.get_by_id(db, actor_id)
+    elif actor_type == AuthSessionActorType.TEACHER_ACCOUNT:
+        actor = await TeacherAccountRepository.get_by_id(db, actor_id)
+    elif actor_type == AuthSessionActorType.PARENT_ACCOUNT:
+        actor = await ParentAccountRepository.get_by_id(db, actor_id)
+    elif actor_type == AuthSessionActorType.TEACHER:
+        actor = await TeacherMembershipRepository.get_by_id(
+            db,
+            actor_id,
+            tenant_id=tenant_id,
+            load_account=True,
+            load_subjects=True,
+        )
+    elif actor_type == AuthSessionActorType.PARENT:
+        actor = await ParentMembershipRepository.get_by_id(
+            db,
+            actor_id,
+            tenant_id=tenant_id,
+            load_account=True,
+        )
+    elif actor_type == AuthSessionActorType.STUDENT:
+        if tenant_id is None:
+            raise UnauthorizedException("Invalid student session")
+        actor = await StudentRepository.get_by_id(db, tenant_id, actor_id)
+    else:
+        actor = None
 
-    raise UnauthorizedException("Could not validate credentials")
+    if actor is None:
+        raise UnauthorizedException("Account not found")
+    return actor
+
+
+async def get_current_superadmin(
+    actor: Annotated[CurrentActor, Depends(get_current_actor)],
+) -> SuperAdmin:
+    """Require an active global superadmin session."""
+    if not isinstance(actor, SuperAdmin):
+        raise ForbiddenException("Superadmin credentials are required.")
+    if not actor.is_active:
+        raise ForbiddenException("Inactive superadmin account")
+    return actor
 
 
 async def get_current_tenant_admin(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     db: DbDependency,
 ) -> TenantAdmin:
-    """Return the current tenant admin actor."""
-
-    if isinstance(actor, SuperAdmin):
-        raise ForbiddenException("Tenant admin credentials are required for this operation")
     if not isinstance(actor, TenantAdmin):
-        raise ForbiddenException("Tenant admin credentials are required for this operation")
-    if not actor.is_active or not actor.is_verified:
+        raise ForbiddenException("Tenant admin credentials are required.")
+    if (
+        not actor.is_active
+        or not actor.is_verified
+        or actor.account_status != TenantAdminStatus.ACTIVE
+    ):
         raise ForbiddenException("Inactive account")
-    if actor.account_status != TenantAdminStatus.ACTIVE:
-        raise ForbiddenException("Inactive account")
-
     await _ensure_active_tenant(db, actor.tenant_id)
     return actor
+
+
+async def get_current_teacher_account(
+    actor: Annotated[CurrentActor, Depends(get_current_actor)],
+) -> TeacherAccount:
+    if isinstance(actor, TeacherAccount):
+        account = actor
+    elif isinstance(actor, Teacher):
+        account = actor.teacher_account
+    else:
+        raise ForbiddenException("Teacher account credentials are required.")
+    if (
+        not account.is_active
+        or not account.is_verified
+        or account.account_status != TeacherAccountStatus.ACTIVE
+    ):
+        raise ForbiddenException("Inactive account")
+    return account
+
+
+async def get_current_parent_account(
+    actor: Annotated[CurrentActor, Depends(get_current_actor)],
+) -> ParentAccount:
+    if isinstance(actor, ParentAccount):
+        account = actor
+    elif isinstance(actor, Parent):
+        account = actor.parent_account
+    else:
+        raise ForbiddenException("Parent account credentials are required.")
+    if (
+        not account.is_active
+        or not account.is_verified
+        or account.account_status != ParentAccountStatus.ACTIVE
+    ):
+        raise ForbiddenException("Inactive account")
+    return account
 
 
 async def get_current_teacher(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     db: DbDependency,
 ) -> Teacher:
-    """Return the current teacher actor."""
-
     if not isinstance(actor, Teacher):
-        raise ForbiddenException("Teacher credentials are required for this operation")
-    if not actor.is_active or not actor.is_verified:
-        raise ForbiddenException("Inactive account")
-    if actor.account_status != TeacherAccountStatus.ACTIVE:
-        raise ForbiddenException("Inactive account")
-
+        raise ForbiddenException("Teacher membership credentials are required.")
+    if (
+        not actor.teacher_account.is_active
+        or not actor.teacher_account.is_verified
+        or actor.teacher_account.account_status != TeacherAccountStatus.ACTIVE
+        or actor.status != TeacherMembershipStatus.ACTIVE
+    ):
+        raise ForbiddenException("Inactive teacher membership")
     await _ensure_active_tenant(db, actor.tenant_id)
     return actor
 
@@ -249,15 +290,16 @@ async def get_current_parent(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     db: DbDependency,
 ) -> Parent:
-    """Return the current parent actor."""
-
     if not isinstance(actor, Parent):
-        raise ForbiddenException("Parent credentials are required for this operation")
-    if not actor.is_active or not actor.is_verified:
-        raise ForbiddenException("Inactive account")
-    if actor.account_status != ParentAccountStatus.ACTIVE:
-        raise ForbiddenException("Inactive account")
-
+        raise ForbiddenException("Parent membership credentials are required.")
+    if (
+        not actor.parent_account.is_active
+        or not actor.parent_account.is_verified
+        or actor.parent_account.account_status != ParentAccountStatus.ACTIVE
+        or actor.status
+        not in {ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY}
+    ):
+        raise ForbiddenException("Inactive parent membership")
     await _ensure_active_tenant(db, actor.tenant_id)
     return actor
 
@@ -266,15 +308,15 @@ async def get_current_student(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     db: DbDependency,
 ) -> Student:
-    """Return the current student actor."""
-
     if not isinstance(actor, Student):
-        raise ForbiddenException("Student credentials are required for this operation")
-    if not actor.is_active or not actor.is_verified:
+        raise ForbiddenException("Student credentials are required.")
+    if (
+        not actor.is_active
+        or not actor.is_verified
+        or actor.account_status != StudentAccountStatus.ACTIVE
+        or actor.is_archived
+    ):
         raise ForbiddenException("Inactive account")
-    if actor.account_status != StudentAccountStatus.ACTIVE:
-        raise ForbiddenException("Inactive account")
-
     await _ensure_active_tenant(db, actor.tenant_id)
     return actor
 
@@ -283,15 +325,11 @@ async def get_current_onboarded_student(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     db: DbDependency,
 ) -> Student:
-    """Return the current student only after the default password has been changed."""
-
     student = await get_current_student(actor, db)
-
     if student.password_reset_required:
-        raise ForbiddenException(
-            "You must change your default password before accessing student dashboard resources."
-        )
-
+        raise ForbiddenException("Change your temporary password before continuing.")
+    if student.profile_status != StudentProfileStatus.COMPLETE:
+        raise ForbiddenException("Complete student onboarding before continuing.")
     return student
 
 
@@ -299,11 +337,6 @@ async def get_current_tenant_member(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     db: DbDependency,
 ) -> TenantActor:
-    """Return the current tenant actor in the actor-based architecture."""
-
-    if isinstance(actor, SuperAdmin):
-        raise ForbiddenException("Tenant credentials are required for this operation")
-
     if isinstance(actor, TenantAdmin):
         return await get_current_tenant_admin(actor, db)
     if isinstance(actor, Teacher):
@@ -311,26 +344,5 @@ async def get_current_tenant_member(
     if isinstance(actor, Parent):
         return await get_current_parent(actor, db)
     if isinstance(actor, Student):
-        return await get_current_onboarded_student(actor, db)
-
-    raise ForbiddenException("Actor-based tenant credentials are required for this operation")
-
-
-async def get_current_superadmin(
-    actor: Annotated[CurrentActor, Depends(get_current_actor)],
-) -> SuperAdmin:
-    """Return current superadmin."""
-
-    if isinstance(actor, (TenantAdmin, Teacher, Parent, Student)):
-        raise ForbiddenException("Superadmin credentials are required for this operation")
-    if not actor.is_active:
-        raise ForbiddenException("Inactive superadmin account")
-    return actor
-
-
-async def require_superadmin(
-    current_superadmin: Annotated[SuperAdmin, Depends(get_current_superadmin)],
-) -> SuperAdmin:
-    """Return a dependency that requires superadmin."""
-
-    return current_superadmin
+        return await get_current_student(actor, db)
+    raise ForbiddenException("Tenant membership credentials are required.")

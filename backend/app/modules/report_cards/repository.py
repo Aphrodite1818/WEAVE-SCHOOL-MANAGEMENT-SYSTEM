@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,11 +63,26 @@ class ReportCardRepository:
         skip: int = 0,
         limit: int = 100,
         student_id: uuid.UUID | None = None,
+        class_id: uuid.UUID | None = None,
+        academic_session_id: uuid.UUID | None = None,
+        academic_term_id: uuid.UUID | None = None,
+        status: ReportCardStatus | None = None,
+        is_outdated: bool | None = None,
         published_only: bool = False,
     ) -> tuple[list[ReportCard], int]:
         filters = [ReportCard.tenant_id == tenant_id, ReportCard.superseded_at.is_(None)]
         if student_id is not None:
             filters.append(ReportCard.student_id == student_id)
+        if class_id is not None:
+            filters.append(ReportCard.class_id == class_id)
+        if academic_session_id is not None:
+            filters.append(ReportCard.academic_session_id == academic_session_id)
+        if academic_term_id is not None:
+            filters.append(ReportCard.academic_term_id == academic_term_id)
+        if status is not None:
+            filters.append(ReportCard.status == status)
+        if is_outdated is not None:
+            filters.append(ReportCard.is_outdated.is_(is_outdated))
         if published_only:
             filters.append(ReportCard.status == ReportCardStatus.PUBLISHED)
 
@@ -139,13 +153,12 @@ class ReportCardRepository:
                     ReportCard.academic_session_id == academic_session_id,
                     ReportCard.academic_term_id == academic_term_id,
                     ReportCard.superseded_at.is_(None),
-                    ReportCard.status == ReportCardStatus.PUBLISHED,
                 )
             )
         ).scalars().all()
         for card in rows:
             card.is_outdated = True
-            await db.flush()
+        await db.flush()
 
     @staticmethod
     async def delete_lines_for_card(

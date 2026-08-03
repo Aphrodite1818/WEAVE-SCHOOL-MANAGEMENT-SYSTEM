@@ -190,7 +190,7 @@ function ParentResultsPage() {
                 description="Published subject results will appear here when the school releases them."
               />
             ) : (
-              <div className="mt-4 grid gap-3">
+              <div className="mobile-scroll-list mt-4 grid gap-3">
                 {childResults.map((result) => (
                   <div
                     key={result.id}

@@ -11,7 +11,7 @@ import secrets
 import uuid
 
 from jose import jwt
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
 
 from app.config.logging import get_logger
 from app.config.settings import settings
@@ -20,22 +20,19 @@ from app.config.settings import settings
 logger = get_logger(__name__)
 
 
-hash_context = CryptContext(
-    schemes=["argon2"],
-    deprecated="auto",
-)
+password_hash = PasswordHash.recommended()
 
 
 def hash_password(password: str) -> str:
     """Hash a plain-text password for secure database storage."""
 
-    return hash_context.hash(password)
+    return password_hash.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Return whether a plain-text password matches a stored hash."""
 
-    return hash_context.verify(plain_password, hashed_password)
+    return password_hash.verify(plain_password, hashed_password)
 
 
 def hash_otp(otp_code: str) -> str:
@@ -56,7 +53,7 @@ def verify_otp(otp_code: str, hashed_otp: str) -> bool:
     if hashed_otp.startswith("otp_sha256$"):
         return hmac.compare_digest(hash_otp(otp_code), hashed_otp)
 
-    return hash_context.verify(otp_code, hashed_otp)
+    return password_hash.verify(otp_code, hashed_otp)
 
 
 def hash_auth_secret(secret: str) -> str:
@@ -80,7 +77,7 @@ def verify_auth_secret(secret: str, hashed_secret: str) -> bool:
     if hashed_secret.startswith("otp_sha256$"):
         return hmac.compare_digest(hash_otp(secret), hashed_secret)
 
-    return hash_context.verify(secret, hashed_secret)
+    return password_hash.verify(secret, hashed_secret)
 
 
 def generate_token_jti() -> str:
@@ -140,7 +137,7 @@ def create_access_token(
     to_encode = data.copy()
 
     expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta or timedelta(minutes=60 if settings.ENV == "dev" else settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
     to_encode.update(

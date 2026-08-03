@@ -1,4 +1,27 @@
 @media (max-width: 767px) {
+  .notification-dropdown-panel {
+    position: fixed !important;
+    top: calc(env(safe-area-inset-top) + 4.75rem) !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    bottom: auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: min(28rem, calc(100dvh - env(safe-area-inset-top) - 6rem)) !important;
+    padding: 0.85rem !important;
+    border-radius: 1.35rem !important;
+    transform: none !important;
+  }
+
+  .notification-dropdown-panel > div {
+    padding: 0.15rem !important;
+  }
+
+  .notification-dropdown-panel p {
+    overflow-wrap: anywhere;
+  }
+
   header div:has(button[aria-label="Open notifications"]) > div.absolute {
     position: fixed !important;
     top: calc(env(safe-area-inset-top) + 4.75rem) !important;

@@ -1,76 +1,141 @@
-# ====================================== #
-#          teachers/repository.py        #
-# ====================================== #
+"""Repositories for global teacher accounts and tenant teacher memberships."""
 
-"""Teacher data access layer."""
+from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
-from app.modules.teachers.models import Teacher, TeacherStatus, TeacherSubject
+from app.modules.teachers.models import (
+    TeacherAccount,
+    TeacherInvitation,
+    TeacherInvitationStatus,
+    TeacherMembership,
+    TeacherMembershipStatus,
+    TeacherMembershipSubject,
+)
 
 
-class TeacherRepository:
-    """Low-level database queries for teachers."""
-
+class TeacherAccountRepository:
     @staticmethod
-    async def create_teacher(
+    async def add(
         db: AsyncSession,
-        teacher: Teacher,
-    ) -> Teacher:
-        """Create a teacher record."""
-
-        db.add(teacher)
+        account: TeacherAccount,
+    ) -> TeacherAccount:
+        db.add(account)
         await db.flush()
-        await db.refresh(teacher)
-        return teacher
-
-    @staticmethod
-    async def get_teacher_by_id(
-        db: AsyncSession,
-        tenant_id: UUID,
-        teacher_id: UUID,
-    ) -> Teacher | None:
-        """Fetch teacher by ID within a tenant."""
-
-        result = await db.execute(
-            select(Teacher)
-            .options(
-                selectinload(Teacher.subjects),
-                selectinload(Teacher.subject_links).selectinload(
-                    TeacherSubject.subject
-                ),
-            )
-            .where(
-                Teacher.tenant_id == tenant_id,
-                Teacher.id == teacher_id,
-            )
-        )
-        return result.scalar_one_or_none()
+        return account
 
     @staticmethod
     async def get_by_id(
         db: AsyncSession,
-        teacher_id: UUID,
+        account_id: UUID,
         *,
         lock: bool = False,
-    ) -> Teacher | None:
-        """Fetch teacher by ID globally."""
-
-        query = (
-            select(Teacher)
-            .options(
-                selectinload(Teacher.subjects),
-                selectinload(Teacher.subject_links).selectinload(
-                    TeacherSubject.subject
-                ),
-            )
-            .where(Teacher.id == teacher_id)
+    ) -> TeacherAccount | None:
+        query = select(TeacherAccount).where(
+            TeacherAccount.id == account_id,
         )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
 
+    @staticmethod
+    async def get_by_email(
+        db: AsyncSession,
+        normalized_email: str,
+        *,
+        lock: bool = False,
+    ) -> TeacherAccount | None:
+        query = select(TeacherAccount).where(
+            TeacherAccount.email == normalized_email.strip().casefold(),
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def email_exists(
+        db: AsyncSession,
+        normalized_email: str,
+    ) -> bool:
+        result = await db.execute(
+            select(TeacherAccount.id).where(
+                TeacherAccount.email
+                == normalized_email.strip().casefold(),
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def list_memberships(
+        db: AsyncSession,
+        account_id: UUID,
+    ) -> list[TeacherMembership]:
+        result = await db.execute(
+            select(TeacherMembership)
+            .options(joinedload(TeacherMembership.teacher_account))
+            .where(
+                TeacherMembership.teacher_account_id == account_id,
+            )
+            .order_by(TeacherMembership.created_at.asc())
+        )
+        return list(result.scalars().unique().all())
+
+    @staticmethod
+    async def save(
+        db: AsyncSession,
+        account: TeacherAccount,
+    ) -> TeacherAccount:
+        db.add(account)
+        await db.flush()
+        return account
+
+
+class TeacherMembershipRepository:
+    @staticmethod
+    async def add(
+        db: AsyncSession,
+        membership: TeacherMembership,
+    ) -> TeacherMembership:
+        db.add(membership)
+        await db.flush()
+        return membership
+
+    @staticmethod
+    async def create_teacher(
+        db: AsyncSession,
+        teacher: TeacherMembership,
+    ) -> TeacherMembership:
+        return await TeacherMembershipRepository.add(db, teacher)
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession,
+        membership_id: UUID,
+        *,
+        tenant_id: UUID | None = None,
+        lock: bool = False,
+        load_account: bool = True,
+        load_subjects: bool = False,
+    ) -> TeacherMembership | None:
+        filters = [TeacherMembership.id == membership_id]
+        if tenant_id is not None:
+            filters.append(TeacherMembership.tenant_id == tenant_id)
+
+        query = select(TeacherMembership).where(*filters)
+        if load_account:
+            query = query.options(
+                selectinload(TeacherMembership.teacher_account),
+            )
+        if load_subjects:
+            query = query.options(
+                selectinload(
+                    TeacherMembership.subject_links,
+                ).selectinload(TeacherMembershipSubject.subject)
+            )
         if lock:
             query = query.with_for_update()
 
@@ -78,86 +143,79 @@ class TeacherRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_active_by_id(
+    async def get_teacher_by_id(
         db: AsyncSession,
+        tenant_id: UUID,
         teacher_id: UUID,
-    ) -> Teacher | None:
-        """Fetch active teacher by ID globally."""
+        *,
+        lock: bool = False,
+    ) -> TeacherMembership | None:
+        return await TeacherMembershipRepository.get_by_id(
+            db,
+            teacher_id,
+            tenant_id=tenant_id,
+            lock=lock,
+            load_account=True,
+            load_subjects=True,
+        )
 
-        result = await db.execute(
-            select(Teacher)
-            .options(
-                selectinload(Teacher.subjects),
-                selectinload(Teacher.subject_links).selectinload(
-                    TeacherSubject.subject
-                ),
-            )
+    @staticmethod
+    async def get_by_account_and_tenant(
+        db: AsyncSession,
+        account_id: UUID,
+        tenant_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> TeacherMembership | None:
+        query = (
+            select(TeacherMembership)
+            .options(selectinload(TeacherMembership.teacher_account))
             .where(
-                Teacher.id == teacher_id,
-                Teacher.is_active.is_(True),
+                TeacherMembership.teacher_account_id == account_id,
+                TeacherMembership.tenant_id == tenant_id,
             )
         )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
     async def get_by_email(
         db: AsyncSession,
         email: str,
-    ) -> Teacher | None:
-        """Fetch teacher by globally unique email."""
+        *,
+        tenant_id: UUID | None = None,
+    ) -> TeacherMembership | None:
+        filters = [
+            TeacherAccount.email == email.strip().casefold(),
+        ]
+        if tenant_id is not None:
+            filters.append(TeacherMembership.tenant_id == tenant_id)
 
         result = await db.execute(
-            select(Teacher).where(
-                func.lower(Teacher.email) == email.strip().lower(),
-            )
+            select(TeacherMembership)
+            .join(TeacherMembership.teacher_account)
+            .options(joinedload(TeacherMembership.teacher_account))
+            .where(*filters)
+            .order_by(TeacherMembership.created_at.asc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_active_by_email(
-        db: AsyncSession,
-        email: str,
-    ) -> Teacher | None:
-        """Fetch active teacher by globally unique email."""
-
-        result = await db.execute(
-            select(Teacher).where(
-                func.lower(Teacher.email) == email.strip().lower(),
-                Teacher.is_active.is_(True),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def email_exists(
-        db: AsyncSession,
-        email: str,
-        exclude_teacher_id: UUID | None = None,
-    ) -> bool:
-        """Return True if a teacher email already exists."""
-
-        query = select(Teacher.id).where(
-            func.lower(Teacher.email) == email.strip().lower(),
-        )
-
-        if exclude_teacher_id is not None:
-            query = query.where(Teacher.id != exclude_teacher_id)
-
-        result = await db.execute(query)
-        return result.scalar_one_or_none() is not None
-
-    @staticmethod
-    async def get_teacher_by_staff_id(
+    async def get_by_staff_id(
         db: AsyncSession,
         tenant_id: UUID,
         staff_id: str,
-    ) -> Teacher | None:
-        """Fetch teacher by staff ID within a tenant."""
-
+    ) -> TeacherMembership | None:
         result = await db.execute(
-            select(Teacher).where(
-                Teacher.tenant_id == tenant_id,
-                Teacher.staff_id == staff_id,
+            select(TeacherMembership)
+            .options(joinedload(TeacherMembership.teacher_account))
+            .where(
+                TeacherMembership.tenant_id == tenant_id,
+                func.lower(TeacherMembership.staff_id)
+                == staff_id.strip().lower(),
             )
         )
         return result.scalar_one_or_none()
@@ -167,52 +225,76 @@ class TeacherRepository:
         db: AsyncSession,
         tenant_id: UUID,
         staff_id: str,
+        *,
+        exclude_membership_id: UUID | None = None,
         exclude_teacher_id: UUID | None = None,
     ) -> bool:
-        """Return True if staff ID already exists within tenant."""
-
-        query = select(Teacher.id).where(
-            Teacher.tenant_id == tenant_id,
-            func.lower(Teacher.staff_id) == staff_id.strip().lower(),
+        excluded_id = exclude_membership_id or exclude_teacher_id
+        query = select(TeacherMembership.id).where(
+            TeacherMembership.tenant_id == tenant_id,
+            func.lower(TeacherMembership.staff_id)
+            == staff_id.strip().lower(),
         )
-
-        if exclude_teacher_id is not None:
-            query = query.where(Teacher.id != exclude_teacher_id)
-
+        if excluded_id is not None:
+            query = query.where(TeacherMembership.id != excluded_id)
         result = await db.execute(query)
         return result.scalar_one_or_none() is not None
 
     @staticmethod
-    async def get_teachers_by_ids(
+    async def list_for_tenant(
         db: AsyncSession,
-        teacher_ids: list[UUID],
         tenant_id: UUID,
-        status: TeacherStatus | None = None,
-    ) -> list[Teacher]:
-        """Return multiple teachers by IDs within a tenant."""
-
-        if not teacher_ids:
-            return []
-
-        filters = [
-            Teacher.tenant_id == tenant_id,
-            Teacher.id.in_(teacher_ids),
-        ]
-
+        *,
+        status: TeacherMembershipStatus | None = None,
+        search: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[TeacherMembership], int]:
+        filters = [TeacherMembership.tenant_id == tenant_id]
         if status is not None:
-            filters.append(Teacher.status == status)
+            filters.append(TeacherMembership.status == status)
+
+        if search:
+            pattern = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    TeacherMembership.staff_id.ilike(pattern),
+                    TeacherMembership.job_title.ilike(pattern),
+                    TeacherMembership.department.ilike(pattern),
+                    TeacherMembership.teacher_account.has(
+                        or_(
+                            TeacherAccount.email.ilike(pattern),
+                            TeacherAccount.first_name.ilike(pattern),
+                            TeacherAccount.last_name.ilike(pattern),
+                            TeacherAccount.qualification.ilike(pattern),
+                            TeacherAccount.specialization.ilike(pattern),
+                        )
+                    ),
+                )
+            )
+
+        total = (
+            await db.execute(
+                select(func.count())
+                .select_from(TeacherMembership)
+                .where(*filters)
+            )
+        ).scalar_one()
 
         result = await db.execute(
-            select(Teacher)
+            select(TeacherMembership)
             .options(
-                selectinload(Teacher.subjects),
-                selectinload(Teacher.subject_links).selectinload(
-                    TeacherSubject.subject
-                ),
+                joinedload(TeacherMembership.teacher_account),
+                selectinload(
+                    TeacherMembership.subject_links,
+                ).selectinload(TeacherMembershipSubject.subject),
             )
             .where(*filters)
+            .order_by(TeacherMembership.created_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
-        return list(result.scalars().all())
+        return list(result.scalars().unique().all()), total
 
     @staticmethod
     async def list_all_teachers(
@@ -222,132 +304,246 @@ class TeacherRepository:
         skip: int = 0,
         limit: int = 50,
         search: str | None = None,
-    ) -> tuple[list[Teacher], int]:
-        """Return paginated teachers for a tenant."""
-
-        filters = [Teacher.tenant_id == tenant_id]
-
-        if search:
-            search_pattern = f"%{search.strip()}%"
-            filters.append(
-                or_(
-                    Teacher.email.ilike(search_pattern),
-                    Teacher.first_name.ilike(search_pattern),
-                    Teacher.last_name.ilike(search_pattern),
-                    Teacher.staff_id.ilike(search_pattern),
-                    Teacher.qualification.ilike(search_pattern),
-                    Teacher.specialization.ilike(search_pattern),
-                )
-            )
-
-        total_result = await db.execute(
-            select(func.count()).select_from(Teacher).where(*filters)
+    ) -> tuple[list[TeacherMembership], int]:
+        return await TeacherMembershipRepository.list_for_tenant(
+            db,
+            tenant_id,
+            search=search,
+            offset=skip,
+            limit=limit,
         )
-        total = total_result.scalar_one()
 
+    @staticmethod
+    async def list_usable_for_account(
+        db: AsyncSession,
+        account_id: UUID,
+    ) -> list[TeacherMembership]:
         result = await db.execute(
-            select(Teacher)
-            .options(
-                selectinload(Teacher.subjects),
-                selectinload(Teacher.subject_links).selectinload(
-                    TeacherSubject.subject
+            select(TeacherMembership)
+            .options(joinedload(TeacherMembership.teacher_account))
+            .where(
+                TeacherMembership.teacher_account_id == account_id,
+                TeacherMembership.status.in_(
+                    [
+                        TeacherMembershipStatus.ACTIVE,
+                        TeacherMembershipStatus.SUSPENDED,
+                    ]
                 ),
             )
+            .order_by(TeacherMembership.created_at.asc())
+        )
+        return list(result.scalars().unique().all())
+
+    @staticmethod
+    async def count_active_for_tenant(
+        db: AsyncSession,
+        tenant_id: UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count())
+            .select_from(TeacherMembership)
+            .where(
+                TeacherMembership.tenant_id == tenant_id,
+                TeacherMembership.status
+                == TeacherMembershipStatus.ACTIVE,
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def save(
+        db: AsyncSession,
+        membership: TeacherMembership | None = None,
+        *,
+        teacher: TeacherMembership | None = None,
+    ) -> TeacherMembership:
+        record = membership or teacher
+        if record is None:
+            raise ValueError("membership is required")
+        db.add(record)
+        await db.flush()
+        return record
+
+    @staticmethod
+    async def delete_teacher(
+        db: AsyncSession,
+        teacher: TeacherMembership,
+    ) -> None:
+        teacher.status = TeacherMembershipStatus.INACTIVE
+        db.add(teacher)
+        await db.flush()
+
+
+class TeacherInvitationRepository:
+    @staticmethod
+    async def add(
+        db: AsyncSession,
+        invitation: TeacherInvitation,
+    ) -> TeacherInvitation:
+        db.add(invitation)
+        await db.flush()
+        return invitation
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession,
+        tenant_id: UUID,
+        invitation_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> TeacherInvitation | None:
+        query = select(TeacherInvitation).where(
+            TeacherInvitation.tenant_id == tenant_id,
+            TeacherInvitation.id == invitation_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_token_digest(
+        db: AsyncSession,
+        token_digest: str,
+        *,
+        lock: bool = False,
+    ) -> TeacherInvitation | None:
+        query = select(TeacherInvitation).where(
+            TeacherInvitation.token_digest == token_digest,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def get_pending_for_email(
+        db: AsyncSession,
+        tenant_id: UUID,
+        normalized_email: str,
+        *,
+        lock: bool = False,
+    ) -> TeacherInvitation | None:
+        query = select(TeacherInvitation).where(
+            TeacherInvitation.tenant_id == tenant_id,
+            TeacherInvitation.invited_email
+            == normalized_email.strip().casefold(),
+            TeacherInvitation.status
+            == TeacherInvitationStatus.PENDING,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_tenant(
+        db: AsyncSession,
+        tenant_id: UUID,
+        *,
+        status: TeacherInvitationStatus | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[TeacherInvitation], int]:
+        filters = [TeacherInvitation.tenant_id == tenant_id]
+        if status is not None:
+            filters.append(TeacherInvitation.status == status)
+
+        total = (
+            await db.execute(
+                select(func.count())
+                .select_from(TeacherInvitation)
+                .where(*filters)
+            )
+        ).scalar_one()
+
+        result = await db.execute(
+            select(TeacherInvitation)
             .where(*filters)
-            .order_by(Teacher.created_at.desc())
-            .offset(skip)
+            .order_by(TeacherInvitation.created_at.desc())
+            .offset(offset)
             .limit(limit)
         )
-
         return list(result.scalars().all()), total
 
     @staticmethod
     async def save(
         db: AsyncSession,
-        teacher: Teacher,
-    ) -> Teacher:
-        """Persist teacher changes."""
-
-        db.add(teacher)
+        invitation: TeacherInvitation,
+    ) -> TeacherInvitation:
+        db.add(invitation)
         await db.flush()
-        await db.refresh(teacher)
-        return teacher
+        return invitation
 
+
+class TeacherMembershipSubjectRepository:
     @staticmethod
-    async def create_teacher_subject_links(
+    async def add_many(
         db: AsyncSession,
         tenant_id: UUID,
-        teacher_id: UUID,
+        membership_id: UUID,
         subject_ids: list[UUID],
-    ) -> list[TeacherSubject]:
-        """Create teacher-subject links."""
-
-        if not subject_ids:
-            return []
-
-        teacher_subject_links = [
-            TeacherSubject(
+    ) -> list[TeacherMembershipSubject]:
+        links = [
+            TeacherMembershipSubject(
                 tenant_id=tenant_id,
-                teacher_id=teacher_id,
+                teacher_membership_id=membership_id,
                 subject_id=subject_id,
             )
             for subject_id in subject_ids
         ]
-
-        db.add_all(teacher_subject_links)
+        db.add_all(links)
         await db.flush()
-        return teacher_subject_links
+        return links
 
     @staticmethod
-    async def delete_teacher_subject_links(
+    async def list_for_membership(
         db: AsyncSession,
         tenant_id: UUID,
-        teacher_id: UUID,
-        subject_ids: list[UUID],
-    ) -> None:
-        """Delete selected teacher-subject links."""
-
-        if not subject_ids:
-            return
-
-        await db.execute(
-            delete(TeacherSubject).where(
-                TeacherSubject.tenant_id == tenant_id,
-                TeacherSubject.teacher_id == teacher_id,
-                TeacherSubject.subject_id.in_(subject_ids),
-            )
-        )
-        await db.flush()
-
-    @staticmethod
-    async def delete_all_teacher_subject_links(
-        db: AsyncSession,
-        tenant_id: UUID,
-        teacher_id: UUID,
-    ) -> None:
-        """Delete all subject links for a teacher."""
-
-        await db.execute(
-            delete(TeacherSubject).where(
-                TeacherSubject.tenant_id == tenant_id,
-                TeacherSubject.teacher_id == teacher_id,
-            )
-        )
-        await db.flush()
-
-    @staticmethod
-    async def get_teacher_subject_ids(
-        db: AsyncSession,
-        tenant_id: UUID,
-        teacher_id: UUID,
-    ) -> list[UUID]:
-        """Return subject IDs assigned to a teacher."""
-
+        membership_id: UUID,
+    ) -> list[TeacherMembershipSubject]:
         result = await db.execute(
-            select(TeacherSubject.subject_id).where(
-                TeacherSubject.tenant_id == tenant_id,
-                TeacherSubject.teacher_id == teacher_id,
+            select(TeacherMembershipSubject)
+            .options(
+                selectinload(
+                    TeacherMembershipSubject.subject,
+                )
             )
+            .where(
+                TeacherMembershipSubject.tenant_id == tenant_id,
+                TeacherMembershipSubject.teacher_membership_id
+                == membership_id,
+            )
+            .order_by(TeacherMembershipSubject.created_at.asc())
         )
-
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_by_membership_and_subject(
+        db: AsyncSession,
+        tenant_id: UUID,
+        membership_id: UUID,
+        subject_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> TeacherMembershipSubject | None:
+        query = select(TeacherMembershipSubject).where(
+            TeacherMembershipSubject.tenant_id == tenant_id,
+            TeacherMembershipSubject.teacher_membership_id
+            == membership_id,
+            TeacherMembershipSubject.subject_id == subject_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def save(
+        db: AsyncSession,
+        link: TeacherMembershipSubject,
+    ) -> TeacherMembershipSubject:
+        db.add(link)
+        await db.flush()
+        return link
+
+
+# Tenant-facing repository name. Global account code imports
+# TeacherAccountRepository explicitly.
+TeacherRepository = TeacherMembershipRepository

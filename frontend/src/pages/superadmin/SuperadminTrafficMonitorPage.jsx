@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, RefreshCw, Server, Shield } from "lucide-react";
+import { Activity, Server, Shield } from "lucide-react";
 
 import AnalyticsDonutChart from "../../components/charts/AnalyticsDonutChart";
 import AnalyticsLineChart from "../../components/charts/AnalyticsLineChart";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { DashboardMetricCard } from "../../components/dashboard/DashboardPrimitives";
 import LoadingState from "../../components/shared/LoadingState";
-import Button from "../../components/ui/Button";
 import { getErrorMessage } from "../../services/api";
 import { superadminService } from "../../services/superadmin.service";
 
@@ -66,12 +65,6 @@ function SuperadminTrafficMonitorPage() {
     <DashboardLayout
       role="superadmin"
       title="Traffic Monitor"
-      actions={
-        <Button variant="outline" onClick={loadData} disabled={isLoading}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh traffic
-        </Button>
-      }
     >
       {error && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error mb-5">

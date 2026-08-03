@@ -15,23 +15,7 @@
     <meta name="apple-mobile-web-app-title" content="Weave" />
     <meta name="application-name" content="Weave" />
     <title>Weave</title>
-    <script>
-      (() => {
-        try {
-          const savedTheme = window.localStorage.getItem("theme");
-          const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
-          const resolvedTheme = savedTheme || (prefersDark ? "dark" : "light");
-          document.documentElement.dataset.theme = resolvedTheme;
-          document.documentElement.dataset.themePreference = savedTheme || "system";
-
-          const themeColor = resolvedTheme === "dark" ? "#0F172A" : "#FFFFFF";
-          document.querySelector('meta[name="theme-color"]')?.setAttribute("content", themeColor);
-        } catch {
-          document.documentElement.dataset.theme = "light";
-          document.documentElement.dataset.themePreference = "system";
-        }
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

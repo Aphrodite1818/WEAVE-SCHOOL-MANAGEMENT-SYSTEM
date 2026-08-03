@@ -40,19 +40,26 @@ async def send_email(
             }
 
             timeout = httpx.Timeout(12.0, connect=5.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
                 res = await client.post(
                     settings.APP_SCRIPT_URL,
                     json=payload,
                 )
 
             if res.status_code == 200:
+                try:
+                    response_payload = res.json()
+                except ValueError:
+                    response_payload = None
+
+                if isinstance(response_payload, dict) and response_payload.get("success") is False:
+                    logger.warning(f"App Script failed with success=false: {res.text}")
+                    return False
+
                 logger.info(f"Email sent via App Script → {to_email}")
                 return True
 
-            logger.warning(
-                f"App Script failed ({res.status_code}): {res.text}"
-            )
+            logger.warning(f"App Script failed ({res.status_code}): {res.text}")
 
         except Exception as e:
             logger.exception(f"App Script error: {e}")
@@ -72,20 +79,14 @@ async def send_email(
         return False
 
     # Build email message
-    msg = (
-        MIMEMultipart("alternative")
-        if is_html
-        else MIMEMultipart()
-    )
+    msg = MIMEMultipart("alternative") if is_html else MIMEMultipart()
 
     msg["From"] = settings.SMTP_FROM_EMAIL
     msg["To"] = to_email
     msg["Subject"] = subject
     msg["Date"] = email.utils.formatdate(localtime=True)
 
-    msg["Message-ID"] = email.utils.make_msgid(
-        domain=settings.SMTP_FROM_EMAIL.split("@")[-1]
-    )
+    msg["Message-ID"] = email.utils.make_msgid(domain=settings.SMTP_FROM_EMAIL.split("@")[-1])
 
     if is_html:
         plain_text = re.sub(r"<[^>]+>", " ", body)
@@ -128,4 +129,3 @@ async def send_email(
                 await smtp.quit()
         except Exception:
             pass
-

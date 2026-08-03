@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { filterClasses } from "./classSearch";
 
 const buildQuery = (options = {}, map = {}) => {
   const params = new URLSearchParams();
@@ -6,7 +7,9 @@ const buildQuery = (options = {}, map = {}) => {
   params.set("limit", String(options.limit ?? 100));
 
   Object.entries(map).forEach(([optionKey, paramKey]) => {
-    if (options[optionKey]) params.set(paramKey, options[optionKey]);
+    if (options[optionKey] !== undefined && options[optionKey] !== null && options[optionKey] !== "") {
+      params.set(paramKey, String(options[optionKey]));
+    }
   });
 
   return params.toString();
@@ -27,25 +30,36 @@ const normalizeListResponse = (result) => {
   };
 };
 
-const filterClasses = (items, search) => {
-  const normalizedSearch = String(search || "").trim().toLowerCase();
-  if (!normalizedSearch) return items;
+const normalizeClassPayload = (payload = {}) => ({
+  ...(payload.name !== undefined ? { name: payload.name } : {}),
+  ...(payload.arm !== undefined ? { arm: payload.arm || null } : {}),
+  ...(payload.teacher_membership_id !== undefined || payload.teacher_id !== undefined
+    ? {
+        teacher_membership_id:
+          payload.teacher_membership_id || payload.teacher_id || null,
+      }
+    : {}),
+});
 
-  return items.filter((item) =>
-    [item.name, item.level, item.arm]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(normalizedSearch))
-  );
-};
+const normalizeClassProgressionPayload = (payload = {}) => ({
+  next_class_id: payload.is_terminal ? null : payload.next_class_id || null,
+  is_terminal: Boolean(payload.is_terminal),
+});
 
 export const classService = {
   getClasses: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;
     const result = normalizeListResponse(
-      await api.get(`/classes?${buildQuery(queryOptions)}`, {
-        ...requestOptions,
-        ...(signal ? { signal } : {}),
-      })
+      await api.get(
+        `/classes?${buildQuery(queryOptions, {
+          activeOnly: "active_only",
+          includeArchived: "include_archived",
+        })}`,
+        {
+          ...requestOptions,
+          ...(signal ? { signal } : {}),
+        }
+      )
     );
     const items = filterClasses(result.items, queryOptions.search);
 
@@ -57,13 +71,49 @@ export const classService = {
   },
 
   createClass: (payload) =>
-    api.post("/classes", payload),
+    api.post("/classes", normalizeClassPayload(payload)),
 
   updateClass: (classId, payload) =>
-    api.patch(`/classes/${classId}`, payload),
+    api.patch(`/classes/${classId}`, normalizeClassPayload(payload)),
+
+  configureClassProgression: (classId, payload) =>
+    api.put(
+      `/classes/${classId}/progression`,
+      normalizeClassProgressionPayload(payload)
+    ),
+
+  clearClassProgression: (classId) =>
+    api.post(`/classes/${classId}/progression/clear`, {
+      confirmation: "CLEAR_CLASS_PROGRESSION",
+    }),
+
+  activateClass: (classId) =>
+    api.post(`/classes/${classId}/activate`, {
+      confirmation: "ACTIVATE_CLASSROOM",
+    }),
+
+  deactivateClass: (classId) =>
+    api.post(`/classes/${classId}/deactivate`, {
+      confirmation: "DEACTIVATE_CLASSROOM",
+    }),
+
+  archiveClass: (classId) =>
+    api.post(`/classes/${classId}/archive`, {
+      confirmation: "ARCHIVE_CLASSROOM",
+    }),
+
+  restoreClass: (classId) =>
+    api.post(`/classes/${classId}/restore`, {
+      confirmation: "RESTORE_CLASSROOM",
+    }),
 
   deleteClass: (classId) =>
-    api.delete(`/classes/${classId}`),
+    api.post(`/classes/${classId}/deactivate`, {
+      confirmation: "DEACTIVATE_CLASSROOM",
+    }),
+
+  removeClassFromSetup: (classId) =>
+    api.post(`/tenant-admin/setup-assistant/classes/${classId}/remove`, {}),
 };
 
 export const attendanceService = {

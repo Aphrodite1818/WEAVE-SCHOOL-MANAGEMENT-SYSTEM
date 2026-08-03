@@ -3,7 +3,6 @@ import {
   Ban,
   CheckCircle2,
   LockKeyhole,
-  RefreshCw,
   ShieldAlert,
 } from "lucide-react";
 
@@ -12,6 +11,7 @@ import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
+import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../services/api";
 import { superadminService } from "../../services/superadmin.service";
@@ -29,6 +29,7 @@ function SuperadminControlCenterPage() {
   const [suspiciousIps, setSuspiciousIps] = useState([]);
   const [blockIpAddress, setBlockIpAddress] = useState("");
   const [blockIpReason, setBlockIpReason] = useState("");
+  const [unblockTarget, setUnblockTarget] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { showSuccess, showError } = useToast();
@@ -130,12 +131,13 @@ function SuperadminControlCenterPage() {
   };
 
   const handleUnblockIp = async (blockId) => {
-    if (!window.confirm("Are you sure you want to unblock this IP?")) return;
+    if (!blockId) return;
     setIsSubmitting(true);
 
     try {
       await superadminService.unblockSecurityIP(blockId, { reason: "Manual unblock" });
       showSuccess("IP has been unblocked.");
+      setUnblockTarget(null);
       await loadData();
     } catch (err) {
       showError(getErrorMessage(err, "Could not unblock IP."));
@@ -156,12 +158,6 @@ function SuperadminControlCenterPage() {
     <DashboardLayout
       role="superadmin"
       title="Control Center"
-      actions={
-        <Button variant="outline" onClick={loadData} disabled={isLoading || isSubmitting}>
-          <RefreshCw className="h-4 w-4" />
-          Refresh state
-        </Button>
-      }
     >
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between mb-8">
         <div>
@@ -274,7 +270,7 @@ function SuperadminControlCenterPage() {
                         <p className="mt-0.5 text-xs text-text-soft truncate max-w-[200px]">{block.reason || "No reason provided"}</p>
                       </div>
                       {block.is_active ? (
-                        <Button variant="outline" onClick={() => handleUnblockIp(block.id)} disabled={isSubmitting} className="border-error/30 text-error hover:bg-error-soft text-xs py-1 h-8">
+                        <Button variant="outline" onClick={() => setUnblockTarget(block)} disabled={isSubmitting} className="border-error/30 text-error hover:bg-error-soft text-xs py-1 h-8">
                           Unblock
                         </Button>
                       ) : null}
@@ -285,6 +281,27 @@ function SuperadminControlCenterPage() {
             </div>
          </Card>
       </section>
+      <Modal
+        open={Boolean(unblockTarget)}
+        title="Unblock IP address"
+        description={unblockTarget ? `Allow traffic from ${unblockTarget.ip_address} again.` : ""}
+        onClose={() => !isSubmitting && setUnblockTarget(null)}
+        closeOnOverlay={!isSubmitting}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setUnblockTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" disabled={isSubmitting} onClick={() => handleUnblockIp(unblockTarget?.id)}>
+              {isSubmitting ? "Unblocking..." : "Unblock IP"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-6 text-text-muted">
+          This removes the active containment rule. Use it only when the address is safe to allow again.
+        </p>
+      </Modal>
     </DashboardLayout>
   );
 }

@@ -8,7 +8,6 @@ import {
   GraduationCap,
   PlusCircle,
   UploadCloud,
-  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -23,6 +22,7 @@ import {
   DashboardQuickActions,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
@@ -48,6 +48,7 @@ function AdminDashboardPage() {
   const { getFeatureGuard, planCode } = useSubscription();
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
   const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
   const bulkImportGuard = getFeatureGuard(FEATURE_CODES.BULK_IMPORT);
   const canShowBulkImport = bulkImportGuard.allowed && String(planCode || "").toLowerCase() !== "free_trial";
@@ -89,6 +90,7 @@ function AdminDashboardPage() {
   const charts = analytics?.charts || {};
   const totalStudents = metricNumber(stats.total_students);
   const totalTeachers = metricNumber(stats.total_teachers);
+  const totalParents = metricNumber(stats.total_parents);
   const totalClasses = metricNumber(stats.total_classes);
   const resultCompletion = metricNumber(stats.result_completion_percent);
   const submittedResults = metricNumber(stats.result_rows_submitted);
@@ -147,10 +149,10 @@ function AdminDashboardPage() {
       role="admin"
       title={`${firstName}'s Dashboard`}
       actions={
-        <Link to="/admin/create-user">
+        <Link to="/admin/students/create">
           <Button>
             <PlusCircle className="h-4 w-4" />
-            Create user
+            Create student
           </Button>
         </Link>
       }
@@ -198,15 +200,15 @@ function AdminDashboardPage() {
               description="Academic groups"
               icon={BookOpen}
               tone="warning"
-              to="/admin/classes"
+              to="/admin/academic/classes"
             />
             <DashboardMetricCard
-              label="Result completion"
-              value={`${resultCompletion}%`}
-              description={`${submittedResults} of ${resultRowsTotal} rows submitted`}
-              icon={BarChart3}
-              tone={resultCompletion >= 80 ? "success" : resultCompletion > 0 ? "warning" : "neutral"}
-              to="/admin/analytics"
+              label="Parents"
+              value={totalParents}
+              description="Parent accounts"
+              icon={Users}
+              tone="accent"
+              to="/admin/parents"
             />
           </section>
 
@@ -222,6 +224,8 @@ function AdminDashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Active session" value={cleanText(stats.active_academic_session, "Not set")} />
                 <InfoTile label="Active term" value={cleanText(stats.active_academic_term, "Not set")} />
+                <InfoTile label="Result completion" value={`${resultCompletion}%`} />
+                <InfoTile label="Submitted results" value={`${submittedResults} / ${resultRowsTotal}`} />
                 <InfoTile label="Generated reports" value={reportCardsGenerated} />
                 <InfoTile label="Published reports" value={reportCardsPublished} />
               </div>
@@ -236,6 +240,32 @@ function AdminDashboardPage() {
             />
           </section>
 
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="admin" admin actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
+            <DashboardListCard
+              title="Calendar quick actions"
+              description="Use backend blockers and capability states before changing lifecycle."
+              items={[
+                {
+                  key: "open-calendar",
+                  title: "Open Calendar",
+                  description: "Manage term calendar setup, days, and events.",
+                  icon: BookOpen,
+                  tone: "primary",
+                  to: "/admin/academic/school-calendar",
+                },
+                {
+                  key: "review-blockers",
+                  title: "Review Blockers",
+                  description: "Use term and session dependency previews before closure.",
+                  icon: FileText,
+                  tone: "warning",
+                  to: "/admin/academic/terms",
+                },
+              ]}
+            />
+          </section>
+
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <AnalyticsBarChart
               title="Teacher submission progress"
@@ -247,7 +277,7 @@ function AdminDashboardPage() {
               title="Quick actions"
               description="Common admin workflows."
               actions={[
-                { label: "Create user", description: "Add student, teacher, or parent", to: "/admin/create-user", icon: UserPlus, tone: "primary" },
+                { label: "Create student", description: "Add a learner record", to: "/admin/students/create", icon: GraduationCap, tone: "primary" },
                 canShowBulkImport
                   ? { label: "Bulk import", description: "Upload school records", to: "/admin/imports", icon: UploadCloud, tone: "success" }
                   : null,

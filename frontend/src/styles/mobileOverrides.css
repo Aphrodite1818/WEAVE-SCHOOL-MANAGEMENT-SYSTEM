@@ -1,10 +1,30 @@
 @media (max-width: 767px) {
-  html:not([data-standalone-pwa="true"]) [data-mobile-bottom-nav="true"] {
-    display: none !important;
+  html,
+  body,
+  #root,
+  .public-page-shell {
+    min-height: 100dvh !important;
   }
 
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+  .public-page-shell {
+    background-color: rgb(var(--color-background)) !important;
+  }
+
+  .public-page-shell > main {
+    min-height: calc(100dvh - 4.4rem);
+  }
+
+  .public-page-shell > main > section:first-child {
+    min-height: calc(100dvh - 4.4rem);
+  }
+
+  [data-mobile-bottom-nav="true"] {
     display: block !important;
+    bottom: calc(-0.45 * env(safe-area-inset-bottom)) !important;
+    padding-bottom: max(
+      0.12rem,
+      calc(env(safe-area-inset-bottom) * 0.45)
+    ) !important;
   }
 
   [data-mobile-drawer="true"] {

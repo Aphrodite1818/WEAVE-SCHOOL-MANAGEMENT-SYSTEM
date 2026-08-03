@@ -38,7 +38,11 @@ let refreshTimerId = null;
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
   error?.code === 20 ||
-  error?.isAbortError === true;
+  error?.isAbortError === true ||
+  (
+    typeof error?.message === "string" &&
+    /abort|aborted|cancelled|canceled/i.test(error.message)
+  );
 
 const normalizeDetail = (detail) => {
   if (!detail) return null;
@@ -268,6 +272,11 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
 
 const persistMaintenanceState = (data = {}) => {
   if (data?.maintenance_mode !== true) return;
+  const currentUser = authSession.getUser?.() || {};
+  const currentRole = String(
+    currentUser.role || currentUser.actor_type || authSession.getRole?.() || "",
+  ).toLowerCase();
+  if (currentRole === "superadmin") return;
 
   const payload = {
     message:
@@ -491,9 +500,6 @@ const logUnexpectedApiError = (endpoint, error) => {
 
   const status = error?.response?.status;
   if (status && (status < 500 || status === 503)) {
-    if (import.meta.env.DEV && status !== 401 && status !== 403) {
-      console.debug(`Handled API response on ${endpoint}: ${status}`);
-    }
     return;
   }
 
@@ -671,6 +677,18 @@ export const api = {
       ...options,
     }),
 
+  put: (endpoint, body, options) =>
+    request(endpoint, {
+      method: "PUT",
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...options,
+    }),
+
   delete: (endpoint, options) =>
     request(endpoint, { method: "DELETE", ...options }),
 };
+
+const initialToken = authSession.getToken();
+if (initialToken) {
+  scheduleAccessTokenRefresh(initialToken);
+}

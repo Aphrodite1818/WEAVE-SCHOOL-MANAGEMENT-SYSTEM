@@ -10,6 +10,8 @@ import {
   DashboardQuickActions,
   DashboardWelcomePanel,
 } from "../../components/dashboard/DashboardPrimitives";
+import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
+import { cn } from "../../utils/cn";
 import { academicService } from "../../services/academicService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
@@ -21,12 +23,13 @@ import {
   cleanText,
 } from "../../utils/academicDashboard";
 import { displayName } from "../../utils/user";
-import ParentChildSelector from "./ParentChildSelector";
+import { normalizeParentChildRecord } from "./parentPageUtils";
 import useParentChildren from "./useParentChildren";
 
 function ParentDashboardPage() {
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Parent";
+  const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
   const {
     children,
     selectedChildId,
@@ -135,7 +138,8 @@ function ParentDashboardPage() {
     latestResult?.academic_session_name || latestCard?.academic_session_name,
     cleanText(latestResult?.academic_term_name || latestCard?.academic_term_name, ""),
   ].filter(Boolean).join(" / ") || "-";
-  const selectedChildName = selectedChildRecord ? displayName(selectedChildRecord.student) : "No child selected";
+  const selectedChild = normalizeParentChildRecord(selectedChildRecord).student;
+  const selectedChildName = selectedChild ? displayName(selectedChild) : "No child selected";
   const linkedStudents = parentStats.linked_students ?? children.length;
   const primaryContacts = parentStats.primary_contacts ?? children.filter((item) => item.link?.is_primary_contact).length;
   const unreadNotices = parentStats.unread_count ?? 0;
@@ -150,11 +154,11 @@ function ParentDashboardPage() {
     unreadNotices > 0
       ? {
           key: "unread-notices",
-          title: "Unread school notices",
-          description: `${unreadNotices} school update${unreadNotices === 1 ? "" : "s"} waiting for you.`,
+          title: "Unread notifications",
+          description: `${unreadNotices} update${unreadNotices === 1 ? "" : "s"} waiting for you.`,
           icon: Bell,
           tone: "primary",
-          to: "/parent/notices",
+          to: "/parent/inbox",
           value: unreadNotices,
         }
       : null,
@@ -192,22 +196,19 @@ function ParentDashboardPage() {
         <>
           <DashboardWelcomePanel
             variant="blue"
-            eyebrow="Parent dashboard"
             title={`Welcome, ${firstName}`}
-            description="Your child's progress, school updates, and next actions."
-            profileCompletion={user?.profile_completed}
+            description="Track the selected child's school progress and updates."
             chips={[
-              { label: "Viewing", value: selectedChildName, tone: selectedChildRecord ? "primary" : "warning" },
-              { label: selectedChildAcademicLabel, tone: selectedChildAcademicLabel !== "-" ? "success" : "neutral" },
+              { label: "Viewing", value: selectedChildName, tone: selectedChildRecord ? "success" : "warning" },
             ]}
-          >
-            <ParentChildSelector
-              linkedChildren={children}
-              selectedChildId={selectedChildId}
-              onSelectChild={setSelectedChildId}
-              academicLabel={selectedChildAcademicLabel}
-            />
-          </DashboardWelcomePanel>
+          />
+
+          <ChildSwitcher
+            linkedChildren={children}
+            selectedChildId={selectedChildId}
+            onSelectChild={setSelectedChildId}
+            academicLabel={selectedChildAcademicLabel}
+          />
 
           <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
@@ -235,12 +236,12 @@ function ParentDashboardPage() {
               to="/parent/report-cards"
             />
             <DashboardMetricCard
-              label="Unread notices"
+              label="Unread notifications"
               value={unreadNotices}
               description="School updates"
               icon={Bell}
               tone={unreadNotices > 0 ? "warning" : "success"}
-              to="/parent/notices"
+              to="/parent/inbox"
             />
           </section>
 
@@ -266,7 +267,18 @@ function ParentDashboardPage() {
               description="Parent tasks or updates that need a quick look."
               items={attentionItems}
               emptyTitle="Everything looks calm"
-              emptyDescription="No unread notices, linking issues, or report-card actions need attention right now."
+              emptyDescription="No unread notifications, linking issues, or report-card actions need attention right now."
+            />
+          </section>
+
+          <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <DashboardCalendarPanel role="parent" actorId={user?.id || user?.email || ""} membershipId={user?.membership_id || ""} tenantId={user?.tenant_id || calendarScope} />
+            <DashboardListCard
+              title="Family calendar"
+              description="Parent-visible events and school day status."
+              items={[]}
+              emptyTitle="No parent action needed"
+              emptyDescription="Published holidays, meetings, closures, and school events will appear in the calendar card."
             />
           </section>
 
@@ -277,7 +289,7 @@ function ParentDashboardPage() {
               { label: "Student linking", description: "Request or manage child access", to: "/parent/student-linking", icon: Link2, tone: "primary" },
               { label: "Results", description: "View academic scores", to: "/parent/results", icon: BarChart3, tone: "success" },
               { label: "Report cards", description: "Open published reports", to: "/parent/report-cards", icon: FileText, tone: "warning" },
-              { label: "Notices", description: "School updates", to: "/parent/notices", icon: Bell, tone: "accent" },
+              { label: "Inbox", description: "Notifications and updates", to: "/parent/inbox", icon: Bell, tone: "accent" },
             ]}
           />
         </>
@@ -292,6 +304,49 @@ function InfoTile({ label, value }) {
       <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
     </div>
+  );
+}
+
+function ChildSwitcher({ linkedChildren = [], selectedChildId, onSelectChild, academicLabel }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-surface/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Viewing child</p>
+        <p className="mt-0.5 truncate text-sm font-semibold text-text">
+          {academicLabel && academicLabel !== "-" ? academicLabel : "Select a linked child"}
+        </p>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1 sm:justify-end sm:pb-0">
+        {linkedChildren.length > 0 ? (
+          linkedChildren.map((entry, index) => {
+            const { student, link } = normalizeParentChildRecord(entry);
+            const studentId = student?.id;
+            const isActive = studentId === selectedChildId;
+            return (
+              <button
+                key={link.id || studentId || `linked-child-${index}`}
+                type="button"
+                onClick={() => studentId && onSelectChild(studentId)}
+                disabled={!studentId}
+                className={cn(
+                  "min-h-10 shrink-0 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition",
+                  isActive
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                    : "border-border/70 bg-surface text-text-soft hover:border-primary/40 hover:text-text",
+                )}
+              >
+                {displayName(student)}
+              </button>
+            );
+          })
+        ) : (
+          <p className="rounded-xl border border-dashed border-border px-3 py-2 text-sm text-text-muted">
+            No linked children yet
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 

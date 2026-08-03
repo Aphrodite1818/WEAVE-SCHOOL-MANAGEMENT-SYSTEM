@@ -6,17 +6,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.bulk_imports.models import (
-    ImportJob,
-    ImportNotificationStatus,
-)
-from app.modules.bulk_imports.repository import ImportNotificationRepository
-from app.modules.bulk_imports.schemas import ImportNotificationCreate
+from app.modules.bulk_imports.models import ImportJob
+from app.modules.communications.enums import CommunicationActorType, NotificationSourceType
+from app.modules.communications.notification_service import NotificationService
+from app.modules.communications.recipient_resolver import ResolvedRecipient
+from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 
 
 def build_completion_title(*, import_job: ImportJob) -> str:
@@ -58,8 +57,34 @@ def build_failure_message(*, import_job: ImportJob) -> str:
     )
 
 
-class BulkImportNotificationService:
-    """Create import-specific admin notifications."""
+class BulkImportCommunicationService:
+    """Deliver bulk-import events into the unified notification inbox."""
+
+    @staticmethod
+    async def _recipients(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        recipient_admin_id: UUID | None,
+    ) -> list[ResolvedRecipient]:
+        stmt = select(TenantAdmin).where(
+            TenantAdmin.tenant_id == tenant_id,
+            TenantAdmin.is_active.is_(True),
+            TenantAdmin.is_verified.is_(True),
+            TenantAdmin.account_status == TenantAdminStatus.ACTIVE,
+        )
+        if recipient_admin_id is not None:
+            stmt = stmt.where(TenantAdmin.id == recipient_admin_id)
+        rows = (await db.execute(stmt)).scalars().all()
+        return [
+            ResolvedRecipient(
+                actor_type=CommunicationActorType.TENANT_ADMIN,
+                actor_id=row.id,
+                tenant_id=row.tenant_id,
+                label=row.email,
+            )
+            for row in rows
+        ]
 
     @staticmethod
     async def create_completion_notification(
@@ -71,19 +96,21 @@ class BulkImportNotificationService:
     ):
         """Create an in-app notification for a completed import."""
 
-        notification = await ImportNotificationRepository.create_notification(
-            db=db,
+        recipients = await BulkImportCommunicationService._recipients(
+            db,
             tenant_id=tenant_id,
-            notification_data=ImportNotificationCreate(
-                import_job_id=import_job.id,
-                recipient_admin_id=recipient_admin_id,
-                status=ImportNotificationStatus.SENT,
-                title=build_completion_title(import_job=import_job),
-                message=build_completion_message(import_job=import_job),
-            ),
+            recipient_admin_id=recipient_admin_id,
         )
-        notification.sent_at = datetime.now(timezone.utc)
-        return await ImportNotificationRepository.save(db=db, notification=notification)
+        return await NotificationService.deliver_system_event(
+            db,
+            recipients=recipients,
+            source_type=NotificationSourceType.BULK_IMPORT,
+            source_id=import_job.id,
+            title=build_completion_title(import_job=import_job),
+            preview=build_completion_message(import_job=import_job),
+            action_path=f"/admin/imports/history/{import_job.id}",
+            tenant_id=tenant_id,
+        )
 
     @staticmethod
     async def create_failure_notification(
@@ -95,16 +122,18 @@ class BulkImportNotificationService:
     ):
         """Create an in-app notification for a failed import."""
 
-        notification = await ImportNotificationRepository.create_notification(
-            db=db,
+        recipients = await BulkImportCommunicationService._recipients(
+            db,
             tenant_id=tenant_id,
-            notification_data=ImportNotificationCreate(
-                import_job_id=import_job.id,
-                recipient_admin_id=recipient_admin_id,
-                status=ImportNotificationStatus.SENT,
-                title=build_failure_title(import_job=import_job),
-                message=build_failure_message(import_job=import_job),
-            ),
+            recipient_admin_id=recipient_admin_id,
         )
-        notification.sent_at = datetime.now(timezone.utc)
-        return await ImportNotificationRepository.save(db=db, notification=notification)
+        return await NotificationService.deliver_system_event(
+            db,
+            recipients=recipients,
+            source_type=NotificationSourceType.BULK_IMPORT,
+            source_id=import_job.id,
+            title=build_failure_title(import_job=import_job),
+            preview=build_failure_message(import_job=import_job),
+            action_path=f"/admin/imports/history/{import_job.id}",
+            tenant_id=tenant_id,
+        )

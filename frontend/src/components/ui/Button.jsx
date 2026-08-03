@@ -1,9 +1,9 @@
 import { cn } from "../../utils/cn";
 
 const variantStyles = {
-  primary: "bg-gradient-to-b from-primary/90 to-primary text-text-inverse shadow-sm shadow-primary/20 hover:from-primary hover:to-primary-hover border border-primary/20",
+  primary: "bg-gradient-to-b from-primary/90 to-primary text-primary-foreground shadow-sm shadow-primary/20 hover:from-primary hover:to-primary-hover border border-primary/20",
   secondary: "bg-gradient-to-b from-secondary/90 to-secondary text-text-inverse shadow-sm hover:from-secondary hover:to-secondary-hover border border-secondary/20",
-  accent: "bg-gradient-to-b from-accent/90 to-accent text-text-inverse shadow-sm shadow-accent/20 hover:from-accent hover:to-accent-hover border border-accent/20",
+  accent: "bg-gradient-to-b from-accent/90 to-accent text-accent-foreground shadow-sm shadow-accent/20 hover:from-accent hover:to-accent-hover border border-accent/20",
   outline: "border border-border/80 bg-surface text-text-soft shadow-sm hover:border-border hover:bg-surface-muted/50 hover:text-text",
   ghost: "bg-transparent text-text-soft hover:bg-surface-muted/50 hover:text-text",
   danger: "bg-gradient-to-b from-error/90 to-error text-text-inverse shadow-sm hover:from-error hover:to-error-hover border border-error/20",

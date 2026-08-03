@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { MessageCircleMore } from "lucide-react";
+import { authSession } from "../../services/api";
 import Button from "../ui/Button";
 import AiChatPanel from "./AiChatPanel";
 
@@ -10,13 +11,15 @@ const isMobileViewport = () => {
 
 const isMobileBottomNavVisible = () => {
   if (typeof document === "undefined" || !isMobileViewport()) return false;
-  // Mirrors the CSS rule in mobileDashboard.css that actually shows the bottom
-  // nav (mobile viewport + installed/standalone PWA). The nav element itself
-  // is always mounted now, so its DOM presence no longer implies visibility.
   return document.documentElement.dataset.standalonePwa === "true";
 };
 
 function AiChatLauncher() {
+  const user = authSession.getUser() || {};
+  const actorType = String(user?.actor_type || "").toLowerCase();
+  const isGlobalAccount =
+    ["parent_account", "teacher_account"].includes(actorType) &&
+    !user?.tenant_id;
   const [open, setOpen] = useState(false);
   const [hasBottomNav, setHasBottomNav] = useState(isMobileViewport);
   const openPanel = useCallback(() => setOpen(true), []);
@@ -38,6 +41,8 @@ function AiChatLauncher() {
       window.removeEventListener("orientationchange", updateDisplayMode);
     };
   }, []);
+
+  if (isGlobalAccount) return null;
 
   return (
     <>

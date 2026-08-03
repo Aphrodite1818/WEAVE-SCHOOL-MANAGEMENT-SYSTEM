@@ -6,11 +6,11 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 from enum import Enum as PyEnum
-from secrets import token_urlsafe
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum as SQLEnum,
@@ -26,7 +26,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
 
 if TYPE_CHECKING:
-    from app.modules.parents.models import Parent
+    from app.modules.classes.models import ClassRoom
+    from app.modules.parents.models import ParentInvitation, ParentMembership
+    from app.modules.student_academics.models import AcademicSession
+
+
+def enum_values(enum_cls: type[PyEnum]) -> list[Any]:
+    """Persist enum values rather than enum member names."""
+
+    return [item.value for item in enum_cls]
 
 
 class Gender(str, PyEnum):
@@ -39,6 +47,7 @@ class AcademicStatus(str, PyEnum):
     WITHDRAWN = "withdrawn"
     SUSPENDED = "suspended"
     GRADUATED = "graduated"
+    EXPELLED = "expelled"
 
 
 class ParentRelationship(str, PyEnum):
@@ -47,6 +56,36 @@ class ParentRelationship(str, PyEnum):
     GUARDIAN = "guardian"
     SPONSOR = "sponsor"
     OTHER = "other"
+
+
+class StudentParentLinkStatus(str, PyEnum):
+    """Access state for one verified parent-child relationship."""
+
+    ACTIVE = "active"
+    READ_ONLY = "read_only"
+    ALUMNI_READ_ONLY = "alumni_read_only"
+    ENDED = "ended"
+
+
+class ParentLinkVerifiedByType(str, PyEnum):
+    """Actor category that verified a parent-child relationship."""
+
+    STUDENT = "student"
+    TENANT_ADMIN = "tenant_admin"
+    SYSTEM = "system"
+
+
+class StudentEnrollmentOutcome(str, PyEnum):
+    """How a student entered or left one enrolment record."""
+
+    ENROLLED = "enrolled"
+    PROMOTED = "promoted"
+    REPEATED = "repeated"
+    RECLASSIFIED = "reclassified"
+    WITHDRAWN = "withdrawn"
+    EXPELLED = "expelled"
+    GRADUATED = "graduated"
+    ARCHIVED = "archived"
 
 
 class StudentProfileStatus(str, PyEnum):
@@ -76,6 +115,7 @@ class StudentParentLinkRequestStatus(str, PyEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 class Student(BaseModel):
@@ -83,34 +123,17 @@ class Student(BaseModel):
 
     __tablename__ = "students"
 
-    admission_number: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-    )
-
-    # Nullable because a new student may not have created their real password yet.
-    # Initial access is handled through StudentAccessCode.
-    password_hash: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-    )
-
-    first_name: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
-
-    last_name: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
+    admission_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     account_status: Mapped[StudentAccountStatus] = mapped_column(
         SQLEnum(
             StudentAccountStatus,
             name="student_account_status",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=False,
         default=StudentAccountStatus.ACTIVE,
@@ -123,94 +146,85 @@ class Student(BaseModel):
         default=False,
         server_default="false",
     )
-
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
         server_default="true",
     )
-
     password_reset_required: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
         server_default="true",
     )
-
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
-
-    # Admin-controlled field. Students should not be allowed to edit this
-    # through student self-service schemas.
-    date_of_birth: Mapped[date | None] = mapped_column(
-        Date,
-        nullable=True,
-    )
-
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     gender: Mapped[Gender | None] = mapped_column(
         SQLEnum(
             Gender,
             name="studentgender",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=True,
     )
-
-    # Admin-controlled for now. Keep length limited.
-    state_of_origin: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
-
-    passport_photo_url: Mapped[str | None] = mapped_column(
-        String(500),
-        nullable=True,
-    )
-
+    state_of_origin: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    passport_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     admission_date: Mapped[date] = mapped_column(
         Date,
         nullable=False,
         server_default=text("CURRENT_DATE"),
     )
-
-    graduation_date: Mapped[date | None] = mapped_column(
-        Date,
-        nullable=True,
-    )
-
+    graduation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     class_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("classes.id", ondelete="RESTRICT"),
         nullable=True,
     )
-
-    arm: Mapped[str | None] = mapped_column(
-        String(20),
-        nullable=True,
-    )
-
+    arm: Mapped[str | None] = mapped_column(String(20), nullable=True)
     status: Mapped[AcademicStatus] = mapped_column(
         SQLEnum(
             AcademicStatus,
             name="academicstatus",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=False,
         default=AcademicStatus.ACTIVE,
         server_default=AcademicStatus.ACTIVE.value,
     )
-
+    promotion_hold: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    archive_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     profile_status: Mapped[StudentProfileStatus] = mapped_column(
         SQLEnum(
             StudentProfileStatus,
             name="studentprofilestatus",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=False,
         default=StudentProfileStatus.INCOMPLETE,
@@ -220,32 +234,34 @@ class Student(BaseModel):
     parent_links: Mapped[list["StudentParentLink"]] = relationship(
         "StudentParentLink",
         back_populates="student",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
-
-    link_codes: Mapped[list["StudentLinkCode"]] = relationship(
-        "StudentLinkCode",
-        back_populates="student",
-        cascade="all, delete-orphan",
-    )
-
     parent_link_requests: Mapped[list["StudentParentLinkRequest"]] = relationship(
         "StudentParentLinkRequest",
         back_populates="student",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
-
     access_codes: Mapped[list["StudentAccessCode"]] = relationship(
         "StudentAccessCode",
         back_populates="student",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
-
-    @property
-    def parents(self) -> list["Parent"]:
-        """Return linked parents."""
-
-        return [link.parent for link in self.parent_links if link.parent is not None]
+    enrollments: Mapped[list["StudentEnrollment"]] = relationship(
+        "StudentEnrollment",
+        back_populates="student",
+        cascade="save-update, merge",
+        passive_deletes=True,
+        order_by="StudentEnrollment.started_on",
+    )
+    parent_invitations: Mapped[list["ParentInvitation"]] = relationship(
+        "ParentInvitation",
+        primaryjoin="Student.id == foreign(ParentInvitation.student_id)",
+        cascade="save-update, merge",
+        viewonly=True,
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -253,10 +269,143 @@ class Student(BaseModel):
             "admission_number",
             name="uq_students_tenant_admission_number",
         ),
+        CheckConstraint(
+            """
+            (
+                is_archived = false
+                AND archived_at IS NULL
+                AND archived_by_admin_id IS NULL
+                AND archive_reason IS NULL
+            )
+            OR
+            (
+                is_archived = true
+                AND archived_at IS NOT NULL
+                AND archive_reason IS NOT NULL
+            )
+            """,
+            name="ck_students_archive_consistency",
+        ),
+        CheckConstraint(
+            """
+            status NOT IN ('withdrawn', 'expelled', 'graduated')
+            OR class_id IS NULL
+            """,
+            name="ck_students_terminal_status_has_no_current_class",
+        ),
+        CheckConstraint(
+            """
+            status <> 'graduated'
+            OR graduation_date IS NOT NULL
+            """,
+            name="ck_students_graduated_has_date",
+        ),
         Index("ix_students_tenant_admission_number", "tenant_id", "admission_number"),
         Index("ix_students_tenant_class", "tenant_id", "class_id"),
         Index("ix_students_tenant_status", "tenant_id", "status"),
         Index("ix_students_tenant_account_status", "tenant_id", "account_status"),
+        Index("ix_students_tenant_archived", "tenant_id", "is_archived"),
+        Index(
+            "ix_students_tenant_class_status_archived",
+            "tenant_id",
+            "class_id",
+            "status",
+            "is_archived",
+        ),
+    )
+
+
+class StudentEnrollment(BaseModel):
+    """Historical record of one student's placement in one class and session."""
+
+    __tablename__ = "student_enrollments"
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("classes.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    academic_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_sessions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    started_on: Mapped[date] = mapped_column(Date, nullable=False)
+    ended_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_current: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    outcome: Mapped[StudentEnrollmentOutcome] = mapped_column(
+        SQLEnum(
+            StudentEnrollmentOutcome,
+            name="student_enrollment_outcome",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+        default=StudentEnrollmentOutcome.ENROLLED,
+        server_default=StudentEnrollmentOutcome.ENROLLED.value,
+    )
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    changed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    student: Mapped["Student"] = relationship("Student", back_populates="enrollments")
+    classroom: Mapped["ClassRoom"] = relationship("ClassRoom", foreign_keys=[class_id])
+    academic_session: Mapped["AcademicSession"] = relationship(
+        "AcademicSession",
+        foreign_keys=[academic_session_id],
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            """
+            (
+                is_current = true
+                AND ended_on IS NULL
+            )
+            OR
+            (
+                is_current = false
+                AND ended_on IS NOT NULL
+            )
+            """,
+            name="ck_student_enrollment_current_end_consistency",
+        ),
+        CheckConstraint(
+            "ended_on IS NULL OR ended_on >= started_on",
+            name="ck_student_enrollment_date_order",
+        ),
+        Index(
+            "uq_student_enrollments_one_current",
+            "tenant_id",
+            "student_id",
+            unique=True,
+            postgresql_where=text("is_current = true"),
+        ),
+        Index("ix_student_enrollments_tenant_student", "tenant_id", "student_id"),
+        Index("ix_student_enrollments_tenant_class", "tenant_id", "class_id"),
+        Index(
+            "ix_student_enrollments_tenant_session",
+            "tenant_id",
+            "academic_session_id",
+        ),
+        Index(
+            "ix_student_enrollments_student_session",
+            "student_id",
+            "academic_session_id",
+        ),
     )
 
 
@@ -267,121 +416,125 @@ class StudentAccessCode(BaseModel):
 
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("students.id", ondelete="CASCADE"),
+        ForeignKey("students.id", ondelete="RESTRICT"),
         nullable=False,
     )
-
-    # Store a deterministic digest of the code, not the plain code.
-    # The plain code should only be returned once to the admin.
-    code_digest: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-    )
-
+    code_digest: Mapped[str] = mapped_column(String(255), nullable=False)
     purpose: Mapped[StudentAccessCodePurpose] = mapped_column(
         SQLEnum(
             StudentAccessCodePurpose,
             name="student_access_code_purpose",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=False,
     )
-
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_used: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=False,
         server_default="false",
     )
-
-    used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
 
-    student: Mapped["Student"] = relationship(
-        "Student",
-        back_populates="access_codes",
-    )
+    student: Mapped["Student"] = relationship("Student", back_populates="access_codes")
 
     __table_args__ = (
         Index("ix_student_access_codes_tenant_student", "tenant_id", "student_id"),
         Index("ix_student_access_codes_tenant_code_digest", "tenant_id", "code_digest"),
-        Index("ix_student_access_codes_tenant_student_used", "tenant_id", "student_id", "is_used"),
+        Index(
+            "ix_student_access_codes_tenant_student_used",
+            "tenant_id",
+            "student_id",
+            "is_used",
+        ),
         Index("ix_student_access_codes_expires_at", "expires_at"),
         Index("ix_student_access_codes_is_used", "is_used"),
     )
 
 
 class StudentParentLink(BaseModel):
-    """Many-to-many link between students and parents."""
+    """Verified tenant-scoped relationship granting access to one student."""
 
     __tablename__ = "student_parent_links"
 
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("students.id", ondelete="CASCADE"),
+        ForeignKey("students.id", ondelete="RESTRICT"),
         nullable=False,
     )
-
-    parent_id: Mapped[uuid.UUID] = mapped_column(
+    parent_membership_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("parents.id", ondelete="CASCADE"),
+        ForeignKey(f"{PUBLIC_SCHEMA}.parent_memberships.id", ondelete="RESTRICT"),
         nullable=False,
     )
-
     relationship_type: Mapped[ParentRelationship] = mapped_column(
         SQLEnum(
             ParentRelationship,
             name="parentrelationship",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=False,
         default=ParentRelationship.GUARDIAN,
         server_default=ParentRelationship.GUARDIAN.value,
     )
-
+    status: Mapped[StudentParentLinkStatus] = mapped_column(
+        SQLEnum(
+            StudentParentLinkStatus,
+            name="student_parent_link_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+        default=StudentParentLinkStatus.ACTIVE,
+        server_default=StudentParentLinkStatus.ACTIVE.value,
+    )
     is_primary_contact: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=False,
         server_default="false",
     )
-
     receives_academic_updates: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
         server_default="true",
     )
-
     receives_fee_updates: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
         server_default="true",
     )
-
-    student: Mapped["Student"] = relationship(
-        "Student",
-        back_populates="parent_links",
+    verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
+    verified_by_type: Mapped[ParentLinkVerifiedByType] = mapped_column(
+        SQLEnum(
+            ParentLinkVerifiedByType,
+            name="parent_link_verified_by_type",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+    )
+    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    parent: Mapped["Parent"] = relationship(
-        "Parent",
+    student: Mapped["Student"] = relationship("Student", back_populates="parent_links")
+    parent_membership: Mapped["ParentMembership"] = relationship(
+        "ParentMembership",
         back_populates="student_links",
     )
 
@@ -389,169 +542,176 @@ class StudentParentLink(BaseModel):
         UniqueConstraint(
             "tenant_id",
             "student_id",
-            "parent_id",
-            name="uq_student_parent_tenant_student_parent",
+            "parent_membership_id",
+            name="uq_student_parent_link_tenant_student_membership",
+        ),
+        CheckConstraint(
+            """
+            (
+                status IN ('active', 'read_only', 'alumni_read_only')
+                AND ended_at IS NULL
+            )
+            OR
+            (
+                status = 'ended'
+                AND ended_at IS NOT NULL
+            )
+            """,
+            name="ck_student_parent_link_status_end_consistency",
+        ),
+        CheckConstraint(
+            """
+            (
+                status = 'ended'
+                AND end_reason IS NOT NULL
+            )
+            OR status <> 'ended'
+            """,
+            name="ck_student_parent_link_ended_reason",
         ),
         Index("ix_student_parent_links_tenant_student", "tenant_id", "student_id"),
-        Index("ix_student_parent_links_tenant_parent", "tenant_id", "parent_id"),
+        Index(
+            "ix_student_parent_links_tenant_membership",
+            "tenant_id",
+            "parent_membership_id",
+        ),
+        Index("ix_student_parent_links_tenant_status", "tenant_id", "status"),
+        Index(
+            "uq_student_parent_links_primary_contact",
+            "tenant_id",
+            "student_id",
+            unique=True,
+            postgresql_where=text(
+                "is_primary_contact = true "
+                "AND status IN ('active', 'read_only', 'alumni_read_only')"
+            ),
+        ),
     )
 
 
 class StudentParentLinkRequest(BaseModel):
-    """Pending parent request that requires student approval before linking."""
+    """Approval request produced from a valid ParentInvitation."""
 
     __tablename__ = "student_parent_link_requests"
 
+    invitation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.parent_invitations.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("students.id", ondelete="CASCADE"),
+        ForeignKey("students.id", ondelete="RESTRICT"),
         nullable=False,
     )
-
-    parent_id: Mapped[uuid.UUID] = mapped_column(
+    parent_account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("parents.id", ondelete="CASCADE"),
+        ForeignKey(f"{PUBLIC_SCHEMA}.parent_accounts.id", ondelete="RESTRICT"),
         nullable=False,
     )
-
-    admission_number_snapshot: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
+    parent_membership_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.parent_memberships.id", ondelete="RESTRICT"),
+        nullable=True,
     )
-
+    admission_number_snapshot: Mapped[str] = mapped_column(String(50), nullable=False)
     relationship_type: Mapped[ParentRelationship] = mapped_column(
         SQLEnum(
             ParentRelationship,
             name="parentrelationship",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=False,
         default=ParentRelationship.GUARDIAN,
         server_default=ParentRelationship.GUARDIAN.value,
     )
-
     status: Mapped[StudentParentLinkRequestStatus] = mapped_column(
         SQLEnum(
             StudentParentLinkRequestStatus,
             name="student_parent_link_request_status",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+            values_callable=enum_values,
         ),
         nullable=False,
         default=StudentParentLinkRequestStatus.PENDING,
         server_default=StudentParentLinkRequestStatus.PENDING.value,
     )
-
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-
-    responded_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    responded_by_type: Mapped[ParentLinkVerifiedByType | None] = mapped_column(
+        SQLEnum(
+            ParentLinkVerifiedByType,
+            name="parent_link_verified_by_type",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
         nullable=True,
     )
+    responded_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    student: Mapped["Student"] = relationship(
-        "Student",
-        back_populates="parent_link_requests",
-    )
-
-    parent: Mapped["Parent"] = relationship(
-        "Parent",
+    student: Mapped["Student"] = relationship("Student", back_populates="parent_link_requests")
+    parent_membership: Mapped["ParentMembership | None"] = relationship(
+        "ParentMembership",
         back_populates="student_link_requests",
     )
 
     __table_args__ = (
+        UniqueConstraint(
+            "invitation_id",
+            name="uq_student_parent_link_requests_invitation",
+        ),
+        CheckConstraint(
+            """
+            (
+                status = 'pending'
+                AND responded_at IS NULL
+                AND responded_by_type IS NULL
+                AND responded_by_id IS NULL
+            )
+            OR
+            (
+                status <> 'pending'
+                AND responded_at IS NOT NULL
+            )
+            """,
+            name="ck_parent_link_request_response_consistency",
+        ),
+        CheckConstraint(
+            "status <> 'rejected' OR rejection_reason IS NOT NULL",
+            name="ck_parent_link_request_rejection_reason",
+        ),
         Index(
             "ix_student_parent_link_requests_tenant_student",
             "tenant_id",
             "student_id",
         ),
         Index(
-            "ix_student_parent_link_requests_tenant_parent",
+            "ix_student_parent_link_requests_tenant_membership",
             "tenant_id",
-            "parent_id",
+            "parent_membership_id",
+        ),
+        Index(
+            "ix_student_parent_link_requests_tenant_account",
+            "tenant_id",
+            "parent_account_id",
         ),
         Index(
             "ix_student_parent_link_requests_tenant_status",
             "tenant_id",
             "status",
         ),
-    )
-
-
-class StudentLinkCode(BaseModel):
-    """Code used by parents to link themselves to a student."""
-
-    __tablename__ = "student_link_codes"
-
-    student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("students.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    code: Mapped[str] = mapped_column(
-        String(80),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
-
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    max_use: Mapped[int] = mapped_column(
-        default=1,
-        nullable=False,
-    )
-
-    use_count: Mapped[int] = mapped_column(
-        default=0,
-        nullable=False,
-    )
-
-    student: Mapped["Student"] = relationship(
-        "Student",
-        back_populates="link_codes",
-    )
-
-    @staticmethod
-    def generate_code() -> str:
-        """Generate a parent-student linking code."""
-
-        return f"STU{token_urlsafe(6).upper()}"
-
-    @property
-    def is_expired(self) -> bool:
-        """Return whether the link code has expired."""
-
-        return datetime.now(timezone.utc) >= self.expires_at
-
-    @property
-    def is_exhausted(self) -> bool:
-        """Return whether the link code has reached max use."""
-
-        return self.use_count >= self.max_use
-
-    @property
-    def is_active(self) -> bool:
-        """Return whether the link code can still be used."""
-
-        return self.used_at is None and not self.is_expired and not self.is_exhausted
-
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "code", name="uq_student_link_codes_tenant_code"),
-        Index("ix_student_link_codes_tenant_student", "tenant_id", "student_id"),
-        Index("ix_student_link_codes_tenant_code", "tenant_id", "code"),
+        Index(
+            "uq_student_parent_link_requests_pending_account_student",
+            "tenant_id",
+            "student_id",
+            "parent_account_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
     )
