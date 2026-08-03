@@ -25,7 +25,30 @@ const syncStandaloneDisplayMode = () => {
   document.documentElement.dataset.standalonePwa = String(isStandalonePwa());
 };
 
+const registerPwaServiceWorker = () => {
+  if (
+    !import.meta.env.PROD ||
+    !window.isSecureContext ||
+    !("serviceWorker" in window.navigator)
+  ) {
+    return;
+  }
+
+  window.addEventListener(
+    "load",
+    () => {
+      window.navigator.serviceWorker
+        .register("/sw.js", { scope: "/", updateViaCache: "none" })
+        .catch((error) => {
+          console.warn("PWA service worker registration failed", error);
+        });
+    },
+    { once: true },
+  );
+};
+
 syncStandaloneDisplayMode();
+registerPwaServiceWorker();
 standaloneQuery?.addEventListener?.("change", syncStandaloneDisplayMode);
 window.addEventListener("pageshow", syncStandaloneDisplayMode);
 document.addEventListener("visibilitychange", syncStandaloneDisplayMode);

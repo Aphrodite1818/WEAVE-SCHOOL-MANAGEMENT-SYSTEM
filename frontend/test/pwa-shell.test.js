@@ -42,7 +42,7 @@ test("standalone PWA scrolling and dock geometry have one final authority", asyn
   assert.ok(pwaIndex > dashboardIndex && pwaIndex > directoryIndex);
 });
 
-test("Android receives a scoped standalone web app manifest", async () => {
+test("Android and iOS receive installable PNG app metadata", async () => {
   const [manifestSource, html] = await Promise.all([
     read("public/manifest.json"),
     read("index.html"),
@@ -54,9 +54,72 @@ test("Android receives a scoped standalone web app manifest", async () => {
   assert.equal(manifest.scope, "/");
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.prefer_related_applications, false);
-  assert.ok(manifest.icons.some((icon) => icon.purpose === "any"));
-  assert.ok(manifest.icons.some((icon) => icon.purpose === "maskable"));
-  assert.match(html, /rel="manifest"/);
+  assert.ok(
+    manifest.icons.some(
+      (icon) =>
+        icon.type === "image/png" &&
+        icon.sizes === "192x192" &&
+        icon.purpose === "any",
+    ),
+  );
+  assert.ok(
+    manifest.icons.some(
+      (icon) =>
+        icon.type === "image/png" &&
+        icon.sizes === "512x512" &&
+        icon.purpose === "any",
+    ),
+  );
+  assert.ok(
+    manifest.icons.some(
+      (icon) =>
+        icon.type === "image/png" &&
+        icon.sizes === "512x512" &&
+        icon.purpose === "maskable",
+    ),
+  );
+  assert.match(html, /rel="manifest"[^>]+manifest\.json/);
+  assert.match(html, /rel="apple-touch-icon"[^>]+weave-192\.png/);
+  assert.match(html, /rel="icon"[^>]+image\/png[^>]+weave-192\.png/);
   assert.match(html, /name="mobile-web-app-capable" content="yes"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
+});
+
+test("the service worker enables detection without caching or intercepting the app", async () => {
+  const [mainSource, serviceWorker, vercelSource] = await Promise.all([
+    read("src/main.jsx"),
+    read("public/sw.js"),
+    read("vercel.json"),
+  ]);
+  const vercelConfig = JSON.parse(vercelSource);
+
+  assert.match(mainSource, /import\.meta\.env\.PROD/);
+  assert.match(mainSource, /serviceWorker[\s\S]*?register\("\/sw\.js"/);
+  assert.match(serviceWorker, /addEventListener\("install"/);
+  assert.match(serviceWorker, /addEventListener\("activate"/);
+  assert.match(serviceWorker, /addEventListener\("fetch"/);
+  assert.doesNotMatch(serviceWorker, /respondWith\s*\(/);
+  assert.doesNotMatch(serviceWorker, /caches\.open\s*\(/);
+
+  const manifestHeaders = vercelConfig.headers.find(
+    (entry) => entry.source === "/manifest.json",
+  );
+  const serviceWorkerHeaders = vercelConfig.headers.find(
+    (entry) => entry.source === "/sw.js",
+  );
+  assert.ok(manifestHeaders);
+  assert.ok(serviceWorkerHeaders);
+  assert.ok(
+    manifestHeaders.headers.some(
+      (header) =>
+        header.key === "Content-Type" &&
+        header.value.startsWith("application/manifest+json"),
+    ),
+  );
+  assert.ok(
+    serviceWorkerHeaders.headers.some(
+      (header) =>
+        header.key === "Service-Worker-Allowed" && header.value === "/",
+    ),
+  );
 });
