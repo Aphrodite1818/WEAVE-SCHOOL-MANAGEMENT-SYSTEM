@@ -1,0 +1,85 @@
+@media (max-width: 767px) {
+  html[data-standalone-pwa="true"],
+  html[data-standalone-pwa="true"] body,
+  html[data-standalone-pwa="true"] #root {
+    touch-action: auto;
+  }
+
+  html[data-standalone-pwa="true"] body {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html[data-standalone-pwa="true"] #root {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-scroll-viewport,
+  html[data-standalone-pwa="true"] [data-pwa-scroll-root="true"],
+  html[data-standalone-pwa="true"] [data-guide-page="true"] {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: auto !important;
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
+    overflow-y: auto !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-guide-page="true"] {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-guide-page="true"] > main {
+    min-height: max-content;
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+  }
+
+  html[data-standalone-pwa="true"] .public-page-shell,
+  html[data-standalone-pwa="true"] .auth-surface {
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: visible;
+    touch-action: auto;
+  }
+
+  html[data-standalone-pwa="true"] [class*="overflow-x-auto"],
+  html[data-standalone-pwa="true"] [class*="overflow-y-auto"],
+  html[data-standalone-pwa="true"] .chart-interactive-scroll,
+  html[data-standalone-pwa="true"] .mobile-scroll-list,
+  html[data-standalone-pwa="true"] .table-wrap,
+  html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
+    -webkit-overflow-scrolling: touch;
+    touch-action: auto !important;
+  }
+
+  html[data-modal-open="true"] body,
+  html[data-modal-open="true"] #dashboard-scroll-viewport,
+  html[data-modal-open="true"] [data-guide-page="true"] {
+    overflow: hidden !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    touch-action: pan-y pinch-zoom !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
+    transform: translate3d(
+      0,
+      var(--pwa-fixed-bottom-compensation, 0px),
+      0
+    ) !important;
+    -webkit-transform: translate3d(
+      0,
+      var(--pwa-fixed-bottom-compensation, 0px),
+      0
+    ) !important;
+  }
+}
