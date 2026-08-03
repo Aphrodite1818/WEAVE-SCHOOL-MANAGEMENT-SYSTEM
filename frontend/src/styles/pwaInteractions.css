@@ -69,17 +69,4 @@
     overscroll-behavior: contain;
     touch-action: pan-y pinch-zoom !important;
   }
-
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
-    transform: translate3d(
-      0,
-      var(--pwa-fixed-bottom-compensation, 0px),
-      0
-    ) !important;
-    -webkit-transform: translate3d(
-      0,
-      var(--pwa-fixed-bottom-compensation, 0px),
-      0
-    ) !important;
-  }
 }
