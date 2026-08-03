@@ -1,53 +1,4 @@
 @media (max-width: 767px) {
-  /*
-   * Installed mode uses the same scroll model as mobile web. The dashboard
-   * viewport owns page scrolling; the PWA dock is a separate fixed layer.
-   */
-  html[data-standalone-pwa="true"],
-  html[data-standalone-pwa="true"] body,
-  html[data-standalone-pwa="true"] #root {
-    touch-action: pan-y pinch-zoom !important;
-  }
-
-  html[data-standalone-pwa="true"],
-  html[data-standalone-pwa="true"] body {
-    min-height: 100%;
-    overflow-x: hidden !important;
-    overscroll-behavior-y: none;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  html[data-standalone-pwa="true"] #root {
-    min-height: 100dvh;
-  }
-
-  html[data-standalone-pwa="true"] #dashboard-scroll-viewport,
-  html[data-standalone-pwa="true"] [data-pwa-scroll-root="true"],
-  html[data-standalone-pwa="true"] [data-guide-page="true"] {
-    min-height: 0;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain !important;
-    touch-action: pan-y pinch-zoom !important;
-  }
-
-  html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
-    height: 100%;
-    position: relative;
-  }
-
-  html[data-standalone-pwa="true"] [data-guide-page="true"] {
-    height: 100dvh !important;
-  }
-
-  html[data-standalone-pwa="true"] .public-page-shell,
-  html[data-standalone-pwa="true"] .auth-surface {
-    min-height: 100dvh;
-    overflow-x: hidden;
-    overflow-y: visible !important;
-    touch-action: pan-y pinch-zoom !important;
-  }
-
   html[data-standalone-pwa="true"] [class*="overflow-x-auto"],
   html[data-standalone-pwa="true"] [class*="overflow-y-auto"],
   html[data-standalone-pwa="true"] .chart-interactive-scroll,
@@ -55,61 +6,6 @@
   html[data-standalone-pwa="true"] .table-wrap,
   html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
     -webkit-overflow-scrolling: touch;
-  }
-
-  html[data-modal-open="true"] body,
-  html[data-modal-open="true"] #dashboard-scroll-viewport,
-  html[data-modal-open="true"] [data-guide-page="true"] {
-    overflow: hidden !important;
-  }
-
-  html[data-standalone-pwa="true"] [data-modal-scroll-container="true"] {
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    touch-action: pan-y pinch-zoom !important;
-  }
-
-  /*
-   * Authoritative floating dock geometry for Android and iOS. The transparent
-   * outer layer never owns scrolling; only the pill receives navigation taps.
-   */
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
-    position: fixed !important;
-    inset-inline: 0 !important;
-    top: auto !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 0.75rem max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    z-index: 70 !important;
-    translate: none !important;
-    transform: translate3d(0, 0, 0) !important;
-    -webkit-transform: translate3d(0, 0, 0) !important;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    contain: layout paint;
-    isolation: isolate;
-    overscroll-behavior: contain !important;
-    touch-action: pan-y pinch-zoom !important;
-    pointer-events: none;
-  }
-
-  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
-    width: 100% !important;
-    max-width: 30rem !important;
-    margin-inline: auto !important;
-    border: 1px solid rgb(var(--color-border) / 0.62) !important;
-    border-radius: 2.2rem !important;
-    background: rgb(var(--color-surface) / 0.96) !important;
-    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18) !important;
-    -webkit-backdrop-filter: blur(18px);
-    backdrop-filter: blur(18px);
-    overflow: hidden;
-    pointer-events: auto;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] *,
@@ -150,26 +46,5 @@
   [data-mobile-bottom-nav="true"] a[href="/admin/academic"] > span:last-child::after {
     content: "Academics";
     font-size: 10.5px;
-  }
-
-  /* Keep the subscription introduction compact so plan cards appear immediately. */
-  .public-page-shell > main:has(article[id^="subscription-plan-"]) > section:first-child {
-    min-height: auto !important;
-    height: auto !important;
-  }
-
-  /* Restore the original vertical subscription-card layout on mobile. */
-  section:has(> article[id^="subscription-plan-"]) {
-    grid-auto-flow: row !important;
-    grid-auto-columns: auto !important;
-    grid-template-columns: minmax(0, 1fr) !important;
-    overflow-x: visible !important;
-    overscroll-behavior-x: auto !important;
-    scroll-snap-type: none !important;
-    padding-bottom: 0 !important;
-  }
-
-  article[id^="subscription-plan-"] {
-    scroll-snap-align: none !important;
   }
 }
