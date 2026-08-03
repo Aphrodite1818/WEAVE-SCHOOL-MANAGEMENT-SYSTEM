@@ -6,6 +6,7 @@ import './styles/brandAssets.css'
 import './styles/notificationDropdown.css'
 import './styles/studentDashboardCleanup.css'
 import './styles/mobileDirectoryCards.css'
+import './styles/pwaInteractions.css'
 import App from './App.jsx'
 import { installCookieCsrfFetchGuard } from './services/installCookieCsrfFetchGuard'
 import { applyAccessibilityPreferences, getSavedAccessibilityPreferences, syncSystemThemePreference } from './utils/accessibilityPreferences'
@@ -15,44 +16,18 @@ applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 syncSystemThemePreference();
 
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
-const PWA_SCROLLABLE_SELECTOR = [
-  "#root",
-  ".auth-surface",
-  ".public-page-shell",
-  "[class*='overflow-x-auto']",
-  "[class*='overflow-y-auto']",
-  ".chart-interactive-scroll",
-  ".mobile-scroll-list",
-  ".table-wrap",
-].join(", ");
 
-const applyStandaloneScrollSupport = () => {
-  const isStandalone = Boolean(
-    standaloneQuery?.matches || window.navigator?.standalone === true
-  );
-  document.documentElement.dataset.standalonePwa = String(isStandalone);
-  if (!isStandalone) return;
+const isStandalonePwa = () => Boolean(
+  standaloneQuery?.matches || window.navigator?.standalone === true
+);
 
-  document.documentElement.style.touchAction = "auto";
-  document.body.style.touchAction = "auto";
-  document.querySelectorAll(PWA_SCROLLABLE_SELECTOR).forEach((element) => {
-    element.style.webkitOverflowScrolling = "touch";
-  });
+const syncStandaloneDisplayMode = () => {
+  document.documentElement.dataset.standalonePwa = String(isStandalonePwa());
 };
 
-const updateStandaloneDisplayMode = () => {
-  applyStandaloneScrollSupport();
-};
-
-updateStandaloneDisplayMode();
-const pwaScrollObserver = new MutationObserver(applyStandaloneScrollSupport);
-pwaScrollObserver.observe(document.getElementById('root'), {
-  childList: true,
-  subtree: true,
-});
-standaloneQuery?.addEventListener?.("change", updateStandaloneDisplayMode);
-window.addEventListener("pageshow", updateStandaloneDisplayMode);
-window.addEventListener("orientationchange", applyStandaloneScrollSupport);
-document.addEventListener("visibilitychange", updateStandaloneDisplayMode);
+syncStandaloneDisplayMode();
+standaloneQuery?.addEventListener?.("change", syncStandaloneDisplayMode);
+window.addEventListener("pageshow", syncStandaloneDisplayMode);
+document.addEventListener("visibilitychange", syncStandaloneDisplayMode);
 
 createRoot(document.getElementById('root')).render(<App />)

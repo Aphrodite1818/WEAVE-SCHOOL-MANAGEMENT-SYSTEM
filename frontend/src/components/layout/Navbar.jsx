@@ -5,6 +5,19 @@ import { Menu, X } from "lucide-react";
 import WeaveIcon from "../brand/WeaveIcon";
 import Button from "../ui/Button";
 
+function resetWindowScroll() {
+  if (typeof window === "undefined") return;
+
+  const scrollToTop = () => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
+  scrollToTop();
+  window.requestAnimationFrame(scrollToTop);
+}
+
 function Navbar() {
   const [open, setOpen] = useState(false);
   const links = [
@@ -16,9 +29,14 @@ function Navbar() {
   ];
 
   const renderNavLink = (link, className, onClick) => {
+    const handleClick = () => {
+      if (link.to === "/pricing") resetWindowScroll();
+      onClick?.();
+    };
+
     if (link.to) {
       return (
-        <Link key={link.to} to={link.to} onClick={onClick} className={className}>
+        <Link key={link.to} to={link.to} onClick={handleClick} className={className}>
           {link.label}
         </Link>
       );
@@ -26,14 +44,14 @@ function Navbar() {
 
     if (link.href?.startsWith("/")) {
       return (
-        <Link key={link.href} to={link.href} onClick={onClick} className={className}>
+        <Link key={link.href} to={link.href} onClick={handleClick} className={className}>
           {link.label}
         </Link>
       );
     }
 
     return (
-      <a key={link.href} href={link.href} onClick={onClick} className={className}>
+      <a key={link.href} href={link.href} onClick={handleClick} className={className}>
         {link.label}
       </a>
     );
