@@ -92,6 +92,8 @@ jobs:
             base_ref="origin/${{ github.base_ref }}"
           elif [ "${{ github.ref_name }}" = "production-hardening" ]; then
             base_ref="origin/staging"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            base_ref="${{ github.event.before }}"
           else
             base_ref="HEAD^"
           fi
@@ -109,13 +111,13 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
 
       - name: Repository hygiene
         run: uv run python scripts/verify_repository_hygiene.py
 
       - name: Lint
-        run: uv run --with ruff ruff check .
+        run: uv run ruff check .
 
       - name: Format check for changed Python files
         shell: bash
@@ -131,7 +133,7 @@ jobs:
             echo "No changed Python files to format-check."
             exit 0
           fi
-          uv run --with ruff ruff format --check "${files[@]}"
+          uv run ruff format --check "${files[@]}"
 
       - name: Type check changed production files
         shell: bash
