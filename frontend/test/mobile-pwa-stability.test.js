@@ -34,7 +34,20 @@ test("the runtime separates platform, keyboard, and stable layout state without 
   assert.doesNotMatch(source, /replaceState/);
 });
 
-test("iOS dock spacing is lower while Android keeps its existing safe-area contract", async () => {
+test("the stable layout uses the visible PWA viewport instead of the larger document viewport", async () => {
+  const source = await read("src/utils/mobilePwaStability.js");
+
+  assert.match(source, /const getLayoutViewportHeight = \(\) =>/);
+  assert.match(source, /const innerHeight = Number\(window\.innerHeight \|\| 0\)/);
+  assert.match(source, /if \(innerHeight > 0\) return Math\.round\(innerHeight\)/);
+  assert.match(source, /window\.visualViewport\?\.height/);
+  assert.doesNotMatch(
+    source,
+    /Math\.max\([\s\S]{0,100}window\.innerHeight[\s\S]{0,100}document\.documentElement\.clientHeight/,
+  );
+});
+
+test("the PWA navbar geometry remains frozen while scroll ownership changes", async () => {
   const css = await read("src/styles/mobilePwaStability.css");
 
   assert.match(
@@ -55,12 +68,27 @@ test("iOS dock spacing is lower while Android keeps its existing safe-area contr
   );
   assert.match(
     css,
+    /data-mobile-bottom-nav="true"[\s\S]*?z-index:\s*70\s*!important/,
+  );
+  assert.match(
+    css,
+    /data-mobile-bottom-nav="true"[\s\S]*?pointer-events:\s*none/,
+  );
+  assert.match(
+    css,
+    /data-mobile-bottom-nav="true"\]\s*>\s*div[\s\S]*?pointer-events:\s*auto/,
+  );
+  assert.match(
+    css,
     /data-modal-open="true"[\s\S]*?data-mobile-bottom-nav="true"[\s\S]*?visibility:\s*hidden\s*!important/,
   );
 });
 
-test("every actor dashboard receives shared navbar clearance", async () => {
-  const css = await read("src/styles/mobilePwaStability.css");
+test("every actor dashboard uses the shared vertically scrollable viewport and navbar clearance", async () => {
+  const [css, shellSource] = await Promise.all([
+    read("src/styles/mobilePwaStability.css"),
+    read("src/components/layout/DashboardLayout.jsx"),
+  ]);
   const routeFiles = [
     "src/routes/adminRoutes.jsx",
     "src/routes/teacherRoutes.jsx",
@@ -72,12 +100,19 @@ test("every actor dashboard receives shared navbar clearance", async () => {
   assert.match(css, /--mobile-bottom-nav-clearance/);
   assert.match(
     css,
-    /#dashboard-content[\s\S]*?padding-bottom:\s*var\(--mobile-bottom-nav-clearance\)\s*!important/,
+    /#dashboard-scroll-viewport[\s\S]*?flex:\s*1 1 0%\s*!important[\s\S]*?height:\s*auto\s*!important[\s\S]*?overflow-y:\s*auto\s*!important/,
   );
   assert.match(
     css,
     /#dashboard-scroll-viewport[\s\S]*?scroll-padding-bottom:\s*var\(--mobile-bottom-nav-clearance\)/,
   );
+  assert.match(
+    css,
+    /#dashboard-content[\s\S]*?height:\s*auto\s*!important[\s\S]*?overflow:\s*visible\s*!important[\s\S]*?padding-bottom:\s*var\(--mobile-bottom-nav-clearance\)\s*!important/,
+  );
+  assert.match(shellSource, /id="dashboard-scroll-viewport"/);
+  assert.match(shellSource, /min-h-0 flex-1 overflow-y-auto/);
+  assert.match(shellSource, /id="dashboard-content"/);
 
   for (const path of routeFiles) {
     const source = await read(path);
@@ -85,12 +120,49 @@ test("every actor dashboard receives shared navbar clearance", async () => {
   }
 });
 
-test("the shared modal owns the screen and only its body scrolls", async () => {
-  const [modalSource, css] = await Promise.all([
-    read("src/components/ui/Modal.jsx"),
+test("all role guide pages own a full visible-height PWA scroll surface", async () => {
+  const [css, shellSource, roleGuideSource, adminGuideSource] = await Promise.all([
     read("src/styles/mobilePwaStability.css"),
+    read("src/components/layout/DashboardLayout.jsx"),
+    read("src/pages/shared/RoleGettingStartedPage.jsx"),
+    read("src/pages/admin/AdminGettingStartedPage.jsx"),
   ]);
 
+  assert.match(shellSource, /data-guide-page="true"/);
+  assert.match(roleGuideSource, /DashboardLayout/);
+  assert.match(adminGuideSource, /DashboardLayout/);
+  assert.match(
+    css,
+    /\[data-guide-page="true"\][\s\S]*?position:\s*fixed\s*!important[\s\S]*?inset:\s*0\s*!important/,
+  );
+  assert.match(
+    css,
+    /\[data-guide-page="true"\][\s\S]*?height:\s*var\(--pwa-layout-height\)\s*!important[\s\S]*?overflow-y:\s*auto\s*!important/,
+  );
+  assert.match(
+    css,
+    /\[data-guide-page="true"\]\s*>\s*main[\s\S]*?height:\s*auto\s*!important[\s\S]*?max-height:\s*none\s*!important[\s\S]*?overflow:\s*visible\s*!important/,
+  );
+  assert.doesNotMatch(
+    css,
+    /#dashboard-scroll-viewport,\s*[\s\S]{0,300}\[data-guide-page="true"\][\s\S]{0,300}height:\s*100%\s*!important/,
+  );
+});
+
+test("public, authentication, nested, and modal surfaces each retain a valid scroll owner", async () => {
+  const [css, modalSource] = await Promise.all([
+    read("src/styles/mobilePwaStability.css"),
+    read("src/components/ui/Modal.jsx"),
+  ]);
+
+  assert.match(
+    css,
+    /\[data-pwa-scroll-root="true"\][\s\S]*?height:\s*100%\s*!important[\s\S]*?overflow-y:\s*auto\s*!important/,
+  );
+  assert.match(
+    css,
+    /\.public-page-shell,[\s\S]*?\.auth-surface[\s\S]*?height:\s*100%\s*!important[\s\S]*?overflow-y:\s*auto\s*!important/,
+  );
   assert.match(modalSource, /z-\[100\]/);
   assert.match(modalSource, /data-modal-panel="true"/);
   assert.match(modalSource, /data-modal-header="true"/);
@@ -100,10 +172,6 @@ test("the shared modal owns the screen and only its body scrolls", async () => {
   assert.match(
     css,
     /data-modal-scroll-container="true"[\s\S]*?min-height:\s*0[\s\S]*?overflow-y:\s*auto\s*!important/,
-  );
-  assert.match(
-    css,
-    /data-modal-panel="true"[\s\S]*?display:\s*flex[\s\S]*?overflow:\s*hidden/,
   );
 });
 
