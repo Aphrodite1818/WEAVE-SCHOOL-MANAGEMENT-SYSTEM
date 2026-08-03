@@ -1,7 +1,7 @@
 @media (max-width: 767px) {
   /*
-   * Installed mode must use the same scroll model as the mobile browser.
-   * The only intentional difference is the fixed bottom navigation.
+   * Installed mode uses the same scroll model as mobile web. The dashboard
+   * viewport owns page scrolling; the PWA dock is a separate fixed layer.
    */
   html[data-standalone-pwa="true"],
   html[data-standalone-pwa="true"] body,
@@ -12,34 +12,32 @@
   html[data-standalone-pwa="true"],
   html[data-standalone-pwa="true"] body {
     min-height: 100%;
-    height: auto !important;
     overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior-y: auto !important;
+    overscroll-behavior-y: none;
     -webkit-overflow-scrolling: touch;
   }
 
   html[data-standalone-pwa="true"] #root {
     min-height: 100dvh;
-    overflow: visible !important;
   }
 
   html[data-standalone-pwa="true"] #dashboard-scroll-viewport,
   html[data-standalone-pwa="true"] [data-pwa-scroll-root="true"],
   html[data-standalone-pwa="true"] [data-guide-page="true"] {
+    min-height: 0;
+    overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain !important;
     touch-action: pan-y pinch-zoom !important;
   }
 
   html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
-    overflow-y: auto !important;
+    height: 100%;
+    position: relative;
   }
 
   html[data-standalone-pwa="true"] [data-guide-page="true"] {
     height: 100dvh !important;
-    min-height: 0 !important;
-    overflow-y: auto !important;
   }
 
   html[data-standalone-pwa="true"] .public-page-shell,
@@ -71,15 +69,41 @@
     touch-action: pan-y pinch-zoom !important;
   }
 
+  /*
+   * Authoritative PWA dock geometry for Android and iOS. Keeping this layer
+   * outside the scrolling viewport prevents page swipes from moving the dock.
+   */
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
     position: fixed !important;
     inset-inline: 0 !important;
     top: auto !important;
     bottom: 0 !important;
     width: 100% !important;
-    transform: none !important;
-    -webkit-transform: none !important;
+    max-width: none !important;
+    margin: 0 !important;
+    z-index: 70 !important;
+    translate: none !important;
+    transform: translate3d(0, 0, 0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    contain: layout paint;
+    isolation: isolate;
+    overscroll-behavior: contain !important;
     touch-action: pan-y pinch-zoom !important;
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
+    width: 100% !important;
+    max-width: 30rem !important;
+    margin-inline: auto !important;
+  }
+
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] *,
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] a,
+  html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] button {
+    touch-action: manipulation !important;
   }
 
   /* Admin PWA navigation: Academics, Notices, Home, Calendar, Menu. */
