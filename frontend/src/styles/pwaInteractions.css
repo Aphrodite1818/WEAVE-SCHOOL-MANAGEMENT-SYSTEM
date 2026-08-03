@@ -70,8 +70,8 @@
   }
 
   /*
-   * Authoritative PWA dock geometry for Android and iOS. Keeping this layer
-   * outside the scrolling viewport prevents page swipes from moving the dock.
+   * Authoritative floating dock geometry for Android and iOS. The transparent
+   * outer layer never owns scrolling; only the pill receives navigation taps.
    */
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] {
     position: fixed !important;
@@ -81,6 +81,10 @@
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
+    padding: 0 0.75rem max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
     z-index: 70 !important;
     translate: none !important;
     transform: translate3d(0, 0, 0) !important;
@@ -91,16 +95,21 @@
     isolation: isolate;
     overscroll-behavior: contain !important;
     touch-action: pan-y pinch-zoom !important;
-    padding-bottom: max(
-      0.2rem,
-      calc(env(safe-area-inset-bottom, 0px) - 0.15rem)
-    ) !important;
+    pointer-events: none;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] > div {
     width: 100% !important;
     max-width: 30rem !important;
     margin-inline: auto !important;
+    border: 1px solid rgb(var(--color-border) / 0.62) !important;
+    border-radius: 2.2rem !important;
+    background: rgb(var(--color-surface) / 0.96) !important;
+    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18) !important;
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    overflow: hidden;
+    pointer-events: auto;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-bottom-nav="true"] *,
