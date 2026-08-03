@@ -29,38 +29,43 @@ test("the installed bottom navigation never cancels page touch movement", async 
 });
 
 test("standalone PWA scrolling and floating dock geometry have one final authority", async () => {
-  const [pwaCss, directoryCss, mainSource] = await Promise.all([
+  const [stabilityCss, interactionCss, directoryCss, mainSource] = await Promise.all([
+    read("src/styles/mobilePwaStability.css"),
     read("src/styles/pwaInteractions.css"),
     read("src/styles/mobileDirectoryCards.css"),
     read("src/main.jsx"),
   ]);
 
   assert.match(
-    pwaCss,
+    stabilityCss,
     /data-mobile-bottom-nav="true"[\s\S]*?position:\s*fixed\s*!important/,
   );
-  assert.match(pwaCss, /transform:\s*translate3d\(0, 0, 0\)\s*!important/);
+  assert.match(stabilityCss, /transform:\s*translate3d\(0, 0, 0\)\s*!important/);
   assert.match(
-    pwaCss,
+    stabilityCss,
     /data-mobile-bottom-nav="true"[\s\S]*?background:\s*transparent\s*!important/,
   );
   assert.match(
-    pwaCss,
+    stabilityCss,
     /data-mobile-bottom-nav="true"[\s\S]*?pointer-events:\s*none/,
   );
   assert.match(
-    pwaCss,
+    stabilityCss,
     /data-mobile-bottom-nav="true"\]\s*>\s*div[\s\S]*?pointer-events:\s*auto/,
   );
   assert.match(
-    pwaCss,
-    /padding:\s*0 0\.75rem max\(0\.5rem, env\(safe-area-inset-bottom, 0px\)\)\s*!important/,
+    stabilityCss,
+    /data-pwa-platform="ios"[\s\S]*?safe-area-inset-bottom, 0px\) - 1\.45rem/,
   );
   assert.match(
-    pwaCss,
+    stabilityCss,
     /#dashboard-scroll-viewport[\s\S]*?overflow-y:\s*auto\s*!important/,
   );
-  assert.match(pwaCss, /touch-action:\s*pan-y pinch-zoom\s*!important/);
+  assert.match(stabilityCss, /touch-action:\s*pan-y pinch-zoom\s*!important/);
+  assert.doesNotMatch(
+    interactionCss,
+    /data-mobile-bottom-nav="true"[\s\S]*?position:\s*fixed/,
+  );
   assert.doesNotMatch(
     directoryCss,
     /data-mobile-bottom-nav="true"[\s\S]*?position:\s*absolute\s*!important/,
@@ -68,9 +73,16 @@ test("standalone PWA scrolling and floating dock geometry have one final authori
 
   const dashboardIndex = mainSource.indexOf("./styles/mobileDashboard.css");
   const directoryIndex = mainSource.indexOf("./styles/mobileDirectoryCards.css");
-  const pwaIndex = mainSource.indexOf("./styles/pwaInteractions.css");
-  assert.ok(dashboardIndex >= 0 && directoryIndex >= 0 && pwaIndex >= 0);
-  assert.ok(pwaIndex > dashboardIndex && pwaIndex > directoryIndex);
+  const interactionIndex = mainSource.indexOf("./styles/pwaInteractions.css");
+  const stabilityIndex = mainSource.indexOf("./styles/mobilePwaStability.css");
+  assert.ok(
+    dashboardIndex >= 0
+      && directoryIndex >= 0
+      && interactionIndex >= 0
+      && stabilityIndex >= 0,
+  );
+  assert.ok(stabilityIndex > dashboardIndex && stabilityIndex > directoryIndex);
+  assert.ok(stabilityIndex > interactionIndex);
 });
 
 test("Android and iOS receive versioned installable app metadata", async () => {
@@ -88,28 +100,28 @@ test("Android and iOS receive versioned installable app metadata", async () => {
   assert.ok(
     manifest.icons.some(
       (icon) =>
-        icon.type === "image/png" &&
-        icon.sizes === "192x192" &&
-        icon.purpose === "any" &&
-        icon.src.includes("weave-pwa-3"),
+        icon.type === "image/png"
+        && icon.sizes === "192x192"
+        && icon.purpose === "any"
+        && icon.src.includes("weave-pwa-3"),
     ),
   );
   assert.ok(
     manifest.icons.some(
       (icon) =>
-        icon.type === "image/png" &&
-        icon.sizes === "512x512" &&
-        icon.purpose === "any" &&
-        icon.src.includes("weave-pwa-3"),
+        icon.type === "image/png"
+        && icon.sizes === "512x512"
+        && icon.purpose === "any"
+        && icon.src.includes("weave-pwa-3"),
     ),
   );
   assert.ok(
     manifest.icons.some(
       (icon) =>
-        icon.type === "image/png" &&
-        icon.sizes === "512x512" &&
-        icon.purpose === "maskable" &&
-        icon.src.includes("weave-pwa-3"),
+        icon.type === "image/png"
+        && icon.sizes === "512x512"
+        && icon.purpose === "maskable"
+        && icon.src.includes("weave-pwa-3"),
     ),
   );
   assert.match(html, /rel="manifest"[^>]+manifest\.json\?v=weave-pwa-3/);
@@ -163,8 +175,8 @@ test("the service worker enables detection without caching or intercepting the a
   assert.ok(
     manifestHeaders.headers.some(
       (header) =>
-        header.key === "Content-Type" &&
-        header.value.startsWith("application/manifest+json"),
+        header.key === "Content-Type"
+        && header.value.startsWith("application/manifest+json"),
     ),
   );
   assert.ok(

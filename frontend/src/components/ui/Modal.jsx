@@ -99,19 +99,23 @@ function Modal({
     <div
       data-modal-overlay="true"
       className={cn(
-        "fixed inset-0 z-50 flex justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm",
+        "fixed inset-0 z-[100] flex min-h-0 justify-center overflow-hidden bg-slate-950/35 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6",
         placement === "center" ? "items-center" : "items-end sm:items-center",
       )}
       onClick={handleOverlayClick}
     >
       <div
+        data-modal-panel="true"
         className={cn(
-          "max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-premium animate-fadein",
-          className
+          "flex min-h-0 max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-premium animate-fadein sm:max-h-[calc(100dvh-3rem)]",
+          className,
         )}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+        <div
+          data-modal-header="true"
+          className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4"
+        >
           <div>
             <h2 className="text-lg font-semibold">{title}</h2>
             {description && (
@@ -119,18 +123,31 @@ function Modal({
             )}
           </div>
           {showClose && onClose && (
-            <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Close modal">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              aria-label="Close modal"
+            >
               <X className="h-4 w-4" />
             </Button>
           )}
         </div>
         <div
           data-modal-scroll-container="true"
-          className="max-h-[min(60dvh,calc(100dvh-11rem))] overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]"
         >
           {children}
         </div>
-        {footer && <div className="border-t border-border px-5 py-4">{footer}</div>}
+        {footer ? (
+          <div
+            data-modal-footer="true"
+            className="shrink-0 border-t border-border px-5 py-4"
+          >
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>
   );
