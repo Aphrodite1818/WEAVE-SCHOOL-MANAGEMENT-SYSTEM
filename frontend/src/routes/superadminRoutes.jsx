@@ -20,6 +20,7 @@ export const superadminRoutes = (
       <Route path="/superadmin/dashboard" element={<SuperadminDashboardPage />} />
       <Route path="/superadmin/analytics" element={<SuperadminAnalyticsPage />} />
       <Route path="/superadmin/control-center" element={<SuperadminControlCenterPage />} />
+      <Route path="/superadmin/verification" element={<SuperadminControlCenterPage />} />
       <Route path="/superadmin/usage" element={<SuperadminTenantUsagePage />} />
       <Route path="/superadmin/traffic" element={<SuperadminTrafficMonitorPage />} />
       <Route path="/superadmin/calendar" element={<SchoolCalendarPage role="superadmin" />} />
