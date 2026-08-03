@@ -53,8 +53,7 @@
 
   /*
    * The dashboard shell is already fixed to the viewport. Anchor the PWA dock
-   * to that shell instead of the iOS visual viewport so rubber-band swipes
-   * cannot permanently move it down.
+   * to that shell while allowing vertical pan gestures to remain available.
    */
   [data-mobile-bottom-nav="true"] {
     position: absolute !important;
@@ -72,8 +71,8 @@
     translate: none !important;
     transform: none !important;
     -webkit-transform: none !important;
-    touch-action: none !important;
-    overscroll-behavior: none !important;
+    touch-action: pan-y pinch-zoom !important;
+    overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: auto !important;
     isolation: isolate;
     -webkit-user-select: none;
@@ -94,17 +93,6 @@
 
   [data-mobile-bottom-nav="true"] * {
     touch-action: manipulation;
-  }
-
-  html[data-standalone-pwa="true"],
-  html[data-standalone-pwa="true"] body {
-    height: 100%;
-    overflow: hidden;
-    overscroll-behavior: none;
-  }
-
-  html[data-standalone-pwa="true"] #dashboard-scroll-viewport {
-    overscroll-behavior-y: none;
   }
 }
 
