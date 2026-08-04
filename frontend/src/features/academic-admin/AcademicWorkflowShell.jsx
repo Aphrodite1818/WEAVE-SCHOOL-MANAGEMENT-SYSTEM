@@ -202,14 +202,17 @@ function AcademicWorkflowShell({
 
           {config.tabs.length > 1 ? (
             <div className="pb-1">
-              <div className="flex gap-2 overflow-x-auto rounded-2xl border border-border/70 bg-surface-muted/30 p-1">
+              <div
+                data-academic-workflow-switcher="true"
+                className="grid w-full grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-surface-muted/30 p-1 sm:flex sm:gap-2 sm:overflow-x-auto"
+              >
                 {config.tabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => selectTab(tab.id)}
                     className={cn(
-                      "min-h-11 min-w-max whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition sm:px-4",
+                      "min-h-11 min-w-0 whitespace-normal break-words rounded-xl px-2.5 py-2 text-center text-xs font-semibold leading-4 transition sm:min-w-max sm:shrink-0 sm:whitespace-nowrap sm:px-4 sm:text-sm",
                       activeTab === tab.id
                         ? "bg-surface text-primary shadow-sm"
                         : "text-text-muted hover:bg-surface/60 hover:text-text",
