@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { X } from "lucide-react";
 import Button from "./Button";
 import { cn } from "../../utils/cn";
@@ -10,6 +10,18 @@ const getModalScrollTarget = () =>
   document.querySelector('[data-guide-page="true"]') ||
   document.getElementById("dashboard-scroll-viewport") ||
   document.body;
+
+const readVisualViewportRect = () => {
+  if (typeof window === "undefined" || !window.visualViewport) return null;
+
+  const height = Math.max(0, Math.round(window.visualViewport.height || 0));
+  if (!height) return null;
+
+  return {
+    top: Math.max(0, Math.round(window.visualViewport.offsetTop || 0)),
+    height,
+  };
+};
 
 const acquireModalScrollLock = () => {
   const target = getModalScrollTarget();
@@ -73,9 +85,48 @@ function Modal({
   showClose = true,
   placement = "responsive",
 }) {
+  const [visualViewportRect, setVisualViewportRect] = useState(
+    readVisualViewportRect,
+  );
+
   useEffect(() => {
     if (!open) return undefined;
     return acquireModalScrollLock();
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || typeof window === "undefined") return undefined;
+
+    const visualViewport = window.visualViewport;
+    let frameId = 0;
+
+    const syncVisualViewport = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const next = readVisualViewportRect();
+        setVisualViewportRect((current) => {
+          if (
+            current?.top === next?.top
+            && current?.height === next?.height
+          ) {
+            return current;
+          }
+          return next;
+        });
+      });
+    };
+
+    syncVisualViewport();
+    visualViewport?.addEventListener("resize", syncVisualViewport);
+    visualViewport?.addEventListener("scroll", syncVisualViewport);
+    window.addEventListener("resize", syncVisualViewport);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      visualViewport?.removeEventListener("resize", syncVisualViewport);
+      visualViewport?.removeEventListener("scroll", syncVisualViewport);
+      window.removeEventListener("resize", syncVisualViewport);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -95,19 +146,28 @@ function Modal({
     if (closeOnOverlay && onClose) onClose();
   };
 
+  const visualViewportStyle = visualViewportRect
+    ? {
+        top: `${visualViewportRect.top}px`,
+        height: `${visualViewportRect.height}px`,
+      }
+    : undefined;
+
   return (
     <div
       data-modal-overlay="true"
-      className={cn(
-        "fixed inset-0 z-[100] flex min-h-0 justify-center overflow-hidden bg-slate-950/35 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6",
-        placement === "center" ? "items-center" : "items-end sm:items-center",
-      )}
+      data-modal-placement={placement}
+      data-modal-visual-viewport="true"
+      className="fixed inset-x-0 top-0 z-[100] flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-slate-950/35 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+      style={visualViewportStyle}
       onClick={handleOverlayClick}
     >
       <div
         data-modal-panel="true"
+        role="dialog"
+        aria-modal="true"
         className={cn(
-          "flex min-h-0 max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-premium animate-fadein sm:max-h-[calc(100dvh-3rem)]",
+          "flex min-h-0 max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-premium animate-fadein",
           className,
         )}
         onClick={(event) => event.stopPropagation()}
@@ -116,7 +176,7 @@ function Modal({
           data-modal-header="true"
           className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4"
         >
-          <div>
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold">{title}</h2>
             {description && (
               <p className="mt-1 text-sm text-text-muted">{description}</p>
@@ -129,6 +189,7 @@ function Modal({
               size="icon"
               onClick={onClose}
               aria-label="Close modal"
+              className="shrink-0"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -143,7 +204,7 @@ function Modal({
         {footer ? (
           <div
             data-modal-footer="true"
-            className="shrink-0 border-t border-border px-5 py-4"
+            className="shrink-0 border-t border-border bg-surface px-5 py-4"
           >
             {footer}
           </div>
