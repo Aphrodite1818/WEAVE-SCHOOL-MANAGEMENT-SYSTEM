@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from app.config.settings import Settings
 
 
-def _production_values() -> dict:
+def _production_values() -> dict[str, object]:
     return {
         "ENV": "prod",
         "SECRET_KEY": "s" * 64,
@@ -17,7 +17,10 @@ def _production_values() -> dict:
         "TRUST_PROXY_HEADERS": True,
         "TRUSTED_PROXY_HOPS": 1,
         "BULK_IMPORT_RESULT_ENCRYPTION_KEY": "b" * 64,
-        "APP_SCRIPT_URL": "https://script.google.com/macros/s/example/exec",
+        "EMAIL_PROVIDER": "ses",
+        "AWS_REGION": "eu-west-1",
+        "AWS_ACCESS_KEY_ID": "test-access-key",
+        "AWS_SECRET_ACCESS_KEY": "test-secret-key",
         "MEDIA_STORAGE_PROVIDER": "r2",
         "R2_ACCOUNT_ID": "account",
         "R2_ACCESS_KEY_ID": "access-key",
@@ -31,6 +34,7 @@ def test_valid_production_configuration_is_accepted() -> None:
     settings = Settings(_env_file=None, **_production_values())
 
     assert settings.is_production_like is True
+    assert settings.EMAIL_PROVIDER == "ses"
     assert settings.MEDIA_STORAGE_PROVIDER == "r2"
 
 
@@ -42,11 +46,14 @@ def test_production_rejects_wildcard_cors() -> None:
         Settings(_env_file=None, **values)
 
 
-def test_production_rejects_missing_email_provider() -> None:
+def test_production_rejects_missing_ses_credentials() -> None:
     values = _production_values()
-    values["APP_SCRIPT_URL"] = None
+    values["AWS_ACCESS_KEY_ID"] = None
 
-    with pytest.raises(ValidationError, match="APP_SCRIPT_URL or complete SMTP"):
+    with pytest.raises(
+        ValidationError,
+        match="Amazon SES configuration is incomplete.*AWS_ACCESS_KEY_ID",
+    ):
         Settings(_env_file=None, **values)
 
 
