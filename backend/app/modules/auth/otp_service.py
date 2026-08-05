@@ -18,6 +18,7 @@ from app.config.security import (
     verify_otp as verify_otp_hash,
 )
 from app.config.settings import settings
+from app.core.email.enums import EmailCategory
 from app.core.exceptions import (
     BadRequestException,
     ConflictException,
@@ -97,6 +98,8 @@ class OTPService:
         await db.commit()
 
         html = get_otp_email_html(code, purpose.value, settings.OTP_EXPIRATION_MINUTES)
+        email_tags = (("email_type", "otp"), ("purpose", purpose.value))
+
         if background_tasks is not None:
             background_tasks.add_task(
                 send_email,
@@ -104,9 +107,18 @@ class OTPService:
                 "Your Weave verification code",
                 html,
                 True,
+                category=EmailCategory.SECURITY,
+                tags=email_tags,
             )
         else:
-            await send_email(email, "Your Weave verification code", html, True)
+            await send_email(
+                email,
+                "Your Weave verification code",
+                html,
+                True,
+                category=EmailCategory.SECURITY,
+                tags=email_tags,
+            )
         return {"detail": "OTP sent successfully."}
 
     @staticmethod
@@ -227,5 +239,3 @@ class TenantActivationService:
         db.add(record)
         await db.commit()
         return {"detail": "Tenant activated successfully."}
-
-
