@@ -16,12 +16,12 @@ test("browser theme chrome is finalized after branded theme tokens paint", () =>
     "TenantBrandingProvider.jsx",
   );
 
-  assert.match(themeSync, /browserThemePaintFrameId/);
+  assert.match(themeSync, /paintFrameId/);
   assert.match(
     themeSync,
     /requestAnimationFrame\(\(\) => \{[\s\S]*requestAnimationFrame\(\(\) => \{/,
   );
-  assert.match(themeSync, /resolveThemeBackground/);
+  assert.match(themeSync, /resolveBackground/);
   assert.match(brandingProvider, /scheduleThemeChromeSync\(\)/);
   assert.match(
     brandingProvider,

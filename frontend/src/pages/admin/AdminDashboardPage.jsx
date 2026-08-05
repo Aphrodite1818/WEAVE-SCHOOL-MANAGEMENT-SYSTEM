@@ -71,8 +71,11 @@ function AdminDashboardPage() {
     }
 
     loadMetrics();
+    const handlePullRefresh = () => loadMetrics();
+    window.addEventListener("weave:pull-refresh", handlePullRefresh);
 
     return () => {
+      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
       mounted = false;
       controller.abort();
     };

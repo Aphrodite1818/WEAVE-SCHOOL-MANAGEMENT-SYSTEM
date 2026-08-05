@@ -93,7 +93,11 @@ function SuperadminDashboardPage() {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(loadDashboardData, 0);
-    return () => window.clearTimeout(timeoutId);
+    window.addEventListener("weave:pull-refresh", loadDashboardData);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("weave:pull-refresh", loadDashboardData);
+    };
   }, [loadDashboardData]);
 
 

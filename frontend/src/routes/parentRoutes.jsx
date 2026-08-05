@@ -1,27 +1,30 @@
+/* eslint-disable react-refresh/only-export-components */
+
+import { lazy } from "react";
 import { Route } from "react-router-dom";
 
 import { DashboardShell } from "../components/layout/DashboardLayout";
-import ParentAttendancePage from "../pages/parent/ParentAttendancePage";
-import ParentDashboardPage from "../pages/parent/ParentDashboardPage";
-import ParentReportCardsPage from "../pages/parent/ParentReportCardsPage";
-import ParentResultsPage from "../pages/parent/ParentResultsPage";
-import ParentStudentLinkingPage from "../pages/parent/ParentStudentLinkingPage";
-import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
-import MessagesPage from "../pages/shared/MessagesPage";
-import RoleGettingStartedPage from "../pages/shared/RoleGettingStartedPage";
-import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
-import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
-import SchoolSwitchPage from "../pages/shared/SchoolSwitchPage";
 import MembershipScopeGuard from "./MembershipScopeGuard";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
+
+const ParentAttendancePage = lazy(() => import("../pages/parent/ParentAttendancePage"));
+const ParentDashboardPage = lazy(() => import("../pages/parent/ParentDashboardPage"));
+const ParentReportCardsPage = lazy(() => import("../pages/parent/ParentReportCardsPage"));
+const ParentResultsPage = lazy(() => import("../pages/parent/ParentResultsPage"));
+const ParentStudentLinkingPage = lazy(() => import("../pages/parent/ParentStudentLinkingPage"));
+const CommunicationInboxPage = lazy(() => import("../pages/shared/CommunicationInboxPage"));
+const MessagesPage = lazy(() => import("../pages/shared/MessagesPage"));
+const RoleGettingStartedPage = lazy(() => import("../pages/shared/RoleGettingStartedPage"));
+const RoleSettingsPage = lazy(() => import("../pages/shared/RoleSettingsPage"));
+const SchoolCalendarPage = lazy(() => import("../pages/shared/SchoolCalendarPage"));
+const SchoolSwitchPage = lazy(() => import("../pages/shared/SchoolSwitchPage"));
 
 export const parentRoutes = (
   <Route element={<RoleGuard allowedRoles={["PARENT"]} />}>
     <Route element={<DashboardShell role="parent" onboardingModalEnabled={false} />}>
       <Route path="/parent/schools" element={<SchoolSwitchPage role="parent" />} />
     </Route>
-
     <Route element={<MembershipScopeGuard role="parent" />}>
       <Route element={<DashboardShell role="parent" />}>
         <Route path="/parent/dashboard" element={<ParentDashboardPage />} />

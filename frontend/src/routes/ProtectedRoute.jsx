@@ -7,7 +7,7 @@ import { authService } from "../services/auth.service";
 import { getValidTokenPayload } from "../utils/auth";
 
 const MAX_BOOTSTRAP_ATTEMPTS = 3;
-const MIN_RESTORE_SCREEN_MS = 450;
+const MIN_RESTORE_SCREEN_MS = 0;
 
 const wait = (milliseconds) =>
   new Promise((resolve) => {

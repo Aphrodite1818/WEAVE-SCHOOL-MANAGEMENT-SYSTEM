@@ -141,10 +141,12 @@ export default function Topbar({
     const refreshNotifications = () => setNotificationRefreshKey((value) => value + 1);
     window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
     window.addEventListener("focus", refreshNotifications);
+    window.addEventListener("weave:pull-refresh", refreshNotifications);
 
     return () => {
       window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
       window.removeEventListener("focus", refreshNotifications);
+      window.removeEventListener("weave:pull-refresh", refreshNotifications);
     };
   }, [isAccountScope]);
 

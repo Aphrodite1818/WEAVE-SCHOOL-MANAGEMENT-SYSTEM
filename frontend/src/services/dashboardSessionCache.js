@@ -1,15 +1,14 @@
+
 import { authSession } from "./api";
 
 const DEFAULT_DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000;
-const DASHBOARD_BUNDLE_CACHE_PREFIX = "weave:dashboard-session";
-
+const DASHBOARD_BUNDLE_CACHE_PREFIX = "weave:dashboard-session:v2";
 const dashboardBundleCache = new Map();
 let invalidationBound = false;
 let lastActorCacheScope = null;
 
 const getActorCacheScope = () => {
   const user = authSession.getUser() || {};
-
   return [
     user.role || authSession.getRole() || "unknown-role",
     user.tenant_id || "global",
@@ -17,15 +16,27 @@ const getActorCacheScope = () => {
   ].join(":");
 };
 
-const clearCache = () => dashboardBundleCache.clear();
+const storageKey = (cacheKey) => `${DASHBOARD_BUNDLE_CACHE_PREFIX}:snapshot:${cacheKey}`;
+
+const removeStoredScope = (scope) => {
+  if (typeof window === "undefined") return;
+  const prefix = `${DASHBOARD_BUNDLE_CACHE_PREFIX}:snapshot:${scope}:`;
+  Object.keys(window.sessionStorage)
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => window.sessionStorage.removeItem(key));
+};
+
+const clearCache = () => {
+  dashboardBundleCache.clear();
+  removeStoredScope(lastActorCacheScope || getActorCacheScope());
+};
 
 const resolveActorScope = () => {
   const nextScope = getActorCacheScope();
-
   if (lastActorCacheScope && lastActorCacheScope !== nextScope) {
-    clearCache();
+    dashboardBundleCache.clear();
+    removeStoredScope(lastActorCacheScope);
   }
-
   lastActorCacheScope = nextScope;
   return nextScope;
 };
@@ -33,14 +44,37 @@ const resolveActorScope = () => {
 const bindCacheInvalidation = () => {
   if (invalidationBound || typeof window === "undefined") return;
   invalidationBound = true;
-
-  window.addEventListener("beforeunload", clearCache);
   window.addEventListener("weave:dashboard-cache-clear", clearCache);
 };
 
 const resolveCacheKey = (key) => {
   if (String(key).startsWith(`${DASHBOARD_BUNDLE_CACHE_PREFIX}:`)) return key;
-  return `${DASHBOARD_BUNDLE_CACHE_PREFIX}:${resolveActorScope()}:${key}`;
+  return `${resolveActorScope()}:${key}`;
+};
+
+const readSnapshot = (cacheKey, now) => {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(storageKey(cacheKey)) || "null");
+    if (!parsed || parsed.expiresAt <= now || parsed.value === undefined) {
+      window.sessionStorage.removeItem(storageKey(cacheKey));
+      return null;
+    }
+    return parsed;
+  } catch {
+    window.sessionStorage.removeItem(storageKey(cacheKey));
+    return null;
+  }
+};
+
+const writeSnapshot = (cacheKey, value, expiresAt) => {
+  try {
+    window.sessionStorage.setItem(
+      storageKey(cacheKey),
+      JSON.stringify({ value, expiresAt }),
+    );
+  } catch {
+    // Large or unavailable session storage must not break the dashboard.
+  }
 };
 
 export const getDashboardSessionCacheKey = (name) => name;
@@ -55,45 +89,44 @@ export const invalidateDashboardSessionCache = clearDashboardSessionCache;
 export const getCachedDashboardBundle = async (
   key,
   loader,
-  { ttlMs = DEFAULT_DASHBOARD_CACHE_TTL_MS } = {},
+  { ttlMs = DEFAULT_DASHBOARD_CACHE_TTL_MS, force = false } = {},
 ) => {
   bindCacheInvalidation();
-
   const cacheKey = resolveCacheKey(key);
   const now = Date.now();
-  const cached = dashboardBundleCache.get(cacheKey);
+  const memory = dashboardBundleCache.get(cacheKey);
 
-  if (cached?.value !== undefined && cached.expiresAt > now) {
-    return cached.value;
+  if (!force && memory?.value !== undefined && memory.expiresAt > now) {
+    return memory.value;
   }
+  if (!force && memory?.promise) return memory.promise;
 
-  if (cached?.promise) {
-    return cached.promise;
+  if (!force) {
+    const snapshot = readSnapshot(cacheKey, now);
+    if (snapshot) {
+      dashboardBundleCache.set(cacheKey, { ...snapshot, promise: null });
+      return snapshot.value;
+    }
   }
 
   const promise = Promise.resolve()
     .then(loader)
     .then((value) => {
-      dashboardBundleCache.set(cacheKey, {
-        value,
-        expiresAt: Date.now() + ttlMs,
-        promise: null,
-      });
+      const expiresAt = Date.now() + ttlMs;
+      dashboardBundleCache.set(cacheKey, { value, expiresAt, promise: null });
+      writeSnapshot(cacheKey, value, expiresAt);
       return value;
     })
     .catch((error) => {
       const current = dashboardBundleCache.get(cacheKey);
-      if (current?.promise === promise) {
-        dashboardBundleCache.delete(cacheKey);
-      }
+      if (current?.promise === promise) dashboardBundleCache.delete(cacheKey);
       throw error;
     });
 
   dashboardBundleCache.set(cacheKey, {
-    value: undefined,
+    value: force ? memory?.value : undefined,
     expiresAt: now + ttlMs,
     promise,
   });
-
   return promise;
 };
