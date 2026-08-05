@@ -43,19 +43,23 @@ test("theme chrome follows the resolved application theme", async () => {
   assert.match(source, /weave:accessibility-preferences-changed/);
 });
 
-test("mobile browser chrome refreshes without changing installed PWA behavior", async () => {
+test("mobile browser uses one authoritative theme-color while PWA stays isolated", async () => {
   const runtime = await read("src/utils/themeChromeSync.js");
   const startup = await read("public/theme-init.js");
+  const preferences = await read("src/utils/accessibilityPreferences.js");
   const html = await read("index.html");
 
   assert.match(runtime, /display-mode: standalone/);
-  assert.match(runtime, /data-weave-browser-theme/);
+  assert.match(runtime, /writeStandaloneThemeColor/);
+  assert.match(runtime, /replaceSingleThemeColorMeta/);
   assert.match(runtime, /requestAnimationFrame/);
   assert.match(runtime, /BROWSER_THEME_RECHECK_DELAY_MS/);
-  assert.match(runtime, /pageshow/);
-  assert.match(startup, /data-weave-browser-theme/);
-  assert.match(startup, /media: "all"/);
-  assert.match(startup, /media: "not all"/);
+  assert.match(runtime, /meta\.setAttribute\("content", theme\)/);
+  assert.doesNotMatch(runtime, /oppositeTheme|not all/);
+  assert.match(startup, /data-weave-theme/);
+  assert.match(startup, /colorSchemeMeta\.setAttribute\("content", resolvedTheme\)/);
+  assert.doesNotMatch(startup, /oppositeTheme|not all/);
+  assert.doesNotMatch(preferences, /themeColorMeta/);
   assert.doesNotMatch(
     html,
     /<meta name="theme-color" content="#0F172A"\s*\/>/,

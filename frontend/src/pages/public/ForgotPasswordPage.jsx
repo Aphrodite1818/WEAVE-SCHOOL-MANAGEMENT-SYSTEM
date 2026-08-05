@@ -91,7 +91,7 @@ function ForgotPasswordPage() {
     setFieldErrors({});
 
     try {
-      await authService.resetPassword(resetEmail, resetToken, password);
+      await authService.resetPassword(resetEmail, password, resetToken);
       navigate("/login?reset=true", { replace: true });
     } catch (err) {
       const apiError = parseApiError(err, "Failed to reset password. Please try again.");
