@@ -1,4 +1,12 @@
+
 (() => {
+  const applyFallback = () => {
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.themePreference = "system";
+    document.documentElement.style.colorScheme = "light";
+    document.documentElement.style.backgroundColor = "#FFFFFF";
+  };
+
   try {
     const savedTheme = window.localStorage.getItem("theme");
     const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
@@ -29,10 +37,12 @@
     const path = window.location.pathname;
     const tenantWorkspace = /^\/(admin|teacher|student|parent)(\/|$)/.test(path)
       && !/^\/(teacher|parent)\/schools(\/|$)/.test(path);
-    const serializedUser = window.localStorage.getItem("auth_user") || window.sessionStorage.getItem("auth_user");
+    const serializedUser = window.localStorage.getItem("auth_user")
+      || window.sessionStorage.getItem("auth_user");
     const user = serializedUser ? JSON.parse(serializedUser) : null;
     const tenantId = user?.tenant_id || user?.tenant?.id;
     const actorType = String(user?.actor_type || user?.role || "").toLowerCase();
+
     if (tenantWorkspace && tenantId && !actorType.includes("superadmin")) {
       const serializedBranding = window.localStorage.getItem(`weave-branding:${tenantId}`)
         || window.sessionStorage.getItem(`weave-branding:${tenantId}`);
@@ -64,7 +74,7 @@
 
     const colorSchemeMeta = document.createElement("meta");
     colorSchemeMeta.setAttribute("name", "color-scheme");
-    colorSchemeMeta.setAttribute("content", resolvedTheme);
+    colorSchemeMeta.setAttribute("content", "light dark");
     document.head.appendChild(colorSchemeMeta);
 
     const themeColorMeta = document.createElement("meta");
@@ -73,9 +83,6 @@
     themeColorMeta.setAttribute("data-weave-theme", resolvedTheme);
     document.head.appendChild(themeColorMeta);
   } catch {
-    document.documentElement.dataset.theme = "light";
-    document.documentElement.dataset.themePreference = "system";
-    document.documentElement.style.colorScheme = "light";
-    document.documentElement.style.backgroundColor = "#FFFFFF";
+    applyFallback();
   }
 })();

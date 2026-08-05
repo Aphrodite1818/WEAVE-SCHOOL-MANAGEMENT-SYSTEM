@@ -148,6 +148,18 @@ export function SubscriptionProvider({ children }) {
     });
   }, [isTenantAdmin, location.pathname, refreshSubscriptionState]);
 
+
+  useEffect(() => {
+    if (!isTenantAdmin) return undefined;
+    const handlePullRefresh = () => {
+      refreshSubscriptionState({ silent: true });
+    };
+    window.addEventListener("weave:pull-refresh", handlePullRefresh);
+    return () => {
+      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
+    };
+  }, [isTenantAdmin, refreshSubscriptionState]);
+
   const visibleCurrentSubscription = isTenantAdmin ? currentSubscription : null;
   const visibleEntitlements = isTenantAdmin ? entitlements : null;
   const visibleErrors = useMemo(

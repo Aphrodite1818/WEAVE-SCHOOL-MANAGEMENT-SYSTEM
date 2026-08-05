@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import SubscriptionProvider from "../features/subscriptions/SubscriptionProvider";
+import LoadingState from "../components/shared/LoadingState";
 import { APP_NAVIGATE_EVENT, NAVIGATION_ABORT_EVENT } from "../services/api";
 import { loadRuntimeConfig } from "../services/runtimeConfigService";
 import ProtectedRoute from "./ProtectedRoute";
@@ -64,8 +65,9 @@ function AppRoutes() {
       <SubscriptionProvider>
         <RouteChangeAbortBridge />
         <ScrollToTopOnRouteChange />
-        <Routes>
-          {publicRoutes}
+        <Suspense fallback={<LoadingState label="Loading workspace..." />}>
+          <Routes>
+            {publicRoutes}
 
           <Route element={<ProtectedRoute />}>
             <Route path="/profile" element={<ProfileSettingsPage />} />
@@ -77,8 +79,9 @@ function AppRoutes() {
             {superadminRoutes}
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </SubscriptionProvider>
     </BrowserRouter>
   );

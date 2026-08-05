@@ -1,4 +1,8 @@
+
 import { LANDING_PRICING_PLANS } from "./subscriptionConfig";
+
+const CATALOGUE_STORAGE_KEY = "weave:public-pricing-catalogue";
+const CATALOGUE_CHANGED_EVENT = "weave:pricing-catalogue-changed";
 
 const FEATURE_LABELS = {
   student_management: "Student management",
@@ -42,10 +46,11 @@ export const resetPublicPricingPlans = () => {
   document.documentElement.dataset.pricingCatalogueReady = "false";
 };
 
-export const applyPublicPricingCatalogue = (catalogue) => {
+export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) => {
   const plans = Array.isArray(catalogue?.plans) ? catalogue.plans : [];
-  const byCode = new Map(plans.map((plan) => [String(plan.plan_code), plan]));
+  if (!plans.length) return false;
 
+  const byCode = new Map(plans.map((plan) => [String(plan.plan_code), plan]));
   LANDING_PRICING_PLANS.forEach((presentation) => {
     const backendPlan = byCode.get(presentation.planCode);
     if (!backendPlan) return;
@@ -53,7 +58,6 @@ export const applyPublicPricingCatalogue = (catalogue) => {
     const amount = Number(backendPlan.amount || 0);
     const prefix = presentation.planCode === "enterprise" ? "From " : "";
     const suffix = presentation.planCode === "free_trial" ? "" : "/mo";
-
     presentation.priceMonthly = amount;
     presentation.priceLabel = `${prefix}${formatCurrency(
       amount,
@@ -70,4 +74,29 @@ export const applyPublicPricingCatalogue = (catalogue) => {
   });
 
   document.documentElement.dataset.pricingCatalogueReady = "true";
+  if (persist) {
+    try {
+      window.sessionStorage.setItem(CATALOGUE_STORAGE_KEY, JSON.stringify(catalogue));
+    } catch {
+      // Storage failure must not block pricing display.
+    }
+  }
+  window.dispatchEvent(
+    new CustomEvent(CATALOGUE_CHANGED_EVENT, {
+      detail: { cacheVersion: catalogue.cache_version || null },
+    }),
+  );
+  return true;
+};
+
+export const hydrateCachedPublicPricingCatalogue = () => {
+  try {
+    const cached = JSON.parse(
+      window.sessionStorage.getItem(CATALOGUE_STORAGE_KEY) || "null",
+    );
+    return cached ? applyPublicPricingCatalogue(cached, { persist: false }) : false;
+  } catch {
+    window.sessionStorage.removeItem(CATALOGUE_STORAGE_KEY);
+    return false;
+  }
 };

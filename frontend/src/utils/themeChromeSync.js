@@ -1,18 +1,16 @@
+
 const THEME_EVENT = "weave:accessibility-preferences-changed";
 const STANDALONE_QUERY = "(display-mode: standalone)";
 const LIGHT_THEME_COLOR = "#FFFFFF";
 const DARK_THEME_COLOR = "#0F172A";
 const BROWSER_THEME_RECHECK_DELAY_MS = 180;
 
-let browserThemeFrameId = null;
-let browserThemePaintFrameId = null;
-let browserThemeTimerId = null;
+let frameId = null;
+let paintFrameId = null;
+let timerId = null;
 
-const getResolvedTheme = () =>
+const resolvedTheme = () =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-
-const getFallbackThemeColor = (theme) =>
-  theme === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
 
 const isStandalonePwa = () =>
   Boolean(
@@ -20,149 +18,93 @@ const isStandalonePwa = () =>
       window.navigator?.standalone === true,
   );
 
-const resolveThemeBackground = (theme) => {
-  const fallback = getFallbackThemeColor(theme);
+const fallbackColor = (theme) =>
+  theme === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
+
+const resolveBackground = (theme) => {
   const channels = window
     .getComputedStyle(document.documentElement)
     .getPropertyValue("--color-background")
     .trim();
-
-  return channels ? `rgb(${channels})` : fallback;
+  return channels ? `rgb(${channels})` : fallbackColor(theme);
 };
 
-const ensureColorSchemeMeta = (theme) => {
-  let meta = document.querySelector('meta[name="color-scheme"]');
-  if (!meta) {
-    meta = document.createElement("meta");
-    meta.setAttribute("name", "color-scheme");
-    document.head.appendChild(meta);
-  }
-  meta.setAttribute("content", theme);
-};
-
-const createThemeColorMeta = (theme, themeColor) => {
+const replaceMeta = (name, attributes) => {
+  document.querySelectorAll(`meta[name="${name}"]`).forEach((meta) => meta.remove());
   const meta = document.createElement("meta");
-  meta.setAttribute("name", "theme-color");
-  meta.setAttribute("content", themeColor);
-  meta.setAttribute("data-weave-theme", theme);
+  meta.setAttribute("name", name);
+  Object.entries(attributes).forEach(([key, value]) => meta.setAttribute(key, value));
+  const anchor = document.head.querySelector(
+    'meta[name="mobile-web-app-capable"], link[rel="manifest"], title',
+  );
+  document.head.insertBefore(meta, anchor || null);
   return meta;
 };
 
-const themeColorAnchor = () =>
-  document.head.querySelector(
-    'meta[name="mobile-web-app-capable"], link[rel="manifest"], title',
-  );
-
-const removeDuplicateThemeColorMetas = (keep) => {
-  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
-    if (meta !== keep) meta.remove();
-  });
+const cancelScheduledSync = () => {
+  if (frameId !== null) window.cancelAnimationFrame(frameId);
+  if (paintFrameId !== null) window.cancelAnimationFrame(paintFrameId);
+  if (timerId !== null) window.clearTimeout(timerId);
+  frameId = null;
+  paintFrameId = null;
+  timerId = null;
 };
 
-const updateSingleThemeColorMeta = (theme, themeColor) => {
-  let meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta) {
-    meta = createThemeColorMeta(theme, themeColor);
-    document.head.insertBefore(meta, themeColorAnchor() || null);
-  }
+const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
+  const theme = resolvedTheme();
+  const background = resolveBackground(theme);
+  const root = document.getElementById("root");
 
-  removeDuplicateThemeColorMetas(meta);
-  meta.removeAttribute("media");
-  meta.removeAttribute("data-weave-browser-theme");
-  meta.setAttribute("data-weave-theme", theme);
-  meta.setAttribute("content", themeColor);
-};
-
-const replaceSingleThemeColorMeta = (theme, themeColor) => {
-  document
-    .querySelectorAll('meta[name="theme-color"]')
-    .forEach((meta) => meta.remove());
-  document.head.insertBefore(
-    createThemeColorMeta(theme, themeColor),
-    themeColorAnchor() || null,
-  );
-};
-
-const cancelScheduledBrowserThemeSync = () => {
-  if (browserThemeFrameId !== null) {
-    window.cancelAnimationFrame(browserThemeFrameId);
-    browserThemeFrameId = null;
-  }
-  if (browserThemePaintFrameId !== null) {
-    window.cancelAnimationFrame(browserThemePaintFrameId);
-    browserThemePaintFrameId = null;
-  }
-  if (browserThemeTimerId !== null) {
-    window.clearTimeout(browserThemeTimerId);
-    browserThemeTimerId = null;
-  }
-};
-
-const writeStandaloneThemeColor = (theme, themeColor) => {
-  updateSingleThemeColorMeta(theme, themeColor);
-};
-
-const writeBrowserThemeColor = (
-  theme,
-  themeColor,
-  { replace = false } = {},
-) => {
-  if (replace) {
-    replaceSingleThemeColorMeta(theme, themeColor);
-    return;
-  }
-  updateSingleThemeColorMeta(theme, themeColor);
-};
-
-const writeThemeChrome = ({ replaceBrowserMeta = false } = {}) => {
-  const theme = getResolvedTheme();
-  const themeColor = resolveThemeBackground(theme);
-
-  ensureColorSchemeMeta(theme);
   document.documentElement.style.colorScheme = theme;
-  document.documentElement.style.backgroundColor = themeColor;
-
+  document.documentElement.style.backgroundColor = background;
   if (document.body) {
     document.body.style.colorScheme = theme;
-    document.body.style.backgroundColor = themeColor;
+    document.body.style.backgroundColor = background;
   }
-
-  const root = document.getElementById("root");
   if (root) {
     root.style.colorScheme = theme;
-    root.style.backgroundColor = themeColor;
+    root.style.backgroundColor = background;
   }
 
-  if (isStandalonePwa()) {
-    writeStandaloneThemeColor(theme, themeColor);
-    return;
+  // Declare both supported schemes. The active scheme remains authoritative
+  // through the root CSS color-scheme property above.
+  if (replaceBrowserMetas || !document.querySelector('meta[name="color-scheme"]')) {
+    replaceMeta("color-scheme", { content: "light dark" });
   }
-  writeBrowserThemeColor(theme, themeColor, {
-    replace: replaceBrowserMeta,
-  });
+
+  if (replaceBrowserMetas || !document.querySelector('meta[name="theme-color"]')) {
+    replaceMeta("theme-color", {
+      content: background,
+      "data-weave-theme": theme,
+    });
+  } else {
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    themeMeta.removeAttribute("media");
+    themeMeta.setAttribute("content", background);
+    themeMeta.setAttribute("data-weave-theme", theme);
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((meta) => meta !== themeMeta && meta.remove());
+  }
 };
 
 export const syncThemeChrome = () => {
-  cancelScheduledBrowserThemeSync();
-  writeThemeChrome();
+  cancelScheduledSync();
+  applyDocumentTheme({ replaceBrowserMetas: !isStandalonePwa() });
 
   if (isStandalonePwa()) return;
 
-  // Theme attributes update before tenant branding tokens and React effects have
-  // necessarily painted. The second frame is the authoritative browser write.
-  browserThemeFrameId = window.requestAnimationFrame(() => {
-    browserThemeFrameId = null;
-    browserThemePaintFrameId = window.requestAnimationFrame(() => {
-      browserThemePaintFrameId = null;
-      writeThemeChrome({ replaceBrowserMeta: true });
+  frameId = window.requestAnimationFrame(() => {
+    frameId = null;
+    paintFrameId = window.requestAnimationFrame(() => {
+      paintFrameId = null;
+      applyDocumentTheme({ replaceBrowserMetas: true });
     });
   });
 
-  // Mobile browsers occasionally defer theme-color adoption. Reassert the same
-  // resolved value after the paint without requiring a page refresh.
-  browserThemeTimerId = window.setTimeout(() => {
-    browserThemeTimerId = null;
-    writeThemeChrome();
+  timerId = window.setTimeout(() => {
+    timerId = null;
+    applyDocumentTheme({ replaceBrowserMetas: true });
   }, BROWSER_THEME_RECHECK_DELAY_MS);
 };
 
@@ -177,7 +119,7 @@ export const installThemeChromeSync = () => {
   const observer = new MutationObserver(scheduleThemeChromeSync);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme"],
+    attributeFilter: ["data-theme", "data-theme-preference"],
   });
 
   const colorSchemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
@@ -194,7 +136,7 @@ export const installThemeChromeSync = () => {
 
   return () => {
     observer.disconnect();
-    cancelScheduledBrowserThemeSync();
+    cancelScheduledSync();
     window.removeEventListener(THEME_EVENT, scheduleThemeChromeSync);
     window.removeEventListener("storage", scheduleThemeChromeSync);
     window.removeEventListener("pageshow", scheduleThemeChromeSync);

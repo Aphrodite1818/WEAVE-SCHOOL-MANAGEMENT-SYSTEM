@@ -94,6 +94,16 @@ class PaystackClient:
             )
         return self._parse_response(response, "verify")
 
+    async def fetch_plan(self, *, code: str) -> dict[str, Any]:
+        normalized_code = self._normalize_plan_code(code)
+        timeout = httpx.Timeout(20.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                f"{self.base_url}/plan/{quote(normalized_code, safe='')}",
+                headers=self._headers(),
+            )
+        return self._parse_response(response, "plan fetch")
+
     async def fetch_subscription(self, *, code: str) -> dict[str, Any]:
         timeout = httpx.Timeout(20.0, connect=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:

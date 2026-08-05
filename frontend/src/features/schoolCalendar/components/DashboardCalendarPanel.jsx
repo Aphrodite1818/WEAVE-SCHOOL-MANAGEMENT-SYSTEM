@@ -35,7 +35,10 @@ function DashboardCalendarPanel({ role = "student", admin = false, actorId = "",
     }
 
     loadCalendar();
+    const handlePullRefresh = () => loadCalendar();
+    window.addEventListener("weave:pull-refresh", handlePullRefresh);
     return () => {
+      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
       mounted = false;
       controller.abort();
     };

@@ -207,7 +207,7 @@ const restoreSession = async () => {
       clearAuthOnUnauthorized: false,
     });
 
-    const normalizedResponse = await hydrateAuthenticatedUser(sessionResponse);
+    const normalizedResponse = normalizeAuthResponse(sessionResponse);
     persistAuthenticatedUser(normalizedResponse, remember);
 
     return normalizedResponse;
