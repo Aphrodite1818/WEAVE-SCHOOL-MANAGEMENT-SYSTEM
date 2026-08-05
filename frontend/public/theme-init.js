@@ -54,8 +54,48 @@
       }
     }
 
-    const themeColor = resolvedTheme === "dark" ? "#0F172A" : "#FFFFFF";
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", themeColor);
+    const lightThemeColor = "#FFFFFF";
+    const darkThemeColor = "#0F172A";
+    const themeColor = resolvedTheme === "dark" ? darkThemeColor : lightThemeColor;
+    const oppositeTheme = resolvedTheme === "dark" ? "light" : "dark";
+    const oppositeThemeColor =
+      oppositeTheme === "dark" ? darkThemeColor : lightThemeColor;
+    const standalone = Boolean(
+      window.matchMedia?.("(display-mode: standalone)")?.matches
+        || window.navigator?.standalone === true
+    );
+
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((meta) => meta.remove());
+
+    const createThemeColorMeta = ({ theme, content, media }) => {
+      const meta = document.createElement("meta");
+      meta.setAttribute("name", "theme-color");
+      meta.setAttribute("content", content);
+      if (theme) {
+        meta.setAttribute("data-weave-browser-theme", theme);
+      }
+      if (media) {
+        meta.setAttribute("media", media);
+      }
+      document.head.appendChild(meta);
+    };
+
+    if (standalone) {
+      createThemeColorMeta({ content: themeColor });
+    } else {
+      createThemeColorMeta({
+        theme: resolvedTheme,
+        content: themeColor,
+        media: "all",
+      });
+      createThemeColorMeta({
+        theme: oppositeTheme,
+        content: oppositeThemeColor,
+        media: "not all",
+      });
+    }
   } catch {
     document.documentElement.dataset.theme = "light";
     document.documentElement.dataset.themePreference = "system";
