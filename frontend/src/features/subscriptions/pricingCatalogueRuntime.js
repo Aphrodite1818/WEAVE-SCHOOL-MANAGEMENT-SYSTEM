@@ -11,14 +11,17 @@ const FEATURE_LABELS = {
   academic_setup: "Academic lifecycle controls",
   report_cards: "Report cards",
   announcements: "Announcements",
-  attendance: "Attendance management",
-  geofencing: "Attendance geofencing",
   advanced_analytics: "Advanced analytics",
-  ai_assistant: "AI assistant",
   bulk_import: "Bulk import enabled",
   bulk_academic_operations: "Bulk academic operations",
   tenant_branding: "School colour branding",
 };
+
+const NON_PUBLIC_FEATURES = new Set([
+  "attendance",
+  "geofencing",
+  "ai_assistant",
+]);
 
 const formatCurrency = (amount, currency = "NGN") =>
   new Intl.NumberFormat("en-NG", {
@@ -64,7 +67,7 @@ export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) 
       backendPlan.currency || catalogue.currency || "NGN",
     )}${suffix}`;
     presentation.features = Object.entries(backendPlan.features || {})
-      .filter(([, enabled]) => enabled === true)
+      .filter(([feature, enabled]) => enabled === true && !NON_PUBLIC_FEATURES.has(feature))
       .map(([feature]) => FEATURE_LABELS[feature] || feature.replaceAll("_", " "));
     presentation.limits = {
       ...unavailableLimits(),
