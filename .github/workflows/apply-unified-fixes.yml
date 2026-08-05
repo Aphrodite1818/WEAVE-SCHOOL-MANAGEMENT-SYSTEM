@@ -85,6 +85,16 @@ jobs:
       - name: Restore implementation script
         run: |
           cat .github/scripts/apply_unified_fixes.py.gz.b64.part* | base64 --decode | gzip --decompress > .github/scripts/apply_unified_fixes.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path(".github/scripts/apply_unified_fixes.py")
+          source = path.read_text()
+          source = source.replace(
+              'match = re.search(r"\\n    (loadMetrics|loadDashboard)\\(\\);\\n    return \\(\\) => \\{", content)',
+              'match = re.search(r"\\n    (loadMetrics|loadDashboard)\\(\\);\\n\\s*return \\(\\) => \\{", content)',
+          )
+          path.write_text(source)
+          PY
 
       - name: Apply generated implementation
         run: |
