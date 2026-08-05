@@ -54,50 +54,28 @@
       }
     }
 
-    const lightThemeColor = "#FFFFFF";
-    const darkThemeColor = "#0F172A";
-    const themeColor = resolvedTheme === "dark" ? darkThemeColor : lightThemeColor;
-    const oppositeTheme = resolvedTheme === "dark" ? "light" : "dark";
-    const oppositeThemeColor =
-      oppositeTheme === "dark" ? darkThemeColor : lightThemeColor;
-    const standalone = Boolean(
-      window.matchMedia?.("(display-mode: standalone)")?.matches
-        || window.navigator?.standalone === true
-    );
+    const themeColor = resolvedTheme === "dark" ? "#0F172A" : "#FFFFFF";
+    document.documentElement.style.colorScheme = resolvedTheme;
+    document.documentElement.style.backgroundColor = themeColor;
 
     document
-      .querySelectorAll('meta[name="theme-color"]')
+      .querySelectorAll('meta[name="theme-color"], meta[name="color-scheme"]')
       .forEach((meta) => meta.remove());
 
-    const createThemeColorMeta = ({ theme, content, media }) => {
-      const meta = document.createElement("meta");
-      meta.setAttribute("name", "theme-color");
-      meta.setAttribute("content", content);
-      if (theme) {
-        meta.setAttribute("data-weave-browser-theme", theme);
-      }
-      if (media) {
-        meta.setAttribute("media", media);
-      }
-      document.head.appendChild(meta);
-    };
+    const colorSchemeMeta = document.createElement("meta");
+    colorSchemeMeta.setAttribute("name", "color-scheme");
+    colorSchemeMeta.setAttribute("content", resolvedTheme);
+    document.head.appendChild(colorSchemeMeta);
 
-    if (standalone) {
-      createThemeColorMeta({ content: themeColor });
-    } else {
-      createThemeColorMeta({
-        theme: resolvedTheme,
-        content: themeColor,
-        media: "all",
-      });
-      createThemeColorMeta({
-        theme: oppositeTheme,
-        content: oppositeThemeColor,
-        media: "not all",
-      });
-    }
+    const themeColorMeta = document.createElement("meta");
+    themeColorMeta.setAttribute("name", "theme-color");
+    themeColorMeta.setAttribute("content", themeColor);
+    themeColorMeta.setAttribute("data-weave-theme", resolvedTheme);
+    document.head.appendChild(themeColorMeta);
   } catch {
     document.documentElement.dataset.theme = "light";
     document.documentElement.dataset.themePreference = "system";
+    document.documentElement.style.colorScheme = "light";
+    document.documentElement.style.backgroundColor = "#FFFFFF";
   }
 })();
