@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { guideService } from "../../services/guideService";
 import { hasGuideExitSuppression } from "./guideNavigation";
@@ -19,22 +19,32 @@ export function useRoleGuide({
   const config = guideForRole(role);
   const [guideState, setGuideState] = useState(null);
   const [loading, setLoading] = useState(Boolean(config && enabled));
+  const stateVersionRef = useRef(0);
+
+  const publishState = useCallback(
+    (state) => {
+      if (!config || !state) return;
+      stateVersionRef.current += 1;
+      setGuideState(state);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent(GUIDE_STATE_CHANGED_EVENT, {
+            detail: { key: config.key, state },
+          }),
+        );
+      }
+    },
+    [config],
+  );
 
   const persist = useCallback(
     async (payload) => {
       if (!config) return null;
       const response = await guideService.updateState(config.key, payload);
-      setGuideState(response);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent(GUIDE_STATE_CHANGED_EVENT, {
-            detail: { key: config.key, state: response },
-          }),
-        );
-      }
+      publishState(response);
       return response;
     },
-    [config],
+    [config, publishState],
   );
 
   const loadGuide = useCallback(async () => {
@@ -42,9 +52,14 @@ export function useRoleGuide({
       setLoading(false);
       return;
     }
+
+    const requestVersion = stateVersionRef.current;
     setLoading(true);
     try {
-      setGuideState(await guideService.getState(config.key));
+      const response = await guideService.getState(config.key);
+      if (stateVersionRef.current === requestVersion) {
+        setGuideState(response);
+      }
     } finally {
       setLoading(false);
     }
@@ -58,11 +73,22 @@ export function useRoleGuide({
     if (typeof window === "undefined" || !config) return undefined;
     const handleStateChange = (event) => {
       if (event?.detail?.key !== config.key || !event.detail.state) return;
+      stateVersionRef.current += 1;
       setGuideState(event.detail.state);
     };
     window.addEventListener(GUIDE_STATE_CHANGED_EVENT, handleStateChange);
     return () => window.removeEventListener(GUIDE_STATE_CHANGED_EVENT, handleStateChange);
   }, [config]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !enabled || !config) return undefined;
+    const retryPendingState = async () => {
+      const response = await guideService.retryPendingState(config.key);
+      publishState(response);
+    };
+    window.addEventListener("online", retryPendingState);
+    return () => window.removeEventListener("online", retryPendingState);
+  }, [config, enabled, publishState]);
 
   const steps = useMemo(() => {
     if (!config) return [];
@@ -116,6 +142,7 @@ export function useRoleGuide({
     : 0;
   const allResolved =
     steps.length > 0 && steps.every((step) => step.complete || step.skipped);
+  const syncPending = Boolean(guideState?.sync_pending);
 
   useEffect(() => {
     if (
@@ -131,7 +158,9 @@ export function useRoleGuide({
   }, [allResolved, enabled, guideState, loading, persist]);
 
   const start = useCallback(async () => {
-    if (!config) return null;
+    if (!config || ["completed", "dismissed"].includes(guideState?.status)) {
+      return guideState;
+    }
     const initialStep =
       steps.find((step) => !step.complete && !step.skipped) || steps[0];
     return persist({
@@ -139,7 +168,7 @@ export function useRoleGuide({
       current_step: initialStep?.id || null,
       remind_after: null,
     });
-  }, [config, persist, steps]);
+  }, [config, guideState, persist, steps]);
 
   const moveTo = useCallback(
     async (stepId) => {
@@ -182,8 +211,7 @@ export function useRoleGuide({
         .slice(Math.max(index + 1, 0))
         .find(
           (step) =>
-            !step.complete &&
-            !skippedSteps.includes(step.id),
+            !step.complete && !skippedSteps.includes(step.id),
         );
       return persist({
         status: nextStep ? "in_progress" : "completed",
@@ -226,9 +254,11 @@ export function useRoleGuide({
     completionPercent,
     guideState,
     loading,
+    syncPending,
     shouldAutoRedirect:
       enabled &&
       !loading &&
+      !syncPending &&
       guideState?.status === "not_started" &&
       !hasGuideExitSuppression(role),
     shouldShowBanner:
