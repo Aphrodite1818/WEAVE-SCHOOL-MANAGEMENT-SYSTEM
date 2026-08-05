@@ -1,8 +1,28 @@
 @supports (-webkit-touch-callout: none) {
+  html[data-ios-browser="true"] {
+    --weave-ios-browser-canvas: rgb(var(--color-background));
+    background-color: var(--weave-ios-browser-canvas);
+  }
+
+  html[data-ios-browser="true"] body,
+  html[data-ios-browser="true"] #root,
+  html[data-ios-browser="true"] [data-dashboard-role],
+  html[data-ios-browser="true"] #dashboard-scroll-viewport {
+    background-color: var(--weave-ios-browser-canvas);
+  }
+
   html[data-ios-browser="true"],
   html[data-ios-browser="true"] body,
-  html[data-ios-browser="true"] #root {
-    background-color: rgb(var(--color-background));
+  html[data-ios-browser="true"] #root,
+  html[data-ios-browser="true"] [data-dashboard-role] {
+    min-height: 100%;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+  }
+
+  html[data-ios-browser="true"] [data-dashboard-role],
+  html[data-ios-browser="true"] #dashboard-scroll-viewport {
+    background-image: none;
   }
 
   html[data-ios-browser="true"] body::before {
