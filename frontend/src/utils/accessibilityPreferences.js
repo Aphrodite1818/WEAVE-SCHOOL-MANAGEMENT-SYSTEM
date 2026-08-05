@@ -45,11 +45,7 @@ export const applyAccessibilityPreferences = (preferences = {}) => {
   document.documentElement.dataset.contrast = preferences.highContrast ? "high" : "normal";
   document.documentElement.dataset.language = preferences.language || "en-US";
   document.documentElement.style.fontSize = `${boundedFontScale}%`;
-
-  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-  if (themeColorMeta) {
-    themeColorMeta.setAttribute("content", resolvedTheme === "dark" ? "#0F172A" : "#FFFFFF");
-  }
+  document.documentElement.style.colorScheme = resolvedTheme;
 
   const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
   if (appleStatusBarMeta) {

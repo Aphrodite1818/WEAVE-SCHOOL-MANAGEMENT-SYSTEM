@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from app.config.database import AsyncSessionLocal
 from app.config.logging import get_logger
 from app.config.settings import settings
+from app.core.email.enums import EmailCategory
 from app.core.utils.email import send_email
 from app.core.utils.email_templates import get_security_alert_email_html
 from app.modules.auth.models import AuthRefreshToken
@@ -91,13 +92,17 @@ class SecurityAlertService:
                             subject=f"[Weave Security] {title}",
                             body=html_body,
                             is_html=True,
+                            category=EmailCategory.SECURITY,
+                            tags=(("email_type", "security_alert"),),
                         )
                         for email in recipients
                     ),
                     return_exceptions=True,
                 )
 
-                failures = [result for result in results if isinstance(result, Exception)]
+                failures = [
+                    result for result in results if isinstance(result, Exception) or result is False
+                ]
                 if failures:
                     logger.error(
                         "One or more security alert emails failed",

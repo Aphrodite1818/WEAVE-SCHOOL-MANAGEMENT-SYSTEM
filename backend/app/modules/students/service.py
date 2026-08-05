@@ -1226,8 +1226,8 @@ class StudentLifecycleService:
             academic_session_id,
             lock=True,
         )
-        if session is None or not session.is_active:
-            raise NotFoundException("Academic session not found.")
+        if session is None or session.status != AcademicSessionStatus.OPEN:
+            raise NotFoundException("Academic session not found or not open.")
 
         previous_status = student.status
         await StudentEnrollmentRepository.add(
@@ -1606,6 +1606,7 @@ class StudentParentLinkService:
             setattr(link, field, value)
         await StudentParentLinkRepository.save(db, link)
         await db.commit()
+        await db.refresh(link)
         return StudentParentLinkResponse.model_validate(link)
 
 

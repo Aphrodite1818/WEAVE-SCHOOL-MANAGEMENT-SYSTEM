@@ -13,7 +13,7 @@ from app.modules.auth.schemas import LoginSessionUser
 from app.modules.auth.service import AuthenticatedActor
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.students.models import StudentAccountStatus
+from app.modules.students.models import AcademicStatus, StudentAccountStatus
 from app.modules.students.repository import StudentAccessCodeRepository, StudentRepository
 from app.tenant_management.models import TenantStatus, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
@@ -33,9 +33,7 @@ async def authenticate_student_actor(
             identifier_type=IdentifierType.ADMISSION_NUMBER,
         )
     except NotFoundException as exc:
-        raise UnauthorizedException(
-            "Invalid admission number or credential."
-        ) from exc
+        raise UnauthorizedException("Invalid admission number or credential.") from exc
 
     if resolution.actor_type != ActorType.STUDENT or resolution.tenant_id is None:
         raise UnauthorizedException("Invalid admission number or credential.")
@@ -53,9 +51,20 @@ async def authenticate_student_actor(
         resolution.tenant_id,
         resolution.actor_id,
     )
+    if student is None:
+        raise UnauthorizedException("Invalid admission number or credential.")
+
+    if student.status == AcademicStatus.EXPELLED:
+        raise UnauthorizedException("This account has been expelled and can no longer be accessed.")
+    if student.status == AcademicStatus.SUSPENDED:
+        raise UnauthorizedException("This account is currently suspended.")
+    if student.status == AcademicStatus.WITHDRAWN:
+        raise UnauthorizedException("This account has been withdrawn.")
+    if student.status == AcademicStatus.GRADUATED:
+        raise UnauthorizedException("This account has graduated and is now read-only or inactive.")
+
     if (
-        student is None
-        or not student.is_active
+        not student.is_active
         or not student.is_verified
         or student.account_status != StudentAccountStatus.ACTIVE
         or student.is_archived
@@ -63,8 +72,7 @@ async def authenticate_student_actor(
         raise UnauthorizedException("Account is not active.")
 
     password_matches = bool(
-        student.password_hash
-        and verify_password(credential, student.password_hash)
+        student.password_hash and verify_password(credential, student.password_hash)
     )
     access_code = None
     if not password_matches:
