@@ -42,3 +42,26 @@ test("theme chrome follows the resolved application theme", async () => {
   assert.match(source, /MutationObserver/);
   assert.match(source, /weave:accessibility-preferences-changed/);
 });
+
+test("mobile browser chrome refreshes without changing installed PWA behavior", async () => {
+  const runtime = await read("src/utils/themeChromeSync.js");
+  const startup = await read("public/theme-init.js");
+  const html = await read("index.html");
+
+  assert.match(runtime, /display-mode: standalone/);
+  assert.match(runtime, /data-weave-browser-theme/);
+  assert.match(runtime, /requestAnimationFrame/);
+  assert.match(runtime, /BROWSER_THEME_RECHECK_DELAY_MS/);
+  assert.match(runtime, /pageshow/);
+  assert.match(startup, /data-weave-browser-theme/);
+  assert.match(startup, /media: "all"/);
+  assert.match(startup, /media: "not all"/);
+  assert.doesNotMatch(
+    html,
+    /<meta name="theme-color" content="#0F172A"\s*\/>/,
+  );
+  assert.ok(
+    html.indexOf('<script src="/theme-init.js"></script>') <
+      html.indexOf('<link rel="manifest"'),
+  );
+});
