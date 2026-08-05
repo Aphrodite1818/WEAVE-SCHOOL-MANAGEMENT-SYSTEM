@@ -12,7 +12,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from dotenv import dotenv_values
-from pydantic import Field, field_validator, model_validator , SecretStr
+from pydantic import Field, field_validator, model_validator, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -82,11 +82,6 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str | None = None
     TWILIO_WHATSAPP_FROM: str | None = None
 
-
-
-
-
-    
     # ==========================================================
     # EMAIL DELIVERY
     # ==========================================================
@@ -129,14 +124,12 @@ class Settings(BaseSettings):
 
     SES_TRANSACTIONAL_FROM_EMAIL: str = "no-reply@notifications.weavecloudspace.com"
     SES_SECURITY_FROM_EMAIL: str = "security@notifications.weavecloudspace.com"
-    SES_BULK_FROM_EMAIL: str =  "updates@updates.weavecloudspace.com"
-    
+    SES_BULK_FROM_EMAIL: str = "updates@updates.weavecloudspace.com"
 
     SES_TRANSACTIONAL_CONFIGURATION_SET: str = "weave-transactional"
     SES_SECURITY_CONFIGURATION_SET: str = "weave-security"
-    
+
     SES_BULK_CONFIGURATION_SET: str = "weave-bulk"
-    
 
     SES_CONNECT_TIMEOUT_SECONDS: int = Field(
         default=5,
@@ -179,10 +172,7 @@ class Settings(BaseSettings):
             "SMTP_PASSWORD": self.SMTP_PASSWORD,
         }
 
-        configured_smtp_values = {
-            name: has_value(value)
-            for name, value in smtp_values.items()
-        }
+        configured_smtp_values = {name: has_value(value) for name, value in smtp_values.items()}
 
         smtp_any_configured = any(configured_smtp_values.values())
         smtp_fully_configured = all(configured_smtp_values.values())
@@ -190,14 +180,11 @@ class Settings(BaseSettings):
         # SMTP is optional, but partially configuring it is invalid.
         if smtp_any_configured and not smtp_fully_configured:
             missing_smtp_values = [
-                name
-                for name, configured in configured_smtp_values.items()
-                if not configured
+                name for name, configured in configured_smtp_values.items() if not configured
             ]
 
             raise ValueError(
-                "SMTP configuration is incomplete. Missing: "
-                + ", ".join(missing_smtp_values)
+                "SMTP configuration is incomplete. Missing: " + ", ".join(missing_smtp_values)
             )
 
         # ======================================================
@@ -209,32 +196,18 @@ class Settings(BaseSettings):
         if app_script_configured:
             app_script_url = urlparse(self.APP_SCRIPT_URL.strip())
 
-            if (
-                app_script_url.scheme not in {"http", "https"}
-                or not app_script_url.netloc
-            ):
-                raise ValueError(
-                    "APP_SCRIPT_URL must be a valid absolute HTTP "
-                    "or HTTPS URL."
-                )
+            if app_script_url.scheme not in {"http", "https"} or not app_script_url.netloc:
+                raise ValueError("APP_SCRIPT_URL must be a valid absolute HTTP or HTTPS URL.")
 
         # ======================================================
         # OPTIONAL SES ENDPOINT VALIDATION
         # ======================================================
 
         if has_value(self.AWS_SES_ENDPOINT_URL):
-            ses_endpoint_url = urlparse(
-                self.AWS_SES_ENDPOINT_URL.strip()
-            )
+            ses_endpoint_url = urlparse(self.AWS_SES_ENDPOINT_URL.strip())
 
-            if (
-                ses_endpoint_url.scheme not in {"http", "https"}
-                or not ses_endpoint_url.netloc
-            ):
-                raise ValueError(
-                    "AWS_SES_ENDPOINT_URL must be a valid absolute "
-                    "HTTP or HTTPS URL."
-                )
+            if ses_endpoint_url.scheme not in {"http", "https"} or not ses_endpoint_url.netloc:
+                raise ValueError("AWS_SES_ENDPOINT_URL must be a valid absolute HTTP or HTTPS URL.")
 
         # ======================================================
         # PRODUCTION POLICY
@@ -242,10 +215,7 @@ class Settings(BaseSettings):
 
         if self.ENV == EnvironmentType.PRODUCTION:
             if self.EMAIL_PROVIDER != "ses":
-                raise ValueError(
-                    "Production must use Amazon SES. "
-                    "Set EMAIL_PROVIDER=ses."
-                )
+                raise ValueError("Production must use Amazon SES. Set EMAIL_PROVIDER=ses.")
 
         # ======================================================
         # LEGACY PROVIDER
@@ -256,10 +226,7 @@ class Settings(BaseSettings):
 
         if self.EMAIL_PROVIDER == "legacy":
             if self.ENV == EnvironmentType.PRODUCTION:
-                raise ValueError(
-                    "The legacy email provider cannot be used "
-                    "in production."
-                )
+                raise ValueError("The legacy email provider cannot be used in production.")
 
             if not app_script_configured and not smtp_fully_configured:
                 raise ValueError(
@@ -280,33 +247,17 @@ class Settings(BaseSettings):
             required_ses_values = {
                 "AWS_REGION": self.AWS_REGION,
                 "AWS_ACCESS_KEY_ID": self.AWS_ACCESS_KEY_ID,
-                "AWS_SECRET_ACCESS_KEY": (
-                    self.AWS_SECRET_ACCESS_KEY
-                ),
-                "SES_TRANSACTIONAL_FROM_EMAIL": (
-                    self.SES_TRANSACTIONAL_FROM_EMAIL
-                ),
-                "SES_SECURITY_FROM_EMAIL": (
-                    self.SES_SECURITY_FROM_EMAIL
-                ),
-                "SES_BULK_FROM_EMAIL": (
-                    self.SES_BULK_FROM_EMAIL
-                ),
-                "SES_TRANSACTIONAL_CONFIGURATION_SET": (
-                    self.SES_TRANSACTIONAL_CONFIGURATION_SET
-                ),
-                "SES_SECURITY_CONFIGURATION_SET": (
-                    self.SES_SECURITY_CONFIGURATION_SET
-                ),
-                "SES_BULK_CONFIGURATION_SET": (
-                    self.SES_BULK_CONFIGURATION_SET
-                ),
+                "AWS_SECRET_ACCESS_KEY": (self.AWS_SECRET_ACCESS_KEY),
+                "SES_TRANSACTIONAL_FROM_EMAIL": (self.SES_TRANSACTIONAL_FROM_EMAIL),
+                "SES_SECURITY_FROM_EMAIL": (self.SES_SECURITY_FROM_EMAIL),
+                "SES_BULK_FROM_EMAIL": (self.SES_BULK_FROM_EMAIL),
+                "SES_TRANSACTIONAL_CONFIGURATION_SET": (self.SES_TRANSACTIONAL_CONFIGURATION_SET),
+                "SES_SECURITY_CONFIGURATION_SET": (self.SES_SECURITY_CONFIGURATION_SET),
+                "SES_BULK_CONFIGURATION_SET": (self.SES_BULK_CONFIGURATION_SET),
             }
 
             missing_ses_values = [
-                name
-                for name, value in required_ses_values.items()
-                if not has_value(value)
+                name for name, value in required_ses_values.items() if not has_value(value)
             ]
 
             if missing_ses_values:
@@ -316,8 +267,6 @@ class Settings(BaseSettings):
                 )
 
         return self
-
-
 
     SECURITY_ALERTS_ENABLED: bool = True
     SECURITY_ALERT_EMAIL: str | None = None
@@ -336,8 +285,6 @@ class Settings(BaseSettings):
     BULK_IMPORT_RESULT_ENCRYPTION_KEY: str | None = None
     BULK_IMPORT_SETUP_CODE_RETENTION_HOURS: int = Field(default=24, ge=1, le=168)
     BULK_IMPORT_STALE_AFTER_MINUTES: int = Field(default=20, ge=5, le=180)
-
-
 
     PAYSTACK_SECRET_KEY: str | None = None
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
@@ -476,8 +423,6 @@ class Settings(BaseSettings):
                 raise ValueError(f"Missing production R2 settings: {', '.join(missing)}")
 
         return self
-    
-
 
     @property
     def is_development(self) -> bool:

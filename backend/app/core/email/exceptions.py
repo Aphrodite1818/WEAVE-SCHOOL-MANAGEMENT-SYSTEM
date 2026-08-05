@@ -1,15 +1,10 @@
 """Exceptions raised by the email delivery layer."""
 
-
-
-
-
 from app.core.email.enums import EmailProvider
 
 
 class EmailError(Exception):
     """Base exception for email delivery failures"""
-
 
 
 class EmailValidationError(EmailError):
@@ -18,7 +13,6 @@ class EmailValidationError(EmailError):
 
 class EmailConfigurationError(EmailError):
     """Raised when the email delivery configuration is invalid"""
-
 
 
 class EmailProviderError(EmailError):

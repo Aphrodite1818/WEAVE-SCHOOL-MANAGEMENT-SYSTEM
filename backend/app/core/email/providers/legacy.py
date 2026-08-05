@@ -111,11 +111,7 @@ class LegacyEmailProvider(EmailProviderAdapter):
     ) -> MIMEMultipart:
         """Build the MIME message used by the SMTP transport."""
 
-        message = (
-            MIMEMultipart("alternative")
-            if request.is_html
-            else MIMEMultipart()
-        )
+        message = MIMEMultipart("alternative") if request.is_html else MIMEMultipart()
 
         message["From"] = from_email
         message["To"] = request.to_email
@@ -212,8 +208,7 @@ class LegacyEmailProvider(EmailProviderAdapter):
 
         if response.status_code != 200:
             logger.warning(
-                "Apps Script email delivery returned status %s "
-                "for recipient %s.",
+                "Apps Script email delivery returned status %s for recipient %s.",
                 response.status_code,
                 request.to_email,
             )
@@ -234,10 +229,7 @@ class LegacyEmailProvider(EmailProviderAdapter):
             )
             return True
 
-        if (
-            isinstance(response_payload, dict)
-            and response_payload.get("success") is False
-        ):
+        if isinstance(response_payload, dict) and response_payload.get("success") is False:
             logger.warning(
                 "Apps Script rejected email delivery for recipient %s.",
                 request.to_email,
@@ -274,8 +266,7 @@ class LegacyEmailProvider(EmailProviderAdapter):
             or not self._has_value(smtp_password)
         ):
             raise EmailConfigurationError(
-                "SMTP requires SMTP_HOST, SMTP_FROM_EMAIL, "
-                "and SMTP_PASSWORD."
+                "SMTP requires SMTP_HOST, SMTP_FROM_EMAIL, and SMTP_PASSWORD."
             )
 
         assert smtp_host is not None

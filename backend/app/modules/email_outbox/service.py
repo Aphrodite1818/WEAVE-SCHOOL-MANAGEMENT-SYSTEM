@@ -74,9 +74,7 @@ def build_parent_invitation_body(*, context: dict[str, Any]) -> str:
         student_name=str(context.get("student_name") or "a student"),
         invite_link=str(context["invite_link"]),
         admission_number=(
-            str(context["admission_number"])
-            if context.get("admission_number")
-            else None
+            str(context["admission_number"]) if context.get("admission_number") else None
         ),
     )
 
@@ -220,17 +218,11 @@ class EmailOutboxService:
 
         try:
             if email_item.template_name == TEACHER_INVITATION_TEMPLATE:
-                html_body = build_teacher_invitation_body(
-                    context=email_item.template_context
-                )
+                html_body = build_teacher_invitation_body(context=email_item.template_context)
             elif email_item.template_name == PARENT_INVITATION_TEMPLATE:
-                html_body = build_parent_invitation_body(
-                    context=email_item.template_context
-                )
+                html_body = build_parent_invitation_body(context=email_item.template_context)
             else:
-                raise ValueError(
-                    f"Unsupported email template: {email_item.template_name}"
-                )
+                raise ValueError(f"Unsupported email template: {email_item.template_name}")
 
             email_sent = await send_email(
                 to_email=email_item.recipient_email,

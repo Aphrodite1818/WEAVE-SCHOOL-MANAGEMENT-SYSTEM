@@ -101,9 +101,7 @@ class SecurityAlertService:
                 )
 
                 failures = [
-                    result
-                    for result in results
-                    if isinstance(result, Exception) or result is False
+                    result for result in results if isinstance(result, Exception) or result is False
                 ]
                 if failures:
                     logger.error(

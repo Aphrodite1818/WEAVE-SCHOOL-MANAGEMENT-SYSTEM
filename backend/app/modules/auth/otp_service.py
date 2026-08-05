@@ -201,18 +201,22 @@ class TenantActivationService:
         email = _normalize_email(str(payload.email))
         now = _utc_now()
         records = (
-            await db.execute(
-                select(AuthRecord)
-                .where(
-                    AuthRecord.email == email,
-                    AuthRecord.purpose == AuthPurpose.TENANT_ACTIVATION,
-                    AuthRecord.is_used.is_(False),
-                    AuthRecord.expires_at > now,
+            (
+                await db.execute(
+                    select(AuthRecord)
+                    .where(
+                        AuthRecord.email == email,
+                        AuthRecord.purpose == AuthPurpose.TENANT_ACTIVATION,
+                        AuthRecord.is_used.is_(False),
+                        AuthRecord.expires_at > now,
+                    )
+                    .order_by(AuthRecord.created_at.desc())
+                    .with_for_update()
                 )
-                .order_by(AuthRecord.created_at.desc())
-                .with_for_update()
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         record = next(
             (item for item in records if verify_auth_secret(payload.token, item.hashed_value)),
             None,

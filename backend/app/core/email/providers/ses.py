@@ -106,9 +106,7 @@ class SESEmailProvider(EmailProviderAdapter):
         normalized_value = cls._setting_value(value)
 
         if normalized_value is None:
-            raise EmailConfigurationError(
-                f"{setting_name} must be configured for Amazon SES."
-            )
+            raise EmailConfigurationError(f"{setting_name} must be configured for Amazon SES.")
 
         return normalized_value
 
@@ -323,16 +321,10 @@ class SESEmailProvider(EmailProviderAdapter):
             "aws_access_key_id": aws_access_key_id,
             "aws_secret_access_key": aws_secret_access_key,
             "config": Config(
-                connect_timeout=(
-                    self._config.SES_CONNECT_TIMEOUT_SECONDS
-                ),
-                read_timeout=(
-                    self._config.SES_READ_TIMEOUT_SECONDS
-                ),
+                connect_timeout=(self._config.SES_CONNECT_TIMEOUT_SECONDS),
+                read_timeout=(self._config.SES_READ_TIMEOUT_SECONDS),
                 retries={
-                    "total_max_attempts": (
-                        self._config.SES_MAX_ATTEMPTS
-                    ),
+                    "total_max_attempts": (self._config.SES_MAX_ATTEMPTS),
                     "mode": "standard",
                 },
             ),
@@ -365,9 +357,7 @@ class SESEmailProvider(EmailProviderAdapter):
         error_response = error.response.get("Error", {})
         response_metadata = error.response.get("ResponseMetadata", {})
 
-        error_code = str(
-            error_response.get("Code", "unknown_ses_error")
-        )
+        error_code = str(error_response.get("Code", "unknown_ses_error"))
         error_message = str(
             error_response.get(
                 "Message",
@@ -376,11 +366,7 @@ class SESEmailProvider(EmailProviderAdapter):
         )
 
         status_value = response_metadata.get("HTTPStatusCode")
-        status_code = (
-            status_value
-            if isinstance(status_value, int)
-            else None
-        )
+        status_code = status_value if isinstance(status_value, int) else None
 
         return error_code, error_message, status_code
 
@@ -395,10 +381,7 @@ class SESEmailProvider(EmailProviderAdapter):
         if error_code in RETRYABLE_SES_ERROR_CODES:
             return True
 
-        return bool(
-            status_code is not None
-            and status_code >= 500
-        )
+        return bool(status_code is not None and status_code >= 500)
 
     @classmethod
     def _translate_client_error(
@@ -407,9 +390,7 @@ class SESEmailProvider(EmailProviderAdapter):
     ) -> EmailProviderError:
         """Convert an AWS service response into an email provider error."""
 
-        error_code, error_message, status_code = (
-            cls._extract_client_error_details(error)
-        )
+        error_code, error_message, status_code = cls._extract_client_error_details(error)
 
         retryable = cls._is_retryable_client_error(
             error_code=error_code,
@@ -462,8 +443,7 @@ class SESEmailProvider(EmailProviderAdapter):
 
         if not isinstance(message_id, str) or not message_id.strip():
             raise EmailProviderError(
-                "Amazon SES accepted the request without returning "
-                "a valid MessageId.",
+                "Amazon SES accepted the request without returning a valid MessageId.",
                 provider=EmailProvider.SES,
                 code="missing_message_id",
                 retryable=False,
@@ -524,16 +504,14 @@ class SESEmailProvider(EmailProviderAdapter):
             NoRegionError,
         ) as exc:
             raise EmailConfigurationError(
-                "Amazon SES credentials or region configuration "
-                "could not be resolved."
+                "Amazon SES credentials or region configuration could not be resolved."
             ) from exc
 
         except ClientError as exc:
             translated_error = self._translate_client_error(exc)
 
             logger.warning(
-                "Amazon SES rejected an email in category %s "
-                "with error code %s.",
+                "Amazon SES rejected an email in category %s with error code %s.",
                 request.category.value,
                 translated_error.code,
             )

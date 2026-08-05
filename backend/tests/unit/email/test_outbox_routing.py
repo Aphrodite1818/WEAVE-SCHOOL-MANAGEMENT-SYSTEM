@@ -16,9 +16,7 @@ def test_bulk_import_outbox_email_uses_bulk_category() -> None:
     )
 
     assert resolve_outbox_email_category(email_item) == EmailCategory.BULK
-    assert build_outbox_email_tags(email_item) == (
-        ("email_type", "parent_invitation"),
-    )
+    assert build_outbox_email_tags(email_item) == (("email_type", "parent_invitation"),)
 
 
 def test_normal_outbox_email_uses_transactional_category() -> None:
