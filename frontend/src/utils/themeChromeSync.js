@@ -98,6 +98,22 @@ const cancelScheduledBrowserThemeSync = () => {
   }
 };
 
+const writeStandaloneThemeColor = (theme, themeColor) => {
+  updateSingleThemeColorMeta(theme, themeColor);
+};
+
+const writeBrowserThemeColor = (
+  theme,
+  themeColor,
+  { replace = false } = {},
+) => {
+  if (replace) {
+    replaceSingleThemeColorMeta(theme, themeColor);
+    return;
+  }
+  updateSingleThemeColorMeta(theme, themeColor);
+};
+
 const writeThemeChrome = ({ replaceBrowserMeta = false } = {}) => {
   const theme = getResolvedTheme();
   const themeColor = resolveThemeBackground(theme);
@@ -117,11 +133,13 @@ const writeThemeChrome = ({ replaceBrowserMeta = false } = {}) => {
     root.style.backgroundColor = themeColor;
   }
 
-  if (replaceBrowserMeta && !isStandalonePwa()) {
-    replaceSingleThemeColorMeta(theme, themeColor);
-  } else {
-    updateSingleThemeColorMeta(theme, themeColor);
+  if (isStandalonePwa()) {
+    writeStandaloneThemeColor(theme, themeColor);
+    return;
   }
+  writeBrowserThemeColor(theme, themeColor, {
+    replace: replaceBrowserMeta,
+  });
 };
 
 export const syncThemeChrome = () => {
