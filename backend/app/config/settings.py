@@ -321,7 +321,7 @@ class Settings(BaseSettings):
 
     SECURITY_ALERTS_ENABLED: bool = True
     SECURITY_ALERT_EMAIL: str | None = None
-    BOOTSTRAP_SUPERADMIN_ID: str | None = None
+    BOOTSTRAP_SUPERADMIN_ID: str = "550e8400-e29b-41d4-a716-446655440000"
     BOOTSTRAP_SUPERADMIN_EMAIL: str | None = None
     BOOTSTRAP_SUPERADMIN_PASSWORD: str | None = None
 
