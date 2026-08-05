@@ -33,9 +33,7 @@ async def authenticate_student_actor(
             identifier_type=IdentifierType.ADMISSION_NUMBER,
         )
     except NotFoundException as exc:
-        raise UnauthorizedException(
-            "Invalid admission number or credential."
-        ) from exc
+        raise UnauthorizedException("Invalid admission number or credential.") from exc
 
     if resolution.actor_type != ActorType.STUDENT or resolution.tenant_id is None:
         raise UnauthorizedException("Invalid admission number or credential.")
@@ -74,8 +72,7 @@ async def authenticate_student_actor(
         raise UnauthorizedException("Account is not active.")
 
     password_matches = bool(
-        student.password_hash
-        and verify_password(credential, student.password_hash)
+        student.password_hash and verify_password(credential, student.password_hash)
     )
     access_code = None
     if not password_matches:
