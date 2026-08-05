@@ -2,15 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { authSession } from "../../services/api";
 import { tenantBrandingService } from "../../services/tenantBrandingService";
+import { scheduleThemeChromeSync } from "../../utils/themeChromeSync";
 import { schoolName as resolveSchoolName } from "../../utils/user";
 import {
-  applyBranding, clearAppliedBranding, readCachedBranding,
-  validateBrandingResponse, writeCachedBranding,
+  applyBranding,
+  clearAppliedBranding,
+  readCachedBranding,
+  validateBrandingResponse,
+  writeCachedBranding,
 } from "./tenantBranding";
 import { TenantBrandingContext } from "./useTenantBranding";
 
 function currentAppearance() {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function applyCurrentBranding(scope, branding) {
+  applyBranding(scope, branding, currentAppearance());
+  scheduleThemeChromeSync();
 }
 
 export function TenantBrandingProvider({ children, role, user: userProp }) {
@@ -19,16 +28,21 @@ export function TenantBrandingProvider({ children, role, user: userProp }) {
   const eligible = Boolean(tenantId) && role !== "superadmin";
   const scopeRef = useRef(null);
   const requestRef = useRef(0);
-  const [branding, setBranding] = useState(() => eligible ? readCachedBranding(tenantId) : null);
+  const [branding, setBranding] = useState(() =>
+    eligible ? readCachedBranding(tenantId) : null,
+  );
 
-  const acceptBranding = useCallback((value, { cache = true } = {}) => {
-    const validated = validateBrandingResponse(value, tenantId);
-    if (!validated) return false;
-    setBranding(validated);
-    if (cache) writeCachedBranding(tenantId, validated);
-    applyBranding(scopeRef.current, validated, currentAppearance());
-    return true;
-  }, [tenantId]);
+  const acceptBranding = useCallback(
+    (value, { cache = true } = {}) => {
+      const validated = validateBrandingResponse(value, tenantId);
+      if (!validated) return false;
+      setBranding(validated);
+      if (cache) writeCachedBranding(tenantId, validated);
+      applyCurrentBranding(scopeRef.current, validated);
+      return true;
+    },
+    [tenantId],
+  );
 
   useEffect(() => {
     const scope = scopeRef.current;
@@ -37,6 +51,8 @@ export function TenantBrandingProvider({ children, role, user: userProp }) {
       clearAppliedBranding(document.documentElement);
       delete document.documentElement.dataset.startupTenantBranding;
     }
+    scheduleThemeChromeSync();
+
     if (!eligible) {
       setBranding(null);
       return undefined;
@@ -47,46 +63,64 @@ export function TenantBrandingProvider({ children, role, user: userProp }) {
     if (cached) acceptBranding(cached, { cache: false });
     else setBranding(null);
 
-    tenantBrandingService.getEffective().then((response) => {
-      if (requestRef.current !== requestId) return;
-      if (!acceptBranding(response)) {
+    tenantBrandingService
+      .getEffective()
+      .then((response) => {
+        if (requestRef.current !== requestId) return;
+        if (!acceptBranding(response)) {
+          setBranding(null);
+          clearAppliedBranding(scope);
+          scheduleThemeChromeSync();
+        }
+      })
+      .catch(() => {
+        if (requestRef.current !== requestId) return;
         setBranding(null);
         clearAppliedBranding(scope);
-      }
-    }).catch(() => {
-      if (requestRef.current !== requestId) return;
-      setBranding(null);
-      clearAppliedBranding(scope);
-    });
+        scheduleThemeChromeSync();
+      });
 
     return () => {
       requestRef.current += 1;
       clearAppliedBranding(scope);
+      scheduleThemeChromeSync();
     };
   }, [acceptBranding, eligible, tenantId]);
 
   useEffect(() => {
-    const reapply = () => applyBranding(scopeRef.current, branding, currentAppearance());
+    const reapply = () => applyCurrentBranding(scopeRef.current, branding);
     window.addEventListener("weave:accessibility-preferences-changed", reapply);
     const observer = new MutationObserver(reapply);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
     return () => {
       observer.disconnect();
       window.removeEventListener("weave:accessibility-preferences-changed", reapply);
     };
   }, [branding]);
 
-  const value = useMemo(() => ({
-    branding,
-    tenantId,
-    schoolName: branding?.school_name || resolveSchoolName(user),
-    logoUrl: branding?.logo_url || user?.tenant_logo_url || user?.tenant?.logo_url || "",
-    applyResponse: acceptBranding,
-  }), [acceptBranding, branding, tenantId, user]);
+  const value = useMemo(
+    () => ({
+      branding,
+      tenantId,
+      schoolName: branding?.school_name || resolveSchoolName(user),
+      logoUrl:
+        branding?.logo_url ||
+        user?.tenant_logo_url ||
+        user?.tenant?.logo_url ||
+        "",
+      applyResponse: acceptBranding,
+    }),
+    [acceptBranding, branding, tenantId, user],
+  );
 
   return (
     <TenantBrandingContext.Provider value={value}>
-      <div ref={scopeRef} data-tenant-branding-scope="true">{children}</div>
+      <div ref={scopeRef} data-tenant-branding-scope="true">
+        {children}
+      </div>
     </TenantBrandingContext.Provider>
   );
 }

@@ -2,15 +2,16 @@ const THEME_EVENT = "weave:accessibility-preferences-changed";
 const STANDALONE_QUERY = "(display-mode: standalone)";
 const LIGHT_THEME_COLOR = "#FFFFFF";
 const DARK_THEME_COLOR = "#0F172A";
-const BROWSER_THEME_RECHECK_DELAY_MS = 160;
+const BROWSER_THEME_RECHECK_DELAY_MS = 180;
 
 let browserThemeFrameId = null;
+let browserThemePaintFrameId = null;
 let browserThemeTimerId = null;
 
 const getResolvedTheme = () =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 
-const getThemeColor = (theme) =>
+const getFallbackThemeColor = (theme) =>
   theme === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
 
 const isStandalonePwa = () =>
@@ -18,6 +19,16 @@ const isStandalonePwa = () =>
     window.matchMedia?.(STANDALONE_QUERY)?.matches ||
       window.navigator?.standalone === true,
   );
+
+const resolveThemeBackground = (theme) => {
+  const fallback = getFallbackThemeColor(theme);
+  const channels = window
+    .getComputedStyle(document.documentElement)
+    .getPropertyValue("--color-background")
+    .trim();
+
+  return channels ? `rgb(${channels})` : fallback;
+};
 
 const ensureColorSchemeMeta = (theme) => {
   let meta = document.querySelector('meta[name="color-scheme"]');
@@ -29,10 +40,10 @@ const ensureColorSchemeMeta = (theme) => {
   meta.setAttribute("content", theme);
 };
 
-const createThemeColorMeta = (theme) => {
+const createThemeColorMeta = (theme, themeColor) => {
   const meta = document.createElement("meta");
   meta.setAttribute("name", "theme-color");
-  meta.setAttribute("content", getThemeColor(theme));
+  meta.setAttribute("content", themeColor);
   meta.setAttribute("data-weave-theme", theme);
   return meta;
 };
@@ -43,17 +54,15 @@ const themeColorAnchor = () =>
   );
 
 const removeDuplicateThemeColorMetas = (keep) => {
-  document
-    .querySelectorAll('meta[name="theme-color"]')
-    .forEach((meta) => {
-      if (meta !== keep) meta.remove();
-    });
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    if (meta !== keep) meta.remove();
+  });
 };
 
-const updateSingleThemeColorMeta = (theme) => {
+const updateSingleThemeColorMeta = (theme, themeColor) => {
   let meta = document.querySelector('meta[name="theme-color"]');
   if (!meta) {
-    meta = createThemeColorMeta(theme);
+    meta = createThemeColorMeta(theme, themeColor);
     document.head.insertBefore(meta, themeColorAnchor() || null);
   }
 
@@ -61,15 +70,15 @@ const updateSingleThemeColorMeta = (theme) => {
   meta.removeAttribute("media");
   meta.removeAttribute("data-weave-browser-theme");
   meta.setAttribute("data-weave-theme", theme);
-  meta.setAttribute("content", getThemeColor(theme));
+  meta.setAttribute("content", themeColor);
 };
 
-const replaceSingleThemeColorMeta = (theme) => {
+const replaceSingleThemeColorMeta = (theme, themeColor) => {
   document
     .querySelectorAll('meta[name="theme-color"]')
     .forEach((meta) => meta.remove());
   document.head.insertBefore(
-    createThemeColorMeta(theme),
+    createThemeColorMeta(theme, themeColor),
     themeColorAnchor() || null,
   );
 };
@@ -79,50 +88,19 @@ const cancelScheduledBrowserThemeSync = () => {
     window.cancelAnimationFrame(browserThemeFrameId);
     browserThemeFrameId = null;
   }
+  if (browserThemePaintFrameId !== null) {
+    window.cancelAnimationFrame(browserThemePaintFrameId);
+    browserThemePaintFrameId = null;
+  }
   if (browserThemeTimerId !== null) {
     window.clearTimeout(browserThemeTimerId);
     browserThemeTimerId = null;
   }
 };
 
-const writeStandaloneThemeColor = (theme) => {
-  updateSingleThemeColorMeta(theme);
-};
-
-const writeBrowserThemeColor = (theme, { replace = false } = {}) => {
-  ensureColorSchemeMeta(theme);
-  if (replace) {
-    replaceSingleThemeColorMeta(theme);
-    return;
-  }
-  updateSingleThemeColorMeta(theme);
-};
-
-const syncThemeColor = (theme) => {
-  if (isStandalonePwa()) {
-    cancelScheduledBrowserThemeSync();
-    writeStandaloneThemeColor(theme);
-    return;
-  }
-
-  cancelScheduledBrowserThemeSync();
-  writeBrowserThemeColor(theme);
-
-  browserThemeFrameId = window.requestAnimationFrame(() => {
-    writeBrowserThemeColor(theme, { replace: true });
-    browserThemeFrameId = null;
-  });
-
-  browserThemeTimerId = window.setTimeout(() => {
-    writeBrowserThemeColor(theme);
-    browserThemeTimerId = null;
-  }, BROWSER_THEME_RECHECK_DELAY_MS);
-};
-
-export const syncThemeChrome = () => {
+const writeThemeChrome = ({ replaceBrowserMeta = false } = {}) => {
   const theme = getResolvedTheme();
-  const themeColor = getThemeColor(theme);
-  const background = "rgb(var(--color-background))";
+  const themeColor = resolveThemeBackground(theme);
 
   ensureColorSchemeMeta(theme);
   document.documentElement.style.colorScheme = theme;
@@ -130,22 +108,55 @@ export const syncThemeChrome = () => {
 
   if (document.body) {
     document.body.style.colorScheme = theme;
-    document.body.style.backgroundColor = background;
+    document.body.style.backgroundColor = themeColor;
   }
 
   const root = document.getElementById("root");
   if (root) {
     root.style.colorScheme = theme;
-    root.style.backgroundColor = background;
+    root.style.backgroundColor = themeColor;
   }
 
-  syncThemeColor(theme);
+  if (replaceBrowserMeta && !isStandalonePwa()) {
+    replaceSingleThemeColorMeta(theme, themeColor);
+  } else {
+    updateSingleThemeColorMeta(theme, themeColor);
+  }
+};
+
+export const syncThemeChrome = () => {
+  cancelScheduledBrowserThemeSync();
+  writeThemeChrome();
+
+  if (isStandalonePwa()) return;
+
+  // Theme attributes update before tenant branding tokens and React effects have
+  // necessarily painted. The second frame is the authoritative browser write.
+  browserThemeFrameId = window.requestAnimationFrame(() => {
+    browserThemeFrameId = null;
+    browserThemePaintFrameId = window.requestAnimationFrame(() => {
+      browserThemePaintFrameId = null;
+      writeThemeChrome({ replaceBrowserMeta: true });
+    });
+  });
+
+  // Mobile browsers occasionally defer theme-color adoption. Reassert the same
+  // resolved value after the paint without requiring a page refresh.
+  browserThemeTimerId = window.setTimeout(() => {
+    browserThemeTimerId = null;
+    writeThemeChrome();
+  }, BROWSER_THEME_RECHECK_DELAY_MS);
+};
+
+export const scheduleThemeChromeSync = () => {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  syncThemeChrome();
 };
 
 export const installThemeChromeSync = () => {
   syncThemeChrome();
 
-  const observer = new MutationObserver(syncThemeChrome);
+  const observer = new MutationObserver(scheduleThemeChromeSync);
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["data-theme"],
@@ -153,24 +164,24 @@ export const installThemeChromeSync = () => {
 
   const colorSchemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
   const syncWhenVisible = () => {
-    if (!document.hidden) syncThemeChrome();
+    if (!document.hidden) scheduleThemeChromeSync();
   };
 
-  window.addEventListener(THEME_EVENT, syncThemeChrome);
-  window.addEventListener("storage", syncThemeChrome);
-  window.addEventListener("pageshow", syncThemeChrome);
-  window.addEventListener("focus", syncThemeChrome);
+  window.addEventListener(THEME_EVENT, scheduleThemeChromeSync);
+  window.addEventListener("storage", scheduleThemeChromeSync);
+  window.addEventListener("pageshow", scheduleThemeChromeSync);
+  window.addEventListener("focus", scheduleThemeChromeSync);
   document.addEventListener("visibilitychange", syncWhenVisible);
-  colorSchemeQuery?.addEventListener?.("change", syncThemeChrome);
+  colorSchemeQuery?.addEventListener?.("change", scheduleThemeChromeSync);
 
   return () => {
     observer.disconnect();
     cancelScheduledBrowserThemeSync();
-    window.removeEventListener(THEME_EVENT, syncThemeChrome);
-    window.removeEventListener("storage", syncThemeChrome);
-    window.removeEventListener("pageshow", syncThemeChrome);
-    window.removeEventListener("focus", syncThemeChrome);
+    window.removeEventListener(THEME_EVENT, scheduleThemeChromeSync);
+    window.removeEventListener("storage", scheduleThemeChromeSync);
+    window.removeEventListener("pageshow", scheduleThemeChromeSync);
+    window.removeEventListener("focus", scheduleThemeChromeSync);
     document.removeEventListener("visibilitychange", syncWhenVisible);
-    colorSchemeQuery?.removeEventListener?.("change", syncThemeChrome);
+    colorSchemeQuery?.removeEventListener?.("change", scheduleThemeChromeSync);
   };
 };

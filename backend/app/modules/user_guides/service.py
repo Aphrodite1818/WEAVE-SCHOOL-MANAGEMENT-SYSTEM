@@ -25,6 +25,7 @@ _ACTOR_TYPE_BY_CLASS_NAME = {
     "SuperAdmin": "superadmin",
 }
 _GUIDE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,99}$")
+_TERMINAL_GUIDE_STATUSES = frozenset({"completed", "dismissed"})
 
 
 @dataclass(slots=True, frozen=True)
@@ -83,6 +84,24 @@ class UserGuideService:
         )
 
     @staticmethod
+    def _preserve_terminal_state(
+        current_status: str,
+        requested_status: str | None,
+    ) -> bool:
+        """Prevent stale clients from reopening a finished guide.
+
+        Completion is final. Dismissal may only be upgraded to completion. This makes
+        duplicate dashboard/guide hooks and delayed requests idempotent instead of
+        allowing an old ``in_progress`` request to overwrite a terminal state.
+        """
+
+        if current_status == "completed":
+            return requested_status != "completed"
+        if current_status == "dismissed":
+            return requested_status not in _TERMINAL_GUIDE_STATUSES
+        return False
+
+    @staticmethod
     async def get_state(
         db: AsyncSession,
         *,
@@ -133,6 +152,20 @@ class UserGuideService:
             )
 
         changes = payload.model_dump(exclude_unset=True)
+        requested_status = changes.get("status")
+        if UserGuideService._preserve_terminal_state(
+            state.status,
+            requested_status,
+        ):
+            state.last_seen_at = now
+            saved = await UserGuideRepository.save(db, state)
+            await db.commit()
+            return UserGuideService._response(
+                context=context,
+                guide_key=normalized_key,
+                state=saved,
+            )
+
         if "current_step" in changes:
             state.current_step = changes["current_step"] or None
         if "skipped_steps" in changes:
