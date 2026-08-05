@@ -57,6 +57,7 @@ test("mobile browser uses one authoritative theme-color while PWA stays isolated
   assert.match(startup, /data-weave-theme/);
   assert.match(startup, /colorSchemeMeta\.setAttribute\("content", "light dark"\)/);
   assert.doesNotMatch(startup, /oppositeTheme|not all/);
+  assert.match(preferences, /scheduleThemeChromeSync\(\)/);
   assert.doesNotMatch(preferences, /themeColorMeta/);
   assert.doesNotMatch(html, /<meta name="theme-color" content="#0F172A"\s*\/>/);
   assert.ok(

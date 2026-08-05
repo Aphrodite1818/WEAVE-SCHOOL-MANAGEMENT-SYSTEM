@@ -8,6 +8,7 @@ const STANDALONE_QUERY = "(display-mode: standalone)";
 const LIGHT_THEME_COLOR = "#FFFFFF";
 const DARK_THEME_COLOR = "#0F172A";
 const BROWSER_THEME_RECHECK_DELAY_MS = 180;
+const IOS_BROWSER_THEME_RECHECK_DELAYS_MS = [180, 480];
 const THEME_COLOR_META_ID = "weave-theme-color";
 const COLOR_SCHEME_META_ID = "weave-color-scheme";
 const IOS_BROWSER_CANVAS_PROPERTY = "--weave-ios-browser-canvas";
@@ -15,6 +16,7 @@ const IOS_BROWSER_CANVAS_PROPERTY = "--weave-ios-browser-canvas";
 let frameId = null;
 let paintFrameId = null;
 let timerId = null;
+let iosTimerIds = [];
 
 const resolvedTheme = () =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -94,13 +96,48 @@ const updateStableIosBrowserMetas = (theme, background) => {
   themeColorMeta.setAttribute("data-weave-theme", theme);
 };
 
+const clearIosBrowserPinnedChrome = () => {
+  document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
+  document.documentElement.style.removeProperty("background-color");
+
+  if (document.body) {
+    document.body.style.removeProperty("background-color");
+  }
+
+  const root = document.getElementById("root");
+  if (root) {
+    root.style.removeProperty("background-color");
+  }
+};
+
+const applyIosBrowserDocumentTheme = (background) => {
+  const theme = resolvedTheme();
+
+  document.documentElement.dataset.iosBrowser = "true";
+  document.documentElement.style.colorScheme = theme;
+  clearIosBrowserPinnedChrome();
+
+  if (document.body) {
+    document.body.style.colorScheme = theme;
+  }
+
+  const root = document.getElementById("root");
+  if (root) {
+    root.style.colorScheme = theme;
+  }
+
+  updateStableIosBrowserMetas(theme, background);
+};
+
 const cancelScheduledSync = () => {
   if (frameId !== null) window.cancelAnimationFrame(frameId);
   if (paintFrameId !== null) window.cancelAnimationFrame(paintFrameId);
   if (timerId !== null) window.clearTimeout(timerId);
+  iosTimerIds.forEach((id) => window.clearTimeout(id));
   frameId = null;
   paintFrameId = null;
   timerId = null;
+  iosTimerIds = [];
 };
 
 const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
@@ -110,17 +147,15 @@ const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
   const background = resolveBackground(theme, { iosBrowser });
 
   document.documentElement.dataset.iosBrowser = String(iosBrowser);
-  document.documentElement.style.colorScheme = theme;
-  document.documentElement.style.backgroundColor = background;
 
   if (iosBrowser) {
-    document.documentElement.style.setProperty(
-      IOS_BROWSER_CANVAS_PROPERTY,
-      background,
-    );
-  } else {
-    document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
+    applyIosBrowserDocumentTheme(background);
+    return;
   }
+
+  document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
+  document.documentElement.style.colorScheme = theme;
+  document.documentElement.style.backgroundColor = background;
 
   if (document.body) {
     document.body.style.colorScheme = theme;
@@ -129,11 +164,6 @@ const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
   if (root) {
     root.style.colorScheme = theme;
     root.style.backgroundColor = background;
-  }
-
-  if (iosBrowser) {
-    updateStableIosBrowserMetas(theme, background);
-    return;
   }
 
   // Declare both supported schemes. The active scheme remains authoritative
@@ -174,8 +204,13 @@ export const syncThemeChrome = () => {
 
     if (iosBrowser) {
       // iOS Safari browser chrome is tied to the first valid metadata nodes.
-      // Keep those nodes stable and perform one post-paint reassertion only.
+      // Keep those nodes stable, let CSS drive canvas backgrounds, and re-read
+      // the painted dashboard color after layout settles.
       applyDocumentTheme({ replaceBrowserMetas: false });
+      paintFrameId = window.requestAnimationFrame(() => {
+        paintFrameId = null;
+        applyDocumentTheme({ replaceBrowserMetas: false });
+      });
       return;
     }
 
@@ -185,7 +220,16 @@ export const syncThemeChrome = () => {
     });
   });
 
-  if (iosBrowser) return;
+  if (iosBrowser) {
+    IOS_BROWSER_THEME_RECHECK_DELAYS_MS.forEach((delayMs) => {
+      const timer = window.setTimeout(() => {
+        iosTimerIds = iosTimerIds.filter((id) => id !== timer);
+        applyDocumentTheme({ replaceBrowserMetas: false });
+      }, delayMs);
+      iosTimerIds.push(timer);
+    });
+    return;
+  }
 
   timerId = window.setTimeout(() => {
     timerId = null;

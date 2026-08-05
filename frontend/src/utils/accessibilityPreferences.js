@@ -1,3 +1,5 @@
+import { scheduleThemeChromeSync } from "./themeChromeSync";
+
 export const ACCESSIBILITY_STORAGE_KEYS = {
   theme: "theme",
   fontScale: "accessibilityFontScale",
@@ -51,6 +53,8 @@ export const applyAccessibilityPreferences = (preferences = {}) => {
   if (appleStatusBarMeta) {
     appleStatusBarMeta.setAttribute("content", "black-translucent");
   }
+
+  scheduleThemeChromeSync();
 };
 
 export const saveAccessibilityPreferences = (preferences) => {

@@ -108,16 +108,16 @@ test("iOS Safari browser theme metadata remains stable across live switches", as
   assert.match(runtime, /isIosBrowserMode/);
   assert.match(runtime, /selectThemeBackgroundChannels/);
   assert.match(runtime, /document\.querySelector\("\[data-dashboard-role\]"\)/);
-  assert.match(runtime, /IOS_BROWSER_CANVAS_PROPERTY/);
-  assert.match(runtime, /style\.setProperty\(/);
+  assert.match(runtime, /clearIosBrowserPinnedChrome/);
+  assert.match(runtime, /applyIosBrowserDocumentTheme/);
+  assert.match(runtime, /IOS_BROWSER_THEME_RECHECK_DELAYS_MS/);
   assert.match(runtime, /updateStableIosBrowserMetas/);
   assert.match(runtime, /THEME_COLOR_META_ID = "weave-theme-color"/);
   assert.match(runtime, /COLOR_SCHEME_META_ID = "weave-color-scheme"/);
-  assert.match(runtime, /if \(iosBrowser\) return;/);
   assert.match(runtime, /replaceBrowserMetas: !standalone && !iosBrowser/);
 
   assert.match(css, /data-ios-browser="true"/);
-  assert.match(css, /--weave-ios-browser-canvas/);
+  assert.match(css, /rgb\(var\(--color-background\)\)/);
   assert.match(css, /\[data-dashboard-role\]/);
   assert.match(css, /#dashboard-scroll-viewport/);
   assert.match(css, /body::before/);
