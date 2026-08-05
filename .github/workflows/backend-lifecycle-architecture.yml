@@ -24,6 +24,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/weave_test
       REDIS_URL: redis://localhost:6379/0
       FRONTEND_APP_URL: http://localhost:3000
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
 
     steps:
       - uses: actions/checkout@v4

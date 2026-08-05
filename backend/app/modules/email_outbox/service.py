@@ -12,6 +12,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.email.enums import EmailCategory
 from app.core.queue.context import get_current_bulk_import_job_id
 from app.core.utils.email import send_email
 from app.core.utils.email_templates import (
@@ -73,9 +74,7 @@ def build_parent_invitation_body(*, context: dict[str, Any]) -> str:
         student_name=str(context.get("student_name") or "a student"),
         invite_link=str(context["invite_link"]),
         admission_number=(
-            str(context["admission_number"])
-            if context.get("admission_number")
-            else None
+            str(context["admission_number"]) if context.get("admission_number") else None
         ),
     )
 
@@ -90,6 +89,25 @@ def resolve_outbox_metadata(metadata_json: dict[str, Any] | None) -> dict[str, A
         metadata.setdefault("import_job_id", import_job_id)
 
     return metadata
+
+
+def resolve_outbox_email_category(email_item: EmailOutbox) -> EmailCategory:
+    """Resolve the delivery category from durable outbox metadata."""
+
+    metadata = email_item.metadata_json or {}
+
+    if metadata.get("source") == "bulk_import":
+        return EmailCategory.BULK
+
+    return EmailCategory.TRANSACTIONAL
+
+
+def build_outbox_email_tags(
+    email_item: EmailOutbox,
+) -> tuple[tuple[str, str], ...]:
+    """Build stable SES tags for a queued email."""
+
+    return (("email_type", email_item.template_name),)
 
 
 class EmailOutboxService:
@@ -200,23 +218,19 @@ class EmailOutboxService:
 
         try:
             if email_item.template_name == TEACHER_INVITATION_TEMPLATE:
-                html_body = build_teacher_invitation_body(
-                    context=email_item.template_context
-                )
+                html_body = build_teacher_invitation_body(context=email_item.template_context)
             elif email_item.template_name == PARENT_INVITATION_TEMPLATE:
-                html_body = build_parent_invitation_body(
-                    context=email_item.template_context
-                )
+                html_body = build_parent_invitation_body(context=email_item.template_context)
             else:
-                raise ValueError(
-                    f"Unsupported email template: {email_item.template_name}"
-                )
+                raise ValueError(f"Unsupported email template: {email_item.template_name}")
 
             email_sent = await send_email(
                 to_email=email_item.recipient_email,
                 subject=email_item.subject,
                 body=html_body,
                 is_html=True,
+                category=resolve_outbox_email_category(email_item),
+                tags=build_outbox_email_tags(email_item),
             )
 
             if not email_sent:
