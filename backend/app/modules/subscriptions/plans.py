@@ -94,7 +94,7 @@ PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
         limits=_limits(
             students=500,
             teachers=50,
-            parents=500,
+            parents=300,
             classes=50,
             subjects=60,
         ),
