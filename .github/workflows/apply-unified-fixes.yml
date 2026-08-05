@@ -1,0 +1,138 @@
+name: Apply unified fixes
+
+on:
+  push:
+    branches:
+      - fix/auth-theme-pricing-mobile-refresh
+    paths:
+      - ".github/scripts/apply_unified_fixes.py.gz.b64.part*"
+      - ".github/workflows/apply-unified-fixes.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-unified-fixes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d weave_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      TWILIO_ACCOUNT_SID: ci-test-account
+      TWILIO_AUTH_TOKEN: ci-test-token
+      TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886"
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/auth-theme-pricing-mobile-refresh
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Restore implementation script
+        run: |
+          cat .github/scripts/apply_unified_fixes.py.gz.b64.part* | base64 --decode | gzip --decompress > .github/scripts/apply_unified_fixes.py
+
+      - name: Apply generated implementation
+        run: |
+          python .github/scripts/apply_unified_fixes.py
+          rm -f .github/scripts/apply_unified_fixes.py.gz.b64.part*
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked
+
+      - name: Format and lint changed Python
+        working-directory: backend
+        run: |
+          uv run ruff check --fix app/modules/subscriptions/router.py app/modules/subscriptions/providers/paystack.py app/modules/subscriptions/plan_configuration.py tests/unit/subscriptions/test_plan_configuration.py
+          uv run ruff format app/modules/subscriptions/router.py app/modules/subscriptions/providers/paystack.py app/modules/subscriptions/plan_configuration.py tests/unit/subscriptions/test_plan_configuration.py
+          uv run ruff check .
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: uv run pytest tests/unit
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Frontend production build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Verify generated diff
+        run: |
+          git diff --check
+          test ! -e .github/workflows/apply-unified-fixes.yml
+          test ! -e .github/scripts/apply_unified_fixes.py
+          git status --short
+
+      - name: Commit generated implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: unify auth theme pricing and mobile refresh"
+          git push origin HEAD:fix/auth-theme-pricing-mobile-refresh
