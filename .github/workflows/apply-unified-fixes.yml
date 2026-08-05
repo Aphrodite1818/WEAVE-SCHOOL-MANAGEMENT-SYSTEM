@@ -142,6 +142,12 @@ jobs:
               route_source = route_path.read_text()
               if not route_source.startswith(lint_directive):
                   route_path.write_text(lint_directive + route_source)
+
+          theme_contract = Path("frontend/src/themeAndGuidePersistenceContracts.test.js")
+          contract_source = theme_contract.read_text()
+          contract_source = contract_source.replace("browserThemePaintFrameId", "paintFrameId")
+          contract_source = contract_source.replace("resolveThemeBackground", "resolveBackground")
+          theme_contract.write_text(contract_source)
           PY
 
       - name: Install backend dependencies
