@@ -1,10 +1,62 @@
-
 (() => {
+  const STANDALONE_QUERY = "(display-mode: standalone)";
+  const THEME_COLOR_META_ID = "weave-theme-color";
+  const COLOR_SCHEME_META_ID = "weave-color-scheme";
+
+  const isIosLikePlatform = () => {
+    const userAgent = String(window.navigator?.userAgent || "");
+    const platform = String(
+      window.navigator?.userAgentData?.platform ||
+        window.navigator?.platform ||
+        "",
+    );
+    const iPadDesktopMode =
+      platform === "MacIntel" && Number(window.navigator?.maxTouchPoints || 0) > 1;
+
+    return /iPad|iPhone|iPod/i.test(userAgent) || iPadDesktopMode;
+  };
+
+  const isStandalonePwa = () =>
+    Boolean(
+      window.matchMedia?.(STANDALONE_QUERY)?.matches ||
+        window.navigator?.standalone === true,
+    );
+
+  const iosBrowserMode = isIosLikePlatform() && !isStandalonePwa();
+  document.documentElement.dataset.iosBrowser = String(iosBrowserMode);
+
+  const ensureStableMeta = (id, name) => {
+    let meta = document.getElementById(id);
+    if (!meta) meta = document.querySelector(`meta[name="${name}"]`);
+    if (!meta) {
+      meta = document.createElement("meta");
+      document.head.insertBefore(meta, document.currentScript || null);
+    }
+    meta.id = id;
+    meta.setAttribute("name", name);
+    return meta;
+  };
+
+  const syncStableMetas = (theme, themeColor) => {
+    const colorSchemeMeta = ensureStableMeta(COLOR_SCHEME_META_ID, "color-scheme");
+    const themeColorMeta = ensureStableMeta(THEME_COLOR_META_ID, "theme-color");
+
+    if (iosBrowserMode) {
+      colorSchemeMeta.setAttribute("content", theme);
+    } else {
+      colorSchemeMeta.setAttribute("content", "light dark");
+    }
+    themeColorMeta.removeAttribute("media");
+    themeColorMeta.setAttribute("content", themeColor);
+    themeColorMeta.setAttribute("data-weave-theme", theme);
+  };
+
   const applyFallback = () => {
     document.documentElement.dataset.theme = "light";
     document.documentElement.dataset.themePreference = "system";
     document.documentElement.style.colorScheme = "light";
     document.documentElement.style.backgroundColor = "#FFFFFF";
+    syncStableMetas("light", "#FFFFFF");
   };
 
   try {
@@ -67,21 +119,7 @@
     const themeColor = resolvedTheme === "dark" ? "#0F172A" : "#FFFFFF";
     document.documentElement.style.colorScheme = resolvedTheme;
     document.documentElement.style.backgroundColor = themeColor;
-
-    document
-      .querySelectorAll('meta[name="theme-color"], meta[name="color-scheme"]')
-      .forEach((meta) => meta.remove());
-
-    const colorSchemeMeta = document.createElement("meta");
-    colorSchemeMeta.setAttribute("name", "color-scheme");
-    colorSchemeMeta.setAttribute("content", "light dark");
-    document.head.appendChild(colorSchemeMeta);
-
-    const themeColorMeta = document.createElement("meta");
-    themeColorMeta.setAttribute("name", "theme-color");
-    themeColorMeta.setAttribute("content", themeColor);
-    themeColorMeta.setAttribute("data-weave-theme", resolvedTheme);
-    document.head.appendChild(themeColorMeta);
+    syncStableMetas(resolvedTheme, themeColor);
   } catch {
     applyFallback();
   }

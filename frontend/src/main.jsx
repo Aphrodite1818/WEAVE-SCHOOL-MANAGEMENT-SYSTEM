@@ -1,4 +1,3 @@
-
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./styles/mobileDashboard.css";
@@ -10,6 +9,7 @@ import "./styles/mobileDirectoryCards.css";
 import "./styles/pwaInteractions.css";
 import "./styles/mobilePwaStability.css";
 import "./styles/mobilePlatformFixes.css";
+import "./styles/iosSafariBrowserTheme.css";
 import App from "./App.jsx";
 import {
   applyPublicPricingCatalogue,

@@ -1,0 +1,11 @@
+@supports (-webkit-touch-callout: none) {
+  html[data-ios-browser="true"],
+  html[data-ios-browser="true"] body,
+  html[data-ios-browser="true"] #root {
+    background-color: rgb(var(--color-background));
+  }
+
+  html[data-ios-browser="true"] body::before {
+    display: none;
+  }
+}
