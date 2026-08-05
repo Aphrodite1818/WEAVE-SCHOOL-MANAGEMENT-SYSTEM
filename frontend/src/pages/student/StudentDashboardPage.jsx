@@ -184,8 +184,11 @@ function StudentDashboardPage() {
     }
 
     loadDashboard();
+    const handlePullRefresh = () => loadDashboard();
+    window.addEventListener("weave:pull-refresh", handlePullRefresh);
 
     return () => {
+      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
       mounted = false;
       controller.abort();
     };

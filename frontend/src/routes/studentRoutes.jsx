@@ -1,21 +1,25 @@
+/* eslint-disable react-refresh/only-export-components */
+
+import { lazy } from "react";
 import { Route } from "react-router-dom";
 
 import { DashboardShell } from "../components/layout/DashboardLayout";
-import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
-import MessagesPage from "../pages/shared/MessagesPage";
-import RoleAnalyticsPage from "../pages/shared/RoleAnalyticsPage";
-import RoleGettingStartedPage from "../pages/shared/RoleGettingStartedPage";
-import RoleSettingsPage from "../pages/shared/RoleSettingsPage";
-import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
-import StudentAttendancePage from "../pages/student/StudentAttendancePage";
-import StudentChangePasswordPage from "../pages/student/StudentChangePasswordPage";
-import StudentDashboardPage from "../pages/student/StudentDashboardPage";
-import StudentParentLinkingPage from "../pages/student/StudentParentLinkingPage";
-import StudentReportCardsPage from "../pages/student/StudentReportCardsPage";
-import StudentSubjectDetailsPage from "../pages/student/StudentSubjectDetailsPage";
-import StudentSubjectsPage from "../pages/student/StudentSubjectsPage";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
+
+const CommunicationInboxPage = lazy(() => import("../pages/shared/CommunicationInboxPage"));
+const MessagesPage = lazy(() => import("../pages/shared/MessagesPage"));
+const RoleAnalyticsPage = lazy(() => import("../pages/shared/RoleAnalyticsPage"));
+const RoleGettingStartedPage = lazy(() => import("../pages/shared/RoleGettingStartedPage"));
+const RoleSettingsPage = lazy(() => import("../pages/shared/RoleSettingsPage"));
+const SchoolCalendarPage = lazy(() => import("../pages/shared/SchoolCalendarPage"));
+const StudentAttendancePage = lazy(() => import("../pages/student/StudentAttendancePage"));
+const StudentChangePasswordPage = lazy(() => import("../pages/student/StudentChangePasswordPage"));
+const StudentDashboardPage = lazy(() => import("../pages/student/StudentDashboardPage"));
+const StudentParentLinkingPage = lazy(() => import("../pages/student/StudentParentLinkingPage"));
+const StudentReportCardsPage = lazy(() => import("../pages/student/StudentReportCardsPage"));
+const StudentSubjectDetailsPage = lazy(() => import("../pages/student/StudentSubjectDetailsPage"));
+const StudentSubjectsPage = lazy(() => import("../pages/student/StudentSubjectsPage"));
 
 export const studentRoutes = (
   <Route element={<RoleGuard allowedRoles={["STUDENT"]} />}>

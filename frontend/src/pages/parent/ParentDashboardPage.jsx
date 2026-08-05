@@ -68,8 +68,11 @@ function ParentDashboardPage() {
     }
 
     loadParentMetrics();
+    const handlePullRefresh = () => loadParentMetrics();
+    window.addEventListener("weave:pull-refresh", handlePullRefresh);
 
     return () => {
+      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
       mounted = false;
       controller.abort();
     };
@@ -117,8 +120,11 @@ function ParentDashboardPage() {
     }
 
     loadChildAcademics();
+    const handlePullRefresh = () => loadChildAcademics();
+    window.addEventListener("weave:pull-refresh", handlePullRefresh);
 
     return () => {
+      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
       mounted = false;
       controller.abort();
     };

@@ -5,7 +5,6 @@ from typing import Annotated, TypeAlias
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
-from app.config.settings import settings
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
     CurrentActor,
@@ -27,6 +26,9 @@ from app.modules.subscriptions.payment_integrity import (
 )
 from app.modules.subscriptions.plan_change_service import (
     SubscriptionPlanChangeService,
+)
+from app.modules.subscriptions.plan_configuration import (
+    SubscriptionPlanConfigurationService,
 )
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
@@ -71,12 +73,19 @@ CurrentSubscriptionActor: TypeAlias = Annotated[
 
 @router.get("/plans", response_model=PublicSubscriptionCatalogue)
 async def list_public_subscription_plans(
+    request: Request,
     response: Response,
-) -> PublicSubscriptionCatalogue:
+) -> PublicSubscriptionCatalogue | Response:
     catalogue = await PublicSubscriptionCatalogueService.get_catalogue()
-    ttl = settings.CACHE_LONG_TTL_SECONDS
-    response.headers["Cache-Control"] = f"public, max-age={ttl}, stale-while-revalidate={ttl}"
-    response.headers["ETag"] = f'"{catalogue.cache_version}"'
+    etag = f'"{catalogue.cache_version}"'
+    cache_control = "public, no-cache, must-revalidate"
+    if request.headers.get("if-none-match") == etag:
+        return Response(
+            status_code=status.HTTP_304_NOT_MODIFIED,
+            headers={"Cache-Control": cache_control, "ETag": etag},
+        )
+    response.headers["Cache-Control"] = cache_control
+    response.headers["ETag"] = etag
     return catalogue
 
 
@@ -225,6 +234,10 @@ async def create_subscription_checkout(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> SubscriptionCheckoutResponse:
+    await SubscriptionPlanConfigurationService.validate_checkout_target(
+        plan_code=payload.plan_code,
+        billing_interval=payload.billing_interval,
+    )
     return await SubscriptionPaymentService.initialize_subscription_checkout(
         db=db,
         tenant_id=current_admin.tenant_id,

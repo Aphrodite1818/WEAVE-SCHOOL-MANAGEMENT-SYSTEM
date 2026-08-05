@@ -1,18 +1,22 @@
+/* eslint-disable react-refresh/only-export-components */
+
+import { lazy } from "react";
 import { Route } from "react-router-dom";
 
 import { DashboardShell } from "../components/layout/DashboardLayout";
-import SuperadminAnalyticsPage from "../pages/superadmin/SuperadminAnalyticsPage";
-import SuperadminControlCenterPage from "../pages/superadmin/SuperadminControlCenterPage";
-import SuperadminDashboardPage from "../pages/superadmin/SuperadminDashboardPage";
-import SuperadminSettingsPage from "../pages/superadmin/SuperadminSettingsPage";
-import SuperadminTenantUsagePage from "../pages/superadmin/SuperadminTenantUsagePage";
-import SuperadminTrafficMonitorPage from "../pages/superadmin/SuperadminTrafficMonitorPage";
-import AnnouncementManagementPage from "../pages/shared/AnnouncementManagementPage";
-import CommunicationInboxPage from "../pages/shared/CommunicationInboxPage";
-import MessagesPage from "../pages/shared/MessagesPage";
-import SchoolCalendarPage from "../pages/shared/SchoolCalendarPage";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
+
+const SuperadminAnalyticsPage = lazy(() => import("../pages/superadmin/SuperadminAnalyticsPage"));
+const SuperadminControlCenterPage = lazy(() => import("../pages/superadmin/SuperadminControlCenterPage"));
+const SuperadminDashboardPage = lazy(() => import("../pages/superadmin/SuperadminDashboardPage"));
+const SuperadminSettingsPage = lazy(() => import("../pages/superadmin/SuperadminSettingsPage"));
+const SuperadminTenantUsagePage = lazy(() => import("../pages/superadmin/SuperadminTenantUsagePage"));
+const SuperadminTrafficMonitorPage = lazy(() => import("../pages/superadmin/SuperadminTrafficMonitorPage"));
+const AnnouncementManagementPage = lazy(() => import("../pages/shared/AnnouncementManagementPage"));
+const CommunicationInboxPage = lazy(() => import("../pages/shared/CommunicationInboxPage"));
+const MessagesPage = lazy(() => import("../pages/shared/MessagesPage"));
+const SchoolCalendarPage = lazy(() => import("../pages/shared/SchoolCalendarPage"));
 
 export const superadminRoutes = (
   <Route element={<RoleGuard allowedRoles={["SUPERADMIN"]} />}>

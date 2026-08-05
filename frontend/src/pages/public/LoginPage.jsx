@@ -160,7 +160,11 @@ function LoginPage() {
     if (returnTo) query.set("returnTo", returnTo);
     navigate(`${redirectTo}?${query.toString()}`, {
       replace: true,
-      state: { notice },
+      state: {
+        notice,
+        autoRequestOtp: true,
+        source: "unverified-login",
+      },
     });
   };
 

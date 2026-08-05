@@ -28,6 +28,7 @@ import { legalComplianceService } from "../../services/legalComplianceService";
 import { subscriptionService } from "../../services/subscriptionService";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
+import { scheduleThemeChromeSync } from "../../utils/themeChromeSync";
 import AiChatLauncher from "../ai/AiChatLauncher";
 import WeaveIcon from "../brand/WeaveIcon";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
@@ -298,60 +299,12 @@ function DashboardShellFrame({
     scrollDashboardViewportToTop("auto");
   }, [location.pathname]);
 
+
   useEffect(() => {
-    const shellElement = shellRef.current;
-    if (!shellElement || typeof window === "undefined") return undefined;
-
-    const previousThemeColor = document.querySelector('meta[name="theme-color"]')?.getAttribute("content");
-    const previousStatusBar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute("content");
-    const previousHtmlBackground = document.documentElement.style.backgroundColor;
-    const previousBodyBackground = document.body.style.backgroundColor;
-
-    const syncDashboardChrome = () => {
-      const shellStyles = getComputedStyle(shellElement);
-      const surfaceRgb = shellStyles.getPropertyValue("--color-surface").trim();
-      const backgroundRgb = shellStyles.getPropertyValue("--color-background").trim();
-      const themeColor = backgroundRgb ? `rgb(${backgroundRgb})` : surfaceRgb ? `rgb(${surfaceRgb})` : undefined;
-      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-      const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-
-      if (themeColorMeta && themeColor) themeColorMeta.setAttribute("content", themeColor);
-      if (themeColor) {
-        document.documentElement.style.backgroundColor = themeColor;
-        document.body.style.backgroundColor = themeColor;
-      }
-      if (appleStatusBarMeta) {
-        appleStatusBarMeta.setAttribute("content", "black-translucent");
-      }
-    };
-
-    const frameId = window.requestAnimationFrame(syncDashboardChrome);
-    const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const observer = new MutationObserver(syncDashboardChrome);
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme", "data-theme-preference"],
-    });
-    window.addEventListener("weave:accessibility-preferences-changed", syncDashboardChrome);
-    window.addEventListener("pageshow", syncDashboardChrome);
-    systemThemeQuery?.addEventListener?.("change", syncDashboardChrome);
-    systemThemeQuery?.addListener?.(syncDashboardChrome);
-
+    scheduleThemeChromeSync();
+    window.addEventListener("pageshow", scheduleThemeChromeSync);
     return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-      window.removeEventListener("weave:accessibility-preferences-changed", syncDashboardChrome);
-      window.removeEventListener("pageshow", syncDashboardChrome);
-      systemThemeQuery?.removeEventListener?.("change", syncDashboardChrome);
-      systemThemeQuery?.removeListener?.(syncDashboardChrome);
-
-      const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-      const appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-      if (themeColorMeta && previousThemeColor) themeColorMeta.setAttribute("content", previousThemeColor);
-      if (appleStatusBarMeta && previousStatusBar) appleStatusBarMeta.setAttribute("content", previousStatusBar);
-      document.documentElement.style.backgroundColor = previousHtmlBackground;
-      document.body.style.backgroundColor = previousBodyBackground;
+      window.removeEventListener("pageshow", scheduleThemeChromeSync);
     };
   }, [role]);
 
@@ -506,8 +459,15 @@ function DashboardShellFrame({
     setIsPullRefreshing(true);
     setPullDistance(PULL_REFRESH_THRESHOLD);
     clearDashboardSessionCache();
-    window.dispatchEvent(new CustomEvent("weave:pull-refresh"));
-    window.setTimeout(() => window.location.reload(), 220);
+    window.dispatchEvent(
+      new CustomEvent("weave:pull-refresh", {
+        detail: { requestedAt: Date.now() },
+      }),
+    );
+    window.setTimeout(() => {
+      setIsPullRefreshing(false);
+      setPullDistance(0);
+    }, 1200);
   }, [pullDistance]);
 
   const handleTouchCancel = useCallback(() => {

@@ -77,11 +77,15 @@ function OTPValidationPage() {
   const [resendMessage, setResendMessage] = useState(null);
   const [resendCooldownSeconds, setResendCooldownSeconds] = useState(0);
   const inputRefs = useRef([]);
+  const automaticRequestKeyRef = useRef(null);
   const resendCooldownLabel = useMemo(
     () => formatCountdown(resendCooldownSeconds),
     [resendCooldownSeconds],
   );
   const resendDisabled = isLoading || isResending || !email || resendCooldownSeconds > 0;
+  const shouldAutoRequestOtp =
+    location.state?.autoRequestOtp === true &&
+    location.state?.source === "unverified-login";
 
   useEffect(() => {
     if (!email) {
@@ -110,6 +114,47 @@ function OTPValidationPage() {
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [resendCooldownSeconds]);
+
+  useEffect(() => {
+    if (!shouldAutoRequestOtp || !email) return;
+
+    const requestKey = `${email}:${purpose}`;
+    if (automaticRequestKeyRef.current === requestKey) return;
+    automaticRequestKeyRef.current = requestKey;
+
+    let cancelled = false;
+    setError(null);
+    setResendMessage(null);
+    setIsResending(true);
+
+    authService
+      .requestOtp(email, purpose)
+      .then(() => {
+        if (cancelled) return;
+        setResendMessage(
+          isPasswordResetFlow
+            ? "A password reset code has been sent to your email."
+            : "A verification code has been sent to your email.",
+        );
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const apiError = parseApiError(err, "Failed to send verification code.");
+        const retryAfterSeconds = getRetryAfterSeconds(apiError);
+        if (apiError.status === 429 && retryAfterSeconds > 0) {
+          setResendCooldownSeconds(retryAfterSeconds);
+          return;
+        }
+        setError(apiError.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsResending(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [email, isPasswordResetFlow, purpose, shouldAutoRequestOtp]);
 
   const handleChange = (index, event) => {
     const value = event.target.value.replace(/\D/g, "");
