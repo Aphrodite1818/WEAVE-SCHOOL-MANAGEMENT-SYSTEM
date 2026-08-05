@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, TypeAlias
 
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
+from app.config.settings import settings
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
     CurrentActor,
@@ -15,6 +16,14 @@ from app.core.dependencies.route_guards import (
 from app.core.exceptions import ForbiddenException
 from app.modules.subscriptions.cancellation_service import (
     SubscriptionCancellationService,
+)
+from app.modules.subscriptions.catalogue import (
+    PublicSubscriptionCatalogue,
+    PublicSubscriptionCatalogueService,
+)
+from app.modules.subscriptions.payment_integrity import (
+    process_paystack_webhook_secure,
+    verify_subscription_checkout_secure,
 )
 from app.modules.subscriptions.plan_change_service import (
     SubscriptionPlanChangeService,
@@ -58,6 +67,17 @@ CurrentSubscriptionActor: TypeAlias = Annotated[
     CurrentActor,
     Depends(get_current_actor),
 ]
+
+
+@router.get("/plans", response_model=PublicSubscriptionCatalogue)
+async def list_public_subscription_plans(
+    response: Response,
+) -> PublicSubscriptionCatalogue:
+    catalogue = await PublicSubscriptionCatalogueService.get_catalogue()
+    ttl = settings.CACHE_LONG_TTL_SECONDS
+    response.headers["Cache-Control"] = f"public, max-age={ttl}, stale-while-revalidate={ttl}"
+    response.headers["ETag"] = f'"{catalogue.cache_version}"'
+    return catalogue
 
 
 @router.get("/current", response_model=TenantSubscriptionResponse | None)
@@ -231,7 +251,7 @@ async def verify_subscription_checkout(
 
         raise AccessForbidden("You do not have access to this subscription verification result.")
 
-    return await SubscriptionPaymentService.verify_subscription_checkout(
+    return await verify_subscription_checkout_secure(
         db=db,
         reference=reference,
     )
@@ -244,7 +264,7 @@ async def process_paystack_webhook(
     x_paystack_signature: str | None = Header(default=None),
 ) -> WebhookProcessingResponse:
     body = await request.body()
-    return await SubscriptionPaymentService.process_paystack_webhook(
+    return await process_paystack_webhook_secure(
         db=db,
         body=body,
         signature=x_paystack_signature,

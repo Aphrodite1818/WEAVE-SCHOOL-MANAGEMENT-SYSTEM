@@ -4,6 +4,12 @@ const backgroundAuthOptions = {
   clearAuthOnUnauthorized: false,
 };
 
+const publicRequestOptions = {
+  auth: false,
+  clearAuthOnUnauthorized: false,
+  skipAuthRefresh: true,
+};
+
 const queryString = (params = {}) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -16,6 +22,8 @@ const queryString = (params = {}) => {
 };
 
 export const subscriptionService = {
+  getPublicPlans: () => api.get("/subscriptions/plans", publicRequestOptions),
+
   getCurrentSubscription: () =>
     api.get("/subscriptions/current", backgroundAuthOptions),
 
@@ -60,6 +68,10 @@ export const getSubscriptionCheckoutErrorMessage = (message) => {
 
   if (normalizedMessage.includes("selected plan billing is not configured")) {
     return "Billing for this plan is not configured yet.";
+  }
+
+  if (normalizedMessage.includes("payment verification failed")) {
+    return "The payment details did not match the selected plan. Contact support before retrying.";
   }
 
   if (normalizedMessage.includes("school exceeds the selected plan limits")) {
