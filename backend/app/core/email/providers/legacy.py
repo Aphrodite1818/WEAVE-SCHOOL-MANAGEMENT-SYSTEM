@@ -47,36 +47,125 @@ class LegacyEmailProvider(EmailProviderAdapter):
 
         return EmailProvider.LEGACY
 
-    async def send(
+    # ==========================================================
+    # SHARED HELPERS
+    # ==========================================================
+
+    @staticmethod
+    def _has_value(value: object) -> bool:
+        """Return whether a value contains non-whitespace content."""
+
+        if value is None:
+            return False
+
+        if isinstance(value, SecretStr):
+            value = value.get_secret_value()
+
+        return bool(str(value).strip())
+
+    @staticmethod
+    def _secret_value(
+        value: SecretStr | str | None,
+    ) -> str | None:
+        """Return the raw value from a normal or secret setting."""
+
+        if value is None:
+            return None
+
+        if isinstance(value, SecretStr):
+            return value.get_secret_value()
+
+        return value
+
+    @staticmethod
+    def _html_to_plain_text(html: str) -> str:
+        """Produce a basic plain-text fallback from HTML content."""
+
+        plain_text = re.sub(r"<[^>]+>", " ", html)
+        return re.sub(r"\s+", " ", plain_text).strip()
+
+    def _smtp_is_configured(self) -> bool:
+        """Return whether all required SMTP settings are configured."""
+
+        smtp_password = self._secret_value(
+            self._config.SMTP_PASSWORD,
+        )
+
+        return all(
+            (
+                self._has_value(self._config.SMTP_HOST),
+                self._has_value(self._config.SMTP_FROM_EMAIL),
+                self._has_value(smtp_password),
+            )
+        )
+
+    # ==========================================================
+    # MESSAGE CONSTRUCTION
+    # ==========================================================
+
+    def _build_smtp_message(
         self,
         *,
         request: EmailRequest,
-    ) -> EmailDeliveryResult:
-        """Send one message using Apps Script or SMTP."""
+        from_email: str,
+    ) -> MIMEMultipart:
+        """Build the MIME message used by the SMTP transport."""
 
-        if self._has_value(self._config.APP_SCRIPT_URL):
-            sent_with_app_script = await self._send_with_app_script(
-                request=request,
-            )
-
-            if sent_with_app_script:
-                return EmailDeliveryResult(
-                    provider=self.provider,
-                    accepted=True,
-                )
-
-        if not self._smtp_is_configured():
-            raise EmailConfigurationError(
-                "Legacy email delivery failed through Apps Script and "
-                "complete SMTP fallback settings are not configured."
-            )
-
-        await self._send_with_smtp(request=request)
-
-        return EmailDeliveryResult(
-            provider=self.provider,
-            accepted=True,
+        message = (
+            MIMEMultipart("alternative")
+            if request.is_html
+            else MIMEMultipart()
         )
+
+        message["From"] = from_email
+        message["To"] = request.to_email
+        message["Subject"] = request.subject
+        message["Date"] = email.utils.formatdate(localtime=True)
+
+        sender_domain = from_email.split("@")[-1]
+
+        message["Message-ID"] = email.utils.make_msgid(
+            domain=sender_domain,
+        )
+
+        reply_to = request.reply_to or self._config.EMAIL_REPLY_TO
+
+        if isinstance(reply_to, str) and reply_to.strip():
+            message["Reply-To"] = reply_to.strip()
+
+        if request.is_html:
+            plain_text = self._html_to_plain_text(request.body)
+
+            message.attach(
+                MIMEText(
+                    plain_text,
+                    "plain",
+                    "utf-8",
+                )
+            )
+
+            message.attach(
+                MIMEText(
+                    request.body,
+                    "html",
+                    "utf-8",
+                )
+            )
+
+        else:
+            message.attach(
+                MIMEText(
+                    request.body,
+                    "plain",
+                    "utf-8",
+                )
+            )
+
+        return message
+
+    # ==========================================================
+    # APPS SCRIPT TRANSPORT
+    # ==========================================================
 
     async def _send_with_app_script(
         self,
@@ -114,50 +203,57 @@ class LegacyEmailProvider(EmailProviderAdapter):
                     json=payload,
                 )
 
-            if response.status_code != 200:
-                logger.warning(
-                    "Apps Script email delivery returned status %s "
-                    "for recipient %s.",
-                    response.status_code,
-                    request.to_email,
-                )
-                return False
-
-            try:
-                response_payload = response.json()
-            except ValueError:
-                # Preserve legacy behavior: an HTTP 200 means the Apps Script
-                # accepted the request even when it returns a non-JSON body.
-                # Falling back here could deliver the same email twice.
-                logger.warning(
-                    "Apps Script returned HTTP 200 with a non-JSON response "
-                    "for recipient %s; treating the request as accepted.",
-                    request.to_email,
-                )
-                return True
-
-            if (
-                isinstance(response_payload, dict)
-                and response_payload.get("success") is False
-            ):
-                logger.warning(
-                    "Apps Script rejected email delivery for recipient %s.",
-                    request.to_email,
-                )
-                return False
-
-            logger.info(
-                "Email accepted by Apps Script for recipient %s.",
-                request.to_email,
-            )
-            return True
-
         except httpx.HTTPError:
             logger.exception(
                 "Apps Script request failed for recipient %s.",
                 request.to_email,
             )
             return False
+
+        if response.status_code != 200:
+            logger.warning(
+                "Apps Script email delivery returned status %s "
+                "for recipient %s.",
+                response.status_code,
+                request.to_email,
+            )
+            return False
+
+        try:
+            response_payload = response.json()
+
+        except ValueError:
+            # Preserve the existing legacy behavior. An HTTP 200 response
+            # indicates that Apps Script accepted the request even when the
+            # response body is not JSON. Falling back to SMTP here could
+            # cause duplicate email delivery.
+            logger.warning(
+                "Apps Script returned HTTP 200 with a non-JSON response "
+                "for recipient %s; treating the request as accepted.",
+                request.to_email,
+            )
+            return True
+
+        if (
+            isinstance(response_payload, dict)
+            and response_payload.get("success") is False
+        ):
+            logger.warning(
+                "Apps Script rejected email delivery for recipient %s.",
+                request.to_email,
+            )
+            return False
+
+        logger.info(
+            "Email accepted by Apps Script for recipient %s.",
+            request.to_email,
+        )
+
+        return True
+
+    # ==========================================================
+    # SMTP TRANSPORT
+    # ==========================================================
 
     async def _send_with_smtp(
         self,
@@ -168,7 +264,9 @@ class LegacyEmailProvider(EmailProviderAdapter):
 
         smtp_host = self._config.SMTP_HOST
         smtp_from_email = self._config.SMTP_FROM_EMAIL
-        smtp_password = self._secret_value(self._config.SMTP_PASSWORD)
+        smtp_password = self._secret_value(
+            self._config.SMTP_PASSWORD,
+        )
 
         if (
             not self._has_value(smtp_host)
@@ -199,7 +297,12 @@ class LegacyEmailProvider(EmailProviderAdapter):
 
         try:
             await smtp.connect()
-            await smtp.login(smtp_from_email, smtp_password)
+
+            await smtp.login(
+                smtp_from_email,
+                smtp_password,
+            )
+
             await smtp.send_message(message)
 
             logger.info(
@@ -224,93 +327,46 @@ class LegacyEmailProvider(EmailProviderAdapter):
             try:
                 if smtp.is_connected:
                     await smtp.quit()
+
             except Exception:
                 logger.warning(
                     "Failed to close SMTP connection cleanly.",
                     exc_info=True,
                 )
 
-    def _build_smtp_message(
+    # ==========================================================
+    # PUBLIC ENTRY POINT
+    # ==========================================================
+
+    async def send(
         self,
         *,
         request: EmailRequest,
-        from_email: str,
-    ) -> MIMEMultipart:
-        """Build the MIME message used by the SMTP transport."""
+    ) -> EmailDeliveryResult:
+        """Send one email using Apps Script or SMTP fallback."""
 
-        message = (
-            MIMEMultipart("alternative")
-            if request.is_html
-            else MIMEMultipart()
+        if self._has_value(self._config.APP_SCRIPT_URL):
+            sent_with_app_script = await self._send_with_app_script(
+                request=request,
+            )
+
+            if sent_with_app_script:
+                return EmailDeliveryResult(
+                    provider=self.provider,
+                    accepted=True,
+                )
+
+        if not self._smtp_is_configured():
+            raise EmailConfigurationError(
+                "Legacy email delivery failed through Apps Script and "
+                "complete SMTP fallback settings are not configured."
+            )
+
+        await self._send_with_smtp(
+            request=request,
         )
 
-        message["From"] = from_email
-        message["To"] = request.to_email
-        message["Subject"] = request.subject
-        message["Date"] = email.utils.formatdate(localtime=True)
-
-        sender_domain = from_email.split("@")[-1]
-        message["Message-ID"] = email.utils.make_msgid(
-            domain=sender_domain,
+        return EmailDeliveryResult(
+            provider=self.provider,
+            accepted=True,
         )
-
-        reply_to = request.reply_to or self._config.EMAIL_REPLY_TO
-
-        if isinstance(reply_to, str) and reply_to.strip():
-            message["Reply-To"] = reply_to.strip()
-
-        if request.is_html:
-            plain_text = self._html_to_plain_text(request.body)
-
-            message.attach(MIMEText(plain_text, "plain", "utf-8"))
-            message.attach(MIMEText(request.body, "html", "utf-8"))
-        else:
-            message.attach(MIMEText(request.body, "plain", "utf-8"))
-
-        return message
-
-    def _smtp_is_configured(self) -> bool:
-        """Return whether the complete SMTP fallback is configured."""
-
-        return all(
-            [
-                self._has_value(self._config.SMTP_HOST),
-                self._has_value(self._config.SMTP_FROM_EMAIL),
-                self._has_value(
-                    self._secret_value(self._config.SMTP_PASSWORD)
-                ),
-            ]
-        )
-
-    @staticmethod
-    def _html_to_plain_text(html: str) -> str:
-        """Produce a simple plain-text fallback from HTML."""
-
-        plain_text = re.sub(r"<[^>]+>", " ", html)
-        return re.sub(r"\s+", " ", plain_text).strip()
-
-    @staticmethod
-    def _secret_value(
-        value: SecretStr | str | None,
-    ) -> str | None:
-        """Return the raw value from a normal or secret setting."""
-
-        if value is None:
-            return None
-
-        if isinstance(value, SecretStr):
-            return value.get_secret_value()
-
-        return value
-
-    @staticmethod
-    def _has_value(value: object) -> bool:
-        """Return whether a value contains non-whitespace content."""
-
-        if value is None:
-            return False
-
-        if isinstance(value, SecretStr):
-            value = value.get_secret_value()
-
-        return bool(str(value).strip())
