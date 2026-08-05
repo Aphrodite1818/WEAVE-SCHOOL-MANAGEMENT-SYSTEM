@@ -93,6 +93,8 @@ jobs:
               'match = re.search(r"\\n    (loadMetrics|loadDashboard)\\(\\);\\n    return \\(\\) => \\{", content)',
               'match = re.search(r"\\n    (loadMetrics|loadDashboard)\\(\\);\\n\\s*return \\(\\) => \\{", content)',
           )
+          source = source.replace('    "frontend/src/pages/parent/ParentDashboardPage.jsx",\n', "")
+          source = source.replace('    "frontend/src/pages/superadmin/SuperadminDashboardPage.jsx",\n', "")
           path.write_text(source)
           PY
 
@@ -100,6 +102,32 @@ jobs:
         run: |
           python .github/scripts/apply_unified_fixes.py
           rm -f .github/scripts/apply_unified_fixes.py.gz.b64.part*
+          python - <<'PY'
+          from pathlib import Path
+
+          parent = Path("frontend/src/pages/parent/ParentDashboardPage.jsx")
+          source = parent.read_text()
+          source = source.replace(
+              "    loadParentMetrics();\n\n    return () => {",
+              "    loadParentMetrics();\n    const handlePullRefresh = () => loadParentMetrics();\n    window.addEventListener(\"weave:pull-refresh\", handlePullRefresh);\n\n    return () => {\n      window.removeEventListener(\"weave:pull-refresh\", handlePullRefresh);",
+              1,
+          )
+          source = source.replace(
+              "    loadChildAcademics();\n\n    return () => {",
+              "    loadChildAcademics();\n    const handlePullRefresh = () => loadChildAcademics();\n    window.addEventListener(\"weave:pull-refresh\", handlePullRefresh);\n\n    return () => {\n      window.removeEventListener(\"weave:pull-refresh\", handlePullRefresh);",
+              1,
+          )
+          parent.write_text(source)
+
+          superadmin = Path("frontend/src/pages/superadmin/SuperadminDashboardPage.jsx")
+          source = superadmin.read_text()
+          source = source.replace(
+              "    const timeoutId = window.setTimeout(loadDashboardData, 0);\n    return () => window.clearTimeout(timeoutId);",
+              "    const timeoutId = window.setTimeout(loadDashboardData, 0);\n    window.addEventListener(\"weave:pull-refresh\", loadDashboardData);\n    return () => {\n      window.clearTimeout(timeoutId);\n      window.removeEventListener(\"weave:pull-refresh\", loadDashboardData);\n    };",
+              1,
+          )
+          superadmin.write_text(source)
+          PY
 
       - name: Install backend dependencies
         working-directory: backend
