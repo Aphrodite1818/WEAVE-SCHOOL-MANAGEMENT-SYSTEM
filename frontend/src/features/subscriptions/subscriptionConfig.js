@@ -74,13 +74,12 @@ export const BILLING_INTERVAL_OPTIONS = [
   { value: "monthly", label: "Monthly" },
 ];
 
-
 export const LANDING_PRICING_PLANS = [
   {
     planCode: "free_trial",
     name: "Free Trial",
-    bestFor: "Best for testing Weave",
-    description: "Try the core school workflow before moving into a monthly Weave subscription.",
+    bestFor: "Best for exploring Weave",
+    description: "Experience the core Weave workflow and see how a connected school workspace fits your operations before subscribing.",
     priceMonthly: null,
     priceLabel: "Pricing unavailable",
     features: [],
@@ -91,8 +90,8 @@ export const LANDING_PRICING_PLANS = [
   {
     planCode: "plus",
     name: "Plus",
-    bestFor: "Best for small schools",
-    description: "A practical paid plan for small schools that need the full daily workflow.",
+    bestFor: "Best for smaller schools",
+    description: "A complete starting point for schools ready to organise students, staff, academic records, portals, and everyday administration in one place.",
     priceMonthly: null,
     priceLabel: "Pricing unavailable",
     features: [],
@@ -104,7 +103,7 @@ export const LANDING_PRICING_PLANS = [
     planCode: "professional",
     name: "Professional",
     bestFor: "Best for growing schools",
-    description: "Higher capacity for schools managing more staff, classes, and records.",
+    description: "Greater capacity for established schools managing more students, teachers, classes, records, and operational complexity.",
     priceMonthly: null,
     priceLabel: "Pricing unavailable",
     features: [],
@@ -117,7 +116,7 @@ export const LANDING_PRICING_PLANS = [
     planCode: "enterprise",
     name: "Enterprise",
     bestFor: "Best for larger schools",
-    description: "Built for larger operations that need custom limits and priority-ready support.",
+    description: "Designed for large school operations that need maximum capacity, flexible resource limits, and priority support readiness.",
     priceMonthly: null,
     priceLabel: "Pricing unavailable",
     features: [],
