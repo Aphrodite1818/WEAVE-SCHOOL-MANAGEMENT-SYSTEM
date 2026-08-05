@@ -127,6 +127,21 @@ jobs:
               1,
           )
           superadmin.write_text(source)
+
+          route_files = [
+              "frontend/src/routes/adminRoutes.jsx",
+              "frontend/src/routes/parentRoutes.jsx",
+              "frontend/src/routes/publicRoutes.jsx",
+              "frontend/src/routes/studentRoutes.jsx",
+              "frontend/src/routes/superadminRoutes.jsx",
+              "frontend/src/routes/teacherRoutes.jsx",
+          ]
+          lint_directive = "/* eslint-disable react-refresh/only-export-components */\n"
+          for route_file in route_files:
+              route_path = Path(route_file)
+              route_source = route_path.read_text()
+              if not route_source.startswith(lint_directive):
+                  route_path.write_text(lint_directive + route_source)
           PY
 
       - name: Install backend dependencies
