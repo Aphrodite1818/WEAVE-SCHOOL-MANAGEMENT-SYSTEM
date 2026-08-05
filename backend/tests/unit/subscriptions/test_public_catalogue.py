@@ -25,7 +25,9 @@ async def test_public_catalogue_uses_environment_backed_prices(monkeypatch):
     assert plans["professional"].amount == 39_000
     assert plans["enterprise"].amount == 85_000
     assert plans["plus"].checkout_enabled is True
-    assert plans["plus"].limits["students"] == 300
+    assert plans["plus"].limits["students"] == 500
+    assert plans["plus"].limits["teachers"] == 50
+    assert plans["plus"].limits["classes"] == 50
     assert plans["professional"].features["advanced_analytics"] is True
 
 

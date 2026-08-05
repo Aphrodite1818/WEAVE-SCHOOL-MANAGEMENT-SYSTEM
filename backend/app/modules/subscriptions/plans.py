@@ -92,10 +92,10 @@ PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
     SubscriptionPlan.PLUS.value: PlanEntitlements(
         features=_paid_features(),
         limits=_limits(
-            students=300,
-            teachers=30,
+            students=500,
+            teachers=50,
             parents=300,
-            classes=30,
+            classes=50,
             subjects=60,
         ),
     ),
