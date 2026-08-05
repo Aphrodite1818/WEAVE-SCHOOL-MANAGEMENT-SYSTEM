@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+import {
+  isIosBrowserMode,
+  isIosLikePlatform,
+} from "../src/utils/iosBrowserThemeChrome.js";
+
+const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("iOS browser detection excludes Android and every standalone PWA", () => {
+  const iphone = {
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+    platform: "iPhone",
+    maxTouchPoints: 5,
+  };
+  const ipadDesktopMode = {
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+    platform: "MacIntel",
+    maxTouchPoints: 5,
+  };
+  const android = {
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36",
+    platform: "Linux armv8l",
+    maxTouchPoints: 5,
+  };
+
+  assert.equal(isIosLikePlatform(iphone), true);
+  assert.equal(isIosLikePlatform(ipadDesktopMode), true);
+  assert.equal(isIosLikePlatform(android), false);
+  assert.equal(
+    isIosBrowserMode({ navigatorLike: iphone, displayModeStandalone: false }),
+    true,
+  );
+  assert.equal(
+    isIosBrowserMode({ navigatorLike: iphone, displayModeStandalone: true }),
+    false,
+  );
+  assert.equal(
+    isIosBrowserMode({
+      navigatorLike: { ...iphone, standalone: true },
+      displayModeStandalone: false,
+    }),
+    false,
+  );
+  assert.equal(
+    isIosBrowserMode({ navigatorLike: android, displayModeStandalone: false }),
+    false,
+  );
+});
+
+test("iOS Safari browser theme metadata remains stable across live switches", async () => {
+  const html = await read("index.html");
+  const startup = await read("public/theme-init.js");
+  const runtime = await read("src/utils/themeChromeSync.js");
+  const css = await read("src/styles/iosSafariBrowserTheme.css");
+  const main = await read("src/main.jsx");
+
+  const colorSchemePosition = html.indexOf('id="weave-color-scheme"');
+  const themeColorPosition = html.indexOf('id="weave-theme-color"');
+  const startupScriptPosition = html.indexOf('<script src="/theme-init.js"></script>');
+
+  assert.ok(colorSchemePosition >= 0);
+  assert.ok(themeColorPosition >= 0);
+  assert.ok(colorSchemePosition < startupScriptPosition);
+  assert.ok(themeColorPosition < startupScriptPosition);
+
+  assert.match(startup, /dataset\.iosBrowser/);
+  assert.match(startup, /getElementById\(id\)/);
+  assert.match(startup, /syncStableMetas/);
+  assert.doesNotMatch(
+    startup,
+    /querySelectorAll\('meta\[name="theme-color"\], meta\[name="color-scheme"\]'\)/,
+  );
+
+  assert.match(runtime, /isIosBrowserMode/);
+  assert.match(runtime, /updateStableIosBrowserMetas/);
+  assert.match(runtime, /THEME_COLOR_META_ID = "weave-theme-color"/);
+  assert.match(runtime, /COLOR_SCHEME_META_ID = "weave-color-scheme"/);
+  assert.match(runtime, /if \(iosBrowser\) return;/);
+  assert.match(runtime, /replaceBrowserMetas: !standalone && !iosBrowser/);
+
+  assert.match(css, /data-ios-browser="true"/);
+  assert.match(css, /body::before/);
+  assert.match(css, /display: none/);
+  assert.match(main, /iosSafariBrowserTheme\.css/);
+});
