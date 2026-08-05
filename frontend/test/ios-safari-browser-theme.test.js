@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   isIosBrowserMode,
   isIosLikePlatform,
+  selectThemeBackgroundChannels,
 } from "../src/utils/iosBrowserThemeChrome.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -53,6 +54,33 @@ test("iOS browser detection excludes Android and every standalone PWA", () => {
   );
 });
 
+test("iOS browser canvas uses the dashboard shell background as its authority", () => {
+  assert.equal(
+    selectThemeBackgroundChannels({
+      rootChannels: "248 250 252",
+      dashboardChannels: "247 244 238",
+      iosBrowser: true,
+    }),
+    "247 244 238",
+  );
+  assert.equal(
+    selectThemeBackgroundChannels({
+      rootChannels: "15 23 42",
+      dashboardChannels: "",
+      iosBrowser: true,
+    }),
+    "15 23 42",
+  );
+  assert.equal(
+    selectThemeBackgroundChannels({
+      rootChannels: "248 250 252",
+      dashboardChannels: "247 244 238",
+      iosBrowser: false,
+    }),
+    "248 250 252",
+  );
+});
+
 test("iOS Safari browser theme metadata remains stable across live switches", async () => {
   const html = await read("index.html");
   const startup = await read("public/theme-init.js");
@@ -78,6 +106,10 @@ test("iOS Safari browser theme metadata remains stable across live switches", as
   );
 
   assert.match(runtime, /isIosBrowserMode/);
+  assert.match(runtime, /selectThemeBackgroundChannels/);
+  assert.match(runtime, /document\.querySelector\("\[data-dashboard-role\]"\)/);
+  assert.match(runtime, /IOS_BROWSER_CANVAS_PROPERTY/);
+  assert.match(runtime, /style\.setProperty\(/);
   assert.match(runtime, /updateStableIosBrowserMetas/);
   assert.match(runtime, /THEME_COLOR_META_ID = "weave-theme-color"/);
   assert.match(runtime, /COLOR_SCHEME_META_ID = "weave-color-scheme"/);
@@ -85,6 +117,9 @@ test("iOS Safari browser theme metadata remains stable across live switches", as
   assert.match(runtime, /replaceBrowserMetas: !standalone && !iosBrowser/);
 
   assert.match(css, /data-ios-browser="true"/);
+  assert.match(css, /--weave-ios-browser-canvas/);
+  assert.match(css, /\[data-dashboard-role\]/);
+  assert.match(css, /#dashboard-scroll-viewport/);
   assert.match(css, /body::before/);
   assert.match(css, /display: none/);
   assert.match(main, /iosSafariBrowserTheme\.css/);

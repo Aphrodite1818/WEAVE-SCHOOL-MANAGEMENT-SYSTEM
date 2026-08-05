@@ -23,3 +23,16 @@ export const isIosBrowserMode = ({
 } = {}) =>
   isIosLikePlatform(navigatorLike) &&
   !isStandalonePresentation({ navigatorLike, displayModeStandalone });
+
+export const selectThemeBackgroundChannels = ({
+  rootChannels = "",
+  dashboardChannels = "",
+  iosBrowser = false,
+} = {}) => {
+  const normalizedRoot = String(rootChannels || "").trim();
+  const normalizedDashboard = String(dashboardChannels || "").trim();
+
+  return iosBrowser && normalizedDashboard
+    ? normalizedDashboard
+    : normalizedRoot;
+};
