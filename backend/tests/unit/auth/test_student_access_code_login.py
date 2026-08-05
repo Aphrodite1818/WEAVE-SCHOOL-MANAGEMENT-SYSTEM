@@ -12,6 +12,7 @@ from app.modules.auth.student_authentication import authenticate_student_actor
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.schemas import IdentityResolution
 from app.modules.students.models import (
+    AcademicStatus,
     StudentAccountStatus,
     StudentProfileStatus,
 )
@@ -29,6 +30,7 @@ async def test_access_code_login_returns_forced_reset_actor(monkeypatch) -> None
         password_hash=None,
         first_name="Taiwo",
         last_name="Ayimora",
+        status=AcademicStatus.ACTIVE,
         is_active=True,
         is_verified=True,
         account_status=StudentAccountStatus.ACTIVE,
@@ -99,6 +101,7 @@ async def test_old_password_is_rejected_after_admin_password_reset(
         password_hash=None,
         first_name="Ada",
         last_name="Student",
+        status=AcademicStatus.ACTIVE,
         is_active=True,
         is_verified=True,
         account_status=StudentAccountStatus.ACTIVE,
@@ -163,6 +166,7 @@ async def test_existing_password_login_still_works_without_admin_reset(
         password_hash=hash_password("CurrentPass123"),
         first_name="Ada",
         last_name="Student",
+        status=AcademicStatus.ACTIVE,
         is_active=True,
         is_verified=True,
         account_status=StudentAccountStatus.ACTIVE,
