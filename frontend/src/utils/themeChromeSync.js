@@ -1,4 +1,7 @@
-import { isIosBrowserMode } from "./iosBrowserThemeChrome";
+import {
+  isIosBrowserMode,
+  selectThemeBackgroundChannels,
+} from "./iosBrowserThemeChrome";
 
 const THEME_EVENT = "weave:accessibility-preferences-changed";
 const STANDALONE_QUERY = "(display-mode: standalone)";
@@ -7,6 +10,7 @@ const DARK_THEME_COLOR = "#0F172A";
 const BROWSER_THEME_RECHECK_DELAY_MS = 180;
 const THEME_COLOR_META_ID = "weave-theme-color";
 const COLOR_SCHEME_META_ID = "weave-color-scheme";
+const IOS_BROWSER_CANVAS_PROPERTY = "--weave-ios-browser-canvas";
 
 let frameId = null;
 let paintFrameId = null;
@@ -30,11 +34,24 @@ const isIosBrowser = () =>
 const fallbackColor = (theme) =>
   theme === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR;
 
-const resolveBackground = (theme) => {
-  const channels = window
-    .getComputedStyle(document.documentElement)
+const readBackgroundChannels = (element) => {
+  if (!element) return "";
+  return window
+    .getComputedStyle(element)
     .getPropertyValue("--color-background")
     .trim();
+};
+
+const resolveBackground = (theme, { iosBrowser = false } = {}) => {
+  const dashboardShell = iosBrowser
+    ? document.querySelector("[data-dashboard-role]")
+    : null;
+  const channels = selectThemeBackgroundChannels({
+    rootChannels: readBackgroundChannels(document.documentElement),
+    dashboardChannels: readBackgroundChannels(dashboardShell),
+    iosBrowser,
+  });
+
   return channels ? `rgb(${channels})` : fallbackColor(theme);
 };
 
@@ -88,13 +105,23 @@ const cancelScheduledSync = () => {
 
 const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
   const theme = resolvedTheme();
-  const background = resolveBackground(theme);
   const root = document.getElementById("root");
   const iosBrowser = isIosBrowser();
+  const background = resolveBackground(theme, { iosBrowser });
 
   document.documentElement.dataset.iosBrowser = String(iosBrowser);
   document.documentElement.style.colorScheme = theme;
   document.documentElement.style.backgroundColor = background;
+
+  if (iosBrowser) {
+    document.documentElement.style.setProperty(
+      IOS_BROWSER_CANVAS_PROPERTY,
+      background,
+    );
+  } else {
+    document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
+  }
+
   if (document.body) {
     document.body.style.colorScheme = theme;
     document.body.style.backgroundColor = background;
