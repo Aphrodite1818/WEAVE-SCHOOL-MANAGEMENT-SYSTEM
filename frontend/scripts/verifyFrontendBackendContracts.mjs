@@ -149,7 +149,7 @@ function parseRouterDecorators(source, routerName) {
   const routes = [];
   const escapedRouterName = routerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const routePattern = new RegExp(
-    `@${escapedRouterName}\\.(get|post|put|patch|delete)\\s*\\(\\s*(["'])([^"']+)\\2`,
+    `@${escapedRouterName}\\.(get|post|put|patch|delete)\\s*\\(\\s*(["'])([^"']*)\\2`,
     "g",
   );
 
@@ -158,7 +158,7 @@ function parseRouterDecorators(source, routerName) {
   }
 
   const apiRoutePattern = new RegExp(
-    `@${escapedRouterName}\\.api_route\\s*\\(\\s*(["'])([^"']+)\\1([\\s\\S]*?)\\)`,
+    `@${escapedRouterName}\\.api_route\\s*\\(\\s*(["'])([^"']*)\\1([\\s\\S]*?)\\)`,
     "g",
   );
 
