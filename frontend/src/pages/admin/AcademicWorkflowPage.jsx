@@ -12,6 +12,7 @@ import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
+import SchoolCalendarGuide from "../../features/schoolCalendar/components/SchoolCalendarGuide";
 import SchoolCalendarWorkspace from "../../features/schoolCalendar/components/SchoolCalendarWorkspace";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { academicService } from "../../services/academicService";
@@ -159,10 +160,10 @@ function AcademicWorkflowPage() {
     }
     if (workflow === "school-calendar") {
       return (
-        <SchoolCalendarWorkspace
-          key="school-calendar-workflow"
-          activeTab={activeTab}
-        />
+        <div key="school-calendar-workflow" className="space-y-4">
+          <SchoolCalendarGuide activeTab={activeTab} />
+          <SchoolCalendarWorkspace activeTab={activeTab} />
+        </div>
       );
     }
     return <Navigate to="/admin/academic" replace />;
