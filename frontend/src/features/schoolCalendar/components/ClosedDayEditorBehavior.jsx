@@ -8,33 +8,54 @@ const CLOSED_DAY_TYPES = new Set([
   "emergency_closure",
 ]);
 
-const normalizeText = (value) => String(value || "").trim().toLowerCase();
+const DAY_TYPE_BY_LABEL = new Map([
+  ["instructional day", "instructional_day"],
+  ["examination day", "examination_day"],
+  ["weekend", "weekend"],
+  ["public holiday", "public_holiday"],
+  ["school holiday", "school_holiday"],
+  ["mid term break", "mid_term_break"],
+  ["staff training day", "staff_training_day"],
+  ["special school day", "special_school_day"],
+  ["emergency closure", "emergency_closure"],
+]);
 
-const fieldByLabel = (root, labelText) => {
+const normalizeText = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ");
+
+const findLabeledControl = (root, labelText, selector) => {
   const target = normalizeText(labelText);
-  const label = Array.from(root.querySelectorAll("label")).find((item) =>
-    normalizeText(item.textContent).includes(target),
+  const textNode = Array.from(root.querySelectorAll("label, span, p")).find(
+    (item) => normalizeText(item.textContent) === target,
   );
-  if (!label) return null;
+  if (!textNode) return null;
 
-  const forId = label.getAttribute("for");
-  if (forId) return root.querySelector(`#${CSS.escape(forId)}`);
+  const container = textNode.parentElement;
+  return container?.querySelector(selector) || null;
+};
 
-  return (
-    label.querySelector("input, select, textarea") ||
-    label.parentElement?.querySelector("input, select, textarea") ||
-    null
-  );
+const fieldByLabel = (root, labelText) =>
+  findLabeledControl(root, labelText, "input, textarea, select");
+
+const dayTypeCombobox = (form) =>
+  findLabeledControl(form, "Day type", '[role="combobox"]');
+
+const selectedDayType = (form) => {
+  const combobox = dayTypeCombobox(form);
+  if (!(combobox instanceof HTMLButtonElement)) return "";
+  return DAY_TYPE_BY_LABEL.get(normalizeText(combobox.textContent)) || "";
 };
 
 const setControlledValue = (element, value) => {
-  if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement)) return false;
+  if (!(element instanceof HTMLInputElement)) return false;
   if (element.value === value) return false;
 
-  const prototype = element instanceof HTMLInputElement
-    ? HTMLInputElement.prototype
-    : HTMLSelectElement.prototype;
-  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")
+    ?.set?.call(element, value);
   element.dispatchEvent(new Event("input", { bubbles: true }));
   element.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
@@ -73,21 +94,26 @@ const ensureHoursNotice = (form, visible) => {
   if (!notice) {
     notice = document.createElement("div");
     notice.dataset.closedDayHoursNotice = "true";
-    notice.className = "rounded-2xl border border-border/70 bg-surface-muted px-4 py-3 text-sm text-text-muted sm:col-span-2";
-    notice.textContent = "Operating hours not applicable. This day is closed, so opening and closing times will be saved as empty.";
-    fieldContainer(fieldByLabel(form, "Closes at"))?.insertAdjacentElement("afterend", notice);
+    notice.className =
+      "rounded-2xl border border-border/70 bg-surface-muted px-4 py-3 text-sm text-text-muted sm:col-span-2";
+    notice.textContent =
+      "Operating hours not applicable. This day is closed, so opening and closing times will be saved as empty.";
+    fieldContainer(fieldByLabel(form, "Closes at"))?.insertAdjacentElement(
+      "afterend",
+      notice,
+    );
   }
   notice.hidden = !visible;
   notice.style.display = visible ? "" : "none";
 };
 
 const normalizeEditor = (form) => {
-  const dayType = fieldByLabel(form, "Day type");
-  if (!(dayType instanceof HTMLSelectElement)) return { closed: false, changed: false };
+  const dayType = selectedDayType(form);
+  if (!dayType) return { closed: false, changed: false };
 
   const opensAt = fieldByLabel(form, "Opens at");
   const closesAt = fieldByLabel(form, "Closes at");
-  const closed = CLOSED_DAY_TYPES.has(dayType.value);
+  const closed = CLOSED_DAY_TYPES.has(dayType);
 
   setFieldVisibility(opensAt, !closed);
   setFieldVisibility(closesAt, !closed);
@@ -109,7 +135,9 @@ const normalizeEditor = (form) => {
 
 const findDayEditorForm = () =>
   Array.from(document.querySelectorAll("form")).find((form) =>
-    form.textContent?.includes("Calendar day"),
+    Array.from(form.querySelectorAll('button[type="submit"]')).some(
+      (button) => normalizeText(button.textContent) === "save day",
+    ),
   );
 
 const scheduleNormalization = (form) => {
