@@ -2,7 +2,7 @@
 #      media/router.py       #
 # ========================== #
 
-"""Tenant admin API routes for media uploads and media assets."""
+"""Tenant and profile media API routes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_tenant_admin, get_current_tenant_member
+from app.core.dependencies.route_guards import get_current_actor, get_current_tenant_admin
+from app.core.exceptions import ForbiddenException
+from app.modules.media.global_teacher_profile import GlobalTeacherProfileMediaService
 from app.modules.media.models import (
     MediaOwnerType,
     MediaPurpose,
@@ -29,7 +31,7 @@ from app.modules.media.schemas import (
 from app.modules.media.service import MediaService
 from app.modules.tenant_admins.models import TenantAdmin
 from app.modules.students.models import Student
-from app.modules.teachers.models import Teacher
+from app.modules.teachers.models import Teacher, TeacherAccount
 
 
 router = APIRouter(
@@ -39,8 +41,8 @@ router = APIRouter(
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentProfileMediaActor: TypeAlias = Annotated[
-    TenantAdmin | Teacher | Student,
-    Depends(get_current_tenant_member),
+    TenantAdmin | TeacherAccount | Teacher | Student | object,
+    Depends(get_current_actor),
 ]
 
 
@@ -124,7 +126,6 @@ async def delete_student_passport_photo(
 
 @router.post(
     "/teachers/{teacher_id}/passport-photo",
-    response_model=MediaUploadResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_teacher_passport_photo(
@@ -132,72 +133,89 @@ async def upload_teacher_passport_photo(
     db: DbSession,
     current_user: CurrentTenantAdmin,
     file: UploadFile = File(...),
-) -> MediaUploadResponse:
-    """Upload or replace a teacher's passport photo."""
+) -> dict[str, object]:
+    """Upload a teacher-account photo through one tenant membership."""
 
-    return await MediaService.upload_teacher_passport(
+    return await GlobalTeacherProfileMediaService.upload_for_membership(
         db=db,
-        actor=current_user,
-        teacher_id=teacher_id,
+        tenant_id=current_user.tenant_id,
+        membership_id=teacher_id,
         file=file,
     )
 
 
 @router.delete(
     "/teachers/{teacher_id}/passport-photo",
-    response_model=MediaDeleteResponse,
 )
 async def delete_teacher_passport_photo(
     teacher_id: UUID,
     db: DbSession,
     current_user: CurrentTenantAdmin,
-    delete_object: bool = Query(default=False),
-) -> MediaDeleteResponse:
-    """Delete/detach a teacher's current passport photo."""
+    delete_object: bool = Query(default=True),
+) -> dict[str, object]:
+    """Delete a teacher account's current photo through a membership."""
 
-    return await MediaService.delete_current_teacher_passport(
+    return await GlobalTeacherProfileMediaService.delete_for_membership(
         db=db,
-        actor=current_user,
-        teacher_id=teacher_id,
+        tenant_id=current_user.tenant_id,
+        membership_id=teacher_id,
         delete_object=delete_object,
     )
 
 
 @router.post(
     "/profile/passport-photo",
-    response_model=MediaUploadResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_tenant_admin_passport_photo(
+async def upload_profile_passport_photo(
     db: DbSession,
     current_user: CurrentProfileMediaActor,
     file: UploadFile = File(...),
-) -> MediaUploadResponse:
-    """Upload or replace the authenticated actor's passport photo."""
+) -> MediaUploadResponse | dict[str, object]:
+    """Upload the authenticated actor's supported profile photo."""
 
-    return await MediaService.upload_profile_passport(
-        db=db,
-        actor=current_user,
-        file=file,
-    )
+    if isinstance(current_user, (TeacherAccount, Teacher)):
+        return await GlobalTeacherProfileMediaService.upload(
+            db=db,
+            actor=current_user,
+            file=file,
+        )
+
+    if isinstance(current_user, (TenantAdmin, Student)):
+        return await MediaService.upload_profile_passport(
+            db=db,
+            actor=current_user,
+            file=file,
+        )
+
+    raise ForbiddenException(detail="This account does not support profile photo uploads")
 
 
 @router.delete(
     "/profile/passport-photo",
-    response_model=MediaDeleteResponse,
 )
-async def delete_tenant_admin_passport_photo(
+async def delete_profile_passport_photo(
     db: DbSession,
     current_user: CurrentProfileMediaActor,
-    delete_object: bool = Query(default=False),
-) -> MediaDeleteResponse:
-    """Delete/detach the authenticated actor's passport photo."""
+    delete_object: bool = Query(default=True),
+) -> MediaDeleteResponse | dict[str, object]:
+    """Delete the authenticated actor's supported profile photo."""
 
-    return await MediaService.delete_current_profile_passport(
-        db=db,
-        actor=current_user,
-        delete_object=delete_object,
-    )
+    if isinstance(current_user, (TeacherAccount, Teacher)):
+        return await GlobalTeacherProfileMediaService.delete(
+            db=db,
+            actor=current_user,
+            delete_object=delete_object,
+        )
+
+    if isinstance(current_user, (TenantAdmin, Student)):
+        return await MediaService.delete_current_profile_passport(
+            db=db,
+            actor=current_user,
+            delete_object=delete_object,
+        )
+
+    raise ForbiddenException(detail="This account does not support profile photo uploads")
 
 
 @router.get(

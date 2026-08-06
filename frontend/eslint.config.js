@@ -21,4 +21,16 @@ export default defineConfig([
       'react-hooks/set-state-in-effect': 'off',
     },
   },
+  {
+    files: ['**/*.test.{js,jsx}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    files: ['src/features/schoolCalendar/components/SchoolCalendarWorkspace.jsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

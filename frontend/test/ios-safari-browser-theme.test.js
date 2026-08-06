@@ -81,7 +81,7 @@ test("iOS browser canvas uses the dashboard shell background as its authority", 
   );
 });
 
-test("iOS Safari browser theme metadata remains stable across live switches", async () => {
+test("iOS Safari browser uses one document canvas for live theme switching", async () => {
   const html = await read("index.html");
   const startup = await read("public/theme-init.js");
   const runtime = await read("src/utils/themeChromeSync.js");
@@ -108,18 +108,32 @@ test("iOS Safari browser theme metadata remains stable across live switches", as
   assert.match(runtime, /isIosBrowserMode/);
   assert.match(runtime, /selectThemeBackgroundChannels/);
   assert.match(runtime, /document\.querySelector\("\[data-dashboard-role\]"\)/);
-  assert.match(runtime, /IOS_BROWSER_CANVAS_PROPERTY/);
-  assert.match(runtime, /style\.setProperty\(/);
+  assert.match(runtime, /applyIosBrowserCanvas/);
+  assert.match(
+    runtime,
+    /style\.setProperty\(\s*IOS_BROWSER_CANVAS_PROPERTY,\s*background,\s*\)/,
+  );
+  assert.match(
+    runtime,
+    /document\.documentElement\.style\.backgroundColor = background/,
+  );
+  assert.match(runtime, /document\.body\.style\.backgroundColor = background/);
+  assert.match(runtime, /root\.style\.backgroundColor = "transparent"/);
+  assert.match(runtime, /document\.documentElement\.style\.backgroundImage = "none"/);
   assert.match(runtime, /updateStableIosBrowserMetas/);
   assert.match(runtime, /THEME_COLOR_META_ID = "weave-theme-color"/);
   assert.match(runtime, /COLOR_SCHEME_META_ID = "weave-color-scheme"/);
-  assert.match(runtime, /if \(iosBrowser\) return;/);
   assert.match(runtime, /replaceBrowserMetas: !standalone && !iosBrowser/);
+  assert.match(runtime, /if \(standalone\) return;/);
 
   assert.match(css, /data-ios-browser="true"/);
   assert.match(css, /--weave-ios-browser-canvas/);
-  assert.match(css, /\[data-dashboard-role\]/);
-  assert.match(css, /#dashboard-scroll-viewport/);
+  assert.match(css, /background-repeat: no-repeat !important/);
+  assert.match(css, /#root[\s\S]*background-color: transparent !important/);
+  assert.match(css, /\[data-dashboard-role\][\s\S]*background-color: transparent !important/);
+  assert.match(css, /\[data-dashboard-role\]:not\(\[data-guide-page="true"\]\)/);
+  assert.match(css, /position: absolute !important/);
+  assert.match(css, /#dashboard-scroll-viewport[\s\S]*background-color: transparent !important/);
   assert.match(css, /body::before/);
   assert.match(css, /display: none/);
   assert.match(main, /iosSafariBrowserTheme\.css/);

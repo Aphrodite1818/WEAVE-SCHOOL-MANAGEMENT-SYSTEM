@@ -8,6 +8,7 @@ const STANDALONE_QUERY = "(display-mode: standalone)";
 const LIGHT_THEME_COLOR = "#FFFFFF";
 const DARK_THEME_COLOR = "#0F172A";
 const BROWSER_THEME_RECHECK_DELAY_MS = 180;
+const IOS_BROWSER_THEME_RECHECK_DELAYS_MS = [180, 480];
 const THEME_COLOR_META_ID = "weave-theme-color";
 const COLOR_SCHEME_META_ID = "weave-color-scheme";
 const IOS_BROWSER_CANVAS_PROPERTY = "--weave-ios-browser-canvas";
@@ -15,6 +16,7 @@ const IOS_BROWSER_CANVAS_PROPERTY = "--weave-ios-browser-canvas";
 let frameId = null;
 let paintFrameId = null;
 let timerId = null;
+let iosTimerIds = [];
 
 const resolvedTheme = () =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -94,13 +96,54 @@ const updateStableIosBrowserMetas = (theme, background) => {
   themeColorMeta.setAttribute("data-weave-theme", theme);
 };
 
+const applyIosBrowserCanvas = (background) => {
+  document.documentElement.style.setProperty(
+    IOS_BROWSER_CANVAS_PROPERTY,
+    background,
+  );
+  document.documentElement.style.backgroundColor = background;
+  document.documentElement.style.backgroundImage = "none";
+
+  if (document.body) {
+    document.body.style.backgroundColor = background;
+    document.body.style.backgroundImage = "none";
+  }
+
+  const root = document.getElementById("root");
+  if (root) {
+    root.style.backgroundColor = "transparent";
+    root.style.backgroundImage = "none";
+  }
+};
+
+const applyIosBrowserDocumentTheme = (background) => {
+  const theme = resolvedTheme();
+
+  document.documentElement.dataset.iosBrowser = "true";
+  document.documentElement.style.colorScheme = theme;
+  applyIosBrowserCanvas(background);
+
+  if (document.body) {
+    document.body.style.colorScheme = theme;
+  }
+
+  const root = document.getElementById("root");
+  if (root) {
+    root.style.colorScheme = theme;
+  }
+
+  updateStableIosBrowserMetas(theme, background);
+};
+
 const cancelScheduledSync = () => {
   if (frameId !== null) window.cancelAnimationFrame(frameId);
   if (paintFrameId !== null) window.cancelAnimationFrame(paintFrameId);
   if (timerId !== null) window.clearTimeout(timerId);
+  iosTimerIds.forEach((id) => window.clearTimeout(id));
   frameId = null;
   paintFrameId = null;
   timerId = null;
+  iosTimerIds = [];
 };
 
 const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
@@ -110,30 +153,26 @@ const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
   const background = resolveBackground(theme, { iosBrowser });
 
   document.documentElement.dataset.iosBrowser = String(iosBrowser);
-  document.documentElement.style.colorScheme = theme;
-  document.documentElement.style.backgroundColor = background;
 
   if (iosBrowser) {
-    document.documentElement.style.setProperty(
-      IOS_BROWSER_CANVAS_PROPERTY,
-      background,
-    );
-  } else {
-    document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
+    applyIosBrowserDocumentTheme(background);
+    return;
   }
+
+  document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
+  document.documentElement.style.colorScheme = theme;
+  document.documentElement.style.backgroundColor = background;
+  document.documentElement.style.removeProperty("background-image");
 
   if (document.body) {
     document.body.style.colorScheme = theme;
     document.body.style.backgroundColor = background;
+    document.body.style.removeProperty("background-image");
   }
   if (root) {
     root.style.colorScheme = theme;
     root.style.backgroundColor = background;
-  }
-
-  if (iosBrowser) {
-    updateStableIosBrowserMetas(theme, background);
-    return;
+    root.style.removeProperty("background-image");
   }
 
   // Declare both supported schemes. The active scheme remains authoritative
@@ -173,9 +212,14 @@ export const syncThemeChrome = () => {
     frameId = null;
 
     if (iosBrowser) {
-      // iOS Safari browser chrome is tied to the first valid metadata nodes.
-      // Keep those nodes stable and perform one post-paint reassertion only.
+      // Safari 26 derives browser chrome from the document canvas and can
+      // retain a stale tint when a full-screen fixed layer is opaque. Keep
+      // html/body authoritative and re-read the resolved color after layout.
       applyDocumentTheme({ replaceBrowserMetas: false });
+      paintFrameId = window.requestAnimationFrame(() => {
+        paintFrameId = null;
+        applyDocumentTheme({ replaceBrowserMetas: false });
+      });
       return;
     }
 
@@ -185,7 +229,16 @@ export const syncThemeChrome = () => {
     });
   });
 
-  if (iosBrowser) return;
+  if (iosBrowser) {
+    IOS_BROWSER_THEME_RECHECK_DELAYS_MS.forEach((delayMs) => {
+      const timer = window.setTimeout(() => {
+        iosTimerIds = iosTimerIds.filter((id) => id !== timer);
+        applyDocumentTheme({ replaceBrowserMetas: false });
+      }, delayMs);
+      iosTimerIds.push(timer);
+    });
+    return;
+  }
 
   timerId = window.setTimeout(() => {
     timerId = null;

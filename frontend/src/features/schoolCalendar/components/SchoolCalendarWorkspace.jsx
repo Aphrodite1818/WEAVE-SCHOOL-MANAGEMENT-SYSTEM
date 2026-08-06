@@ -49,6 +49,52 @@ const generationResultMessage = (result) => {
   return `${result.total_days} total dates, ${result.instructional_days} instructional days, ${result.weekend_days} weekends, ${created} created, ${updated} updated, ${result.manual_days_preserved} manual overrides preserved.`;
 };
 
+export const CLOSED_DAY_TYPES = new Set([
+  "weekend",
+  "public_holiday",
+  "school_holiday",
+  "mid_term_break",
+  "emergency_closure",
+]);
+
+export const applyDayTypeToForm = (current, dayType, overrides = {}) => {
+  const next = {
+    ...current,
+    ...overrides,
+    day_type: dayType,
+  };
+
+  if (!CLOSED_DAY_TYPES.has(dayType)) return next;
+
+  return {
+    ...next,
+    opens_at: "",
+    closes_at: "",
+    school_open: false,
+    student_activity_allowed: false,
+    student_attendance_required: false,
+    workforce_attendance_required: false,
+  };
+};
+
+export const buildDayUpdatePayload = (dayForm, selectedCalendarId) => {
+  const closed = CLOSED_DAY_TYPES.has(dayForm.day_type);
+
+  return {
+    calendar_id: selectedCalendarId,
+    ...dayForm,
+    opens_at: closed ? null : dayForm.opens_at || null,
+    closes_at: closed ? null : dayForm.closes_at || null,
+    school_open: closed ? false : dayForm.school_open,
+    student_activity_allowed: closed ? false : dayForm.student_activity_allowed,
+    student_attendance_required: closed ? false : dayForm.student_attendance_required,
+    workforce_attendance_required: closed
+      ? false
+      : dayForm.workforce_attendance_required,
+    historical_correction_confirmed: Boolean(dayForm.reason),
+  };
+};
+
 function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
@@ -364,14 +410,12 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   const updateDay = (event) => {
     event.preventDefault();
     if (!editingDay) return;
+
+    const payload = buildDayUpdatePayload(dayForm, selectedCalendarId);
+
     runAction(
       "day",
-      () =>
-        schoolCalendarService.updateDay(editingDay.calendar_date, {
-          calendar_id: selectedCalendarId,
-          ...dayForm,
-          historical_correction_confirmed: Boolean(dayForm.reason),
-        }),
+      () => schoolCalendarService.updateDay(editingDay.calendar_date, payload),
       "Calendar day updated.",
     ).then(() => setEditingDay(null));
   };
@@ -1032,18 +1076,61 @@ function CalendarMonthView({ days, onDayClick }) {
   );
 }
 
-function DayEditor({ day, form, busy, saving, onChange, onClose, onSubmit }) {
-  const applyPreset = (preset) => {
-    const presets = {
-      public_holiday: { day_type: "public_holiday", school_open: false, student_activity_allowed: false, student_attendance_required: false, workforce_attendance_required: false, title: "Public holiday", opens_at: "", closes_at: "" },
-      school_holiday: { day_type: "school_holiday", school_open: false, student_activity_allowed: false, student_attendance_required: false, workforce_attendance_required: false, title: "School holiday", opens_at: "", closes_at: "" },
-      examination_day: { day_type: "examination_day", school_open: true, student_activity_allowed: true, student_attendance_required: true, workforce_attendance_required: true, title: "Examination day" },
-      special_school_day: { day_type: "special_school_day", school_open: true, student_activity_allowed: true, student_attendance_required: true, workforce_attendance_required: true, title: "Special school day" },
-      staff_training_day: { day_type: "staff_training_day", school_open: true, student_activity_allowed: false, student_attendance_required: false, workforce_attendance_required: true, title: "Staff training day" },
-      weekend_school_day: { day_type: "special_school_day", school_open: true, student_activity_allowed: true, student_attendance_required: true, workforce_attendance_required: true, title: "Weekend school day" },
-    };
-    onChange((current) => ({ ...current, ...presets[preset] }));
+export function DayEditor({ day, form, busy, saving, onChange, onClose, onSubmit }) {
+  const presets = {
+    public_holiday: {
+      day_type: "public_holiday",
+      title: "Public holiday",
+    },
+    school_holiday: {
+      day_type: "school_holiday",
+      title: "School holiday",
+    },
+    examination_day: {
+      day_type: "examination_day",
+      school_open: true,
+      student_activity_allowed: true,
+      student_attendance_required: true,
+      workforce_attendance_required: true,
+      title: "Examination day",
+    },
+    special_school_day: {
+      day_type: "special_school_day",
+      school_open: true,
+      student_activity_allowed: true,
+      student_attendance_required: true,
+      workforce_attendance_required: true,
+      title: "Special school day",
+    },
+    staff_training_day: {
+      day_type: "staff_training_day",
+      school_open: true,
+      student_activity_allowed: false,
+      student_attendance_required: false,
+      workforce_attendance_required: true,
+      title: "Staff training day",
+    },
+    weekend_school_day: {
+      day_type: "special_school_day",
+      school_open: true,
+      student_activity_allowed: true,
+      student_attendance_required: true,
+      workforce_attendance_required: true,
+      title: "Weekend school day",
+    },
   };
+
+  const handleDayTypeChange = (dayType, overrides = {}) => {
+    onChange((current) => applyDayTypeToForm(current, dayType, overrides));
+  };
+
+  const applyPreset = (preset) => {
+    const values = presets[preset];
+    if (!values) return;
+    handleDayTypeChange(values.day_type, values);
+  };
+
+  const isClosedDay = CLOSED_DAY_TYPES.has(form.day_type);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/30 px-3 py-3 sm:items-center sm:justify-center">
@@ -1068,17 +1155,35 @@ function DayEditor({ day, form, busy, saving, onChange, onClose, onSubmit }) {
           ))}
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <SelectControl label="Day type" value={form.day_type} onChange={(value) => onChange((current) => ({ ...current, day_type: value }))} options={["instructional_day", "examination_day", "weekend", "public_holiday", "school_holiday", "mid_term_break", "staff_training_day", "special_school_day", "emergency_closure"].map((value) => ({ value, label: value.replaceAll("_", " ") }))} />
+          <SelectControl
+            label="Day type"
+            value={form.day_type}
+            onChange={handleDayTypeChange}
+            options={["instructional_day", "examination_day", "weekend", "public_holiday", "school_holiday", "mid_term_break", "staff_training_day", "special_school_day", "emergency_closure"].map((value) => ({ value, label: value.replaceAll("_", " ") }))}
+          />
           <Input label="Title" value={form.title} onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))} />
-          <Input label="Opens at" type="time" value={form.opens_at || ""} onChange={(event) => onChange((current) => ({ ...current, opens_at: event.target.value }))} />
-          <Input label="Closes at" type="time" value={form.closes_at || ""} onChange={(event) => onChange((current) => ({ ...current, closes_at: event.target.value }))} />
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <CheckboxControl label="School open" checked={form.school_open} onChange={(value) => onChange((current) => ({ ...current, school_open: value }))} />
-          <CheckboxControl label="Student activity allowed" checked={form.student_activity_allowed} onChange={(value) => onChange((current) => ({ ...current, student_activity_allowed: value }))} />
-          <CheckboxControl label="Student operational expectation" checked={form.student_attendance_required} onChange={(value) => onChange((current) => ({ ...current, student_attendance_required: value }))} />
-          <CheckboxControl label="Workforce operational expectation" checked={form.workforce_attendance_required} onChange={(value) => onChange((current) => ({ ...current, workforce_attendance_required: value }))} />
-        </div>
+
+        {isClosedDay ? (
+          <div className="mt-4 rounded-xl border border-border/70 bg-surface-muted px-4 py-3 text-sm text-text-muted">
+            <p className="font-semibold text-text">School closed</p>
+            <p className="mt-1">Operating hours do not apply because the school is closed. Student activities and attendance expectations are disabled.</p>
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Input label="Opens at" type="time" value={form.opens_at || ""} onChange={(event) => onChange((current) => ({ ...current, opens_at: event.target.value }))} />
+              <Input label="Closes at" type="time" value={form.closes_at || ""} onChange={(event) => onChange((current) => ({ ...current, closes_at: event.target.value }))} />
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <CheckboxControl label="School open" checked={form.school_open} onChange={(value) => onChange((current) => ({ ...current, school_open: value }))} />
+              <CheckboxControl label="Student activity allowed" checked={form.student_activity_allowed} onChange={(value) => onChange((current) => ({ ...current, student_activity_allowed: value }))} />
+              <CheckboxControl label="Student operational expectation" checked={form.student_attendance_required} onChange={(value) => onChange((current) => ({ ...current, student_attendance_required: value }))} />
+              <CheckboxControl label="Workforce operational expectation" checked={form.workforce_attendance_required} onChange={(value) => onChange((current) => ({ ...current, workforce_attendance_required: value }))} />
+            </div>
+          </>
+        )}
+
         <div className="mt-4 space-y-3">
           <Input label="Description" value={form.description} onChange={(event) => onChange((current) => ({ ...current, description: event.target.value }))} />
           <Input label="Reason" value={form.reason} onChange={(event) => onChange((current) => ({ ...current, reason: event.target.value }))} />
