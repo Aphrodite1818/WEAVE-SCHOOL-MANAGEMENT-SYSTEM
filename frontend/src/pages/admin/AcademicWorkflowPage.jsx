@@ -13,6 +13,7 @@ import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLife
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
 import ClosedDayEditorBehavior from "../../features/schoolCalendar/components/ClosedDayEditorBehavior";
+import SchoolCalendarEventsWorkspace from "../../features/schoolCalendar/components/SchoolCalendarEventsWorkspace";
 import SchoolCalendarGuide from "../../features/schoolCalendar/components/SchoolCalendarGuide";
 import SchoolCalendarWorkspace from "../../features/schoolCalendar/components/SchoolCalendarWorkspace";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
@@ -162,9 +163,13 @@ function AcademicWorkflowPage() {
     if (workflow === "school-calendar") {
       return (
         <div key="school-calendar-workflow" className="space-y-4">
-          <ClosedDayEditorBehavior />
+          {activeTab === "calendar" || activeTab === "manage" ? <ClosedDayEditorBehavior /> : null}
           <SchoolCalendarGuide activeTab={activeTab} />
-          <SchoolCalendarWorkspace activeTab={activeTab} />
+          {activeTab === "events" ? (
+            <SchoolCalendarEventsWorkspace />
+          ) : (
+            <SchoolCalendarWorkspace activeTab={activeTab} />
+          )}
         </div>
       );
     }
