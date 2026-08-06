@@ -1,24 +1,35 @@
 @supports (-webkit-touch-callout: none) {
   html[data-ios-browser="true"],
-  html[data-ios-browser="true"] body,
-  html[data-ios-browser="true"] #root,
-  html[data-ios-browser="true"] [data-dashboard-role],
-  html[data-ios-browser="true"] #dashboard-scroll-viewport {
+  html[data-ios-browser="true"] body {
+    min-height: 100%;
     background-color: var(
       --weave-ios-browser-canvas,
       rgb(var(--color-background))
-    );
-    background-image: none;
+    ) !important;
+    background-image: none !important;
+    background-repeat: no-repeat !important;
   }
 
-  html[data-ios-browser="true"],
-  html[data-ios-browser="true"] body,
   html[data-ios-browser="true"] #root {
     min-height: 100%;
+    background-color: transparent !important;
+    background-image: none !important;
   }
 
   html[data-ios-browser="true"] [data-dashboard-role] {
     min-height: 100dvh;
+    background-color: transparent !important;
+    background-image: none !important;
+  }
+
+  html[data-ios-browser="true"] [data-dashboard-role]:not([data-guide-page="true"]) {
+    position: absolute !important;
+    inset: 0;
+  }
+
+  html[data-ios-browser="true"] #dashboard-scroll-viewport {
+    background-color: transparent !important;
+    background-image: none !important;
   }
 
   html[data-ios-browser="true"] body::before {

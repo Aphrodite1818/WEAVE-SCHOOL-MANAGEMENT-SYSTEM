@@ -81,7 +81,7 @@ test("iOS browser canvas uses the dashboard shell background as its authority", 
   );
 });
 
-test("iOS Safari browser theme metadata and canvas switch together", async () => {
+test("iOS Safari browser uses one document canvas for live theme switching", async () => {
   const html = await read("index.html");
   const startup = await read("public/theme-init.js");
   const runtime = await read("src/utils/themeChromeSync.js");
@@ -118,10 +118,8 @@ test("iOS Safari browser theme metadata and canvas switch together", async () =>
     /document\.documentElement\.style\.backgroundColor = background/,
   );
   assert.match(runtime, /document\.body\.style\.backgroundColor = background/);
-  assert.match(runtime, /root\.style\.backgroundColor = background/);
-  assert.doesNotMatch(runtime, /clearIosBrowserPinnedChrome/);
-  assert.match(runtime, /applyIosBrowserDocumentTheme/);
-  assert.match(runtime, /IOS_BROWSER_THEME_RECHECK_DELAYS_MS/);
+  assert.match(runtime, /root\.style\.backgroundColor = "transparent"/);
+  assert.match(runtime, /document\.documentElement\.style\.backgroundImage = "none"/);
   assert.match(runtime, /updateStableIosBrowserMetas/);
   assert.match(runtime, /THEME_COLOR_META_ID = "weave-theme-color"/);
   assert.match(runtime, /COLOR_SCHEME_META_ID = "weave-color-scheme"/);
@@ -130,8 +128,12 @@ test("iOS Safari browser theme metadata and canvas switch together", async () =>
 
   assert.match(css, /data-ios-browser="true"/);
   assert.match(css, /--weave-ios-browser-canvas/);
-  assert.match(css, /\[data-dashboard-role\]/);
-  assert.match(css, /#dashboard-scroll-viewport/);
+  assert.match(css, /background-repeat: no-repeat !important/);
+  assert.match(css, /#root[\s\S]*background-color: transparent !important/);
+  assert.match(css, /\[data-dashboard-role\][\s\S]*background-color: transparent !important/);
+  assert.match(css, /\[data-dashboard-role\]:not\(\[data-guide-page="true"\]\)/);
+  assert.match(css, /position: absolute !important/);
+  assert.match(css, /#dashboard-scroll-viewport[\s\S]*background-color: transparent !important/);
   assert.match(css, /body::before/);
   assert.match(css, /display: none/);
   assert.match(main, /iosSafariBrowserTheme\.css/);

@@ -102,14 +102,17 @@ const applyIosBrowserCanvas = (background) => {
     background,
   );
   document.documentElement.style.backgroundColor = background;
+  document.documentElement.style.backgroundImage = "none";
 
   if (document.body) {
     document.body.style.backgroundColor = background;
+    document.body.style.backgroundImage = "none";
   }
 
   const root = document.getElementById("root");
   if (root) {
-    root.style.backgroundColor = background;
+    root.style.backgroundColor = "transparent";
+    root.style.backgroundImage = "none";
   }
 };
 
@@ -159,14 +162,17 @@ const applyDocumentTheme = ({ replaceBrowserMetas = false } = {}) => {
   document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
   document.documentElement.style.colorScheme = theme;
   document.documentElement.style.backgroundColor = background;
+  document.documentElement.style.removeProperty("background-image");
 
   if (document.body) {
     document.body.style.colorScheme = theme;
     document.body.style.backgroundColor = background;
+    document.body.style.removeProperty("background-image");
   }
   if (root) {
     root.style.colorScheme = theme;
     root.style.backgroundColor = background;
+    root.style.removeProperty("background-image");
   }
 
   // Declare both supported schemes. The active scheme remains authoritative
@@ -206,9 +212,9 @@ export const syncThemeChrome = () => {
     frameId = null;
 
     if (iosBrowser) {
-      // The first pass pins the iOS browser canvas synchronously. Re-read the
-      // resolved dashboard background after layout settles so branding and
-      // route changes cannot leave Safari chrome on the previous theme.
+      // Safari 26 derives browser chrome from the document canvas and can
+      // retain a stale tint when a full-screen fixed layer is opaque. Keep
+      // html/body authoritative and re-read the resolved color after layout.
       applyDocumentTheme({ replaceBrowserMetas: false });
       paintFrameId = window.requestAnimationFrame(() => {
         paintFrameId = null;
