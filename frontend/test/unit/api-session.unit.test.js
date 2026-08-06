@@ -1,0 +1,112 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  createJwt,
+  importFreshApi,
+  installBrowserHarness,
+} from "../support/browserHarness.js";
+
+test("authSession normalizes tenant-admin identity and respects persistence choice", async () => {
+  const harness = installBrowserHarness();
+  const { authSession } = await importFreshApi();
+
+  authSession.setUser(
+    {
+      id: "admin-1",
+      first_name: "Ada",
+      last_name: "Lovelace",
+      actor_type: "tenant_admin",
+    },
+    { remember: false },
+  );
+
+  assert.deepEqual(authSession.getUser(), {
+    id: "admin-1",
+    first_name: "Ada",
+    last_name: "Lovelace",
+    firstname: "Ada",
+    lastname: "Lovelace",
+    actor_type: "tenant_admin",
+    role: "admin",
+  });
+  assert.equal(harness.sessionStorage.getItem("auth_role"), "admin");
+  assert.equal(harness.localStorage.getItem("auth_user"), null);
+});
+
+test("authSession keeps access tokens session-only and schedules proactive refresh", async () => {
+  const harness = installBrowserHarness();
+  const { authSession } = await importFreshApi();
+  const token = createJwt({ exp: Math.floor(Date.now() / 1000) + 600 });
+
+  authSession.setToken(token, { remember: true });
+
+  assert.equal(harness.sessionStorage.getItem("access_token"), token);
+  assert.equal(harness.localStorage.getItem("access_token"), null);
+  assert.equal(harness.localStorage.getItem("auth_remember"), "true");
+  assert.equal(harness.window.__timers.size, 1);
+});
+
+test("parseApiError maps FastAPI validation details and verification metadata", async () => {
+  installBrowserHarness();
+  const { parseApiError, remapFieldErrors } = await importFreshApi();
+
+  const parsed = parseApiError({
+    response: {
+      status: 422,
+      headers: {
+        "x-verification-required": "true",
+        "x-email": "admin@example.com",
+      },
+      data: {
+        detail: [
+          { loc: ["body", "new_password"], msg: "String is too short" },
+          { loc: ["body", "new_password"], msg: "Must contain a number" },
+        ],
+      },
+    },
+  });
+
+  assert.equal(parsed.status, 422);
+  assert.equal(parsed.verificationRequired, true);
+  assert.equal(parsed.email, "admin@example.com");
+  assert.deepEqual(parsed.fieldErrors, {
+    new_password: "String is too short, Must contain a number",
+  });
+  assert.deepEqual(remapFieldErrors(parsed.fieldErrors, { new_password: "password" }), {
+    password: "String is too short, Must contain a number",
+  });
+});
+
+test("parseApiError never exposes technical backend details to users", async () => {
+  installBrowserHarness();
+  const { parseApiError } = await importFreshApi();
+
+  const parsed = parseApiError({
+    message: "request failed",
+    response: {
+      status: 500,
+      headers: {},
+      data: { detail: "SQLAlchemy asyncpg traceback leaked from production" },
+    },
+  });
+
+  assert.equal(
+    parsed.message,
+    "Something went wrong while processing your request. Please try again.",
+  );
+  assert.equal(parsed.technicalMessage, "request failed");
+});
+
+test("abort errors remain silent and are not classified as network failures", async () => {
+  installBrowserHarness();
+  const { parseApiError } = await importFreshApi();
+  const abortError = new Error("The operation was aborted");
+  abortError.name = "AbortError";
+
+  const parsed = parseApiError(abortError);
+
+  assert.equal(parsed.isAbortError, true);
+  assert.equal(parsed.isNetworkError, false);
+  assert.equal(parsed.message, "");
+});
