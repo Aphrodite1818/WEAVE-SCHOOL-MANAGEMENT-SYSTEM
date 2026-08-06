@@ -1,10 +1,9 @@
 """Global teacher-account profile media operations.
 
 Teacher profile photos belong to the global ``TeacherAccount`` identity rather
-than an individual tenant membership. This flow deliberately stores the
-current object at a deterministic global key and persists its render URL on the
-account, avoiding accidental ownership by whichever school membership happened
-to be active during upload.
+than an individual tenant membership. This flow stores the current object at a
+deterministic global key and persists its render URL on the account, avoiding
+ownership by whichever school membership happened to be active during upload.
 """
 
 from __future__ import annotations
@@ -23,7 +22,12 @@ from app.modules.media.validators import (
     get_visibility_for_purpose,
     validate_teacher_passport_upload,
 )
-from app.modules.teachers.models import TeacherAccount, TeacherMembership
+from app.modules.teachers.models import (
+    TeacherAccount,
+    TeacherAccountStatus,
+    TeacherMembership,
+    TeacherMembershipStatus,
+)
 from app.modules.teachers.repository import (
     TeacherAccountRepository,
     TeacherMembershipRepository,
@@ -34,13 +38,27 @@ class GlobalTeacherProfileMediaService:
     """Upload and delete profile photos owned by a global teacher account."""
 
     @staticmethod
+    def _ensure_active_account(account: TeacherAccount) -> TeacherAccount:
+        if (
+            not account.is_active
+            or not account.is_verified
+            or account.account_status != TeacherAccountStatus.ACTIVE
+        ):
+            raise ForbiddenException(detail="Inactive teacher account")
+        return account
+
+    @staticmethod
     def _account_from_actor(
         actor: TeacherAccount | TeacherMembership,
     ) -> TeacherAccount:
         if isinstance(actor, TeacherAccount):
-            return actor
+            return GlobalTeacherProfileMediaService._ensure_active_account(actor)
         if isinstance(actor, TeacherMembership):
-            return actor.teacher_account
+            if actor.status != TeacherMembershipStatus.ACTIVE:
+                raise ForbiddenException(detail="Inactive teacher membership")
+            return GlobalTeacherProfileMediaService._ensure_active_account(
+                actor.teacher_account
+            )
         raise ForbiddenException(detail="Teacher account credentials are required.")
 
     @staticmethod
@@ -64,7 +82,9 @@ class GlobalTeacherProfileMediaService:
         )
         if membership is None:
             raise NotFoundException(detail="Teacher membership not found")
-        return membership.teacher_account
+        return GlobalTeacherProfileMediaService._ensure_active_account(
+            membership.teacher_account
+        )
 
     @staticmethod
     async def upload(
@@ -130,8 +150,6 @@ class GlobalTeacherProfileMediaService:
 
         render_url = uploaded.cdn_url or uploaded.public_url
         if not render_url:
-            # The profile field must never be cleared by an upload that cannot
-            # subsequently be rendered by clients.
             try:
                 await storage.delete_object(object_key=object_key)
             except Exception:
@@ -142,7 +160,6 @@ class GlobalTeacherProfileMediaService:
 
         account.passport_photo_url = render_url
         await TeacherAccountRepository.save(db, account)
-        await db.flush()
 
         return {
             "render_url": render_url,
@@ -202,7 +219,6 @@ class GlobalTeacherProfileMediaService:
 
         account.passport_photo_url = None
         await TeacherAccountRepository.save(db, account)
-        await db.flush()
 
         return {
             "owner_type": "teacher_account",
