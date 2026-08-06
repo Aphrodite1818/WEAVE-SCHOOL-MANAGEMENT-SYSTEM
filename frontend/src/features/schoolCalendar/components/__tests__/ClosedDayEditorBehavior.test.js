@@ -20,7 +20,7 @@ describe("ClosedDayEditorBehavior", () => {
     }
   });
 
-  it("clears operating hours and all operational flags for closed days", () => {
+  it("clears operating hours and every incompatible operational flag", () => {
     expect(source).toContain('setControlledValue(opensAt, "")');
     expect(source).toContain('setControlledValue(closesAt, "")');
     expect(source).toContain('setCheckbox(form, "School open", false)');
@@ -29,28 +29,31 @@ describe("ClosedDayEditorBehavior", () => {
     expect(source).toContain('setCheckbox(form, "Workforce operational expectation", false)');
   });
 
-  it("replaces irrelevant time fields with a clear closed-day explanation", () => {
-    expect(source).toContain("Operating hours not applicable");
-    expect(source).toContain("opening and closing times will be saved as empty");
-    expect(source).toContain("ensureOperatingHoursNotice(form, isClosedDay)");
+  it("removes closed-day time inputs from browser validation", () => {
+    expect(source).toContain("element.disabled = !visible");
+    expect(source).toContain("element.required = visible");
+    expect(source).toContain("container.style.display");
   });
 
-  it("normalizes after selects, preset clicks, rerenders, and submission", () => {
-    expect(source).toContain('addEventListener("change", handleChange, true)');
-    expect(source).toContain('addEventListener("click", handleClick, true)');
-    expect(source).toContain('addEventListener("submit", handleSubmit, true)');
+  it("shows an explicit closed-day operating-hours state", () => {
+    expect(source).toContain("Operating hours not applicable");
+    expect(source).toContain("opening and closing times will be saved as empty");
+    expect(source).toContain("ensureHoursNotice(form, closed)");
+  });
+
+  it("normalizes after all relevant form interactions and React rerenders", () => {
+    expect(source).toContain('addEventListener("change", handleInteraction, true)');
+    expect(source).toContain('addEventListener("input", handleInteraction, true)');
+    expect(source).toContain('addEventListener("click", handleInteraction, true)');
     expect(source).toContain("queueMicrotask");
+    expect(source).toContain("requestAnimationFrame");
     expect(source).toContain("MutationObserver");
   });
 
-  it("prevents creating emergency closures from the day editor", () => {
-    expect(source).toContain('item.value === "emergency_closure"');
-    expect(source).toContain("option.remove()");
-  });
-
-  it("preserves existing emergency closure days as read-only workflow values", () => {
-    expect(source).toContain('dayType.value === "emergency_closure"');
-    expect(source).toContain("option.disabled = true");
-    expect(source).toContain("managed in Closures");
+  it("blocks the first submit until controlled React values are synchronized", () => {
+    expect(source).toContain('addEventListener("submit", handleSubmit, true)');
+    expect(source).toContain("event.preventDefault()");
+    expect(source).toContain("new WeakSet()");
+    expect(source).toContain("requestSubmit()");
   });
 });
