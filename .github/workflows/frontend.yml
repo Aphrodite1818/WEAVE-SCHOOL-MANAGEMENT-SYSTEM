@@ -1,61 +1,158 @@
-name: Frontend
+name: Frontend CI
 
 on:
+  workflow_dispatch:
   pull_request:
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend.yml"
-  push:
     branches:
-      - production-hardening
       - staging
       - master
     paths:
       - "frontend/**"
+      - "backend/app/main.py"
+      - "backend/app/**/router.py"
+      - "backend/app/core/runtime_config.py"
+      - ".github/workflows/frontend.yml"
+  push:
+    branches:
+      - "ci/**"
+      - staging
+      - master
+    paths:
+      - "frontend/**"
+      - "backend/app/main.py"
+      - "backend/app/**/router.py"
+      - "backend/app/core/runtime_config.py"
       - ".github/workflows/frontend.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  group: frontend-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  validate:
-    runs-on: ubuntu-latest
+defaults:
+  run:
+    shell: bash
 
+jobs:
+  quality:
+    name: Lint and static quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
 
     steps:
-      - name: Checkout triggering commit
+      - name: Checkout triggering revision
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Show validated revision
-        run: |
-          git rev-parse HEAD
-          git status --short --branch
-        working-directory: .
-
-      - name: Set up Node
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
 
-      - name: Lint
+      - name: Lint frontend
         run: npm run lint
 
-      - name: Test
+  tests:
+    name: Unit and regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout triggering revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run complete frontend test suite
         run: npm test
 
-      - name: Build
-        run: npm run build
+  integration-contracts:
+    name: Frontend/backend integration contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout triggering revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run executable integration tests
+        run: npm run test:integration
+
+      - name: Verify frontend calls match FastAPI routes
+        run: npm run test:contracts
+
+  build:
+    name: Build (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - quality
+      - tests
+      - integration-contracts
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+          - staging
+          - production
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout triggering revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build frontend
+        run: npm run build:${{ matrix.mode }}
