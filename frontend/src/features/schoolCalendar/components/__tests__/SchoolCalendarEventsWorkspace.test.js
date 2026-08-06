@@ -1,38 +1,38 @@
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import process from "node:process";
+import test from "node:test";
 
 const source = fs.readFileSync(
   path.resolve(process.cwd(), "src/features/schoolCalendar/components/SchoolCalendarEventsWorkspace.jsx"),
   "utf8",
 );
 
-describe("SchoolCalendarEventsWorkspace", () => {
-  it("uses an explicit event timing selector instead of an all-day checkbox", () => {
-    expect(source).toContain('label="Event timing"');
-    expect(source).toContain("Specific-time event — exact start and end times");
-    expect(source).toContain("Full-day event — occupies the whole selected day");
-    expect(source).not.toContain('label="All-day event"');
-  });
+test("uses an explicit event timing selector instead of an all-day checkbox", () => {
+  assert.match(source, /label="Event timing"/);
+  assert.match(source, /Specific-time event — exact start and end times/);
+  assert.match(source, /Full-day event — occupies the whole selected day/);
+  assert.doesNotMatch(source, /label="All-day event"/);
+});
 
-  it("clearly separates one-day and multi-day full-day events", () => {
-    expect(source).toContain('label="Full-day duration"');
-    expect(source).toContain("One full day");
-    expect(source).toContain("Several full days");
-    expect(source).toContain('label="Event date"');
-    expect(source).toContain('label="Starts on"');
-    expect(source).toContain('label="Ends on (inclusive)"');
-  });
+test("clearly separates one-day and multi-day full-day events", () => {
+  assert.match(source, /label="Full-day duration"/);
+  assert.match(source, /One full day/);
+  assert.match(source, /Several full days/);
+  assert.match(source, /label="Event date"/);
+  assert.match(source, /label="Starts on"/);
+  assert.match(source, /label="Ends on \(inclusive\)"/);
+});
 
-  it("uses exact datetime labels for specific-time events", () => {
-    expect(source).toContain('label="Starts at"');
-    expect(source).toContain('label="Ends at"');
-    expect(source).toContain("including overnight events");
-  });
+test("uses exact datetime labels for specific-time events", () => {
+  assert.match(source, /label="Starts at"/);
+  assert.match(source, /label="Ends at"/);
+  assert.match(source, /including overnight events/);
+});
 
-  it("preserves the closed-day warning without reopening operational days", () => {
-    expect(source).toContain("This event overlaps");
-    expect(source).toContain("will not reopen school");
-    expect(source).toContain("Create Event Only");
-  });
+test("preserves the closed-day warning without reopening operational days", () => {
+  assert.match(source, /This event overlaps/);
+  assert.match(source, /will not reopen school/);
+  assert.match(source, /Create Event Only/);
 });
