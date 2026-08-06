@@ -19,6 +19,9 @@
     "lint-fix": "eslint . --fix",
     "pretest": "npm run generate:pwa-icons",
     "test": "node --test",
+    "test:unit": "node --test test/unit/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js",
+    "test:contracts": "node scripts/verifyFrontendBackendContracts.mjs",
     "preview": "vite preview",
     "check": "npm run lint && npm test && npm run build"
   },
