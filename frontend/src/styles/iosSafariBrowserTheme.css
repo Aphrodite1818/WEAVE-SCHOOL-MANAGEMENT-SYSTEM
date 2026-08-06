@@ -1,24 +1,24 @@
 @supports (-webkit-touch-callout: none) {
-  html[data-ios-browser="true"] {
-    min-height: 100%;
-    background-color: rgb(var(--color-background));
+  html[data-ios-browser="true"],
+  html[data-ios-browser="true"] body,
+  html[data-ios-browser="true"] #root,
+  html[data-ios-browser="true"] [data-dashboard-role],
+  html[data-ios-browser="true"] #dashboard-scroll-viewport {
+    background-color: var(
+      --weave-ios-browser-canvas,
+      rgb(var(--color-background))
+    );
+    background-image: none;
   }
 
+  html[data-ios-browser="true"],
   html[data-ios-browser="true"] body,
   html[data-ios-browser="true"] #root {
     min-height: 100%;
-    background-color: transparent;
   }
 
   html[data-ios-browser="true"] [data-dashboard-role] {
     min-height: 100dvh;
-    background-color: transparent;
-    background-image: none;
-  }
-
-  html[data-ios-browser="true"] #dashboard-scroll-viewport {
-    background-color: transparent;
-    background-image: none;
   }
 
   html[data-ios-browser="true"] body::before {

@@ -81,7 +81,7 @@ test("iOS browser canvas uses the dashboard shell background as its authority", 
   );
 });
 
-test("iOS Safari browser theme metadata remains stable across live switches", async () => {
+test("iOS Safari browser theme metadata and canvas switch together", async () => {
   const html = await read("index.html");
   const startup = await read("public/theme-init.js");
   const runtime = await read("src/utils/themeChromeSync.js");
@@ -108,16 +108,28 @@ test("iOS Safari browser theme metadata remains stable across live switches", as
   assert.match(runtime, /isIosBrowserMode/);
   assert.match(runtime, /selectThemeBackgroundChannels/);
   assert.match(runtime, /document\.querySelector\("\[data-dashboard-role\]"\)/);
-  assert.match(runtime, /clearIosBrowserPinnedChrome/);
+  assert.match(runtime, /applyIosBrowserCanvas/);
+  assert.match(
+    runtime,
+    /style\.setProperty\(\s*IOS_BROWSER_CANVAS_PROPERTY,\s*background,\s*\)/,
+  );
+  assert.match(
+    runtime,
+    /document\.documentElement\.style\.backgroundColor = background/,
+  );
+  assert.match(runtime, /document\.body\.style\.backgroundColor = background/);
+  assert.match(runtime, /root\.style\.backgroundColor = background/);
+  assert.doesNotMatch(runtime, /clearIosBrowserPinnedChrome/);
   assert.match(runtime, /applyIosBrowserDocumentTheme/);
   assert.match(runtime, /IOS_BROWSER_THEME_RECHECK_DELAYS_MS/);
   assert.match(runtime, /updateStableIosBrowserMetas/);
   assert.match(runtime, /THEME_COLOR_META_ID = "weave-theme-color"/);
   assert.match(runtime, /COLOR_SCHEME_META_ID = "weave-color-scheme"/);
   assert.match(runtime, /replaceBrowserMetas: !standalone && !iosBrowser/);
+  assert.match(runtime, /if \(standalone\) return;/);
 
   assert.match(css, /data-ios-browser="true"/);
-  assert.match(css, /rgb\(var\(--color-background\)\)/);
+  assert.match(css, /--weave-ios-browser-canvas/);
   assert.match(css, /\[data-dashboard-role\]/);
   assert.match(css, /#dashboard-scroll-viewport/);
   assert.match(css, /body::before/);

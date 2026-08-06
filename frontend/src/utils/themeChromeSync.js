@@ -96,17 +96,20 @@ const updateStableIosBrowserMetas = (theme, background) => {
   themeColorMeta.setAttribute("data-weave-theme", theme);
 };
 
-const clearIosBrowserPinnedChrome = () => {
-  document.documentElement.style.removeProperty(IOS_BROWSER_CANVAS_PROPERTY);
-  document.documentElement.style.removeProperty("background-color");
+const applyIosBrowserCanvas = (background) => {
+  document.documentElement.style.setProperty(
+    IOS_BROWSER_CANVAS_PROPERTY,
+    background,
+  );
+  document.documentElement.style.backgroundColor = background;
 
   if (document.body) {
-    document.body.style.removeProperty("background-color");
+    document.body.style.backgroundColor = background;
   }
 
   const root = document.getElementById("root");
   if (root) {
-    root.style.removeProperty("background-color");
+    root.style.backgroundColor = background;
   }
 };
 
@@ -115,7 +118,7 @@ const applyIosBrowserDocumentTheme = (background) => {
 
   document.documentElement.dataset.iosBrowser = "true";
   document.documentElement.style.colorScheme = theme;
-  clearIosBrowserPinnedChrome();
+  applyIosBrowserCanvas(background);
 
   if (document.body) {
     document.body.style.colorScheme = theme;
@@ -203,9 +206,9 @@ export const syncThemeChrome = () => {
     frameId = null;
 
     if (iosBrowser) {
-      // iOS Safari browser chrome is tied to the first valid metadata nodes.
-      // Keep those nodes stable, let CSS drive canvas backgrounds, and re-read
-      // the painted dashboard color after layout settles.
+      // The first pass pins the iOS browser canvas synchronously. Re-read the
+      // resolved dashboard background after layout settles so branding and
+      // route changes cannot leave Safari chrome on the previous theme.
       applyDocumentTheme({ replaceBrowserMetas: false });
       paintFrameId = window.requestAnimationFrame(() => {
         paintFrameId = null;
