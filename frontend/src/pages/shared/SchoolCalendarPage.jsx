@@ -174,13 +174,42 @@ function CalendarDayTile({ day, dayEvents = [] }) {
         </div>
         <p className="mt-3 text-xs font-semibold text-text-soft">{dayTypeLabel(day.day_type)}</p>
         {day.title ? <p className="mt-1 line-clamp-2 text-xs text-text-muted">{day.title}</p> : null}
-        {dayEvents.length ? <p className="mt-3 inline-flex rounded-full bg-primary-soft px-2.5 py-1 text-xs font-semibold text-primary">{dayEvents.length} event{dayEvents.length === 1 ? "" : "s"}</p> : null}
+        {dayEvents.length ? (
+          <div className="mt-3 space-y-1.5">
+            {dayEvents.slice(0, 2).map((event, index) => (
+              <span
+                key={`${event.id || event.title || "event"}-${index}`}
+                className="block truncate rounded-md bg-primary-soft px-2 py-1 text-xs font-semibold text-primary"
+                title={event.title || "Calendar event"}
+              >
+                {event.title || "Calendar event"}
+              </span>
+            ))}
+            {dayEvents.length > 2 ? (
+              <span className="block text-xs font-semibold text-text-muted">+{dayEvents.length - 2} more</span>
+            ) : null}
+          </div>
+        ) : null}
       </button>
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={formatCalendarDate(date)} placement="center">
         <div className="space-y-4">
           <div className="flex items-center justify-between"><span className="text-lg font-semibold text-text">{dayTypeLabel(day.day_type)}</span><CalendarStatusBadge status={schoolOpen ? "active" : "closed"}>{schoolOpen ? "Open" : "Closed"}</CalendarStatusBadge></div>
           {day.title ? <p className="text-sm text-text-muted">{day.title}</p> : null}
-          {dayEvents.length ? <div className="space-y-3 pt-2"><h4 className="text-xs font-bold uppercase tracking-wide text-text-muted">Events</h4>{dayEvents.map((event) => <CalendarEventCard key={event.id} event={event} compact />)}</div> : <p className="text-sm text-text-muted">No events on this date.</p>}
+          {dayEvents.length ? (
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold uppercase tracking-wide text-text-muted">Events</h4>
+              {dayEvents.map((event) => (
+                <CalendarEventCard
+                  key={event.id}
+                  event={event}
+                  occurrenceDate={date}
+                  compact
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-text-muted">No events on this date.</p>
+          )}
           <div className="flex justify-end pt-2"><Button type="button" onClick={() => setModalOpen(false)}>Close</Button></div>
         </div>
       </Modal>

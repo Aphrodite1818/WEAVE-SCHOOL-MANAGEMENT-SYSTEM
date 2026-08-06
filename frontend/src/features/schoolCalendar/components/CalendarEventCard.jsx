@@ -1,11 +1,17 @@
 import { CalendarClock } from "lucide-react";
 
 import Card from "../../../components/ui/Card";
-import { audienceLabels, eventTypeLabels, formatCalendarDate } from "../utils/calendarDisplay";
+import { audienceLabels, eventTypeLabels } from "../utils/calendarDisplay";
+import {
+  eventDateRangeLabel,
+  eventOccurrenceLabel,
+} from "../utils/eventDisplay";
 import CalendarStatusBadge from "./CalendarStatusBadge";
 
-function CalendarEventCard({ event, compact = false }) {
+function CalendarEventCard({ event, compact = false, occurrenceDate = "" }) {
   if (!event) return null;
+
+  const occurrenceLabel = eventOccurrenceLabel(event, occurrenceDate);
 
   return (
     <Card className={compact ? "p-3" : "p-4"}>
@@ -13,9 +19,12 @@ function CalendarEventCard({ event, compact = false }) {
         <div className="min-w-0">
           <p className="break-words text-sm font-semibold text-text">{event.title}</p>
           <p className="mt-1 text-xs text-text-muted">
-            {formatCalendarDate(event.starts_at, { year: "numeric" })}
+            {eventDateRangeLabel(event)}
             {event.is_all_day ? " / All day" : ""}
           </p>
+          {occurrenceLabel ? (
+            <p className="mt-1 text-xs font-semibold text-primary">{occurrenceLabel}</p>
+          ) : null}
         </div>
         {event.status ? <CalendarStatusBadge status={event.status} /> : null}
       </div>
