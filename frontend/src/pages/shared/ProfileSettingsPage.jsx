@@ -10,43 +10,50 @@ function ProfileSettingsPage() {
   const user = authSession.getUser();
   const role = String(user?.role || authSession.getRole() || "admin").toLowerCase();
   const displayName = getUserDisplayName(user);
+  const supportsProfileMedia = role !== "parent";
 
   return (
     <DashboardLayout
       role={role}
       title="Complete your profile"
-      description="Keep your profile details, personal photo, and school identity up to date."
+      description={
+        supportsProfileMedia
+          ? "Keep your profile details, personal photo, and school identity up to date."
+          : "Keep your personal and contact details up to date."
+      }
     >
       <div className="mx-auto w-full max-w-6xl space-y-5 sm:space-y-6">
-        <ProfileMediaManager role={role} user={user} />
+        {supportsProfileMedia ? <ProfileMediaManager role={role} user={user} /> : null}
 
-      <Card className="overflow-hidden">
-        <div className="border-b border-border bg-surface-muted/50 p-5 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <Avatar
-              name={displayName}
-              user={user}
-              size="xl"
-              className="h-20 w-20 ring-4 ring-surface"
-            />
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-wide text-primary">{role} profile</p>
-              <h2 className="mt-1 truncate text-xl font-semibold">{displayName || "User profile"}</h2>
-              <p className="mt-1 text-sm text-text-muted">
-                Update your details and preview the passport/profile image that will appear across the workspace.
-              </p>
+        <Card className="overflow-hidden">
+          <div className="border-b border-border bg-surface-muted/50 p-5 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <Avatar
+                name={displayName}
+                user={user}
+                size="xl"
+                className="h-20 w-20 ring-4 ring-surface"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-primary">{role} profile</p>
+                <h2 className="mt-1 truncate text-xl font-semibold">{displayName || "User profile"}</h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  {supportsProfileMedia
+                    ? "Update your details and preview the profile image that will appear across the workspace."
+                    : "Update the personal and contact details used across your school workspaces."}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="p-5 sm:p-6">
-          <ProfileCompletionForm
-            role={role}
-            submitLabel="Save changes"
-            showMediaPreview={false}
-          />
-        </div>
-      </Card>
+          <div className="p-5 sm:p-6">
+            <ProfileCompletionForm
+              role={role}
+              submitLabel="Save changes"
+              showMediaPreview={false}
+            />
+          </div>
+        </Card>
       </div>
     </DashboardLayout>
   );
