@@ -42,9 +42,36 @@ const setFieldVisibility = (element, visible) => {
   container.setAttribute("aria-hidden", String(!visible));
 };
 
+const ensureClosureNotice = (form) => {
+  if (form.querySelector("[data-closure-workflow-notice]")) return;
+  const notice = document.createElement("div");
+  notice.dataset.closureWorkflowNotice = "true";
+  notice.className = "mt-4 rounded-2xl border border-warning/40 bg-warning-soft px-4 py-3 text-sm text-amber-950";
+  notice.textContent = "Emergency closures are managed from the Closures page so one date or an entire date range follows the same audited workflow.";
+  const dayType = fieldByLabel(form, "Day type");
+  dayType?.closest("div")?.parentElement?.insertAdjacentElement("afterend", notice);
+};
+
+const restrictEmergencyClosureOption = (dayType) => {
+  if (!(dayType instanceof HTMLSelectElement)) return;
+  const option = Array.from(dayType.options).find((item) => item.value === "emergency_closure");
+  if (!option) return;
+
+  if (dayType.value === "emergency_closure") {
+    option.disabled = true;
+    option.textContent = "Emergency closure — managed in Closures";
+    return;
+  }
+
+  option.remove();
+};
+
 const normalizeEditor = (form) => {
   const dayType = fieldByLabel(form, "Day type");
   if (!(dayType instanceof HTMLSelectElement)) return;
+
+  restrictEmergencyClosureOption(dayType);
+  ensureClosureNotice(form);
 
   const opensAt = fieldByLabel(form, "Opens at");
   const closesAt = fieldByLabel(form, "Closes at");
@@ -82,8 +109,7 @@ function ClosedDayEditorBehavior() {
       if (!activeForm) return;
 
       const handleChange = (event) => {
-        const target = event.target;
-        if (target instanceof HTMLSelectElement) normalizeEditor(activeForm);
+        if (event.target instanceof HTMLSelectElement) normalizeEditor(activeForm);
       };
       const handleSubmit = () => normalizeEditor(activeForm);
 
