@@ -16,12 +16,16 @@ from app.modules.user_guides.schemas import UserGuideStateResponse, UserGuideSta
 
 _ACTOR_TYPE_BY_CLASS_NAME = {
     "TenantAdmin": "tenant_admin",
-    "Teacher": "teacher",
-    "TeacherAccount": "teacher_account",
-    "Parent": "parent",
-    "ParentAccount": "parent_account",
     "Student": "student",
     "SuperAdmin": "superadmin",
+}
+_ACCOUNT_SCOPED_ACTORS = {
+    "Teacher": ("teacher_account", "teacher_account_id"),
+    "TeacherMembership": ("teacher_account", "teacher_account_id"),
+    "TeacherAccount": ("teacher_account", "id"),
+    "Parent": ("parent_account", "parent_account_id"),
+    "ParentMembership": ("parent_account", "parent_account_id"),
+    "ParentAccount": ("parent_account", "id"),
 }
 _GUIDE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,99}$")
 _TERMINAL_GUIDE_STATUSES = frozenset({"completed", "dismissed"})
@@ -38,11 +42,27 @@ class GuideActorContext:
 class UserGuideService:
     @staticmethod
     def actor_context(actor: Any) -> GuideActorContext:
+        class_name = actor.__class__.__name__
+        account_scope = _ACCOUNT_SCOPED_ACTORS.get(class_name)
+        if account_scope is not None:
+            actor_type, account_id_attribute = account_scope
+            actor_id = getattr(actor, account_id_attribute, None)
+            if not isinstance(actor_id, uuid.UUID):
+                raise ValueError(
+                    "The authenticated account actor does not expose a valid identifier."
+                )
+            return GuideActorContext(
+                actor_type=actor_type,
+                actor_id=actor_id,
+                tenant_id=None,
+                scope_key="global",
+            )
+
         actor_id = getattr(actor, "id", None)
         if not isinstance(actor_id, uuid.UUID):
             raise ValueError("The authenticated actor does not expose a valid identifier.")
 
-        actor_type = _ACTOR_TYPE_BY_CLASS_NAME.get(actor.__class__.__name__)
+        actor_type = _ACTOR_TYPE_BY_CLASS_NAME.get(class_name)
         if actor_type is None:
             raise ValueError("This actor type does not support product guides.")
 
