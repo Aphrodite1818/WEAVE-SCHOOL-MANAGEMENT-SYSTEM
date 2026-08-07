@@ -7,7 +7,7 @@ import json
 from pydantic import SecretStr
 
 from app.config import sentry as sentry_config
-from app.config.settings import Settings
+from app.config.settings import EnvironmentType, Settings
 
 
 def test_sentry_credentials_are_optional() -> None:
@@ -102,8 +102,8 @@ def test_initialize_sentry_uses_safe_defaults(
     )
     monkeypatch.setattr(
         sentry_config.settings,
-        "settings.ENV",
-        "staging",
+        "ENV",
+        EnvironmentType.STAGING,
     )
     monkeypatch.setattr(
         sentry_config.settings,
@@ -134,6 +134,8 @@ def test_initialize_sentry_uses_safe_defaults(
         is True
     )
 
+    assert captured_options["environment"] == "stg"
+    assert captured_options["release"] == "weave@test"
     assert captured_options["send_default_pii"] is False
     assert captured_options["max_request_body_size"] == "never"
     assert captured_options["include_local_variables"] is False
