@@ -45,3 +45,20 @@ test("application routes are code split", async () => {
   const index = await read("src/routes/index.jsx");
   assert.match(index, /Suspense/);
 });
+
+test("remembered browser and standalone PWA sessions resume before login", async () => {
+  const [landing, login, authService] = await Promise.all([
+    read("src/pages/public/PwaAwareLandingPage.jsx"),
+    read("src/pages/public/LoginPage.jsx"),
+    read("src/services/auth.service.js"),
+  ]);
+
+  assert.match(landing, /authSession\.getUser\(\)/);
+  assert.match(landing, /\/login\?resume=1/);
+  assert.match(login, /searchParams\.get\("resume"\) === "1"/);
+  assert.match(login, /authSession\.getUser\(\)/);
+  assert.match(login, /authService\.bootstrapSession\(\)/);
+  assert.match(login, /isRestoringSession/);
+  assert.match(login, /resolvePostLoginRoute\(data, role\)/);
+  assert.match(authService, /api\.post\("\/auth\/refresh"/);
+});

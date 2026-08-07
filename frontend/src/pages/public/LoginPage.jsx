@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, CheckCircle2, Clock3, LockKeyhole, TriangleAlert } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Clock3,
+  LockKeyhole,
+  TriangleAlert,
+} from "lucide-react";
 import AuthLayout from "../../components/layout/AuthLayout";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
+import Spinner from "../../components/ui/Spinner";
 import { authService } from "../../services/auth.service";
-import { parseApiError } from "../../services/api";
+import { authSession, parseApiError } from "../../services/api";
 
 const ROLE_ROUTES = {
   SUPERADMIN: "/superadmin/dashboard",
@@ -21,7 +28,11 @@ const ACCOUNT_SCHOOL_ROUTES = {
 };
 
 const safeInvitationReturnTo = (value) => {
-  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//")
+  ) {
     return "";
   }
   if (
@@ -77,7 +88,9 @@ function Notice({ type = "success", children }) {
       : "border-success/20 bg-success-soft text-emerald-700";
 
   return (
-    <div className={`mb-4 flex gap-3 rounded-2xl border px-4 py-3 text-sm font-medium ${styles}`}>
+    <div
+      className={`mb-4 flex gap-3 rounded-2xl border px-4 py-3 text-sm font-medium ${styles}`}
+    >
       <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       {children}
     </div>
@@ -102,7 +115,8 @@ function LoginLockoutNotice({ seconds }) {
             </span>
           </div>
           <p className="mt-1 text-sm leading-6">
-            Too many failed attempts were made for this login. For security, even the correct password will not work until the countdown ends.
+            Too many failed attempts were made for this login. For security,
+            even the correct password will not work until the countdown ends.
           </p>
           <p className="mt-2 text-xs font-semibold uppercase tracking-wide">
             Next login attempt available in {countdownLabel}
@@ -120,6 +134,13 @@ function LoginPage() {
   const passwordReset = searchParams.get("reset") === "true";
   const inviteCompleted = searchParams.get("invite") === "success";
   const returnTo = safeInvitationReturnTo(searchParams.get("returnTo"));
+  const resumeRequested = searchParams.get("resume") === "1";
+  const shouldRestoreSession = Boolean(
+    !justVerified &&
+      !passwordReset &&
+      !inviteCompleted &&
+      (resumeRequested || authSession.getUser())
+  );
 
   const [formData, setFormData] = useState({
     identifier: "",
@@ -127,10 +148,55 @@ function LoginPage() {
     remember: true,
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isRestoringSession, setIsRestoringSession] = useState(
+    shouldRestoreSession
+  );
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [retryAfterSeconds, setRetryAfterSeconds] = useState(0);
   const [lockoutMessage, setLockoutMessage] = useState(null);
+
+  useEffect(() => {
+    if (!shouldRestoreSession) return undefined;
+
+    let cancelled = false;
+
+    const restoreSavedSession = async () => {
+      try {
+        const data = await authService.bootstrapSession();
+        if (cancelled) return;
+
+        if (!data) {
+          setIsRestoringSession(false);
+          return;
+        }
+
+        const role = String(data?.role || data?.user?.role || "").toUpperCase();
+        const passwordResetRequired = Boolean(
+          data?.user?.password_reset_required ?? data?.password_reset_required
+        );
+
+        if (role === "STUDENT" && passwordResetRequired) {
+          navigate("/student/change-password", { replace: true });
+          return;
+        }
+
+        navigate(returnTo || resolvePostLoginRoute(data, role), {
+          replace: true,
+        });
+      } catch {
+        if (!cancelled) {
+          setIsRestoringSession(false);
+        }
+      }
+    };
+
+    restoreSavedSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, returnTo, shouldRestoreSession]);
 
   useEffect(() => {
     if (!retryAfterSeconds) return undefined;
@@ -147,10 +213,15 @@ function LoginPage() {
 
   const lockoutCountdownLabel = useMemo(
     () => formatCountdown(retryAfterSeconds),
-    [retryAfterSeconds],
+    [retryAfterSeconds]
   );
 
-  const redirectToVerification = (identifier, notice, purpose = "verification", redirectTo = "/verify-otp") => {
+  const redirectToVerification = (
+    identifier,
+    notice,
+    purpose = "verification",
+    redirectTo = "/verify-otp"
+  ) => {
     if (!identifier) return;
     authService.setPendingVerificationEmail(identifier);
     const query = new URLSearchParams({
@@ -170,8 +241,15 @@ function LoginPage() {
 
   const handleChange = (event) => {
     const { checked, name, type, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
-    setFieldErrors((prev) => ({ ...prev, [name]: undefined, email: undefined }));
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+    setFieldErrors((prev) => ({
+      ...prev,
+      [name]: undefined,
+      email: undefined,
+    }));
     if (retryAfterSeconds <= 0) {
       setError(null);
       setLockoutMessage(null);
@@ -205,7 +283,10 @@ function LoginPage() {
 
       navigate(returnTo || resolvePostLoginRoute(data, role), { replace: true });
     } catch (err) {
-      const apiError = parseApiError(err, "Invalid email/admission number or password.");
+      const apiError = parseApiError(
+        err,
+        "Invalid email/admission number or password."
+      );
       if (Object.keys(apiError.fieldErrors || {}).length > 0) {
         setFieldErrors(apiError.fieldErrors);
       }
@@ -221,12 +302,16 @@ function LoginPage() {
 
       const retryAfter = Number(
         apiError.data?.next_allowed_in_seconds ||
-        apiError.data?.retry_after_seconds ||
-        apiError.retryAfter ||
-        0
+          apiError.data?.retry_after_seconds ||
+          apiError.retryAfter ||
+          0
       );
 
-      if (apiError.status === 429 && Number.isFinite(retryAfter) && retryAfter > 0) {
+      if (
+        apiError.status === 429 &&
+        Number.isFinite(retryAfter) &&
+        retryAfter > 0
+      ) {
         const roundedRetryAfter = Math.ceil(retryAfter);
         setRetryAfterSeconds(roundedRetryAfter);
         setLockoutMessage(
@@ -244,6 +329,23 @@ function LoginPage() {
 
   const submitDisabled = isLoading || retryAfterSeconds > 0;
 
+  if (isRestoringSession) {
+    return (
+      <AuthLayout
+        title="Restoring session"
+        description="Checking your saved login before showing the sign-in form."
+        iconPosition="below"
+      >
+        <div className="flex flex-col items-center py-6 text-center">
+          <Spinner className="h-10 w-10" />
+          <p className="mt-4 text-sm text-text-soft">
+            Getting your workspace ready...
+          </p>
+        </div>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout
       title="Welcome back"
@@ -252,33 +354,76 @@ function LoginPage() {
       footer={
         <p className="mt-7 text-center text-sm text-text-soft">
           Need a workspace?{" "}
-          <Link to="/register" className="font-semibold text-primary hover:text-primary-hover">
+          <Link
+            to="/register"
+            className="font-semibold text-primary hover:text-primary-hover"
+          >
             Start free
           </Link>
         </p>
       }
     >
       {justVerified && <Notice>Account verified. You can now log in.</Notice>}
-      {passwordReset && <Notice>Password reset successful. You can now log in.</Notice>}
-      {inviteCompleted && <Notice>Account setup completed. You can now log in.</Notice>}
-      {retryAfterSeconds > 0 ? <LoginLockoutNotice seconds={retryAfterSeconds} /> : null}
-      {lockoutMessage && retryAfterSeconds <= 0 ? <Notice type="error">{lockoutMessage}</Notice> : null}
+      {passwordReset && (
+        <Notice>Password reset successful. You can now log in.</Notice>
+      )}
+      {inviteCompleted && (
+        <Notice>Account setup completed. You can now log in.</Notice>
+      )}
+      {retryAfterSeconds > 0 ? (
+        <LoginLockoutNotice seconds={retryAfterSeconds} />
+      ) : null}
+      {lockoutMessage && retryAfterSeconds <= 0 ? (
+        <Notice type="error">{lockoutMessage}</Notice>
+      ) : null}
       {error && <Notice type="error">{error}</Notice>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <Input label="Email or admission number" type="text" name="identifier" value={formData.identifier} onChange={handleChange} placeholder="name@school.edu or WVS-2026-12345" required error={fieldErrors.identifier || fieldErrors.email} />
-        <Input label="Password" type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Enter your password" required error={fieldErrors.password} />
+        <Input
+          label="Email or admission number"
+          type="text"
+          name="identifier"
+          value={formData.identifier}
+          onChange={handleChange}
+          placeholder="name@school.edu or WVS-2026-12345"
+          required
+          error={fieldErrors.identifier || fieldErrors.email}
+        />
+        <Input
+          label="Password"
+          type="password"
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          placeholder="Enter your password"
+          required
+          error={fieldErrors.password}
+        />
         <div className="flex items-center justify-between gap-4 text-sm">
           <label className="flex items-center gap-2">
-            <input type="checkbox" name="remember" checked={formData.remember} onChange={handleChange} className="h-4 w-4 rounded border-border accent-primary" disabled={retryAfterSeconds > 0} />
+            <input
+              type="checkbox"
+              name="remember"
+              checked={formData.remember}
+              onChange={handleChange}
+              className="h-4 w-4 rounded border-border accent-primary"
+              disabled={retryAfterSeconds > 0}
+            />
             <span className="text-text-soft">Remember me</span>
           </label>
-          <Link to="/forgot-password" className="font-semibold text-primary hover:text-primary-hover">
+          <Link
+            to="/forgot-password"
+            className="font-semibold text-primary hover:text-primary-hover"
+          >
             Forgot password?
           </Link>
         </div>
         <Button type="submit" className="w-full" disabled={submitDisabled}>
-          {isLoading ? "Logging in..." : retryAfterSeconds > 0 ? `Login locked · ${lockoutCountdownLabel}` : "Log in to workspace"}
+          {isLoading
+            ? "Logging in..."
+            : retryAfterSeconds > 0
+              ? `Login locked · ${lockoutCountdownLabel}`
+              : "Log in to workspace"}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </form>
