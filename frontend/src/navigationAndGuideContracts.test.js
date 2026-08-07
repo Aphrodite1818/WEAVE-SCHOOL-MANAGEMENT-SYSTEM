@@ -74,3 +74,37 @@ test("other actor guide exits return to the configured dashboard", () => {
   assert.match(roleGuide, /navigate\(guide\.config\.dashboardRoute, \{ replace: true \}\)/);
   assert.match(roleGuide, /onClick=\{\(\) => navigate\(guide\.config\.dashboardRoute\)\}/);
 });
+
+test("terminal guide completion must be confirmed before leaving setup", () => {
+  const guideService = readSource("services", "guideService.js");
+  const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
+
+  assert.match(guideService, /const terminalWrite = TERMINAL_STATUSES\.has\(requestedStatus\)/);
+  assert.match(guideService, /ensureTerminalConfirmation\(requestedStatus, response\)/);
+  assert.match(guideService, /throw error;/);
+  assert.doesNotMatch(setupRoute, /finally\s*\{\s*leaveAdminSetup/);
+  assert.match(
+    setupRoute,
+    /await guide\.finish\(\);\s*leaveAdminSetup\("\/admin\/dashboard"\)/,
+  );
+});
+
+test("teacher and parent guide fallback state is account-global while student and admin stay tenant-scoped", () => {
+  const guideService = readSource("services", "guideService.js");
+
+  assert.match(guideService, /"teacher_account"/);
+  assert.match(guideService, /"parent_account"/);
+  assert.match(guideService, /const tenant = accountScoped\s*\? "global"/);
+  assert.match(guideService, /user\.tenant_id/);
+});
+
+test("a failed guide-state read cannot auto-classify a user as a fresh guide", () => {
+  const guideService = readSource("services", "guideService.js");
+  const roleGuide = readSource("features", "guides", "useRoleGuide.js");
+
+  assert.match(
+    guideService,
+    /catch \{\s*return persistFallback\(guideKey, \{\s*\.\.\.localState,\s*sync_pending: true,/,
+  );
+  assert.match(roleGuide, /!syncPending/);
+});

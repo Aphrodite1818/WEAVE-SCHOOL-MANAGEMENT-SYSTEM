@@ -2,7 +2,9 @@ import { useEffect } from "react";
 
 import { leaveGuideRoute } from "../features/guides/guideNavigation";
 import useRoleGuide from "../features/guides/useRoleGuide";
+import { useToast } from "../hooks/useToast";
 import AdminGettingStartedPage from "../pages/admin/AdminGettingStartedPage";
+import { getErrorMessage } from "../services/api";
 
 const normalizeButtonText = (button) =>
   String(button?.textContent || "")
@@ -21,6 +23,7 @@ const leaveAdminSetup = (destination) => {
  */
 function AdminGettingStartedRoute() {
   const guide = useRoleGuide({ role: "admin" });
+  const { showError } = useToast();
 
   useEffect(() => {
     const handleGuideAction = async (event) => {
@@ -48,15 +51,21 @@ function AdminGettingStartedRoute() {
         event.stopPropagation();
         try {
           await guide.finish();
-        } finally {
           leaveAdminSetup("/admin/dashboard");
+        } catch (error) {
+          showError(
+            getErrorMessage(
+              error,
+              "Could not save setup completion. Please try again.",
+            ),
+          );
         }
       }
     };
 
     document.addEventListener("click", handleGuideAction, true);
     return () => document.removeEventListener("click", handleGuideAction, true);
-  }, [guide.finish]);
+  }, [guide.finish, showError]);
 
   return <AdminGettingStartedPage />;
 }

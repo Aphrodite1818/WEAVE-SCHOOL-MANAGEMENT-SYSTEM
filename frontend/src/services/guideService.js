@@ -1,23 +1,38 @@
 import { api, authSession } from "./api";
 
 const TERMINAL_STATUSES = new Set(["completed", "dismissed"]);
+const ACCOUNT_SCOPED_ACTOR_TYPES = new Set([
+  "teacher",
+  "teacher_account",
+  "teacher_membership",
+  "parent",
+  "parent_account",
+  "parent_membership",
+]);
 const PENDING_SUFFIX = ":pending";
 const inFlightReads = new Map();
 
 const storageKey = (guideKey) => {
   const user = authSession.getUser() || {};
+  const actorType = String(
+    user.actor_type || user.account_type || user.role || "",
+  ).toLowerCase();
+  const accountScoped = ACCOUNT_SCOPED_ACTOR_TYPES.has(actorType);
   const actor =
     user.account_id ||
+    user.teacher_account_id ||
+    user.parent_account_id ||
     user.actor_id ||
     user.id ||
     user.email ||
     user.admission_number ||
     "anonymous";
-  const tenant =
-    user.tenant_id ||
-    user.tenant?.id ||
-    user.membership_id ||
-    "global";
+  const tenant = accountScoped
+    ? "global"
+    : user.tenant_id ||
+      user.tenant?.id ||
+      user.membership_id ||
+      "global";
   return `weave:guide:${tenant}:${actor}:${guideKey}`;
 };
 
@@ -98,6 +113,19 @@ const terminalPayload = (state) => ({
   remind_after: null,
 });
 
+const ensureTerminalConfirmation = (requestedStatus, state) => {
+  if (!TERMINAL_STATUSES.has(requestedStatus)) return state;
+
+  const confirmed =
+    requestedStatus === "completed"
+      ? state?.status === "completed"
+      : TERMINAL_STATUSES.has(state?.status);
+  if (!confirmed) {
+    throw new Error("Guide completion was not confirmed by the server.");
+  }
+  return state;
+};
+
 const shouldPreserveLocalState = (localState, serverState) => {
   if (localState?.sync_pending) return true;
   if (isTerminal(localState) && !isTerminal(serverState)) return true;
@@ -115,6 +143,7 @@ const confirmPendingState = async (guideKey, localState, pending) => {
   const response = await api.patch(`/guides/${guideKey}`, payload, {
     clearAuthOnUnauthorized: false,
   });
+  ensureTerminalConfirmation(payload?.status, response);
   clearPending(guideKey);
   return persistFallback(
     guideKey,
@@ -150,7 +179,10 @@ const getStateOnce = async (guideKey) => {
       sync_pending: false,
     });
   } catch {
-    return localState;
+    return persistFallback(guideKey, {
+      ...localState,
+      sync_pending: true,
+    });
   }
 };
 
@@ -169,12 +201,35 @@ export const guideService = {
   async updateState(guideKey, payload) {
     const currentState = fallbackState(guideKey);
     const requestedStatus = payload?.status;
+    const terminalWrite = TERMINAL_STATUSES.has(requestedStatus);
     const preserveCompleted =
       currentState.status === "completed" && requestedStatus !== "completed";
     const preserveDismissed =
       currentState.status === "dismissed" &&
       !TERMINAL_STATUSES.has(requestedStatus);
     if (preserveCompleted || preserveDismissed) return currentState;
+
+    persistPending(guideKey, payload);
+
+    if (terminalWrite) {
+      try {
+        const response = await api.patch(`/guides/${guideKey}`, payload, {
+          clearAuthOnUnauthorized: false,
+        });
+        ensureTerminalConfirmation(requestedStatus, response);
+        clearPending(guideKey);
+        return persistFallback(guideKey, {
+          ...response,
+          sync_pending: false,
+        });
+      } catch (error) {
+        persistFallback(guideKey, {
+          ...currentState,
+          sync_pending: true,
+        });
+        throw error;
+      }
+    }
 
     const optimistic = persistFallback(guideKey, {
       ...currentState,
@@ -183,7 +238,6 @@ export const guideService = {
       updated_at: new Date().toISOString(),
       sync_pending: true,
     });
-    persistPending(guideKey, payload);
 
     try {
       const response = await api.patch(`/guides/${guideKey}`, payload, {
@@ -203,6 +257,7 @@ export const guideService = {
     const localState = fallbackState(guideKey);
     const pending = readPending(guideKey);
     if (!pending && !localState.sync_pending) return localState;
+    if (!pending) return getStateOnce(guideKey);
 
     try {
       return await confirmPendingState(guideKey, localState, pending);
