@@ -154,9 +154,7 @@ class Settings(BaseSettings):
             "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
             "SMTP_PASSWORD": self.SMTP_PASSWORD,
         }
-        configured_smtp_values = {
-            name: has_value(value) for name, value in smtp_values.items()
-        }
+        configured_smtp_values = {name: has_value(value) for name, value in smtp_values.items()}
         smtp_any_configured = any(configured_smtp_values.values())
         smtp_fully_configured = all(configured_smtp_values.values())
 
