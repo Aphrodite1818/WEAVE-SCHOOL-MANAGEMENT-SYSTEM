@@ -45,9 +45,7 @@ class EmailService:
 
         if environment_value == EnvironmentType.PRODUCTION.value:
             if provider_type != EmailProvider.RESEND:
-                raise EmailConfigurationError(
-                    "Production email delivery is restricted to Resend."
-                )
+                raise EmailConfigurationError("Production email delivery is restricted to Resend.")
         elif provider_type == EmailProvider.RESEND:
             raise EmailConfigurationError(
                 "Resend is production-only and cannot be used in development or staging."
