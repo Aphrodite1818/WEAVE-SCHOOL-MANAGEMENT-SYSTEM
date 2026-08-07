@@ -62,8 +62,7 @@ class Settings(BaseSettings):
     # ==========================================================
 
 
-    SENTRY_DNS : SecretStr | None = None
-    SENTRY_ENVIRONMENT : str | None = None
+    SENTRY_DSN : SecretStr | None = None
     SENTRY_RELEASE : str | None = None 
 
 

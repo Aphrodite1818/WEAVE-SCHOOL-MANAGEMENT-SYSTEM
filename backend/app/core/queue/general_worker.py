@@ -11,6 +11,8 @@ from arq import cron
 import app.models  # noqa: F401
 
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402
+from app.config.sentry import flush_sentry, initialize_sentry  # noqa: E402
+from app.core.queue.sentry import capture_worker_exceptions  # noqa: E402
 from app.config.logging import get_logger  # noqa: E402
 from app.core.queue.arq import (  # noqa: E402
     DEFAULT_EMAIL_OUTBOX_BATCH_SIZE,
@@ -36,7 +38,7 @@ async def poll_email_outbox(ctx: dict[str, Any]) -> dict[str, int]:
 
     return await process_email_outbox_batch(ctx, DEFAULT_EMAIL_OUTBOX_BATCH_SIZE)
 
-
+@capture_worker_exceptions(queue_name=GENERAL_QUEUE_NAME)
 async def process_attendance_retention_job(
     ctx: dict[str, Any],
     tenant_id: str | None = None,
@@ -63,6 +65,8 @@ async def poll_attendance_retention(ctx: dict[str, Any]) -> dict[str, int]:
     return await process_attendance_retention_job(ctx)
 
 
+
+@capture_worker_exceptions(queue_name=GENERAL_QUEUE_NAME)
 async def process_subscription_lifecycle_job(
     ctx: dict[str, Any],
 ) -> dict[str, int]:
@@ -93,11 +97,29 @@ async def poll_subscription_lifecycle(ctx: dict[str, Any]) -> dict[str, int]:
     return await process_subscription_lifecycle_job(ctx)
 
 
-async def shutdown(ctx: dict[str, Any]) -> None:
-    """Dispose this worker process's database engine."""
+
+
+
+async def startup(ctx: dict[str, Any]) -> None:
+    """Initialize optional monitoring for this worker process."""
 
     _ = ctx
-    await engine.dispose()
+
+    initialize_sentry(
+        service="worker-general",
+    )
+
+
+
+async def shutdown(ctx: dict[str, Any]) -> None:
+    """Dispose the worker's database and monitoring resources."""
+
+    _ = ctx
+
+    try:
+        await engine.dispose()
+    finally:
+        await flush_sentry()
 
 
 class WorkerSettings:
@@ -137,6 +159,7 @@ class WorkerSettings:
             max_tries=2,
         ),
     ]
+    on_startup = startup
     on_shutdown = shutdown
     max_jobs = 3
     job_timeout = 300

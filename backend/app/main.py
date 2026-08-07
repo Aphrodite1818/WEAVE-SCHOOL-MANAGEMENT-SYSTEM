@@ -12,6 +12,7 @@ from sqlalchemy import text
 import app.models  # noqa: F401
 from app.config.database import AsyncSessionLocal, engine
 from app.config.logging import get_logger
+from app.config.sentry import flush_sentry, initialize_sentry
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
 from app.core.exception_handlers import register_exception_handlers
@@ -166,8 +167,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
     finally:
         logger.info("Closing Redis and database resources")
-        await close_redis()
-        await engine.dispose()
+        try:
+            await close_redis()
+            await engine.dispose()
+        finally:
+            await flush_sentry()
+
+
 
 
 async def _database_health_check() -> bool:
@@ -182,7 +188,7 @@ async def _database_health_check() -> bool:
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-
+    initialize_sentry(service = "api")
     register_metrics_cache_invalidation_events()
     _prepare_academic_routers()
 
