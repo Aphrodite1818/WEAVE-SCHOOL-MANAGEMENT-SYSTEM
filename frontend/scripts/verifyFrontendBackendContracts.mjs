@@ -383,7 +383,7 @@ export async function verifyFrontendBackendContracts(repoRoot) {
 
 async function main() {
   const currentFile = fileURLToPath(import.meta.url);
-  const repoRoot = path.resolve(path.dirname(currentFile), "..", "..", "..");
+  const repoRoot = path.resolve(path.dirname(currentFile), "..", "..");
   const result = await verifyFrontendBackendContracts(repoRoot);
 
   console.log(
