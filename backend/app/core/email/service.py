@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from app.config.settings import Settings, settings
+from app.config.settings import EnvironmentType, Settings, settings
 from app.core.email.contracts import EmailDeliveryResult, EmailRequest
 from app.core.email.enums import EmailProvider
 from app.core.email.exceptions import EmailConfigurationError
@@ -31,14 +31,29 @@ class EmailService:
     # ==========================================================
 
     def _resolve_provider_type(self) -> EmailProvider:
-        """Return the configured provider as a validated enum value."""
+        """Return the configured provider after enforcing environment policy."""
 
         try:
-            return EmailProvider(self._config.EMAIL_PROVIDER)
+            provider_type = EmailProvider(self._config.EMAIL_PROVIDER)
         except ValueError as exc:
             raise EmailConfigurationError(
                 f"Unsupported email provider: {self._config.EMAIL_PROVIDER!r}."
             ) from exc
+
+        environment = getattr(self._config, "ENV", None)
+        environment_value = getattr(environment, "value", environment)
+
+        if environment_value == EnvironmentType.PRODUCTION.value:
+            if provider_type != EmailProvider.RESEND:
+                raise EmailConfigurationError(
+                    "Production email delivery is restricted to Resend."
+                )
+        elif provider_type == EmailProvider.RESEND:
+            raise EmailConfigurationError(
+                "Resend is production-only and cannot be used in development or staging."
+            )
+
+        return provider_type
 
     def _build_provider(
         self,
