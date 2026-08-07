@@ -3,7 +3,7 @@ name: Format backend hardening diff
 on:
   push:
     branches:
-      - Attendance
+      - feat/resend-production-email
     paths:
       - ".github/workflows/format-backend-hardening.yml"
 
@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: Attendance
+          ref: feat/resend-production-email
           fetch-depth: 0
 
       - name: Set up Python
@@ -32,12 +32,12 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
 
       - name: Format all changed backend Python files
         shell: bash
         run: |
-          BASELINE_SHA=6a434994d2b2397d45c6716d89c6f1a3eda8ea0f
+          BASELINE_SHA=af21c4fab812ce883ac7382ea25b31863ea8ec51
           mapfile -t files < <(
             git diff --name-only --diff-filter=ACMR "$BASELINE_SHA"...HEAD -- ../backend \
               | sed 's#^backend/##' \
@@ -60,5 +60,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend
-          git commit -m "style: format backend hardening changes"
-          git push origin HEAD:Attendance
+          git commit -m "style(email): format Resend implementation"
+          git push origin HEAD:feat/resend-production-email
