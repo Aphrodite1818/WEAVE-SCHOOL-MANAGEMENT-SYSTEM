@@ -1,29 +1,25 @@
-"""Tests for optional Sentry configuration and privacy controls."""
+"""Tests for environment-aware Sentry configuration and privacy controls."""
 
 from __future__ import annotations
 
 import json
 
+import pytest
 from pydantic import SecretStr
 
 from app.config import sentry as sentry_config
 from app.config.settings import EnvironmentType, Settings
 
 
-def test_sentry_credentials_are_optional() -> None:
+def test_sentry_credentials_are_optional_outside_production() -> None:
     configured = Settings(
         _env_file=None,
         ENV="dev",
         SECRET_KEY="x" * 32,
-        DATABASE_URL=(
-            "postgresql+asyncpg://"
-            "user:pass@localhost/weave"
-        ),
+        DATABASE_URL="postgresql+asyncpg://user:pass@localhost/weave",
         FRONTEND_APP_URL="http://localhost:5173",
         EMAIL_PROVIDER="legacy",
-        APP_SCRIPT_URL=(
-            "https://example.com/email-script"
-        ),
+        APP_SCRIPT_URL="https://example.com/email-script",
     )
 
     assert configured.SENTRY_DSN is None
@@ -31,9 +27,14 @@ def test_sentry_credentials_are_optional() -> None:
     assert configured.SENTRY_TRACES_SAMPLE_RATE == 0.0
 
 
-def test_initialize_sentry_is_disabled_without_dsn(
+def test_initialize_sentry_is_disabled_without_dsn_outside_production(
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        sentry_config.settings,
+        "ENV",
+        EnvironmentType.DEVELOPMENT,
+    )
     monkeypatch.setattr(
         sentry_config.settings,
         "SENTRY_DSN",
@@ -41,9 +42,7 @@ def test_initialize_sentry_is_disabled_without_dsn(
     )
 
     def unexpected_init(**kwargs) -> None:
-        raise AssertionError(
-            f"Sentry init should not run: {kwargs}"
-        )
+        raise AssertionError(f"Sentry init should not run: {kwargs}")
 
     monkeypatch.setattr(
         sentry_config.sentry_sdk,
@@ -51,23 +50,39 @@ def test_initialize_sentry_is_disabled_without_dsn(
         unexpected_init,
     )
 
-    assert (
-        sentry_config.initialize_sentry(
-            service="api",
-        )
-        is False
-    )
+    assert sentry_config.initialize_sentry(service="api") is False
 
 
-def test_initialize_sentry_failure_is_fail_open(
+def test_initialize_sentry_requires_dsn_in_production(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
         sentry_config.settings,
+        "ENV",
+        EnvironmentType.PRODUCTION,
+    )
+    monkeypatch.setattr(
+        sentry_config.settings,
         "SENTRY_DSN",
-        SecretStr(
-            "https://public@example.invalid/1"
-        ),
+        None,
+    )
+
+    with pytest.raises(RuntimeError, match="required in production"):
+        sentry_config.initialize_sentry(service="api")
+
+
+def test_initialize_sentry_failure_is_fail_open_outside_production(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sentry_config.settings,
+        "ENV",
+        EnvironmentType.STAGING,
+    )
+    monkeypatch.setattr(
+        sentry_config.settings,
+        "SENTRY_DSN",
+        SecretStr("https://public@example.invalid/1"),
     )
 
     def failed_init(**kwargs) -> None:
@@ -80,12 +95,35 @@ def test_initialize_sentry_failure_is_fail_open(
         failed_init,
     )
 
-    assert (
-        sentry_config.initialize_sentry(
-            service="worker-heavy",
-        )
-        is False
+    assert sentry_config.initialize_sentry(service="worker-heavy") is False
+
+
+def test_initialize_sentry_failure_is_fatal_in_production(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        sentry_config.settings,
+        "ENV",
+        EnvironmentType.PRODUCTION,
     )
+    monkeypatch.setattr(
+        sentry_config.settings,
+        "SENTRY_DSN",
+        SecretStr("https://public@example.invalid/1"),
+    )
+
+    def failed_init(**kwargs) -> None:
+        _ = kwargs
+        raise RuntimeError("invalid DSN")
+
+    monkeypatch.setattr(
+        sentry_config.sentry_sdk,
+        "init",
+        failed_init,
+    )
+
+    with pytest.raises(RuntimeError, match="refusing to start"):
+        sentry_config.initialize_sentry(service="worker-general")
 
 
 def test_initialize_sentry_uses_safe_defaults(
@@ -96,9 +134,7 @@ def test_initialize_sentry_uses_safe_defaults(
     monkeypatch.setattr(
         sentry_config.settings,
         "SENTRY_DSN",
-        SecretStr(
-            "https://public@example.invalid/1"
-        ),
+        SecretStr("https://public@example.invalid/1"),
     )
     monkeypatch.setattr(
         sentry_config.settings,
@@ -127,12 +163,7 @@ def test_initialize_sentry_uses_safe_defaults(
         lambda *args: None,
     )
 
-    assert (
-        sentry_config.initialize_sentry(
-            service="api",
-        )
-        is True
-    )
+    assert sentry_config.initialize_sentry(service="api") is True
 
     assert captured_options["environment"] == "stg"
     assert captured_options["release"] == "weave@test"
