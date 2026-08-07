@@ -39,7 +39,7 @@ test("an authenticated request refreshes once after 401 and retries with the new
   assert.equal(calls[0].init.credentials, "include");
   assert.equal(calls[1].url, "https://api.weave.test/api/v1/auth/refresh");
   assert.equal(calls[1].init.credentials, "include");
-  assert.equal(calls[1].init.headers, undefined);
+  assert.equal(calls[1].init.headers["x-weave-csrf"], "1");
   assert.equal(calls[2].init.headers.Authorization, "Bearer new-access-token");
   assert.equal(harness.sessionStorage.getItem("access_token"), "new-access-token");
 });

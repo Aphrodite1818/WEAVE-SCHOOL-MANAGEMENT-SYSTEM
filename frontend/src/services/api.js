@@ -18,6 +18,8 @@ const REMEMBER_KEY = "auth_remember";
 const AUTH_REFRESH_ENDPOINT = "/auth/refresh";
 const AUTH_LOGOUT_ENDPOINT = "/auth/logout";
 const AUTH_LOGIN_ENDPOINT = "/auth/login";
+const CSRF_HEADER_NAME = "x-weave-csrf";
+const CSRF_HEADER_VALUE = "1";
 const MAINTENANCE_STORAGE_KEY = "weave_platform_maintenance";
 const SECURITY_BLOCK_STORAGE_KEY = "weave_security_block";
 export const NAVIGATION_ABORT_EVENT = "weave:navigation-start";
@@ -114,6 +116,9 @@ const isRefreshManagedEndpoint = (endpoint) =>
   endpoint === AUTH_REFRESH_ENDPOINT ||
   endpoint === AUTH_LOGOUT_ENDPOINT ||
   endpoint === AUTH_LOGIN_ENDPOINT;
+
+const isCookieProtectedEndpoint = (endpoint) =>
+  endpoint === AUTH_REFRESH_ENDPOINT || endpoint === AUTH_LOGOUT_ENDPOINT;
 
 const clearRefreshTimer = () => {
   if (refreshTimerId !== null) {
@@ -538,6 +543,9 @@ const refreshAccessToken = async () => {
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_BASE_URL}${AUTH_REFRESH_ENDPOINT}`, {
       method: "POST",
+      headers: {
+        [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+      },
       credentials: "include",
     })
       .then(async (response) => {
@@ -587,6 +595,9 @@ async function request(endpoint, options = {}, hasRetried = false) {
     ...(hasBody && !isFormData ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...optionHeaders,
+    ...(isCookieProtectedEndpoint(endpoint)
+      ? { [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE }
+      : {}),
   };
 
   const config = {
