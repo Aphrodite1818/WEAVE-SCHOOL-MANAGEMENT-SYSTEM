@@ -51,11 +51,11 @@ def test_staging_can_use_legacy_without_external_provider_credentials() -> None:
 def test_production_rejects_legacy_provider() -> None:
     config = _settings(ENV=EnvironmentType.PRODUCTION)
 
-    with pytest.raises(ValueError, match="Production email provider must be 'ses' or 'resend'"):
+    with pytest.raises(ValueError, match="Production email provider must be 'resend'"):
         config.validate_email_provider_settings()
 
 
-def test_ses_provider_requires_credentials() -> None:
+def test_ses_provider_requires_credentials_when_selected_outside_production() -> None:
     config = _settings(
         EMAIL_PROVIDER="ses",
         APP_SCRIPT_URL=None,
@@ -65,9 +65,9 @@ def test_ses_provider_requires_credentials() -> None:
         config.validate_email_provider_settings()
 
 
-def test_production_accepts_complete_ses_configuration() -> None:
+def test_staging_accepts_complete_ses_configuration_for_future_use() -> None:
     config = _settings(
-        ENV=EnvironmentType.PRODUCTION,
+        ENV=EnvironmentType.STAGING,
         EMAIL_PROVIDER="ses",
         APP_SCRIPT_URL=None,
         AWS_ACCESS_KEY_ID="access-key",
@@ -77,8 +77,22 @@ def test_production_accepts_complete_ses_configuration() -> None:
     assert config.validate_email_provider_settings() is config
 
 
-def test_resend_provider_requires_api_key() -> None:
+def test_production_rejects_ses_even_when_credentials_are_complete() -> None:
     config = _settings(
+        ENV=EnvironmentType.PRODUCTION,
+        EMAIL_PROVIDER="ses",
+        APP_SCRIPT_URL=None,
+        AWS_ACCESS_KEY_ID="access-key",
+        AWS_SECRET_ACCESS_KEY=SecretStr("secret-key"),
+    )
+
+    with pytest.raises(ValueError, match="Production email provider must be 'resend'"):
+        config.validate_email_provider_settings()
+
+
+def test_resend_provider_requires_api_key_in_production() -> None:
+    config = _settings(
+        ENV=EnvironmentType.PRODUCTION,
         EMAIL_PROVIDER="resend",
         APP_SCRIPT_URL=None,
     )
@@ -100,8 +114,25 @@ def test_production_accepts_resend_without_aws_credentials() -> None:
     assert config.validate_email_provider_settings() is config
 
 
+@pytest.mark.parametrize(
+    "environment",
+    [EnvironmentType.DEVELOPMENT, EnvironmentType.STAGING],
+)
+def test_resend_is_rejected_outside_production(environment: EnvironmentType) -> None:
+    config = _settings(
+        ENV=environment,
+        EMAIL_PROVIDER="resend",
+        APP_SCRIPT_URL=None,
+        RESEND_API_KEY=SecretStr("re_test_key"),
+    )
+
+    with pytest.raises(ValueError, match="production-only"):
+        config.validate_email_provider_settings()
+
+
 def test_resend_rejects_non_https_base_url() -> None:
     config = _settings(
+        ENV=EnvironmentType.PRODUCTION,
         EMAIL_PROVIDER="resend",
         RESEND_API_KEY=SecretStr("re_test_key"),
         RESEND_BASE_URL="http://api.resend.com",
