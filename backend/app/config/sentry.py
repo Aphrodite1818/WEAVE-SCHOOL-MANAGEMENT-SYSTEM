@@ -242,7 +242,7 @@ def initialize_sentry(*, service: str) -> bool:
             max_request_body_size="never",
             include_local_variables=False,
             enable_logs=True,
-            enable_metrics=True,
+            enable_metrics=False,
             shutdown_timeout=settings.SENTRY_SHUTDOWN_TIMEOUT_SECONDS,
             before_send=_before_send,
             before_send_log=_before_send_log,
