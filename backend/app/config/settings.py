@@ -61,17 +61,14 @@ class Settings(BaseSettings):
     # blank completely disables it without preventing startup.
     # ==========================================================
 
-
+    # fmt: off
     SENTRY_DSN : SecretStr | None = None
-    SENTRY_RELEASE : str | None = None 
-
-
+    SENTRY_RELEASE : str | None = None
     SENTRY_ERROR_SAMPLE_RATE : float = Field(default = 1.0 , ge=0.0 , le = 1.0)
     SENTRY_TRACES_SAMPLE_RATE : float = Field(default = 0.0 , ge=0.0 , le = 1.0)
     SENTRY_SHUTDOWN_TIMEOUT_SECONDS : float = Field(default = 2.0 , ge=0.1 , le=10.0)
     SENTRY_DEBUG : bool = False
-
-
+    # fmt: on
 
     SECRET_KEY: str = Field(..., min_length=32)
     ALGORITHM: str = "HS256"
@@ -105,186 +102,114 @@ class Settings(BaseSettings):
     # EMAIL DELIVERY
     # ==========================================================
 
-    EMAIL_PROVIDER: Literal["legacy", "ses"] = "legacy"
-
+    EMAIL_PROVIDER: Literal["legacy", "ses", "resend"] = "legacy"
     EMAIL_SENDER_NAME: str = "WEAVE"
     EMAIL_REPLY_TO: str | None = None
 
-    # ==========================================================
-    # LEGACY EMAIL DELIVERY
-    #
-    # Intended for development and staging.
-    # These values remain optional in production because
-    # production is forced to use SES.
-    # ==========================================================
-
+    # Legacy email delivery (development/staging only).
     APP_SCRIPT_URL: str | None = None
-
     SMTP_HOST: str | None = None
     SMTP_PORT: int = Field(default=587, ge=1, le=65535)
     SMTP_FROM_EMAIL: str | None = None
     SMTP_PASSWORD: SecretStr | None = None
 
-    # ==========================================================
-    # AMAZON SES
-    #
-    # Optional in development and staging unless SES is selected.
-    # Mandatory in production.
-    # ==========================================================
+    # Resend is the only production provider. These values are never
+    # required in development/staging because Resend is forbidden there.
+    RESEND_API_KEY: SecretStr | None = None
+    RESEND_TRANSACTIONAL_FROM_EMAIL: str = "no-reply@notifications.weavecloudspace.com"
+    RESEND_SECURITY_FROM_EMAIL: str = "security@notifications.weavecloudspace.com"
+    RESEND_BULK_FROM_EMAIL: str = "updates@updates.weavecloudspace.com"
 
+    # Amazon SES is retained for possible future use, but no SES setting is
+    # a startup dependency. If SES is selected outside production, the SES
+    # adapter validates credentials lazily when a send is attempted.
     AWS_REGION: str = "eu-west-1"
-
     AWS_ACCESS_KEY_ID: str | None = None
     AWS_SECRET_ACCESS_KEY: SecretStr | None = None
     AWS_SESSION_TOKEN: SecretStr | None = None
-
-    # Primarily useful for local mocks such as LocalStack.
     AWS_SES_ENDPOINT_URL: str | None = None
-
     SES_TRANSACTIONAL_FROM_EMAIL: str = "no-reply@notifications.weavecloudspace.com"
     SES_SECURITY_FROM_EMAIL: str = "security@notifications.weavecloudspace.com"
     SES_BULK_FROM_EMAIL: str = "updates@updates.weavecloudspace.com"
-
     SES_TRANSACTIONAL_CONFIGURATION_SET: str = "weave-transactional"
     SES_SECURITY_CONFIGURATION_SET: str = "weave-security"
-
     SES_BULK_CONFIGURATION_SET: str = "weave-bulk"
-
-    SES_CONNECT_TIMEOUT_SECONDS: int = Field(
-        default=5,
-        ge=1,
-        le=30,
-    )
-    SES_READ_TIMEOUT_SECONDS: int = Field(
-        default=10,
-        ge=1,
-        le=60,
-    )
-    SES_MAX_ATTEMPTS: int = Field(
-        default=3,
-        ge=1,
-        le=10,
-    )
+    SES_CONNECT_TIMEOUT_SECONDS: int = Field(default=5, ge=1, le=30)
+    SES_READ_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=60)
+    SES_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10)
 
     @model_validator(mode="after")
     def validate_email_provider_settings(self) -> "Settings":
-        """Validate email configuration according to the active environment."""
+        """Validate provider policy without making dormant providers startup dependencies."""
 
         def has_value(value: object) -> bool:
-            """Return whether a normal or secret setting is non-empty."""
-
             if value is None:
                 return False
-
             if isinstance(value, SecretStr):
                 value = value.get_secret_value()
-
             return bool(str(value).strip())
-
-        # ======================================================
-        # SMTP VALIDATION
-        # ======================================================
 
         smtp_values = {
             "SMTP_HOST": self.SMTP_HOST,
             "SMTP_FROM_EMAIL": self.SMTP_FROM_EMAIL,
             "SMTP_PASSWORD": self.SMTP_PASSWORD,
         }
-
-        configured_smtp_values = {name: has_value(value) for name, value in smtp_values.items()}
-
+        configured_smtp_values = {
+            name: has_value(value) for name, value in smtp_values.items()
+        }
         smtp_any_configured = any(configured_smtp_values.values())
         smtp_fully_configured = all(configured_smtp_values.values())
 
-        # SMTP is optional, but partially configuring it is invalid.
         if smtp_any_configured and not smtp_fully_configured:
             missing_smtp_values = [
                 name for name, configured in configured_smtp_values.items() if not configured
             ]
-
             raise ValueError(
                 "SMTP configuration is incomplete. Missing: " + ", ".join(missing_smtp_values)
             )
 
-        # ======================================================
-        # APPS SCRIPT VALIDATION
-        # ======================================================
-
         app_script_configured = has_value(self.APP_SCRIPT_URL)
-
         if app_script_configured:
             app_script_url = urlparse(self.APP_SCRIPT_URL.strip())
-
             if app_script_url.scheme not in {"http", "https"} or not app_script_url.netloc:
                 raise ValueError("APP_SCRIPT_URL must be a valid absolute HTTP or HTTPS URL.")
 
-        # ======================================================
-        # OPTIONAL SES ENDPOINT VALIDATION
-        # ======================================================
-
         if has_value(self.AWS_SES_ENDPOINT_URL):
             ses_endpoint_url = urlparse(self.AWS_SES_ENDPOINT_URL.strip())
-
             if ses_endpoint_url.scheme not in {"http", "https"} or not ses_endpoint_url.netloc:
                 raise ValueError("AWS_SES_ENDPOINT_URL must be a valid absolute HTTP or HTTPS URL.")
 
-        # ======================================================
-        # PRODUCTION POLICY
-        # ======================================================
-
         if self.ENV == EnvironmentType.PRODUCTION:
-            if self.EMAIL_PROVIDER != "ses":
-                raise ValueError("Production must use Amazon SES. Set EMAIL_PROVIDER=ses.")
+            if self.EMAIL_PROVIDER != "resend":
+                raise ValueError("Production must use Resend. Set EMAIL_PROVIDER=resend.")
 
-        # ======================================================
-        # LEGACY PROVIDER
-        #
-        # Allowed only in development and staging.
-        # At least one legacy transport must be available.
-        # ======================================================
+            required_resend_values = {
+                "RESEND_API_KEY": self.RESEND_API_KEY,
+                "RESEND_TRANSACTIONAL_FROM_EMAIL": self.RESEND_TRANSACTIONAL_FROM_EMAIL,
+                "RESEND_SECURITY_FROM_EMAIL": self.RESEND_SECURITY_FROM_EMAIL,
+                "RESEND_BULK_FROM_EMAIL": self.RESEND_BULK_FROM_EMAIL,
+            }
+            missing_resend_values = [
+                name for name, value in required_resend_values.items() if not has_value(value)
+            ]
+            if missing_resend_values:
+                raise ValueError(
+                    "Resend production configuration is incomplete. Missing: "
+                    + ", ".join(missing_resend_values)
+                )
+        elif self.EMAIL_PROVIDER == "resend":
+            raise ValueError("Resend email delivery is allowed only in production.")
 
         if self.EMAIL_PROVIDER == "legacy":
-            if self.ENV == EnvironmentType.PRODUCTION:
-                raise ValueError("The legacy email provider cannot be used in production.")
-
             if not app_script_configured and not smtp_fully_configured:
                 raise ValueError(
                     "EMAIL_PROVIDER is set to 'legacy', but neither "
-                    "APP_SCRIPT_URL nor complete SMTP settings "
-                    "are configured."
+                    "APP_SCRIPT_URL nor complete SMTP settings are configured."
                 )
 
-        # ======================================================
-        # AMAZON SES PROVIDER
-        #
-        # SES values are required whenever SES is selected.
-        # Since production is forced to SES, these values are
-        # therefore always mandatory in production.
-        # ======================================================
-
-        elif self.EMAIL_PROVIDER == "ses":
-            required_ses_values = {
-                "AWS_REGION": self.AWS_REGION,
-                "AWS_ACCESS_KEY_ID": self.AWS_ACCESS_KEY_ID,
-                "AWS_SECRET_ACCESS_KEY": (self.AWS_SECRET_ACCESS_KEY),
-                "SES_TRANSACTIONAL_FROM_EMAIL": (self.SES_TRANSACTIONAL_FROM_EMAIL),
-                "SES_SECURITY_FROM_EMAIL": (self.SES_SECURITY_FROM_EMAIL),
-                "SES_BULK_FROM_EMAIL": (self.SES_BULK_FROM_EMAIL),
-                "SES_TRANSACTIONAL_CONFIGURATION_SET": (self.SES_TRANSACTIONAL_CONFIGURATION_SET),
-                "SES_SECURITY_CONFIGURATION_SET": (self.SES_SECURITY_CONFIGURATION_SET),
-                "SES_BULK_CONFIGURATION_SET": (self.SES_BULK_CONFIGURATION_SET),
-            }
-
-            missing_ses_values = [
-                name for name, value in required_ses_values.items() if not has_value(value)
-            ]
-
-            if missing_ses_values:
-                raise ValueError(
-                    "Amazon SES configuration is incomplete. Missing: "
-                    + ", ".join(missing_ses_values)
-                )
-
+        # SES intentionally has no startup-time credential requirement. This
+        # keeps the dormant AWS integration available without making AWS
+        # credentials mandatory while Resend is the production provider.
         return self
 
     SECURITY_ALERTS_ENABLED: bool = True
