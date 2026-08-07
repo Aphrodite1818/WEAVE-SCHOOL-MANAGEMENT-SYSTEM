@@ -40,8 +40,8 @@ from openpyxl.utils import get_column_letter
 #   OUTPUT_PATH = r"C:\Users\taiwo\Downloads\students_import_template (1).xlsx"
 # Command-line arguments (see bottom of file) will override these if given.
 # ---------------------------------------------------------------------------
-OUTPUT_PATH = r"C:\Users\taiwo\Downloads\students_import_template.xlsx"
-NUM_STUDENTS = 30
+OUTPUT_PATH = r"C:\Users\taiwo\Downloads\students_import_template (3).xlsx"
+NUM_STUDENTS = 10
 
 # Generic parent inbox used for the "+alias" trick.
 PARENT_EMAIL_LOCAL = "dfragraid"
@@ -59,18 +59,18 @@ random.seed()
 # class_name matches the exact naming used in the school's class list
 # (e.g. "SS1ART", "SS2COMMERCIAL", "SS3SCIENCE" - no space before the arm).
 CLASS_DEFINITIONS = [
-    ("JSS1", ["A", "B", "C"], (10, 11)),
-    ("JSS2", ["A", "B", "C"], (11, 12)),
-    ("JSS3", ["A", "B", "C"], (12, 13)),
-    ("SS1ART", ["A", "B", "C"], (14, 15)),
-    ("SS1COMMERCIAL", ["A", "B", "C"], (14, 15)),
-    ("SS1SCIENCE", ["A", "B", "C"], (14, 15)),
-    ("SS2ART", ["A", "B", "C"], (15, 16)),
-    ("SS2COMMERCIAL", ["A", "B", "C"], (15, 16)),
-    ("SS2SCIENCE", ["A", "B", "C"], (15, 16)),
-    ("SS3ART", ["A", "B", "C"], (16, 17)),
-    ("SS3COMMERCIAL", ["A", "B", "C"], (16, 17)),
-    ("SS3SCIENCE", ["A", "B", "C"], (16, 17)),
+    ("JSS1", ["A"], (10, 11)),
+    ("JSS2", ["A"], (11, 12)),
+    ("JSS3", ["A"], (12, 13)),
+    # ("SS1ART", ["A", "B", "C"], (14, 15)),
+    # ("SS1COMMERCIAL", ["A", "B", "C"], (14, 15)),
+    # ("SS1SCIENCE", ["A", "B", "C"], (14, 15)),
+    # ("SS2ART", ["A", "B", "C"], (15, 16)),
+    # ("SS2COMMERCIAL", ["A", "B", "C"], (15, 16)),
+    # ("SS2SCIENCE", ["A", "B", "C"], (15, 16)),
+    # ("SS3ART", ["A", "B", "C"], (16, 17)),
+    # ("SS3COMMERCIAL", ["A", "B", "C"], (16, 17)),
+    # ("SS3SCIENCE", ["A", "B", "C"], (16, 17)),
 ]
 
 # Expand into a flat list of (class_name, class_arm, min_age, max_age)

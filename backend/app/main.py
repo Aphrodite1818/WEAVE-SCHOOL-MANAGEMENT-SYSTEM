@@ -304,12 +304,12 @@ def create_app() -> FastAPI:
     app.include_router(parent_academic_router, prefix="/api/v1")
     app.include_router(fixed_report_card_router, prefix="/api/v1")
     app.include_router(
-        tenant_admin_report_card_router,
+        bulk_report_card_router,
         prefix="/api/v1",
         dependencies=admin_write_guard,
     )
     app.include_router(
-        bulk_report_card_router,
+        tenant_admin_report_card_router,
         prefix="/api/v1",
         dependencies=admin_write_guard,
     )
