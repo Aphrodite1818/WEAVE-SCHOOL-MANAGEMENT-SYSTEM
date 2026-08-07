@@ -63,9 +63,8 @@ CurrentActorDependency = Annotated[
 def _refresh_cookie_secure() -> bool:
     return not settings.is_development
 
-
 def _refresh_cookie_samesite() -> str:
-    return "lax" if settings.is_development else "none"
+    return "none" if settings.ENV.value == "stg" else "lax"
 
 
 def _refresh_cookie_max_age(expires_at: datetime) -> int:
