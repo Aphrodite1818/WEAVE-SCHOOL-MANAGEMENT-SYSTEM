@@ -1,6 +1,6 @@
-#==========================#
+# ==========================#
 #      AI SCHEMAS.PY       #
-#==========================#
+# ==========================#
 
 """Define request and message schemas used by the AI module."""
 
@@ -12,6 +12,7 @@ from pydantic import BaseModel, field_validator
 
 class Role(str, Enum):
     """Enumeration of supported AI values."""
+
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
@@ -20,6 +21,7 @@ class Role(str, Enum):
 
 class ConversationMessage(BaseModel):
     """Represent the ConversationMessage type."""
+
     role: Role
     content: str
     tool_name: str | None = None
@@ -28,6 +30,7 @@ class ConversationMessage(BaseModel):
 
 class AIChatRequest(BaseModel):
     """Pydantic schema for the AI domain."""
+
     message: str
     phone_number: str
     tenant_id: str | None = None

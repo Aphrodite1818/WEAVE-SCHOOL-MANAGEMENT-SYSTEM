@@ -56,7 +56,6 @@ from app.modules.teachers.models import Teacher
 from app.modules.teachers.models import TeacherAccount
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(prefix="/communications", tags=["Communications"])
 messages_router = APIRouter(prefix="/messages", tags=["Messages"])
 notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -67,7 +66,9 @@ tenant_admin_announcement_router = APIRouter(
     prefix="/tenant-admin/announcements", tags=["Tenant Admin Announcements"]
 )
 
-CurrentCommunicationActor: TypeAlias = Annotated[CurrentActor, Depends(get_current_actor)]
+CurrentCommunicationActor: TypeAlias = Annotated[
+    CurrentActor, Depends(get_current_actor)
+]
 CurrentTenantMember = Annotated[
     TenantAdmin | Teacher | Parent | Student, Depends(get_current_tenant_member)
 ]
@@ -115,7 +116,9 @@ async def _participant_labels(
     student_ids = ids_by_type.get(CommunicationActorType.STUDENT, set())
     if student_ids:
         rows = (
-            (await db.execute(select(Student).where(Student.id.in_(student_ids)))).scalars().all()
+            (await db.execute(select(Student).where(Student.id.in_(student_ids))))
+            .scalars()
+            .all()
         )
         for row in rows:
             labels[(CommunicationActorType.STUDENT, row.id)] = _label_with_identifier(
@@ -167,7 +170,11 @@ async def _participant_labels(
     tenant_admin_ids = ids_by_type.get(CommunicationActorType.TENANT_ADMIN, set())
     if tenant_admin_ids:
         rows = (
-            (await db.execute(select(TenantAdmin).where(TenantAdmin.id.in_(tenant_admin_ids))))
+            (
+                await db.execute(
+                    select(TenantAdmin).where(TenantAdmin.id.in_(tenant_admin_ids))
+                )
+            )
             .scalars()
             .all()
         )
@@ -177,7 +184,11 @@ async def _participant_labels(
     superadmin_ids = ids_by_type.get(CommunicationActorType.SUPERADMIN, set())
     if superadmin_ids:
         rows = (
-            (await db.execute(select(SuperAdmin).where(SuperAdmin.id.in_(superadmin_ids))))
+            (
+                await db.execute(
+                    select(SuperAdmin).where(SuperAdmin.id.in_(superadmin_ids))
+                )
+            )
             .scalars()
             .all()
         )
@@ -197,9 +208,13 @@ async def _conversation_response(
             update={
                 "label": labels.get(
                     (
-                        participant.actor_type
-                        if isinstance(participant.actor_type, CommunicationActorType)
-                        else CommunicationActorType(participant.actor_type),
+                        (
+                            participant.actor_type
+                            if isinstance(
+                                participant.actor_type, CommunicationActorType
+                            )
+                            else CommunicationActorType(participant.actor_type)
+                        ),
                         participant.actor_id,
                     )
                 ),
@@ -228,7 +243,10 @@ async def _conversation_response(
             message for message in conversation.messages if message.deleted_at is None
         ]
         start_index = 0
-        if current_participant is not None and current_participant.last_read_message_id is not None:
+        if (
+            current_participant is not None
+            and current_participant.last_read_message_id is not None
+        ):
             for index, message in enumerate(visible_messages):
                 if message.id == current_participant.last_read_message_id:
                     start_index = index + 1
@@ -258,7 +276,9 @@ async def available_recipients(
     recipients = await MessagingService.available_recipients(db, actor=current)
     groups: dict[str, list] = {}
     for recipient in recipients:
-        groups.setdefault(recipient.group_label or "Recipients", []).append(recipient.as_schema())
+        groups.setdefault(recipient.group_label or "Recipients", []).append(
+            recipient.as_schema()
+        )
     return AvailableRecipientsResponse(
         groups=[
             AvailableRecipientGroup(label=label, recipients=items)
@@ -287,17 +307,23 @@ async def list_conversations(
 
 
 @messages_router.post(
-    "/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED
+    "/conversations",
+    response_model=ConversationResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_conversation(
     payload: ConversationCreate, db: DbSession, actor: CurrentCommunicationActor
 ) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
-    conversation = await MessagingService.create_conversation(db, actor=current, payload=payload)
+    conversation = await MessagingService.create_conversation(
+        db, actor=current, payload=payload
+    )
     return await _conversation_response(db, conversation, current)
 
 
-@messages_router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
+@messages_router.get(
+    "/conversations/{conversation_id}", response_model=ConversationResponse
+)
 async def get_conversation(
     conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
 ) -> ConversationResponse:
@@ -326,7 +352,9 @@ async def send_message(
     return MessageResponse.model_validate(message)
 
 
-@messages_router.post("/conversations/{conversation_id}/read", response_model=ConversationResponse)
+@messages_router.post(
+    "/conversations/{conversation_id}/read", response_model=ConversationResponse
+)
 async def mark_conversation_read(
     conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
 ) -> ConversationResponse:
@@ -363,7 +391,9 @@ async def list_notifications(
 
 
 @notifications_router.get("/unread-count", response_model=UnreadCountResponse)
-async def unread_count(db: DbSession, actor: CurrentCommunicationActor) -> UnreadCountResponse:
+async def unread_count(
+    db: DbSession, actor: CurrentCommunicationActor
+) -> UnreadCountResponse:
     current = await _active_communication_actor(actor, db)
     _, _, unread = await NotificationService.list_for_actor(
         db, actor=current, status=None, source_type=None, offset=0, limit=1
@@ -377,29 +407,42 @@ async def get_notification(
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.READ
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.READ,
     )
     return NotificationResponse.model_validate(delivery)
 
 
-@notifications_router.post("/{notification_id}/read", response_model=NotificationResponse)
+@notifications_router.post(
+    "/{notification_id}/read", response_model=NotificationResponse
+)
 async def mark_notification_read(
     notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.READ
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.READ,
     )
     return NotificationResponse.model_validate(delivery)
 
 
-@notifications_router.post("/{notification_id}/acknowledge", response_model=NotificationResponse)
+@notifications_router.post(
+    "/{notification_id}/acknowledge", response_model=NotificationResponse
+)
 async def acknowledge_notification(
     notification_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.ACKNOWLEDGED
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.ACKNOWLEDGED,
     )
     return NotificationResponse.model_validate(delivery)
 
@@ -410,7 +453,10 @@ async def dismiss_notification(
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.DISMISSED
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.DISMISSED,
     )
     return NotificationResponse.model_validate(delivery)
 
@@ -439,7 +485,9 @@ async def list_superadmin_announcements(
     return _announcement_list(items, total)
 
 
-@superadmin_announcement_router.post("/preview", response_model=RecipientPreviewResponse)
+@superadmin_announcement_router.post(
+    "/preview", response_model=RecipientPreviewResponse
+)
 async def preview_superadmin_announcement(
     payload: AnnouncementCreate, db: DbSession, actor: CurrentSuperadmin
 ) -> RecipientPreviewResponse:
@@ -454,9 +502,14 @@ async def preview_superadmin_announcement(
     )
 
 
-@superadmin_announcement_router.patch("/{announcement_id}", response_model=AnnouncementResponse)
+@superadmin_announcement_router.patch(
+    "/{announcement_id}", response_model=AnnouncementResponse
+)
 async def update_superadmin_announcement(
-    announcement_id: uuid.UUID, payload: AnnouncementUpdate, db: DbSession, actor: CurrentSuperadmin
+    announcement_id: uuid.UUID,
+    payload: AnnouncementUpdate,
+    db: DbSession,
+    actor: CurrentSuperadmin,
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
         await AnnouncementService.update(
@@ -476,7 +529,10 @@ async def publish_superadmin_announcement(
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
         await AnnouncementService.publish(
-            db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at
+            db,
+            actor=actor,
+            announcement_id=announcement_id,
+            publish_at=payload.publish_at,
         )
     )
 
@@ -488,7 +544,9 @@ async def archive_superadmin_announcement(
     announcement_id: uuid.UUID, db: DbSession, actor: CurrentSuperadmin
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
-        await AnnouncementService.archive(db, actor=actor, announcement_id=announcement_id)
+        await AnnouncementService.archive(
+            db, actor=actor, announcement_id=announcement_id
+        )
     )
 
 
@@ -499,7 +557,9 @@ async def cancel_superadmin_announcement(
     announcement_id: uuid.UUID, db: DbSession, actor: CurrentSuperadmin
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
-        await AnnouncementService.cancel(db, actor=actor, announcement_id=announcement_id)
+        await AnnouncementService.cancel(
+            db, actor=actor, announcement_id=announcement_id
+        )
     )
 
 
@@ -527,7 +587,9 @@ async def list_tenant_admin_announcements(
     return _announcement_list(items, total)
 
 
-@tenant_admin_announcement_router.post("/preview", response_model=RecipientPreviewResponse)
+@tenant_admin_announcement_router.post(
+    "/preview", response_model=RecipientPreviewResponse
+)
 async def preview_tenant_admin_announcement(
     payload: AnnouncementCreate, db: DbSession, actor: CurrentTenantAdmin
 ) -> RecipientPreviewResponse:
@@ -542,7 +604,9 @@ async def preview_tenant_admin_announcement(
     )
 
 
-@tenant_admin_announcement_router.patch("/{announcement_id}", response_model=AnnouncementResponse)
+@tenant_admin_announcement_router.patch(
+    "/{announcement_id}", response_model=AnnouncementResponse
+)
 async def update_tenant_admin_announcement(
     announcement_id: uuid.UUID,
     payload: AnnouncementUpdate,
@@ -567,7 +631,10 @@ async def publish_tenant_admin_announcement(
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
         await AnnouncementService.publish(
-            db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at
+            db,
+            actor=actor,
+            announcement_id=announcement_id,
+            publish_at=payload.publish_at,
         )
     )
 
@@ -579,7 +646,9 @@ async def archive_tenant_admin_announcement(
     announcement_id: uuid.UUID, db: DbSession, actor: CurrentTenantAdmin
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
-        await AnnouncementService.archive(db, actor=actor, announcement_id=announcement_id)
+        await AnnouncementService.archive(
+            db, actor=actor, announcement_id=announcement_id
+        )
     )
 
 
@@ -590,5 +659,7 @@ async def cancel_tenant_admin_announcement(
     announcement_id: uuid.UUID, db: DbSession, actor: CurrentTenantAdmin
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
-        await AnnouncementService.cancel(db, actor=actor, announcement_id=announcement_id)
+        await AnnouncementService.cancel(
+            db, actor=actor, announcement_id=announcement_id
+        )
     )

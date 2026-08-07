@@ -26,14 +26,18 @@ from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(prefix="/school-calendar", tags=["School Calendar"])
-CurrentTenantMember: TypeAlias = Annotated[TenantActor, Depends(get_current_tenant_member)]
+CurrentTenantMember: TypeAlias = Annotated[
+    TenantActor, Depends(get_current_tenant_member)
+]
 
 
 def _audiences_for(actor: TenantActor) -> set[SchoolCalendarEventAudience]:
     if isinstance(actor, TenantAdmin):
-        return {SchoolCalendarEventAudience.ALL, SchoolCalendarEventAudience.TENANT_ADMINS}
+        return {
+            SchoolCalendarEventAudience.ALL,
+            SchoolCalendarEventAudience.TENANT_ADMINS,
+        }
     if isinstance(actor, Teacher):
         return {SchoolCalendarEventAudience.ALL, SchoolCalendarEventAudience.TEACHERS}
     if isinstance(actor, Parent):

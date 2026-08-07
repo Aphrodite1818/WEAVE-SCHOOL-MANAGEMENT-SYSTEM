@@ -28,7 +28,6 @@ from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.teachers.models import TeacherMembership
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 admin_router = APIRouter(
     prefix="/tenant-admin/academics/results/bulk",
     tags=["Tenant Admin Result Bulk Actions"],
@@ -116,9 +115,13 @@ class BulkResultLifecycleService:
         if session is None or term is None or term.academic_session_id != session.id:
             raise NotFoundException("Academic session or term is invalid.")
         if not session.is_current or session.status != AcademicSessionStatus.OPEN:
-            raise ConflictException("Results can only be changed in the current open session.")
+            raise ConflictException(
+                "Results can only be changed in the current open session."
+            )
         if not term.is_current or term.status != AcademicTermStatus.OPEN:
-            raise ConflictException("Results can only be changed in the current open term.")
+            raise ConflictException(
+                "Results can only be changed in the current open term."
+            )
 
     @staticmethod
     async def _load_scope(
@@ -138,7 +141,8 @@ class BulkResultLifecycleService:
         ]
         if payload.teacher_assignment_id is not None:
             filters.append(
-                StudentSubjectResult.teacher_assignment_id == payload.teacher_assignment_id
+                StudentSubjectResult.teacher_assignment_id
+                == payload.teacher_assignment_id
             )
         if teacher_id is not None:
             filters.append(StudentSubjectResult.teacher_membership_id == teacher_id)

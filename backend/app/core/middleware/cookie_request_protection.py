@@ -10,7 +10,6 @@ from starlette.requests import Request
 
 from app.config.settings import settings
 
-
 _PROTECTED_ROUTES = frozenset(
     {
         f"{settings.API_V1_PREFIX}/auth/refresh",
@@ -74,7 +73,9 @@ class CookieRequestProtectionMiddleware:
             origin = _normalized_origin(request.headers.get("referer"))
 
         allowed = _allowed_origins()
-        if origin is None or (origin not in allowed and not _development_local_origin(origin)):
+        if origin is None or (
+            origin not in allowed and not _development_local_origin(origin)
+        ):
             response = JSONResponse(
                 status_code=403,
                 content={"detail": "Untrusted request origin."},

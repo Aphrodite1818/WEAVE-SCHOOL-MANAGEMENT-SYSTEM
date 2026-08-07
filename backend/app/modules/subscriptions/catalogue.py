@@ -19,7 +19,6 @@ from app.modules.subscriptions.plans import get_plan_entitlements
 from app.modules.subscriptions.subscription_enums import BillingInterval
 from app.tenant_management.models import SubscriptionPlan
 
-
 PLAN_DISPLAY_NAMES = {
     SubscriptionPlan.FREE_TRIAL: "Free Trial",
     SubscriptionPlan.PLUS: "Plus",
@@ -86,10 +85,12 @@ class PublicSubscriptionCatalogueService:
                     "amount_kobo": amount_kobo,
                     "checkout_enabled": cls._checkout_enabled(plan, amount_kobo),
                     "features": {
-                        feature.value: enabled for feature, enabled in entitlements.features.items()
+                        feature.value: enabled
+                        for feature, enabled in entitlements.features.items()
                     },
                     "limits": {
-                        resource.value: limit for resource, limit in entitlements.limits.items()
+                        resource.value: limit
+                        for resource, limit in entitlements.limits.items()
                     },
                 }
             )
@@ -130,7 +131,9 @@ class PublicSubscriptionCatalogueService:
                     currency=DEFAULT_CURRENCY,
                     billing_interval=BillingInterval.MONTHLY,
                     trial_days=(
-                        DEFAULT_TRIAL_DAYS if plan == SubscriptionPlan.FREE_TRIAL else None
+                        DEFAULT_TRIAL_DAYS
+                        if plan == SubscriptionPlan.FREE_TRIAL
+                        else None
                     ),
                     checkout_enabled=bool(item["checkout_enabled"]),
                     features=dict(item["features"]),

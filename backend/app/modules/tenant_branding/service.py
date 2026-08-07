@@ -7,7 +7,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache.events import flush_cache_invalidation_events
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.teachers.models import Teacher
@@ -48,7 +52,9 @@ class TenantBrandingService:
         """Ensure the actor is an attached tenant admin."""
 
         if not isinstance(actor, TenantAdmin):
-            raise ForbiddenException(detail="Only tenant admins can manage tenant branding.")
+            raise ForbiddenException(
+                detail="Only tenant admins can manage tenant branding."
+            )
 
         if not actor.tenant_id:
             raise ForbiddenException(detail="Tenant admin is not attached to a tenant.")
@@ -65,7 +71,9 @@ class TenantBrandingService:
 
         if actor is not None:
             if not isinstance(actor, (TenantAdmin, Teacher, Student, Parent)):
-                raise ForbiddenException(detail="Unsupported actor type for tenant branding.")
+                raise ForbiddenException(
+                    detail="Unsupported actor type for tenant branding."
+                )
 
             if not actor.tenant_id:
                 raise ForbiddenException(detail="Actor is not attached to a tenant.")
@@ -123,7 +131,9 @@ class TenantBrandingService:
     def _ensure_tokens(branding: TenantBranding) -> dict[str, dict[str, str]]:
         """Build tokens only from the allow-listed palette identifier."""
 
-        return build_palette_theme_token_sets(branding.palette_key or DEFAULT_PALETTE_KEY)
+        return build_palette_theme_token_sets(
+            branding.palette_key or DEFAULT_PALETTE_KEY
+        )
 
     @staticmethod
     def _build_admin_response(
@@ -329,7 +339,9 @@ class TenantBrandingService:
             tenant_id=tenant_id,
         )
 
-        current_palette_key = branding.palette_key if branding is not None else DEFAULT_PALETTE_KEY
+        current_palette_key = (
+            branding.palette_key if branding is not None else DEFAULT_PALETTE_KEY
+        )
         current_is_enabled = branding.is_enabled if branding is not None else False
         current_tokens = (
             TenantBrandingService._ensure_tokens(branding)
@@ -344,7 +356,9 @@ class TenantBrandingService:
                 payload=payload,
             )
             source_colors = get_palette_source_colors(next_values["palette_key"])
-            next_values["tokens"] = build_palette_theme_token_sets(next_values["palette_key"])
+            next_values["tokens"] = build_palette_theme_token_sets(
+                next_values["palette_key"]
+            )
         except ValueError as exc:
             raise BadRequestException(detail=str(exc)) from exc
 
@@ -361,7 +375,9 @@ class TenantBrandingService:
 
         if branding is None:
             if persisted_values == {
-                **TenantBrandingService._default_branding_values(logo_url=tenant.logo_url),
+                **TenantBrandingService._default_branding_values(
+                    logo_url=tenant.logo_url
+                ),
                 "updated_by_admin_id": actor.id,
             }:
                 return TenantBrandingService._build_admin_response(

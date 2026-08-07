@@ -17,13 +17,14 @@ from app.modules.student_academics.schemas import (
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/class-subjects",
     tags=["Class Subjects"],
 )
 
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 
 
 @router.post(

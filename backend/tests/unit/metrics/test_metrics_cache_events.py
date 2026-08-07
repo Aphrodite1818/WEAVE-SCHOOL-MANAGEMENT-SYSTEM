@@ -4,7 +4,10 @@ import uuid
 from types import SimpleNamespace
 
 from app.core.cache.events import CACHE_INVALIDATION_EVENTS, CacheInvalidationEvent
-from app.modules.communications.enums import CommunicationActorType, NotificationSourceType
+from app.modules.communications.enums import (
+    CommunicationActorType,
+    NotificationSourceType,
+)
 from app.modules.communications.models import NotificationDelivery
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
@@ -78,7 +81,9 @@ def test_student_result_change_invalidates_metric_dashboard_sources() -> None:
 
 
 def test_tenant_change_invalidates_superadmin_metrics() -> None:
-    tenant = Tenant(id=uuid.uuid4(), school_name="Example", slug="example", email="a@example.com")
+    tenant = Tenant(
+        id=uuid.uuid4(), school_name="Example", slug="example", email="a@example.com"
+    )
     session = _session(tenant)
 
     queue_metrics_cache_invalidations(session)

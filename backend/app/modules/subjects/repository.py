@@ -213,9 +213,7 @@ class SubjectRepository:
             )
 
         total = (
-            await db.execute(
-                select(func.count()).select_from(Subject).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(Subject).where(*filters))
         ).scalar_one()
         result = await db.execute(
             select(Subject)
@@ -268,10 +266,7 @@ class SubjectRepository:
             .where(*filters)
         )
         total = (
-            await db.execute(
-                select(func.count())
-                .select_from(joined.subquery())
-            )
+            await db.execute(select(func.count()).select_from(joined.subquery()))
         ).scalar_one()
         result = await db.execute(
             joined.options(*_subject_teacher_load_options())
@@ -308,7 +303,9 @@ class SubjectRepository:
 
         class_subject_count = (
             await db.execute(
-                select(func.count()).select_from(ClassSubject).where(
+                select(func.count())
+                .select_from(ClassSubject)
+                .where(
                     ClassSubject.tenant_id == tenant_id,
                     ClassSubject.subject_id == subject_id,
                 )
@@ -316,7 +313,9 @@ class SubjectRepository:
         ).scalar_one()
         teacher_link_count = (
             await db.execute(
-                select(func.count()).select_from(TeacherMembershipSubject).where(
+                select(func.count())
+                .select_from(TeacherMembershipSubject)
+                .where(
                     TeacherMembershipSubject.tenant_id == tenant_id,
                     TeacherMembershipSubject.subject_id == subject_id,
                 )
@@ -326,7 +325,9 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .join(
+                    ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id
+                )
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
                     ClassSubject.tenant_id == tenant_id,
@@ -336,7 +337,9 @@ class SubjectRepository:
         ).scalar_one()
         result_count = (
             await db.execute(
-                select(func.count()).select_from(StudentSubjectResult).where(
+                select(func.count())
+                .select_from(StudentSubjectResult)
+                .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.subject_id == subject_id,
                 )
@@ -344,7 +347,9 @@ class SubjectRepository:
         ).scalar_one()
         report_card_line_count = (
             await db.execute(
-                select(func.count()).select_from(ReportCardSubjectLine).where(
+                select(func.count())
+                .select_from(ReportCardSubjectLine)
+                .where(
                     ReportCardSubjectLine.tenant_id == tenant_id,
                     ReportCardSubjectLine.subject_id == subject_id,
                 )
@@ -368,7 +373,9 @@ class SubjectRepository:
 
         active_class_subject_count = (
             await db.execute(
-                select(func.count()).select_from(ClassSubject).where(
+                select(func.count())
+                .select_from(ClassSubject)
+                .where(
                     ClassSubject.tenant_id == tenant_id,
                     ClassSubject.subject_id == subject_id,
                     ClassSubject.is_active.is_(True),
@@ -378,7 +385,9 @@ class SubjectRepository:
         ).scalar_one()
         active_teacher_link_count = (
             await db.execute(
-                select(func.count()).select_from(TeacherMembershipSubject).where(
+                select(func.count())
+                .select_from(TeacherMembershipSubject)
+                .where(
                     TeacherMembershipSubject.tenant_id == tenant_id,
                     TeacherMembershipSubject.subject_id == subject_id,
                     TeacherMembershipSubject.is_active.is_(True),
@@ -389,7 +398,9 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .join(
+                    ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id
+                )
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
                     TeacherAssignment.is_active.is_(True),

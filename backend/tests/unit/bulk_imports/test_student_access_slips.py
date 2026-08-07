@@ -58,7 +58,9 @@ def test_spreadsheet_formula_prefixes_are_written_as_literals() -> None:
     assert convert_value_for_csv("-starts-with-minus") == "'-starts-with-minus"
     assert convert_value_for_csv(42) == "42"
 
-    workbook = load_workbook(BytesIO(write_xlsx_bytes(rows=rows, headers=list(rows[0]))))
+    workbook = load_workbook(
+        BytesIO(write_xlsx_bytes(rows=rows, headers=list(rows[0])))
+    )
     sheet = workbook.active
 
     assert sheet["A2"].value.startswith("'=")

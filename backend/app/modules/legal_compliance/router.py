@@ -22,7 +22,13 @@ from app.modules.tenant_admins.models import TenantAdmin
 router = APIRouter(prefix="/legal-compliance", tags=["Legal Compliance"])
 
 CurrentActor = Annotated[
-    SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount,
+    SuperAdmin
+    | TenantAdmin
+    | Teacher
+    | Parent
+    | Student
+    | TeacherAccount
+    | ParentAccount,
     Depends(get_current_actor),
 ]
 

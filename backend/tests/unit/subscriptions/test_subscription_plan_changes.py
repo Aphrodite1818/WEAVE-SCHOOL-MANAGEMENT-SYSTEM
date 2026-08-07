@@ -19,8 +19,12 @@ from app.tenant_management.models import SubscriptionPlan
 
 
 def test_grace_period_keeps_write_access_during_recovery_window() -> None:
-    assert SubscriptionFeatureService._is_write_access_allowed(SubscriptionStatus.GRACE_PERIOD)
-    assert not SubscriptionFeatureService._is_write_access_allowed(SubscriptionStatus.EXPIRED)
+    assert SubscriptionFeatureService._is_write_access_allowed(
+        SubscriptionStatus.GRACE_PERIOD
+    )
+    assert not SubscriptionFeatureService._is_write_access_allowed(
+        SubscriptionStatus.EXPIRED
+    )
 
 
 @pytest.mark.asyncio

@@ -50,9 +50,7 @@ class StudentRepository:
     ) -> Student | None:
         """Load a student using a scoped or session-bound primary key."""
 
-        tenant_id = (
-            tenant_or_student_id if student_id is not None else None
-        )
+        tenant_id = tenant_or_student_id if student_id is not None else None
         resolved_student_id = student_id or tenant_or_student_id
         filters = [Student.id == resolved_student_id]
         if tenant_id is not None:
@@ -93,8 +91,7 @@ class StudentRepository:
     ) -> Student | None:
         filters = [
             Student.tenant_id == tenant_id,
-            Student.admission_number
-            == admission_number.strip().upper(),
+            Student.admission_number == admission_number.strip().upper(),
         ]
         if not include_archived:
             filters.append(Student.is_archived.is_(False))
@@ -112,8 +109,7 @@ class StudentRepository:
         result = await db.execute(
             select(Student.id).where(
                 Student.tenant_id == tenant_id,
-                Student.admission_number
-                == admission_number.strip().upper(),
+                Student.admission_number == admission_number.strip().upper(),
             )
         )
         return result.scalar_one_or_none() is not None
@@ -148,11 +144,7 @@ class StudentRepository:
             )
 
         total = (
-            await db.execute(
-                select(func.count())
-                .select_from(Student)
-                .where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(Student).where(*filters))
         ).scalar_one()
         result = await db.execute(
             select(Student)
@@ -197,9 +189,7 @@ class StudentRepository:
             .where(
                 Student.tenant_id == tenant_id,
                 Student.class_id == class_id,
-                Student.status.in_(
-                    [AcademicStatus.ACTIVE, AcademicStatus.SUSPENDED]
-                ),
+                Student.status.in_([AcademicStatus.ACTIVE, AcademicStatus.SUSPENDED]),
                 Student.promotion_hold.is_(False),
                 Student.is_archived.is_(False),
             )
@@ -303,8 +293,7 @@ class StudentEnrollmentRepository:
             .where(
                 StudentEnrollment.tenant_id == tenant_id,
                 StudentEnrollment.class_id == class_id,
-                StudentEnrollment.academic_session_id
-                == academic_session_id,
+                StudentEnrollment.academic_session_id == academic_session_id,
                 StudentEnrollment.is_current.is_(True),
             )
             .order_by(StudentEnrollment.student_id)
@@ -391,8 +380,7 @@ class StudentAccessCodeRepository:
             filters.extend(
                 [
                     StudentAccessCode.is_used.is_(False),
-                    StudentAccessCode.expires_at
-                    > datetime.now(timezone.utc),
+                    StudentAccessCode.expires_at > datetime.now(timezone.utc),
                 ]
             )
         query = select(StudentAccessCode).where(*filters)
@@ -520,19 +508,14 @@ class StudentParentLinkRepository:
         )
         if statuses:
             query = query.where(StudentParentLink.status.in_(statuses))
-        query = (
-            query.options(
-                joinedload(
-                    StudentParentLink.parent_membership,
-                ).joinedload(ParentMembership.parent_account)
-            )
-            .order_by(StudentParentLink.created_at.asc())
-        )
+        query = query.options(
+            joinedload(
+                StudentParentLink.parent_membership,
+            ).joinedload(ParentMembership.parent_account)
+        ).order_by(StudentParentLink.created_at.asc())
         if lock:
             query = query.with_for_update(of=StudentParentLink)
-        return list(
-            (await db.execute(query)).scalars().unique().all()
-        )
+        return list((await db.execute(query)).scalars().unique().all())
 
     @staticmethod
     async def list_for_membership(
@@ -549,14 +532,12 @@ class StudentParentLinkRepository:
         )
         if statuses:
             query = query.where(StudentParentLink.status.in_(statuses))
-        query = query.options(
-            joinedload(StudentParentLink.student)
-        ).order_by(StudentParentLink.created_at.asc())
+        query = query.options(joinedload(StudentParentLink.student)).order_by(
+            StudentParentLink.created_at.asc()
+        )
         if lock:
             query = query.with_for_update(of=StudentParentLink)
-        return list(
-            (await db.execute(query)).scalars().unique().all()
-        )
+        return list((await db.execute(query)).scalars().unique().all())
 
     @staticmethod
     async def get_by_parent_id(
@@ -673,11 +654,7 @@ class StudentParentLinkRequestRepository:
     ) -> list[StudentParentLinkRequest]:
         result = await db.execute(
             select(StudentParentLinkRequest)
-            .options(
-                joinedload(
-                    StudentParentLinkRequest.parent_membership
-                )
-            )
+            .options(joinedload(StudentParentLinkRequest.parent_membership))
             .where(
                 StudentParentLinkRequest.tenant_id == tenant_id,
                 StudentParentLinkRequest.student_id == student_id,
@@ -698,8 +675,7 @@ class StudentParentLinkRequestRepository:
     ) -> tuple[list[StudentParentLinkRequest], int]:
         filters = [
             StudentParentLinkRequest.tenant_id == tenant_id,
-            StudentParentLinkRequest.status
-            == StudentParentLinkRequestStatus.PENDING,
+            StudentParentLinkRequest.status == StudentParentLinkRequestStatus.PENDING,
         ]
         total = (
             await db.execute(

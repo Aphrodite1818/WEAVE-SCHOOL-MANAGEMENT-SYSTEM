@@ -14,7 +14,6 @@ from app.modules.bulk_imports.schemas import (
     ImportTemplateResponse,
 )
 
-
 TEMPLATE_METADATA_SHEET_NAME = "_import_metadata"
 
 CONTROL_COLUMNS: set[str] = {
@@ -95,8 +94,12 @@ def create_student_template() -> ImportTemplateDefinition:
         resource_type=ImportResourceType.STUDENTS,
         filename="students_import_template.xlsx",
         columns=[
-            create_template_column(name="first_name", label="First Name", required=True, example="Ade"),
-            create_template_column(name="last_name", label="Last Name", required=True, example="Johnson"),
+            create_template_column(
+                name="first_name", label="First Name", required=True, example="Ade"
+            ),
+            create_template_column(
+                name="last_name", label="Last Name", required=True, example="Johnson"
+            ),
             create_template_column(
                 name="date_of_birth",
                 label="Date of Birth",
@@ -125,7 +128,12 @@ def create_student_template() -> ImportTemplateDefinition:
                 example="A",
                 description="Optional. Leave blank for classes without arms, or enter an existing arm such as A or Science.",
             ),
-            create_template_column(name="state_of_origin", label="State of Origin", required=False, example="Lagos"),
+            create_template_column(
+                name="state_of_origin",
+                label="State of Origin",
+                required=False,
+                example="Lagos",
+            ),
             create_template_column(
                 name="parent_email_1",
                 label="Parent or Guardian Email 1",
@@ -209,8 +217,7 @@ def convert_template_to_response(
         filename=f"{template.resource_type.value}_import_template.{file_type.value}",
         template_version=TEMPLATE_VERSION_BY_RESOURCE.get(template.resource_type),
         columns=[
-            convert_column_to_response(column=column)
-            for column in template.columns
+            convert_column_to_response(column=column) for column in template.columns
         ],
         notes=template.notes,
     )

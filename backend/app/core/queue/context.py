@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from contextvars import ContextVar, Token
 
-
 _current_bulk_import_job_id: ContextVar[str | None] = ContextVar(
     "current_bulk_import_job_id",
     default=None,

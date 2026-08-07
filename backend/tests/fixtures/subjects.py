@@ -1,29 +1,24 @@
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession 
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.subjects.models import Subject
 from app.tenant_management.models import Tenant
 
 
-
-@pytest_asyncio.fixture  #used for asynchronous functions
-async def subject_object(
-    db_session : AsyncSession,
-    tenant : Tenant 
-) -> Subject:
+@pytest_asyncio.fixture  # used for asynchronous functions
+async def subject_object(db_session: AsyncSession, tenant: Tenant) -> Subject:
     subject = Subject(
-        tenant_id = tenant.id,
-        name = "Mathematics",
-        code = "MATH",
-        description = "Core mathematics subject",
-        is_active = True
+        tenant_id=tenant.id,
+        name="Mathematics",
+        code="MATH",
+        description="Core mathematics subject",
+        is_active=True,
     )
-    
+
     db_session.add(subject)
     await db_session.flush()
     await db_session.refresh(subject)
 
     return subject
-
 
 
 @pytest_asyncio.fixture

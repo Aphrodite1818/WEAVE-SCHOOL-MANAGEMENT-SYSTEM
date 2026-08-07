@@ -3,7 +3,19 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -67,8 +79,12 @@ class ReportCard(BaseModel):
     position_out_of: Mapped[int | None] = mapped_column(Integer, nullable=True)
     class_teacher_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     principal_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     published_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
@@ -80,7 +96,9 @@ class ReportCard(BaseModel):
         server_default="false",
         nullable=False,
     )
-    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     status: Mapped[ReportCardStatus] = mapped_column(
         SQLEnum(
             ReportCardStatus,
@@ -93,7 +111,9 @@ class ReportCard(BaseModel):
         server_default=ReportCardStatus.DRAFT.value,
     )
     generated_by_actor_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    generated_by_actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    generated_by_actor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
 
 
 class ReportCardSubjectLine(BaseModel):

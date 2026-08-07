@@ -17,7 +17,6 @@ from app.modules.email_outbox.service import EmailOutboxService
 from app.core.queue.sentry import capture_worker_exceptions
 
 
-
 @capture_worker_exceptions(queue_name=GENERAL_QUEUE_NAME)
 async def process_email_outbox_batch(
     ctx: dict[str, Any],

@@ -34,7 +34,7 @@ class _CapturingSession:
 
 @pytest.mark.asyncio
 async def test_list_for_student_lock_targets_student_parent_links_only() -> None:
-    
+
     db = _CapturingSession()
 
     await StudentParentLinkRepository.list_for_student(
@@ -54,7 +54,7 @@ async def test_list_for_student_lock_targets_student_parent_links_only() -> None
 
 @pytest.mark.asyncio
 async def test_list_for_membership_lock_targets_student_parent_links_only() -> None:
-    
+
     db = _CapturingSession()
 
     await StudentParentLinkRepository.list_for_membership(

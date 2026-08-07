@@ -15,7 +15,6 @@ from typing import Any
 from app.modules.bulk_imports.models import ImportResourceType
 from app.modules.students.models import ParentRelationship
 
-
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -129,11 +128,15 @@ class BulkImportValidator:
     """Validate normalized import rows against manual-create-compatible rules."""
 
     REQUIRED_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {
-        ImportResourceType.STUDENTS: ("first_name", "last_name", "date_of_birth", "class_name"),
+        ImportResourceType.STUDENTS: (
+            "first_name",
+            "last_name",
+            "date_of_birth",
+            "class_name",
+        ),
     }
 
-    DUPLICATE_CHECK_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {
-    }
+    DUPLICATE_CHECK_FIELDS_BY_RESOURCE: dict[ImportResourceType, tuple[str, ...]] = {}
 
     @staticmethod
     def parse_date(value: Any) -> date | None:
@@ -184,7 +187,9 @@ class BulkImportValidator:
     ) -> None:
         """Validate required fields for a resource type."""
 
-        required_fields = BulkImportValidator.REQUIRED_FIELDS_BY_RESOURCE.get(resource_type, ())
+        required_fields = BulkImportValidator.REQUIRED_FIELDS_BY_RESOURCE.get(
+            resource_type, ()
+        )
 
         for field_name in required_fields:
             if _is_blank(normalized_row.get(field_name)):
@@ -305,7 +310,10 @@ class BulkImportValidator:
                     error_message=f"{email_field} is required when {relationship_field} is supplied.",
                 )
 
-            if not _is_blank(relationship) and str(relationship) not in allowed_relationships:
+            if (
+                not _is_blank(relationship)
+                and str(relationship) not in allowed_relationships
+            ):
                 _add_error(
                     errors=errors,
                     row_number=row_number,

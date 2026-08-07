@@ -14,7 +14,6 @@ from app.core.cache.events import (
 )
 from app.core.cache.manager import CacheManager
 
-
 TENANT_BRANDING_CACHE_TTL_SECONDS = 30 * 60
 
 
@@ -31,7 +30,9 @@ def build_tenant_branding_cache_key(tenant_id: UUID) -> str:
 async def get_cached_branding(tenant_id: UUID) -> dict[str, Any] | None:
     """Fetch a cached effective branding response for a tenant."""
 
-    cached_value = await CacheManager.get_json(build_tenant_branding_cache_key(tenant_id))
+    cached_value = await CacheManager.get_json(
+        build_tenant_branding_cache_key(tenant_id)
+    )
     if cached_value is None or not isinstance(cached_value, dict):
         return None
     return cached_value

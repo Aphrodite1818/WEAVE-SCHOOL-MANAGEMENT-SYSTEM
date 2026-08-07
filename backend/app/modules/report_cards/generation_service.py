@@ -77,21 +77,25 @@ class EnrollmentReportCardService:
         academic_session_id: uuid.UUID,
     ) -> list[StudentEnrollment]:
         rows = (
-            await db.execute(
-                select(StudentEnrollment)
-                .where(
-                    StudentEnrollment.tenant_id == tenant_id,
-                    StudentEnrollment.class_id == class_id,
-                    StudentEnrollment.academic_session_id == academic_session_id,
-                )
-                .order_by(
-                    StudentEnrollment.student_id,
-                    StudentEnrollment.is_current.desc(),
-                    StudentEnrollment.started_on.desc(),
-                    StudentEnrollment.created_at.desc(),
+            (
+                await db.execute(
+                    select(StudentEnrollment)
+                    .where(
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.class_id == class_id,
+                        StudentEnrollment.academic_session_id == academic_session_id,
+                    )
+                    .order_by(
+                        StudentEnrollment.student_id,
+                        StudentEnrollment.is_current.desc(),
+                        StudentEnrollment.started_on.desc(),
+                        StudentEnrollment.created_at.desc(),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         latest_by_student: dict[uuid.UUID, StudentEnrollment] = {}
         for enrollment in rows:
             latest_by_student.setdefault(enrollment.student_id, enrollment)
@@ -132,7 +136,9 @@ class EnrollmentReportCardService:
             academic_term_id,
         )
         if not results:
-            raise BadRequestException("No locked scores are available for this student.")
+            raise BadRequestException(
+                "No locked scores are available for this student."
+            )
 
         existing = await ReportCardRepository.get_by_student_period(
             db,

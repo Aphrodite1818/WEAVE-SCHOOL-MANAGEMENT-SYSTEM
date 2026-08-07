@@ -6,7 +6,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.teachers.models import TeacherMembership
 from app.modules.teachers.repository import (
     TeacherAccountRepository,
@@ -89,9 +93,7 @@ class TeacherPatchService:
             "receive_push_notifications",
         ):
             if boolean_field in update_data and update_data[boolean_field] is None:
-                raise BadRequestException(
-                    f"{boolean_field} must be true or false."
-                )
+                raise BadRequestException(f"{boolean_field} must be true or false.")
 
         for field, value in update_data.items():
             setattr(membership, field, value)

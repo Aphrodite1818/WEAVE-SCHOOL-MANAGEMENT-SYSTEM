@@ -109,9 +109,7 @@ class TeacherSubjectCapabilityService:
             actor.tenant_id,
             membership_id,
         )
-        existing_active = {
-            link.subject_id for link in existing_links if link.is_active
-        }
+        existing_active = {link.subject_id for link in existing_links if link.is_active}
         removed = existing_active - requested
 
         if removed:
@@ -130,7 +128,9 @@ class TeacherSubjectCapabilityService:
                             ClassSubject.subject_id.in_(removed),
                         )
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             legacy_assignment_subjects = set(
                 (
@@ -142,7 +142,9 @@ class TeacherSubjectCapabilityService:
                             ClassSubjectTeacher.subject_id.in_(removed),
                         )
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             blocked = current_assignment_subjects | legacy_assignment_subjects
             if blocked:

@@ -12,7 +12,6 @@ from app.modules.student_academics.schemas import StudentSubjectCardListResponse
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.students.models import Student
 
-
 router = APIRouter(
     prefix="/students/academics",
     tags=["Student Academics"],

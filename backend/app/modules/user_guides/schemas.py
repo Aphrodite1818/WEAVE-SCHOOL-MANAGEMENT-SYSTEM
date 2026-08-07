@@ -8,7 +8,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 GuideStatus = Literal["not_started", "in_progress", "dismissed", "completed"]
 
 

@@ -28,9 +28,10 @@ from app.tenant_management.schemas import (
 )
 from app.tenant_management.service import TenantService
 
-
 router = APIRouter(tags=["Tenants"])
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 CurrentTenantMember: TypeAlias = Annotated[
     TenantAdmin | Teacher | Student | Parent,
     Depends(get_current_tenant_member),
@@ -90,7 +91,9 @@ async def get_tenant(
     if current_actor.tenant_id != tenant_id:
         raise ForbiddenException("You do not have access to this tenant's resources")
     if not isinstance(current_actor, (TenantAdmin, Teacher)):
-        raise ForbiddenException("Operation not permitted. Required roles: admin, teacher")
+        raise ForbiddenException(
+            "Operation not permitted. Required roles: admin, teacher"
+        )
 
     return await TenantService.get_tenant_by_id(db, tenant_id)
 

@@ -112,7 +112,9 @@ class SubjectService:
                 normalized_code=normalized_code,
             )
             if existing_code:
-                raise BadRequestException(detail="A subject with this code already exists.")
+                raise BadRequestException(
+                    detail="A subject with this code already exists."
+                )
 
         subject = Subject(
             tenant_id=actor.tenant_id,
@@ -127,7 +129,9 @@ class SubjectService:
         )
 
         try:
-            created_subject = await SubjectRepository.create_subject(db=db, subject=subject)
+            created_subject = await SubjectRepository.create_subject(
+                db=db, subject=subject
+            )
 
             await db.commit()
             subject_with_teachers = await SubjectRepository.get_subject_by_id(
@@ -225,7 +229,9 @@ class SubjectService:
         if not subject:
             raise NotFoundException(detail="Subject not found.")
         if subject.archived_at is not None:
-            raise ConflictException("Archived subjects cannot be updated. Restore them first.")
+            raise ConflictException(
+                "Archived subjects cannot be updated. Restore them first."
+            )
 
         update_data = subject_data.model_dump(exclude_unset=True)
         if not update_data:
@@ -240,7 +246,9 @@ class SubjectService:
                     normalized_name=normalized_name,
                 )
                 if existing_name:
-                    raise BadRequestException(detail="A subject with this name already exists.")
+                    raise BadRequestException(
+                        detail="A subject with this name already exists."
+                    )
             update_data["normalized_name"] = normalized_name
 
         if "code" in update_data:
@@ -252,7 +260,9 @@ class SubjectService:
                     normalized_code=normalized_code,
                 )
                 if existing_code:
-                    raise BadRequestException(detail="A subject with this code already exists.")
+                    raise BadRequestException(
+                        detail="A subject with this code already exists."
+                    )
             update_data["normalized_code"] = normalized_code
             update_data["code"] = normalized_code
 
@@ -260,7 +270,9 @@ class SubjectService:
             for field, value in update_data.items():
                 setattr(subject, field, value)
 
-            updated_subject = await SubjectRepository.update_subject(db=db, subject=subject)
+            updated_subject = await SubjectRepository.update_subject(
+                db=db, subject=subject
+            )
 
             await db.commit()
             subject_with_teachers = await SubjectRepository.get_subject_by_id(
@@ -295,7 +307,9 @@ class SubjectService:
             raise NotFoundException(detail="Subject not found.")
 
         if subject.archived_at is not None:
-            raise ConflictException("Archived subjects must be restored before activation.")
+            raise ConflictException(
+                "Archived subjects must be restored before activation."
+            )
 
         if subject.is_active:
             return subject
@@ -373,7 +387,9 @@ class SubjectService:
             raise NotFoundException(detail="Subject not found.")
 
         if subject.archived_at is not None:
-            raise ConflictException("Archived records cannot be deactivated. Restore them first.")
+            raise ConflictException(
+                "Archived records cannot be deactivated. Restore them first."
+            )
 
         if not subject.is_active:
             return subject
@@ -484,7 +500,9 @@ class SubjectService:
                 "Active subjects cannot be deleted. Deactivate the subject first."
             )
         if subject.archived_at is not None:
-            raise ConflictException("Archived subjects cannot be deleted. Restore them first.")
+            raise ConflictException(
+                "Archived subjects cannot be deleted. Restore them first."
+            )
 
         dependency_counts = await SubjectRepository.count_subject_dependencies(
             db=db,

@@ -20,7 +20,10 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultUpsert,
 )
 from app.modules.student_academics.service import StudentAcademicService
-from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
+from app.modules.students.repository import (
+    StudentEnrollmentRepository,
+    StudentRepository,
+)
 from app.modules.teachers.models import TeacherMembership, TeacherMembershipStatus
 
 
@@ -76,7 +79,9 @@ def _result(status: AcademicResultStatus):
 
 
 def _open_session(session_id):
-    return SimpleNamespace(id=session_id, is_current=True, status=AcademicSessionStatus.OPEN)
+    return SimpleNamespace(
+        id=session_id, is_current=True, status=AcademicSessionStatus.OPEN
+    )
 
 
 def _open_term(term_id, session_id):
@@ -214,7 +219,11 @@ async def test_teacher_cannot_write_result_for_student_outside_assignment_class(
     monkeypatch.setattr(
         StudentAcademicRepository,
         "get_term_by_id",
-        AsyncMock(return_value=_open_term(payload.academic_term_id, payload.academic_session_id)),
+        AsyncMock(
+            return_value=_open_term(
+                payload.academic_term_id, payload.academic_session_id
+            )
+        ),
     )
     monkeypatch.setattr(
         StudentEnrollmentRepository,
@@ -253,7 +262,9 @@ async def test_admin_result_status_cannot_skip_lifecycle_states(monkeypatch) -> 
     monkeypatch.setattr(
         StudentAcademicRepository,
         "get_term_by_id",
-        AsyncMock(return_value=_open_term(result.academic_term_id, result.academic_session_id)),
+        AsyncMock(
+            return_value=_open_term(result.academic_term_id, result.academic_session_id)
+        ),
     )
 
     with pytest.raises(BadRequestException, match="draft to locked"):
@@ -266,7 +277,9 @@ async def test_admin_result_status_cannot_skip_lifecycle_states(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_admin_result_forward_lifecycle_writes_service_metadata(monkeypatch) -> None:
+async def test_admin_result_forward_lifecycle_writes_service_metadata(
+    monkeypatch,
+) -> None:
     result = _result(AcademicResultStatus.DRAFT)
     admin = _admin(result.tenant_id)
     monkeypatch.setattr(
@@ -282,7 +295,9 @@ async def test_admin_result_forward_lifecycle_writes_service_metadata(monkeypatc
     monkeypatch.setattr(
         StudentAcademicRepository,
         "get_term_by_id",
-        AsyncMock(return_value=_open_term(result.academic_term_id, result.academic_session_id)),
+        AsyncMock(
+            return_value=_open_term(result.academic_term_id, result.academic_session_id)
+        ),
     )
     monkeypatch.setattr(
         StudentAcademicRepository,
@@ -359,7 +374,9 @@ async def test_admin_reopen_locked_result_marks_cards_outdated_and_resets_curren
     monkeypatch.setattr(
         StudentAcademicRepository,
         "get_term_by_id",
-        AsyncMock(return_value=_open_term(result.academic_term_id, result.academic_session_id)),
+        AsyncMock(
+            return_value=_open_term(result.academic_term_id, result.academic_session_id)
+        ),
     )
     monkeypatch.setattr(
         StudentAcademicRepository,

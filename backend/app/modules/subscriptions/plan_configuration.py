@@ -108,4 +108,6 @@ class SubscriptionPlanConfigurationService:
                 ),
             )
 
-        cls._validated_until[fingerprint] = time.monotonic() + cls._validation_ttl_seconds
+        cls._validated_until[fingerprint] = (
+            time.monotonic() + cls._validation_ttl_seconds
+        )

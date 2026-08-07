@@ -9,7 +9,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.communications.enums import (
     AnnouncementStatus,
     CommunicationActorType,
@@ -26,7 +30,6 @@ from app.modules.communications.repository import CommunicationRepository
 from app.modules.communications.schemas import AnnouncementAudienceCreate
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.tenant_admins.models import TenantAdmin
-
 
 _ANNOUNCEMENT_INBOX_PATHS = {
     CommunicationActorType.TENANT_ADMIN: "/admin/inbox",
@@ -46,14 +49,18 @@ class AnnouncementService:
     @staticmethod
     def _ensure_creator(actor) -> None:
         if not isinstance(actor, (SuperAdmin, TenantAdmin)):
-            raise ForbiddenException("Teachers, parents, and students cannot create announcements")
+            raise ForbiddenException(
+                "Teachers, parents, and students cannot create announcements"
+            )
 
     @staticmethod
     async def _resolve_audience_or_raise(db: AsyncSession, *, actor, audiences):
         normalized_audiences = [
-            AnnouncementAudienceCreate.model_validate(audience)
-            if isinstance(audience, dict)
-            else audience
+            (
+                AnnouncementAudienceCreate.model_validate(audience)
+                if isinstance(audience, dict)
+                else audience
+            )
             for audience in audiences
         ]
         return await RecipientResolver.resolve_announcement_audience(
@@ -66,7 +73,11 @@ class AnnouncementService:
         await AnnouncementService._resolve_audience_or_raise(
             db, actor=actor, audiences=payload.audiences
         )
-        status = AnnouncementStatus.SCHEDULED if payload.publish_at else AnnouncementStatus.DRAFT
+        status = (
+            AnnouncementStatus.SCHEDULED
+            if payload.publish_at
+            else AnnouncementStatus.DRAFT
+        )
         announcement = Announcement(
             tenant_id=actor_tenant_id(actor),
             created_by_actor_type=actor_type_for(actor),
@@ -98,7 +109,12 @@ class AnnouncementService:
 
     @staticmethod
     async def list_manageable(
-        db: AsyncSession, *, actor, status: AnnouncementStatus | None, offset: int, limit: int
+        db: AsyncSession,
+        *,
+        actor,
+        status: AnnouncementStatus | None,
+        offset: int,
+        limit: int,
     ):
         AnnouncementService._ensure_creator(actor)
         stmt = (
@@ -113,11 +129,15 @@ class AnnouncementService:
             stmt = stmt.where(Announcement.tenant_id == actor_tenant_id(actor))
         if status is not None:
             stmt = stmt.where(Announcement.status == status)
-        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        total = (
+            await db.execute(select(func.count()).select_from(stmt.subquery()))
+        ).scalar_one()
         rows = (
             (
                 await db.execute(
-                    stmt.order_by(Announcement.updated_at.desc()).offset(offset).limit(limit)
+                    stmt.order_by(Announcement.updated_at.desc())
+                    .offset(offset)
+                    .limit(limit)
                 )
             )
             .unique()
@@ -130,7 +150,9 @@ class AnnouncementService:
     async def get_manageable(
         db: AsyncSession, *, actor, announcement_id: uuid.UUID
     ) -> Announcement:
-        announcement = await CommunicationRepository.get_announcement(db, announcement_id)
+        announcement = await CommunicationRepository.get_announcement(
+            db, announcement_id
+        )
         if announcement is None:
             raise NotFoundException("Announcement not found")
         if (
@@ -138,7 +160,9 @@ class AnnouncementService:
             or announcement.created_by_actor_id != actor.id
         ):
             raise NotFoundException("Announcement not found")
-        if actor_tenant_id(actor) is not None and announcement.tenant_id != actor_tenant_id(actor):
+        if actor_tenant_id(
+            actor
+        ) is not None and announcement.tenant_id != actor_tenant_id(actor):
             raise NotFoundException("Announcement not found")
         return announcement
 
@@ -151,7 +175,10 @@ class AnnouncementService:
         )
         if announcement.status == AnnouncementStatus.PUBLISHED:
             raise BadRequestException("Published announcements cannot be edited")
-        if announcement.status in {AnnouncementStatus.ARCHIVED, AnnouncementStatus.CANCELLED}:
+        if announcement.status in {
+            AnnouncementStatus.ARCHIVED,
+            AnnouncementStatus.CANCELLED,
+        }:
             raise BadRequestException("This announcement can no longer be edited")
         if payload.audiences is not None:
             await AnnouncementService._resolve_audience_or_raise(
@@ -193,8 +220,13 @@ class AnnouncementService:
         announcement = await AnnouncementService.get_manageable(
             db, actor=actor, announcement_id=announcement_id
         )
-        if announcement.status not in {AnnouncementStatus.DRAFT, AnnouncementStatus.SCHEDULED}:
-            raise BadRequestException("Only draft or scheduled announcements can be published")
+        if announcement.status not in {
+            AnnouncementStatus.DRAFT,
+            AnnouncementStatus.SCHEDULED,
+        }:
+            raise BadRequestException(
+                "Only draft or scheduled announcements can be published"
+            )
         recipients, _ = await AnnouncementService._resolve_audience_or_raise(
             db, actor=actor, audiences=announcement.audiences
         )
@@ -213,14 +245,18 @@ class AnnouncementService:
                 source_id=announcement.id,
                 title=announcement.title,
                 preview=announcement.body,
-                action_path=_announcement_action_path(recipient.actor_type, announcement.id),
+                action_path=_announcement_action_path(
+                    recipient.actor_type, announcement.id
+                ),
                 tenant_id=announcement.tenant_id,
             )
         await db.flush()
         return await CommunicationRepository.get_announcement(db, announcement.id)
 
     @staticmethod
-    async def archive(db: AsyncSession, *, actor, announcement_id: uuid.UUID) -> Announcement:
+    async def archive(
+        db: AsyncSession, *, actor, announcement_id: uuid.UUID
+    ) -> Announcement:
         announcement = await AnnouncementService.get_manageable(
             db, actor=actor, announcement_id=announcement_id
         )
@@ -231,11 +267,18 @@ class AnnouncementService:
         return await CommunicationRepository.save(db, announcement)
 
     @staticmethod
-    async def cancel(db: AsyncSession, *, actor, announcement_id: uuid.UUID) -> Announcement:
+    async def cancel(
+        db: AsyncSession, *, actor, announcement_id: uuid.UUID
+    ) -> Announcement:
         announcement = await AnnouncementService.get_manageable(
             db, actor=actor, announcement_id=announcement_id
         )
-        if announcement.status not in {AnnouncementStatus.DRAFT, AnnouncementStatus.SCHEDULED}:
-            raise BadRequestException("Only draft or scheduled announcements can be cancelled")
+        if announcement.status not in {
+            AnnouncementStatus.DRAFT,
+            AnnouncementStatus.SCHEDULED,
+        }:
+            raise BadRequestException(
+                "Only draft or scheduled announcements can be cancelled"
+            )
         announcement.status = AnnouncementStatus.CANCELLED
         return await CommunicationRepository.save(db, announcement)

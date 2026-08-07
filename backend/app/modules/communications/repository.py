@@ -38,7 +38,10 @@ class CommunicationRepository:
         stmt = (
             select(Conversation)
             .join(ConversationParticipant)
-            .options(selectinload(Conversation.participants), selectinload(Conversation.messages))
+            .options(
+                selectinload(Conversation.participants),
+                selectinload(Conversation.messages),
+            )
             .where(
                 Conversation.id == conversation_id,
                 ConversationParticipant.actor_type == actor_type,
@@ -81,12 +84,15 @@ class CommunicationRepository:
                     ConversationParticipant.tenant_id == tenant_id,
                 )
             )
-        total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+        total = (
+            await db.execute(select(func.count()).select_from(base.subquery()))
+        ).scalar_one()
         rows = (
             (
                 await db.execute(
                     base.options(
-                        selectinload(Conversation.participants), selectinload(Conversation.messages)
+                        selectinload(Conversation.participants),
+                        selectinload(Conversation.messages),
                     )
                     .order_by(Conversation.updated_at.desc())
                     .offset(offset)
@@ -129,7 +135,8 @@ class CommunicationRepository:
             (
                 await db.execute(
                     stmt.options(
-                        selectinload(Conversation.participants), selectinload(Conversation.messages)
+                        selectinload(Conversation.participants),
+                        selectinload(Conversation.messages),
                     )
                 )
             )
@@ -166,7 +173,9 @@ class CommunicationRepository:
         if source_type:
             filters.append(NotificationDelivery.source_type == source_type)
         stmt = select(NotificationDelivery).where(and_(*filters))
-        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        total = (
+            await db.execute(select(func.count()).select_from(stmt.subquery()))
+        ).scalar_one()
         unread = (
             await db.execute(
                 select(func.count())
@@ -210,7 +219,9 @@ class CommunicationRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_announcement(db: AsyncSession, announcement_id: uuid.UUID) -> Announcement | None:
+    async def get_announcement(
+        db: AsyncSession, announcement_id: uuid.UUID
+    ) -> Announcement | None:
         return (
             (
                 await db.execute(

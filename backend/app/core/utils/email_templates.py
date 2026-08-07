@@ -1,6 +1,6 @@
-#======================================#
+# ======================================#
 #       core/utils/email_templates.py  #
-#======================================#
+# ======================================#
 
 from datetime import datetime
 from html import escape
@@ -101,7 +101,9 @@ def _fallback_link(link: str) -> str:
 
 def get_otp_email_html(code: str, purpose: str, expiration_minutes: int) -> str:
     """Return otp email html."""
-    purpose_text = "account verification" if purpose == "verification" else "password reset"
+    purpose_text = (
+        "account verification" if purpose == "verification" else "password reset"
+    )
     body = f"""
             <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0; color: #334155;">Hello,</p>
             <p style="font-size: 16px; line-height: 1.6; margin: 0 0 30px 0; color: #334155;">

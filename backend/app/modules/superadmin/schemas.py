@@ -6,21 +6,25 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 class InputBase(BaseModel):
     """Pydantic schema for the superadmin domain."""
+
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
 
 class OutputBase(BaseModel):
     """Pydantic schema for the superadmin domain."""
+
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class SuperadminInviteCreate(InputBase):
     """Pydantic schema for the superadmin domain."""
+
     email: EmailStr
 
 
 class SuperadminResponse(OutputBase):
     """Pydantic schema for the superadmin domain."""
+
     id: uuid.UUID
     email: EmailStr
     is_active: bool
@@ -72,7 +76,9 @@ class SecurityIPBlockCreate(InputBase):
 class SecurityIPBlockUnblock(InputBase):
     """Disable a manual IP block rule."""
 
-    reason: str = Field(default="Manual unblock by superadmin", min_length=3, max_length=255)
+    reason: str = Field(
+        default="Manual unblock by superadmin", min_length=3, max_length=255
+    )
 
 
 class SecurityIPBlockResponse(OutputBase):
@@ -104,7 +110,9 @@ class SecurityRevokeActorSessionsRequest(InputBase):
 
     actor_type: str = Field(min_length=3, max_length=50)
     actor_id: uuid.UUID
-    reason: str = Field(default="manual_actor_containment", min_length=3, max_length=100)
+    reason: str = Field(
+        default="manual_actor_containment", min_length=3, max_length=100
+    )
 
 
 class SecurityActionResponse(OutputBase):

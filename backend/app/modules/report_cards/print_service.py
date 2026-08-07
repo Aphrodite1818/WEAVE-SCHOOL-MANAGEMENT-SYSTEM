@@ -105,7 +105,9 @@ class ReportCardPrintService:
             "No principal comment provided.",
         )
         status_value = getattr(card.status, "value", card.status)
-        status_label = ReportCardPrintService._text(str(status_value).replace("_", " ").title())
+        status_label = ReportCardPrintService._text(
+            str(status_value).replace("_", " ").title()
+        )
         position = (
             f"{card.position} of {card.position_out_of}"
             if card.position is not None and card.position_out_of is not None

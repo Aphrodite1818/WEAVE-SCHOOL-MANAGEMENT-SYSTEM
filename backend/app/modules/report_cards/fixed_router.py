@@ -16,7 +16,6 @@ from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/tenant-admin/academic/report-cards",
     tags=["Tenant Admin Report Cards"],

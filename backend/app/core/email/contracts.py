@@ -32,14 +32,18 @@ class EmailRequest:
             raise EmailValidationError("body must be a non-empty string.")
 
         if self.reply_to is not None and not self.reply_to.strip():
-            raise EmailValidationError("reply_to must be a non-empty string when provided.")
+            raise EmailValidationError(
+                "reply_to must be a non-empty string when provided."
+            )
 
         for name, value in self.tags:
             if not name or not name.strip():
                 raise EmailValidationError("Email tag names cannot be empty.")
 
             if not value or not value.strip():
-                raise EmailValidationError(f"Email tag '{name}' cannot have an empty value.")
+                raise EmailValidationError(
+                    f"Email tag '{name}' cannot have an empty value."
+                )
 
 
 @dataclass(frozen=True, slots=True)

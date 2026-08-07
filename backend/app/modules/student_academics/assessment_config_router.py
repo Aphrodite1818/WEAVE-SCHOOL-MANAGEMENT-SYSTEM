@@ -39,9 +39,7 @@ class AssessmentConfigUpdate(BaseModel):
     @model_validator(mode="after")
     def validate_total(self):
         if self.test_max + self.assessment_max + self.exam_max != 100:
-            raise ValueError(
-                "Configured assessment component maximums must total 100."
-            )
+            raise ValueError("Configured assessment component maximums must total 100.")
         return self
 
 

@@ -77,8 +77,12 @@ def test_tenant_branding_is_professional_and_enterprise_only() -> None:
     assert not get_plan_entitlements(SubscriptionPlan.FREE_TRIAL).features[
         FeatureCode.TENANT_BRANDING
     ]
-    assert not get_plan_entitlements(SubscriptionPlan.PLUS).features[FeatureCode.TENANT_BRANDING]
+    assert not get_plan_entitlements(SubscriptionPlan.PLUS).features[
+        FeatureCode.TENANT_BRANDING
+    ]
     assert get_plan_entitlements(SubscriptionPlan.PROFESSIONAL).features[
         FeatureCode.TENANT_BRANDING
     ]
-    assert get_plan_entitlements(SubscriptionPlan.ENTERPRISE).features[FeatureCode.TENANT_BRANDING]
+    assert get_plan_entitlements(SubscriptionPlan.ENTERPRISE).features[
+        FeatureCode.TENANT_BRANDING
+    ]

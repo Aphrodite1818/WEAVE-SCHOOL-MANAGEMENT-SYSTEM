@@ -10,7 +10,6 @@ from starlette.requests import Request
 
 from app.config.logging import get_logger
 
-
 logger = get_logger(__name__)
 
 _IGNORED_PATHS = frozenset({"/health", "/healthz", "/favicon.ico"})

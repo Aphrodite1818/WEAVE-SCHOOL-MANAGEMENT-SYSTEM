@@ -13,9 +13,7 @@ from app.core.middleware.platform_lockdown import (
 
 def test_lockdown_middleware_behavior() -> None:
     assert (
-        PlatformLockdownMiddleware._is_allowed_path(
-            "/api/v1/nonexistent-normal-route"
-        )
+        PlatformLockdownMiddleware._is_allowed_path("/api/v1/nonexistent-normal-route")
         is False
     )
     assert (
@@ -24,12 +22,7 @@ def test_lockdown_middleware_behavior() -> None:
         )
         is True
     )
-    assert (
-        PlatformLockdownMiddleware._is_allowed_path(
-            "/api/v1/auth/me"
-        )
-        is True
-    )
+    assert PlatformLockdownMiddleware._is_allowed_path("/api/v1/auth/me") is True
 
     response = PlatformLockdownMiddleware._maintenance_response(
         {
@@ -40,10 +33,7 @@ def test_lockdown_middleware_behavior() -> None:
     )
     payload = json.loads(response.body)
 
-    assert (
-        response.status_code
-        == status.HTTP_503_SERVICE_UNAVAILABLE
-    )
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.headers["retry-after"] == "60"
     assert payload["maintenance_mode"] is True
     assert payload["platform_lockdown"] is True

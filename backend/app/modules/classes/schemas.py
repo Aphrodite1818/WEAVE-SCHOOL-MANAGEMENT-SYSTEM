@@ -12,11 +12,18 @@ from app.core.utils.normalization import normalize_class_arm, normalize_class_na
 
 
 class InputBase(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, str_to_lower=False, use_enum_values=False)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        str_to_lower=False,
+        use_enum_values=False,
+    )
 
 
 class OutputBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
+    model_config = ConfigDict(
+        from_attributes=True, use_enum_values=True, populate_by_name=True
+    )
 
 
 class ClassRoomBase(InputBase):
@@ -61,6 +68,7 @@ class ClassRoomUpdate(InputBase):
     @classmethod
     def normalize_arm(cls, value: str | None) -> str | None:
         return normalize_class_arm(value)
+
 
 class ClassRoomArchiveRequest(InputBase):
     confirmation: Literal["ARCHIVE_CLASSROOM"]

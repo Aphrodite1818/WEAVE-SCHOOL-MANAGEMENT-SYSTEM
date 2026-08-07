@@ -68,9 +68,7 @@ class StudentEnrollmentService(StudentEnrollmentMutationService):
                     update={
                         "class_name": classroom.name if classroom else None,
                         "class_arm": classroom.arm if classroom else None,
-                        "academic_session_name": (
-                            session.name if session else None
-                        ),
+                        "academic_session_name": (session.name if session else None),
                     }
                 )
             )

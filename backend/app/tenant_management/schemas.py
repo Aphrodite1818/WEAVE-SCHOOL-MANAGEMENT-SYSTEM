@@ -25,7 +25,6 @@ from app.tenant_management.models import (
     TenantVerificationStatus,
 )
 
-
 PHONE_PATTERN = r"^\+?[1-9]\d{7,14}$"
 
 

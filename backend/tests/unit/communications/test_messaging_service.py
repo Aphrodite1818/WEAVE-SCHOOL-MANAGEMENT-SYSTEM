@@ -31,7 +31,9 @@ class FakeSession:
 
 
 @pytest.mark.asyncio
-async def test_create_conversation_uses_new_participants_for_first_message(monkeypatch) -> None:
+async def test_create_conversation_uses_new_participants_for_first_message(
+    monkeypatch,
+) -> None:
     db = FakeSession()
     tenant_id = uuid.uuid4()
     sender = TenantAdmin(

@@ -13,9 +13,7 @@ from app.core.queue import sentry as queue_sentry
 
 @pytest.mark.asyncio
 async def test_worker_wrapper_returns_success_result() -> None:
-    @queue_sentry.capture_worker_exceptions(
-        queue_name="weave:general"
-    )
+    @queue_sentry.capture_worker_exceptions(queue_name="weave:general")
     async def successful_job(
         ctx: dict[str, Any],
         tenant_id: str,
@@ -58,9 +56,7 @@ async def test_unexpected_worker_error_is_captured_and_reraised(
         capture,
     )
 
-    @queue_sentry.capture_worker_exceptions(
-        queue_name="weave:heavy"
-    )
+    @queue_sentry.capture_worker_exceptions(queue_name="weave:heavy")
     async def failing_job(
         ctx: dict[str, Any],
         job_id: str,
@@ -78,9 +74,7 @@ async def test_unexpected_worker_error_is_captured_and_reraised(
             {
                 "job_id": "arq-job-1",
                 "job_try": 2,
-                "enqueue_time": (
-                    "2026-08-06T22:00:00+00:00"
-                ),
+                "enqueue_time": ("2026-08-06T22:00:00+00:00"),
             },
             "bulk-import-1",
             "tenant-1",
@@ -98,9 +92,7 @@ async def test_unexpected_worker_error_is_captured_and_reraised(
     assert captured[0]["contexts"]["arq_job"] == {
         "arq_job_id": "arq-job-1",
         "job_try": 2,
-        "enqueue_time": (
-            "2026-08-06T22:00:00+00:00"
-        ),
+        "enqueue_time": ("2026-08-06T22:00:00+00:00"),
         "business_job_id": "bulk-import-1",
         "tenant_id": "tenant-1",
         "actor_id": "actor-1",
@@ -119,9 +111,7 @@ async def test_retry_is_not_reported_as_an_incident(
         lambda exc, **kwargs: captured.append(exc),
     )
 
-    @queue_sentry.capture_worker_exceptions(
-        queue_name="weave:general"
-    )
+    @queue_sentry.capture_worker_exceptions(queue_name="weave:general")
     async def retrying_job(
         ctx: dict[str, Any],
     ) -> None:
@@ -151,9 +141,7 @@ async def test_shutdown_cancellation_is_not_reported(
         lambda exc, **kwargs: captured.append(exc),
     )
 
-    @queue_sentry.capture_worker_exceptions(
-        queue_name="weave:general"
-    )
+    @queue_sentry.capture_worker_exceptions(queue_name="weave:general")
     async def cancelled_job(
         ctx: dict[str, Any],
     ) -> None:

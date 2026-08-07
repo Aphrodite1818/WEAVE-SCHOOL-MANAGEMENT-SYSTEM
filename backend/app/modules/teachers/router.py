@@ -66,7 +66,6 @@ from app.modules.teachers.service import (
 )
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(tags=["Teachers"])
 
 CurrentTeacherAccount: TypeAlias = Annotated[

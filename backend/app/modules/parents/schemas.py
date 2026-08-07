@@ -22,7 +22,6 @@ from app.modules.parents.models import (
 )
 from app.modules.students.models import ParentRelationship
 
-
 PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9()\-\s]{5,28}[0-9]$")
 
 
@@ -307,7 +306,9 @@ class ParentMembershipNotificationUpdateRequest(InputBase):
     receive_push_notifications: bool | None = None
 
     @model_validator(mode="after")
-    def require_notification_change(self) -> "ParentMembershipNotificationUpdateRequest":
+    def require_notification_change(
+        self,
+    ) -> "ParentMembershipNotificationUpdateRequest":
         """Reject empty notification updates."""
 
         if not self.model_fields_set:
@@ -416,7 +417,9 @@ class ParentInvitationCreateItem(InputBase):
 class ParentInvitationBatchCreateRequest(InputBase):
     """Optional parent invitations created with or after a student."""
 
-    parents: list[ParentInvitationCreateItem] = Field(default_factory=list, max_length=2)
+    parents: list[ParentInvitationCreateItem] = Field(
+        default_factory=list, max_length=2
+    )
 
     @model_validator(mode="after")
     def validate_unique_parent_emails(self) -> "ParentInvitationBatchCreateRequest":

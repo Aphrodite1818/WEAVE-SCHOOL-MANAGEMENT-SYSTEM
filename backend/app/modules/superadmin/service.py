@@ -10,9 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.logging import get_logger
 from app.config.security import hash_auth_secret, hash_password, verify_password
 from app.config.settings import settings
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException, UnauthorizedException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+    UnauthorizedException,
+)
 from app.core.utils.email import send_email
-from app.core.utils.email_templates import get_superadmin_invite_email_html, get_tenant_invite_email_html
+from app.core.utils.email_templates import (
+    get_superadmin_invite_email_html,
+    get_tenant_invite_email_html,
+)
 from app.modules.auth.models import AuthPurpose, AuthRecord
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
@@ -28,7 +36,6 @@ from app.tenant_management.models import Tenant, TenantStatus, TenantVerificatio
 from app.tenant_management.repository import TenantRepository
 from app.tenant_management.schemas import TenantCreate, TenantStatusUpdate
 from app.tenant_management.service import TenantService
-
 
 logger = get_logger(__name__)
 
@@ -60,8 +67,12 @@ class SuperadminService:
         existing_admin = await TenantAdminRepository.get_by_email(db, normalized_email)
         existing_teacher = await TeacherRepository.get_by_email(db, normalized_email)
         existing_parent = await ParentRepository.get_by_email(db, normalized_email)
-        existing_tenant = await TenantRepository.get_by_email_including_deleted(db, normalized_email)
-        existing_superadmin = await SuperAdminRepository.get_by_email(db, normalized_email)
+        existing_tenant = await TenantRepository.get_by_email_including_deleted(
+            db, normalized_email
+        )
+        existing_superadmin = await SuperAdminRepository.get_by_email(
+            db, normalized_email
+        )
 
         existing_actor = existing_admin or existing_teacher or existing_parent
         return existing_actor, existing_tenant, existing_superadmin
@@ -109,13 +120,17 @@ class SuperadminService:
         """Create tenant and a pending tenant admin actor."""
 
         normalized_email = _normalize_email(payload.email)
-        existing_actor, existing_tenant, existing_superadmin = await SuperadminService.get_email_conflicts(
-            db,
-            normalized_email,
+        existing_actor, existing_tenant, existing_superadmin = (
+            await SuperadminService.get_email_conflicts(
+                db,
+                normalized_email,
+            )
         )
 
         if existing_actor or existing_superadmin or existing_tenant:
-            raise ConflictException("A school or account with this email already exists")
+            raise ConflictException(
+                "A school or account with this email already exists"
+            )
 
         if payload.school_bot_whatssap_number:
             number_exists = await TenantRepository.school_bot_whatssap_number_exists(
@@ -123,12 +138,16 @@ class SuperadminService:
                 payload.school_bot_whatssap_number,
             )
             if number_exists:
-                raise ConflictException("This WhatsApp number is already in use by another school")
+                raise ConflictException(
+                    "This WhatsApp number is already in use by another school"
+                )
 
         if payload.admission_number_prefix:
-            existing_tenant_with_prefix = await TenantRepository.get_by_admission_number_prefix(
-                db,
-                payload.admission_number_prefix,
+            existing_tenant_with_prefix = (
+                await TenantRepository.get_by_admission_number_prefix(
+                    db,
+                    payload.admission_number_prefix,
+                )
             )
             if existing_tenant_with_prefix is not None:
                 raise ConflictException("Prefix not available")
@@ -193,7 +212,9 @@ class SuperadminService:
         except Exception:
             await db.rollback()
             AuthIdentityService.discard_pending_invalidations(db)
-            logger.exception("Superadmin tenant creation failed", extra={"email": normalized_email})
+            logger.exception(
+                "Superadmin tenant creation failed", extra={"email": normalized_email}
+            )
             raise
 
         subject = f"Activate your {tenant.school_name} administrator account"
@@ -214,7 +235,9 @@ class SuperadminService:
                 is_html=True,
             )
             if not email_sent:
-                raise BadRequestException("Unable to send activation email. Please try again.")
+                raise BadRequestException(
+                    "Unable to send activation email. Please try again."
+                )
 
         return tenant
 
@@ -265,7 +288,9 @@ class SuperadminService:
         if not tenant:
             raise NotFoundException("Tenant not found")
         if tenant.is_deleted:
-            raise BadRequestException("Deleted tenants must be restored before status updates.")
+            raise BadRequestException(
+                "Deleted tenants must be restored before status updates."
+            )
 
         tenant.status = payload.status
         updated_tenant = await TenantRepository.save(db, tenant)
@@ -317,15 +342,21 @@ class SuperadminService:
         """Perform invite superadmin."""
 
         normalized_email = _normalize_email(payload.email)
-        existing_actor, existing_tenant, existing_superadmin = await SuperadminService.get_email_conflicts(
-            db,
-            normalized_email,
+        existing_actor, existing_tenant, existing_superadmin = (
+            await SuperadminService.get_email_conflicts(
+                db,
+                normalized_email,
+            )
         )
 
         if existing_actor or existing_tenant:
-            raise ConflictException("A school or account with this email already exists")
+            raise ConflictException(
+                "A school or account with this email already exists"
+            )
         if existing_superadmin is not None:
-            raise ConflictException("A superadmin account with this email already exists")
+            raise ConflictException(
+                "A superadmin account with this email already exists"
+            )
 
         raw_token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(
@@ -333,7 +364,9 @@ class SuperadminService:
         )
 
         try:
-            await SuperAdminRepository.delete_active_invites_for_email(db, normalized_email)
+            await SuperAdminRepository.delete_active_invites_for_email(
+                db, normalized_email
+            )
             await SuperAdminRepository.create_invite(
                 db,
                 SuperAdminInvite(
@@ -347,12 +380,18 @@ class SuperadminService:
             await db.commit()
         except Exception:
             await db.rollback()
-            logger.exception("Superadmin invite failed", extra={"email": normalized_email})
+            logger.exception(
+                "Superadmin invite failed", extra={"email": normalized_email}
+            )
             raise
 
-        invite_link = SuperadminService._build_invite_link(raw_token, frontend_app_url=frontend_app_url)
+        invite_link = SuperadminService._build_invite_link(
+            raw_token, frontend_app_url=frontend_app_url
+        )
         subject = f"Set up your {settings.APP_NAME} superadmin account"
-        html_body = get_superadmin_invite_email_html(normalized_email, settings.APP_NAME, invite_link)
+        html_body = get_superadmin_invite_email_html(
+            normalized_email, settings.APP_NAME, invite_link
+        )
 
         if background_tasks is not None:
             background_tasks.add_task(
@@ -370,7 +409,9 @@ class SuperadminService:
                 is_html=True,
             )
             if not email_sent:
-                raise BadRequestException("Unable to send invite email. Please try again.")
+                raise BadRequestException(
+                    "Unable to send invite email. Please try again."
+                )
 
         return {"detail": "Superadmin invite created and emailed successfully."}
 
@@ -385,7 +426,9 @@ class SuperadminService:
         ).scalar_one()
         active_tenants = (
             await db.execute(
-                select(func.count()).select_from(Tenant).where(
+                select(func.count())
+                .select_from(Tenant)
+                .where(
                     Tenant.is_deleted.is_(False),
                     Tenant.verification_status == TenantVerificationStatus.ACTIVE,
                     Tenant.status == TenantStatus.ACTIVE,
@@ -394,15 +437,20 @@ class SuperadminService:
         ).scalar_one()
         pending_verification = (
             await db.execute(
-                select(func.count()).select_from(Tenant).where(
+                select(func.count())
+                .select_from(Tenant)
+                .where(
                     Tenant.is_deleted.is_(False),
-                    Tenant.verification_status == TenantVerificationStatus.PENDING_VERIFICATION,
+                    Tenant.verification_status
+                    == TenantVerificationStatus.PENDING_VERIFICATION,
                 )
             )
         ).scalar_one()
         rejected_verification = (
             await db.execute(
-                select(func.count()).select_from(Tenant).where(
+                select(func.count())
+                .select_from(Tenant)
+                .where(
                     Tenant.is_deleted.is_(False),
                     Tenant.verification_status == TenantVerificationStatus.REJECTED,
                 )
@@ -428,7 +476,9 @@ class SuperadminService:
         for status in TenantStatus:
             value = (
                 await db.execute(
-                    select(func.count()).select_from(Tenant).where(
+                    select(func.count())
+                    .select_from(Tenant)
+                    .where(
                         Tenant.is_deleted.is_(False),
                         Tenant.status == status,
                     )

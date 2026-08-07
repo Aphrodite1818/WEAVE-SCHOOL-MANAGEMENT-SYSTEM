@@ -313,14 +313,10 @@ class TenantService:
 
             if existing_tenant_by_name is not None:
                 if existing_tenant_by_email is None:
-                    raise ConflictException(
-                        "This school name is already registered."
-                    )
+                    raise ConflictException("This school name is already registered.")
 
                 if existing_tenant_by_name.id != existing_tenant_by_email.id:
-                    raise ConflictException(
-                        "This school name is already registered."
-                    )
+                    raise ConflictException("This school name is already registered.")
 
             email_state = TenantService.get_email_registration_state(
                 admin=existing_admin,
@@ -392,9 +388,7 @@ class TenantService:
                     email=normalized_email,
                     admission_number_prefix=None,
                     onboarding_completed=False,
-                    verification_status=(
-                        TenantVerificationStatus.PENDING_VERIFICATION
-                    ),
+                    verification_status=(TenantVerificationStatus.PENDING_VERIFICATION),
                 )
 
                 await TenantRepository.create(db, tenant)
@@ -447,9 +441,7 @@ class TenantService:
         if tenant is None:
             raise ConflictException("Tenant registration could not be completed")
 
-        message = (
-            "Registration successful. Please check your email for the verification code."
-        )
+        message = "Registration successful. Please check your email for the verification code."
         resend_otp_available = True
 
         try:

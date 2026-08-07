@@ -20,7 +20,6 @@ from app.modules.student_academics.session_closure_schemas import (
 from app.modules.student_academics.session_closure_service import SessionClosureService
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/tenant-admin/academics/sessions",
     tags=["Academic Session Closure"],
@@ -63,7 +62,9 @@ async def start_session_closing(
 
 # Backward-compatible path. It no longer closes or opens sessions atomically;
 # it only starts the staged CLOSING workflow.
-@router.post("/{session_id}/close-and-progress", response_model=SessionClosureStartResponse)
+@router.post(
+    "/{session_id}/close-and-progress", response_model=SessionClosureStartResponse
+)
 async def legacy_close_and_progress_starts_closing(
     session_id: UUID,
     payload: AcademicSessionCloseRequest,
@@ -92,7 +93,9 @@ async def get_session_closing_status(
     )
 
 
-@router.post("/{session_id}/retry-progression", response_model=SessionClosureStatusResponse)
+@router.post(
+    "/{session_id}/retry-progression", response_model=SessionClosureStatusResponse
+)
 async def retry_session_progression(
     session_id: UUID,
     payload: SessionProgressionRetryRequest,
@@ -107,7 +110,9 @@ async def retry_session_progression(
     )
 
 
-@router.post("/{session_id}/finalize-close", response_model=SessionClosureFinalizeResponse)
+@router.post(
+    "/{session_id}/finalize-close", response_model=SessionClosureFinalizeResponse
+)
 async def finalize_session_close(
     session_id: UUID,
     payload: SessionClosureFinalizeRequest,

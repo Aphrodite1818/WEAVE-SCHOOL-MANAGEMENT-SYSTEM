@@ -78,11 +78,15 @@ class SessionClosureService:
     ) -> StudentProgressionRunDetailResponse | None:
         if run is None:
             return None
-        items = await StudentProgressionRepository.list_items_for_run(db, tenant_id, run.id)
+        items = await StudentProgressionRepository.list_items_for_run(
+            db, tenant_id, run.id
+        )
         summary = StudentProgressionRunResponse.model_validate(run)
         return StudentProgressionRunDetailResponse(
             **summary.model_dump(),
-            items=[StudentProgressionItemResponse.model_validate(item) for item in items],
+            items=[
+                StudentProgressionItemResponse.model_validate(item) for item in items
+            ],
         )
 
     @staticmethod
@@ -113,7 +117,9 @@ class SessionClosureService:
         tenant_id: uuid.UUID,
         session_id: uuid.UUID,
     ) -> SessionClosureAuditResponse:
-        session = await AcademicSessionLifecycleRepository.get_by_id(db, tenant_id, session_id)
+        session = await AcademicSessionLifecycleRepository.get_by_id(
+            db, tenant_id, session_id
+        )
         if session is None:
             raise NotFoundException("Academic session not found.")
 
@@ -131,7 +137,9 @@ class SessionClosureService:
                 db, tenant_id, session.next_academic_session_id
             )
             if next_session is None:
-                blockers.append("The configured next academic session no longer exists.")
+                blockers.append(
+                    "The configured next academic session no longer exists."
+                )
             elif next_session.status != AcademicSessionStatus.DRAFT:
                 blockers.append(
                     "The next academic session must remain in draft until final closure."
@@ -166,7 +174,9 @@ class SessionClosureService:
             if enrollment.class_id in checked_classes:
                 continue
             checked_classes.add(enrollment.class_id)
-            classroom = await ClassRoomRepository.get_by_id(db, tenant_id, enrollment.class_id)
+            classroom = await ClassRoomRepository.get_by_id(
+                db, tenant_id, enrollment.class_id
+            )
             if classroom is None:
                 invalid_targets += 1
                 blockers.append(
@@ -184,7 +194,9 @@ class SessionClosureService:
                 invalid_targets += 1
                 blockers.append(f"Configure a next-class target for {classroom.name}.")
                 continue
-            target = await ClassRoomRepository.get_by_id(db, tenant_id, classroom.next_class_id)
+            target = await ClassRoomRepository.get_by_id(
+                db, tenant_id, classroom.next_class_id
+            )
             if target is None or not target.is_active or target.archived_at is not None:
                 invalid_targets += 1
                 blockers.append(
@@ -367,7 +379,9 @@ class SessionClosureService:
         tenant_id: uuid.UUID,
         run_id: uuid.UUID,
     ) -> dict[str, int | str]:
-        run = await StudentProgressionRepository.get_run_by_id(db, tenant_id, run_id, lock=True)
+        run = await StudentProgressionRepository.get_run_by_id(
+            db, tenant_id, run_id, lock=True
+        )
         if run is None:
             raise NotFoundException("Progression run not found.")
         if run.status == StudentProgressionRunStatus.COMPLETED:
@@ -382,7 +396,9 @@ class SessionClosureService:
         if session is None or next_session is None:
             raise ConflictException("Progression session records are incomplete.")
         if session.status != AcademicSessionStatus.CLOSING:
-            raise ConflictException("Progression can run only while the session is closing.")
+            raise ConflictException(
+                "Progression can run only while the session is closing."
+            )
         actor = (
             await db.execute(
                 select(TenantAdmin).where(
@@ -392,7 +408,9 @@ class SessionClosureService:
             )
         ).scalar_one_or_none()
         if actor is None:
-            raise ConflictException("The administrator who started closure is unavailable.")
+            raise ConflictException(
+                "The administrator who started closure is unavailable."
+            )
 
         run.status = StudentProgressionRunStatus.PROCESSING
         run.started_at = run.started_at or _utc_now()
@@ -470,7 +488,9 @@ class SessionClosureService:
             tenant_id=tenant_id,
             entity_type="session",
             entity_id=session.id,
-            action="progression_failed" if run.failed_students else "progression_completed",
+            action=(
+                "progression_failed" if run.failed_students else "progression_completed"
+            ),
             previous_status=session.status.value,
             new_status=session.status.value,
             acting_admin_id=actor.id,
@@ -503,7 +523,9 @@ class SessionClosureService:
                 )
             ),
             priority=(
-                AnnouncementPriority.URGENT if run.failed_students else AnnouncementPriority.HIGH
+                AnnouncementPriority.URGENT
+                if run.failed_students
+                else AnnouncementPriority.HIGH
             ),
         )
         await db.commit()
@@ -524,11 +546,17 @@ class SessionClosureService:
         tenant_id: uuid.UUID,
         session_id: uuid.UUID,
     ) -> SessionClosureStatusResponse:
-        session = await AcademicSessionLifecycleRepository.get_by_id(db, tenant_id, session_id)
+        session = await AcademicSessionLifecycleRepository.get_by_id(
+            db, tenant_id, session_id
+        )
         if session is None:
             raise NotFoundException("Academic session not found.")
-        run = await StudentProgressionRepository.get_run_by_session(db, tenant_id, session.id)
-        audit = await SessionClosureService.audit(db, tenant_id=tenant_id, session_id=session.id)
+        run = await StudentProgressionRepository.get_run_by_session(
+            db, tenant_id, session.id
+        )
+        audit = await SessionClosureService.audit(
+            db, tenant_id=tenant_id, session_id=session.id
+        )
         can_finalize = bool(
             session.status == AcademicSessionStatus.CLOSING
             and run is not None
@@ -566,7 +594,9 @@ class SessionClosureService:
             StudentProgressionRunStatus.FAILED,
             StudentProgressionRunStatus.PENDING,
         }:
-            raise ConflictException("Only failed or pending progression can be retried.")
+            raise ConflictException(
+                "Only failed or pending progression can be retried."
+            )
         run.status = StudentProgressionRunStatus.PENDING
         run.completed_at = None
         run.failure_reason = None
@@ -607,7 +637,9 @@ class SessionClosureService:
             db, actor.tenant_id, run.next_academic_session_id, lock=True
         )
         if next_session is None or next_session.status != AcademicSessionStatus.DRAFT:
-            raise ConflictException("The next session is missing or is no longer draft.")
+            raise ConflictException(
+                "The next session is missing or is no longer draft."
+            )
 
         now = _utc_now()
         session.status = AcademicSessionStatus.CLOSED

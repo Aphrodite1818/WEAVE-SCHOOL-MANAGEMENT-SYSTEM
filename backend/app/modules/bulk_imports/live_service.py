@@ -15,7 +15,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.bulk_imports.chunking import chunk_import_items
 from app.modules.bulk_imports.models import ImportJob, ImportJobStatus
@@ -43,7 +47,6 @@ from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.repository import TenantRepository
-
 
 LIVE_IMPORT_CHUNK_SIZE = 25
 ACTIVE_IMPORT_STATUSES = {ImportJobStatus.PENDING, ImportJobStatus.PROCESSING}
@@ -77,7 +80,9 @@ def _job_is_stale(import_job: ImportJob, metadata_json: dict[str, Any]) -> bool:
         return True
     if reference.tzinfo is None:
         reference = reference.replace(tzinfo=timezone.utc)
-    return utc_now() - reference >= timedelta(minutes=settings.BULK_IMPORT_STALE_AFTER_MINUTES)
+    return utc_now() - reference >= timedelta(
+        minutes=settings.BULK_IMPORT_STALE_AFTER_MINUTES
+    )
 
 
 def _terminal_result_rows(metadata_json: dict[str, Any]) -> list[dict[str, Any]]:
@@ -85,7 +90,8 @@ def _terminal_result_rows(metadata_json: dict[str, Any]) -> list[dict[str, Any]]
     return [
         dict(row)
         for row in rows
-        if isinstance(row, dict) and str(row.get("status") or "").lower() in TERMINAL_ROW_STATUSES
+        if isinstance(row, dict)
+        and str(row.get("status") or "").lower() in TERMINAL_ROW_STATUSES
     ]
 
 
@@ -152,10 +158,13 @@ class BulkImportLiveService:
             staged_row_count=len(staged_rows),
         )
 
-        source_fingerprint = import_job.source_fingerprint or build_import_source_fingerprint(
-            resource_type=import_job.resource_type,
-            template_version=metadata_json.get("template_version"),
-            rows=[(row.row_number, row.normalized_row) for row in staged_rows],
+        source_fingerprint = (
+            import_job.source_fingerprint
+            or build_import_source_fingerprint(
+                resource_type=import_job.resource_type,
+                template_version=metadata_json.get("template_version"),
+                rows=[(row.row_number, row.normalized_row) for row in staged_rows],
+            )
         )
         existing_import = await ImportJobRepository.get_confirmed_job_by_fingerprint(
             db=db,
@@ -218,7 +227,9 @@ class BulkImportLiveService:
                 exclude_job_id=import_job.id,
             )
             if duplicate is not None:
-                raise ConflictException(detail=duplicate_import_message(duplicate)) from exc
+                raise ConflictException(
+                    detail=duplicate_import_message(duplicate)
+                ) from exc
             raise
 
         try:
@@ -267,7 +278,9 @@ class BulkImportLiveService:
             include_children=True,
         )
         if refreshed_job is None:
-            raise NotFoundException(detail="Import job not found after queueing confirmation.")
+            raise NotFoundException(
+                detail="Import job not found after queueing confirmation."
+            )
         return ImportJobDetailResponse.model_validate(refreshed_job)
 
     @staticmethod
@@ -288,7 +301,9 @@ class BulkImportLiveService:
         if import_job is None:
             raise NotFoundException(detail="Import job not found")
         if import_job.status != ImportJobStatus.PROCESSING:
-            raise BadRequestException(detail="Only processing import jobs can be retried.")
+            raise BadRequestException(
+                detail="Only processing import jobs can be retried."
+            )
 
         metadata_json = dict(import_job.metadata_json or {})
         if not _job_is_stale(import_job, metadata_json):
@@ -392,7 +407,9 @@ class BulkImportLiveService:
 
         if already_started:
             metadata_json["background_import_recovered_at"] = utc_now().isoformat()
-            metadata_json["recovery_count"] = int(metadata_json.get("recovery_count") or 0) + 1
+            metadata_json["recovery_count"] = (
+                int(metadata_json.get("recovery_count") or 0) + 1
+            )
         metadata_json["background_import_started_at"] = utc_now().isoformat()
         metadata_json["last_progress_at"] = utc_now().isoformat()
         import_job = await ImportJobRepository.update_job(
@@ -442,7 +459,9 @@ class BulkImportLiveService:
             if int(row.get("row_number") or 0) > 0
         }
         created_count = sum(1 for row in result_rows if row.get("status") == "created")
-        processing_failed_count = sum(1 for row in result_rows if row.get("status") == "failed")
+        processing_failed_count = sum(
+            1 for row in result_rows if row.get("status") == "failed"
+        )
 
         remaining_staged_rows = [
             row for row in staged_rows if row.row_number not in completed_row_numbers
@@ -499,9 +518,7 @@ class BulkImportLiveService:
                         )
                     except IntegrityError:
                         processing_failed_count += 1
-                        error_message = (
-                            "Row failed because of a duplicate or invalid database value."
-                        )
+                        error_message = "Row failed because of a duplicate or invalid database value."
                         chunk_errors.append(
                             _build_processing_error_item(
                                 import_job_id=job_id,
@@ -529,7 +546,9 @@ class BulkImportLiveService:
                 metadata_json = dict(import_job.metadata_json or {})
                 metadata_json["result_rows"] = _sorted_result_rows(result_rows)
                 metadata_json["last_progress_at"] = utc_now().isoformat()
-                metadata_json["processed_valid_rows"] = created_count + processing_failed_count
+                metadata_json["processed_valid_rows"] = (
+                    created_count + processing_failed_count
+                )
 
                 import_job = await ImportJobRepository.update_job(
                     db=db,
@@ -591,7 +610,9 @@ class BulkImportLiveService:
                     )
 
             if successful_rows > 0:
-                await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
+                await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+                    tenant_id
+                )
 
             await db.commit()
 

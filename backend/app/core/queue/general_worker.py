@@ -28,15 +28,17 @@ from app.modules.subscriptions.service import (  # noqa: E402
     SubscriptionLifecycleService,
 )
 
-
 logger = get_logger(__name__)
-SUBSCRIPTION_RECONCILIATION_SUCCESS_KEY = "weave:ops:subscription-reconciliation:last-success"
+SUBSCRIPTION_RECONCILIATION_SUCCESS_KEY = (
+    "weave:ops:subscription-reconciliation:last-success"
+)
 
 
 async def poll_email_outbox(ctx: dict[str, Any]) -> dict[str, int]:
     """Periodically process pending and retryable email-outbox rows."""
 
     return await process_email_outbox_batch(ctx, DEFAULT_EMAIL_OUTBOX_BATCH_SIZE)
+
 
 @capture_worker_exceptions(queue_name=GENERAL_QUEUE_NAME)
 async def process_attendance_retention_job(
@@ -63,7 +65,6 @@ async def process_attendance_retention_job(
 
 async def poll_attendance_retention(ctx: dict[str, Any]) -> dict[str, int]:
     return await process_attendance_retention_job(ctx)
-
 
 
 @capture_worker_exceptions(queue_name=GENERAL_QUEUE_NAME)
@@ -97,9 +98,6 @@ async def poll_subscription_lifecycle(ctx: dict[str, Any]) -> dict[str, int]:
     return await process_subscription_lifecycle_job(ctx)
 
 
-
-
-
 async def startup(ctx: dict[str, Any]) -> None:
     """Initialize optional monitoring for this worker process."""
 
@@ -108,7 +106,6 @@ async def startup(ctx: dict[str, Any]) -> None:
     initialize_sentry(
         service="worker-general",
     )
-
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:

@@ -11,8 +11,16 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
-from app.modules.bulk_imports.models import ImportJob, ImportJobStatus, ImportResourceType
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
+from app.modules.bulk_imports.models import (
+    ImportJob,
+    ImportJobStatus,
+    ImportResourceType,
+)
 from app.modules.bulk_imports.repository import ImportJobRepository
 from app.modules.bulk_imports.sensitive_results import (
     SETUP_CODE_AVAILABLE_UNTIL_FIELD,
@@ -31,7 +39,6 @@ from app.modules.bulk_imports.slip_schemas import (
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.models import Tenant
 from app.tenant_management.repository import TenantRepository
-
 
 _ALLOWED_JOB_STATUSES = {
     ImportJobStatus.COMPLETED,
@@ -130,7 +137,9 @@ class StudentSlipService:
 
         metadata = dict(import_job.metadata_json or {})
         if metadata.get("dry_run"):
-            raise ConflictException(detail="Complete the real import before viewing student slips.")
+            raise ConflictException(
+                detail="Complete the real import before viewing student slips."
+            )
 
         tenant = await TenantRepository.get_by_id(db=db, tenant_id=actor.tenant_id)
         if tenant is None:
@@ -139,7 +148,8 @@ class StudentSlipService:
         rows = [
             row
             for row in list(metadata.get("result_rows") or [])
-            if isinstance(row, dict) and str(row.get("status") or "").lower() == "created"
+            if isinstance(row, dict)
+            and str(row.get("status") or "").lower() == "created"
         ]
         rows.sort(key=lambda row: int(row.get("row_number") or 0))
         return import_job, tenant, rows
@@ -180,7 +190,9 @@ class StudentSlipService:
             class_name=_class_name(row),
             setup_code_available=bool(redacted.get("setup_code_available")),
             access_code_expires_at=_parse_datetime(row.get("access_code_expires_at")),
-            credentials_available_until=_parse_datetime(row.get(SETUP_CODE_AVAILABLE_UNTIL_FIELD)),
+            credentials_available_until=_parse_datetime(
+                row.get(SETUP_CODE_AVAILABLE_UNTIL_FIELD)
+            ),
         )
 
     @staticmethod
@@ -336,7 +348,9 @@ class StudentSlipService:
 
         if payload.mode == "selected":
             selected = set(payload.row_numbers)
-            scoped_rows = [row for row in rows if int(row.get("row_number") or 0) in selected]
+            scoped_rows = [
+                row for row in rows if int(row.get("row_number") or 0) in selected
+            ]
             found = {int(row.get("row_number") or 0) for row in scoped_rows}
             if selected - found:
                 raise NotFoundException(

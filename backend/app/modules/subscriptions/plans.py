@@ -145,4 +145,6 @@ def normalize_plan_code(plan: Any) -> str:
 
 def get_plan_entitlements(plan: Any) -> PlanEntitlements:
     plan_code = normalize_plan_code(plan)
-    return PLAN_ENTITLEMENTS.get(plan_code, PLAN_ENTITLEMENTS[SubscriptionPlan.FREE_TRIAL.value])
+    return PLAN_ENTITLEMENTS.get(
+        plan_code, PLAN_ENTITLEMENTS[SubscriptionPlan.FREE_TRIAL.value]
+    )

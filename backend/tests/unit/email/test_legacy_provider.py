@@ -68,7 +68,9 @@ async def test_apps_script_success_returns_accepted_result(
             return _FakeResponse(200, {"success": True})
 
     monkeypatch.setattr(legacy.httpx, "AsyncClient", FakeAsyncClient)
-    provider = LegacyEmailProvider(config=_config(APP_SCRIPT_URL="https://script.example.com/exec"))
+    provider = LegacyEmailProvider(
+        config=_config(APP_SCRIPT_URL="https://script.example.com/exec")
+    )
 
     result = await provider.send(request=_request())
 

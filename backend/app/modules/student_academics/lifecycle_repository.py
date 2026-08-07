@@ -51,7 +51,9 @@ class AcademicSessionLifecycleRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def list_for_tenant(db: AsyncSession, tenant_id: UUID) -> list[AcademicSession]:
+    async def list_for_tenant(
+        db: AsyncSession, tenant_id: UUID
+    ) -> list[AcademicSession]:
         result = await db.execute(
             select(AcademicSession)
             .where(AcademicSession.tenant_id == tenant_id)
@@ -71,7 +73,9 @@ class AcademicSessionLifecycleRepository:
 
 class StudentProgressionRunRepository:
     @staticmethod
-    async def add(db: AsyncSession, run: StudentProgressionRun) -> StudentProgressionRun:
+    async def add(
+        db: AsyncSession, run: StudentProgressionRun
+    ) -> StudentProgressionRun:
         db.add(run)
         await db.flush()
         return run
@@ -136,9 +140,9 @@ class StudentProgressionRunRepository:
         limit: int = 50,
     ) -> tuple[list[StudentProgressionRun], int]:
         count_result = await db.execute(
-            select(func.count()).select_from(StudentProgressionRun).where(
-                StudentProgressionRun.tenant_id == tenant_id
-            )
+            select(func.count())
+            .select_from(StudentProgressionRun)
+            .where(StudentProgressionRun.tenant_id == tenant_id)
         )
         result = await db.execute(
             select(StudentProgressionRun)
@@ -150,7 +154,9 @@ class StudentProgressionRunRepository:
         return list(result.scalars().all()), count_result.scalar_one()
 
     @staticmethod
-    async def save(db: AsyncSession, run: StudentProgressionRun) -> StudentProgressionRun:
+    async def save(
+        db: AsyncSession, run: StudentProgressionRun
+    ) -> StudentProgressionRun:
         db.add(run)
         await db.flush()
         return run
@@ -158,7 +164,9 @@ class StudentProgressionRunRepository:
 
 class StudentProgressionItemRepository:
     @staticmethod
-    async def add(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
+    async def add(
+        db: AsyncSession, item: StudentProgressionItem
+    ) -> StudentProgressionItem:
         db.add(item)
         await db.flush()
         return item
@@ -208,7 +216,9 @@ class StudentProgressionItemRepository:
         return list(result.scalars().all())
 
     @staticmethod
-    async def save(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
+    async def save(
+        db: AsyncSession, item: StudentProgressionItem
+    ) -> StudentProgressionItem:
         db.add(item)
         await db.flush()
         return item
@@ -230,6 +240,8 @@ class StudentProgressionRepository:
 
     add_item = StudentProgressionItemRepository.add
     add_items = StudentProgressionItemRepository.add_many
-    get_item_by_run_and_student = StudentProgressionItemRepository.get_by_run_and_student
+    get_item_by_run_and_student = (
+        StudentProgressionItemRepository.get_by_run_and_student
+    )
     list_items_for_run = StudentProgressionItemRepository.list_for_run
     save_item = StudentProgressionItemRepository.save

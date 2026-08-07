@@ -19,7 +19,6 @@ from app.modules.superadmin.platform_control_service import (
 from app.modules.superadmin.repository import SuperAdminRepository
 from app.modules.superadmin.security_response_service import SecurityResponseService
 
-
 logger = get_logger(__name__)
 
 _ALLOWED_EXACT_PATHS = {
@@ -92,7 +91,9 @@ class PlatformLockdownMiddleware:
         if token is None:
             return False
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            payload = jwt.decode(
+                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            )
             if payload.get("token_type") != "access":
                 return False
             if (
@@ -153,7 +154,9 @@ class PlatformLockdownMiddleware:
                     await self.app(scope, receive, send)
                     return
 
-                ip_state = await SecurityResponseService.is_ip_blocked(db, _client_ip(request))
+                ip_state = await SecurityResponseService.is_ip_blocked(
+                    db, _client_ip(request)
+                )
                 if ip_state.get("blocked"):
                     response = self._ip_block_response(ip_state)
                     await response(scope, receive, send)
@@ -179,7 +182,9 @@ class PlatformLockdownMiddleware:
                 },
                 exc_info=True,
             )
-            if last_known_state is not None and last_known_state.get("lockdown_enabled"):
+            if last_known_state is not None and last_known_state.get(
+                "lockdown_enabled"
+            ):
                 response = self._maintenance_response(last_known_state)
                 await response(scope, receive, send)
                 return

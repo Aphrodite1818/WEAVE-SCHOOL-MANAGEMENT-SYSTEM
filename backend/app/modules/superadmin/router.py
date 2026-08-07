@@ -26,13 +26,21 @@ from app.modules.superadmin.security_service import SuperadminSecurityService
 from app.modules.superadmin.service import SuperadminService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.tenant_management.models import Tenant
-from app.tenant_management.schemas import TenantManagementResponse, TenantCreate, TenantStatusUpdate
+from app.tenant_management.schemas import (
+    TenantManagementResponse,
+    TenantCreate,
+    TenantStatusUpdate,
+)
 
 router = APIRouter(prefix="/superadmin", tags=["Superadmin"])
 SuperadminActor: TypeAlias = Annotated[SuperAdmin, Depends(get_current_superadmin)]
 
 
-@router.post("/tenants", response_model=TenantManagementResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/tenants",
+    response_model=TenantManagementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_tenant(
     payload: TenantCreate,
     db: DbSession,
@@ -49,7 +57,11 @@ async def create_tenant(
     )
 
 
-@router.get("/tenants", response_model=list[TenantManagementResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "/tenants",
+    response_model=list[TenantManagementResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def list_tenants(
     db: DbSession,
     current_superadmin: SuperadminActor,
@@ -66,7 +78,11 @@ async def list_tenants(
     )
 
 
-@router.get("/tenants/{tenant_id}", response_model=TenantManagementResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/tenants/{tenant_id}",
+    response_model=TenantManagementResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def get_tenant(
     tenant_id: uuid.UUID,
     db: DbSession,
@@ -74,7 +90,9 @@ async def get_tenant(
     include_deleted: bool = Query(default=True),
 ) -> Tenant:
     """Return tenant."""
-    return await SuperadminService.get_tenant(db, tenant_id, include_deleted=include_deleted)
+    return await SuperadminService.get_tenant(
+        db, tenant_id, include_deleted=include_deleted
+    )
 
 
 @router.get("/tenants/{tenant_id}/usage", status_code=status.HTTP_200_OK)
@@ -97,13 +115,19 @@ async def get_tenant_usage(
     )
 
     return {
-        "tenant": TenantManagementResponse.model_validate(tenant).model_dump(mode="json"),
+        "tenant": TenantManagementResponse.model_validate(tenant).model_dump(
+            mode="json"
+        ),
         "entitlements": entitlements.model_dump(mode="json"),
         "subscription": subscription.model_dump(mode="json") if subscription else None,
     }
 
 
-@router.patch("/tenants/{tenant_id}/status", response_model=TenantManagementResponse, status_code=status.HTTP_200_OK)
+@router.patch(
+    "/tenants/{tenant_id}/status",
+    response_model=TenantManagementResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def update_tenant_status(
     tenant_id: uuid.UUID,
     payload: TenantStatusUpdate,
@@ -114,7 +138,11 @@ async def update_tenant_status(
     return await SuperadminService.update_tenant_status(db, tenant_id, payload)
 
 
-@router.patch("/tenants/{tenant_id}/restore", response_model=TenantManagementResponse, status_code=status.HTTP_200_OK)
+@router.patch(
+    "/tenants/{tenant_id}/restore",
+    response_model=TenantManagementResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def restore_tenant(
     tenant_id: uuid.UUID,
     db: DbSession,
@@ -134,7 +162,11 @@ async def delete_tenant(
     return await SuperadminService.delete_tenant(db, tenant_id)
 
 
-@router.get("/superadmins", response_model=list[SuperadminResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "/superadmins",
+    response_model=list[SuperadminResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def list_superadmins(
     db: DbSession,
     current_superadmin: SuperadminActor,
@@ -165,7 +197,11 @@ async def get_superadmin_security_overview(
     return await SuperadminSecurityService.get_overview(db)
 
 
-@router.get("/security/ip-blocks", response_model=list[SecurityIPBlockResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "/security/ip-blocks",
+    response_model=list[SecurityIPBlockResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def list_security_ip_blocks(
     db: DbSession,
     current_superadmin: SuperadminActor,
@@ -181,7 +217,11 @@ async def list_security_ip_blocks(
     )
 
 
-@router.post("/security/ip-blocks", response_model=SecurityIPBlockResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/security/ip-blocks",
+    response_model=SecurityIPBlockResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_security_ip_block(
     payload: SecurityIPBlockCreate,
     db: DbSession,
@@ -198,7 +238,11 @@ async def create_security_ip_block(
     )
 
 
-@router.post("/security/ip-blocks/{block_id}/unblock", response_model=SecurityIPBlockResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/security/ip-blocks/{block_id}/unblock",
+    response_model=SecurityIPBlockResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def unblock_security_ip(
     block_id: uuid.UUID,
     payload: SecurityIPBlockUnblock,
@@ -215,7 +259,11 @@ async def unblock_security_ip(
     )
 
 
-@router.post("/security/revoke-ip-sessions", response_model=SecurityActionResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/security/revoke-ip-sessions",
+    response_model=SecurityActionResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def revoke_ip_sessions(
     payload: SecurityRevokeIPSessionsRequest,
     db: DbSession,
@@ -231,7 +279,11 @@ async def revoke_ip_sessions(
     return {"detail": "IP sessions revoked.", "affected_count": affected_count}
 
 
-@router.post("/security/revoke-actor-sessions", response_model=SecurityActionResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/security/revoke-actor-sessions",
+    response_model=SecurityActionResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def revoke_actor_sessions(
     payload: SecurityRevokeActorSessionsRequest,
     db: DbSession,
@@ -247,7 +299,11 @@ async def revoke_actor_sessions(
     return {"detail": "Actor sessions revoked.", "affected_count": affected_count}
 
 
-@router.get("/platform-control", response_model=PlatformControlResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/platform-control",
+    response_model=PlatformControlResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def get_platform_control(
     db: DbSession,
     current_superadmin: SuperadminActor,
@@ -257,7 +313,11 @@ async def get_platform_control(
     return await PlatformControlService.get_response(db)
 
 
-@router.post("/platform-control/lockdown", response_model=PlatformControlResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/platform-control/lockdown",
+    response_model=PlatformControlResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def enable_platform_lockdown(
     payload: PlatformLockdownRequest,
     db: DbSession,
@@ -274,7 +334,11 @@ async def enable_platform_lockdown(
     )
 
 
-@router.post("/platform-control/unlock", response_model=PlatformControlResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/platform-control/unlock",
+    response_model=PlatformControlResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def disable_platform_lockdown(
     payload: PlatformUnlockRequest,
     db: DbSession,

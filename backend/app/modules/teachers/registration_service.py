@@ -29,7 +29,6 @@ from app.modules.teachers.repository import TeacherAccountRepository
 from app.modules.teachers.schemas import TeacherAccountRegisterRequest
 from app.modules.tenant_admins.repository import TenantAdminRepository
 
-
 logger = get_logger(__name__)
 
 
@@ -53,10 +52,7 @@ class TeacherRegistrationService:
             return TeacherRegistrationState.AVAILABLE
         if account.is_verified:
             return TeacherRegistrationState.ACTIVE
-        if (
-            account.is_active
-            and account.account_status == TeacherAccountStatus.PENDING
-        ):
+        if account.is_active and account.account_status == TeacherAccountStatus.PENDING:
             return TeacherRegistrationState.PENDING
         return TeacherRegistrationState.BLOCKED
 
@@ -112,8 +108,7 @@ class TeacherRegistrationService:
             if canonical_actor_identity is not None:
                 if (
                     canonical_actor_identity.identifier != normalized_email
-                    or canonical_actor_identity.identifier_type
-                    != IdentifierType.EMAIL
+                    or canonical_actor_identity.identifier_type != IdentifierType.EMAIL
                     or canonical_actor_identity.tenant_id is not None
                 ):
                     raise ConflictException(
@@ -147,8 +142,7 @@ class TeacherRegistrationService:
             return
 
         if (
-            identity.actor_type
-            not in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}
+            identity.actor_type not in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}
             or identity.actor_id != account.id
         ):
             raise ConflictException(
@@ -214,8 +208,7 @@ class TeacherRegistrationService:
                         "This email is already registered to another account."
                     )
                 await (
-                    TeacherRegistrationService
-                    ._ensure_no_unindexed_cross_account_owner(
+                    TeacherRegistrationService._ensure_no_unindexed_cross_account_owner(
                         db,
                         normalized_email=normalized_email,
                     )
@@ -332,23 +325,18 @@ class TeacherRegistrationService:
         created = False
 
         try:
-            account, created = (
-                await TeacherRegistrationService._apply_registration(
-                    db,
-                    normalized_email=normalized_email,
-                    password=payload.password,
-                )
+            account, created = await TeacherRegistrationService._apply_registration(
+                db,
+                normalized_email=normalized_email,
+                password=payload.password,
             )
         except IntegrityError:
             await db.rollback()
             AuthIdentityService.discard_pending_invalidations(db)
-            account = (
-                await TeacherRegistrationService
-                ._recover_concurrent_registration(
-                    db,
-                    normalized_email=normalized_email,
-                    password=payload.password,
-                )
+            account = await TeacherRegistrationService._recover_concurrent_registration(
+                db,
+                normalized_email=normalized_email,
+                password=payload.password,
             )
             created = False
             logger.info(

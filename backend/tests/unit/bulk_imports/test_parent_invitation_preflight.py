@@ -13,10 +13,14 @@ from app.modules.parents.repository import ParentAccountRepository
 
 
 @pytest.mark.asyncio
-async def test_parent_invitation_preflight_rejects_incompatible_role(monkeypatch) -> None:
+async def test_parent_invitation_preflight_rejects_incompatible_role(
+    monkeypatch,
+) -> None:
     async def ensure_available(db, email, *, invited_actor_type):
         if email == "teacher@example.com":
-            raise ConflictException("This email is already registered under another role.")
+            raise ConflictException(
+                "This email is already registered under another role."
+            )
         return str(email).casefold()
 
     monkeypatch.setattr(
@@ -62,8 +66,12 @@ async def test_parent_invitation_preflight_rejects_incompatible_role(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_parent_invitation_preflight_queries_repeated_emails_once(monkeypatch) -> None:
-    ensure_available = AsyncMock(side_effect=lambda db, email, *, invited_actor_type: str(email).casefold())
+async def test_parent_invitation_preflight_queries_repeated_emails_once(
+    monkeypatch,
+) -> None:
+    ensure_available = AsyncMock(
+        side_effect=lambda db, email, *, invited_actor_type: str(email).casefold()
+    )
     get_parent_account = AsyncMock(return_value=SimpleNamespace(id="parent-account"))
     monkeypatch.setattr(
         AccountEmailGuard,
@@ -106,7 +114,9 @@ async def test_parent_invitation_preflight_queries_repeated_emails_once(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_parent_invitation_preflight_attaches_cached_conflict_to_each_affected_row(monkeypatch) -> None:
+async def test_parent_invitation_preflight_attaches_cached_conflict_to_each_affected_row(
+    monkeypatch,
+) -> None:
     async def raise_conflict(db, email, *, invited_actor_type):
         raise ConflictException("This email is already registered under another role.")
 

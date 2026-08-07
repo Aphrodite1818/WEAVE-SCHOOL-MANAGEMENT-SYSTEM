@@ -12,7 +12,6 @@ from typing import Any
 from app.core.utils.normalization import normalize_class_arm, normalize_class_name
 from app.modules.bulk_imports.models import ImportResourceType
 
-
 SUPPORTED_IMPORT_RESOURCE_TYPES = {
     ImportResourceType.STUDENTS,
 }
@@ -174,8 +173,12 @@ class BulkImportNormalizer:
     ) -> tuple[dict[str, Any], list[str]]:
         """Normalize one row and return ignored unsupported fields."""
 
-        field_aliases = BulkImportNormalizer.FIELD_ALIASES_BY_RESOURCE.get(resource_type, {})
-        allowed_fields = BulkImportNormalizer.ALLOWED_FIELDS_BY_RESOURCE.get(resource_type, set())
+        field_aliases = BulkImportNormalizer.FIELD_ALIASES_BY_RESOURCE.get(
+            resource_type, {}
+        )
+        allowed_fields = BulkImportNormalizer.ALLOWED_FIELDS_BY_RESOURCE.get(
+            resource_type, set()
+        )
 
         normalized_row: dict[str, Any] = {}
         ignored_fields: list[str] = []
@@ -184,7 +187,10 @@ class BulkImportNormalizer:
             normalized_field_name = BulkImportNormalizer.normalize_key(raw_field_name)
             canonical_field_name = field_aliases.get(normalized_field_name)
 
-            if canonical_field_name is None or canonical_field_name not in allowed_fields:
+            if (
+                canonical_field_name is None
+                or canonical_field_name not in allowed_fields
+            ):
                 ignored_fields.append(str(raw_field_name))
                 continue
 

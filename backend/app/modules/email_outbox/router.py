@@ -21,13 +21,14 @@ from app.modules.email_outbox.schemas import (
 from app.modules.email_outbox.service import EmailOutboxService
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/email-outbox",
     tags=["Email Outbox"],
 )
 
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 
 
 @router.get(

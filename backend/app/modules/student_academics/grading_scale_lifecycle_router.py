@@ -17,7 +17,6 @@ from app.modules.student_academics.models import (
 )
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/tenant-admin/academics/grading-scales",
     tags=["Tenant Admin Academics"],

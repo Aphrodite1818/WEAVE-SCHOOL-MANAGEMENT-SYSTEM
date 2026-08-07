@@ -24,9 +24,7 @@ def build_parent_account(*, active: bool = True) -> ParentAccount:
         first_name="Bola",
         last_name="Parent",
         account_status=(
-            ParentAccountStatus.ACTIVE
-            if active
-            else ParentAccountStatus.INACTIVE
+            ParentAccountStatus.ACTIVE if active else ParentAccountStatus.INACTIVE
         ),
         is_verified=active,
         is_active=active,

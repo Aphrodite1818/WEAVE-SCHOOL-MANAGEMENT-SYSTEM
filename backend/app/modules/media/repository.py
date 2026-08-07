@@ -22,7 +22,6 @@ from app.modules.media.models import (
 )
 from app.modules.media.schemas import MediaAssetFilter, MediaCreateData
 
-
 _PENDING_MEDIA_REPLACEMENTS_KEY = "media_pending_replacements"
 
 

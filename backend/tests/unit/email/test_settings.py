@@ -51,7 +51,9 @@ def test_staging_can_use_legacy_without_external_provider_credentials() -> None:
 def test_production_rejects_legacy_provider() -> None:
     config = _settings(ENV=EnvironmentType.PRODUCTION)
 
-    with pytest.raises(ValueError, match="Production email provider must be 'ses' or 'resend'"):
+    with pytest.raises(
+        ValueError, match="Production email provider must be 'ses' or 'resend'"
+    ):
         config.validate_email_provider_settings()
 
 

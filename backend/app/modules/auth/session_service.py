@@ -18,13 +18,19 @@ from app.config.security import (
 from app.config.settings import settings
 from app.core.exceptions import BadRequestException, UnauthorizedException
 from app.modules.auth.models import AuthRefreshToken, AuthSession, AuthSessionActorType
-from app.modules.auth.repository import AuthRefreshTokenRepository, AuthSessionRepository
+from app.modules.auth.repository import (
+    AuthRefreshTokenRepository,
+    AuthSessionRepository,
+)
 from app.modules.auth.schemas import LoginSessionUser
 from app.modules.parents.models import (
     ParentAccountStatus,
     ParentMembershipStatus,
 )
-from app.modules.parents.repository import ParentAccountRepository, ParentMembershipRepository
+from app.modules.parents.repository import (
+    ParentAccountRepository,
+    ParentMembershipRepository,
+)
 from app.modules.students.models import StudentAccountStatus
 from app.modules.students.repository import StudentRepository
 from app.modules.superadmin.platform_control_service import PlatformControlService
@@ -32,7 +38,10 @@ from app.modules.superadmin.repository import SuperAdminRepository
 from app.modules.superadmin.security_alert_service import SecurityAlertService
 from app.modules.superadmin.security_response_service import SecurityResponseService
 from app.modules.teachers.models import TeacherAccountStatus, TeacherMembershipStatus
-from app.modules.teachers.repository import TeacherAccountRepository, TeacherMembershipRepository
+from app.modules.teachers.repository import (
+    TeacherAccountRepository,
+    TeacherMembershipRepository,
+)
 from app.modules.tenant_admins.models import TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import TenantStatus, TenantVerificationStatus
@@ -111,9 +120,7 @@ class AuthSessionService:
             raise BadRequestException("Unsupported authenticated actor type.") from exc
 
         now = _utc_now()
-        expires_at = now + AuthSessionService._session_lifetime(
-            remember_me=remember_me
-        )
+        expires_at = now + AuthSessionService._session_lifetime(remember_me=remember_me)
         session = AuthSession(
             tenant_id=actor.tenant_id,
             actor_type=actor_type,
@@ -247,13 +254,15 @@ class AuthSessionService:
             )
             if (
                 membership is None
-                or membership.status not in {
+                or membership.status
+                not in {
                     ParentMembershipStatus.ACTIVE,
                     ParentMembershipStatus.READ_ONLY,
                 }
                 or not membership.parent_account.is_active
                 or not membership.parent_account.is_verified
-                or membership.parent_account.account_status != ParentAccountStatus.ACTIVE
+                or membership.parent_account.account_status
+                != ParentAccountStatus.ACTIVE
             ):
                 raise UnauthorizedException("Parent membership is not active.")
             return {
@@ -277,7 +286,8 @@ class AuthSessionService:
                 or membership.status != TeacherMembershipStatus.ACTIVE
                 or not membership.teacher_account.is_active
                 or not membership.teacher_account.is_verified
-                or membership.teacher_account.account_status != TeacherAccountStatus.ACTIVE
+                or membership.teacher_account.account_status
+                != TeacherAccountStatus.ACTIVE
             ):
                 raise UnauthorizedException("Teacher membership is not active.")
             return {

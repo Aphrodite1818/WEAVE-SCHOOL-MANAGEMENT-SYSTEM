@@ -80,21 +80,43 @@ class TenantSubscription(BaseModel):
     current_period_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    grace_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    grace_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     cancel_at_period_end: Mapped[bool] = mapped_column(
         nullable=False, default=False, server_default="false"
     )
-    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    is_current: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
-    provider_customer_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    provider_subscription_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expired_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    is_current: Mapped[bool] = mapped_column(
+        nullable=False, default=True, server_default="true"
+    )
+    provider_customer_code: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+    provider_subscription_code: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
     provider_email_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    last_payment_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    last_payment_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    next_payment_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    last_payment_reference: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+    last_payment_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_payment_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, default=dict
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
@@ -105,8 +127,12 @@ class TenantSubscription(BaseModel):
             unique=True,
             postgresql_where=text("is_current = true"),
         ),
-        Index("ix_tenant_subscriptions_status_period_end", "status", "current_period_end"),
-        Index("ix_tenant_subscriptions_status_grace_ends_at", "status", "grace_ends_at"),
+        Index(
+            "ix_tenant_subscriptions_status_period_end", "status", "current_period_end"
+        ),
+        Index(
+            "ix_tenant_subscriptions_status_grace_ends_at", "status", "grace_ends_at"
+        ),
         Index(
             "uq_tenant_subscriptions_provider_subscription_code",
             "provider",
@@ -170,12 +196,24 @@ class SubscriptionPlanChange(BaseModel):
         ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    usage_snapshot_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
-    blockers_json: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    effective_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    usage_snapshot_json: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, default=dict
+    )
+    blockers_json: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True, default=list
+    )
     provider_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -186,7 +224,9 @@ class SubscriptionPlanChange(BaseModel):
             "uq_subscription_plan_changes_open_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text("status IN ('pending', 'scheduled', 'awaiting_payment')"),
+            postgresql_where=text(
+                "status IN ('pending', 'scheduled', 'awaiting_payment')"
+            ),
         ),
     )
 
@@ -222,7 +262,9 @@ class PaymentTransaction(BaseModel):
         server_default=PaymentStatus.PENDING.value,
     )
     reference: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
-    provider_transaction_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider_transaction_id: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
     plan_code: Mapped[SubscriptionPlan] = mapped_column(
         SQLEnum(
             SubscriptionPlan,
@@ -248,13 +290,19 @@ class PaymentTransaction(BaseModel):
     )
     authorization_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
 
     __table_args__ = (
         Index("ix_payment_transactions_tenant_status", "tenant_id", "status"),
-        Index("ix_payment_transactions_tenant_subscription", "tenant_id", "subscription_id"),
+        Index(
+            "ix_payment_transactions_tenant_subscription",
+            "tenant_id",
+            "subscription_id",
+        ),
     )
 
 
@@ -275,7 +323,9 @@ class PaymentWebhookEvent(UUIDMixin, TimestampMixin, Base):
     event_type: Mapped[str] = mapped_column(String(120), nullable=False)
     event_key: Mapped[str] = mapped_column(String(255), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
-    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (

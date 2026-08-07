@@ -15,7 +15,6 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from app.config.logging import get_logger
 from app.config.settings import EnvironmentType, settings
 
-
 logger = get_logger(__name__)
 
 _REDACTED = "[Filtered]"
@@ -293,7 +292,9 @@ def capture_exception(
             return sentry_sdk.capture_exception(exc)
 
     except Exception:
-        logger.exception("Sentry exception capture failed; continuing without interruption")
+        logger.exception(
+            "Sentry exception capture failed; continuing without interruption"
+        )
         return None
 
 

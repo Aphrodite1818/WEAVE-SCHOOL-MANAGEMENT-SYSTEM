@@ -14,7 +14,6 @@ from arq import Retry
 
 from app.config.sentry import capture_exception
 
-
 WorkerFunction = Callable[..., Awaitable[Any]]
 
 _SAFE_JOB_ARGUMENTS = frozenset(
@@ -61,21 +60,13 @@ def _build_job_context(
     """Build safe job metadata without exposing arbitrary arguments."""
 
     context = {
-        "arq_job_id": _context_value(
-            ctx.get("job_id")
-        ),
-        "job_try": _context_value(
-            ctx.get("job_try")
-        ),
-        "enqueue_time": _context_value(
-            ctx.get("enqueue_time")
-        ),
+        "arq_job_id": _context_value(ctx.get("job_id")),
+        "job_try": _context_value(ctx.get("job_try")),
+        "enqueue_time": _context_value(ctx.get("enqueue_time")),
     }
 
     try:
-        bound = inspect.signature(
-            function
-        ).bind_partial(
+        bound = inspect.signature(function).bind_partial(
             ctx,
             *args,
             **kwargs,
@@ -89,11 +80,7 @@ def _build_job_context(
 
         # ARQ also uses job_id internally. Distinguish a business
         # job identifier such as a bulk-import UUID.
-        context_name = (
-            "business_job_id"
-            if name == "job_id"
-            else name
-        )
+        context_name = "business_job_id" if name == "job_id" else name
 
         context[context_name] = _context_value(value)
 

@@ -35,7 +35,9 @@ class Subject(BaseModel):
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     normalized_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
 
     teacher_links: Mapped[list["TeacherMembershipSubject"]] = relationship(
         "TeacherMembershipSubject",
@@ -60,8 +62,12 @@ class Subject(BaseModel):
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_subject_tenant_name"),
         UniqueConstraint("tenant_id", "code", name="uq_subject_tenant_code"),
-        UniqueConstraint("tenant_id", "normalized_name", name="uq_subject_tenant_normalized_name"),
-        UniqueConstraint("tenant_id", "normalized_code", name="uq_subject_tenant_normalized_code"),
+        UniqueConstraint(
+            "tenant_id", "normalized_name", name="uq_subject_tenant_normalized_name"
+        ),
+        UniqueConstraint(
+            "tenant_id", "normalized_code", name="uq_subject_tenant_normalized_code"
+        ),
         CheckConstraint(
             "archived_at IS NULL OR is_active = false",
             name="ck_subjects_archived_requires_inactive",

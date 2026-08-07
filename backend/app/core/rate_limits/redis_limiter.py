@@ -11,7 +11,6 @@ from redis.asyncio import Redis
 from app.config.logging import get_logger
 from app.config.settings import settings
 
-
 logger = get_logger(__name__)
 
 _CONSUME_SCRIPT = """
@@ -80,7 +79,9 @@ def _prune_fallback_records(
     window_seconds: int,
 ) -> list[float]:
     records = [
-        timestamp for timestamp in _fallback_records[key] if now - timestamp < window_seconds
+        timestamp
+        for timestamp in _fallback_records[key]
+        if now - timestamp < window_seconds
     ]
     _fallback_records[key] = records
     return records

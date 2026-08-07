@@ -74,9 +74,9 @@ class CloudflareR2MediaStorage:
     def _resolve_public_base_url(self) -> str | None:
         """Resolve the public/CDN base URL used to render stored media."""
 
-        return self._optional_setting("MEDIA_PUBLIC_BASE_URL") or self._optional_setting(
-            "R2_PUBLIC_URL"
-        )
+        return self._optional_setting(
+            "MEDIA_PUBLIC_BASE_URL"
+        ) or self._optional_setting("R2_PUBLIC_URL")
 
     @cached_property
     def client(self) -> Any:
@@ -166,7 +166,9 @@ class CloudflareR2MediaStorage:
             ) from exc
 
         etag_value = response.get("ETag")
-        etag: str | None = etag_value.strip('"') if isinstance(etag_value, str) else None
+        etag: str | None = (
+            etag_value.strip('"') if isinstance(etag_value, str) else None
+        )
 
         render_url = self._build_render_url(cleaned_key)
 

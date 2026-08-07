@@ -15,16 +15,22 @@ class SuperAdminRepository:
     """Database access helpers for the superadmin domain."""
 
     @staticmethod
-    async def get_by_id(db: AsyncSession, superadmin_id: uuid.UUID) -> SuperAdmin | None:
+    async def get_by_id(
+        db: AsyncSession, superadmin_id: uuid.UUID
+    ) -> SuperAdmin | None:
         """Return the record matched by id."""
-        result = await db.execute(select(SuperAdmin).where(SuperAdmin.id == superadmin_id))
+        result = await db.execute(
+            select(SuperAdmin).where(SuperAdmin.id == superadmin_id)
+        )
         return result.scalar_one_or_none()
 
     @staticmethod
     async def get_by_email(db: AsyncSession, email: str) -> SuperAdmin | None:
         """Return the record matched by email."""
         result = await db.execute(
-            select(SuperAdmin).where(func.lower(SuperAdmin.email) == _normalize_email(email))
+            select(SuperAdmin).where(
+                func.lower(SuperAdmin.email) == _normalize_email(email)
+            )
         )
         return result.scalar_one_or_none()
 
@@ -56,7 +62,9 @@ class SuperAdminRepository:
         return superadmin
 
     @staticmethod
-    async def create_invite(db: AsyncSession, invite: SuperAdminInvite) -> SuperAdminInvite:
+    async def create_invite(
+        db: AsyncSession, invite: SuperAdminInvite
+    ) -> SuperAdminInvite:
         """Create invite."""
         db.add(invite)
         await db.flush()
@@ -98,4 +106,3 @@ class SuperAdminRepository:
             .order_by(SuperAdminInvite.created_at.desc())
         )
         return result.scalars().first()
-

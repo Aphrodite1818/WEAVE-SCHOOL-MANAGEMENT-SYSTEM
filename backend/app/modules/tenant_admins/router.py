@@ -130,7 +130,9 @@ async def create_student(
         current_admin,
         payload,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_admin.tenant_id
+    )
     return student
 
 
@@ -432,7 +434,9 @@ async def hard_delete_unused_student(
         actor=current_admin,
         student_id=student_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_admin.tenant_id
+    )
 
 
 @router.patch(

@@ -13,7 +13,6 @@ from arq.connections import RedisSettings
 
 from app.config.settings import settings
 
-
 GENERAL_QUEUE_NAME = "weave:queue:general"
 HEAVY_QUEUE_NAME = "weave:queue:heavy"
 DEFAULT_EMAIL_OUTBOX_BATCH_SIZE = 20

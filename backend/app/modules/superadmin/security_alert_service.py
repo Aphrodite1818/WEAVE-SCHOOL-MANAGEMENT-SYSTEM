@@ -17,7 +17,6 @@ from app.core.utils.email_templates import get_security_alert_email_html
 from app.modules.auth.models import AuthRefreshToken
 from app.modules.superadmin.models import SuperAdmin
 
-
 logger = get_logger(__name__)
 
 _pending_security_background_tasks: ContextVar[BackgroundTasks | None] = ContextVar(
@@ -101,7 +100,9 @@ class SecurityAlertService:
                 )
 
                 failures = [
-                    result for result in results if isinstance(result, Exception) or result is False
+                    result
+                    for result in results
+                    if isinstance(result, Exception) or result is False
                 ]
                 if failures:
                     logger.error(
@@ -208,7 +209,9 @@ class SecurityAlertService:
 
         cls.send_security_alert(
             background_tasks=background_tasks,
-            title="Platform lockdown enabled" if enabled else "Platform lockdown disabled",
+            title=(
+                "Platform lockdown enabled" if enabled else "Platform lockdown disabled"
+            ),
             rows={
                 "State": "enabled" if enabled else "disabled",
                 "Superadmin ID": superadmin_id,

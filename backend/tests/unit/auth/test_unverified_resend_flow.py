@@ -17,7 +17,9 @@ async def test_duplicate_registration_response_preserves_background_tasks(monkey
             "verification_required": True,
         }
 
-    monkeypatch.setattr(TenantRegistrationService, "register_tenant", fake_register_tenant)
+    monkeypatch.setattr(
+        TenantRegistrationService, "register_tenant", fake_register_tenant
+    )
 
     response = await register_tenant(
         payload=object(),

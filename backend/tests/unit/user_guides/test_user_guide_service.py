@@ -23,7 +23,9 @@ def test_tenant_actor_guide_context_is_tenant_scoped() -> None:
     actor_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
 
-    context = UserGuideService.actor_context(TenantAdmin(actor_id=actor_id, tenant_id=tenant_id))
+    context = UserGuideService.actor_context(
+        TenantAdmin(actor_id=actor_id, tenant_id=tenant_id)
+    )
 
     assert context.actor_type == "tenant_admin"
     assert context.actor_id == actor_id

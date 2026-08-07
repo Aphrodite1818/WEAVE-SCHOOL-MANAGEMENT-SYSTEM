@@ -25,7 +25,9 @@ def _session(tenant_id: uuid.UUID) -> AcademicSession:
 
 
 @pytest.mark.asyncio
-async def test_update_academic_session_allows_explicit_nullable_fields_to_clear() -> None:
+async def test_update_academic_session_allows_explicit_nullable_fields_to_clear() -> (
+    None
+):
     tenant_id = uuid.uuid4()
     session = _session(tenant_id)
     db = AsyncMock()

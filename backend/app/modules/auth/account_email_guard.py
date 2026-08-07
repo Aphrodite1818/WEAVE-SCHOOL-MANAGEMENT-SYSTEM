@@ -11,7 +11,6 @@ from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.superadmin.repository import SuperAdminRepository
 
-
 INVITATION_ROLE_LABELS = {
     ActorType.PARENT_ACCOUNT: "parent",
     ActorType.TEACHER_ACCOUNT: "teacher",

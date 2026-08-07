@@ -191,7 +191,9 @@ class AuthRefreshTokenRepository:
     ) -> AuthRefreshToken | None:
         """Fetch a refresh token by its stored hash."""
 
-        query = select(AuthRefreshToken).where(AuthRefreshToken.token_hash == token_hash)
+        query = select(AuthRefreshToken).where(
+            AuthRefreshToken.token_hash == token_hash
+        )
         if lock:
             query = query.with_for_update()
 

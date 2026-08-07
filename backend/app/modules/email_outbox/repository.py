@@ -100,7 +100,10 @@ class EmailOutboxRepository:
             select(EmailOutbox)
             .where(
                 EmailOutbox.status == EmailOutboxStatus.PENDING,
-                (EmailOutbox.next_retry_at.is_(None) | (EmailOutbox.next_retry_at <= now)),
+                (
+                    EmailOutbox.next_retry_at.is_(None)
+                    | (EmailOutbox.next_retry_at <= now)
+                ),
                 EmailOutbox.attempts < EmailOutbox.max_attempts,
             )
             .order_by(EmailOutbox.created_at.asc())
@@ -193,7 +196,9 @@ class EmailOutboxRepository:
             if email_item.attempts >= email_item.max_attempts:
                 email_item.status = EmailOutboxStatus.FAILED
                 email_item.next_retry_at = None
-                email_item.failure_reason = "Exceeded retry attempts after stale processing recovery."
+                email_item.failure_reason = (
+                    "Exceeded retry attempts after stale processing recovery."
+                )
                 failed += 1
             else:
                 email_item.status = EmailOutboxStatus.PENDING
@@ -248,7 +253,10 @@ class EmailOutboxRepository:
             .select_from(EmailOutbox)
             .where(
                 EmailOutbox.status == EmailOutboxStatus.PENDING,
-                (EmailOutbox.next_retry_at.is_(None) | (EmailOutbox.next_retry_at <= now)),
+                (
+                    EmailOutbox.next_retry_at.is_(None)
+                    | (EmailOutbox.next_retry_at <= now)
+                ),
                 EmailOutbox.attempts < EmailOutbox.max_attempts,
             )
         )
@@ -266,7 +274,10 @@ class EmailOutboxRepository:
 
         filters = [EmailOutbox.tenant_id == tenant_id]
         if import_job_id is not None:
-            filters.append(EmailOutbox.metadata_json.op("->>")("import_job_id") == str(import_job_id))
+            filters.append(
+                EmailOutbox.metadata_json.op("->>")("import_job_id")
+                == str(import_job_id)
+            )
         if source is not None:
             filters.append(EmailOutbox.metadata_json.op("->>")("source") == source)
 

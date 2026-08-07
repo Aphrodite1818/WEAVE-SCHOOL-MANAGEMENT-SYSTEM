@@ -20,7 +20,6 @@ from app.core.email.exceptions import (
 )
 from app.core.email.providers.base import EmailProviderAdapter
 
-
 logger = get_logger(__name__)
 
 RESEND_TAG_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
@@ -68,7 +67,9 @@ class ResendEmailProvider(EmailProviderAdapter):
 
         normalized = cls._setting_value(value)
         if normalized is None:
-            raise EmailConfigurationError(f"{setting_name} must be configured for Resend.")
+            raise EmailConfigurationError(
+                f"{setting_name} must be configured for Resend."
+            )
         return normalized
 
     def _resolve_sender_email(self, category: EmailCategory) -> str:
@@ -184,7 +185,9 @@ class ResendEmailProvider(EmailProviderAdapter):
         if not isinstance(payload, dict):
             payload = {}
 
-        code = payload.get("name") or payload.get("code") or f"http_{response.status_code}"
+        code = (
+            payload.get("name") or payload.get("code") or f"http_{response.status_code}"
+        )
         message = payload.get("message") or "Resend rejected the email request."
 
         return str(code), str(message)
@@ -248,7 +251,9 @@ class ResendEmailProvider(EmailProviderAdapter):
                 retryable=False,
             ) from exc
 
-        message_id = response_payload.get("id") if isinstance(response_payload, dict) else None
+        message_id = (
+            response_payload.get("id") if isinstance(response_payload, dict) else None
+        )
         if not isinstance(message_id, str) or not message_id.strip():
             raise EmailProviderError(
                 "Resend accepted the request without returning a valid email id.",
@@ -257,7 +262,9 @@ class ResendEmailProvider(EmailProviderAdapter):
                 retryable=False,
             )
 
-        request_id = response.headers.get("x-request-id") or response.headers.get("request-id")
+        request_id = response.headers.get("x-request-id") or response.headers.get(
+            "request-id"
+        )
 
         logger.info(
             "Resend accepted email %s in category %s.",

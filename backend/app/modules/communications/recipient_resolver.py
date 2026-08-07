@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ForbiddenException
 from app.modules.classes.models import ClassRoom
-from app.modules.communications.enums import AnnouncementAudienceType, CommunicationActorType
+from app.modules.communications.enums import (
+    AnnouncementAudienceType,
+    CommunicationActorType,
+)
 from app.modules.communications.schemas import (
     ActorIdentity,
     AnnouncementAudienceCreate,
@@ -101,16 +104,26 @@ class RecipientResolver:
     """Resolve available and submitted recipients using backend authority."""
 
     @staticmethod
-    async def available_direct_recipients(db: AsyncSession, sender) -> list[ResolvedRecipient]:
+    async def available_direct_recipients(
+        db: AsyncSession, sender
+    ) -> list[ResolvedRecipient]:
         if isinstance(sender, SuperAdmin):
             return await RecipientResolver._tenant_admins(db, group="Tenant admins")
         if isinstance(sender, TenantAdmin):
             tenant_id = sender.tenant_id
             recipients: list[ResolvedRecipient] = []
-            recipients.extend(await RecipientResolver._teachers(db, tenant_id, group="Teachers"))
-            recipients.extend(await RecipientResolver._students(db, tenant_id, group="Students"))
-            recipients.extend(await RecipientResolver._parents(db, tenant_id, group="Parents"))
-            recipients.extend(await RecipientResolver._superadmins(db, group="Platform support"))
+            recipients.extend(
+                await RecipientResolver._teachers(db, tenant_id, group="Teachers")
+            )
+            recipients.extend(
+                await RecipientResolver._students(db, tenant_id, group="Students")
+            )
+            recipients.extend(
+                await RecipientResolver._parents(db, tenant_id, group="Parents")
+            )
+            recipients.extend(
+                await RecipientResolver._superadmins(db, group="Platform support")
+            )
             return _dedupe(recipients)
         if isinstance(sender, Teacher):
             tenant_id = sender.tenant_id
@@ -169,11 +182,16 @@ class RecipientResolver:
                 )
                 recipients.extend(
                     await RecipientResolver._subject_teachers_for_class(
-                        db, sender.tenant_id, class_id, group="My child's subject teachers"
+                        db,
+                        sender.tenant_id,
+                        class_id,
+                        group="My child's subject teachers",
                     )
                 )
             recipients.extend(
-                await RecipientResolver._teachers(db, sender.tenant_id, group="Other teachers")
+                await RecipientResolver._teachers(
+                    db, sender.tenant_id, group="Other teachers"
+                )
             )
             recipients.extend(
                 await RecipientResolver._tenant_admins(
@@ -194,7 +212,10 @@ class RecipientResolver:
         )
         available = await RecipientResolver.available_direct_recipients(db, sender)
         for recipient in available:
-            if recipient.actor_type == actor_type and recipient.actor_id == target.actor_id:
+            if (
+                recipient.actor_type == actor_type
+                and recipient.actor_id == target.actor_id
+            ):
                 return recipient
         raise ForbiddenException("You cannot message this recipient")
 
@@ -236,7 +257,9 @@ class RecipientResolver:
             for audience in audiences:
                 audience_type = RecipientResolver._audience_type(audience.audience_type)
                 if audience_type not in allowed:
-                    raise ForbiddenException("Tenant admins cannot use this announcement audience")
+                    raise ForbiddenException(
+                        "Tenant admins cannot use this announcement audience"
+                    )
                 (
                     resolved,
                     audience_excluded,
@@ -256,7 +279,9 @@ class RecipientResolver:
         return recipients, excluded
 
     @staticmethod
-    def _audience_type(value: AnnouncementAudienceType | str) -> AnnouncementAudienceType:
+    def _audience_type(
+        value: AnnouncementAudienceType | str,
+    ) -> AnnouncementAudienceType:
         return (
             value
             if isinstance(value, AnnouncementAudienceType)
@@ -271,13 +296,18 @@ class RecipientResolver:
             .all()
         )
         return [
-            ResolvedRecipient(CommunicationActorType.SUPERADMIN, row.id, None, row.email, group)
+            ResolvedRecipient(
+                CommunicationActorType.SUPERADMIN, row.id, None, row.email, group
+            )
             for row in rows
         ]
 
     @staticmethod
     async def _tenant_admins(
-        db: AsyncSession, *, tenant_id: uuid.UUID | None = None, group: str = "Tenant admins"
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID | None = None,
+        group: str = "Tenant admins",
     ) -> list[ResolvedRecipient]:
         stmt = select(TenantAdmin).where(
             TenantAdmin.is_active.is_(True),
@@ -289,14 +319,22 @@ class RecipientResolver:
         rows = (await db.execute(stmt)).scalars().all()
         return [
             ResolvedRecipient(
-                CommunicationActorType.TENANT_ADMIN, row.id, row.tenant_id, row.email, group
+                CommunicationActorType.TENANT_ADMIN,
+                row.id,
+                row.tenant_id,
+                row.email,
+                group,
             )
             for row in rows
         ]
 
     @staticmethod
     async def _teachers(
-        db: AsyncSession, tenant_id: uuid.UUID, *, group: str, exclude_id: uuid.UUID | None = None
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        group: str,
+        exclude_id: uuid.UUID | None = None,
     ) -> list[ResolvedRecipient]:
         stmt = (
             select(
@@ -382,7 +420,10 @@ class RecipientResolver:
                 .where(
                     Parent.tenant_id == tenant_id,
                     Parent.status.in_(
-                        [ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY]
+                        [
+                            ParentMembershipStatus.ACTIVE,
+                            ParentMembershipStatus.READ_ONLY,
+                        ]
                     ),
                     ParentAccount.is_active.is_(True),
                     ParentAccount.is_verified.is_(True),
@@ -405,7 +446,9 @@ class RecipientResolver:
         ]
 
     @staticmethod
-    async def _assigned_class_ids_for_teacher(db: AsyncSession, teacher: Teacher) -> set[uuid.UUID]:
+    async def _assigned_class_ids_for_teacher(
+        db: AsyncSession, teacher: Teacher
+    ) -> set[uuid.UUID]:
         homeroom = (
             (
                 await db.execute(
@@ -424,7 +467,10 @@ class RecipientResolver:
             (
                 await db.execute(
                     select(ClassSubject.class_id)
-                    .join(TeacherAssignment, TeacherAssignment.class_subject_id == ClassSubject.id)
+                    .join(
+                        TeacherAssignment,
+                        TeacherAssignment.class_subject_id == ClassSubject.id,
+                    )
                     .where(
                         ClassSubject.tenant_id == teacher.tenant_id,
                         ClassSubject.is_active.is_(True),
@@ -491,17 +537,26 @@ class RecipientResolver:
                     ParentAccount.last_name,
                     ParentAccount.email,
                 )
-                .join(StudentParentLink, StudentParentLink.parent_membership_id == Parent.id)
+                .join(
+                    StudentParentLink,
+                    StudentParentLink.parent_membership_id == Parent.id,
+                )
                 .join(Student, Student.id == StudentParentLink.student_id)
                 .join(ParentAccount, ParentAccount.id == Parent.parent_account_id)
                 .where(
                     Parent.tenant_id == teacher.tenant_id,
                     Student.class_id.in_(class_ids),
                     StudentParentLink.status.in_(
-                        [StudentParentLinkStatus.ACTIVE, StudentParentLinkStatus.READ_ONLY]
+                        [
+                            StudentParentLinkStatus.ACTIVE,
+                            StudentParentLinkStatus.READ_ONLY,
+                        ]
                     ),
                     Parent.status.in_(
-                        [ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY]
+                        [
+                            ParentMembershipStatus.ACTIVE,
+                            ParentMembershipStatus.READ_ONLY,
+                        ]
                     ),
                     ParentAccount.is_active.is_(True),
                     ParentAccount.is_verified.is_(True),
@@ -576,8 +631,13 @@ class RecipientResolver:
                     TeacherAccount.last_name,
                     TeacherAccount.email,
                 )
-                .join(TeacherAssignment, TeacherAssignment.teacher_membership_id == Teacher.id)
-                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .join(
+                    TeacherAssignment,
+                    TeacherAssignment.teacher_membership_id == Teacher.id,
+                )
+                .join(
+                    ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id
+                )
                 .join(TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id)
                 .where(
                     ClassSubject.tenant_id == tenant_id,
@@ -608,7 +668,9 @@ class RecipientResolver:
         ]
 
     @staticmethod
-    async def _parent_child_class_ids(db: AsyncSession, parent: Parent) -> set[uuid.UUID]:
+    async def _parent_child_class_ids(
+        db: AsyncSession, parent: Parent
+    ) -> set[uuid.UUID]:
         rows = (
             (
                 await db.execute(
@@ -618,7 +680,10 @@ class RecipientResolver:
                         StudentParentLink.tenant_id == parent.tenant_id,
                         StudentParentLink.parent_membership_id == parent.id,
                         StudentParentLink.status.in_(
-                            [StudentParentLinkStatus.ACTIVE, StudentParentLinkStatus.READ_ONLY]
+                            [
+                                StudentParentLinkStatus.ACTIVE,
+                                StudentParentLinkStatus.READ_ONLY,
+                            ]
                         ),
                         Student.class_id.is_not(None),
                         Student.status == AcademicStatus.ACTIVE,
@@ -649,7 +714,9 @@ class RecipientResolver:
         if audience_type == AnnouncementAudienceType.TENANT_ADMINS_OF_TENANTS:
             if audience.tenant_target_id is None:
                 raise BadRequestException("Choose a tenant")
-            return await RecipientResolver._tenant_admins(db, tenant_id=audience.tenant_target_id)
+            return await RecipientResolver._tenant_admins(
+                db, tenant_id=audience.tenant_target_id
+            )
         raise ForbiddenException("Unsupported platform audience")
 
     @staticmethod
@@ -660,7 +727,10 @@ class RecipientResolver:
     ) -> tuple[list[ResolvedRecipient], list[str]]:
         audience_type = RecipientResolver._audience_type(audience.audience_type)
         if audience_type == AnnouncementAudienceType.ALL_TEACHERS:
-            return await RecipientResolver._teachers(db, tenant_id, group="Teachers"), []
+            return (
+                await RecipientResolver._teachers(db, tenant_id, group="Teachers"),
+                [],
+            )
         if audience_type == AnnouncementAudienceType.SELECTED_TEACHERS:
             if audience.actor_id is None:
                 raise BadRequestException("Choose a teacher")
@@ -672,7 +742,10 @@ class RecipientResolver:
                 if item.actor_id == audience.actor_id
             ], []
         if audience_type == AnnouncementAudienceType.ALL_STUDENTS:
-            return await RecipientResolver._students(db, tenant_id, group="Students"), []
+            return (
+                await RecipientResolver._students(db, tenant_id, group="Students"),
+                [],
+            )
         if audience_type == AnnouncementAudienceType.SELECTED_STUDENTS:
             if audience.actor_id is None:
                 raise BadRequestException("Choose a student")
@@ -698,11 +771,15 @@ class RecipientResolver:
         if audience_type == AnnouncementAudienceType.CLASS_STUDENTS:
             if audience.class_id is None:
                 raise BadRequestException("Choose a class")
-            rows = await RecipientResolver._students(db, tenant_id, group="Students in a class")
+            rows = await RecipientResolver._students(
+                db, tenant_id, group="Students in a class"
+            )
             return [
                 item
                 for item in rows
-                if await RecipientResolver._student_in_class(db, item.actor_id, audience.class_id)
+                if await RecipientResolver._student_in_class(
+                    db, item.actor_id, audience.class_id
+                )
             ], []
         if audience_type == AnnouncementAudienceType.CLASS_PARENTS:
             if audience.class_id is None:
@@ -713,7 +790,9 @@ class RecipientResolver:
             missing = await RecipientResolver._students_without_parents_count(
                 db, tenant_id, audience.class_id
             )
-            excluded = [f"{missing} student(s) without a linked parent"] if missing else []
+            excluded = (
+                [f"{missing} student(s) without a linked parent"] if missing else []
+            )
             return recipients, excluded
         raise ForbiddenException("Unsupported school audience")
 
@@ -743,17 +822,26 @@ class RecipientResolver:
                     ParentAccount.last_name,
                     ParentAccount.email,
                 )
-                .join(StudentParentLink, StudentParentLink.parent_membership_id == Parent.id)
+                .join(
+                    StudentParentLink,
+                    StudentParentLink.parent_membership_id == Parent.id,
+                )
                 .join(Student, Student.id == StudentParentLink.student_id)
                 .join(ParentAccount, ParentAccount.id == Parent.parent_account_id)
                 .where(
                     Parent.tenant_id == tenant_id,
                     Student.class_id == class_id,
                     StudentParentLink.status.in_(
-                        [StudentParentLinkStatus.ACTIVE, StudentParentLinkStatus.READ_ONLY]
+                        [
+                            StudentParentLinkStatus.ACTIVE,
+                            StudentParentLinkStatus.READ_ONLY,
+                        ]
                     ),
                     Parent.status.in_(
-                        [ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY]
+                        [
+                            ParentMembershipStatus.ACTIVE,
+                            ParentMembershipStatus.READ_ONLY,
+                        ]
                     ),
                     ParentAccount.is_active.is_(True),
                     ParentAccount.is_verified.is_(True),

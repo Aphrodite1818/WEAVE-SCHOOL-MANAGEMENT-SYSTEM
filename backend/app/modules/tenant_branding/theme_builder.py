@@ -8,7 +8,6 @@ from typing import Final
 
 from app.modules.tenant_branding.models import TenantBrandingThemeMode
 
-
 DEFAULT_BRAND_NAME: Final[str] = "Weave"
 DEFAULT_PRIMARY_COLOR: Final[str] = "#1D4ED8"
 DEFAULT_ACCENT_COLOR: Final[str] = "#4F46E5"
@@ -21,7 +20,9 @@ DEFAULT_DARK_BACKGROUND_COLOR: Final[str] = "#000000"
 
 LIGHT_TEXT_RGB: Final[tuple[int, int, int]] = (255, 255, 255)
 DARK_TEXT_RGB: Final[tuple[int, int, int]] = (15, 23, 42)
-HEX_COLOR_PATTERN: Final[re.Pattern[str]] = re.compile(r"^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+HEX_COLOR_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
+)
 
 
 def normalize_hex_color(value: str) -> str:
@@ -93,7 +94,9 @@ def _adjust_lightness(rgb: tuple[int, int, int], delta: float) -> tuple[int, int
     red, green, blue = (channel / 255 for channel in rgb)
     hue, lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
     next_lightness = min(1.0, max(0.0, lightness + delta))
-    next_red, next_green, next_blue = colorsys.hls_to_rgb(hue, next_lightness, saturation)
+    next_red, next_green, next_blue = colorsys.hls_to_rgb(
+        hue, next_lightness, saturation
+    )
     return (
         _clamp_channel(next_red * 255),
         _clamp_channel(next_green * 255),
@@ -267,12 +270,20 @@ def _semantic_tokens(
         "--color-on-accent": choose_readable_text_color(accent),
         "--color-background": canvas,
         "--color-surface": card,
-        "--color-surface-raised": _blend_towards(card, LIGHT_TEXT_RGB, 0.02 if dark else 0),
-        "--color-surface-muted": _blend_towards(card, contrast_target, 0.05 if dark else 0.08),
-        "--color-surface-subtle": _blend_towards(card, contrast_target, 0.09 if dark else 0.15),
+        "--color-surface-raised": _blend_towards(
+            card, LIGHT_TEXT_RGB, 0.02 if dark else 0
+        ),
+        "--color-surface-muted": _blend_towards(
+            card, contrast_target, 0.05 if dark else 0.08
+        ),
+        "--color-surface-subtle": _blend_towards(
+            card, contrast_target, 0.09 if dark else 0.15
+        ),
         "--color-border": _blend_towards(card, contrast_target, 0.12 if dark else 0.12),
         "--color-border-strong": _blend_towards(card, contrast_target, 0.20),
-        "--color-border-subtle": _blend_towards(card, contrast_target, 0.07 if dark else 0.06),
+        "--color-border-subtle": _blend_towards(
+            card, contrast_target, 0.07 if dark else 0.06
+        ),
         "--color-text": text,
         "--color-text-soft": (226, 232, 240) if dark else (51, 65, 85),
         "--color-text-muted": (148, 163, 184) if dark else (100, 116, 139),
@@ -286,10 +297,12 @@ def _semantic_tokens(
         "--color-header-background": head,
         "--color-header-text": head_text,
         "--color-header-text-muted": _blend_towards(head_text, head, 0.35),
-        "--color-header-surface": (24, 34, 54) if dark else _blend_towards(head, head_text, 0.08),
-        "--color-header-surface-hover": (30, 41, 59)
-        if dark
-        else _blend_towards(head, head_text, 0.14),
+        "--color-header-surface": (
+            (24, 34, 54) if dark else _blend_towards(head, head_text, 0.08)
+        ),
+        "--color-header-surface-hover": (
+            (30, 41, 59) if dark else _blend_towards(head, head_text, 0.14)
+        ),
         "--color-header-border": _blend_towards(head, head_text, 0.18),
         "--color-focus-ring": primary,
     }

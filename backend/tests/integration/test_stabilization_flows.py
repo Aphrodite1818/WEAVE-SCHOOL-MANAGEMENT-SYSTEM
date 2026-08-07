@@ -8,11 +8,21 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.security import create_access_token, hash_auth_secret, hash_otp, hash_password
+from app.config.security import (
+    create_access_token,
+    hash_auth_secret,
+    hash_otp,
+    hash_password,
+)
 from app.config.settings import settings
 from app.core.dependencies.db import get_db
 from app.main import app
-from app.modules.auth.models import AuthPurpose, AuthRecord, AuthSession, AuthSessionActorType
+from app.modules.auth.models import (
+    AuthPurpose,
+    AuthRecord,
+    AuthSession,
+    AuthSessionActorType,
+)
 from app.modules.auth.otp_service import OTPService
 from app.modules.auth.schemas import VerifyOTP
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
@@ -491,7 +501,9 @@ async def test_student_default_password_first_login_flow(
     db_session: AsyncSession,
 ) -> None:
     tenant = await create_tenant(db_session, suffix="student")
-    admin = await create_tenant_admin(db_session, tenant=tenant, email="admin-student@example.com")
+    admin = await create_tenant_admin(
+        db_session, tenant=tenant, email="admin-student@example.com"
+    )
     classroom = ClassRoom(
         tenant_id=tenant.id,
         name="JSS1",
@@ -741,14 +753,18 @@ async def test_parent_student_link_requests_require_student_approval_and_enforce
         headers=parent_headers,
     )
     assert linked_students_response.status_code == 200
-    assert linked_students_response.json()["items"][0]["student"]["id"] == str(student.id)
+    assert linked_students_response.json()["items"][0]["student"]["id"] == str(
+        student.id
+    )
 
     linked_parents_response = await api_client.get(
         "/api/v1/students/me/parent-links",
         headers=student_headers,
     )
     assert linked_parents_response.status_code == 200
-    assert linked_parents_response.json()["items"][0]["parent_membership_id"] == str(parent.id)
+    assert linked_parents_response.json()["items"][0]["parent_membership_id"] == str(
+        parent.id
+    )
 
 
 @pytest.mark.asyncio
@@ -771,8 +787,12 @@ async def test_analytics_endpoints_return_real_counts(
     admin = await create_tenant_admin(
         db_session, tenant=active_tenant, email="admin-analytics@example.com"
     )
-    await create_teacher(db_session, tenant=active_tenant, email="teacher-analytics@example.com")
-    await create_parent(db_session, tenant=active_tenant, email="parent-analytics@example.com")
+    await create_teacher(
+        db_session, tenant=active_tenant, email="teacher-analytics@example.com"
+    )
+    await create_parent(
+        db_session, tenant=active_tenant, email="parent-analytics@example.com"
+    )
     student = await create_student(
         db_session,
         tenant=active_tenant,

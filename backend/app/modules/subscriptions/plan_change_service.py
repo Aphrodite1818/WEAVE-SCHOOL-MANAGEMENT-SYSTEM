@@ -7,7 +7,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache.events import flush_cache_invalidation_events
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.subscriptions.models import SubscriptionPlanChange
 from app.modules.subscriptions.plans import (
     coerce_subscription_plan,
@@ -26,7 +30,6 @@ from app.modules.subscriptions.subscription_enums import (
     SubscriptionStatus,
 )
 from app.tenant_management.models import SubscriptionPlan
-
 
 PLAN_RANK: dict[SubscriptionPlan, int] = {
     SubscriptionPlan.FREE_TRIAL: 0,
@@ -94,7 +97,9 @@ class SubscriptionPlanChangeService:
         current_plan = coerce_subscription_plan(subscription.plan_code)
         target_plan = coerce_subscription_plan(target_plan_code)
         if target_plan == SubscriptionPlan.FREE_TRIAL:
-            raise BadRequestException("A paid subscription cannot downgrade to a new free trial.")
+            raise BadRequestException(
+                "A paid subscription cannot downgrade to a new free trial."
+            )
         if target_plan == current_plan:
             raise BadRequestException("The selected plan is already your current plan.")
 
@@ -181,7 +186,9 @@ class SubscriptionPlanChangeService:
         current_plan = coerce_subscription_plan(subscription.plan_code)
         target_plan = coerce_subscription_plan(target_plan_code)
         if target_plan == SubscriptionPlan.FREE_TRIAL:
-            raise BadRequestException("A paid subscription cannot return to a free trial.")
+            raise BadRequestException(
+                "A paid subscription cannot return to a free trial."
+            )
         if PLAN_RANK[target_plan] >= PLAN_RANK[current_plan]:
             raise BadRequestException(
                 "Use checkout for upgrades. This endpoint schedules lower plans only."
@@ -226,7 +233,9 @@ class SubscriptionPlanChangeService:
         subscription = await SubscriptionCancellationService.request_cancellation(
             db,
             tenant_id=tenant_id,
-            notes=(f"Automatic renewal disabled for scheduled downgrade to {target_plan.value}."),
+            notes=(
+                f"Automatic renewal disabled for scheduled downgrade to {target_plan.value}."
+            ),
             commit=False,
         )
         plan_change = await SubscriptionRepository.create_plan_change(
@@ -241,7 +250,9 @@ class SubscriptionPlanChangeService:
                 requested_by_admin_id=requested_by_admin_id,
                 requested_at=SubscriptionPlanChangeService._now(),
                 effective_at=subscription.current_period_end,
-                usage_snapshot_json={resource.value: count for resource, count in usage.items()},
+                usage_snapshot_json={
+                    resource.value: count for resource, count in usage.items()
+                },
                 blockers_json=[],
                 provider_reference=subscription.provider_subscription_code,
             ),
@@ -306,10 +317,15 @@ class SubscriptionPlanChangeService:
             db,
             tenant_id=tenant_id,
         )
-        if pending is None or pending.change_type != SubscriptionPlanChangeType.DOWNGRADE:
+        if (
+            pending is None
+            or pending.change_type != SubscriptionPlanChangeType.DOWNGRADE
+        ):
             return current_limit
 
-        target_limit = get_plan_entitlements(pending.target_plan_code).limits.get(resource)
+        target_limit = get_plan_entitlements(pending.target_plan_code).limits.get(
+            resource
+        )
         if current_limit is None:
             return target_limit
         if target_limit is None:

@@ -14,13 +14,14 @@ from app.modules.tenant_admins.models import TenantAdmin
 from app.modules.teachers.models import Teacher
 from app.modules.superadmin.models import SuperAdmin
 
-
 router = APIRouter(tags=["Tenant Search"])
 tenant_admin_router = APIRouter(prefix="/tenant-admin/search", tags=["Tenant Search"])
 teacher_router = APIRouter(prefix="/teachers/me/search", tags=["Teacher Search"])
 superadmin_router = APIRouter(prefix="/superadmin/search", tags=["Superadmin Search"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
 CurrentSuperAdmin: TypeAlias = Annotated[SuperAdmin, Depends(get_current_superadmin)]
 

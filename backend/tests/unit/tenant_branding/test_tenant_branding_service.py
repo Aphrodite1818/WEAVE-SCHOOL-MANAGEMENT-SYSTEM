@@ -135,10 +135,12 @@ async def test_reset_disables_branding_increments_version_and_keeps_logo() -> No
             new=AsyncMock(side_effect=apply_reset),
         ),
         patch(
-            "app.modules.tenant_branding.service.invalidate_tenant_branding", new=AsyncMock()
+            "app.modules.tenant_branding.service.invalidate_tenant_branding",
+            new=AsyncMock(),
         ) as invalidate,
         patch(
-            "app.modules.tenant_branding.service.flush_cache_invalidation_events", new=AsyncMock()
+            "app.modules.tenant_branding.service.flush_cache_invalidation_events",
+            new=AsyncMock(),
         ),
     ):
         response = await TenantBrandingService.reset_tenant_branding(db=db, actor=actor)

@@ -14,7 +14,6 @@ from app.modules.user_guides.models import UserGuideState
 from app.modules.user_guides.repository import UserGuideRepository
 from app.modules.user_guides.schemas import UserGuideStateResponse, UserGuideStateUpdate
 
-
 _ACTOR_TYPE_BY_CLASS_NAME = {
     "TenantAdmin": "tenant_admin",
     "Teacher": "teacher",
@@ -41,7 +40,9 @@ class UserGuideService:
     def actor_context(actor: Any) -> GuideActorContext:
         actor_id = getattr(actor, "id", None)
         if not isinstance(actor_id, uuid.UUID):
-            raise ValueError("The authenticated actor does not expose a valid identifier.")
+            raise ValueError(
+                "The authenticated actor does not expose a valid identifier."
+            )
 
         actor_type = _ACTOR_TYPE_BY_CLASS_NAME.get(actor.__class__.__name__)
         if actor_type is None:

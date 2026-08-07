@@ -14,7 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.auth.models import AuthSession, AuthSessionActorType
 from app.modules.parents.models import ParentMembership, ParentMembershipStatus
 from app.modules.parents.repository import ParentMembershipRepository
@@ -129,7 +133,9 @@ class ParentMembershipLifecycleService:
                 continue
             items.append(
                 ParentLinkedStudentItem(
-                    student=await StudentService._build_detail_response(db, link.student),
+                    student=await StudentService._build_detail_response(
+                        db, link.student
+                    ),
                     link=StudentParentLinkResponse.model_validate(link),
                 )
             )
@@ -161,7 +167,9 @@ class ParentMembershipLifecycleService:
                 continue
             items.append(
                 AdminParentLinkItem(
-                    student=await StudentService._build_detail_response(db, link.student),
+                    student=await StudentService._build_detail_response(
+                        db, link.student
+                    ),
                     link=StudentParentLinkResponse.model_validate(link),
                 )
             )
@@ -359,6 +367,5 @@ class ParentMembershipLifecycleService:
             limit=limit,
         )
         return [
-            await StudentParentLinkRequestService._detail(db, row)
-            for row in rows
+            await StudentParentLinkRequestService._detail(db, row) for row in rows
         ], total

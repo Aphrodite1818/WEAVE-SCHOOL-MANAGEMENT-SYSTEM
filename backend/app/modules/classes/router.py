@@ -38,12 +38,13 @@ from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLi
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/classes",
     tags=["Classes"],
 )
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 CurrentTenantMember: TypeAlias = Annotated[
     TenantAdmin | Teacher | Student | Parent,
     Depends(get_current_tenant_member),
@@ -72,7 +73,9 @@ async def create_classroom(
         actor=current_user,
         payload=payload,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return classroom
 
 
@@ -202,7 +205,9 @@ async def activate_classroom(
         actor=current_user,
         class_id=class_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return classroom
 
 
@@ -224,7 +229,9 @@ async def deactivate_classroom(
         actor=current_user,
         class_id=class_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return classroom
 
 
@@ -244,7 +251,9 @@ async def archive_classroom(
         actor=current_user,
         class_id=class_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return classroom
 
 
@@ -264,7 +273,9 @@ async def restore_classroom(
         actor=current_user,
         class_id=class_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return classroom
 
 
@@ -284,7 +295,9 @@ async def delete_classroom_compat_deactivate(
         actor=current_user,
         class_id=class_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return classroom
 
 
@@ -298,7 +311,9 @@ async def list_class_subjects(
     current_user: CurrentTenantMember,
     active_only: bool = Query(default=False),
     include_archived: bool = Query(default=False),
-    lifecycle_status: str | None = Query(default=None, pattern="^(active|inactive|archived)$"),
+    lifecycle_status: str | None = Query(
+        default=None, pattern="^(active|inactive|archived)$"
+    ),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> ClassSubjectListResponse:

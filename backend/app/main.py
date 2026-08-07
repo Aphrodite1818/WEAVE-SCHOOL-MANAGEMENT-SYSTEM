@@ -16,7 +16,9 @@ from app.config.sentry import flush_sentry, initialize_sentry
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
 from app.core.exception_handlers import register_exception_handlers
-from app.core.middleware.cookie_request_protection import CookieRequestProtectionMiddleware
+from app.core.middleware.cookie_request_protection import (
+    CookieRequestProtectionMiddleware,
+)
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
@@ -52,8 +54,12 @@ from app.modules.report_cards.router import (
     student_router as student_report_card_router,
     tenant_admin_router as tenant_admin_report_card_router,
 )
-from app.modules.school_calendar.admin_router import router as school_calendar_admin_router
-from app.modules.school_calendar.shared_router import router as school_calendar_shared_router
+from app.modules.school_calendar.admin_router import (
+    router as school_calendar_admin_router,
+)
+from app.modules.school_calendar.shared_router import (
+    router as school_calendar_shared_router,
+)
 from app.modules.search.router import router as tenant_search_router
 from app.modules.setup_assistant.router import router as setup_assistant_router
 from app.modules.student_academics.assessment_config_router import (
@@ -83,7 +89,9 @@ from app.modules.student_academics.router import (
     teacher_router as teacher_academic_router,
     tenant_admin_router as tenant_admin_academic_router,
 )
-from app.modules.student_academics.session_closure_router import router as session_closure_router
+from app.modules.student_academics.session_closure_router import (
+    router as session_closure_router,
+)
 from app.modules.student_academics.student_subject_cards_router import (
     router as student_subject_cards_router,
 )
@@ -174,8 +182,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await flush_sentry()
 
 
-
-
 async def _database_health_check() -> bool:
     try:
         async with engine.connect() as connection:
@@ -188,7 +194,7 @@ async def _database_health_check() -> bool:
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    initialize_sentry(service = "api")
+    initialize_sentry(service="api")
     register_metrics_cache_invalidation_events()
     _prepare_academic_routers()
 
@@ -209,7 +215,9 @@ def create_app() -> FastAPI:
         "allow_headers": ["*"],
     }
     if settings.is_development:
-        middleware_options["allow_origin_regex"] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+        middleware_options["allow_origin_regex"] = (
+            r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+        )
 
     app.add_middleware(PlatformLockdownMiddleware)
     app.add_middleware(CookieRequestProtectionMiddleware)
@@ -227,7 +235,9 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(runtime_config_router, prefix="/api/v1")
     app.include_router(superadmin_router, prefix="/api/v1")
-    app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
+    app.include_router(
+        tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"]
+    )
     app.include_router(media_router, prefix="/api/v1/tenant-admin")
     app.include_router(tenant_branding_router, prefix="/api/v1/tenant-admin")
     app.include_router(workspace_branding_router, prefix="/api/v1")
@@ -276,7 +286,9 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         dependencies=admin_write_guard,
     )
-    app.include_router(assessment_config_router, prefix="/api/v1", dependencies=admin_write_guard)
+    app.include_router(
+        assessment_config_router, prefix="/api/v1", dependencies=admin_write_guard
+    )
     app.include_router(
         grading_scale_lifecycle_router,
         prefix="/api/v1",
@@ -322,7 +334,9 @@ def create_app() -> FastAPI:
         redis_ok = await redis_health_check()
         ready = database_ok and redis_ok
         return JSONResponse(
-            status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=(
+                status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
             content={
                 "status": "ready" if ready else "unavailable",
                 "dependencies": {

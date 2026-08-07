@@ -29,8 +29,8 @@ from app.modules.student_academics.session_closure_service import (  # noqa: E40
     SessionClosureService,
 )
 
-
 logger = get_logger(__name__)
+
 
 @capture_worker_exceptions(queue_name=HEAVY_QUEUE_NAME)
 async def process_bulk_import_job(
@@ -71,6 +71,7 @@ async def process_bulk_import_job(
         extra={"job_id": job_id, "tenant_id": tenant_id, **result},
     )
     return result
+
 
 @capture_worker_exceptions(queue_name=HEAVY_QUEUE_NAME)
 async def process_session_progression_job(
@@ -149,9 +150,6 @@ async def process_session_progression_job(
         raise failure_exception
 
 
-
-
-
 async def startup(ctx: dict[str, Any]) -> None:
     """Initialize optional monitoring for this worker process."""
 
@@ -160,9 +158,6 @@ async def startup(ctx: dict[str, Any]) -> None:
     initialize_sentry(
         service="worker-heavy",
     )
-
-
-
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
@@ -175,6 +170,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     finally:
         await flush_sentry()
 
+
 class WorkerSettings:
     """Settings for serialized database-heavy jobs."""
 
@@ -184,7 +180,7 @@ class WorkerSettings:
         process_bulk_import_job,
         process_session_progression_job,
     ]
-    
+
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 1

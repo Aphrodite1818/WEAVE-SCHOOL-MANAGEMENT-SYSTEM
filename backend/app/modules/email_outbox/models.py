@@ -50,15 +50,27 @@ class EmailOutbox(BaseModel):
         server_default=EmailOutboxStatus.PENDING.value,
     )
 
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=4, server_default="4")
-    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=4, server_default="4"
+    )
+    next_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, default=dict
+    )
 
     __table_args__ = (
         Index("ix_email_outbox_tenant_status", "tenant_id", "status"),

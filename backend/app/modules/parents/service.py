@@ -136,9 +136,7 @@ class ParentAccountService:
                 lock=True,
             )
             if account is None:
-                raise ConflictException(
-                    "The existing parent identity is invalid."
-                )
+                raise ConflictException("The existing parent identity is invalid.")
             if (
                 account.account_status == ParentAccountStatus.ACTIVE
                 and account.is_verified
@@ -324,18 +322,12 @@ class ParentAccountService:
         )
         membership_ids = [membership.id for membership in memberships]
         session_filter = [
-            (
-                AuthSession.actor_type
-                == AuthSessionActorType.PARENT_ACCOUNT
-            )
+            (AuthSession.actor_type == AuthSessionActorType.PARENT_ACCOUNT)
             & (AuthSession.actor_id == account.id)
         ]
         if membership_ids:
             session_filter.append(
-                (
-                    AuthSession.actor_type
-                    == AuthSessionActorType.PARENT
-                )
+                (AuthSession.actor_type == AuthSessionActorType.PARENT)
                 & AuthSession.actor_id.in_(membership_ids)
             )
         await db.execute(
@@ -366,9 +358,7 @@ class ParentAccountService:
         )
         return ParentMembershipListResponse(
             items=[
-                ParentMembershipWithAccountResponse.model_validate(
-                    membership
-                )
+                ParentMembershipWithAccountResponse.model_validate(membership)
                 for membership in memberships
             ],
             total=len(memberships),
@@ -412,9 +402,7 @@ class ParentMembershipService:
         )
         if membership is None:
             raise NotFoundException("Parent membership not found.")
-        return ParentMembershipWithAccountResponse.model_validate(
-            membership
-        )
+        return ParentMembershipWithAccountResponse.model_validate(membership)
 
     @staticmethod
     async def list_for_tenant(
@@ -436,9 +424,7 @@ class ParentMembershipService:
         )
         return ParentMembershipListResponse(
             items=[
-                ParentMembershipWithAccountResponse.model_validate(
-                    membership
-                )
+                ParentMembershipWithAccountResponse.model_validate(membership)
                 for membership in memberships
             ],
             total=total,
@@ -659,9 +645,12 @@ class ParentInvitationService:
         )
         if background_tasks is not None:
             school_name = tenant.school_name if tenant else "your school"
-            student_name = " ".join(
-                part for part in [student.first_name, student.last_name] if part
-            ) or "a student"
+            student_name = (
+                " ".join(
+                    part for part in [student.first_name, student.last_name] if part
+                )
+                or "a student"
+            )
             background_tasks.add_task(
                 send_email,
                 normalized_email,
@@ -705,17 +694,12 @@ class ParentInvitationService:
         tenant = await TenantRepository.get_by_id(db, invitation.tenant_id)
         if student is None or tenant is None:
             raise NotFoundException("Invitation context is unavailable.")
-        display_name = " ".join(
-            part
-            for part in [student.first_name, student.last_name]
-            if part
-        ) or "Student"
-        admission = invitation.admission_number_snapshot
-        hint = (
-            f"{admission[:3]}***{admission[-3:]}"
-            if len(admission) > 6
-            else "***"
+        display_name = (
+            " ".join(part for part in [student.first_name, student.last_name] if part)
+            or "Student"
         )
+        admission = invitation.admission_number_snapshot
+        hint = f"{admission[:3]}***{admission[-3:]}" if len(admission) > 6 else "***"
         return ParentInvitationPublicContextResponse(
             invitation_id=invitation.id,
             tenant_name=tenant.school_name,
@@ -810,9 +794,7 @@ class ParentInvitationService:
                     student_id=invitation.student_id,
                     parent_account_id=account.id,
                     parent_membership_id=membership.id,
-                    admission_number_snapshot=(
-                        invitation.admission_number_snapshot
-                    ),
+                    admission_number_snapshot=(invitation.admission_number_snapshot),
                     relationship_type=invitation.relationship_type,
                     status=StudentParentLinkRequestStatus.PENDING,
                     requested_at=_utc_now(),
@@ -841,9 +823,7 @@ class ParentInvitationService:
             offset=skip,
             limit=min(limit, 100),
         )
-        return [
-            ParentInvitationResponse.model_validate(row) for row in rows
-        ], total
+        return [ParentInvitationResponse.model_validate(row) for row in rows], total
 
     @staticmethod
     async def revoke_invitation(
@@ -861,9 +841,7 @@ class ParentInvitationService:
         if invitation is None:
             raise NotFoundException("Invitation not found.")
         if invitation.status != ParentInvitationStatus.PENDING:
-            raise ConflictException(
-                "Only pending invitations can be revoked."
-            )
+            raise ConflictException("Only pending invitations can be revoked.")
         invitation.status = ParentInvitationStatus.REVOKED
         invitation.revoked_at = _utc_now()
         await ParentInvitationRepository.save(db, invitation)

@@ -40,8 +40,10 @@ class AccountMembershipSummaryService:
         if not tenant_ids:
             return {}
         tenants = (
-            await db.execute(select(Tenant).where(Tenant.id.in_(tenant_ids)))
-        ).scalars().all()
+            (await db.execute(select(Tenant).where(Tenant.id.in_(tenant_ids))))
+            .scalars()
+            .all()
+        )
         return {tenant.id: tenant for tenant in tenants}
 
     @staticmethod

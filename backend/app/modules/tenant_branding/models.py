@@ -55,8 +55,12 @@ class TenantBranding(BaseModel):
         nullable=False,
     )
 
-    header_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="#FFFFFF")
-    surface_color: Mapped[str] = mapped_column(String(7), nullable=False, server_default="#FFFFFF")
+    header_color: Mapped[str] = mapped_column(
+        String(7), nullable=False, server_default="#FFFFFF"
+    )
+    surface_color: Mapped[str] = mapped_column(
+        String(7), nullable=False, server_default="#FFFFFF"
+    )
     palette_key: Mapped[str] = mapped_column(
         String(32), nullable=False, default="blue", server_default="blue"
     )

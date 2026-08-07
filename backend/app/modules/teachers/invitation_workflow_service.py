@@ -93,12 +93,10 @@ class TeacherInvitationWorkflowService:
                     value=invitation.staff_id,
                 )
             ):
-                invitation.staff_id = (
-                    await TenantIdentifierService.generate_identifier(
-                        db,
-                        tenant=tenant,
-                        kind=TenantIdentifierKind.TEACHER,
-                    )
+                invitation.staff_id = await TenantIdentifierService.generate_identifier(
+                    db,
+                    tenant=tenant,
+                    kind=TenantIdentifierKind.TEACHER,
                 )
                 await TeacherInvitationRepository.save(db, invitation)
 

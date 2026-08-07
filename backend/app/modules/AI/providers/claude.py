@@ -1,6 +1,6 @@
-#==========================#
+# ==========================#
 #     CLAUDE PROVIDER.PY   #
-#==========================#
+# ==========================#
 
 from typing import Any
 
@@ -15,8 +15,8 @@ from app.modules.AI.providers.utils import (
 
 
 class ClaudeProvider(BaseLLMProvider):
-
     """Represent the ClaudeProvider type."""
+
     def __init__(self, api_key: str | None, model: str, max_tokens: int) -> None:
         """Initialize the ClaudeProvider instance."""
         self.api_key = require_api_key(api_key, "Anthropic")
@@ -72,9 +72,7 @@ class ClaudeProvider(BaseLLMProvider):
             if block.get("type") == "text"
         ]
         tool_calls = [
-            block
-            for block in content_blocks
-            if block.get("type") == "tool_use"
+            block for block in content_blocks if block.get("type") == "tool_use"
         ]
 
         return {
@@ -82,4 +80,3 @@ class ClaudeProvider(BaseLLMProvider):
             "tool_calls": tool_calls or None,
             "raw_response": raw_response,
         }
-

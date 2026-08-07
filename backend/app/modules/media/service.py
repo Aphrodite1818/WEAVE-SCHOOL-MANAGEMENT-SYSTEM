@@ -13,7 +13,11 @@ from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.core.storage.factory import get_media_storage
 from app.core.storage.keys import build_media_object_key
 from app.modules.media.models import (
@@ -82,7 +86,9 @@ class MediaService:
     def _get_storage_provider() -> MediaStorageProvider:
         """Resolve configured storage provider into the model enum."""
 
-        provider = str(getattr(settings, "MEDIA_STORAGE_PROVIDER", "local")).strip().lower()
+        provider = (
+            str(getattr(settings, "MEDIA_STORAGE_PROVIDER", "local")).strip().lower()
+        )
 
         if provider in {"cloudflare_r2", "r2", "cloudflare"}:
             return MediaStorageProvider.R2
@@ -90,7 +96,9 @@ class MediaService:
         if provider == "local":
             return MediaStorageProvider.LOCAL
 
-        raise BadRequestException(detail=f"Unsupported media storage provider: {provider}")
+        raise BadRequestException(
+            detail=f"Unsupported media storage provider: {provider}"
+        )
 
     @staticmethod
     def _get_render_url(media_asset: MediaAsset) -> str | None:
@@ -254,7 +262,9 @@ class MediaService:
             return render_url
 
         if purpose == MediaPurpose.SCHOOL_LOGO:
-            raise BadRequestException(detail="Uploaded school logo does not have a renderable URL")
+            raise BadRequestException(
+                detail="Uploaded school logo does not have a renderable URL"
+            )
 
         return None
 
@@ -282,7 +292,10 @@ class MediaService:
             await invalidate_tenant_branding(tenant_id, db=db)
             return
 
-        if owner_type == MediaOwnerType.STUDENT and purpose == MediaPurpose.STUDENT_PASSPORT:
+        if (
+            owner_type == MediaOwnerType.STUDENT
+            and purpose == MediaPurpose.STUDENT_PASSPORT
+        ):
             student = await MediaService._get_student_for_tenant(
                 db=db,
                 tenant_id=tenant_id,
@@ -297,7 +310,10 @@ class MediaService:
             await StudentRepository.save(db=db, student=student)
             return
 
-        if owner_type == MediaOwnerType.TEACHER and purpose == MediaPurpose.TEACHER_PASSPORT:
+        if (
+            owner_type == MediaOwnerType.TEACHER
+            and purpose == MediaPurpose.TEACHER_PASSPORT
+        ):
             teacher = await MediaService._get_teacher_for_tenant(
                 db=db,
                 tenant_id=tenant_id,
@@ -350,7 +366,10 @@ class MediaService:
             await invalidate_tenant_branding(tenant_id, db=db)
             return
 
-        if owner_type == MediaOwnerType.STUDENT and purpose == MediaPurpose.STUDENT_PASSPORT:
+        if (
+            owner_type == MediaOwnerType.STUDENT
+            and purpose == MediaPurpose.STUDENT_PASSPORT
+        ):
             student = await MediaService._get_student_for_tenant(
                 db=db,
                 tenant_id=tenant_id,
@@ -365,7 +384,10 @@ class MediaService:
             await StudentRepository.save(db=db, student=student)
             return
 
-        if owner_type == MediaOwnerType.TEACHER and purpose == MediaPurpose.TEACHER_PASSPORT:
+        if (
+            owner_type == MediaOwnerType.TEACHER
+            and purpose == MediaPurpose.TEACHER_PASSPORT
+        ):
             teacher = await MediaService._get_teacher_for_tenant(
                 db=db,
                 tenant_id=tenant_id,
@@ -414,7 +436,9 @@ class MediaService:
 
         if actor is None or actor.tenant_id is None:
             raise ForbiddenException(detail="Actor is not attached to a tenant")
-        MediaService._validate_owner_purpose_pair(owner_type=owner_type, purpose=purpose)
+        MediaService._validate_owner_purpose_pair(
+            owner_type=owner_type, purpose=purpose
+        )
 
         tenant_id = actor.tenant_id
         media_asset_id = uuid4()
@@ -631,7 +655,9 @@ class MediaService:
             owner_type = MediaOwnerType.STUDENT
             purpose = MediaPurpose.STUDENT_PASSPORT
         else:
-            raise ForbiddenException(detail="This account does not support passport photos")
+            raise ForbiddenException(
+                detail="This account does not support passport photos"
+            )
 
         return await MediaService._create_and_attach_media(
             db=db,
@@ -656,7 +682,9 @@ class MediaService:
 
         if actor is None or actor.tenant_id is None:
             raise ForbiddenException(detail="Actor is not attached to a tenant")
-        MediaService._validate_owner_purpose_pair(owner_type=owner_type, purpose=purpose)
+        MediaService._validate_owner_purpose_pair(
+            owner_type=owner_type, purpose=purpose
+        )
 
         media_asset = await MediaAssetRepository.get_current_for_owner(
             db,
@@ -804,7 +832,9 @@ class MediaService:
             owner_type = MediaOwnerType.STUDENT
             purpose = MediaPurpose.STUDENT_PASSPORT
         else:
-            raise ForbiddenException(detail="This account does not support passport photos")
+            raise ForbiddenException(
+                detail="This account does not support passport photos"
+            )
 
         return await MediaService._delete_current_media(
             db=db,
@@ -848,7 +878,9 @@ class MediaService:
         """Get the current media asset for an owner and purpose."""
 
         MediaService._ensure_tenant_admin(actor)
-        MediaService._validate_owner_purpose_pair(owner_type=owner_type, purpose=purpose)
+        MediaService._validate_owner_purpose_pair(
+            owner_type=owner_type, purpose=purpose
+        )
 
         media_asset = await MediaAssetRepository.get_current_for_owner(
             db,
@@ -910,7 +942,9 @@ class MediaService:
         MediaService._ensure_tenant_admin(actor)
 
         if expires_in_seconds <= 0:
-            raise BadRequestException(detail="Signed URL expiry must be greater than zero")
+            raise BadRequestException(
+                detail="Signed URL expiry must be greater than zero"
+            )
 
         media_asset = await MediaAssetRepository.get_by_id(
             db,

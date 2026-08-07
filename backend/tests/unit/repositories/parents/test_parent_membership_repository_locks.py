@@ -25,7 +25,7 @@ class _CapturingSession:
 
 @pytest.mark.asyncio
 async def test_account_tenant_lock_targets_parent_memberships_only() -> None:
-    
+
     db = _CapturingSession()
 
     await ParentMembershipRepository.get_by_account_and_tenant(

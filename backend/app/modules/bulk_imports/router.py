@@ -27,7 +27,10 @@ from app.modules.bulk_imports.schemas import (
     ImportRowErrorListResponse,
     ImportTemplateResponse,
 )
-from app.modules.bulk_imports.sensitive_results import redact_result_row, reveal_result_row
+from app.modules.bulk_imports.sensitive_results import (
+    redact_result_row,
+    reveal_result_row,
+)
 from app.modules.bulk_imports.service import BulkImportService
 from app.modules.bulk_imports.slip_schemas import (
     StudentSlipDetailResponse,
@@ -40,9 +43,10 @@ from app.modules.bulk_imports.slip_service import StudentSlipService
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
-
 router = APIRouter(prefix="/imports", tags=["Bulk Imports"])
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 ResultDownloadFormat: TypeAlias = Literal["spreadsheet", "slip"]
 
 
@@ -291,7 +295,9 @@ async def download_bulk_import_result(
                 detail="Printable slips are only available for student imports."
             )
         result_rows = [reveal_result_row(row) for row in stored_rows]
-        tenant = await TenantRepository.get_by_id(db=db, tenant_id=current_user.tenant_id)
+        tenant = await TenantRepository.get_by_id(
+            db=db, tenant_id=current_user.tenant_id
+        )
         result_file = create_student_access_slip_report(
             result_rows=result_rows,
             school_name=tenant.school_name if tenant is not None else None,
@@ -330,7 +336,9 @@ async def download_bulk_import_errors(
         actor=current_user,
         job_id=job_id,
     )
-    result_file = create_error_report(resource_type=resource_type, row_errors=row_errors)
+    result_file = create_error_report(
+        resource_type=resource_type, row_errors=row_errors
+    )
     return Response(
         content=result_file.content_bytes,
         media_type=result_file.content_type,

@@ -84,7 +84,9 @@ def create_xlsx_template(
         cell = data_sheet.cell(row=1, column=column_index)
         cell.font = Font(bold=True)
         cell.fill = header_fill
-        data_sheet.column_dimensions[get_column_letter(column_index)].width = min(max(len(header) + 6, 16), 34)
+        data_sheet.column_dimensions[get_column_letter(column_index)].width = min(
+            max(len(header) + 6, 16), 34
+        )
 
     template_definition = get_template_definition(resource_type=resource_type)
     instructions_sheet = workbook.create_sheet("Instructions")
@@ -93,7 +95,9 @@ def create_xlsx_template(
     for note in template_definition.notes:
         instructions_sheet.append([note])
     instructions_sheet.append([""])
-    instructions_sheet.append(["Column", "Required", "Example", "Accepted values", "Description"])
+    instructions_sheet.append(
+        ["Column", "Required", "Example", "Accepted values", "Description"]
+    )
     header_row_number = instructions_sheet.max_row
     for cell in instructions_sheet[header_row_number]:
         cell.font = Font(bold=True)

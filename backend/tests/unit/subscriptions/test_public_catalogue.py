@@ -11,11 +11,17 @@ from app.modules.subscriptions.catalogue import PublicSubscriptionCatalogueServi
 @pytest.mark.asyncio
 async def test_public_catalogue_uses_environment_backed_prices(monkeypatch):
     monkeypatch.setattr(settings, "PAYSTACK_PLUS_MONTHLY_AMOUNT_KOBO", 1_700_000)
-    monkeypatch.setattr(settings, "PAYSTACK_PROFESSIONAL_MONTHLY_AMOUNT_KOBO", 3_900_000)
+    monkeypatch.setattr(
+        settings, "PAYSTACK_PROFESSIONAL_MONTHLY_AMOUNT_KOBO", 3_900_000
+    )
     monkeypatch.setattr(settings, "PAYSTACK_ENTERPRISE_MONTHLY_AMOUNT_KOBO", 8_500_000)
     monkeypatch.setattr(settings, "PAYSTACK_PLUS_MONTHLY_PLAN_CODE", "PLN_plus")
-    monkeypatch.setattr(settings, "PAYSTACK_PROFESSIONAL_MONTHLY_PLAN_CODE", "PLN_professional")
-    monkeypatch.setattr(settings, "PAYSTACK_ENTERPRISE_MONTHLY_PLAN_CODE", "PLN_enterprise")
+    monkeypatch.setattr(
+        settings, "PAYSTACK_PROFESSIONAL_MONTHLY_PLAN_CODE", "PLN_professional"
+    )
+    monkeypatch.setattr(
+        settings, "PAYSTACK_ENTERPRISE_MONTHLY_PLAN_CODE", "PLN_enterprise"
+    )
 
     catalogue = PublicSubscriptionCatalogueService.build_catalogue()
     plans = {plan.plan_code: plan for plan in catalogue.plans}
@@ -33,7 +39,9 @@ async def test_public_catalogue_uses_environment_backed_prices(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_public_catalogue_uses_long_cache(monkeypatch):
-    cached_payload = PublicSubscriptionCatalogueService.build_catalogue().model_dump(mode="json")
+    cached_payload = PublicSubscriptionCatalogueService.build_catalogue().model_dump(
+        mode="json"
+    )
     get_json = AsyncMock(return_value=cached_payload)
     set_json = AsyncMock(return_value=True)
     monkeypatch.setattr(

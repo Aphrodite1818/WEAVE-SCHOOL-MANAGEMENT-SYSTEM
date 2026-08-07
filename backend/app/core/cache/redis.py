@@ -11,7 +11,6 @@ from redis.asyncio import Redis
 from app.config.logging import get_logger
 from app.config.settings import settings
 
-
 logger = get_logger(__name__)
 _redis_client: Redis | None = None
 
@@ -48,7 +47,9 @@ async def connect_redis() -> None:
         await client.aclose()
         logger.exception("Failed to connect to Redis.")
         if settings.is_production_like:
-            raise RuntimeError("Redis is unavailable during application startup.") from exc
+            raise RuntimeError(
+                "Redis is unavailable during application startup."
+            ) from exc
         return
 
     if settings.CACHE_ENABLED:

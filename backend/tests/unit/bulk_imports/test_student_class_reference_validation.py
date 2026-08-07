@@ -9,7 +9,10 @@ import pytest
 from app.modules.bulk_imports.models import ImportResourceType
 from app.modules.bulk_imports.normalizers import BulkImportNormalizer
 from app.modules.bulk_imports.service import BulkImportService
-from app.modules.bulk_imports.validators import BulkImportValidator, ImportRowValidationResult
+from app.modules.bulk_imports.validators import (
+    BulkImportValidator,
+    ImportRowValidationResult,
+)
 from app.modules.classes.repository import ClassRoomRepository
 
 
@@ -138,7 +141,9 @@ async def test_student_import_resolves_uppercase_class_reference(monkeypatch) ->
 
 
 @pytest.mark.asyncio
-async def test_student_import_allows_class_name_only_for_no_arm_class(monkeypatch) -> None:
+async def test_student_import_allows_class_name_only_for_no_arm_class(
+    monkeypatch,
+) -> None:
     tenant_id = uuid4()
     class_id = uuid4()
     calls: list[dict[str, object]] = []

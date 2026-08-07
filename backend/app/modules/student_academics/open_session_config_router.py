@@ -14,10 +14,12 @@ from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.student_academics.models import AcademicSessionStatus
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.student_academics.schemas import AcademicSessionResponse, AcademicSessionUpdate
+from app.modules.student_academics.schemas import (
+    AcademicSessionResponse,
+    AcademicSessionUpdate,
+)
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
-
 
 router = APIRouter(
     prefix="/tenant-admin/academics/sessions",

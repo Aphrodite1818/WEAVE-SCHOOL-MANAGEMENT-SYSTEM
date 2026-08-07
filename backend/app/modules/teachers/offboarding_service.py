@@ -144,7 +144,9 @@ class TeacherOffboardingService:
             if replacement is None:
                 raise NotFoundException("Replacement teacher membership not found.")
             if replacement.status != TeacherMembershipStatus.ACTIVE:
-                raise BadRequestException("Replacement teacher membership must be active.")
+                raise BadRequestException(
+                    "Replacement teacher membership must be active."
+                )
 
         await db.execute(
             update(ClassRoom)

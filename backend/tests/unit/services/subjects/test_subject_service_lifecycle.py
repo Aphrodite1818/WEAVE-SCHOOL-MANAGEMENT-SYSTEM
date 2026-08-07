@@ -143,7 +143,9 @@ async def test_active_subject_cannot_be_archived() -> None:
         "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
         new=AsyncMock(return_value=subject),
     ):
-        with pytest.raises(ConflictException, match="Active subjects cannot be archived"):
+        with pytest.raises(
+            ConflictException, match="Active subjects cannot be archived"
+        ):
             await SubjectService.archive_subject(
                 db=AsyncMock(),
                 actor=_actor(tenant_id),
@@ -156,15 +158,27 @@ async def test_active_subject_cannot_be_archived() -> None:
     ("counts", "message"),
     [
         (
-            {"active_class_subjects": 1, "active_teacher_links": 0, "active_teacher_assignments": 0},
+            {
+                "active_class_subjects": 1,
+                "active_teacher_links": 0,
+                "active_teacher_assignments": 0,
+            },
             "actively offered",
         ),
         (
-            {"active_class_subjects": 0, "active_teacher_links": 1, "active_teacher_assignments": 0},
+            {
+                "active_class_subjects": 0,
+                "active_teacher_links": 1,
+                "active_teacher_assignments": 0,
+            },
             "active teacher capability links",
         ),
         (
-            {"active_class_subjects": 0, "active_teacher_links": 0, "active_teacher_assignments": 1},
+            {
+                "active_class_subjects": 0,
+                "active_teacher_links": 0,
+                "active_teacher_assignments": 1,
+            },
             "active teacher assignments",
         ),
     ],
@@ -337,7 +351,9 @@ async def test_subject_cannot_be_deleted_while_inactive_mapping_still_exists() -
 
 
 @pytest.mark.asyncio
-async def test_subject_can_be_deleted_after_final_unused_mapping_is_hard_deleted() -> None:
+async def test_subject_can_be_deleted_after_final_unused_mapping_is_hard_deleted() -> (
+    None
+):
     tenant_id = uuid.uuid4()
     subject = _subject(tenant_id, active=False)
     db = AsyncMock()
@@ -432,7 +448,9 @@ async def test_subject_remains_blocked_until_every_class_mapping_is_deleted() ->
 
 
 @pytest.mark.asyncio
-async def test_subject_delete_stays_blocked_when_mapping_history_prevents_mapping_delete() -> None:
+async def test_subject_delete_stays_blocked_when_mapping_history_prevents_mapping_delete() -> (
+    None
+):
     tenant_id = uuid.uuid4()
     subject = _subject(tenant_id, active=False)
     counts = {

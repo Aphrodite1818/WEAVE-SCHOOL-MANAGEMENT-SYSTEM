@@ -138,7 +138,8 @@ class SubscriptionRepository:
         result = await db.execute(
             select(TenantSubscription).where(
                 TenantSubscription.provider == provider,
-                TenantSubscription.provider_subscription_code == provider_subscription_code,
+                TenantSubscription.provider_subscription_code
+                == provider_subscription_code,
             )
         )
         return result.scalar_one_or_none()
@@ -536,9 +537,19 @@ class SubscriptionRepository:
         tenant_id: uuid.UUID,
     ) -> dict[ResourceLimitCode, int]:
         return {
-            ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(db, tenant_id),
-            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(db, tenant_id),
-            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(db, tenant_id),
-            ResourceLimitCode.CLASSES: await SubscriptionRepository.count_classes(db, tenant_id),
-            ResourceLimitCode.SUBJECTS: await SubscriptionRepository.count_subjects(db, tenant_id),
+            ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(
+                db, tenant_id
+            ),
+            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(
+                db, tenant_id
+            ),
+            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(
+                db, tenant_id
+            ),
+            ResourceLimitCode.CLASSES: await SubscriptionRepository.count_classes(
+                db, tenant_id
+            ),
+            ResourceLimitCode.SUBJECTS: await SubscriptionRepository.count_subjects(
+                db, tenant_id
+            ),
         }

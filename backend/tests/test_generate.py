@@ -22,9 +22,7 @@ from app.modules.tenant_admins.models import TenantAdmin
 async def test_generate_report_card_respects_locked_score_requirement(
     db_session,
 ) -> None:
-    enrollment_result = await db_session.execute(
-        select(StudentEnrollment).limit(1)
-    )
+    enrollment_result = await db_session.execute(select(StudentEnrollment).limit(1))
     enrollment = enrollment_result.scalar_one_or_none()
 
     if enrollment is None:
@@ -32,18 +30,13 @@ async def test_generate_report_card_respects_locked_score_requirement(
 
     term_result = await db_session.execute(
         select(AcademicTerm)
-        .where(
-            AcademicTerm.academic_session_id
-            == enrollment.academic_session_id
-        )
+        .where(AcademicTerm.academic_session_id == enrollment.academic_session_id)
         .limit(1)
     )
     term = term_result.scalar_one_or_none()
 
     if term is None:
-        pytest.skip(
-            "No academic term exists for the selected enrollment."
-        )
+        pytest.skip("No academic term exists for the selected enrollment.")
 
     admin = TenantAdmin(
         tenant_id=enrollment.tenant_id,
@@ -56,14 +49,12 @@ async def test_generate_report_card_respects_locked_score_requirement(
         student_id=enrollment.student_id,
     )
 
-    locked_results = (
-        await ReportCardService._finalized_results_for_student(
-            db_session,
-            enrollment.tenant_id,
-            enrollment.student_id,
-            enrollment.academic_session_id,
-            term.id,
-        )
+    locked_results = await ReportCardService._finalized_results_for_student(
+        db_session,
+        enrollment.tenant_id,
+        enrollment.student_id,
+        enrollment.academic_session_id,
+        term.id,
     )
 
     if not locked_results:

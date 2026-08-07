@@ -1,7 +1,6 @@
-#==========================#
+# ==========================#
 #        UTILS.PY          #
-#==========================#
-
+# ==========================#
 
 
 from typing import Any
@@ -12,7 +11,6 @@ def require_api_key(api_key: str | None, provider_name: str) -> str:
     if not api_key:
         raise ValueError(f"{provider_name} API key is not configured")
     return api_key
-
 
 
 def text_from_content(content: Any) -> str:
@@ -36,6 +34,7 @@ def text_from_content(content: Any) -> str:
 
     return str(content)
 
+
 def model_to_dict(value: Any) -> Any:
     """Convert SDK model objects into plain Python dictionaries."""
     if hasattr(value, "model_dump"):
@@ -48,12 +47,10 @@ def model_to_dict(value: Any) -> Any:
         return [model_to_dict(item) for item in value]
 
     if isinstance(value, dict):
-        return {
-            key: model_to_dict(item)
-            for key, item in value.items()
-        }
+        return {key: model_to_dict(item) for key, item in value.items()}
 
     return value
+
 
 def openai_tool_to_anthropic(tool: dict[str, Any]) -> dict[str, Any]:
     """Convert an OpenAI tool schema into Anthropic's tool format."""
@@ -64,9 +61,10 @@ def openai_tool_to_anthropic(tool: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": function.get("name"),
         "description": function.get("description", ""),
-        "input_schema": function.get("parameters", {"type": "object", "properties": {}}),
+        "input_schema": function.get(
+            "parameters", {"type": "object", "properties": {}}
+        ),
     }
-
 
 
 def openai_tool_to_gemini_declaration(tool: dict[str, Any]) -> dict[str, Any]:

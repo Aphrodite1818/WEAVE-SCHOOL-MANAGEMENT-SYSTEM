@@ -16,7 +16,11 @@ from app.core.cache.events import (
     queue_cache_key_invalidation,
 )
 from app.core.cache.manager import CacheManager
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
 from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.auth_identity.schemas import (
@@ -94,9 +98,7 @@ class AuthIdentityService:
             return
         if normalized_type in AuthIdentityService.TENANT_ACTOR_TYPES:
             if tenant_id is None:
-                raise BadRequestException(
-                    "Tenant actor identities require tenant_id."
-                )
+                raise BadRequestException("Tenant actor identities require tenant_id.")
             return
         raise BadRequestException("Unsupported auth identity actor type.")
 
@@ -141,9 +143,7 @@ class AuthIdentityService:
         try:
             await flush_cache_invalidation_events(db)
         except Exception:
-            logger.exception(
-                "Auth identity post-commit cache invalidation failed"
-            )
+            logger.exception("Auth identity post-commit cache invalidation failed")
 
     @staticmethod
     def discard_pending_invalidations(db: AsyncSession) -> None:
@@ -167,9 +167,7 @@ class AuthIdentityService:
             identifier_type,
             exclude_identity_id,
         ):
-            raise ConflictException(
-                "This login identifier is already in use."
-            )
+            raise ConflictException("This login identifier is already in use.")
 
     @staticmethod
     async def create_for_actor(
@@ -197,9 +195,7 @@ class AuthIdentityService:
             actor_type,
             payload.actor_id,
         ):
-            raise ConflictException(
-                "This actor already has a login identity."
-            )
+            raise ConflictException("This actor already has a login identity.")
 
         record = AuthIdentity(
             tenant_id=tenant_id,
@@ -270,9 +266,7 @@ class AuthIdentityService:
     def lookup_table_for_actor_type(
         actor_type: ActorType,
     ) -> str:
-        return AuthIdentityService.ACTOR_LOOKUP_TABLES[
-            ActorType(actor_type)
-        ]
+        return AuthIdentityService.ACTOR_LOOKUP_TABLES[ActorType(actor_type)]
 
     @staticmethod
     async def resolve_identifier(
@@ -347,11 +341,7 @@ class AuthIdentityService:
                 AUTH_IDENTITY_FOUND_FIELD: True,
                 "actor_type": identity.actor_type.value,
                 "actor_id": str(identity.actor_id),
-                "tenant_id": (
-                    str(identity.tenant_id)
-                    if identity.tenant_id
-                    else None
-                ),
+                "tenant_id": (str(identity.tenant_id) if identity.tenant_id else None),
                 "lookup_table": resolution.lookup_table,
             },
             ttl=AUTH_IDENTITY_CACHE_TTL_SECONDS,

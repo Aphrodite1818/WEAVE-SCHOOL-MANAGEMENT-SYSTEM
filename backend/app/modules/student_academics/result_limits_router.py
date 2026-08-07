@@ -14,7 +14,10 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
 )
 from app.core.exceptions import BadRequestException
-from app.modules.student_academics.models import AcademicResultStatus, SchoolAssessmentConfig
+from app.modules.student_academics.models import (
+    AcademicResultStatus,
+    SchoolAssessmentConfig,
+)
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
     StudentSubjectResultResponse,
@@ -26,11 +29,15 @@ from app.modules.students.models import Student
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-admin_router = APIRouter(prefix="/tenant-admin/academics", tags=["Tenant Admin Academics"])
+admin_router = APIRouter(
+    prefix="/tenant-admin/academics", tags=["Tenant Admin Academics"]
+)
 teacher_router = APIRouter(prefix="/teachers/academics", tags=["Teacher Academics"])
 student_router = APIRouter(prefix="/students/academics", tags=["Student Academics"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
 CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_student)]
 
@@ -85,7 +92,9 @@ def _validate_score(value, maximum: int, label: str) -> None:
         )
 
 
-def _validate_payload(payload: StudentSubjectResultUpsert, config: SchoolAssessmentConfig) -> None:
+def _validate_payload(
+    payload: StudentSubjectResultUpsert, config: SchoolAssessmentConfig
+) -> None:
     _validate_score(payload.test_score, config.test_max, "Test")
     _validate_score(payload.assessment_score, config.assessment_max, "Assessment")
     _validate_score(payload.exam_score, config.exam_max, "Exam")
@@ -137,7 +146,9 @@ async def upsert_admin_result_with_limits(
 ) -> StudentSubjectResultResponse:
     config = await _require_limits(db, current_admin.tenant_id)
     _validate_payload(payload, config)
-    return await StudentAcademicService.upsert_student_result(db, current_admin, payload)
+    return await StudentAcademicService.upsert_student_result(
+        db, current_admin, payload
+    )
 
 
 @teacher_router.post("/results", response_model=StudentSubjectResultResponse)
@@ -148,10 +159,14 @@ async def upsert_teacher_result_with_limits(
 ) -> StudentSubjectResultResponse:
     config = await _require_limits(db, current_teacher.tenant_id)
     _validate_payload(payload, config)
-    return await StudentAcademicService.upsert_student_result(db, current_teacher, payload)
+    return await StudentAcademicService.upsert_student_result(
+        db, current_teacher, payload
+    )
 
 
-@admin_router.patch("/results/{result_id}/status", response_model=StudentSubjectResultResponse)
+@admin_router.patch(
+    "/results/{result_id}/status", response_model=StudentSubjectResultResponse
+)
 async def update_result_status_with_limits(
     result_id: UUID,
     payload: StudentSubjectResultStatusUpdate,

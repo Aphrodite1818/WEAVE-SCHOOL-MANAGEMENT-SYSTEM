@@ -18,7 +18,6 @@ from app.modules.superadmin.security_alert_service import (
     SecurityAlertService,
 )
 
-
 logger = get_logger(__name__)
 
 
@@ -95,11 +94,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         """Return an application error and run queued notifications."""
 
-        log_fn = (
-            logger.warning
-            if exc.status_code < 500
-            else logger.error
-        )
+        log_fn = logger.warning if exc.status_code < 500 else logger.error
 
         log_fn(
             "Application error",
@@ -130,9 +125,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         # FastAPI automatically runs BackgroundTasks after normal
         # responses. Security flows can commit containment changes
         # and then raise AppException. Preserve those tasks.
-        background_tasks = (
-            SecurityAlertService.take_pending_background_tasks()
-        )
+        background_tasks = SecurityAlertService.take_pending_background_tasks()
 
         return JSONResponse(
             status_code=exc.status_code,

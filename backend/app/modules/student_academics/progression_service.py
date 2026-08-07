@@ -9,7 +9,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.models import ClassRoom
@@ -84,7 +88,10 @@ class AcademicProgressionService:
             )
             from app.modules.school_calendar.repository import SchoolCalendarRepository
 
-            if await SchoolCalendarRepository.get_configuration(db, actor.tenant_id) is None:
+            if (
+                await SchoolCalendarRepository.get_configuration(db, actor.tenant_id)
+                is None
+            ):
                 raise ConflictException(
                     "Configure the school calendar before opening an academic session.",
                     payload={
@@ -153,17 +160,21 @@ class AcademicProgressionService:
         academic_session_id: uuid.UUID,
     ) -> list[StudentEnrollment]:
         rows = (
-            await db.execute(
-                select(StudentEnrollment)
-                .where(
-                    StudentEnrollment.tenant_id == tenant_id,
-                    StudentEnrollment.academic_session_id == academic_session_id,
-                    StudentEnrollment.is_current.is_(True),
+            (
+                await db.execute(
+                    select(StudentEnrollment)
+                    .where(
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.academic_session_id == academic_session_id,
+                        StudentEnrollment.is_current.is_(True),
+                    )
+                    .order_by(StudentEnrollment.student_id)
+                    .with_for_update()
                 )
-                .order_by(StudentEnrollment.student_id)
-                .with_for_update()
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -408,13 +419,11 @@ class AcademicProgressionService:
             if session is None:
                 raise NotFoundException("Academic session not found.")
 
-            existing = (
-                await StudentProgressionRepository.get_run_by_idempotency_key(
-                    db,
-                    actor.tenant_id,
-                    idempotency_key,
-                    lock=True,
-                )
+            existing = await StudentProgressionRepository.get_run_by_idempotency_key(
+                db,
+                actor.tenant_id,
+                idempotency_key,
+                lock=True,
             )
             if existing is None:
                 existing = await StudentProgressionRepository.get_run_by_session(
@@ -441,10 +450,12 @@ class AcademicProgressionService:
                     raise BadRequestException(
                         "Configure next_academic_session_id before closure."
                     )
-                preview = await StudentAcademicService.academic_session_dependency_preview(
-                    db,
-                    actor.tenant_id,
-                    session.id,
+                preview = (
+                    await StudentAcademicService.academic_session_dependency_preview(
+                        db,
+                        actor.tenant_id,
+                        session.id,
+                    )
                 )
                 if not preview.can_progress:
                     StudentAcademicService._raise_dependency_conflict(
@@ -464,10 +475,7 @@ class AcademicProgressionService:
                     raise ConflictException(
                         "The next academic session must still be draft."
                     )
-                if (
-                    existing is not None
-                    and existing.idempotency_key != idempotency_key
-                ):
+                if existing is not None and existing.idempotency_key != idempotency_key:
                     raise ConflictException(
                         "This academic session already has a progression run."
                     )
@@ -603,13 +611,11 @@ class AcademicProgressionService:
             raise
         except Exception as exc:
             await db.rollback()
-            failed = (
-                await StudentProgressionRepository.get_run_by_idempotency_key(
-                    db,
-                    actor.tenant_id,
-                    idempotency_key,
-                    lock=True,
-                )
+            failed = await StudentProgressionRepository.get_run_by_idempotency_key(
+                db,
+                actor.tenant_id,
+                idempotency_key,
+                lock=True,
             )
             if failed is None:
                 session = await AcademicSessionLifecycleRepository.get_by_id(
@@ -617,18 +623,13 @@ class AcademicProgressionService:
                     actor.tenant_id,
                     session_id,
                 )
-                if (
-                    session is not None
-                    and session.next_academic_session_id is not None
-                ):
+                if session is not None and session.next_academic_session_id is not None:
                     failed = await StudentProgressionRepository.add_run(
                         db,
                         StudentProgressionRun(
                             tenant_id=actor.tenant_id,
                             academic_session_id=session.id,
-                            next_academic_session_id=(
-                                session.next_academic_session_id
-                            ),
+                            next_academic_session_id=(session.next_academic_session_id),
                             idempotency_key=idempotency_key,
                             status=StudentProgressionRunStatus.FAILED,
                             total_students=0,
@@ -719,8 +720,7 @@ class AcademicProgressionService:
         run_payload = StudentProgressionRunDetailResponse(
             **run_summary.model_dump(),
             items=[
-                StudentProgressionItemResponse.model_validate(item)
-                for item in items
+                StudentProgressionItemResponse.model_validate(item) for item in items
             ],
         )
 

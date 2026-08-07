@@ -25,9 +25,7 @@ def get_allowed_frontend_origins() -> set[str]:
     allowed_origins = getattr(settings, "ALLOWED_ORIGINS", [])
 
     return {
-        normalize_url(origin)
-        for origin in allowed_origins
-        if origin and origin != "*"
+        normalize_url(origin) for origin in allowed_origins if origin and origin != "*"
     }
 
 

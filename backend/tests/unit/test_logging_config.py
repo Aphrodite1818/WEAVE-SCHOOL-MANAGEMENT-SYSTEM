@@ -45,5 +45,7 @@ def test_context_formatter_uses_plain_output_for_uvicorn_access_records():
 
     output = formatter.format(record)
 
-    assert 'uvicorn.access | 127.0.0.1:11409 - "GET /openapi.json HTTP/1.1" 200' in output
+    assert (
+        'uvicorn.access | 127.0.0.1:11409 - "GET /openapi.json HTTP/1.1" 200' in output
+    )
     assert "source=" not in output

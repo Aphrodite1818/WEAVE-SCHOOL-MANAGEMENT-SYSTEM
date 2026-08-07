@@ -102,7 +102,9 @@ async def test_missing_email_identity_raises_invalid_credentials(monkeypatch) ->
 
 
 @pytest.mark.asyncio
-async def test_unverified_tenant_admin_login_returns_verification_metadata(monkeypatch) -> None:
+async def test_unverified_tenant_admin_login_returns_verification_metadata(
+    monkeypatch,
+) -> None:
     """Pending registrations must send the login form to OTP verification."""
 
     tenant_id = uuid4()
@@ -142,7 +144,9 @@ async def test_unverified_tenant_admin_login_returns_verification_metadata(monke
         "resolve_identifier",
         resolve_identifier,
     )
-    monkeypatch.setattr(login_service.TenantAdminRepository, "get_by_id", get_admin_by_id)
+    monkeypatch.setattr(
+        login_service.TenantAdminRepository, "get_by_id", get_admin_by_id
+    )
     monkeypatch.setattr(login_service, "verify_password", lambda password, hashed: True)
 
     with pytest.raises(AccountNotVerifiedException) as exc_info:
@@ -161,7 +165,9 @@ async def test_unverified_tenant_admin_login_returns_verification_metadata(monke
 
 
 @pytest.mark.asyncio
-async def test_admission_number_never_probes_identity_or_superadmin(monkeypatch) -> None:
+async def test_admission_number_never_probes_identity_or_superadmin(
+    monkeypatch,
+) -> None:
     """Student admission numbers are not part of the email-account login path."""
 
     async def unexpected_lookup(*_args, **_kwargs):

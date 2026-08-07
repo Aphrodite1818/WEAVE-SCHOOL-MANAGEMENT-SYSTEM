@@ -12,7 +12,6 @@ from app.config.security import hash_password, verify_password
 from app.config.settings import settings
 from app.modules.superadmin.models import SuperAdmin
 
-
 logger = get_logger(__name__)
 
 
@@ -24,7 +23,9 @@ class SuperadminBootstrapService:
         email = (settings.BOOTSTRAP_SUPERADMIN_EMAIL or "").strip().lower()
         password = settings.BOOTSTRAP_SUPERADMIN_PASSWORD or ""
         if not email or not password:
-            logger.info("Bootstrap superadmin skipped; email or password is not configured.")
+            logger.info(
+                "Bootstrap superadmin skipped; email or password is not configured."
+            )
             return
 
         try:

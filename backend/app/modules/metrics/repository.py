@@ -76,7 +76,9 @@ class MetricsRepository:
 
     @staticmethod
     async def count(db: AsyncSession, model: Any, *filters: ColumnElement[bool]) -> int:
-        result = await db.execute(select(func.count()).select_from(model).where(*filters))
+        result = await db.execute(
+            select(func.count()).select_from(model).where(*filters)
+        )
         return int(result.scalar_one())
 
     @staticmethod
@@ -97,7 +99,8 @@ class MetricsRepository:
                     .label("active_tenants"),
                     func.count(Tenant.id)
                     .filter(
-                        Tenant.verification_status == TenantVerificationStatus.PENDING_VERIFICATION,
+                        Tenant.verification_status
+                        == TenantVerificationStatus.PENDING_VERIFICATION,
                         Tenant.is_deleted.is_(False),
                     )
                     .label("pending_tenants"),
@@ -123,7 +126,9 @@ class MetricsRepository:
         growth_period = func.date_trunc("month", Tenant.created_at)
         rows = (
             await db.execute(
-                select(growth_period.label("period"), func.count(Tenant.id).label("value"))
+                select(
+                    growth_period.label("period"), func.count(Tenant.id).label("value")
+                )
                 .where(Tenant.is_deleted.is_(False))
                 .group_by(growth_period)
                 .order_by(growth_period)
@@ -132,7 +137,9 @@ class MetricsRepository:
         return [PeriodCount(period=row.period, value=int(row.value)) for row in rows]
 
     @staticmethod
-    async def subscription_plan_distribution(db: AsyncSession) -> dict[SubscriptionPlan, int]:
+    async def subscription_plan_distribution(
+        db: AsyncSession,
+    ) -> dict[SubscriptionPlan, int]:
         rows = (
             await db.execute(
                 select(Tenant.plan, func.count(Tenant.id))
@@ -143,7 +150,9 @@ class MetricsRepository:
         return {row[0]: int(row[1]) for row in rows}
 
     @staticmethod
-    async def tenant_admin_counts(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
+    async def tenant_admin_counts(
+        db: AsyncSession, tenant_id: uuid.UUID
+    ) -> dict[str, int]:
         """Return tenant dashboard counts with one database round trip.
 
         The previous implementation ran each count as a separate query. That is
@@ -191,14 +200,16 @@ class MetricsRepository:
                         Teacher,
                         Teacher.tenant_id == tenant_id,
                         Teacher.teacher_account.has(
-                            TeacherAccount.account_status == TeacherAccountStatus.PENDING,
+                            TeacherAccount.account_status
+                            == TeacherAccountStatus.PENDING,
                         ),
                     ).label("pending_teachers"),
                     MetricsRepository._count_subquery(
                         Teacher,
                         Teacher.tenant_id == tenant_id,
                         Teacher.teacher_account.has(
-                            TeacherAccount.account_status == TeacherAccountStatus.ACTIVE,
+                            TeacherAccount.account_status
+                            == TeacherAccountStatus.ACTIVE,
                         ),
                     ).label("active_teachers"),
                     MetricsRepository._count_subquery(
@@ -285,7 +296,10 @@ class MetricsRepository:
                 .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
-        return [ClassPopulation(name=row.name, arm=row.arm, value=int(row[2])) for row in rows]
+        return [
+            ClassPopulation(name=row.name, arm=row.arm, value=int(row[2]))
+            for row in rows
+        ]
 
     @staticmethod
     async def result_grade_counts(
@@ -330,7 +344,8 @@ class MetricsRepository:
             )
         ).all()
         return [
-            SubjectPerformance(name=row[0], average=round(float(row[1] or 0), 2)) for row in rows
+            SubjectPerformance(name=row[0], average=round(float(row[1] or 0), 2))
+            for row in rows
         ]
 
     @staticmethod
@@ -342,7 +357,9 @@ class MetricsRepository:
     ) -> list[ClassPopulation]:
         rows = (
             await db.execute(
-                select(ClassRoom.id, ClassRoom.name, ClassRoom.arm, func.count(Student.id))
+                select(
+                    ClassRoom.id, ClassRoom.name, ClassRoom.arm, func.count(Student.id)
+                )
                 .select_from(ClassRoom)
                 .outerjoin(
                     Student,
@@ -359,7 +376,10 @@ class MetricsRepository:
                 .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
-        return [ClassPopulation(name=row.name, arm=row.arm, value=int(row[3])) for row in rows]
+        return [
+            ClassPopulation(name=row.name, arm=row.arm, value=int(row[3]))
+            for row in rows
+        ]
 
     @staticmethod
     async def active_teacher_assignment_count(
@@ -422,7 +442,8 @@ class MetricsRepository:
                 await db.execute(
                     select(Announcement.id).where(
                         Announcement.tenant_id == tenant_id,
-                        Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
+                        Announcement.created_by_actor_type
+                        == CommunicationActorType.TEACHER,
                         Announcement.created_by_actor_id == teacher_id,
                     )
                 )
@@ -443,7 +464,8 @@ class MetricsRepository:
                 select(Announcement.category, func.count(Announcement.id))
                 .where(
                     Announcement.tenant_id == tenant_id,
-                    Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
+                    Announcement.created_by_actor_type
+                    == CommunicationActorType.TEACHER,
                     Announcement.created_by_actor_id == teacher_id,
                 )
                 .group_by(Announcement.category)
@@ -507,7 +529,10 @@ class MetricsRepository:
         return (
             total,
             read_count,
-            [LabelCount(label=label, value=value) for label, value in by_source.items()],
+            [
+                LabelCount(label=label, value=value)
+                for label, value in by_source.items()
+            ],
         )
 
     @staticmethod
@@ -519,11 +544,16 @@ class MetricsRepository:
     ) -> list[StudentResultMetric]:
         rows = (
             await db.execute(
-                select(StudentSubjectResult.grade, StudentSubjectResult.total_score).where(
+                select(
+                    StudentSubjectResult.grade, StudentSubjectResult.total_score
+                ).where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.student_id == student_id,
                     StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
                 )
             )
         ).all()
-        return [StudentResultMetric(grade=row.grade, total_score=row.total_score) for row in rows]
+        return [
+            StudentResultMetric(grade=row.grade, total_score=row.total_score)
+            for row in rows
+        ]

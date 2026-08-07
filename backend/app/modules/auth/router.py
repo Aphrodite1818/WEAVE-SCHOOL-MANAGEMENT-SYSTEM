@@ -6,7 +6,15 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    Request,
+    Response,
+    status,
+)
 
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
@@ -47,7 +55,13 @@ REFRESH_TOKEN_COOKIE_NAME = "weave_refresh_token"
 REFRESH_COOKIE_PATH = f"{settings.API_V1_PREFIX}/auth"
 
 CurrentActorDependency = Annotated[
-    SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount,
+    SuperAdmin
+    | TenantAdmin
+    | Teacher
+    | Parent
+    | Student
+    | TeacherAccount
+    | ParentAccount,
     Depends(get_current_actor),
 ]
 
@@ -223,7 +237,9 @@ class LoginResponse(Token):
     legal_compliance_accepted_at: str | None = None
 
 
-def _legal_identity_from_authenticated_actor(actor: AuthenticatedActor) -> tuple[str, str]:
+def _legal_identity_from_authenticated_actor(
+    actor: AuthenticatedActor,
+) -> tuple[str, str]:
     actor_type = str(actor.actor_type)
     account_type = str(actor.account_type)
     user_meta = actor.user.meta if actor.user and actor.user.meta else {}
@@ -233,7 +249,11 @@ def _legal_identity_from_authenticated_actor(actor: AuthenticatedActor) -> tuple
         return "parent_account", str(user_meta["parent_account_id"])
     if actor_type in {"teacher_account", "parent_account"}:
         return actor_type, str(actor.actor_id)
-    if account_type in {"teacher_account", "parent_account"} and actor.user and actor.user.id:
+    if (
+        account_type in {"teacher_account", "parent_account"}
+        and actor.user
+        and actor.user.id
+    ):
         return account_type, str(actor.user.id)
     return actor_type, str(actor.actor_id)
 
@@ -261,7 +281,9 @@ def _apply_legal_status_to_login_response(
     response.legal_compliance_accepted_at = accepted_at_value
     if response.user is not None:
         response.user.legal_compliance_required = response.legal_compliance_required
-        response.user.legal_compliance_policy_version = response.legal_compliance_policy_version
+        response.user.legal_compliance_policy_version = (
+            response.legal_compliance_policy_version
+        )
         response.user.legal_compliance_accepted_at = accepted_at_value
     return response
 

@@ -407,10 +407,7 @@ class TeacherMembershipSubject(BaseModel):
             "tenant_id",
             "teacher_membership_id",
             "subject_id",
-            name=(
-                "uq_teacher_membership_subjects_"
-                "tenant_membership_subject"
-            ),
+            name=("uq_teacher_membership_subjects_" "tenant_membership_subject"),
         ),
         Index(
             "ix_teacher_membership_subjects_membership",

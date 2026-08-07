@@ -1,6 +1,6 @@
-#==========================#
+# ==========================#
 #      core.cache.base     #
-#==========================#
+# ==========================#
 """Helpers for building clean, deterministic cache keys."""
 
 from __future__ import annotations

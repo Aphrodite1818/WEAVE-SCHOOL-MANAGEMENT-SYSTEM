@@ -30,7 +30,6 @@ from app.modules.communications.recipient_resolver import (
 )
 from app.modules.communications.repository import CommunicationRepository
 
-
 _MESSAGE_PATHS = {
     CommunicationActorType.SUPERADMIN: "/superadmin/messages",
     CommunicationActorType.TENANT_ADMIN: "/admin/messages",
@@ -40,21 +39,27 @@ _MESSAGE_PATHS = {
 }
 
 
-def _message_action_path(actor_type: CommunicationActorType, conversation_id: uuid.UUID) -> str:
+def _message_action_path(
+    actor_type: CommunicationActorType, conversation_id: uuid.UUID
+) -> str:
     base_path = _MESSAGE_PATHS[actor_type]
     return f"{base_path}?conversation={conversation_id}"
 
 
 class MessagingService:
     @staticmethod
-    async def available_recipients(db: AsyncSession, *, actor) -> list[ResolvedRecipient]:
+    async def available_recipients(
+        db: AsyncSession, *, actor
+    ) -> list[ResolvedRecipient]:
         return await RecipientResolver.available_direct_recipients(db, actor)
 
     @staticmethod
     async def create_conversation(db: AsyncSession, *, actor, payload) -> Conversation:
         sender_type = actor_type_for(actor)
         sender_tenant_id = actor_tenant_id(actor)
-        recipient = await RecipientResolver.resolve_direct_target(db, actor, payload.recipient)
+        recipient = await RecipientResolver.resolve_direct_target(
+            db, actor, payload.recipient
+        )
         tenant_id = sender_tenant_id or recipient.tenant_id
         existing = await CommunicationRepository.find_direct_conversation(
             db,
@@ -70,9 +75,12 @@ class MessagingService:
         else:
             conversation = Conversation(
                 tenant_id=tenant_id,
-                conversation_type=ConversationType.SUPPORT
-                if CommunicationActorType.SUPERADMIN in {sender_type, recipient.actor_type}
-                else ConversationType.DIRECT,
+                conversation_type=(
+                    ConversationType.SUPPORT
+                    if CommunicationActorType.SUPERADMIN
+                    in {sender_type, recipient.actor_type}
+                    else ConversationType.DIRECT
+                ),
                 created_by_actor_type=sender_type,
                 created_by_actor_id=actor.id,
                 subject=payload.subject,
@@ -149,7 +157,9 @@ class MessagingService:
     ) -> Message:
         sender_type = actor_type_for(actor)
         active_participants = (
-            participants if participants is not None else list(conversation.participants)
+            participants
+            if participants is not None
+            else list(conversation.participants)
         )
         sender_participant = next(
             (
@@ -183,7 +193,10 @@ class MessagingService:
                     label="Conversation participant",
                 )
                 for participant in active_participants
-                if not (participant.actor_type == sender_type and participant.actor_id == actor.id)
+                if not (
+                    participant.actor_type == sender_type
+                    and participant.actor_id == actor.id
+                )
                 and participant.left_at is None
             ]
             for recipient in recipients:
@@ -194,7 +207,9 @@ class MessagingService:
                     source_id=message.id,
                     title="New direct message",
                     preview=body,
-                    action_path=_message_action_path(recipient.actor_type, conversation.id),
+                    action_path=_message_action_path(
+                        recipient.actor_type, conversation.id
+                    ),
                     tenant_id=conversation.tenant_id,
                 )
         await db.refresh(message)
@@ -202,7 +217,12 @@ class MessagingService:
 
     @staticmethod
     async def add_message(
-        db: AsyncSession, *, actor, conversation_id: uuid.UUID, body: str, notify: bool = True
+        db: AsyncSession,
+        *,
+        actor,
+        conversation_id: uuid.UUID,
+        body: str,
+        notify: bool = True,
     ) -> Message:
         conversation = await MessagingService.get_conversation(
             db, actor=actor, conversation_id=conversation_id
@@ -212,12 +232,18 @@ class MessagingService:
         )
 
     @staticmethod
-    async def mark_read(db: AsyncSession, *, actor, conversation_id: uuid.UUID) -> Conversation:
+    async def mark_read(
+        db: AsyncSession, *, actor, conversation_id: uuid.UUID
+    ) -> Conversation:
         conversation = await MessagingService.get_conversation(
             db, actor=actor, conversation_id=conversation_id
         )
         latest = max(
-            (message for message in conversation.messages if message.deleted_at is None),
+            (
+                message
+                for message in conversation.messages
+                if message.deleted_at is None
+            ),
             key=lambda item: item.created_at,
             default=None,
         )
@@ -230,7 +256,9 @@ class MessagingService:
                 ):
                     participant.last_read_message_id = latest.id
             message_ids = [
-                message.id for message in conversation.messages if message.deleted_at is None
+                message.id
+                for message in conversation.messages
+                if message.deleted_at is None
             ]
             if message_ids:
                 await db.execute(
@@ -238,11 +266,15 @@ class MessagingService:
                     .where(
                         NotificationDelivery.recipient_actor_type == current_actor_type,
                         NotificationDelivery.recipient_actor_id == actor.id,
-                        NotificationDelivery.source_type == NotificationSourceType.MESSAGE,
+                        NotificationDelivery.source_type
+                        == NotificationSourceType.MESSAGE,
                         NotificationDelivery.source_id.in_(message_ids),
                         NotificationDelivery.status == NotificationStatus.UNREAD,
                     )
-                    .values(status=NotificationStatus.READ, read_at=datetime.now(timezone.utc))
+                    .values(
+                        status=NotificationStatus.READ,
+                        read_at=datetime.now(timezone.utc),
+                    )
                 )
         await db.flush()
         return conversation

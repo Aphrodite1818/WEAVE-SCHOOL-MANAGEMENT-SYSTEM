@@ -29,10 +29,11 @@ from app.modules.subjects.service import SubjectService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(tags=["Subjects"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTenantAdmin: TypeAlias = Annotated[
+    TenantAdmin, Depends(get_current_tenant_admin)
+]
 CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
 CurrentSubjectViewer: TypeAlias = Annotated[
     TenantAdmin | Teacher, Depends(get_current_tenant_member)
@@ -90,7 +91,9 @@ async def create_subject(
         actor=current_user,
         subject_data=payload,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return subject
 
 
@@ -107,7 +110,9 @@ async def list_subjects(
     is_active: bool | None = Query(default=None),
     include_archived: bool = Query(default=False),
     search: str | None = Query(default=None, min_length=1, max_length=100),
-    lifecycle_status: Literal["active", "inactive", "archived"] | None = Query(default=None),
+    lifecycle_status: Literal["active", "inactive", "archived"] | None = Query(
+        default=None
+    ),
 ) -> SubjectListResponse:
     """List subjects."""
 
@@ -119,7 +124,9 @@ async def list_subjects(
         is_active=is_active,
         include_archived=include_archived and isinstance(current_user, TenantAdmin),
         search=search,
-        lifecycle_status=lifecycle_status if isinstance(current_user, TenantAdmin) else None,
+        lifecycle_status=(
+            lifecycle_status if isinstance(current_user, TenantAdmin) else None
+        ),
     )
 
     return SubjectListResponse(
@@ -194,7 +201,9 @@ async def activate_subject(
         actor=current_user,
         subject_id=subject_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return subject
 
 
@@ -217,7 +226,9 @@ async def deactivate_subject(
         actor=current_user,
         subject_id=subject_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return subject
 
 
@@ -238,7 +249,9 @@ async def archive_subject(
         actor=current_user,
         subject_id=subject_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return subject
 
 
@@ -259,7 +272,9 @@ async def restore_subject(
         actor=current_user,
         subject_id=subject_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
     return subject
 
 
@@ -282,4 +297,6 @@ async def delete_subject(
         actor=current_user,
         subject_id=subject_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(
+        current_user.tenant_id
+    )
