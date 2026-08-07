@@ -1,6 +1,7 @@
 import { Navigate } from "react-router-dom";
 
 import LandingPage from "./LandingPage";
+import { authSession } from "../../services/api";
 
 const isStandalonePwa = () => {
   if (typeof window === "undefined") return false;
@@ -12,7 +13,12 @@ const isStandalonePwa = () => {
 };
 
 function PwaAwareLandingPage() {
-  if (isStandalonePwa()) return <Navigate to="/login" replace />;
+  const hasRememberedSession = Boolean(authSession.getUser());
+
+  if (isStandalonePwa() || hasRememberedSession) {
+    return <Navigate to="/login?resume=1" replace />;
+  }
+
   return <LandingPage />;
 }
 
