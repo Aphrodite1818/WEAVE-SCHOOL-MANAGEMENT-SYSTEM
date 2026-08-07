@@ -172,7 +172,9 @@ def generate_student(email_counter):
     parent_email_2 = next_parent_email(email_counter[0])
     email_counter[0] += 1
     # Second relationship should differ from the first where sensible.
-    remaining = [r for r in PARENT_RELATIONSHIPS if r != parent_relationship_1] or PARENT_RELATIONSHIPS
+    remaining = [
+        r for r in PARENT_RELATIONSHIPS if r != parent_relationship_1
+    ] or PARENT_RELATIONSHIPS
     parent_relationship_2 = random.choice(remaining)
 
     return [

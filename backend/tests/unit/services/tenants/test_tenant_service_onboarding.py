@@ -34,15 +34,19 @@ async def test_update_tenant_profile_marks_onboarding_complete_when_prefix_exist
     )
     db = AsyncMock()
 
-    with patch(
-        "app.tenant_management.service.TenantRepository.get_by_id",
-        new=AsyncMock(return_value=tenant),
-    ), patch(
-        "app.tenant_management.service.TenantRepository.get_by_admission_number_prefix",
-        new=AsyncMock(return_value=None),
-    ), patch(
-        "app.tenant_management.service.TenantRepository.save",
-        new=AsyncMock(side_effect=lambda _db, saved_tenant: saved_tenant),
+    with (
+        patch(
+            "app.tenant_management.service.TenantRepository.get_by_id",
+            new=AsyncMock(return_value=tenant),
+        ),
+        patch(
+            "app.tenant_management.service.TenantRepository.get_by_admission_number_prefix",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.tenant_management.service.TenantRepository.save",
+            new=AsyncMock(side_effect=lambda _db, saved_tenant: saved_tenant),
+        ),
     ):
         updated = await TenantService.update_tenant_profile(
             db=db,
@@ -81,12 +85,15 @@ async def test_update_tenant_profile_marks_onboarding_incomplete_when_prefix_rem
     )
     db = AsyncMock()
 
-    with patch(
-        "app.tenant_management.service.TenantRepository.get_by_id",
-        new=AsyncMock(return_value=tenant),
-    ), patch(
-        "app.tenant_management.service.TenantRepository.save",
-        new=AsyncMock(side_effect=lambda _db, saved_tenant: saved_tenant),
+    with (
+        patch(
+            "app.tenant_management.service.TenantRepository.get_by_id",
+            new=AsyncMock(return_value=tenant),
+        ),
+        patch(
+            "app.tenant_management.service.TenantRepository.save",
+            new=AsyncMock(side_effect=lambda _db, saved_tenant: saved_tenant),
+        ),
     ):
         updated = await TenantService.update_tenant_profile(
             db=db,
@@ -118,12 +125,15 @@ async def test_general_tenant_update_recomputes_onboarding_from_real_fields():
     )
     db = AsyncMock()
 
-    with patch(
-        "app.tenant_management.service.TenantRepository.get_by_id",
-        new=AsyncMock(return_value=tenant),
-    ), patch(
-        "app.tenant_management.service.TenantRepository.save",
-        new=AsyncMock(side_effect=lambda _db, saved_tenant: saved_tenant),
+    with (
+        patch(
+            "app.tenant_management.service.TenantRepository.get_by_id",
+            new=AsyncMock(return_value=tenant),
+        ),
+        patch(
+            "app.tenant_management.service.TenantRepository.save",
+            new=AsyncMock(side_effect=lambda _db, saved_tenant: saved_tenant),
+        ),
     ):
         updated = await TenantService.update_tenant_profile(
             db=db,

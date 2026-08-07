@@ -79,10 +79,7 @@ class TenantIdentifierService:
         if not prefix or not normalized.startswith(prefix):
             return False
         numeric_part = normalized[len(prefix) :]
-        return (
-            len(numeric_part) == cls.YEAR_DIGITS + cls.RANDOM_DIGITS
-            and numeric_part.isdigit()
-        )
+        return len(numeric_part) == cls.YEAR_DIGITS + cls.RANDOM_DIGITS and numeric_part.isdigit()
 
     @staticmethod
     def _build_candidate(prefix: str) -> str:

@@ -319,11 +319,10 @@ def create_app() -> FastAPI:
     app.include_router(subscriptions_router, prefix="/api/v1")
     app.include_router(user_guides_router, prefix="/api/v1")
 
-
     @app.post(
-    "/internal/diagnostics/sentry-error",
-    tags=["Diagnostics"],
-    include_in_schema=False,
+        "/internal/diagnostics/sentry-error",
+        tags=["Diagnostics"],
+        include_in_schema=False,
     )
     async def test_sentry_error(
         current_superadmin: SuperAdmin = Depends(get_current_superadmin),
@@ -331,8 +330,6 @@ def create_app() -> FastAPI:
         _ = current_superadmin
         raise RuntimeError("WEAVE_SENTRY_DIAGNOSTIC_TEST")
 
-
-    
     @app.get("/health/live", tags=["Health"])
     async def liveness() -> dict[str, str]:
         return {"status": "ok"}

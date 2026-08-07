@@ -49,9 +49,7 @@ class TenantBrandingRepository:
         """Fetch branding for a tenant with a row-level lock."""
 
         result = await db.execute(
-            select(TenantBranding)
-            .where(TenantBranding.tenant_id == tenant_id)
-            .with_for_update()
+            select(TenantBranding).where(TenantBranding.tenant_id == tenant_id).with_for_update()
         )
         return result.scalar_one_or_none()
 
