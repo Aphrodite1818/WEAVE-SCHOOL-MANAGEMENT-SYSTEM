@@ -1,17 +1,17 @@
-name: Format backend hardening diff
+name: Diagnose Resend unit tests
 
 on:
   push:
     branches:
-      - Attendance
+      - feat/resend-production-email
     paths:
       - ".github/workflows/format-backend-hardening.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  format:
+  diagnose:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: Attendance
+          ref: feat/resend-production-email
           fetch-depth: 0
 
       - name: Set up Python
@@ -32,33 +32,20 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
 
-      - name: Format all changed backend Python files
+      - name: Capture unit-test output
         shell: bash
         run: |
-          BASELINE_SHA=6a434994d2b2397d45c6716d89c6f1a3eda8ea0f
-          mapfile -t files < <(
-            git diff --name-only --diff-filter=ACMR "$BASELINE_SHA"...HEAD -- ../backend \
-              | sed 's#^backend/##' \
-              | grep -E '\.py$' || true
-          )
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No changed Python files to format."
-            exit 0
-          fi
-          printf 'Formatting %s backend Python files.\n' "${#files[@]}"
-          uv run ruff format "${files[@]}"
+          set +e
+          uv run pytest tests/unit -q > ../unit-test-output.txt 2>&1
+          code=$?
+          echo "pytest_exit_code=$code" >> ../unit-test-output.txt
+          exit 0
 
-      - name: Commit formatting
-        working-directory: .
-        run: |
-          if git diff --quiet; then
-            echo "No formatting changes required."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend
-          git commit -m "style: format backend hardening changes"
-          git push origin HEAD:Attendance
+      - name: Upload unit-test output
+        uses: actions/upload-artifact@v4
+        with:
+          name: resend-unit-test-output
+          path: unit-test-output.txt
+          if-no-files-found: error
