@@ -107,8 +107,8 @@ class Settings(BaseSettings):
     # ==========================================================
     # LEGACY EMAIL DELIVERY
     #
-    # Intended for development and staging. Production must use
-    # a supported external provider (SES or Resend).
+    # Intended for development and staging. Production uses
+    # Resend exclusively.
     # ==========================================================
 
     APP_SCRIPT_URL: str | None = None
@@ -121,7 +121,8 @@ class Settings(BaseSettings):
     # ==========================================================
     # AMAZON SES
     #
-    # Required only when EMAIL_PROVIDER=ses.
+    # Preserved for possible future use. Credentials are required
+    # only when EMAIL_PROVIDER=ses outside production.
     # ==========================================================
 
     AWS_REGION: str = "eu-west-1"
@@ -161,7 +162,8 @@ class Settings(BaseSettings):
     # ==========================================================
     # RESEND
     #
-    # Required only when EMAIL_PROVIDER=resend.
+    # Production-only provider. Required whenever production email
+    # delivery is enabled through the central email service.
     # ==========================================================
 
     RESEND_API_KEY: SecretStr | None = None
@@ -238,16 +240,15 @@ class Settings(BaseSettings):
             raise ValueError("RESEND_BASE_URL must be a valid absolute HTTPS URL.")
 
         # ======================================================
-        # PRODUCTION POLICY
+        # ENVIRONMENT PROVIDER POLICY
         # ======================================================
 
-        if self.ENV == EnvironmentType.PRODUCTION and self.EMAIL_PROVIDER not in {
-            "ses",
-            "resend",
-        }:
+        if self.ENV == EnvironmentType.PRODUCTION and self.EMAIL_PROVIDER != "resend":
+            raise ValueError("Production email provider must be 'resend'.")
+
+        if self.ENV != EnvironmentType.PRODUCTION and self.EMAIL_PROVIDER == "resend":
             raise ValueError(
-                "Production email provider must be 'ses' or 'resend'. "
-                "The legacy provider is not allowed."
+                "Resend is production-only and cannot be used in development or staging."
             )
 
         # ======================================================
@@ -271,8 +272,8 @@ class Settings(BaseSettings):
         # ======================================================
         # AMAZON SES PROVIDER
         #
-        # AWS credentials and SES routing are required only when
-        # SES is the selected provider.
+        # Preserved for possible future use. AWS credentials are
+        # validated only when SES is actively selected.
         # ======================================================
 
         elif self.EMAIL_PROVIDER == "ses":
