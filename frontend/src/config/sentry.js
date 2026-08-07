@@ -316,6 +316,7 @@ export const initializeSentry = () => {
         environment: config.environment,
         release: config.release || undefined,
         sampleRate: config.errorSampleRate,
+        enableLogs : true,
         sendDefaultPii: false,
         debug: config.debug,
         beforeSend: sanitizeSentryEvent,

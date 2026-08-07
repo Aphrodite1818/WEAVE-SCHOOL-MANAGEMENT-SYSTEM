@@ -133,6 +133,27 @@ def _before_send(
         return None
 
 
+def _before_send_log(
+    log: dict[str, Any],
+    hint: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Remove sensitive attributes before sending structured logs."""
+
+    _ = hint
+
+    try:
+        sanitized = dict(log)
+
+        attributes = sanitized.get("attributes")
+        if isinstance(attributes, Mapping):
+            sanitized["attributes"] = _scrub_value(dict(attributes))
+
+        return sanitized
+
+    except Exception:
+        return None
+
+
 def _environment_name() -> str:
     """Resolve the environment displayed inside Sentry."""
 
@@ -202,10 +223,7 @@ def initialize_sentry(*, service: str) -> bool:
     release = _release_name()
 
     integrations: list[Any] = [
-        LoggingIntegration(
-            level=logging.INFO,
-            event_level=None,
-        )
+        LoggingIntegration(level=logging.INFO, event_level=None, sentry_logs_level=logging.INFO)
     ]
 
     if service == "api":
@@ -223,10 +241,11 @@ def initialize_sentry(*, service: str) -> bool:
             send_default_pii=False,
             max_request_body_size="never",
             include_local_variables=False,
-            enable_logs=False,
-            enable_metrics=False,
+            enable_logs=True,
+            enable_metrics=True,
             shutdown_timeout=settings.SENTRY_SHUTDOWN_TIMEOUT_SECONDS,
             before_send=_before_send,
+            before_send_log=_before_send_log,
             integrations=integrations,
             default_integrations=True,
             auto_enabling_integrations=True,
