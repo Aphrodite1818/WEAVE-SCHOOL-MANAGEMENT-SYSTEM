@@ -16,6 +16,8 @@ from app.config.sentry import flush_sentry, initialize_sentry
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
 from app.core.exception_handlers import register_exception_handlers
+from app.core.dependencies.route_guards import get_current_superadmin
+from app.modules.superadmin.models import SuperAdmin
 from app.core.middleware.cookie_request_protection import (
     CookieRequestProtectionMiddleware,
 )
@@ -317,6 +319,20 @@ def create_app() -> FastAPI:
     app.include_router(subscriptions_router, prefix="/api/v1")
     app.include_router(user_guides_router, prefix="/api/v1")
 
+
+    @app.post(
+    "/internal/diagnostics/sentry-error",
+    tags=["Diagnostics"],
+    include_in_schema=False,
+    )
+    async def test_sentry_error(
+        current_superadmin: SuperAdmin = Depends(get_current_superadmin),
+    ) -> None:
+        _ = current_superadmin
+        raise RuntimeError("WEAVE_SENTRY_DIAGNOSTIC_TEST")
+
+
+    
     @app.get("/health/live", tags=["Health"])
     async def liveness() -> dict[str, str]:
         return {"status": "ok"}
