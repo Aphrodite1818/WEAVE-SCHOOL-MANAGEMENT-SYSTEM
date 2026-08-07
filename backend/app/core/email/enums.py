@@ -4,14 +4,15 @@ from enum import Enum as PyEnum
 
 
 class EmailProvider(str, PyEnum):
-    "Supported email delivery providers"
+    """Supported email delivery providers."""
 
     LEGACY = "legacy"
     SES = "ses"
+    RESEND = "resend"
 
 
 class EmailCategory(str, PyEnum):
-    """ "Email categories used for sender and configuration-set routing"""
+    """Email categories used for sender and provider routing."""
 
     TRANSACTIONAL = "transactional"
     SECURITY = "security"
