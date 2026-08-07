@@ -11,6 +11,11 @@ import "./styles/mobilePwaStability.css";
 import "./styles/mobilePlatformFixes.css";
 import "./styles/iosSafariBrowserTheme.css";
 import App from "./App.jsx";
+import AppErrorBoundary from "./components/errors/AppErrorBoundary.jsx";
+import {
+  captureFrontendException,
+  initializeSentry,
+} from "./config/sentry";
 import {
   applyPublicPricingCatalogue,
   hydrateCachedPublicPricingCatalogue,
@@ -26,6 +31,7 @@ import {
 import { installMobilePwaStability } from "./utils/mobilePwaStability";
 import { installThemeChromeSync } from "./utils/themeChromeSync";
 
+void initializeSentry();
 installCookieCsrfFetchGuard();
 applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 syncSystemThemePreference();
@@ -46,7 +52,8 @@ const registerPwaServiceWorker = () => {
     !import.meta.env.PROD ||
     !window.isSecureContext ||
     !("serviceWorker" in window.navigator)
-  ) return;
+  )
+    return;
 
   window.addEventListener(
     "load",
@@ -67,8 +74,28 @@ standaloneQuery?.addEventListener?.("change", syncStandaloneDisplayMode);
 window.addEventListener("pageshow", syncStandaloneDisplayMode);
 document.addEventListener("visibilitychange", syncStandaloneDisplayMode);
 
-const root = createRoot(document.getElementById("root"));
-root.render(<App />);
+const reportReactError = (kind) => (error, errorInfo) => {
+  captureFrontendException(error, {
+    kind,
+    componentStack: errorInfo?.componentStack,
+  });
+};
+
+const root = createRoot(document.getElementById("root"), {
+  onUncaughtError: reportReactError("react_uncaught"),
+  onCaughtError: reportReactError("react_caught"),
+  onRecoverableError: reportReactError("react_recoverable"),
+});
+
+const renderApp = () => {
+  root.render(
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>,
+  );
+};
+
+renderApp();
 
 let lastCatalogueFetchAt = 0;
 const refreshPublicCatalogue = ({ force = false } = {}) => {
@@ -77,7 +104,7 @@ const refreshPublicCatalogue = ({ force = false } = {}) => {
     .getPublicPlans({ force })
     .then((catalogue) => {
       const applied = applyPublicPricingCatalogue(catalogue);
-      if (applied) root.render(<App />);
+      if (applied) renderApp();
       return applied;
     })
     .catch((error) => {
