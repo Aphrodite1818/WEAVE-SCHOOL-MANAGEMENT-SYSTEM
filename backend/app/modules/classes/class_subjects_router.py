@@ -17,7 +17,6 @@ from app.modules.student_academics.schemas import (
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/class-subjects",
     tags=["Class Subjects"],

@@ -30,7 +30,9 @@ async def _call_middleware(middleware, path, headers=None):
 
 
 def _status(messages):
-    return next(message["status"] for message in messages if message["type"] == "http.response.start")
+    return next(
+        message["status"] for message in messages if message["type"] == "http.response.start"
+    )
 
 
 @pytest.mark.asyncio
@@ -50,7 +52,11 @@ async def test_claim_only_superadmin_token_does_not_bypass_lockdown(monkeypatch)
         return {"blocked": False}
 
     async def active_lockdown(db):
-        return {"lockdown_enabled": True, "lockdown_message": "Locked", "lockdown_reason": "test"}
+        return {
+            "lockdown_enabled": True,
+            "lockdown_message": "Locked",
+            "lockdown_reason": "test",
+        }
 
     monkeypatch.setattr(platform_lockdown, "AsyncSessionLocal", lambda: SessionContext())
     monkeypatch.setattr(platform_lockdown.SecurityResponseService, "is_ip_blocked", not_blocked)
@@ -83,7 +89,9 @@ async def test_database_failure_keeps_cached_active_lockdown_enforced(monkeypatc
         raise RuntimeError("database unavailable")
 
     monkeypatch.setattr(platform_lockdown, "AsyncSessionLocal", lambda: SessionContext())
-    monkeypatch.setattr(platform_lockdown.SecurityResponseService, "is_ip_blocked", fail_to_load_state)
+    monkeypatch.setattr(
+        platform_lockdown.SecurityResponseService, "is_ip_blocked", fail_to_load_state
+    )
 
     middleware = PlatformLockdownMiddleware(app)
     PlatformLockdownMiddleware._last_known_lockdown_state = {
@@ -98,7 +106,9 @@ async def test_database_failure_keeps_cached_active_lockdown_enforced(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_database_failure_without_cached_state_preserves_availability(monkeypatch):
+async def test_database_failure_without_cached_state_preserves_availability(
+    monkeypatch,
+):
     async def app(scope, receive, send):
         await send({"type": "http.response.start", "status": 204, "headers": []})
         await send({"type": "http.response.body", "body": b""})
@@ -114,7 +124,9 @@ async def test_database_failure_without_cached_state_preserves_availability(monk
         raise RuntimeError("database unavailable")
 
     monkeypatch.setattr(platform_lockdown, "AsyncSessionLocal", lambda: SessionContext())
-    monkeypatch.setattr(platform_lockdown.SecurityResponseService, "is_ip_blocked", fail_to_load_state)
+    monkeypatch.setattr(
+        platform_lockdown.SecurityResponseService, "is_ip_blocked", fail_to_load_state
+    )
 
     middleware = PlatformLockdownMiddleware(app)
     PlatformLockdownMiddleware._last_known_lockdown_state = None

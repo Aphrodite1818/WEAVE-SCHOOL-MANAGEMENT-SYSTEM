@@ -1,21 +1,18 @@
-#==========================#
+# ==========================#
 #      cache metric.py     #
-#==========================#
+# ==========================#
 
 """This file is responsible for caching frequently used data from the metric service"""
 
-
-
 from __future__ import annotations
-from uuid import UUID 
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.cache.base import build_cache_key , global_prefix , tenant_prefix
+from app.core.cache.base import build_cache_key, global_prefix, tenant_prefix
 from app.core.cache.events import (
     invalidate_cache_key_now,
     queue_cache_key_invalidation,
 )
-
 
 
 def superadmin_dashboard_cache_key() -> str:
@@ -25,32 +22,20 @@ def superadmin_dashboard_cache_key() -> str:
     Output:
     global : dashboard : superadmin : metrics
     """
-    return build_cache_key(
-        global_prefix(),
-        "dashboard",
-        "superadmin",
-        "metrics"
-    )
+    return build_cache_key(global_prefix(), "dashboard", "superadmin", "metrics")
 
 
-
-def tenant_admin_dashboard_cache_key(tenant_id : UUID) -> str:
+def tenant_admin_dashboard_cache_key(tenant_id: UUID) -> str:
     """
-    Cache key for one tenant admin dashboard 
+    Cache key for one tenant admin dashboard
 
     Output:
     tenant:{tenant_id}:dashboard:tenant-admin:metrics
     """
-    return build_cache_key(
-        tenant_prefix(str(tenant_id)),
-        "dashboard",
-        "tenant-admin",
-        "metrics"
-    )
+    return build_cache_key(tenant_prefix(str(tenant_id)), "dashboard", "tenant-admin", "metrics")
 
 
-
-def teacher_dashboard_cache_key(tenant_id : UUID , teacher_id : UUID):
+def teacher_dashboard_cache_key(tenant_id: UUID, teacher_id: UUID):
     """
     Cache key for one teacher dashboard.
 
@@ -64,7 +49,6 @@ def teacher_dashboard_cache_key(tenant_id : UUID , teacher_id : UUID):
         str(teacher_id),
         "metrics",
     )
-
 
 
 def parent_dashboard_cache_key(tenant_id: UUID, parent_id: UUID) -> str:

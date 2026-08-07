@@ -30,9 +30,7 @@ def get_media_storage() -> MediaStorageBackend:
     if provider in {"cloudflare_r2", "r2", "cloudflare"}:
         return CloudflareR2MediaStorage()
 
-    raise MediaStorageConfigurationError(
-        f"Unsupported MEDIA_STORAGE_PROVIDER: {provider}"
-    )
+    raise MediaStorageConfigurationError(f"Unsupported MEDIA_STORAGE_PROVIDER: {provider}")
 
 
 def reset_media_storage_cache() -> None:

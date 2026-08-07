@@ -21,8 +21,10 @@ from app.core.utils.email_templates import (
 )
 from app.modules.email_outbox.models import EmailOutbox
 from app.modules.email_outbox.repository import EmailOutboxRepository, utc_now
-from app.modules.email_outbox.schemas import EmailOutboxCreate, EmailOutboxSummaryResponse
-
+from app.modules.email_outbox.schemas import (
+    EmailOutboxCreate,
+    EmailOutboxSummaryResponse,
+)
 
 TEACHER_INVITATION_TEMPLATE = "teacher_invitation"
 PARENT_INVITATION_TEMPLATE = "parent_invitation"

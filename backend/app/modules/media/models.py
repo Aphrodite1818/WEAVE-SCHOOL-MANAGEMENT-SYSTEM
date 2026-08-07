@@ -1,27 +1,34 @@
-#==========================#
+# ==========================#
 #      media.models        #
-#==========================#
+# ==========================#
 """Database models for the media module.
 
 This file will hold the persistent representation of uploaded media and
 any related metadata needed by the application.
 """
 
-
-
 from __future__ import annotations
-from sqlalchemy.orm import Mapped , mapped_column
-from sqlalchemy import String , DateTime  , Enum as SQLEnum , Integer , Text , ForeignKey, Index, Boolean , BigInteger
-from datetime import datetime 
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (
+    String,
+    DateTime,
+    Enum as SQLEnum,
+    Integer,
+    Text,
+    ForeignKey,
+    Index,
+    Boolean,
+    BigInteger,
+)
+from datetime import datetime
 from enum import Enum as PyEnum
 
 import uuid
-from sqlalchemy.dialects.postgresql import JSONB , UUID
-from app.shared.base_model import BaseModel , PUBLIC_SCHEMA
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
 
 
-
-class MediaOwnerType(str , PyEnum):
+class MediaOwnerType(str, PyEnum):
     """Entity type that owns the uploaded media asset"""
 
     TENANT = "tenant"
@@ -30,11 +37,8 @@ class MediaOwnerType(str , PyEnum):
     TENANT_ADMIN = "tenant_admin"
 
 
-
-
-class MediaPurpose(str , PyEnum):
+class MediaPurpose(str, PyEnum):
     """Business purpose of a media asset"""
-
 
     SCHOOL_LOGO = "school_logo"
     STUDENT_PASSPORT = "student_passport"
@@ -42,18 +46,15 @@ class MediaPurpose(str , PyEnum):
     TENANT_ADMIN_PASSPORT = "tenant_admin_passport"
 
 
-
-
-class MediaVisibility(str , PyEnum):
+class MediaVisibility(str, PyEnum):
     """visibility level for stored media"""
 
     PUBLIC = "public"
     PRIVATE = "private"
 
 
-class MediaStatus(str , PyEnum):
+class MediaStatus(str, PyEnum):
     """Lifecycle status of a media asset"""
-
 
     ACTIVE = "active"
     REPLACED = "replaced"
@@ -77,16 +78,12 @@ class MediaUploadedByActorType(str, PyEnum):
     SUPERADMIN = "superadmin"
 
 
-
-
-
 class MediaAsset(BaseModel):
     """Metadata record for a file stored outside the database
 
     The binary file itself lives in storage , this table stores ownership , tenant isolation,
     object key , URL , size MIME type , and lifecycle state
     """
-
 
     __tablename__ = "media_assets"
 

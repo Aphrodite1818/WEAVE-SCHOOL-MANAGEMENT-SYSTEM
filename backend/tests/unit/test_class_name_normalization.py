@@ -11,21 +11,12 @@ from app.modules.classes.schemas import ClassRoomResponse
 
 
 def test_full_secondary_school_class_name_displays_with_word_spaces() -> None:
-    assert (
-        normalize_class_name("JUNIORSECONDARYSCHOOL1")
-        == "JUNIOR SECONDARY SCHOOL 1"
-    )
-    assert (
-        normalize_class_name("junior secondary school 1")
-        == "JUNIOR SECONDARY SCHOOL 1"
-    )
+    assert normalize_class_name("JUNIORSECONDARYSCHOOL1") == "JUNIOR SECONDARY SCHOOL 1"
+    assert normalize_class_name("junior secondary school 1") == "JUNIOR SECONDARY SCHOOL 1"
 
 
 def test_full_secondary_school_class_name_key_remains_compact() -> None:
-    assert (
-        normalized_class_name_key("JUNIOR SECONDARY SCHOOL 1")
-        == "JUNIORSECONDARYSCHOOL1"
-    )
+    assert normalized_class_name_key("JUNIOR SECONDARY SCHOOL 1") == "JUNIORSECONDARYSCHOOL1"
 
 
 def test_short_class_code_display_is_preserved() -> None:

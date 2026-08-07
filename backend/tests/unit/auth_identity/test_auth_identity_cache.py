@@ -15,7 +15,6 @@ from app.modules.auth_identity.service import (
     AuthIdentityService,
 )
 
-
 ACTOR_ID = uuid.uuid4()
 TENANT_ID = uuid.uuid4()
 IDENTITY_ID = uuid.uuid4()
@@ -57,7 +56,9 @@ async def test_resolve_identifier_caches_positive_database_result() -> None:
         ) as lookup,
     ):
         result = await AuthIdentityService.resolve_identifier(
-            AsyncMock(), identifier=" Person@Example.com ", identifier_type=IdentifierType.EMAIL
+            AsyncMock(),
+            identifier=" Person@Example.com ",
+            identifier_type=IdentifierType.EMAIL,
         )
 
     assert result.actor_id == ACTOR_ID
@@ -143,7 +144,9 @@ async def test_resolve_identifier_negative_cache_avoids_second_database_query() 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("identity", [_identity(), None])
-async def test_resolve_identifier_falls_back_when_redis_is_unavailable(identity) -> None:
+async def test_resolve_identifier_falls_back_when_redis_is_unavailable(
+    identity,
+) -> None:
     with (
         patch(
             "app.modules.auth_identity.service.CacheManager.get_json",

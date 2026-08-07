@@ -43,8 +43,7 @@ class StudentAdminContractService:
             limit=min(limit, 100),
         )
         return [
-            await StudentService._build_detail_response(db, student)
-            for student in students
+            await StudentService._build_detail_response(db, student) for student in students
         ], total
 
     @staticmethod

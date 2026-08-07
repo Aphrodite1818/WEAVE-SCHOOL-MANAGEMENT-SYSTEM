@@ -1,9 +1,8 @@
 # from app.modules.subjects.repository import SubjectRepository
-# from sqlalchemy.ext.asyncio import AsyncSession 
+# from sqlalchemy.ext.asyncio import AsyncSession
 # from app.tenant_management.models import Tenant
 # from app.modules.subjects.models import Subject
 # import pytest
-
 
 
 # """this test is actually creating an object and passing it to repository"""

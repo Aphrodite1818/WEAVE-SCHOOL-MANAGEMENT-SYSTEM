@@ -470,7 +470,7 @@ class SessionClosureService:
             tenant_id=tenant_id,
             entity_type="session",
             entity_id=session.id,
-            action="progression_failed" if run.failed_students else "progression_completed",
+            action=("progression_failed" if run.failed_students else "progression_completed"),
             previous_status=session.status.value,
             new_status=session.status.value,
             acting_admin_id=actor.id,

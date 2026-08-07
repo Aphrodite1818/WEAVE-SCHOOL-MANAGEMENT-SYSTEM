@@ -113,7 +113,7 @@ const loadPersistedAvatar = async (user) => {
     }
 
     if (actorType === "tenant_admin" && user?.id) {
-      const media = await api.get("/media/assets/current", {
+      const media = await api.get("/tenant-admin/media/assets/current", {
         params: {
           owner_type: "tenant_admin",
           owner_id: user.id,

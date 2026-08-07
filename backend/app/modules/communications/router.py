@@ -56,7 +56,6 @@ from app.modules.teachers.models import Teacher
 from app.modules.teachers.models import TeacherAccount
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(prefix="/communications", tags=["Communications"])
 messages_router = APIRouter(prefix="/messages", tags=["Messages"])
 notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -197,9 +196,11 @@ async def _conversation_response(
             update={
                 "label": labels.get(
                     (
-                        participant.actor_type
-                        if isinstance(participant.actor_type, CommunicationActorType)
-                        else CommunicationActorType(participant.actor_type),
+                        (
+                            participant.actor_type
+                            if isinstance(participant.actor_type, CommunicationActorType)
+                            else CommunicationActorType(participant.actor_type)
+                        ),
                         participant.actor_id,
                     )
                 ),
@@ -287,7 +288,9 @@ async def list_conversations(
 
 
 @messages_router.post(
-    "/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED
+    "/conversations",
+    response_model=ConversationResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_conversation(
     payload: ConversationCreate, db: DbSession, actor: CurrentCommunicationActor
@@ -377,7 +380,10 @@ async def get_notification(
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.READ
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.READ,
     )
     return NotificationResponse.model_validate(delivery)
 
@@ -388,7 +394,10 @@ async def mark_notification_read(
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.READ
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.READ,
     )
     return NotificationResponse.model_validate(delivery)
 
@@ -399,7 +408,10 @@ async def acknowledge_notification(
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.ACKNOWLEDGED
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.ACKNOWLEDGED,
     )
     return NotificationResponse.model_validate(delivery)
 
@@ -410,7 +422,10 @@ async def dismiss_notification(
 ) -> NotificationResponse:
     current = await _active_communication_actor(actor, db)
     delivery = await NotificationService.update_status(
-        db, actor=current, notification_id=notification_id, status=NotificationStatus.DISMISSED
+        db,
+        actor=current,
+        notification_id=notification_id,
+        status=NotificationStatus.DISMISSED,
     )
     return NotificationResponse.model_validate(delivery)
 
@@ -456,7 +471,10 @@ async def preview_superadmin_announcement(
 
 @superadmin_announcement_router.patch("/{announcement_id}", response_model=AnnouncementResponse)
 async def update_superadmin_announcement(
-    announcement_id: uuid.UUID, payload: AnnouncementUpdate, db: DbSession, actor: CurrentSuperadmin
+    announcement_id: uuid.UUID,
+    payload: AnnouncementUpdate,
+    db: DbSession,
+    actor: CurrentSuperadmin,
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
         await AnnouncementService.update(
@@ -476,7 +494,10 @@ async def publish_superadmin_announcement(
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
         await AnnouncementService.publish(
-            db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at
+            db,
+            actor=actor,
+            announcement_id=announcement_id,
+            publish_at=payload.publish_at,
         )
     )
 
@@ -567,7 +588,10 @@ async def publish_tenant_admin_announcement(
 ) -> AnnouncementResponse:
     return AnnouncementResponse.model_validate(
         await AnnouncementService.publish(
-            db, actor=actor, announcement_id=announcement_id, publish_at=payload.publish_at
+            db,
+            actor=actor,
+            announcement_id=announcement_id,
+            publish_at=payload.publish_at,
         )
     )
 

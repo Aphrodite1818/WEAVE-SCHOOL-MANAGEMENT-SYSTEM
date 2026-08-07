@@ -98,4 +98,3 @@ class SuperAdminRepository:
             .order_by(SuperAdminInvite.created_at.desc())
         )
         return result.scalars().first()
-

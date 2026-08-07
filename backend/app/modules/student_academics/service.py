@@ -276,13 +276,22 @@ class StudentAcademicService:
                 db, tenant_id, academic_session_id=session_id
             ),
             "open_terms": await StudentAcademicRepository.count_academic_terms(
-                db, tenant_id, academic_session_id=session_id, statuses={AcademicTermStatus.OPEN}
+                db,
+                tenant_id,
+                academic_session_id=session_id,
+                statuses={AcademicTermStatus.OPEN},
             ),
             "closing_terms": await StudentAcademicRepository.count_academic_terms(
-                db, tenant_id, academic_session_id=session_id, statuses={AcademicTermStatus.CLOSING}
+                db,
+                tenant_id,
+                academic_session_id=session_id,
+                statuses={AcademicTermStatus.CLOSING},
             ),
             "draft_results": await StudentAcademicRepository.count_results(
-                db, tenant_id, academic_session_id=session_id, statuses={AcademicResultStatus.DRAFT}
+                db,
+                tenant_id,
+                academic_session_id=session_id,
+                statuses={AcademicResultStatus.DRAFT},
             ),
             "submitted_results": await StudentAcademicRepository.count_results(
                 db,
@@ -300,7 +309,10 @@ class StudentAcademicService:
                 db, tenant_id, academic_session_id=session_id
             ),
             "unpublished_report_cards": await StudentAcademicRepository.count_report_cards(
-                db, tenant_id, academic_session_id=session_id, statuses={ReportCardStatus.DRAFT}
+                db,
+                tenant_id,
+                academic_session_id=session_id,
+                statuses={ReportCardStatus.DRAFT},
             ),
             "report_cards": await StudentAcademicRepository.count_report_cards(
                 db, tenant_id, academic_session_id=session_id
@@ -406,19 +418,31 @@ class StudentAcademicService:
             raise NotFoundException("Academic term not found.")
         counts = {
             "draft_results": await StudentAcademicRepository.count_results(
-                db, tenant_id, academic_term_id=term_id, statuses={AcademicResultStatus.DRAFT}
+                db,
+                tenant_id,
+                academic_term_id=term_id,
+                statuses={AcademicResultStatus.DRAFT},
             ),
             "submitted_results": await StudentAcademicRepository.count_results(
-                db, tenant_id, academic_term_id=term_id, statuses={AcademicResultStatus.SUBMITTED}
+                db,
+                tenant_id,
+                academic_term_id=term_id,
+                statuses={AcademicResultStatus.SUBMITTED},
             ),
             "approved_but_unlocked_results": await StudentAcademicRepository.count_results(
-                db, tenant_id, academic_term_id=term_id, statuses={AcademicResultStatus.APPROVED}
+                db,
+                tenant_id,
+                academic_term_id=term_id,
+                statuses={AcademicResultStatus.APPROVED},
             ),
             "results": await StudentAcademicRepository.count_results(
                 db, tenant_id, academic_term_id=term_id
             ),
             "unpublished_report_cards": await StudentAcademicRepository.count_report_cards(
-                db, tenant_id, academic_term_id=term_id, statuses={ReportCardStatus.DRAFT}
+                db,
+                tenant_id,
+                academic_term_id=term_id,
+                statuses={ReportCardStatus.DRAFT},
             ),
             "report_cards": await StudentAcademicRepository.count_report_cards(
                 db, tenant_id, academic_term_id=term_id
@@ -881,7 +905,9 @@ class StudentAcademicService:
         ], total
 
     @staticmethod
-    def _build_teacher_assignment_response_from_record(record: dict) -> TeacherAssignmentResponse:
+    def _build_teacher_assignment_response_from_record(
+        record: dict,
+    ) -> TeacherAssignmentResponse:
         assignment = record["assignment"]
         return TeacherAssignmentResponse(
             id=assignment.id,
@@ -2610,7 +2636,10 @@ class StudentAcademicService:
             )
 
         return GradingScaleReadiness(
-            is_ready=is_ready, missing_coverage=missing, overlaps=overlaps, messages=messages
+            is_ready=is_ready,
+            missing_coverage=missing,
+            overlaps=overlaps,
+            messages=messages,
         )
 
     @staticmethod

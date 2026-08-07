@@ -17,7 +17,6 @@ from app.modules.student_academics.models import (
 )
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/tenant-admin/academics/grading-scales",
     tags=["Tenant Admin Academics"],
@@ -139,11 +138,7 @@ async def delete_grading_scale(
     if scale.is_active:
         raise ConflictException(
             "Active grading scales cannot be deleted. Deactivate the scale first.",
-            payload={
-                "blocker_messages": [
-                    "Deactivate this grading scale before deleting it."
-                ]
-            },
+            payload={"blocker_messages": ["Deactivate this grading scale before deleting it."]},
         )
 
     result_references = await _result_reference_count(

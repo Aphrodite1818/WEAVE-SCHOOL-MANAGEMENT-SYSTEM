@@ -159,17 +159,29 @@ class AuthRateLimitService:
 
         return [
             RateLimitRule(
-                key=build_rate_limit_key("auth", "login", "fail", "identifier", identifier_hash, "10m"),
+                key=build_rate_limit_key(
+                    "auth", "login", "fail", "identifier", identifier_hash, "10m"
+                ),
                 limit=settings.LOGIN_IDENTIFIER_FAIL_LIMIT_10M,
                 window_seconds=600,
             ),
             RateLimitRule(
-                key=build_rate_limit_key("auth", "login", "fail", "identifier", identifier_hash, "1h"),
+                key=build_rate_limit_key(
+                    "auth", "login", "fail", "identifier", identifier_hash, "1h"
+                ),
                 limit=settings.LOGIN_IDENTIFIER_FAIL_LIMIT_1H,
                 window_seconds=3600,
             ),
             RateLimitRule(
-                key=build_rate_limit_key("auth", "login", "fail", "identifier-ip", identifier_hash, ip_hash, "10m"),
+                key=build_rate_limit_key(
+                    "auth",
+                    "login",
+                    "fail",
+                    "identifier-ip",
+                    identifier_hash,
+                    ip_hash,
+                    "10m",
+                ),
                 limit=settings.LOGIN_IDENTIFIER_IP_FAIL_LIMIT_10M,
                 window_seconds=600,
             ),
@@ -272,12 +284,22 @@ class AuthRateLimitService:
 
         return [
             RateLimitRule(
-                key=build_rate_limit_key("auth", "otp-verify", "fail", "email", email_hash, purpose_value, "10m"),
+                key=build_rate_limit_key(
+                    "auth",
+                    "otp-verify",
+                    "fail",
+                    "email",
+                    email_hash,
+                    purpose_value,
+                    "10m",
+                ),
                 limit=settings.OTP_VERIFY_EMAIL_FAIL_LIMIT_10M,
                 window_seconds=600,
             ),
             RateLimitRule(
-                key=build_rate_limit_key("auth", "otp-verify", "fail", "ip", ip_hash, purpose_value, "1h"),
+                key=build_rate_limit_key(
+                    "auth", "otp-verify", "fail", "ip", ip_hash, purpose_value, "1h"
+                ),
                 limit=settings.OTP_VERIFY_IP_FAIL_LIMIT_1H,
                 window_seconds=3600,
             ),

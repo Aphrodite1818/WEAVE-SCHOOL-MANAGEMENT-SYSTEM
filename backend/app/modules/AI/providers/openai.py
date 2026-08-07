@@ -1,7 +1,6 @@
-#==========================#
+# ==========================#
 #    OPENAI PROVIDER.PY    #
-#==========================#
-
+# ==========================#
 
 
 from typing import Any
@@ -13,8 +12,8 @@ from app.modules.AI.providers.utils import require_api_key
 
 
 class OpenAIProvider(BaseLLMProvider):
-
     """Represent the OpenAIProvider type."""
+
     def __init__(self, api_key: str | None, model: str, max_tokens: int):
         """Initialize the OpenAIProvider instance."""
         self.api_key = require_api_key(api_key, "OpenAI")
@@ -56,4 +55,3 @@ class OpenAIProvider(BaseLLMProvider):
             "tool_calls": message.get("tool_calls"),
             "raw_response": raw_response,
         }
-

@@ -14,7 +14,10 @@ from app.modules.auth.service import AuthenticatedActor
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.students.models import AcademicStatus, StudentAccountStatus
-from app.modules.students.repository import StudentAccessCodeRepository, StudentRepository
+from app.modules.students.repository import (
+    StudentAccessCodeRepository,
+    StudentRepository,
+)
 from app.tenant_management.models import TenantStatus, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
 

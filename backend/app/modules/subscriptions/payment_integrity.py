@@ -15,7 +15,10 @@ from app.modules.subscriptions.models import (
     PaymentWebhookEvent,
     TenantSubscription,
 )
-from app.modules.subscriptions.plans import coerce_subscription_plan, normalize_plan_code
+from app.modules.subscriptions.plans import (
+    coerce_subscription_plan,
+    normalize_plan_code,
+)
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
     SubscriptionStatusResponse,
@@ -31,7 +34,6 @@ from app.modules.subscriptions.subscription_enums import (
     PaymentProvider,
     PaymentStatus,
 )
-
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.communications.enums import (
     AnnouncementStatus,
     CommunicationActorType,
@@ -26,7 +30,6 @@ from app.modules.communications.repository import CommunicationRepository
 from app.modules.communications.schemas import AnnouncementAudienceCreate
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.tenant_admins.models import TenantAdmin
-
 
 _ANNOUNCEMENT_INBOX_PATHS = {
     CommunicationActorType.TENANT_ADMIN: "/admin/inbox",
@@ -51,9 +54,11 @@ class AnnouncementService:
     @staticmethod
     async def _resolve_audience_or_raise(db: AsyncSession, *, actor, audiences):
         normalized_audiences = [
-            AnnouncementAudienceCreate.model_validate(audience)
-            if isinstance(audience, dict)
-            else audience
+            (
+                AnnouncementAudienceCreate.model_validate(audience)
+                if isinstance(audience, dict)
+                else audience
+            )
             for audience in audiences
         ]
         return await RecipientResolver.resolve_announcement_audience(
@@ -98,7 +103,12 @@ class AnnouncementService:
 
     @staticmethod
     async def list_manageable(
-        db: AsyncSession, *, actor, status: AnnouncementStatus | None, offset: int, limit: int
+        db: AsyncSession,
+        *,
+        actor,
+        status: AnnouncementStatus | None,
+        offset: int,
+        limit: int,
     ):
         AnnouncementService._ensure_creator(actor)
         stmt = (
@@ -151,7 +161,10 @@ class AnnouncementService:
         )
         if announcement.status == AnnouncementStatus.PUBLISHED:
             raise BadRequestException("Published announcements cannot be edited")
-        if announcement.status in {AnnouncementStatus.ARCHIVED, AnnouncementStatus.CANCELLED}:
+        if announcement.status in {
+            AnnouncementStatus.ARCHIVED,
+            AnnouncementStatus.CANCELLED,
+        }:
             raise BadRequestException("This announcement can no longer be edited")
         if payload.audiences is not None:
             await AnnouncementService._resolve_audience_or_raise(
@@ -193,7 +206,10 @@ class AnnouncementService:
         announcement = await AnnouncementService.get_manageable(
             db, actor=actor, announcement_id=announcement_id
         )
-        if announcement.status not in {AnnouncementStatus.DRAFT, AnnouncementStatus.SCHEDULED}:
+        if announcement.status not in {
+            AnnouncementStatus.DRAFT,
+            AnnouncementStatus.SCHEDULED,
+        }:
             raise BadRequestException("Only draft or scheduled announcements can be published")
         recipients, _ = await AnnouncementService._resolve_audience_or_raise(
             db, actor=actor, audiences=announcement.audiences
@@ -235,7 +251,10 @@ class AnnouncementService:
         announcement = await AnnouncementService.get_manageable(
             db, actor=actor, announcement_id=announcement_id
         )
-        if announcement.status not in {AnnouncementStatus.DRAFT, AnnouncementStatus.SCHEDULED}:
+        if announcement.status not in {
+            AnnouncementStatus.DRAFT,
+            AnnouncementStatus.SCHEDULED,
+        }:
             raise BadRequestException("Only draft or scheduled announcements can be cancelled")
         announcement.status = AnnouncementStatus.CANCELLED
         return await CommunicationRepository.save(db, announcement)

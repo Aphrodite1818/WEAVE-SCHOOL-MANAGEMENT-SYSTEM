@@ -28,7 +28,6 @@ from app.tenant_management.service import (
     _normalize_school_name,
 )
 
-
 logger = get_logger(__name__)
 
 

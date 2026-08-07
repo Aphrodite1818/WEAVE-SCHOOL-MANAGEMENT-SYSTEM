@@ -1,9 +1,6 @@
-#==========================#
+# ==========================#
 #   rate limiter .py       #
-#==========================#
-
-
-
+# ==========================#
 
 
 from __future__ import annotations
@@ -14,7 +11,6 @@ from typing import Iterable
 from redis.asyncio import Redis
 
 from app.config.settings import settings
-
 
 _CONSUME_SCRIPT = """
 local current = redis.call("INCR", KEYS[1])

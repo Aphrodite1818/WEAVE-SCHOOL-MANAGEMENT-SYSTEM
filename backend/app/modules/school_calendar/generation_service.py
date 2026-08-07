@@ -8,7 +8,11 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.school_calendar.calendar_enums import (
     SchoolCalendarDaySource,
     SchoolCalendarDayType,
@@ -118,7 +122,9 @@ class SchoolCalendarGenerationService:
         warnings: list[str] = []
         generated_days_skipped = 0
 
-        for target_date in SchoolCalendarGenerationService._iter_dates(term.start_date, term.end_date):
+        for target_date in SchoolCalendarGenerationService._iter_dates(
+            term.start_date, term.end_date
+        ):
             is_instructional = target_date.weekday() in set(config.instructional_weekdays)
             day_type = (
                 SchoolCalendarDayType.INSTRUCTIONAL_DAY
@@ -143,8 +149,12 @@ class SchoolCalendarGenerationService:
                 existing.day_type = day_type
                 existing.school_open = school_open
                 existing.student_activity_allowed = school_open
-                existing.student_attendance_required = bool(school_open and config.default_student_attendance_required)
-                existing.workforce_attendance_required = bool(school_open and config.default_workforce_attendance_required)
+                existing.student_attendance_required = bool(
+                    school_open and config.default_student_attendance_required
+                )
+                existing.workforce_attendance_required = bool(
+                    school_open and config.default_workforce_attendance_required
+                )
                 existing.opens_at = config.default_open_time if school_open else None
                 existing.closes_at = config.default_close_time if school_open else None
                 existing.source = SchoolCalendarDaySource.GENERATED
@@ -161,8 +171,12 @@ class SchoolCalendarGenerationService:
                     day_type=day_type,
                     school_open=school_open,
                     student_activity_allowed=school_open,
-                    student_attendance_required=bool(school_open and config.default_student_attendance_required),
-                    workforce_attendance_required=bool(school_open and config.default_workforce_attendance_required),
+                    student_attendance_required=bool(
+                        school_open and config.default_student_attendance_required
+                    ),
+                    workforce_attendance_required=bool(
+                        school_open and config.default_workforce_attendance_required
+                    ),
                     opens_at=config.default_open_time if school_open else None,
                     closes_at=config.default_close_time if school_open else None,
                     source=SchoolCalendarDaySource.GENERATED,
@@ -191,7 +205,10 @@ class SchoolCalendarGenerationService:
                 entity_id=calendar.id,
                 action="generated",
                 previous_state=None,
-                new_state={"status": calendar.status.value, "generated_at": now.isoformat()},
+                new_state={
+                    "status": calendar.status.value,
+                    "generated_at": now.isoformat(),
+                },
                 acting_admin_id=acting_admin_id,
                 metadata_json={
                     "academic_session_id": str(session.id),

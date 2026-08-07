@@ -27,7 +27,10 @@ from app.modules.bulk_imports.schemas import (
     ImportRowErrorListResponse,
     ImportTemplateResponse,
 )
-from app.modules.bulk_imports.sensitive_results import redact_result_row, reveal_result_row
+from app.modules.bulk_imports.sensitive_results import (
+    redact_result_row,
+    reveal_result_row,
+)
 from app.modules.bulk_imports.service import BulkImportService
 from app.modules.bulk_imports.slip_schemas import (
     StudentSlipDetailResponse,
@@ -39,7 +42,6 @@ from app.modules.bulk_imports.slip_schemas import (
 from app.modules.bulk_imports.slip_service import StudentSlipService
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
-
 
 router = APIRouter(prefix="/imports", tags=["Bulk Imports"])
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]

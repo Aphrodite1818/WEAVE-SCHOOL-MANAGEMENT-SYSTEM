@@ -12,7 +12,6 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from app.config.settings import settings
 
-
 SETUP_CODE_FIELD = "setup_code"
 SETUP_CODE_CIPHERTEXT_FIELD = "setup_code_ciphertext"
 SETUP_CODE_PROTECTED_AT_FIELD = "setup_code_protected_at"

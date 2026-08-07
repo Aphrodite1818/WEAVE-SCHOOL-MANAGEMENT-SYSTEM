@@ -28,7 +28,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
 
-
 if TYPE_CHECKING:
     from app.modules.tenant_admins.models import TenantAdmin
 

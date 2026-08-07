@@ -65,9 +65,7 @@ class CloudflareR2MediaStorage:
             return configured_endpoint
 
         if self.account_id is None:
-            raise CloudflareR2StorageError(
-                "R2_ENDPOINT_URL or R2_ACCOUNT_ID must be configured."
-            )
+            raise CloudflareR2StorageError("R2_ENDPOINT_URL or R2_ACCOUNT_ID must be configured.")
 
         return f"https://{self.account_id}.r2.cloudflarestorage.com"
 
@@ -161,9 +159,7 @@ class CloudflareR2MediaStorage:
                 **put_kwargs,
             )
         except (BotoCoreError, ClientError) as exc:
-            raise CloudflareR2StorageError(
-                "Failed to upload object to Cloudflare R2."
-            ) from exc
+            raise CloudflareR2StorageError("Failed to upload object to Cloudflare R2.") from exc
 
         etag_value = response.get("ETag")
         etag: str | None = etag_value.strip('"') if isinstance(etag_value, str) else None
@@ -199,9 +195,7 @@ class CloudflareR2MediaStorage:
                 Key=cleaned_key,
             )
         except (BotoCoreError, ClientError) as exc:
-            raise CloudflareR2StorageError(
-                "Failed to delete object from Cloudflare R2."
-            ) from exc
+            raise CloudflareR2StorageError("Failed to delete object from Cloudflare R2.") from exc
 
     async def create_signed_url(
         self,

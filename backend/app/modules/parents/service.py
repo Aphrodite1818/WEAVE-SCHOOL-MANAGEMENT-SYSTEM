@@ -127,33 +127,22 @@ class ParentAccountService:
                 ActorType.PARENT_ACCOUNT,
                 ActorType.PARENT,
             }:
-                raise ConflictException(
-                    "This email is already registered to another account."
-                )
+                raise ConflictException("This email is already registered to another account.")
             account = await ParentAccountRepository.get_by_id(
                 db,
                 identity.actor_id,
                 lock=True,
             )
             if account is None:
-                raise ConflictException(
-                    "The existing parent identity is invalid."
-                )
+                raise ConflictException("The existing parent identity is invalid.")
             if (
                 account.account_status == ParentAccountStatus.ACTIVE
                 and account.is_verified
                 and account.is_active
             ):
-                raise ConflictException(
-                    "This parent account already exists. Please log in."
-                )
-            if (
-                account.account_status == ParentAccountStatus.LOCKED
-                or not account.is_active
-            ):
-                raise ForbiddenException(
-                    "This parent account cannot be registered again."
-                )
+                raise ConflictException("This parent account already exists. Please log in.")
+            if account.account_status == ParentAccountStatus.LOCKED or not account.is_active:
+                raise ForbiddenException("This parent account cannot be registered again.")
             account.password_hash = hash_password(payload.password)
             account.account_status = ParentAccountStatus.PENDING
             account.is_verified = False
@@ -312,9 +301,7 @@ class ParentAccountService:
         ):
             raise BadRequestException("Current password is incorrect.")
         if verify_password(payload.new_password, account.password_hash):
-            raise BadRequestException(
-                "New password must differ from the current password."
-            )
+            raise BadRequestException("New password must differ from the current password.")
 
         account.password_hash = hash_password(payload.new_password)
         await ParentAccountRepository.save(db, account)
@@ -324,18 +311,12 @@ class ParentAccountService:
         )
         membership_ids = [membership.id for membership in memberships]
         session_filter = [
-            (
-                AuthSession.actor_type
-                == AuthSessionActorType.PARENT_ACCOUNT
-            )
+            (AuthSession.actor_type == AuthSessionActorType.PARENT_ACCOUNT)
             & (AuthSession.actor_id == account.id)
         ]
         if membership_ids:
             session_filter.append(
-                (
-                    AuthSession.actor_type
-                    == AuthSessionActorType.PARENT
-                )
+                (AuthSession.actor_type == AuthSessionActorType.PARENT)
                 & AuthSession.actor_id.in_(membership_ids)
             )
         await db.execute(
@@ -366,9 +347,7 @@ class ParentAccountService:
         )
         return ParentMembershipListResponse(
             items=[
-                ParentMembershipWithAccountResponse.model_validate(
-                    membership
-                )
+                ParentMembershipWithAccountResponse.model_validate(membership)
                 for membership in memberships
             ],
             total=len(memberships),
@@ -412,9 +391,7 @@ class ParentMembershipService:
         )
         if membership is None:
             raise NotFoundException("Parent membership not found.")
-        return ParentMembershipWithAccountResponse.model_validate(
-            membership
-        )
+        return ParentMembershipWithAccountResponse.model_validate(membership)
 
     @staticmethod
     async def list_for_tenant(
@@ -436,9 +413,7 @@ class ParentMembershipService:
         )
         return ParentMembershipListResponse(
             items=[
-                ParentMembershipWithAccountResponse.model_validate(
-                    membership
-                )
+                ParentMembershipWithAccountResponse.model_validate(membership)
                 for membership in memberships
             ],
             total=total,
@@ -512,9 +487,7 @@ class ParentMembershipService:
             )
         )
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            actor.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
         await db.refresh(membership)
         return ParentMembershipResponse.model_validate(membership)
 
@@ -547,9 +520,7 @@ class ParentMembershipService:
         membership.end_reason = None
         await ParentMembershipRepository.save(db, membership)
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            actor.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
         await db.refresh(membership)
         return ParentMembershipResponse.model_validate(membership)
 
@@ -632,9 +603,7 @@ class ParentInvitationService:
             lock=True,
         )
         if pending is not None:
-            raise ConflictException(
-                "A pending invitation already exists for this parent."
-            )
+            raise ConflictException("A pending invitation already exists for this parent.")
 
         raw_token = secrets.token_urlsafe(48)
         invitation = ParentInvitation(
@@ -645,23 +614,20 @@ class ParentInvitationService:
             admission_number_snapshot=student.admission_number,
             token_digest=hash_auth_secret(raw_token),
             status=ParentInvitationStatus.PENDING,
-            expires_at=_utc_now()
-            + timedelta(days=ParentInvitationService.INVITATION_DAYS),
+            expires_at=_utc_now() + timedelta(days=ParentInvitationService.INVITATION_DAYS),
             created_by_admin_id=actor.id,
         )
         invitation = await ParentInvitationRepository.add(db, invitation)
         tenant = await TenantRepository.get_by_id(db, actor.tenant_id)
         await db.commit()
 
-        invite_url = (
-            f"{settings.FRONTEND_APP_URL.rstrip('/')}"
-            f"/parent-invitations/{raw_token}"
-        )
+        invite_url = f"{settings.FRONTEND_APP_URL.rstrip('/')}/parent-invitations/{raw_token}"
         if background_tasks is not None:
             school_name = tenant.school_name if tenant else "your school"
-            student_name = " ".join(
-                part for part in [student.first_name, student.last_name] if part
-            ) or "a student"
+            student_name = (
+                " ".join(part for part in [student.first_name, student.last_name] if part)
+                or "a student"
+            )
             background_tasks.add_task(
                 send_email,
                 normalized_email,
@@ -705,17 +671,11 @@ class ParentInvitationService:
         tenant = await TenantRepository.get_by_id(db, invitation.tenant_id)
         if student is None or tenant is None:
             raise NotFoundException("Invitation context is unavailable.")
-        display_name = " ".join(
-            part
-            for part in [student.first_name, student.last_name]
-            if part
-        ) or "Student"
-        admission = invitation.admission_number_snapshot
-        hint = (
-            f"{admission[:3]}***{admission[-3:]}"
-            if len(admission) > 6
-            else "***"
+        display_name = (
+            " ".join(part for part in [student.first_name, student.last_name] if part) or "Student"
         )
+        admission = invitation.admission_number_snapshot
+        hint = f"{admission[:3]}***{admission[-3:]}" if len(admission) > 6 else "***"
         return ParentInvitationPublicContextResponse(
             invitation_id=invitation.id,
             tenant_name=tenant.school_name,
@@ -756,13 +716,8 @@ class ParentInvitationService:
             await db.commit()
             raise BadRequestException("Invitation has expired.")
         if account.email.casefold() != invitation.invited_email.casefold():
-            raise ForbiddenException(
-                "This invitation belongs to another email address."
-            )
-        if (
-            payload.admission_number.strip().upper()
-            != invitation.admission_number_snapshot.upper()
-        ):
+            raise ForbiddenException("This invitation belongs to another email address.")
+        if payload.admission_number.strip().upper() != invitation.admission_number_snapshot.upper():
             raise BadRequestException("Admission number does not match.")
 
         membership = await ParentMembershipRepository.get_by_account_and_tenant(
@@ -810,9 +765,7 @@ class ParentInvitationService:
                     student_id=invitation.student_id,
                     parent_account_id=account.id,
                     parent_membership_id=membership.id,
-                    admission_number_snapshot=(
-                        invitation.admission_number_snapshot
-                    ),
+                    admission_number_snapshot=(invitation.admission_number_snapshot),
                     relationship_type=invitation.relationship_type,
                     status=StudentParentLinkRequestStatus.PENDING,
                     requested_at=_utc_now(),
@@ -820,9 +773,7 @@ class ParentInvitationService:
             )
 
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            invitation.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(invitation.tenant_id)
         return StudentParentLinkRequestResponse.model_validate(existing)
 
     @staticmethod
@@ -841,9 +792,7 @@ class ParentInvitationService:
             offset=skip,
             limit=min(limit, 100),
         )
-        return [
-            ParentInvitationResponse.model_validate(row) for row in rows
-        ], total
+        return [ParentInvitationResponse.model_validate(row) for row in rows], total
 
     @staticmethod
     async def revoke_invitation(
@@ -861,9 +810,7 @@ class ParentInvitationService:
         if invitation is None:
             raise NotFoundException("Invitation not found.")
         if invitation.status != ParentInvitationStatus.PENDING:
-            raise ConflictException(
-                "Only pending invitations can be revoked."
-            )
+            raise ConflictException("Only pending invitations can be revoked.")
         invitation.status = ParentInvitationStatus.REVOKED
         invitation.revoked_at = _utc_now()
         await ParentInvitationRepository.save(db, invitation)

@@ -1,14 +1,11 @@
-#==========================#
+# ==========================#
 #     media.validators     #
-#==========================#
+# ==========================#
 """Input validation helpers for the media module.
 
 This file will hold reusable validation rules for uploaded files,
 metadata, and any media-specific constraints.
 """
-
-
-
 
 from __future__ import annotations
 import hashlib
@@ -18,14 +15,10 @@ from pathlib import Path
 from typing import Callable, Final
 
 from fastapi import UploadFile
-from PIL import Image , UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 
 from app.config.settings import settings
-from app.modules.media.models import MediaPurpose , MediaVisibility
-
-
-
-
+from app.modules.media.models import MediaPurpose, MediaVisibility
 
 DEFAULT_ALLOWED_IMAGE_TYPES: Final[set[str]] = {
     "image/jpeg",
@@ -46,10 +39,7 @@ CONTENT_TYPE_TO_EXTENSION: Final[dict[str, str]] = {
 }
 
 
-
-
 ALLOWED_EXTENSIONS: Final[set[str]] = {"jpg", "jpeg", "png", "webp"}
-
 
 
 PASSPORT_PURPOSES: Final[set[MediaPurpose]] = {
@@ -72,24 +62,17 @@ PRIVATE_PURPOSES: Final[set[MediaPurpose]] = {
 Image.MAX_IMAGE_PIXELS = 20_000_000
 
 
-
-
 class MediaValidationError(ValueError):
     """Raised when an uploaded media file fails validation"""
 
-
-
-    def __init__(self, message : str , *, code : str = "Invalid_media_upload") -> None:
+    def __init__(self, message: str, *, code: str = "Invalid_media_upload") -> None:
         self.code = code
         super().__init__(message)
 
 
-
-
-@dataclass(frozen = True , slots = True)
+@dataclass(frozen=True, slots=True)
 class ValidatedMediaFile:
     """Normalized file payload after upload validation"""
-
 
     original_filename: str | None
     content_type: str
@@ -101,44 +84,24 @@ class ValidatedMediaFile:
     data: bytes
 
 
-
-
-
 def _get_allowed_image_types() -> set[str]:
     """Return allowed set of image MIME types from settings"""
 
-    raw_value = getattr(settings , "MEDIA_ALLOWED_IMAGE_TYPES", None)
+    raw_value = getattr(settings, "MEDIA_ALLOWED_IMAGE_TYPES", None)
 
-    if raw_value  is None:
+    if raw_value is None:
         return set(DEFAULT_ALLOWED_IMAGE_TYPES)
-    
 
-
-    if isinstance(raw_value , str):
-        return {
-            item.strip().lower()
-            for item in raw_value.split(",")
-            if item.strip()
-        }
-    
-
+    if isinstance(raw_value, str):
+        return {item.strip().lower() for item in raw_value.split(",") if item.strip()}
 
     return {str(item).strip().lower() for item in raw_value if str(item).strip()}
-
-
-
-
 
 
 def _get_max_logo_size_bytes() -> int:
     """Return max allowed logo size in bytes."""
 
     return int(getattr(settings, "MEDIA_MAX_LOGO_SIZE_BYTES", 1 * 1024 * 1024))
-
-
-
-
-
 
 
 def _get_max_passport_size_bytes() -> int:
@@ -157,17 +120,14 @@ def _normalize_filename(filename: str | None) -> str | None:
     return cleaned_filename or None
 
 
-
-def _extract_extension(filename : str | None) -> None | str:
+def _extract_extension(filename: str | None) -> None | str:
     """Extract a normalized extension from a filename"""
-
 
     if not filename:
         return None
-    
+
     suffix = Path(filename).suffix.lower().lstrip(".")
     return suffix or None
-
 
 
 def _normalize_content_type(content_type: str | None) -> str | None:
@@ -178,8 +138,6 @@ def _normalize_content_type(content_type: str | None) -> str | None:
 
     cleaned_content_type = content_type.strip().lower()
     return cleaned_content_type or None
-
-
 
 
 def _get_max_size_for_purpose(purpose: MediaPurpose) -> int:
@@ -197,8 +155,6 @@ def _get_max_size_for_purpose(purpose: MediaPurpose) -> int:
     )
 
 
-
-
 def _validate_supported_purpose(purpose: MediaPurpose) -> None:
     """Validate that the media purpose is supported by the media module."""
 
@@ -209,9 +165,6 @@ def _validate_supported_purpose(purpose: MediaPurpose) -> None:
             f"Unsupported media purpose: {purpose!s}",
             code="unsupported_media_purpose",
         )
-    
-
-
 
 
 def _validate_file_present(file: UploadFile) -> None:
@@ -222,10 +175,6 @@ def _validate_file_present(file: UploadFile) -> None:
             "No file was uploaded.",
             code="missing_file",
         )
-
-
-
-
 
 
 def _validate_filename(filename: str | None) -> None:
@@ -247,9 +196,6 @@ def _validate_filename(filename: str | None) -> None:
             "Unsupported file extension. Allowed extensions are jpg, jpeg, png, and webp.",
             code="unsupported_file_extension",
         )
-
-
-
 
 
 def _validate_size(file_bytes: bytes, *, max_size_bytes: int) -> None:
@@ -455,11 +401,6 @@ async def read_upload_bytes(file: UploadFile) -> bytes:
     return file_bytes
 
 
-
-
-
-
-
 async def validate_uploaded_image(
     *,
     file: UploadFile,
@@ -515,11 +456,6 @@ async def validate_uploaded_image(
         height_px=height_px,
         data=file_bytes,
     )
-
-
-
-
-
 
 
 async def validate_school_logo_upload(file: UploadFile) -> ValidatedMediaFile:

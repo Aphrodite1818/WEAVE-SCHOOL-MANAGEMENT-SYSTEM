@@ -14,8 +14,10 @@ from app.core.queue.arq import (
     GENERAL_QUEUE_NAME,
 )
 from app.modules.email_outbox.service import EmailOutboxService
+from app.core.queue.sentry import capture_worker_exceptions
 
 
+@capture_worker_exceptions(queue_name=GENERAL_QUEUE_NAME)
 async def process_email_outbox_batch(
     ctx: dict[str, Any],
     batch_size: int = DEFAULT_EMAIL_OUTBOX_BATCH_SIZE,

@@ -11,6 +11,7 @@ from app.shared.mixins import TimestampMixin, UUIDMixin
 
 class SuperAdmin(UUIDMixin, TimestampMixin, Base):
     """Represent the SuperAdmin type."""
+
     __tablename__ = "superadmins"
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
@@ -21,6 +22,7 @@ class SuperAdmin(UUIDMixin, TimestampMixin, Base):
 
 class SuperAdminInvite(UUIDMixin, TimestampMixin, Base):
     """Represent the SuperAdminInvite type."""
+
     __tablename__ = "superadmin_invites"
 
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -83,18 +85,31 @@ class SecurityIPBlock(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
-    blocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    blocked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     unblocked_by_superadmin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("public.superadmins.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    unblocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    unblocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     unblock_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False, index=True
+    )
 
     __table_args__ = (
-        Index("ix_security_ip_blocks_active_hash", "ip_address_hash", "is_active", "expires_at"),
+        Index(
+            "ix_security_ip_blocks_active_hash",
+            "ip_address_hash",
+            "is_active",
+            "expires_at",
+        ),
     )

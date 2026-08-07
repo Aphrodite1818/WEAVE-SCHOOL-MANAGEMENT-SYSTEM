@@ -5,6 +5,7 @@ import {
   createJwt,
   importFreshApi,
   installBrowserHarness,
+  jsonResponse,
 } from "../support/browserHarness.js";
 
 test("authSession normalizes tenant-admin identity and respects persistence choice", async () => {
@@ -45,6 +46,61 @@ test("authSession keeps access tokens session-only and schedules proactive refre
   assert.equal(harness.localStorage.getItem("access_token"), null);
   assert.equal(harness.localStorage.getItem("auth_remember"), "true");
   assert.equal(harness.window.__timers.size, 1);
+});
+
+test("cookie-auth refresh and logout requests include the CSRF protection header", async () => {
+  const calls = [];
+  installBrowserHarness({
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      return jsonResponse(200, {});
+    },
+  });
+  const { api } = await importFreshApi();
+
+  await api.post("/auth/refresh", undefined, {
+    auth: false,
+    clearAuthOnUnauthorized: false,
+    skipAuthRefresh: true,
+  });
+  await api.post("/auth/logout", undefined, {
+    auth: false,
+    clearAuthOnUnauthorized: false,
+    skipAuthRefresh: true,
+  });
+
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.options.credentials, "include");
+    assert.equal(call.options.headers["x-weave-csrf"], "1");
+  }
+});
+
+test("automatic access-token refresh includes the CSRF protection header", async () => {
+  const calls = [];
+  const refreshedToken = createJwt({ exp: Math.floor(Date.now() / 1000) + 600 });
+  installBrowserHarness({
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url.endsWith("/auth/refresh")) {
+        return jsonResponse(200, { access_token: refreshedToken });
+      }
+      if (calls.filter((call) => call.url.endsWith("/protected")).length === 1) {
+        return jsonResponse(401, { detail: "expired" });
+      }
+      return jsonResponse(200, { ok: true });
+    },
+  });
+  const { api, authSession } = await importFreshApi();
+  authSession.setToken(createJwt({ exp: Math.floor(Date.now() / 1000) + 600 }));
+
+  const response = await api.get("/protected");
+
+  assert.deepEqual(response, { ok: true });
+  const refreshCall = calls.find((call) => call.url.endsWith("/auth/refresh"));
+  assert.ok(refreshCall);
+  assert.equal(refreshCall.options.credentials, "include");
+  assert.equal(refreshCall.options.headers["x-weave-csrf"], "1");
 });
 
 test("parseApiError maps FastAPI validation details and verification metadata", async () => {

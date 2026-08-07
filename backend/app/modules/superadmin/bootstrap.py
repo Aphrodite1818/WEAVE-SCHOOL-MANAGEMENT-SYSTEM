@@ -12,7 +12,6 @@ from app.config.security import hash_password, verify_password
 from app.config.settings import settings
 from app.modules.superadmin.models import SuperAdmin
 
-
 logger = get_logger(__name__)
 
 

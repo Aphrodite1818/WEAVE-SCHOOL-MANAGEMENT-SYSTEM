@@ -65,7 +65,11 @@ class SchoolCalendarConfigurationCreate(CalendarInputBase):
 
     @model_validator(mode="after")
     def validate_times(self):
-        if self.default_open_time and self.default_close_time and self.default_close_time <= self.default_open_time:
+        if (
+            self.default_open_time
+            and self.default_close_time
+            and self.default_close_time <= self.default_open_time
+        ):
             raise ValueError("default_close_time must be later than default_open_time")
         return self
 
@@ -92,7 +96,11 @@ class SchoolCalendarConfigurationUpdate(CalendarInputBase):
     def validate_update(self):
         if not self.model_fields_set:
             raise ValueError("at least one configuration field is required")
-        if self.default_open_time and self.default_close_time and self.default_close_time <= self.default_open_time:
+        if (
+            self.default_open_time
+            and self.default_close_time
+            and self.default_close_time <= self.default_open_time
+        ):
             raise ValueError("default_close_time must be later than default_open_time")
         return self
 
@@ -148,7 +156,9 @@ class SchoolCalendarDayUpdate(CalendarInputBase):
         if self.opens_at and self.closes_at and self.closes_at <= self.opens_at:
             raise ValueError("closes_at must be later than opens_at")
         if self.student_attendance_required is True and self.student_activity_allowed is False:
-            raise ValueError("student attendance cannot be required when student activity is disallowed")
+            raise ValueError(
+                "student attendance cannot be required when student activity is disallowed"
+            )
         if self.student_attendance_required is True and self.school_open is False:
             raise ValueError("student attendance cannot be required when school is closed")
         return self
@@ -176,7 +186,9 @@ class SchoolCalendarDateRangeUpdate(CalendarInputBase):
         if self.opens_at and self.closes_at and self.closes_at <= self.opens_at:
             raise ValueError("closes_at must be later than opens_at")
         if self.student_attendance_required and not self.student_activity_allowed:
-            raise ValueError("student attendance cannot be required when student activity is disallowed")
+            raise ValueError(
+                "student attendance cannot be required when student activity is disallowed"
+            )
         if self.student_attendance_required and not self.school_open:
             raise ValueError("student attendance cannot be required when school is closed")
         return self

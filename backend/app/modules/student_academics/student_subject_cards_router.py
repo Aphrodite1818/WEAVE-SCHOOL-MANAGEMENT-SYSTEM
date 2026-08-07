@@ -12,7 +12,6 @@ from app.modules.student_academics.schemas import StudentSubjectCardListResponse
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.students.models import Student
 
-
 router = APIRouter(
     prefix="/students/academics",
     tags=["Student Academics"],
@@ -48,13 +47,11 @@ async def list_my_subject_cards_with_drafts(
         return response
 
     for card in response.items:
-        compatibility = (
-            await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-                db,
-                current_student.tenant_id,
-                card.class_id,
-                card.subject_id,
-            )
+        compatibility = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+            db,
+            current_student.tenant_id,
+            card.class_id,
+            card.subject_id,
         )
         if compatibility is None:
             continue

@@ -28,7 +28,6 @@ from app.tenant_management.schemas import (
 )
 from app.tenant_management.service import TenantService
 
-
 router = APIRouter(tags=["Tenants"])
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentTenantMember: TypeAlias = Annotated[

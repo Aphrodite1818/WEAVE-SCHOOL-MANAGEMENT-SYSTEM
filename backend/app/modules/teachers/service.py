@@ -127,33 +127,22 @@ class TeacherAccountService:
                 ActorType.TEACHER_ACCOUNT,
                 ActorType.TEACHER,
             }:
-                raise ConflictException(
-                    "This email is already registered to another account."
-                )
+                raise ConflictException("This email is already registered to another account.")
             account = await TeacherAccountRepository.get_by_id(
                 db,
                 identity.actor_id,
                 lock=True,
             )
             if account is None:
-                raise ConflictException(
-                    "The existing teacher identity is invalid."
-                )
+                raise ConflictException("The existing teacher identity is invalid.")
             if (
                 account.account_status == TeacherAccountStatus.ACTIVE
                 and account.is_verified
                 and account.is_active
             ):
-                raise ConflictException(
-                    "This teacher account already exists. Please log in."
-                )
-            if (
-                account.account_status == TeacherAccountStatus.LOCKED
-                or not account.is_active
-            ):
-                raise ForbiddenException(
-                    "This teacher account cannot be registered again."
-                )
+                raise ConflictException("This teacher account already exists. Please log in.")
+            if account.account_status == TeacherAccountStatus.LOCKED or not account.is_active:
+                raise ForbiddenException("This teacher account cannot be registered again.")
             account.password_hash = hash_password(payload.password)
             account.account_status = TeacherAccountStatus.PENDING
             account.is_verified = False
@@ -311,9 +300,7 @@ class TeacherAccountService:
         ):
             raise BadRequestException("Current password is incorrect.")
         if verify_password(payload.new_password, account.password_hash):
-            raise BadRequestException(
-                "New password must differ from the current password."
-            )
+            raise BadRequestException("New password must differ from the current password.")
 
         account.password_hash = hash_password(payload.new_password)
         await TeacherAccountRepository.save(db, account)
@@ -323,18 +310,12 @@ class TeacherAccountService:
         )
         membership_ids = [membership.id for membership in memberships]
         session_filters = [
-            (
-                AuthSession.actor_type
-                == AuthSessionActorType.TEACHER_ACCOUNT
-            )
+            (AuthSession.actor_type == AuthSessionActorType.TEACHER_ACCOUNT)
             & (AuthSession.actor_id == account.id)
         ]
         if membership_ids:
             session_filters.append(
-                (
-                    AuthSession.actor_type
-                    == AuthSessionActorType.TEACHER
-                )
+                (AuthSession.actor_type == AuthSessionActorType.TEACHER)
                 & AuthSession.actor_id.in_(membership_ids)
             )
         await db.execute(
@@ -365,9 +346,7 @@ class TeacherAccountService:
         )
         return TeacherMembershipListResponse(
             items=[
-                TeacherMembershipWithAccountResponse.model_validate(
-                    membership
-                )
+                TeacherMembershipWithAccountResponse.model_validate(membership)
                 for membership in memberships
             ],
             total=len(memberships),
@@ -412,9 +391,7 @@ class TeacherMembershipService:
         )
         if membership is None:
             raise NotFoundException("Teacher membership not found.")
-        return TeacherMembershipWithAccountResponse.model_validate(
-            membership
-        )
+        return TeacherMembershipWithAccountResponse.model_validate(membership)
 
     @staticmethod
     async def list_for_tenant(
@@ -435,10 +412,7 @@ class TeacherMembershipService:
             limit=min(limit, 100),
         )
         return TeacherMembershipListResponse(
-            items=[
-                TeacherMembershipWithAccountResponse.model_validate(row)
-                for row in rows
-            ],
+            items=[TeacherMembershipWithAccountResponse.model_validate(row) for row in rows],
             total=total,
         )
 
@@ -469,27 +443,18 @@ class TeacherMembershipService:
                 "receive_push_notifications",
             }
             if not set(payload.model_fields_set).issubset(allowed):
-                raise ForbiddenException(
-                    "Employment fields are controlled by the school."
-                )
+                raise ForbiddenException("Employment fields are controlled by the school.")
 
         update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
         if "staff_id" in update_data:
-            normalized_staff_id = normalize_staff_id(
-                update_data["staff_id"]
-            )
-            if (
-                normalized_staff_id
-                and await TeacherMembershipRepository.staff_id_exists(
-                    db,
-                    actor.tenant_id,
-                    normalized_staff_id,
-                    exclude_membership_id=membership.id,
-                )
+            normalized_staff_id = normalize_staff_id(update_data["staff_id"])
+            if normalized_staff_id and await TeacherMembershipRepository.staff_id_exists(
+                db,
+                actor.tenant_id,
+                normalized_staff_id,
+                exclude_membership_id=membership.id,
             ):
-                raise ConflictException(
-                    "This staff ID is already assigned."
-                )
+                raise ConflictException("This staff ID is already assigned.")
             update_data["staff_id"] = normalized_staff_id
 
         for field, value in update_data.items():
@@ -538,9 +503,7 @@ class TeacherMembershipService:
         if membership is None:
             raise NotFoundException("Teacher membership not found.")
         if membership.status != TeacherMembershipStatus.ACTIVE:
-            raise ConflictException(
-                "Only active teacher memberships can be suspended."
-            )
+            raise ConflictException("Only active teacher memberships can be suspended.")
         membership.status = TeacherMembershipStatus.SUSPENDED
         membership.end_reason = payload.reason
         await TeacherMembershipRepository.save(db, membership)
@@ -583,9 +546,7 @@ class TeacherMembershipService:
             reason="membership_ended",
         )
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            actor.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
         await db.refresh(membership)
         return TeacherMembershipResponse.model_validate(membership)
 
@@ -619,9 +580,7 @@ class TeacherMembershipService:
         membership.end_reason = None
         await TeacherMembershipRepository.save(db, membership)
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            actor.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
         await db.refresh(membership)
         return TeacherMembershipResponse.model_validate(membership)
 
@@ -651,9 +610,7 @@ class TeacherMembershipService:
                 subject_id,
             )
             if subject is None or not subject.is_active:
-                raise NotFoundException(
-                    f"Subject {subject_id} was not found or is inactive."
-                )
+                raise NotFoundException(f"Subject {subject_id} was not found or is inactive.")
 
         existing = {
             link.subject_id: link
@@ -668,11 +625,7 @@ class TeacherMembershipService:
             link.is_active = subject_id in requested
             await TeacherMembershipSubjectRepository.save(db, link)
 
-        missing = [
-            subject_id
-            for subject_id in requested
-            if subject_id not in existing
-        ]
+        missing = [subject_id for subject_id in requested if subject_id not in existing]
         if missing:
             await TeacherMembershipSubjectRepository.add_many(
                 db,
@@ -766,18 +719,13 @@ class TeacherInvitationService:
             lock=True,
         )
         if pending is not None:
-            raise ConflictException(
-                "A pending invitation already exists for this teacher."
-            )
+            raise ConflictException("A pending invitation already exists for this teacher.")
 
         normalized_staff_id = normalize_staff_id(payload.staff_id)
-        if (
-            normalized_staff_id
-            and await TeacherMembershipRepository.staff_id_exists(
-                db,
-                actor.tenant_id,
-                normalized_staff_id,
-            )
+        if normalized_staff_id and await TeacherMembershipRepository.staff_id_exists(
+            db,
+            actor.tenant_id,
+            normalized_staff_id,
         ):
             raise ConflictException("This staff ID is already assigned.")
 
@@ -791,18 +739,14 @@ class TeacherInvitationService:
             department=payload.department,
             employment_type=payload.employment_type,
             status=TeacherInvitationStatus.PENDING,
-            expires_at=_utc_now()
-            + timedelta(days=TeacherInvitationService.INVITATION_DAYS),
+            expires_at=_utc_now() + timedelta(days=TeacherInvitationService.INVITATION_DAYS),
             created_by_admin_id=actor.id,
         )
         invitation = await TeacherInvitationRepository.add(db, invitation)
         tenant = await TenantRepository.get_by_id(db, actor.tenant_id)
         await db.commit()
 
-        invite_url = (
-            f"{settings.FRONTEND_APP_URL.rstrip('/')}"
-            f"/teacher-invitations/{raw_token}"
-        )
+        invite_url = f"{settings.FRONTEND_APP_URL.rstrip('/')}/teacher-invitations/{raw_token}"
         if background_tasks is not None:
             school_name = tenant.school_name if tenant else "your school"
             background_tasks.add_task(
@@ -840,9 +784,7 @@ class TeacherInvitationService:
             await db.commit()
             raise BadRequestException("Invitation has expired.")
         if account.email.casefold() != invitation.invited_email.casefold():
-            raise ForbiddenException(
-                "This invitation belongs to another email address."
-            )
+            raise ForbiddenException("This invitation belongs to another email address.")
 
         membership = await TeacherMembershipRepository.get_by_account_and_tenant(
             db,
@@ -855,17 +797,12 @@ class TeacherInvitationService:
                 db,
                 tenant_id=invitation.tenant_id,
             )
-            if (
-                invitation.staff_id
-                and await TeacherMembershipRepository.staff_id_exists(
-                    db,
-                    invitation.tenant_id,
-                    invitation.staff_id,
-                )
+            if invitation.staff_id and await TeacherMembershipRepository.staff_id_exists(
+                db,
+                invitation.tenant_id,
+                invitation.staff_id,
             ):
-                raise ConflictException(
-                    "The invitation staff ID is already assigned."
-                )
+                raise ConflictException("The invitation staff ID is already assigned.")
             membership = await TeacherMembershipRepository.add(
                 db,
                 TeacherMembership(
@@ -891,23 +828,17 @@ class TeacherInvitationService:
             membership.staff_id = invitation.staff_id or membership.staff_id
             membership.job_title = invitation.job_title or membership.job_title
             membership.department = invitation.department or membership.department
-            membership.employment_type = (
-                invitation.employment_type or membership.employment_type
-            )
+            membership.employment_type = invitation.employment_type or membership.employment_type
             await TeacherMembershipRepository.save(db, membership)
         else:
-            raise ConflictException(
-                "This teacher already has a usable membership in the school."
-            )
+            raise ConflictException("This teacher already has a usable membership in the school.")
 
         invitation.status = TeacherInvitationStatus.ACCEPTED
         invitation.accepted_at = _utc_now()
         invitation.accepted_by_teacher_account_id = account.id
         await TeacherInvitationRepository.save(db, invitation)
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            invitation.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(invitation.tenant_id)
         membership = await TeacherMembershipRepository.get_by_id(
             db,
             membership.id,
@@ -933,9 +864,7 @@ class TeacherInvitationService:
             offset=skip,
             limit=min(limit, 100),
         )
-        return [
-            TeacherInvitationResponse.model_validate(row) for row in rows
-        ], total
+        return [TeacherInvitationResponse.model_validate(row) for row in rows], total
 
     @staticmethod
     async def revoke_invitation(
@@ -953,9 +882,7 @@ class TeacherInvitationService:
         if invitation is None:
             raise NotFoundException("Invitation not found.")
         if invitation.status != TeacherInvitationStatus.PENDING:
-            raise ConflictException(
-                "Only pending invitations can be revoked."
-            )
+            raise ConflictException("Only pending invitations can be revoked.")
         invitation.status = TeacherInvitationStatus.REVOKED
         invitation.revoked_at = _utc_now()
         await TeacherInvitationRepository.save(db, invitation)

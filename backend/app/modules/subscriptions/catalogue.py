@@ -19,7 +19,6 @@ from app.modules.subscriptions.plans import get_plan_entitlements
 from app.modules.subscriptions.subscription_enums import BillingInterval
 from app.tenant_management.models import SubscriptionPlan
 
-
 PLAN_DISPLAY_NAMES = {
     SubscriptionPlan.FREE_TRIAL: "Free Trial",
     SubscriptionPlan.PLUS: "Plus",

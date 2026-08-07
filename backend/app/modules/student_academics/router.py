@@ -74,7 +74,6 @@ from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 tenant_admin_router = APIRouter(
     prefix="/tenant-admin/academics",
     tags=["Tenant Admin Academics"],
@@ -559,7 +558,6 @@ async def preview_grading_scale_readiness(
     )
 
 
-
 @tenant_admin_router.post(
     "/class-subjects/{class_subject_id}/teacher-assignments",
     response_model=TeacherAssignmentResponse,
@@ -601,21 +599,19 @@ async def list_teacher_assignments(
     limit: int = Query(default=25, ge=1, le=100),
 ) -> TeacherAssignmentListResponse:
     resolved_status = "active" if active_only and status is None else status
-    items, total = (
-        await StudentAcademicService.list_teacher_assignment_responses(
-            db,
-            current_admin.tenant_id,
-            teacher_id=teacher_membership_id,
-            class_id=class_id,
-            class_subject_id=class_subject_id,
-            subject_id=subject_id,
-            status=resolved_status,
-            effective_from_from=effective_from_from,
-            effective_from_to=effective_from_to,
-            search=search,
-            skip=skip,
-            limit=limit,
-        )
+    items, total = await StudentAcademicService.list_teacher_assignment_responses(
+        db,
+        current_admin.tenant_id,
+        teacher_id=teacher_membership_id,
+        class_id=class_id,
+        class_subject_id=class_subject_id,
+        subject_id=subject_id,
+        status=resolved_status,
+        effective_from_from=effective_from_from,
+        effective_from_to=effective_from_to,
+        search=search,
+        skip=skip,
+        limit=limit,
     )
     return TeacherAssignmentListResponse(items=items, total=total)
 
@@ -801,13 +797,11 @@ async def list_my_assignments(
     db: DbSession,
     current_teacher: CurrentTeacher,
 ) -> TeacherAssignmentListResponse:
-    items, total = (
-        await StudentAcademicService.list_teacher_assignment_responses(
-            db,
-            current_teacher.tenant_id,
-            teacher_id=current_teacher.id,
-            status="active",
-        )
+    items, total = await StudentAcademicService.list_teacher_assignment_responses(
+        db,
+        current_teacher.tenant_id,
+        teacher_id=current_teacher.id,
+        status="active",
     )
     return TeacherAssignmentListResponse(items=items, total=total)
 
@@ -823,21 +817,17 @@ async def list_my_assignment_students(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> StudentListResponse:
-    assignment = (
-        await StudentAcademicRepository.get_teacher_assignment_by_id(
-            db,
-            current_teacher.tenant_id,
-            assignment_id,
-        )
+    assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+        db,
+        current_teacher.tenant_id,
+        assignment_id,
     )
     if (
         assignment is None
         or assignment.teacher_membership_id != current_teacher.id
         or not assignment.is_active
     ):
-        raise ForbiddenException(
-            "You may view students only for your active assignments."
-        )
+        raise ForbiddenException("You may view students only for your active assignments.")
     class_subject = await StudentAcademicRepository.get_class_subject_by_id(
         db,
         current_teacher.tenant_id,

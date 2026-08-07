@@ -10,8 +10,14 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.school_calendar.calendar_enums import SchoolCalendarEventAudience, SchoolCalendarEventStatus, SchoolCalendarStatus
-from app.modules.school_calendar.generation_service import SchoolCalendarGenerationService
+from app.modules.school_calendar.calendar_enums import (
+    SchoolCalendarEventAudience,
+    SchoolCalendarEventStatus,
+    SchoolCalendarStatus,
+)
+from app.modules.school_calendar.generation_service import (
+    SchoolCalendarGenerationService,
+)
 from app.modules.school_calendar.schemas import (
     SchoolCalendarActivationRequest,
     SchoolCalendarArchiveRequest,
@@ -40,23 +46,30 @@ from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(prefix="/tenant-admin/school-calendar", tags=["Tenant Admin School Calendar"])
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 
 
 async def _ensure_academic_setup(db: DbSession, tenant_id: UUID) -> None:
-    await SubscriptionFeatureService.ensure_feature_enabled(db, tenant_id, FeatureCode.ACADEMIC_SETUP)
+    await SubscriptionFeatureService.ensure_feature_enabled(
+        db, tenant_id, FeatureCode.ACADEMIC_SETUP
+    )
 
 
 @router.get("/configuration", response_model=SchoolCalendarConfigurationResponse)
-async def get_configuration(db: DbSession, current_admin: CurrentTenantAdmin) -> SchoolCalendarConfigurationResponse:
+async def get_configuration(
+    db: DbSession, current_admin: CurrentTenantAdmin
+) -> SchoolCalendarConfigurationResponse:
     await _ensure_academic_setup(db, current_admin.tenant_id)
     return await SchoolCalendarService.get_configuration(db, current_admin.tenant_id)
 
 
-@router.post("/configuration", response_model=SchoolCalendarConfigurationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/configuration",
+    response_model=SchoolCalendarConfigurationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_configuration(
     payload: SchoolCalendarConfigurationCreate,
     db: DbSession,
@@ -186,7 +199,11 @@ async def emergency_closure(
     )
 
 
-@router.post("/events", response_model=SchoolCalendarEventResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/events",
+    response_model=SchoolCalendarEventResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_event(
     payload: SchoolCalendarEventCreate,
     db: DbSession,
@@ -278,15 +295,21 @@ async def cancel_event(
 
 
 @router.get("/{calendar_id}", response_model=SchoolCalendarResponse)
-async def get_calendar(calendar_id: UUID, db: DbSession, current_admin: CurrentTenantAdmin) -> SchoolCalendarResponse:
+async def get_calendar(
+    calendar_id: UUID, db: DbSession, current_admin: CurrentTenantAdmin
+) -> SchoolCalendarResponse:
     await _ensure_academic_setup(db, current_admin.tenant_id)
     return await SchoolCalendarService.get_calendar(db, current_admin.tenant_id, calendar_id)
 
 
 @router.get("/{calendar_id}/dependencies", response_model=SchoolCalendarDependencyPreview)
-async def calendar_dependencies(calendar_id: UUID, db: DbSession, current_admin: CurrentTenantAdmin) -> SchoolCalendarDependencyPreview:
+async def calendar_dependencies(
+    calendar_id: UUID, db: DbSession, current_admin: CurrentTenantAdmin
+) -> SchoolCalendarDependencyPreview:
     await _ensure_academic_setup(db, current_admin.tenant_id)
-    return await SchoolCalendarService.calendar_dependency_preview(db, current_admin.tenant_id, calendar_id)
+    return await SchoolCalendarService.calendar_dependency_preview(
+        db, current_admin.tenant_id, calendar_id
+    )
 
 
 @router.post("/{calendar_id}/activate", response_model=SchoolCalendarResponse)

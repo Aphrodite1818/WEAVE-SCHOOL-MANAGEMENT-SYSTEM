@@ -22,7 +22,6 @@ from app.modules.tenant_branding.schemas import (
 )
 from app.modules.tenant_branding.service import TenantBrandingService
 
-
 router = APIRouter(
     prefix="/branding",
     tags=["Tenant Branding"],

@@ -85,7 +85,10 @@ class MetricsService:
                     AcademicTerm.name.label("term_name"),
                     func.avg(ReportCard.average_score).label("average"),
                 )
-                .join(AcademicSession, AcademicSession.id == ReportCard.academic_session_id)
+                .join(
+                    AcademicSession,
+                    AcademicSession.id == ReportCard.academic_session_id,
+                )
                 .join(AcademicTerm, AcademicTerm.id == ReportCard.academic_term_id)
                 .where(ReportCard.tenant_id == tenant_id)
                 .group_by(AcademicSession.name, AcademicTerm.name)
@@ -110,9 +113,13 @@ class MetricsService:
                     func.avg(StudentSubjectResult.total_score).label("average"),
                 )
                 .join(
-                    AcademicSession, AcademicSession.id == StudentSubjectResult.academic_session_id
+                    AcademicSession,
+                    AcademicSession.id == StudentSubjectResult.academic_session_id,
                 )
-                .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
+                .join(
+                    AcademicTerm,
+                    AcademicTerm.id == StudentSubjectResult.academic_term_id,
+                )
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
@@ -243,7 +250,8 @@ class MetricsService:
         rows = (
             await db.execute(
                 select(
-                    StudentSubjectResult.status, func.count(StudentSubjectResult.id).label("value")
+                    StudentSubjectResult.status,
+                    func.count(StudentSubjectResult.id).label("value"),
                 )
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
@@ -272,9 +280,13 @@ class MetricsService:
                     func.avg(StudentSubjectResult.total_score).label("average"),
                 )
                 .join(
-                    AcademicSession, AcademicSession.id == StudentSubjectResult.academic_session_id
+                    AcademicSession,
+                    AcademicSession.id == StudentSubjectResult.academic_session_id,
                 )
-                .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
+                .join(
+                    AcademicTerm,
+                    AcademicTerm.id == StudentSubjectResult.academic_term_id,
+                )
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.teacher_membership_id == teacher_id,
@@ -311,9 +323,13 @@ class MetricsService:
                 )
                 .join(Subject, Subject.id == StudentSubjectResult.subject_id)
                 .join(
-                    AcademicSession, AcademicSession.id == StudentSubjectResult.academic_session_id
+                    AcademicSession,
+                    AcademicSession.id == StudentSubjectResult.academic_session_id,
                 )
-                .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
+                .join(
+                    AcademicTerm,
+                    AcademicTerm.id == StudentSubjectResult.academic_term_id,
+                )
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.student_id == student_id,
@@ -325,7 +341,10 @@ class MetricsService:
         total_rows = len(rows)
         submitted_count = len(submitted_rows)
         average = (
-            round(sum(float(row.total_score or 0) for row in submitted_rows) / submitted_count, 2)
+            round(
+                sum(float(row.total_score or 0) for row in submitted_rows) / submitted_count,
+                2,
+            )
             if submitted_count
             else 0
         )
@@ -473,8 +492,8 @@ class MetricsService:
                     "student_profiles_incomplete": incomplete_profiles,
                     "pending_teacher_accounts": counts["pending_teachers"],
                     "pending_parent_accounts": counts["pending_parents"],
-                    "active_academic_session": current_session.name if current_session else None,
-                    "active_academic_term": current_term.name.value if current_term else None,
+                    "active_academic_session": (current_session.name if current_session else None),
+                    "active_academic_term": (current_term.name.value if current_term else None),
                     "report_cards_generated": counts["report_cards_generated"],
                     "report_cards_published": counts["report_cards_published"],
                     "result_rows_total": result_rows_total,

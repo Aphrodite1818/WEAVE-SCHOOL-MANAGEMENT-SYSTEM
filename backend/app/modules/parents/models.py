@@ -263,10 +263,7 @@ class ParentMembership(BaseModel):
 
     @property
     def is_active(self) -> bool:
-        return (
-            self.parent_account.is_active
-            and self.status != ParentMembershipStatus.INACTIVE
-        )
+        return self.parent_account.is_active and self.status != ParentMembershipStatus.INACTIVE
 
     @property
     def profile_completed(self) -> bool:

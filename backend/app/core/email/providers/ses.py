@@ -39,7 +39,6 @@ from app.core.email.exceptions import (
 from app.core.email.providers.base import EmailProviderAdapter
 from app.core.email.routing import resolve_email_route
 
-
 logger = get_logger(__name__)
 
 

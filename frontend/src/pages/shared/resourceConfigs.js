@@ -307,8 +307,8 @@ export const teacherResourceConfig = {
   pluralLabel: "Teacher profiles",
   formHelp: "Review teacher records and update staff details. Subject teaching assignments are managed in Academic Hub.",
   canCreate: false,
-  canUpdate: true,
-  canDelete: true,
+  canUpdate: false,
+  canDelete: false,
   loadContext: () => loadAcademicContext(),
   initialForm: {
     staff_id: "",
@@ -332,8 +332,8 @@ export const teacherResourceConfig = {
     { key: "specialization", label: "Specialization", render: (item) => item.specialization || "-" },
   ],
   fetchItems: () => teacherService.getTeachers({ limit: 100 }),
-  updateItem: (id, payload) => teacherService.updateTeacher(id, payload),
-  deleteItem: (id) => teacherService.deleteTeacher(id),
+  updateItem: undefined,
+  deleteItem: undefined,
   buildPayload: (formData) =>
     compactPayload({
       staff_id: formData.staff_id,
@@ -427,8 +427,8 @@ export const parentResourceConfig = {
   formHelp:
     "Review parent records created by tenant admins and maintain optional contact details after invite acceptance.",
   canCreate: false,
-  canUpdate: true,
-  canDelete: true,
+  canUpdate: false,
+  canDelete: false,
   initialForm: {
     occupation: "",
     address: "",
@@ -447,8 +447,8 @@ export const parentResourceConfig = {
     { key: "emergency_phone", label: "Emergency Phone", render: (item) => optionalValue(item.emergency_phone) },
   ],
   fetchItems: () => parentService.getParents({ limit: 100 }),
-  updateItem: (id, payload) => parentService.updateParent(id, payload),
-  deleteItem: (id) => parentService.deleteParent(id),
+  updateItem: undefined,
+  deleteItem: undefined,
   buildPayload: (formData) => compactPayload(formData),
   mapItemToForm: (item) => ({
     occupation: item.occupation || "",

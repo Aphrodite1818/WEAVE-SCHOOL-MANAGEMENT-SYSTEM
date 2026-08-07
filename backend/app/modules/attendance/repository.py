@@ -57,7 +57,9 @@ class AttendanceRepository:
         return await AttendanceRepository._save(db, settings)
 
     @staticmethod
-    async def get_class(db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID) -> ClassRoom | None:
+    async def get_class(
+        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID
+    ) -> ClassRoom | None:
         return (
             await db.execute(
                 select(ClassRoom).where(ClassRoom.tenant_id == tenant_id, ClassRoom.id == class_id)
@@ -92,9 +94,15 @@ class AttendanceRepository:
                         Student.is_active.is_(True),
                         Student.is_archived.is_(False),
                     )
-                    .order_by(Student.last_name.asc().nulls_last(), Student.first_name.asc().nulls_last(), Student.admission_number.asc())
+                    .order_by(
+                        Student.last_name.asc().nulls_last(),
+                        Student.first_name.asc().nulls_last(),
+                        Student.admission_number.asc(),
+                    )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
     @staticmethod
@@ -129,7 +137,10 @@ class AttendanceRepository:
     ) -> StudentAttendanceSheet | None:
         query = (
             select(StudentAttendanceSheet)
-            .where(StudentAttendanceSheet.tenant_id == tenant_id, StudentAttendanceSheet.id == sheet_id)
+            .where(
+                StudentAttendanceSheet.tenant_id == tenant_id,
+                StudentAttendanceSheet.id == sheet_id,
+            )
             .options(selectinload(StudentAttendanceSheet.records))
         )
         if lock:
@@ -153,11 +164,15 @@ class AttendanceRepository:
         return sheet
 
     @staticmethod
-    async def save_student_sheet(db: AsyncSession, sheet: StudentAttendanceSheet) -> StudentAttendanceSheet:
+    async def save_student_sheet(
+        db: AsyncSession, sheet: StudentAttendanceSheet
+    ) -> StudentAttendanceSheet:
         return await AttendanceRepository._save(db, sheet)
 
     @staticmethod
-    async def save_student_record(db: AsyncSession, record: StudentAttendanceRecord) -> StudentAttendanceRecord:
+    async def save_student_record(
+        db: AsyncSession, record: StudentAttendanceRecord
+    ) -> StudentAttendanceRecord:
         return await AttendanceRepository._save(db, record)
 
     @staticmethod
@@ -197,7 +212,13 @@ class AttendanceRepository:
             filters.append(StudentAttendanceSheet.class_id == class_id)
         if status is not None:
             filters.append(StudentAttendanceSheet.status == status)
-        total = int((await db.execute(select(func.count()).select_from(StudentAttendanceSheet).where(*filters))).scalar_one())
+        total = int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(StudentAttendanceSheet).where(*filters)
+                )
+            ).scalar_one()
+        )
         rows = list(
             (
                 await db.execute(
@@ -208,7 +229,9 @@ class AttendanceRepository:
                     .offset(skip)
                     .limit(limit)
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         return rows, total
 
@@ -237,7 +260,10 @@ class AttendanceRepository:
                 await db.execute(
                     select(func.count())
                     .select_from(StudentAttendanceRecord)
-                    .join(StudentAttendanceSheet, StudentAttendanceSheet.id == StudentAttendanceRecord.sheet_id)
+                    .join(
+                        StudentAttendanceSheet,
+                        StudentAttendanceSheet.id == StudentAttendanceRecord.sheet_id,
+                    )
                     .where(*filters)
                 )
             ).scalar_one()
@@ -246,13 +272,18 @@ class AttendanceRepository:
             (
                 await db.execute(
                     select(StudentAttendanceRecord)
-                    .join(StudentAttendanceSheet, StudentAttendanceSheet.id == StudentAttendanceRecord.sheet_id)
+                    .join(
+                        StudentAttendanceSheet,
+                        StudentAttendanceSheet.id == StudentAttendanceRecord.sheet_id,
+                    )
                     .where(*filters)
                     .order_by(StudentAttendanceSheet.attendance_date.desc())
                     .offset(skip)
                     .limit(limit)
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         return rows, total
 
@@ -265,25 +296,34 @@ class AttendanceRepository:
         target_date: date,
     ) -> set[uuid.UUID]:
         direct = (
-            await db.execute(
-                select(ClassRoom.id).where(
-                    ClassRoom.tenant_id == tenant_id,
-                    ClassRoom.teacher_membership_id == teacher_membership_id,
-                    ClassRoom.is_active.is_(True),
+            (
+                await db.execute(
+                    select(ClassRoom.id).where(
+                        ClassRoom.tenant_id == tenant_id,
+                        ClassRoom.teacher_membership_id == teacher_membership_id,
+                        ClassRoom.is_active.is_(True),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         temporary = (
-            await db.execute(
-                select(TemporaryAttendanceAssignment.class_id).where(
-                    TemporaryAttendanceAssignment.tenant_id == tenant_id,
-                    TemporaryAttendanceAssignment.teacher_membership_id == teacher_membership_id,
-                    TemporaryAttendanceAssignment.status == TemporaryAssignmentStatus.ACTIVE,
-                    TemporaryAttendanceAssignment.starts_on <= target_date,
-                    TemporaryAttendanceAssignment.ends_on >= target_date,
+            (
+                await db.execute(
+                    select(TemporaryAttendanceAssignment.class_id).where(
+                        TemporaryAttendanceAssignment.tenant_id == tenant_id,
+                        TemporaryAttendanceAssignment.teacher_membership_id
+                        == teacher_membership_id,
+                        TemporaryAttendanceAssignment.status == TemporaryAssignmentStatus.ACTIVE,
+                        TemporaryAttendanceAssignment.starts_on <= target_date,
+                        TemporaryAttendanceAssignment.ends_on >= target_date,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return {item for item in [*direct, *temporary]}
 
     @staticmethod
@@ -329,13 +369,35 @@ class AttendanceRepository:
         filters = [SchoolGeofence.tenant_id == tenant_id]
         if not include_archived:
             filters.append(SchoolGeofence.status != SchoolGeofenceStatus.ARCHIVED)
-        total = int((await db.execute(select(func.count()).select_from(SchoolGeofence).where(*filters))).scalar_one())
-        rows = list((await db.execute(select(SchoolGeofence).where(*filters).order_by(SchoolGeofence.is_primary.desc(), SchoolGeofence.name.asc()))).scalars().all())
+        total = int(
+            (
+                await db.execute(select(func.count()).select_from(SchoolGeofence).where(*filters))
+            ).scalar_one()
+        )
+        rows = list(
+            (
+                await db.execute(
+                    select(SchoolGeofence)
+                    .where(*filters)
+                    .order_by(SchoolGeofence.is_primary.desc(), SchoolGeofence.name.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
         return rows, total
 
     @staticmethod
-    async def get_geofence(db: AsyncSession, tenant_id: uuid.UUID, geofence_id: uuid.UUID, *, lock: bool = False) -> SchoolGeofence | None:
-        query = select(SchoolGeofence).where(SchoolGeofence.tenant_id == tenant_id, SchoolGeofence.id == geofence_id)
+    async def get_geofence(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        geofence_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> SchoolGeofence | None:
+        query = select(SchoolGeofence).where(
+            SchoolGeofence.tenant_id == tenant_id, SchoolGeofence.id == geofence_id
+        )
         if lock:
             query = query.with_for_update()
         return (await db.execute(query)).scalar_one_or_none()
@@ -343,14 +405,18 @@ class AttendanceRepository:
     @staticmethod
     async def clear_primary_geofence(db: AsyncSession, tenant_id: uuid.UUID) -> None:
         rows = (
-            await db.execute(
-                select(SchoolGeofence).where(
-                    SchoolGeofence.tenant_id == tenant_id,
-                    SchoolGeofence.is_primary.is_(True),
-                    SchoolGeofence.status == SchoolGeofenceStatus.ACTIVE,
+            (
+                await db.execute(
+                    select(SchoolGeofence).where(
+                        SchoolGeofence.tenant_id == tenant_id,
+                        SchoolGeofence.is_primary.is_(True),
+                        SchoolGeofence.status == SchoolGeofenceStatus.ACTIVE,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for row in rows:
             row.is_primary = False
             db.add(row)
@@ -361,7 +427,9 @@ class AttendanceRepository:
         return await AttendanceRepository._save(db, geofence)
 
     @staticmethod
-    async def save_geofence_evaluation(db: AsyncSession, evaluation: GeofenceEvaluation) -> GeofenceEvaluation:
+    async def save_geofence_evaluation(
+        db: AsyncSession, evaluation: GeofenceEvaluation
+    ) -> GeofenceEvaluation:
         return await AttendanceRepository._save(db, evaluation)
 
     @staticmethod
@@ -383,7 +451,9 @@ class AttendanceRepository:
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
-    async def save_workforce_record(db: AsyncSession, record: WorkforceAttendanceRecord) -> WorkforceAttendanceRecord:
+    async def save_workforce_record(
+        db: AsyncSession, record: WorkforceAttendanceRecord
+    ) -> WorkforceAttendanceRecord:
         return await AttendanceRepository._save(db, record)
 
     @staticmethod
@@ -420,7 +490,13 @@ class AttendanceRepository:
             filters.append(WorkforceAttendanceRecord.attendance_date <= end_date)
         if teacher_membership_id is not None:
             filters.append(WorkforceAttendanceRecord.teacher_membership_id == teacher_membership_id)
-        total = int((await db.execute(select(func.count()).select_from(WorkforceAttendanceRecord).where(*filters))).scalar_one())
+        total = int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(WorkforceAttendanceRecord).where(*filters)
+                )
+            ).scalar_one()
+        )
         rows = list(
             (
                 await db.execute(
@@ -430,21 +506,36 @@ class AttendanceRepository:
                     .offset(skip)
                     .limit(limit)
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         return rows, total
 
     @staticmethod
-    async def save_temporary_assignment(db: AsyncSession, assignment: TemporaryAttendanceAssignment) -> TemporaryAttendanceAssignment:
+    async def save_temporary_assignment(
+        db: AsyncSession, assignment: TemporaryAttendanceAssignment
+    ) -> TemporaryAttendanceAssignment:
         return await AttendanceRepository._save(db, assignment)
 
     @staticmethod
-    async def create_correction(db: AsyncSession, correction: AttendanceCorrection) -> AttendanceCorrection:
+    async def create_correction(
+        db: AsyncSession, correction: AttendanceCorrection
+    ) -> AttendanceCorrection:
         return await AttendanceRepository._save(db, correction)
 
     @staticmethod
-    async def get_correction(db: AsyncSession, tenant_id: uuid.UUID, correction_id: uuid.UUID, *, lock: bool = False) -> AttendanceCorrection | None:
-        query = select(AttendanceCorrection).where(AttendanceCorrection.tenant_id == tenant_id, AttendanceCorrection.id == correction_id)
+    async def get_correction(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        correction_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> AttendanceCorrection | None:
+        query = select(AttendanceCorrection).where(
+            AttendanceCorrection.tenant_id == tenant_id,
+            AttendanceCorrection.id == correction_id,
+        )
         if lock:
             query = query.with_for_update()
         return (await db.execute(query)).scalar_one_or_none()
@@ -461,7 +552,13 @@ class AttendanceRepository:
         filters = [AttendanceCorrection.tenant_id == tenant_id]
         if status is not None:
             filters.append(AttendanceCorrection.status == status)
-        total = int((await db.execute(select(func.count()).select_from(AttendanceCorrection).where(*filters))).scalar_one())
+        total = int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(AttendanceCorrection).where(*filters)
+                )
+            ).scalar_one()
+        )
         rows = list(
             (
                 await db.execute(
@@ -471,12 +568,16 @@ class AttendanceRepository:
                     .offset(skip)
                     .limit(limit)
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         return rows, total
 
     @staticmethod
-    async def save_notification(db: AsyncSession, notification: AttendanceNotification) -> AttendanceNotification:
+    async def save_notification(
+        db: AsyncSession, notification: AttendanceNotification
+    ) -> AttendanceNotification:
         return await AttendanceRepository._save(db, notification)
 
     @staticmethod
@@ -534,7 +635,10 @@ class AttendanceRepository:
         rows = (
             await db.execute(
                 select(StudentAttendanceRecord.status, func.count())
-                .join(StudentAttendanceSheet, StudentAttendanceSheet.id == StudentAttendanceRecord.sheet_id)
+                .join(
+                    StudentAttendanceSheet,
+                    StudentAttendanceSheet.id == StudentAttendanceRecord.sheet_id,
+                )
                 .where(
                     StudentAttendanceRecord.tenant_id == tenant_id,
                     StudentAttendanceSheet.tenant_id == tenant_id,

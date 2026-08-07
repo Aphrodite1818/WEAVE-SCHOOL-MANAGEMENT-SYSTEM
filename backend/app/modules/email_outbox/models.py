@@ -51,10 +51,14 @@ class EmailOutbox(BaseModel):
     )
 
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=4, server_default="4")
+    max_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=4, server_default="4"
+    )
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 

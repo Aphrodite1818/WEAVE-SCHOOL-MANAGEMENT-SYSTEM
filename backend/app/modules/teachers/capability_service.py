@@ -100,18 +100,14 @@ class TeacherSubjectCapabilityService:
                 subject_id,
             )
             if subject is None or not subject.is_active:
-                raise NotFoundException(
-                    f"Subject {subject_id} was not found or is inactive."
-                )
+                raise NotFoundException(f"Subject {subject_id} was not found or is inactive.")
 
         existing_links = await TeacherMembershipSubjectRepository.list_for_membership(
             db,
             actor.tenant_id,
             membership_id,
         )
-        existing_active = {
-            link.subject_id for link in existing_links if link.is_active
-        }
+        existing_active = {link.subject_id for link in existing_links if link.is_active}
         removed = existing_active - requested
 
         if removed:
@@ -130,7 +126,9 @@ class TeacherSubjectCapabilityService:
                             ClassSubject.subject_id.in_(removed),
                         )
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             legacy_assignment_subjects = set(
                 (
@@ -142,7 +140,9 @@ class TeacherSubjectCapabilityService:
                             ClassSubjectTeacher.subject_id.in_(removed),
                         )
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             blocked = current_assignment_subjects | legacy_assignment_subjects
             if blocked:

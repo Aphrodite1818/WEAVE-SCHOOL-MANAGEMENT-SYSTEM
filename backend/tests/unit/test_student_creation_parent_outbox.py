@@ -324,17 +324,13 @@ async def test_student_creation_queues_one_parent_email_per_parent(
     assert first_call["email"] == "mother@example.com"
     assert first_call["student_name"] == "Ada Student"
     assert first_call["admission_number"] == "WVS26483912"
-    assert first_call["invite_link"].endswith(
-        "/parent-invitations/mother-token"
-    )
+    assert first_call["invite_link"].endswith("/parent-invitations/mother-token")
     assert first_call["metadata_json"]["source"] == "student_creation"
     assert first_call["metadata_json"]["student_id"] == str(student_id)
 
     assert second_call["email"] == "father@example.com"
     assert second_call["admission_number"] == "WVS26483912"
-    assert second_call["invite_link"].endswith(
-        "/parent-invitations/father-token"
-    )
+    assert second_call["invite_link"].endswith("/parent-invitations/father-token")
     assert second_call["metadata_json"]["relationship_type"] == "father"
 
     db.commit.assert_awaited_once()

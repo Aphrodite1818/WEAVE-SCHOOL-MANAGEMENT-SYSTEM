@@ -19,7 +19,6 @@ from app.modules.superadmin.platform_control_service import (
 from app.modules.superadmin.repository import SuperAdminRepository
 from app.modules.superadmin.security_response_service import SecurityResponseService
 
-
 logger = get_logger(__name__)
 
 _ALLOWED_EXACT_PATHS = {

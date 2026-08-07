@@ -356,6 +356,4 @@ class AuthRefreshTokenReuseEvent(UUIDMixin, Base):
         index=True,
     )
 
-    __table_args__ = (
-        Index("ix_auth_refresh_token_reuse_events_window", "detected_at", "id"),
-    )
+    __table_args__ = (Index("ix_auth_refresh_token_reuse_events_window", "detected_at", "id"),)

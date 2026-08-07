@@ -132,7 +132,9 @@ class MetricsRepository:
         return [PeriodCount(period=row.period, value=int(row.value)) for row in rows]
 
     @staticmethod
-    async def subscription_plan_distribution(db: AsyncSession) -> dict[SubscriptionPlan, int]:
+    async def subscription_plan_distribution(
+        db: AsyncSession,
+    ) -> dict[SubscriptionPlan, int]:
         rows = (
             await db.execute(
                 select(Tenant.plan, func.count(Tenant.id))

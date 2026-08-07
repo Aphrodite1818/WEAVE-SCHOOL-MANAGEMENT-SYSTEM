@@ -5,9 +5,16 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import BadRequestException
-from app.modules.bulk_imports.models import ImportJob, ImportJobStatus, ImportResourceType
+from app.modules.bulk_imports.models import (
+    ImportJob,
+    ImportJobStatus,
+    ImportResourceType,
+)
 from app.modules.bulk_imports.repository import ImportJobRepository
-from app.modules.bulk_imports.service import BulkImportService, build_import_source_fingerprint
+from app.modules.bulk_imports.service import (
+    BulkImportService,
+    build_import_source_fingerprint,
+)
 
 
 def test_import_source_fingerprint_is_stable_when_rows_are_reordered() -> None:

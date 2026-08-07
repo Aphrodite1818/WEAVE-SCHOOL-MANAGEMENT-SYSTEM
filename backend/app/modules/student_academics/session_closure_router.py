@@ -20,7 +20,6 @@ from app.modules.student_academics.session_closure_schemas import (
 from app.modules.student_academics.session_closure_service import SessionClosureService
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/tenant-admin/academics/sessions",
     tags=["Academic Session Closure"],

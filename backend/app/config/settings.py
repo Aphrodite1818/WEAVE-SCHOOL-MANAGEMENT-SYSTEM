@@ -15,7 +15,6 @@ from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 BASE_ENV_VALUES = dotenv_values(BASE_DIR / ".env")
 ACTIVE_ENV = (
@@ -54,6 +53,20 @@ class Settings(BaseSettings):
     APP_NAME: str = "School Management System"
     API_V1_PREFIX: str = "/api/v1"
 
+    # ==========================================================
+    # SENTRY OBSERVABILITY
+    #
+    # Sentry is optional in development and staging. Production
+    # requires a DSN and treats initialization failure as fatal.
+    # ==========================================================
+
+    SENTRY_DSN: SecretStr | None = None
+    SENTRY_RELEASE: str | None = None
+    SENTRY_ERROR_SAMPLE_RATE: float = Field(default=1.0, ge=0.0, le=1.0)
+    SENTRY_TRACES_SAMPLE_RATE: float = Field(default=0.0, ge=0.0, le=1.0)
+    SENTRY_SHUTDOWN_TIMEOUT_SECONDS: float = Field(default=2.0, ge=0.1, le=10.0)
+    SENTRY_DEBUG: bool = False
+
     SECRET_KEY: str = Field(..., min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 5
@@ -86,7 +99,7 @@ class Settings(BaseSettings):
     # EMAIL DELIVERY
     # ==========================================================
 
-    EMAIL_PROVIDER: Literal["legacy", "ses"] = "legacy"
+    EMAIL_PROVIDER: Literal["legacy", "ses", "resend"] = "legacy"
 
     EMAIL_SENDER_NAME: str = "WEAVE"
     EMAIL_REPLY_TO: str | None = None
@@ -94,9 +107,8 @@ class Settings(BaseSettings):
     # ==========================================================
     # LEGACY EMAIL DELIVERY
     #
-    # Intended for development and staging.
-    # These values remain optional in production because
-    # production is forced to use SES.
+    # Intended for development and staging. Production must use
+    # a supported external provider (SES or Resend).
     # ==========================================================
 
     APP_SCRIPT_URL: str | None = None
@@ -109,8 +121,7 @@ class Settings(BaseSettings):
     # ==========================================================
     # AMAZON SES
     #
-    # Optional in development and staging unless SES is selected.
-    # Mandatory in production.
+    # Required only when EMAIL_PROVIDER=ses.
     # ==========================================================
 
     AWS_REGION: str = "eu-west-1"
@@ -146,6 +157,19 @@ class Settings(BaseSettings):
         ge=1,
         le=10,
     )
+
+    # ==========================================================
+    # RESEND
+    #
+    # Required only when EMAIL_PROVIDER=resend.
+    # ==========================================================
+
+    RESEND_API_KEY: SecretStr | None = None
+    RESEND_BASE_URL: str = "https://api.resend.com"
+    RESEND_TRANSACTIONAL_FROM_EMAIL: str = "no-reply@weavecloudspace.com"
+    RESEND_SECURITY_FROM_EMAIL: str = "security@weavecloudspace.com"
+    RESEND_BULK_FROM_EMAIL: str = "updates@weavecloudspace.com"
+    RESEND_TIMEOUT_SECONDS: float = Field(default=10.0, ge=1.0, le=60.0)
 
     @model_validator(mode="after")
     def validate_email_provider_settings(self) -> "Settings":
@@ -200,7 +224,7 @@ class Settings(BaseSettings):
                 raise ValueError("APP_SCRIPT_URL must be a valid absolute HTTP or HTTPS URL.")
 
         # ======================================================
-        # OPTIONAL SES ENDPOINT VALIDATION
+        # PROVIDER ENDPOINT VALIDATION
         # ======================================================
 
         if has_value(self.AWS_SES_ENDPOINT_URL):
@@ -209,13 +233,22 @@ class Settings(BaseSettings):
             if ses_endpoint_url.scheme not in {"http", "https"} or not ses_endpoint_url.netloc:
                 raise ValueError("AWS_SES_ENDPOINT_URL must be a valid absolute HTTP or HTTPS URL.")
 
+        resend_base_url = urlparse(self.RESEND_BASE_URL.strip())
+        if resend_base_url.scheme != "https" or not resend_base_url.netloc:
+            raise ValueError("RESEND_BASE_URL must be a valid absolute HTTPS URL.")
+
         # ======================================================
         # PRODUCTION POLICY
         # ======================================================
 
-        if self.ENV == EnvironmentType.PRODUCTION:
-            if self.EMAIL_PROVIDER != "ses":
-                raise ValueError("Production must use Amazon SES. Set EMAIL_PROVIDER=ses.")
+        if self.ENV == EnvironmentType.PRODUCTION and self.EMAIL_PROVIDER not in {
+            "ses",
+            "resend",
+        }:
+            raise ValueError(
+                "Production email provider must be 'ses' or 'resend'. "
+                "The legacy provider is not allowed."
+            )
 
         # ======================================================
         # LEGACY PROVIDER
@@ -238,9 +271,8 @@ class Settings(BaseSettings):
         # ======================================================
         # AMAZON SES PROVIDER
         #
-        # SES values are required whenever SES is selected.
-        # Since production is forced to SES, these values are
-        # therefore always mandatory in production.
+        # AWS credentials and SES routing are required only when
+        # SES is the selected provider.
         # ======================================================
 
         elif self.EMAIL_PROVIDER == "ses":
@@ -264,6 +296,27 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Amazon SES configuration is incomplete. Missing: "
                     + ", ".join(missing_ses_values)
+                )
+
+        # ======================================================
+        # RESEND PROVIDER
+        # ======================================================
+
+        elif self.EMAIL_PROVIDER == "resend":
+            required_resend_values = {
+                "RESEND_API_KEY": self.RESEND_API_KEY,
+                "RESEND_TRANSACTIONAL_FROM_EMAIL": self.RESEND_TRANSACTIONAL_FROM_EMAIL,
+                "RESEND_SECURITY_FROM_EMAIL": self.RESEND_SECURITY_FROM_EMAIL,
+                "RESEND_BULK_FROM_EMAIL": self.RESEND_BULK_FROM_EMAIL,
+            }
+            missing_resend_values = [
+                name for name, value in required_resend_values.items() if not has_value(value)
+            ]
+
+            if missing_resend_values:
+                raise ValueError(
+                    "Resend configuration is incomplete. Missing: "
+                    + ", ".join(missing_resend_values)
                 )
 
         return self
@@ -407,6 +460,12 @@ class Settings(BaseSettings):
             )
 
         if self.ENV == EnvironmentType.PRODUCTION:
+            sentry_dsn = self.SENTRY_DSN
+            if isinstance(sentry_dsn, SecretStr):
+                sentry_dsn = sentry_dsn.get_secret_value()
+            if not sentry_dsn or not str(sentry_dsn).strip():
+                raise ValueError("SENTRY_DSN is required in production.")
+
             if self.MEDIA_STORAGE_PROVIDER != "r2":
                 raise ValueError(
                     "Production media storage must use R2; local Railway storage is ephemeral."

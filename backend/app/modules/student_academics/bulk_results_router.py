@@ -28,7 +28,6 @@ from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.teachers.models import TeacherMembership
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 admin_router = APIRouter(
     prefix="/tenant-admin/academics/results/bulk",
     tags=["Tenant Admin Result Bulk Actions"],

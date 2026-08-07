@@ -17,7 +17,12 @@ from app.core.exceptions import (
     NotFoundException,
     UnauthorizedException,
 )
-from app.modules.auth.models import AuthPurpose, AuthRecord, AuthSession, AuthSessionActorType
+from app.modules.auth.models import (
+    AuthPurpose,
+    AuthRecord,
+    AuthSession,
+    AuthSessionActorType,
+)
 from app.modules.auth.schemas import LoginRequest, LoginSessionUser, UpdatePassword
 from app.modules.auth.session_service import AuthenticatedActor
 from app.modules.auth_identity.models import ActorType, IdentifierType
@@ -29,7 +34,10 @@ from app.modules.parents.models import (
     ParentMembership,
     ParentMembershipStatus,
 )
-from app.modules.parents.repository import ParentAccountRepository, ParentMembershipRepository
+from app.modules.parents.repository import (
+    ParentAccountRepository,
+    ParentMembershipRepository,
+)
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.superadmin.repository import SuperAdminRepository
 from app.modules.teachers.models import (
@@ -38,7 +46,10 @@ from app.modules.teachers.models import (
     TeacherMembership,
     TeacherMembershipStatus,
 )
-from app.modules.teachers.repository import TeacherAccountRepository, TeacherMembershipRepository
+from app.modules.teachers.repository import (
+    TeacherAccountRepository,
+    TeacherMembershipRepository,
+)
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import Tenant, TenantStatus, TenantVerificationStatus

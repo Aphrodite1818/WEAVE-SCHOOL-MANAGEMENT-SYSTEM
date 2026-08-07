@@ -10,7 +10,10 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
+from app.core.utils.normalization import (
+    normalized_class_arm_key,
+    normalized_class_name_key,
+)
 from app.modules.classes.models import ClassRoom
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.classes.schemas import (
@@ -24,7 +27,11 @@ from app.modules.classes.schemas import (
 from app.modules.parents.models import Parent
 from app.modules.students.models import AcademicStatus, Student
 from app.modules.students.repository import StudentParentLinkRepository
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherMembershipStatus
+from app.modules.teachers.models import (
+    Teacher,
+    TeacherAccountStatus,
+    TeacherMembershipStatus,
+)
 from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.tenant_admins.models import TenantAdmin
 

@@ -12,7 +12,6 @@ from app.config.logging import get_logger
 from app.modules.auth.models import AuthRefreshToken, AuthSession, AuthSessionActorType
 from app.modules.superadmin.models import SuperAdmin
 
-
 logger = get_logger(__name__)
 
 
@@ -110,7 +109,9 @@ class SuperadminSecurityService:
 
         active_sessions = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count()).select_from(AuthSession).where(
+            select(func.count())
+            .select_from(AuthSession)
+            .where(
                 AuthSession.revoked_at.is_(None),
                 AuthSession.compromised_at.is_(None),
                 AuthSession.expires_at > now,
@@ -135,7 +136,9 @@ class SuperadminSecurityService:
 
         superadmin_sessions_last_24h = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count()).select_from(AuthSession).where(
+            select(func.count())
+            .select_from(AuthSession)
+            .where(
                 AuthSession.actor_type == AuthSessionActorType.SUPERADMIN,
                 AuthSession.created_at >= last_24h,
             ),
@@ -145,7 +148,9 @@ class SuperadminSecurityService:
 
         distinct_login_ips_7d = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count(AuthSession.ip_address.distinct())).select_from(AuthSession).where(
+            select(func.count(AuthSession.ip_address.distinct()))
+            .select_from(AuthSession)
+            .where(
                 AuthSession.created_at >= last_7d,
                 AuthSession.ip_address.is_not(None),
             ),
@@ -155,14 +160,18 @@ class SuperadminSecurityService:
 
         compromised_sessions_total = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count()).select_from(AuthSession).where(AuthSession.compromised_at.is_not(None)),
+            select(func.count())
+            .select_from(AuthSession)
+            .where(AuthSession.compromised_at.is_not(None)),
             label="compromised_sessions_total",
             warnings=warnings,
         )
 
         compromised_sessions_last_7d = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count()).select_from(AuthSession).where(
+            select(func.count())
+            .select_from(AuthSession)
+            .where(
                 AuthSession.compromised_at.is_not(None),
                 AuthSession.compromised_at >= last_7d,
             ),
@@ -172,7 +181,9 @@ class SuperadminSecurityService:
 
         refresh_reuse_last_7d = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count()).select_from(AuthRefreshToken).where(
+            select(func.count())
+            .select_from(AuthRefreshToken)
+            .where(
                 AuthRefreshToken.reuse_detected_at.is_not(None),
                 AuthRefreshToken.reuse_detected_at >= last_7d,
             ),
@@ -182,7 +193,9 @@ class SuperadminSecurityService:
 
         revoked_sessions_last_7d = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count()).select_from(AuthSession).where(
+            select(func.count())
+            .select_from(AuthSession)
+            .where(
                 AuthSession.revoked_at.is_not(None),
                 AuthSession.revoked_at >= last_7d,
             ),
@@ -206,7 +219,9 @@ class SuperadminSecurityService:
 
         stale_superadmins = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count()).select_from(SuperAdmin).where(
+            select(func.count())
+            .select_from(SuperAdmin)
+            .where(
                 SuperAdmin.last_login_at.is_not(None),
                 SuperAdmin.last_login_at < last_30d,
             ),
@@ -326,13 +341,27 @@ class SuperadminSecurityService:
             warnings=warnings,
         )
 
-        session_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in session_day_rows}
-        superadmin_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in superadmin_day_rows}
-        reuse_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in reuse_day_rows}
-        revoked_day_map = {SuperadminSecurityService._date_key(row.period): int(row.value or 0) for row in revoked_day_rows}
+        session_day_map = {
+            SuperadminSecurityService._date_key(row.period): int(row.value or 0)
+            for row in session_day_rows
+        }
+        superadmin_day_map = {
+            SuperadminSecurityService._date_key(row.period): int(row.value or 0)
+            for row in superadmin_day_rows
+        }
+        reuse_day_map = {
+            SuperadminSecurityService._date_key(row.period): int(row.value or 0)
+            for row in reuse_day_rows
+        }
+        revoked_day_map = {
+            SuperadminSecurityService._date_key(row.period): int(row.value or 0)
+            for row in revoked_day_rows
+        }
 
         unusual_login_signals = len(unusual_rows)
-        security_event_count = compromised_sessions_last_7d + refresh_reuse_last_7d + unusual_login_signals
+        security_event_count = (
+            compromised_sessions_last_7d + refresh_reuse_last_7d + unusual_login_signals
+        )
         platform_risk_score = min(
             100,
             compromised_sessions_last_7d * 35
@@ -463,9 +492,18 @@ class SuperadminSecurityService:
                 "risk_vector": [
                     {"label": "risk_score", "value": platform_risk_score},
                     {"label": "session_pressure", "value": session_pressure_score},
-                    {"label": "unusual_login_spread", "value": min(100, unusual_login_signals * 20)},
-                    {"label": "token_reuse_pressure", "value": min(100, refresh_reuse_last_7d * 25)},
-                    {"label": "admin_staleness", "value": min(100, stale_superadmins * 20)},
+                    {
+                        "label": "unusual_login_spread",
+                        "value": min(100, unusual_login_signals * 20),
+                    },
+                    {
+                        "label": "token_reuse_pressure",
+                        "value": min(100, refresh_reuse_last_7d * 25),
+                    },
+                    {
+                        "label": "admin_staleness",
+                        "value": min(100, stale_superadmins * 20),
+                    },
                 ],
                 "sessions_by_actor_type_7d": [
                     {
@@ -480,7 +518,9 @@ class SuperadminSecurityService:
                 ],
                 "unusual_login_signals": [
                     {
-                        "label": SuperadminSecurityService._actor_label(row.actor_type, row.actor_id),
+                        "label": SuperadminSecurityService._actor_label(
+                            row.actor_type, row.actor_id
+                        ),
                         "value": int(row.ip_count or 0),
                     }
                     for row in unusual_rows

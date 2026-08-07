@@ -30,7 +30,6 @@ from app.modules.communications.recipient_resolver import (
 )
 from app.modules.communications.repository import CommunicationRepository
 
-
 _MESSAGE_PATHS = {
     CommunicationActorType.SUPERADMIN: "/superadmin/messages",
     CommunicationActorType.TENANT_ADMIN: "/admin/messages",
@@ -70,9 +69,11 @@ class MessagingService:
         else:
             conversation = Conversation(
                 tenant_id=tenant_id,
-                conversation_type=ConversationType.SUPPORT
-                if CommunicationActorType.SUPERADMIN in {sender_type, recipient.actor_type}
-                else ConversationType.DIRECT,
+                conversation_type=(
+                    ConversationType.SUPPORT
+                    if CommunicationActorType.SUPERADMIN in {sender_type, recipient.actor_type}
+                    else ConversationType.DIRECT
+                ),
                 created_by_actor_type=sender_type,
                 created_by_actor_id=actor.id,
                 subject=payload.subject,
@@ -202,7 +203,12 @@ class MessagingService:
 
     @staticmethod
     async def add_message(
-        db: AsyncSession, *, actor, conversation_id: uuid.UUID, body: str, notify: bool = True
+        db: AsyncSession,
+        *,
+        actor,
+        conversation_id: uuid.UUID,
+        body: str,
+        notify: bool = True,
     ) -> Message:
         conversation = await MessagingService.get_conversation(
             db, actor=actor, conversation_id=conversation_id
@@ -242,7 +248,10 @@ class MessagingService:
                         NotificationDelivery.source_id.in_(message_ids),
                         NotificationDelivery.status == NotificationStatus.UNREAD,
                     )
-                    .values(status=NotificationStatus.READ, read_at=datetime.now(timezone.utc))
+                    .values(
+                        status=NotificationStatus.READ,
+                        read_at=datetime.now(timezone.utc),
+                    )
                 )
         await db.flush()
         return conversation

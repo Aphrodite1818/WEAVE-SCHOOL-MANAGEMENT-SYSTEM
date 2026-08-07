@@ -7,7 +7,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache.events import flush_cache_invalidation_events
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.subscriptions.models import SubscriptionPlanChange
 from app.modules.subscriptions.plans import (
     coerce_subscription_plan,
@@ -26,7 +30,6 @@ from app.modules.subscriptions.subscription_enums import (
     SubscriptionStatus,
 )
 from app.tenant_management.models import SubscriptionPlan
-
 
 PLAN_RANK: dict[SubscriptionPlan, int] = {
     SubscriptionPlan.FREE_TRIAL: 0,

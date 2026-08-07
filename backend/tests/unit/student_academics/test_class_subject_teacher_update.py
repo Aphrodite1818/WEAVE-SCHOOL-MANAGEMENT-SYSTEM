@@ -69,20 +69,41 @@ def _subject(class_subject: ClassSubject, *, active: bool = True, archived: bool
     )
 
 
-def _response_parent_patches(class_subject: ClassSubject, *, class_active=True, class_archived=False, subject_active=True, subject_archived=False):
+def _response_parent_patches(
+    class_subject: ClassSubject,
+    *,
+    class_active=True,
+    class_archived=False,
+    subject_active=True,
+    subject_archived=False,
+):
     return (
         patch(
             "app.modules.student_academics.service.ClassRoomRepository.get_by_id",
-            new=AsyncMock(return_value=_classroom(class_subject, active=class_active, archived=class_archived)),
+            new=AsyncMock(
+                return_value=_classroom(class_subject, active=class_active, archived=class_archived)
+            ),
         ),
         patch(
             "app.modules.student_academics.service.SubjectRepository.get_subject_by_id",
-            new=AsyncMock(return_value=_subject(class_subject, active=subject_active, archived=subject_archived)),
+            new=AsyncMock(
+                return_value=_subject(
+                    class_subject, active=subject_active, archived=subject_archived
+                )
+            ),
         ),
     )
 
 
-def _dependency_count_patches(*, active_assignments=0, assignment_history=0, results=0, report_lines=0, compatibility_rows=0, active_compatibility_rows=0):
+def _dependency_count_patches(
+    *,
+    active_assignments=0,
+    assignment_history=0,
+    results=0,
+    report_lines=0,
+    compatibility_rows=0,
+    active_compatibility_rows=0,
+):
     assignment_counts = AsyncMock(side_effect=[active_assignments, assignment_history])
     compatibility_counts = AsyncMock(side_effect=[compatibility_rows, active_compatibility_rows])
     return (
@@ -189,7 +210,10 @@ async def test_archive_class_subject_requires_ending_active_assignments() -> Non
                 class_subject_id=class_subject.id,
                 admin_id=uuid.uuid4(),
             )
-    assert exc_info.value.detail == "Active class-subject mappings cannot be archived. Deactivate the mapping first."
+    assert (
+        exc_info.value.detail
+        == "Active class-subject mappings cannot be archived. Deactivate the mapping first."
+    )
 
 
 @pytest.mark.asyncio
@@ -276,11 +300,21 @@ async def test_create_class_subject_creates_new_mapping_only() -> None:
     ("is_active", "archived_at", "message"),
     [
         (True, None, "This subject is already offered by the class."),
-        (False, None, "This class-subject mapping is inactive. Activate it instead of creating a new mapping."),
-        (False, datetime.now(timezone.utc), "This class-subject mapping is archived. Restore it before creating a new mapping."),
+        (
+            False,
+            None,
+            "This class-subject mapping is inactive. Activate it instead of creating a new mapping.",
+        ),
+        (
+            False,
+            datetime.now(timezone.utc),
+            "This class-subject mapping is archived. Restore it before creating a new mapping.",
+        ),
     ],
 )
-async def test_create_class_subject_rejects_duplicate_lifecycle_states(is_active, archived_at, message) -> None:
+async def test_create_class_subject_rejects_duplicate_lifecycle_states(
+    is_active, archived_at, message
+) -> None:
     tenant_id = uuid.uuid4()
     class_subject = _class_subject(tenant_id)
     class_subject.is_active = is_active
@@ -356,10 +390,14 @@ async def test_deactivate_class_subject_syncs_compatibility_rows() -> None:
         ),
         *_response_parent_patches(class_subject),
     ):
-        response = await StudentAcademicService.deactivate_class_subject(db, tenant_id, class_subject.id)
+        response = await StudentAcademicService.deactivate_class_subject(
+            db, tenant_id, class_subject.id
+        )
 
     assert response.lifecycle_status == "inactive"
-    sync.assert_awaited_once_with(db, tenant_id=tenant_id, class_subject_id=class_subject.id, is_active=False)
+    sync.assert_awaited_once_with(
+        db, tenant_id=tenant_id, class_subject_id=class_subject.id, is_active=False
+    )
     db.commit.assert_awaited_once()
 
 
@@ -386,7 +424,9 @@ async def test_inactive_class_subject_can_be_archived_when_dependency_free() -> 
         ),
         *_response_parent_patches(class_subject),
     ):
-        response = await StudentAcademicService.archive_class_subject(db, tenant_id, class_subject.id, uuid.uuid4())
+        response = await StudentAcademicService.archive_class_subject(
+            db, tenant_id, class_subject.id, uuid.uuid4()
+        )
 
     assert response.lifecycle_status == "archived"
     assert class_subject.is_active is False
@@ -416,15 +456,47 @@ async def test_archive_class_subject_rejects_already_archived_mapping() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("class_active", "class_archived", "subject_active", "subject_archived", "expected"),
+    (
+        "class_active",
+        "class_archived",
+        "subject_active",
+        "subject_archived",
+        "expected",
+    ),
     [
-        (False, False, True, False, "Classroom must be active before activating this class subject."),
-        (True, True, True, False, "Classroom must be active before activating this class subject."),
-        (True, False, False, False, "Subject must be active before activating this class subject."),
-        (True, False, True, True, "Subject must be active before activating this class subject."),
+        (
+            False,
+            False,
+            True,
+            False,
+            "Classroom must be active before activating this class subject.",
+        ),
+        (
+            True,
+            True,
+            True,
+            False,
+            "Classroom must be active before activating this class subject.",
+        ),
+        (
+            True,
+            False,
+            False,
+            False,
+            "Subject must be active before activating this class subject.",
+        ),
+        (
+            True,
+            False,
+            True,
+            True,
+            "Subject must be active before activating this class subject.",
+        ),
     ],
 )
-async def test_activate_class_subject_requires_active_parent_records(class_active, class_archived, subject_active, subject_archived, expected) -> None:
+async def test_activate_class_subject_requires_active_parent_records(
+    class_active, class_archived, subject_active, subject_archived, expected
+) -> None:
     tenant_id = uuid.uuid4()
     class_subject = _class_subject(tenant_id)
     class_subject.is_active = False
@@ -469,11 +541,21 @@ async def test_archived_class_subject_cannot_be_activated_directly() -> None:
 @pytest.mark.parametrize(
     ("is_active", "archived_at", "message"),
     [
-        (True, None, "Active class-subject mappings cannot be hard-deleted. Deactivate the mapping first."),
-        (False, datetime.now(timezone.utc), "Archived class-subject mappings cannot be hard-deleted. Restore them first."),
+        (
+            True,
+            None,
+            "Active class-subject mappings cannot be hard-deleted. Deactivate the mapping first.",
+        ),
+        (
+            False,
+            datetime.now(timezone.utc),
+            "Archived class-subject mappings cannot be hard-deleted. Restore them first.",
+        ),
     ],
 )
-async def test_class_subject_hard_delete_rejects_invalid_lifecycle_state(is_active, archived_at, message) -> None:
+async def test_class_subject_hard_delete_rejects_invalid_lifecycle_state(
+    is_active, archived_at, message
+) -> None:
     tenant_id = uuid.uuid4()
     class_subject = _class_subject(tenant_id)
     class_subject.is_active = is_active
@@ -499,7 +581,9 @@ async def test_class_subject_hard_delete_rejects_invalid_lifecycle_state(is_acti
         (0, 0, 1, "report_card_lines"),
     ],
 )
-async def test_class_subject_hard_delete_returns_dependency_counts(assignment_history, results, report_lines, dependency_key) -> None:
+async def test_class_subject_hard_delete_returns_dependency_counts(
+    assignment_history, results, report_lines, dependency_key
+) -> None:
     tenant_id = uuid.uuid4()
     class_subject = _class_subject(tenant_id)
     class_subject.is_active = False
@@ -510,7 +594,11 @@ async def test_class_subject_hard_delete_returns_dependency_counts(assignment_hi
             "app.modules.student_academics.service.StudentAcademicRepository.get_class_subject_by_id",
             new=AsyncMock(return_value=class_subject),
         ),
-        *_dependency_count_patches(assignment_history=assignment_history, results=results, report_lines=report_lines),
+        *_dependency_count_patches(
+            assignment_history=assignment_history,
+            results=results,
+            report_lines=report_lines,
+        ),
     ):
         with pytest.raises(ConflictException) as exc_info:
             await StudentAcademicService.delete_class_subject(db, tenant_id, class_subject.id)
@@ -519,7 +607,9 @@ async def test_class_subject_hard_delete_returns_dependency_counts(assignment_hi
 
 
 @pytest.mark.asyncio
-async def test_unused_inactive_class_subject_hard_delete_removes_disposable_compatibility_rows() -> None:
+async def test_unused_inactive_class_subject_hard_delete_removes_disposable_compatibility_rows() -> (
+    None
+):
     tenant_id = uuid.uuid4()
     class_subject = _class_subject(tenant_id)
     class_subject.is_active = False
@@ -548,7 +638,9 @@ async def test_unused_inactive_class_subject_hard_delete_removes_disposable_comp
         ),
         *_response_parent_patches(class_subject),
     ):
-        response = await StudentAcademicService.delete_class_subject(db, tenant_id, class_subject.id)
+        response = await StudentAcademicService.delete_class_subject(
+            db, tenant_id, class_subject.id
+        )
 
     assert response.id == class_subject.id
     delete_compatibility.assert_awaited_once_with(db, compatibility)

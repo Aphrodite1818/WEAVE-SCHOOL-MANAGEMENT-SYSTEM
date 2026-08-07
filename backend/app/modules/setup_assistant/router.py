@@ -15,7 +15,6 @@ from app.modules.subjects.service import SubjectService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/tenant-admin/setup-assistant",
     tags=["Tenant Admin Setup Assistant"],

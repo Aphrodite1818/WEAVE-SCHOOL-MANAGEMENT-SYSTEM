@@ -24,7 +24,6 @@ from app.core.email.exceptions import (
 )
 from app.core.email.providers.base import EmailProviderAdapter
 
-
 logger = get_logger(__name__)
 
 

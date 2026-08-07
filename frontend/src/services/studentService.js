@@ -99,7 +99,7 @@ export const studentService = {
     api.post(`/tenant-admin/students/${studentId}/hard-delete`, payload),
 
   completeStudentProfile: (studentId, payload) =>
-    api.patch(`/tenant-admin/students/${studentId}/complete-profile`, payload),
+    api.patch(`/tenant-admin/students/${studentId}/profile`, payload),
 
   updateParentLink: (linkId, payload) =>
     api.patch(`/tenant-admin/student-parent-links/${linkId}`, payload),

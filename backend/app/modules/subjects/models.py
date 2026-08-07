@@ -35,7 +35,9 @@ class Subject(BaseModel):
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     normalized_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
 
     teacher_links: Mapped[list["TeacherMembershipSubject"]] = relationship(
         "TeacherMembershipSubject",
