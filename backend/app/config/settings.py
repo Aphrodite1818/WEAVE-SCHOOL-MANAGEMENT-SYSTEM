@@ -54,6 +54,26 @@ class Settings(BaseSettings):
     APP_NAME: str = "School Management System"
     API_V1_PREFIX: str = "/api/v1"
 
+    # ==========================================================
+    # SENTRY OBSERVABILITY
+    #
+    # Sentry is optional in every environment. Leaving the DSN
+    # blank completely disables it without preventing startup.
+    # ==========================================================
+
+
+    SENTRY_DNS : SecretStr | None = None
+    SENTRY_ENVIRONMENT : str | None = None
+    SENTRY_RELEASE : str | None = None 
+
+
+    SENTRY_ERROR_SAMPLE_RATE : float = Field(default = 1.0 , ge=0.0 , le = 1.0)
+    SENTRY_TRACES_SAMPLE_RATE : float = Field(default = 0.0 , ge=0.0 , le = 1.0)
+    SENTRY_SHUTDOWN_TIMEOUT_SECONDS : float = Field(default = 2.0 , ge=0.1 , le=10.0)
+    SENTRY_DEBUG : bool = False
+
+
+
     SECRET_KEY: str = Field(..., min_length=32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 5
