@@ -10,6 +10,7 @@ from app.core.email.enums import EmailProvider
 from app.core.email.exceptions import EmailConfigurationError
 from app.core.email.providers.base import EmailProviderAdapter
 from app.core.email.providers.legacy import LegacyEmailProvider
+from app.core.email.providers.resend import ResendEmailProvider
 from app.core.email.providers.ses import SESEmailProvider
 
 
@@ -50,6 +51,9 @@ class EmailService:
 
         if provider_type == EmailProvider.SES:
             return SESEmailProvider(config=self._config)
+
+        if provider_type == EmailProvider.RESEND:
+            return ResendEmailProvider(config=self._config)
 
         raise EmailConfigurationError(
             f"No email provider adapter exists for {provider_type.value!r}."

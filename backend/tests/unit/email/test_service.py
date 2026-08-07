@@ -31,7 +31,7 @@ class _FakeProvider:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "provider_type",
-    [EmailProvider.LEGACY, EmailProvider.SES],
+    [EmailProvider.LEGACY, EmailProvider.SES, EmailProvider.RESEND],
 )
 async def test_email_service_selects_configured_provider(
     provider_type: EmailProvider,
