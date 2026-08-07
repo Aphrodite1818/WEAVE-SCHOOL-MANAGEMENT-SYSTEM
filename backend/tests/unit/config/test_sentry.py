@@ -170,7 +170,7 @@ def test_initialize_sentry_uses_safe_defaults(
     assert captured_options["send_default_pii"] is False
     assert captured_options["max_request_body_size"] == "never"
     assert captured_options["include_local_variables"] is False
-    assert captured_options["enable_logs"] is False
+    assert captured_options["enable_logs"] is True
     assert captured_options["enable_metrics"] is False
     assert captured_options["traces_sample_rate"] == 0.0
 
