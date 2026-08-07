@@ -22,6 +22,13 @@ test("contract-path normalization treats frontend templates and FastAPI paramete
   );
   assert.equal(normalizeContractPath("/students/{student_id}"), "/students/{}");
   assert.equal(normalizeContractPath("students/me/"), "/students/me");
+  assert.equal(normalizeContractPath("/teachers/${teacherId}"), "/teachers/{}");
+  assert.equal(
+    normalizeContractPath(
+      "/subscriptions/plan-change/preview${queryString({ target_plan_code: targetPlanCode })}",
+    ),
+    "/subscriptions/plan-change/preview",
+  );
 });
 
 test("every literal frontend API call has a matching FastAPI method and route", async () => {

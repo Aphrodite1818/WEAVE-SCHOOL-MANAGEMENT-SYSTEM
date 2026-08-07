@@ -9,6 +9,59 @@ const API_PREFIX = "/api/v1";
 
 const normalizeSlashes = (value) => value.replace(/\/{2,}/g, "/");
 
+function replaceTemplateExpressions(value) {
+  let result = "";
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== "$" || value[index + 1] !== "{") {
+      result += value[index];
+      continue;
+    }
+
+    const expressionStart = index + 2;
+    let depth = 1;
+    let quote = null;
+    let escaped = false;
+    let cursor = expressionStart;
+
+    for (; cursor < value.length; cursor += 1) {
+      const char = value[cursor];
+
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === quote) quote = null;
+        continue;
+      }
+
+      if (["\"", "'", "`"].includes(char)) {
+        quote = char;
+        continue;
+      }
+
+      if (char === "{") depth += 1;
+      else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+
+    if (depth !== 0) {
+      result += "{}";
+      break;
+    }
+
+    const expression = value.slice(expressionStart, cursor).trim();
+    const querySuffix =
+      /\b(?:queryString|build\w*Query|searchParams|params)\b/i.test(expression) ||
+      /URLSearchParams/i.test(expression);
+    if (!querySuffix) result += "{}";
+    index = cursor;
+  }
+
+  return result;
+}
+
 export function normalizeContractPath(rawPath) {
   if (!rawPath || typeof rawPath !== "string") return null;
 
@@ -16,7 +69,7 @@ export function normalizeContractPath(rawPath) {
   value = value.replace(/^https?:\/\/[^/]+/i, "");
   value = value.replace(/^\$\{API_BASE_URL\}/, "");
   value = value.split("?")[0].split("#")[0];
-  value = value.replace(/\$\{[^}]+\}/g, "{}");
+  value = replaceTemplateExpressions(value);
   value = value.replace(/\{[^}/]+\}/g, "{}");
   value = normalizeSlashes(value);
 
@@ -103,6 +156,31 @@ function parsePythonImports(source) {
   }
 
   return aliases;
+}
+
+function parseNestedRouterIncludes(source, routerName) {
+  const registrations = [];
+  let offset = 0;
+  const callName = `${routerName}.include_router`;
+
+  while (true) {
+    const callIndex = source.indexOf(callName, offset);
+    if (callIndex === -1) break;
+    const openParenIndex = source.indexOf("(", callIndex);
+    if (openParenIndex === -1) break;
+    const callBody = extractBalancedCall(source, openParenIndex);
+    if (callBody === null) break;
+
+    const routerMatch = callBody.match(/^\s*(\w+)/);
+    const prefixMatch = callBody.match(/\bprefix\s*=\s*["']([^"']*)["']/);
+    if (routerMatch) {
+      registrations.push({ alias: routerMatch[1], prefix: prefixMatch?.[1] || "" });
+    }
+
+    offset = openParenIndex + callBody.length + 2;
+  }
+
+  return registrations;
 }
 
 function parseIncludeRouters(source) {
@@ -200,17 +278,38 @@ export async function collectBackendContracts(repoRoot) {
       continue;
     }
 
-    const routerPrefix = parseRouterPrefix(moduleSource, importedRouter.sourceName);
-    for (const route of parseRouterDecorators(moduleSource, importedRouter.sourceName)) {
-      const fullPath = normalizeSlashes(
-        `${registration.prefix}/${routerPrefix}/${route.path}`,
+    const routerQueue = [{ alias: importedRouter.sourceName, inheritedPrefix: "" }];
+    const visitedRouters = new Set();
+
+    while (routerQueue.length > 0) {
+      const currentRouter = routerQueue.shift();
+      const visitKey = `${currentRouter.alias}|${currentRouter.inheritedPrefix}`;
+      if (visitedRouters.has(visitKey)) continue;
+      visitedRouters.add(visitKey);
+
+      const routerPrefix = parseRouterPrefix(moduleSource, currentRouter.alias);
+      const routePrefix = normalizeSlashes(
+        `${registration.prefix}/${currentRouter.inheritedPrefix}/${routerPrefix}`,
       );
-      const key = contractKey(route.method, fullPath);
-      contracts.set(key, {
-        method: route.method,
-        path: normalizeContractPath(fullPath),
-        source: path.relative(repoRoot, modulePath),
-      });
+
+      for (const route of parseRouterDecorators(moduleSource, currentRouter.alias)) {
+        const fullPath = normalizeSlashes(`${routePrefix}/${route.path}`);
+        const key = contractKey(route.method, fullPath);
+        contracts.set(key, {
+          method: route.method,
+          path: normalizeContractPath(fullPath),
+          source: path.relative(repoRoot, modulePath),
+        });
+      }
+
+      for (const nested of parseNestedRouterIncludes(moduleSource, currentRouter.alias)) {
+        routerQueue.push({
+          alias: nested.alias,
+          inheritedPrefix: normalizeSlashes(
+            `${currentRouter.inheritedPrefix}/${routerPrefix}/${nested.prefix}`,
+          ),
+        });
+      }
     }
   }
 
@@ -225,7 +324,7 @@ function extractLiteralApiCalls(source, sourceFile) {
   for (const match of source.matchAll(apiPattern)) {
     const method = match[1] === "postForm" ? "POST" : match[1].toUpperCase();
     const routePath = normalizeContractPath(match[3]);
-    if (!routePath || routePath === "/") continue;
+    if (!routePath || routePath === "/" || routePath.startsWith("/{}")) continue;
     calls.push({ method, path: routePath, source: sourceFile });
   }
 
@@ -235,7 +334,9 @@ function extractLiteralApiCalls(source, sourceFile) {
     const method =
       nearby.match(/\bmethod\s*:\s*["'](GET|POST|PUT|PATCH|DELETE)["']/)?.[1] ||
       "GET";
-    calls.push({ method, path: normalizeContractPath(match[1]), source: sourceFile });
+    const routePath = normalizeContractPath(match[1]);
+    if (!routePath || routePath === "/" || routePath.startsWith("/{}")) continue;
+    calls.push({ method, path: routePath, source: sourceFile });
   }
 
   return calls;
