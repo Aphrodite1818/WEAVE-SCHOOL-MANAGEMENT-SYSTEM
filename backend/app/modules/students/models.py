@@ -429,18 +429,14 @@ class StudentAccessCode(BaseModel):
         ),
         nullable=False,
     )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_used: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=False,
         server_default="false",
     )
-    used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
@@ -532,12 +528,8 @@ class StudentParentLink(BaseModel):
         ),
         nullable=False,
     )
-    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
-    ended_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     student: Mapped["Student"] = relationship("Student", back_populates="parent_links")
@@ -650,9 +642,7 @@ class StudentParentLinkRequest(BaseModel):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    responded_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     responded_by_type: Mapped[ParentLinkVerifiedByType | None] = mapped_column(
         SQLEnum(
             ParentLinkVerifiedByType,
@@ -662,14 +652,10 @@ class StudentParentLinkRequest(BaseModel):
         ),
         nullable=True,
     )
-    responded_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    responded_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    student: Mapped["Student"] = relationship(
-        "Student", back_populates="parent_link_requests"
-    )
+    student: Mapped["Student"] = relationship("Student", back_populates="parent_link_requests")
     parent_membership: Mapped["ParentMembership | None"] = relationship(
         "ParentMembership",
         back_populates="student_link_requests",

@@ -7,14 +7,10 @@ from app.core.email.exceptions import EmailConfigurationError
 
 
 def _has_value(value: str | None) -> bool:
-    return bool(
-        value and value.strip()
-    )  # short circuit to avoid calling .strip() on None
+    return bool(value and value.strip())  # short circuit to avoid calling .strip() on None
 
 
-def resolve_email_route(
-    category: EmailCategory, *, config: Settings = settings
-) -> EmailRoute:
+def resolve_email_route(category: EmailCategory, *, config: Settings = settings) -> EmailRoute:
     """Return sender and configuration-set details for an email category"""
 
     if category == EmailCategory.TRANSACTIONAL:
@@ -44,9 +40,7 @@ def resolve_email_route(
             f"Missing SES configuration set for category {category}",
         )
 
-    reply_to = (
-        config.EMAIL_REPLY_TO.strip() if _has_value(config.EMAIL_REPLY_TO) else None
-    )
+    reply_to = config.EMAIL_REPLY_TO.strip() if _has_value(config.EMAIL_REPLY_TO) else None
 
     return EmailRoute(
         category=category,

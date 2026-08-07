@@ -101,9 +101,7 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[str]:
-        expected = await ReportCardService._expected_class_subjects(
-            db, tenant_id, class_id
-        )
+        expected = await ReportCardService._expected_class_subjects(db, tenant_id, class_id)
         submitted = await ReportCardService._finalized_results_for_student(
             db, tenant_id, student_id, academic_session_id, academic_term_id
         )
@@ -114,9 +112,7 @@ class ReportCardService:
                 subject = await SubjectRepository.get_subject_by_id(
                     db, tenant_id, class_subject.subject_id
                 )
-                missing.append(
-                    subject.name if subject else str(class_subject.subject_id)
-                )
+                missing.append(subject.name if subject else str(class_subject.subject_id))
         return missing
 
     @staticmethod
@@ -138,12 +134,10 @@ class ReportCardService:
     ) -> str | None:
         teacher = None
         if result.teacher_assignment_id is not None:
-            teacher_assignment = (
-                await StudentAcademicRepository.get_teacher_assignment_by_id(
-                    db=db,
-                    tenant_id=tenant_id,
-                    assignment_id=result.teacher_assignment_id,
-                )
+            teacher_assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                assignment_id=result.teacher_assignment_id,
             )
             if teacher_assignment is not None:
                 teacher = await TeacherRepository.get_teacher_by_id(
@@ -160,9 +154,7 @@ class ReportCardService:
         if teacher is None:
             return None
         return (
-            " ".join(
-                part for part in [teacher.first_name, teacher.last_name] if part
-            ).strip()
+            " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip()
             or None
         )
 
@@ -181,13 +173,9 @@ class ReportCardService:
         replace_existing: ReportCard | None = None,
     ) -> ReportCard:
         if student.class_id is None:
-            raise BadRequestException(
-                "Student class is required for report card generation."
-            )
+            raise BadRequestException("Student class is required for report card generation.")
         if not results:
-            raise BadRequestException(
-                "No locked scores are available for this student."
-            )
+            raise BadRequestException("No locked scores are available for this student.")
 
         missing = await ReportCardService._missing_subjects(
             db,
@@ -198,13 +186,9 @@ class ReportCardService:
             academic_term_id,
         )
         if missing:
-            raise BadRequestException(
-                f"Missing locked scores for: {', '.join(missing)}"
-            )
+            raise BadRequestException(f"Missing locked scores for: {', '.join(missing)}")
         if any(result.status != AcademicResultStatus.LOCKED for result in results):
-            raise BadRequestException(
-                "Report cards can only be generated from locked scores."
-            )
+            raise BadRequestException("Report cards can only be generated from locked scores.")
 
         total_score = sum((result.total_score for result in results), Decimal("0"))
         average_score = total_score / Decimal(str(len(results)))
@@ -215,9 +199,7 @@ class ReportCardService:
             replace_existing.status = ReportCardStatus.ARCHIVED
             await ReportCardRepository.save(db, replace_existing)
             version = replace_existing.version + 1
-            class_teacher_comment = (
-                class_teacher_comment or replace_existing.class_teacher_comment
-            )
+            class_teacher_comment = class_teacher_comment or replace_existing.class_teacher_comment
             principal_comment = principal_comment or replace_existing.principal_comment
 
         card = ReportCard(
@@ -377,9 +359,7 @@ class ReportCardService:
             db, actor.tenant_id, student_id, academic_session_id, academic_term_id
         )
         if not results:
-            raise BadRequestException(
-                "No locked scores are available for this student."
-            )
+            raise BadRequestException("No locked scores are available for this student.")
 
         card = await ReportCardService._create_card_from_results(
             db,
@@ -405,9 +385,7 @@ class ReportCardService:
         actor: TenantAdmin,
         report_card_id: uuid.UUID,
     ) -> ReportCardResponse:
-        existing = await ReportCardRepository.get_by_id(
-            db, actor.tenant_id, report_card_id
-        )
+        existing = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if existing is None or existing.superseded_at is not None:
             raise NotFoundException("Report card not found.")
         if existing.status == ReportCardStatus.ARCHIVED:
@@ -429,9 +407,7 @@ class ReportCardService:
             existing.academic_term_id,
         )
         if not results:
-            raise BadRequestException(
-                "No locked scores are available for regeneration."
-            )
+            raise BadRequestException("No locked scores are available for regeneration.")
 
         card = await ReportCardService._create_card_from_results(
             db,
@@ -481,9 +457,7 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> ReportCardClassOverviewResponse:
-        expected = await ReportCardService._expected_class_subjects(
-            db, actor.tenant_id, class_id
-        )
+        expected = await ReportCardService._expected_class_subjects(db, actor.tenant_id, class_id)
         students, _ = await StudentRepository.list_students(
             db=db,
             tenant_id=actor.tenant_id,
@@ -518,9 +492,7 @@ class ReportCardService:
                     student_id=student.id,
                     student_name=(
                         " ".join(
-                            part
-                            for part in [student.first_name, student.last_name]
-                            if part
+                            part for part in [student.first_name, student.last_name] if part
                         ).strip()
                         or None
                     ),
@@ -602,12 +574,8 @@ class ReportCardService:
 
     @staticmethod
     async def _response(db: AsyncSession, card: ReportCard) -> ReportCardResponse:
-        student = await StudentRepository.get_student_by_id(
-            db, card.tenant_id, card.student_id
-        )
-        classroom = await ClassRoomRepository.get_by_id(
-            db, card.tenant_id, card.class_id
-        )
+        student = await StudentRepository.get_student_by_id(db, card.tenant_id, card.student_id)
+        classroom = await ClassRoomRepository.get_by_id(db, card.tenant_id, card.class_id)
         session = await StudentAcademicRepository.get_academic_session_by_id(
             db, card.tenant_id, card.academic_session_id
         )
@@ -620,9 +588,7 @@ class ReportCardService:
             tenant_id=card.tenant_id,
             student_id=card.student_id,
             student_name=(
-                " ".join(
-                    part for part in [student.first_name, student.last_name] if part
-                ).strip()
+                " ".join(part for part in [student.first_name, student.last_name] if part).strip()
                 if student
                 else None
             ),
@@ -647,9 +613,7 @@ class ReportCardService:
             is_outdated=card.is_outdated,
             superseded_at=card.superseded_at,
             status=card.status,
-            lines=[
-                ReportCardSubjectLineResponse.model_validate(line) for line in lines
-            ],
+            lines=[ReportCardSubjectLineResponse.model_validate(line) for line in lines],
             created_at=card.created_at,
             updated_at=card.updated_at,
         )
@@ -741,8 +705,7 @@ class ReportCardService:
         student_name = html.escape(card.student_name or card.admission_number or "")
         admission_number = html.escape(card.admission_number or "Not assigned")
         class_label = html.escape(
-            " ".join(part for part in [card.class_name, card.class_arm] if part)
-            or "Not assigned"
+            " ".join(part for part in [card.class_name, card.class_arm] if part) or "Not assigned"
         )
         session_label = html.escape(card.academic_session_name or "—")
         term_label = html.escape(_format_term(card.academic_term_name))

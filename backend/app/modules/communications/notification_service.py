@@ -43,8 +43,7 @@ class NotificationService:
             existing = (
                 await db.execute(
                     select(NotificationDelivery).where(
-                        NotificationDelivery.recipient_actor_type
-                        == recipient.actor_type,
+                        NotificationDelivery.recipient_actor_type == recipient.actor_type,
                         NotificationDelivery.recipient_actor_id == recipient.actor_id,
                         NotificationDelivery.source_type == source_type,
                         NotificationDelivery.source_id == source_id,
@@ -55,11 +54,7 @@ class NotificationService:
                 deliveries.append(existing)
                 continue
             delivery = NotificationDelivery(
-                tenant_id=(
-                    recipient.tenant_id
-                    if recipient.tenant_id is not None
-                    else tenant_id
-                ),
+                tenant_id=(recipient.tenant_id if recipient.tenant_id is not None else tenant_id),
                 recipient_actor_type=recipient.actor_type,
                 recipient_actor_id=recipient.actor_id,
                 source_type=source_type,

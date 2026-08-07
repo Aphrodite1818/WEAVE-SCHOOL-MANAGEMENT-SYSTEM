@@ -295,8 +295,7 @@ async def get_current_parent(
         not actor.parent_account.is_active
         or not actor.parent_account.is_verified
         or actor.parent_account.account_status != ParentAccountStatus.ACTIVE
-        or actor.status
-        not in {ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY}
+        or actor.status not in {ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY}
     ):
         raise ForbiddenException("Inactive parent membership")
     await _ensure_active_tenant(db, actor.tenant_id)

@@ -102,17 +102,13 @@ class TenantSearchService:
         ).all()
         for student, classroom in students:
             class_label = (
-                " ".join(
-                    part for part in [classroom.name, classroom.arm] if part
-                ).strip()
+                " ".join(part for part in [classroom.name, classroom.arm] if part).strip()
                 if classroom
                 else None
             )
             items.append(
                 TenantSearchResult(
-                    label=TenantSearchService._name(
-                        student.first_name, student.last_name
-                    ),
+                    label=TenantSearchService._name(student.first_name, student.last_name),
                     role="student",
                     metadata=class_label,
                     admission_number=student.admission_number,
@@ -125,9 +121,7 @@ class TenantSearchService:
             (
                 await db.execute(
                     select(Teacher)
-                    .join(
-                        TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id
-                    )
+                    .join(TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id)
                     .options(selectinload(Teacher.teacher_account))
                     .where(
                         Teacher.tenant_id == tenant_id,
@@ -147,9 +141,7 @@ class TenantSearchService:
         for teacher in teachers:
             items.append(
                 TenantSearchResult(
-                    label=TenantSearchService._name(
-                        teacher.first_name, teacher.last_name
-                    ),
+                    label=TenantSearchService._name(teacher.first_name, teacher.last_name),
                     role="teacher",
                     metadata=teacher.specialization,
                     staff_id=teacher.staff_id,
@@ -181,9 +173,7 @@ class TenantSearchService:
         for parent in parents:
             items.append(
                 TenantSearchResult(
-                    label=TenantSearchService._name(
-                        parent.first_name, parent.last_name
-                    ),
+                    label=TenantSearchService._name(parent.first_name, parent.last_name),
                     role="parent",
                     metadata=parent.phone_number,
                     email=parent.email,
@@ -301,9 +291,7 @@ class TenantSearchService:
                 )
 
         for subject in subject_rows:
-            if TenantSearchService._matches(
-                query, subject.name, subject.code, subject.description
-            ):
+            if TenantSearchService._matches(query, subject.name, subject.code, subject.description):
                 items.append(
                     TenantSearchService._result(
                         label=subject.name,
@@ -324,16 +312,12 @@ class TenantSearchService:
                         Student.tenant_id == tenant_id,
                         Student.class_id.in_(assigned_class_ids),
                     )
-                    .order_by(
-                        Student.first_name, Student.last_name, Student.admission_number
-                    )
+                    .order_by(Student.first_name, Student.last_name, Student.admission_number)
                 )
             ).all()
             for student, classroom in student_rows:
                 class_label = (
-                    TenantSearchService._name(classroom.name, classroom.arm)
-                    if classroom
-                    else None
+                    TenantSearchService._name(classroom.name, classroom.arm) if classroom else None
                 )
                 if TenantSearchService._matches(
                     query,
@@ -344,9 +328,7 @@ class TenantSearchService:
                 ):
                     items.append(
                         TenantSearchService._result(
-                            label=TenantSearchService._name(
-                                student.first_name, student.last_name
-                            ),
+                            label=TenantSearchService._name(student.first_name, student.last_name),
                             role="student",
                             metadata=class_label,
                             admission_number=student.admission_number,

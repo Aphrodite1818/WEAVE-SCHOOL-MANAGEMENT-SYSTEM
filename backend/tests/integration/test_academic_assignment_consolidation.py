@@ -108,9 +108,7 @@ async def auth_headers(
     }
     if tenant_id is not None:
         payload["tenant_id"] = str(tenant_id)
-    return {
-        "Authorization": f"Bearer {create_access_token(data=payload, session_jti=session_jti)}"
-    }
+    return {"Authorization": f"Bearer {create_access_token(data=payload, session_jti=session_jti)}"}
 
 
 async def create_auth_identity(
@@ -290,9 +288,7 @@ async def create_student(
     return student
 
 
-async def create_parent(
-    db_session: AsyncSession, *, tenant: Tenant, email: str
-) -> Parent:
+async def create_parent(db_session: AsyncSession, *, tenant: Tenant, email: str) -> Parent:
     parent_account = ParentAccount(
         email=email,
         password_hash=hash_password("ParentPass123"),
@@ -356,9 +352,7 @@ async def create_session_and_term(
     return academic_session, academic_term
 
 
-async def create_grading_scale(
-    db_session: AsyncSession, *, tenant: Tenant
-) -> GradingScale:
+async def create_grading_scale(db_session: AsyncSession, *, tenant: Tenant) -> GradingScale:
     scale = GradingScale(
         tenant_id=tenant.id,
         min_score=0,
@@ -455,9 +449,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         last_name="Beta",
     )
     classroom = await create_classroom(db_session, tenant=tenant, name="JSS 1", arm="A")
-    subject = await create_subject(
-        db_session, tenant=tenant, name="Mathematics", code="MTH"
-    )
+    subject = await create_subject(db_session, tenant=tenant, name="Mathematics", code="MTH")
     class_subject = await create_class_subject(
         db_session, tenant=tenant, class_room=classroom, subject=subject
     )
@@ -467,9 +459,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         class_room=classroom,
         admission_number=f"{tenant.admission_number_prefix}-001",
     )
-    parent = await create_parent(
-        db_session, tenant=tenant, email="parent-consistency@example.com"
-    )
+    parent = await create_parent(db_session, tenant=tenant, email="parent-consistency@example.com")
     db_session.add(
         StudentParentLink(
             tenant_id=tenant.id,
@@ -490,9 +480,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         )
     ).scalar_one()
     academic_term = (
-        await db_session.execute(
-            select(AcademicTerm).where(AcademicTerm.tenant_id == tenant.id)
-        )
+        await db_session.execute(select(AcademicTerm).where(AcademicTerm.tenant_id == tenant.id))
     ).scalar_one()
     await create_student_enrollment(
         db_session,
@@ -564,9 +552,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
     )
     assert teacher_a_assignments.status_code == 200
     assert len(teacher_a_assignments.json()["items"]) == 1
-    assert teacher_a_assignments.json()["items"][0]["teacher_membership_id"] == str(
-        teacher_a.id
-    )
+    assert teacher_a_assignments.json()["items"][0]["teacher_membership_id"] == str(teacher_a.id)
 
     reassign_response = await api_client.post(
         f"/api/v1/tenant-admin/academics/class-subjects/{class_subject.id}/reassign-teacher",
@@ -750,9 +736,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     db_session: AsyncSession,
 ) -> None:
     tenant = await create_tenant(db_session, suffix="subjects")
-    admin = await create_tenant_admin(
-        db_session, tenant=tenant, email="admin-subjects@example.com"
-    )
+    admin = await create_tenant_admin(db_session, tenant=tenant, email="admin-subjects@example.com")
     teacher = await create_teacher(
         db_session,
         tenant=tenant,
@@ -761,12 +745,8 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
         last_name="Subject",
     )
     classroom = await create_classroom(db_session, tenant=tenant, name="JSS 2", arm="B")
-    subject_math = await create_subject(
-        db_session, tenant=tenant, name="Mathematics", code="MTH"
-    )
-    subject_english = await create_subject(
-        db_session, tenant=tenant, name="English", code="ENG"
-    )
+    subject_math = await create_subject(db_session, tenant=tenant, name="Mathematics", code="MTH")
+    subject_english = await create_subject(db_session, tenant=tenant, name="English", code="ENG")
     class_subject_math = await create_class_subject(
         db_session, tenant=tenant, class_room=classroom, subject=subject_math
     )
@@ -786,9 +766,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
         )
     ).scalar_one()
     academic_term = (
-        await db_session.execute(
-            select(AcademicTerm).where(AcademicTerm.tenant_id == tenant.id)
-        )
+        await db_session.execute(select(AcademicTerm).where(AcademicTerm.tenant_id == tenant.id))
     ).scalar_one()
     await create_student_enrollment(
         db_session,

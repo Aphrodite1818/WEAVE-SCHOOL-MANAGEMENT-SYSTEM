@@ -29,9 +29,7 @@ from app.modules.subscriptions.service import (  # noqa: E402
 )
 
 logger = get_logger(__name__)
-SUBSCRIPTION_RECONCILIATION_SUCCESS_KEY = (
-    "weave:ops:subscription-reconciliation:last-success"
-)
+SUBSCRIPTION_RECONCILIATION_SUCCESS_KEY = "weave:ops:subscription-reconciliation:last-success"
 
 
 async def poll_email_outbox(ctx: dict[str, Any]) -> dict[str, int]:

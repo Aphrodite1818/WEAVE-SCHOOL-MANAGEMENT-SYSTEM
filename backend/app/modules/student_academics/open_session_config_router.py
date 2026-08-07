@@ -88,9 +88,7 @@ async def configure_academic_session(
         "start_date": session.start_date.isoformat() if session.start_date else None,
         "end_date": session.end_date.isoformat() if session.end_date else None,
         "next_academic_session_id": (
-            str(session.next_academic_session_id)
-            if session.next_academic_session_id
-            else None
+            str(session.next_academic_session_id) if session.next_academic_session_id else None
         ),
     }
     for field, value in update_data.items():

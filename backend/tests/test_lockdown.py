@@ -12,15 +12,9 @@ from app.core.middleware.platform_lockdown import (
 
 
 def test_lockdown_middleware_behavior() -> None:
+    assert PlatformLockdownMiddleware._is_allowed_path("/api/v1/nonexistent-normal-route") is False
     assert (
-        PlatformLockdownMiddleware._is_allowed_path("/api/v1/nonexistent-normal-route")
-        is False
-    )
-    assert (
-        PlatformLockdownMiddleware._is_allowed_path(
-            "/api/v1/superadmin/analytics/overview"
-        )
-        is True
+        PlatformLockdownMiddleware._is_allowed_path("/api/v1/superadmin/analytics/overview") is True
     )
     assert PlatformLockdownMiddleware._is_allowed_path("/api/v1/auth/me") is True
 

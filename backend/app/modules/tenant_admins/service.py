@@ -62,9 +62,7 @@ class TenantAdminService:
             db=db, email=normalized_email
         )
 
-        existing_admin = await TenantAdminRepository.get_by_email(
-            db=db, email=normalized_email
-        )
+        existing_admin = await TenantAdminRepository.get_by_email(db=db, email=normalized_email)
 
         if existing_admin:
             raise ConflictException("A tenant admin with this email already exists")
@@ -111,9 +109,7 @@ class TenantAdminService:
         return TenantAdminResponse.model_validate(admin)
 
     @staticmethod
-    async def get_by_tenant_id(
-        db: AsyncSession, tenant_id: uuid.UUID
-    ) -> TenantAdminResponse:
+    async def get_by_tenant_id(db: AsyncSession, tenant_id: uuid.UUID) -> TenantAdminResponse:
         """Return the tenant admin attached to a tenant"""
 
         admin = await TenantAdminRepository.get_by_tenant_id(db=db, tenant_id=tenant_id)
@@ -146,13 +142,9 @@ class TenantAdminService:
                 db=db, email=normalized_email
             )
 
-            existing_admin = await TenantAdminRepository.get_by_email(
-                db=db, email=normalized_email
-            )
+            existing_admin = await TenantAdminRepository.get_by_email(db=db, email=normalized_email)
             if existing_admin is not None and existing_admin.id != admin.id:
-                raise ConflictException(
-                    "A tenant admin witht this email already exists"
-                )
+                raise ConflictException("A tenant admin witht this email already exists")
 
             await AuthIdentityService.update_identifier(
                 db=db,
@@ -167,10 +159,7 @@ class TenantAdminService:
         if "password" in update_data and update_data["password"] is not None:
             admin.password_hash = hash_password(update_data["password"])
 
-        if (
-            "account_status" in update_data
-            and update_data["account_status"] is not None
-        ):
+        if "account_status" in update_data and update_data["account_status"] is not None:
             admin.account_status = update_data["account_status"]
 
         if "is_verified" in update_data and update_data["is_verified"] is not None:
@@ -255,37 +244,27 @@ class TenantAdminService:
 
         total_students = (
             await db.execute(
-                select(func.count())
-                .select_from(Student)
-                .where(Student.tenant_id == tenant_id)
+                select(func.count()).select_from(Student).where(Student.tenant_id == tenant_id)
             )
         ).scalar_one()
         total_teachers = (
             await db.execute(
-                select(func.count())
-                .select_from(Teacher)
-                .where(Teacher.tenant_id == tenant_id)
+                select(func.count()).select_from(Teacher).where(Teacher.tenant_id == tenant_id)
             )
         ).scalar_one()
         total_parents = (
             await db.execute(
-                select(func.count())
-                .select_from(Parent)
-                .where(Parent.tenant_id == tenant_id)
+                select(func.count()).select_from(Parent).where(Parent.tenant_id == tenant_id)
             )
         ).scalar_one()
         total_classes = (
             await db.execute(
-                select(func.count())
-                .select_from(ClassRoom)
-                .where(ClassRoom.tenant_id == tenant_id)
+                select(func.count()).select_from(ClassRoom).where(ClassRoom.tenant_id == tenant_id)
             )
         ).scalar_one()
         total_subjects = (
             await db.execute(
-                select(func.count())
-                .select_from(Subject)
-                .where(Subject.tenant_id == tenant_id)
+                select(func.count()).select_from(Subject).where(Subject.tenant_id == tenant_id)
             )
         ).scalar_one()
         student_profiles_complete = (
@@ -325,8 +304,7 @@ class TenantAdminService:
                 .select_from(StudentParentLinkRequest)
                 .where(
                     StudentParentLinkRequest.tenant_id == tenant_id,
-                    StudentParentLinkRequest.status
-                    == StudentParentLinkRequestStatus.PENDING,
+                    StudentParentLinkRequest.status == StudentParentLinkRequestStatus.PENDING,
                 )
             )
         ).scalar_one()

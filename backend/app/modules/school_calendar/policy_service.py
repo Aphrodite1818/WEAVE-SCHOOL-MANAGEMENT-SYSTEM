@@ -92,18 +92,14 @@ class SchoolDayPolicyService:
             title=day.title,
             reason=None,
             code="ok",
-            events=[
-                SchoolCalendarEventResponse.model_validate(event) for event in events
-            ],
+            events=[SchoolCalendarEventResponse.model_validate(event) for event in events],
             next_operational_day=next_day.calendar_date if next_day else None,
         )
 
     async def require_school_open(
         self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
     ) -> ResolvedSchoolDayResponse:
-        resolved = await self.resolve_day(
-            db, tenant_id=tenant_id, target_date=target_date
-        )
+        resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.school_open:
             raise ConflictException(
                 resolved.reason or "School is not open on this date.",
@@ -114,9 +110,7 @@ class SchoolDayPolicyService:
     async def require_student_activity_allowed(
         self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
     ) -> ResolvedSchoolDayResponse:
-        resolved = await self.resolve_day(
-            db, tenant_id=tenant_id, target_date=target_date
-        )
+        resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.student_activity_allowed:
             raise ConflictException(
                 resolved.reason or "Student activity is not allowed on this date.",
@@ -127,9 +121,7 @@ class SchoolDayPolicyService:
     async def require_student_attendance_day(
         self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
     ) -> ResolvedSchoolDayResponse:
-        resolved = await self.resolve_day(
-            db, tenant_id=tenant_id, target_date=target_date
-        )
+        resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.student_attendance_required:
             raise ConflictException(
                 resolved.reason or "Student attendance is not required on this date.",
@@ -140,9 +132,7 @@ class SchoolDayPolicyService:
     async def require_workforce_attendance_day(
         self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
     ) -> ResolvedSchoolDayResponse:
-        resolved = await self.resolve_day(
-            db, tenant_id=tenant_id, target_date=target_date
-        )
+        resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.workforce_attendance_required:
             raise ConflictException(
                 resolved.reason or "Workforce attendance is not required on this date.",

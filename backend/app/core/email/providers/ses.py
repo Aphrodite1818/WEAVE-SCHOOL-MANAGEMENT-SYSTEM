@@ -105,9 +105,7 @@ class SESEmailProvider(EmailProviderAdapter):
         normalized_value = cls._setting_value(value)
 
         if normalized_value is None:
-            raise EmailConfigurationError(
-                f"{setting_name} must be configured for Amazon SES."
-            )
+            raise EmailConfigurationError(f"{setting_name} must be configured for Amazon SES.")
 
         return normalized_value
 
@@ -391,9 +389,7 @@ class SESEmailProvider(EmailProviderAdapter):
     ) -> EmailProviderError:
         """Convert an AWS service response into an email provider error."""
 
-        error_code, error_message, status_code = cls._extract_client_error_details(
-            error
-        )
+        error_code, error_message, status_code = cls._extract_client_error_details(error)
 
         retryable = cls._is_retryable_client_error(
             error_code=error_code,

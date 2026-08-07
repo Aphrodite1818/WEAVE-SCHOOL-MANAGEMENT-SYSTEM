@@ -81,9 +81,7 @@ class ClassRoomRepository:
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
         result = await db.execute(
-            query.order_by(
-                ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc()
-            )
+            query.order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
             .offset(offset)
             .limit(limit)
         )
@@ -303,9 +301,7 @@ class ClassRoomRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(
-                    ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id
-                )
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
                     ClassSubject.tenant_id == tenant_id,

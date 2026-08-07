@@ -133,9 +133,7 @@ class ParentMembershipLifecycleService:
                 continue
             items.append(
                 ParentLinkedStudentItem(
-                    student=await StudentService._build_detail_response(
-                        db, link.student
-                    ),
+                    student=await StudentService._build_detail_response(db, link.student),
                     link=StudentParentLinkResponse.model_validate(link),
                 )
             )
@@ -167,9 +165,7 @@ class ParentMembershipLifecycleService:
                 continue
             items.append(
                 AdminParentLinkItem(
-                    student=await StudentService._build_detail_response(
-                        db, link.student
-                    ),
+                    student=await StudentService._build_detail_response(db, link.student),
                     link=StudentParentLinkResponse.model_validate(link),
                 )
             )
@@ -231,9 +227,7 @@ class ParentMembershipLifecycleService:
 
         await StudentLifecycleService._recalculate_parent_membership(db, membership)
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            actor.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
         await db.refresh(membership)
         return ParentMembershipResponse.model_validate(membership)
 
@@ -280,9 +274,7 @@ class ParentMembershipLifecycleService:
             )
 
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            actor.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
         await db.refresh(link)
         return StudentParentLinkResponse.model_validate(link)
 
@@ -315,9 +307,7 @@ class ParentMembershipLifecycleService:
         if student is None:
             raise NotFoundException("Student not found.")
         if student.status == AcademicStatus.EXPELLED:
-            raise BadRequestException(
-                "An expelled student's parent link cannot be reactivated."
-            )
+            raise BadRequestException("An expelled student's parent link cannot be reactivated.")
 
         membership = await ParentMembershipRepository.get_by_id(
             db,
@@ -334,9 +324,7 @@ class ParentMembershipLifecycleService:
                 tenant_id=actor.tenant_id,
             )
 
-        link.status = ParentMembershipLifecycleService._status_for_student(
-            student.status
-        )
+        link.status = ParentMembershipLifecycleService._status_for_student(student.status)
         link.is_primary_contact = payload.is_primary_contact
         link.receives_academic_updates = payload.receives_academic_updates
         link.receives_fee_updates = payload.receives_fee_updates
@@ -346,9 +334,7 @@ class ParentMembershipLifecycleService:
         await StudentLifecycleService._recalculate_parent_membership(db, membership)
 
         await db.commit()
-        await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-            actor.tenant_id
-        )
+        await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
         await db.refresh(link)
         return StudentParentLinkResponse.model_validate(link)
 
@@ -366,6 +352,4 @@ class ParentMembershipLifecycleService:
             offset=skip,
             limit=limit,
         )
-        return [
-            await StudentParentLinkRequestService._detail(db, row) for row in rows
-        ], total
+        return [await StudentParentLinkRequestService._detail(db, row) for row in rows], total

@@ -71,9 +71,7 @@ async def test_term_calendar_readiness_requires_active_calendar() -> None:
         )
 
     assert contribution["calendar_id"] is None
-    assert contribution["blockers"] == [
-        "Generate and activate a calendar for this term."
-    ]
+    assert contribution["blockers"] == ["Generate and activate a calendar for this term."]
 
 
 @pytest.mark.asyncio
@@ -165,9 +163,7 @@ async def test_calendar_activation_preview_blocks_closed_session() -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_calendar_response_merges_preview_without_duplicate_kwargs() -> (
-    None
-):
+async def test_build_calendar_response_merges_preview_without_duplicate_kwargs() -> None:
     tenant_id = uuid.uuid4()
     session_id = uuid.uuid4()
     term_id = uuid.uuid4()
@@ -502,10 +498,7 @@ async def test_emergency_closure_updates_only_active_calendar_range() -> None:
     list_days.assert_awaited_once()
     assert list_days.await_args.kwargs["calendar_id"] == calendar_id
     assert response.total == 2
-    assert all(
-        item.day_type == SchoolCalendarDayType.EMERGENCY_CLOSURE
-        for item in response.items
-    )
+    assert all(item.day_type == SchoolCalendarDayType.EMERGENCY_CLOSURE for item in response.items)
     assert all(item.school_open is False for item in response.items)
 
 
@@ -560,9 +553,7 @@ async def test_list_days_can_scope_actor_range_to_active_calendars() -> None:
 
 
 @pytest.mark.asyncio
-async def test_emergency_closure_requires_selected_active_calendar_to_match_range() -> (
-    None
-):
+async def test_emergency_closure_requires_selected_active_calendar_to_match_range() -> None:
     tenant_id = uuid.uuid4()
     admin_id = uuid.uuid4()
     selected_calendar = SchoolCalendar(
@@ -780,9 +771,7 @@ async def test_calendar_generation_serializes_slotted_counts() -> None:
 
 
 @pytest.mark.asyncio
-async def test_regeneration_keeps_calendar_outdated_when_generated_days_are_skipped() -> (
-    None
-):
+async def test_regeneration_keeps_calendar_outdated_when_generated_days_are_skipped() -> None:
     tenant_id = uuid.uuid4()
     admin_id = uuid.uuid4()
     session_id = uuid.uuid4()

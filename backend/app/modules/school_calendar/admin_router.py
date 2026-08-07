@@ -46,13 +46,9 @@ from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.models import TenantAdmin
 
-router = APIRouter(
-    prefix="/tenant-admin/school-calendar", tags=["Tenant Admin School Calendar"]
-)
+router = APIRouter(prefix="/tenant-admin/school-calendar", tags=["Tenant Admin School Calendar"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 
 
 async def _ensure_academic_setup(db: DbSession, tenant_id: UUID) -> None:
@@ -229,9 +225,7 @@ async def list_events(
     calendar_id: UUID | None = Query(default=None),
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
-    status_filter: SchoolCalendarEventStatus | None = Query(
-        default=None, alias="status"
-    ),
+    status_filter: SchoolCalendarEventStatus | None = Query(default=None, alias="status"),
     audience: SchoolCalendarEventAudience | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
@@ -305,14 +299,10 @@ async def get_calendar(
     calendar_id: UUID, db: DbSession, current_admin: CurrentTenantAdmin
 ) -> SchoolCalendarResponse:
     await _ensure_academic_setup(db, current_admin.tenant_id)
-    return await SchoolCalendarService.get_calendar(
-        db, current_admin.tenant_id, calendar_id
-    )
+    return await SchoolCalendarService.get_calendar(db, current_admin.tenant_id, calendar_id)
 
 
-@router.get(
-    "/{calendar_id}/dependencies", response_model=SchoolCalendarDependencyPreview
-)
+@router.get("/{calendar_id}/dependencies", response_model=SchoolCalendarDependencyPreview)
 async def calendar_dependencies(
     calendar_id: UUID, db: DbSession, current_admin: CurrentTenantAdmin
 ) -> SchoolCalendarDependencyPreview:

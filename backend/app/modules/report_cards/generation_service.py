@@ -35,15 +35,11 @@ class EnrollmentReportCardService:
         session = await StudentAcademicRepository.get_academic_session_by_id(
             db, tenant_id, academic_session_id
         )
-        term = await StudentAcademicRepository.get_term_by_id(
-            db, tenant_id, academic_term_id
-        )
+        term = await StudentAcademicRepository.get_term_by_id(db, tenant_id, academic_term_id)
         if session is None:
             raise NotFoundException("Academic session not found.")
         if term is None or term.academic_session_id != academic_session_id:
-            raise BadRequestException(
-                "The selected term does not belong to the selected session."
-            )
+            raise BadRequestException("The selected term does not belong to the selected session.")
 
     @staticmethod
     async def _enrollment_for_student_session(
@@ -111,9 +107,7 @@ class EnrollmentReportCardService:
         academic_term_id: uuid.UUID,
         commit: bool,
     ) -> ReportCardResponse:
-        student = await StudentRepository.get_student_by_id(
-            db, actor.tenant_id, student_id
-        )
+        student = await StudentRepository.get_student_by_id(db, actor.tenant_id, student_id)
         if student is None:
             raise NotFoundException("Student not found.")
 
@@ -136,9 +130,7 @@ class EnrollmentReportCardService:
             academic_term_id,
         )
         if not results:
-            raise BadRequestException(
-                "No locked scores are available for this student."
-            )
+            raise BadRequestException("No locked scores are available for this student.")
 
         existing = await ReportCardRepository.get_by_student_period(
             db,
@@ -257,9 +249,7 @@ class EnrollmentReportCardService:
             academic_session_id,
             academic_term_id,
         )
-        expected = await ReportCardService._expected_class_subjects(
-            db, actor.tenant_id, class_id
-        )
+        expected = await ReportCardService._expected_class_subjects(db, actor.tenant_id, class_id)
         enrollments = await EnrollmentReportCardService._enrollments_for_class_session(
             db,
             actor.tenant_id,
@@ -305,9 +295,7 @@ class EnrollmentReportCardService:
                     student_id=student.id,
                     student_name=(
                         " ".join(
-                            part
-                            for part in [student.first_name, student.last_name]
-                            if part
+                            part for part in [student.first_name, student.last_name] if part
                         ).strip()
                         or None
                     ),

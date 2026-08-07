@@ -292,9 +292,7 @@ def capture_exception(
             return sentry_sdk.capture_exception(exc)
 
     except Exception:
-        logger.exception(
-            "Sentry exception capture failed; continuing without interruption"
-        )
+        logger.exception("Sentry exception capture failed; continuing without interruption")
         return None
 
 

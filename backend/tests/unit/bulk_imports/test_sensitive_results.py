@@ -55,11 +55,7 @@ def test_authorized_slip_path_can_reveal_non_expired_setup_code() -> None:
 
 def test_expired_encrypted_setup_code_is_not_revealed() -> None:
     protected = protect_import_metadata(
-        {
-            "result_rows": [
-                {"row_number": 2, "status": "created", "setup_code": "12345678"}
-            ]
-        }
+        {"result_rows": [{"row_number": 2, "status": "created", "setup_code": "12345678"}]}
     )
     row = protected["result_rows"][0]
     row["setup_code_available_until"] = (
@@ -75,9 +71,7 @@ def test_expired_legacy_plaintext_setup_code_is_not_revealed() -> None:
         "row_number": 2,
         "status": "created",
         "setup_code": "12345678",
-        "access_code_expires_at": (
-            datetime.now(timezone.utc) - timedelta(minutes=1)
-        ).isoformat(),
+        "access_code_expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
     }
 
     revealed = reveal_result_row(row)
@@ -87,11 +81,7 @@ def test_expired_legacy_plaintext_setup_code_is_not_revealed() -> None:
 
 def test_normal_responses_redact_plaintext_and_ciphertext() -> None:
     protected = protect_import_metadata(
-        {
-            "result_rows": [
-                {"row_number": 2, "status": "created", "setup_code": "12345678"}
-            ]
-        }
+        {"result_rows": [{"row_number": 2, "status": "created", "setup_code": "12345678"}]}
     )
 
     sanitized = sanitize_import_metadata_for_response(protected)

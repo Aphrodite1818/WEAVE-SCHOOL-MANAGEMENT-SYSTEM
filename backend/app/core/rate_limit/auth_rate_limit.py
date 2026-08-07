@@ -211,9 +211,7 @@ class AuthRateLimitService:
         if not cls._enabled():
             return
 
-        for rule in cls._login_failure_rules(
-            identifier=identifier, ip_address=ip_address
-        ):
+        for rule in cls._login_failure_rules(identifier=identifier, ip_address=ip_address):
             await cls._limiter.consume(
                 rule.key,
                 limit=rule.limit,
@@ -234,9 +232,7 @@ class AuthRateLimitService:
 
         await cls._limiter.clear(
             rule.key
-            for rule in cls._login_failure_rules(
-                identifier=identifier, ip_address=ip_address
-            )
+            for rule in cls._login_failure_rules(identifier=identifier, ip_address=ip_address)
         )
 
     @classmethod
@@ -279,9 +275,7 @@ class AuthRateLimitService:
                 window_seconds=86400,
             ),
             RateLimitRule(
-                key=build_rate_limit_key(
-                    "auth", "otp-request", "ip", ip_hash, purpose_value, "1h"
-                ),
+                key=build_rate_limit_key("auth", "otp-request", "ip", ip_hash, purpose_value, "1h"),
                 limit=settings.OTP_IP_LIMIT_1H,
                 window_seconds=3600,
             ),

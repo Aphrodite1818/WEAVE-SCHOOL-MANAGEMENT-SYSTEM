@@ -271,9 +271,7 @@ class TeacherMembershipRepository:
             )
 
         total = (
-            await db.execute(
-                select(func.count()).select_from(TeacherMembership).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(TeacherMembership).where(*filters))
         ).scalar_one()
 
         result = await db.execute(
@@ -439,9 +437,7 @@ class TeacherInvitationRepository:
             filters.append(TeacherInvitation.status == status)
 
         total = (
-            await db.execute(
-                select(func.count()).select_from(TeacherInvitation).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(TeacherInvitation).where(*filters))
         ).scalar_one()
 
         result = await db.execute(

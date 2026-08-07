@@ -15,9 +15,7 @@ INVITATION_ROLE_LABELS = {
     ActorType.PARENT_ACCOUNT: "parent",
     ActorType.TEACHER_ACCOUNT: "teacher",
 }
-INVITATION_EMAIL_CONFLICT_MESSAGE = (
-    "This email is already registered under another role."
-)
+INVITATION_EMAIL_CONFLICT_MESSAGE = "This email is already registered under another role."
 
 
 class AccountEmailGuard:
@@ -51,10 +49,7 @@ class AccountEmailGuard:
         )
 
         if existing_superadmin is not None:
-            if (
-                exclude_superadmin_id is None
-                or existing_superadmin.id != exclude_superadmin_id
-            ):
+            if exclude_superadmin_id is None or existing_superadmin.id != exclude_superadmin_id:
                 raise ConflictException(message)
 
         return normalized_email

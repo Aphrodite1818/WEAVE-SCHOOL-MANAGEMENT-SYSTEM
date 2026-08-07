@@ -77,20 +77,24 @@ async def test_upsert_student_result_closed_session(mock_db, tenant_admin):
         id=uuid.uuid4(),
     )
 
-    with patch(
-        "app.modules.student_academics.service.StudentAcademicService._resolve_assignment_context",
-        new_callable=AsyncMock,
-    ) as mock_resolve, patch(
-        "app.modules.students.repository.StudentRepository.get_by_id",
-        new_callable=AsyncMock,
-    ) as mock_get_student, patch(
-        "app.modules.student_academics.repository.StudentAcademicRepository.get_academic_session_by_id",
-        new_callable=AsyncMock,
-    ) as mock_get_session, patch(
-        "app.modules.student_academics.repository.StudentAcademicRepository.get_term_by_id",
-        new_callable=AsyncMock,
-    ) as mock_get_term:
-
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._resolve_assignment_context",
+            new_callable=AsyncMock,
+        ) as mock_resolve,
+        patch(
+            "app.modules.students.repository.StudentRepository.get_by_id",
+            new_callable=AsyncMock,
+        ) as mock_get_student,
+        patch(
+            "app.modules.student_academics.repository.StudentAcademicRepository.get_academic_session_by_id",
+            new_callable=AsyncMock,
+        ) as mock_get_session,
+        patch(
+            "app.modules.student_academics.repository.StudentAcademicRepository.get_term_by_id",
+            new_callable=AsyncMock,
+        ) as mock_get_term,
+    ):
         mock_resolve.return_value = (assignment, compatibility, class_subject)
         mock_get_student.return_value = student
         mock_get_session.return_value = session
@@ -100,9 +104,7 @@ async def test_upsert_student_result_closed_session(mock_db, tenant_admin):
             ConflictException,
             match="Results can only be modified in the current open session.",
         ):
-            await StudentAcademicService.upsert_student_result(
-                mock_db, tenant_admin, payload
-            )
+            await StudentAcademicService.upsert_student_result(mock_db, tenant_admin, payload)
 
 
 @pytest.mark.asyncio
@@ -123,9 +125,7 @@ async def test_upsert_student_result_not_enrolled(mock_db, tenant_admin):
     class_subject = ClassSubject(class_id=uuid.uuid4(), subject_id=uuid.uuid4())
 
     student = Student(class_id=uuid.uuid4(), id=uuid.uuid4())  # Mismatched class
-    session = AcademicSession(
-        status=AcademicSessionStatus.OPEN, is_current=True, id=uuid.uuid4()
-    )
+    session = AcademicSession(status=AcademicSessionStatus.OPEN, is_current=True, id=uuid.uuid4())
     term = AcademicTerm(
         academic_session_id=session.id,
         status=AcademicTermStatus.OPEN,
@@ -136,23 +136,28 @@ async def test_upsert_student_result_not_enrolled(mock_db, tenant_admin):
         class_id=uuid.uuid4(), academic_session_id=session.id, id=uuid.uuid4()
     )  # Mismatched class
 
-    with patch(
-        "app.modules.student_academics.service.StudentAcademicService._resolve_assignment_context",
-        new_callable=AsyncMock,
-    ) as mock_resolve, patch(
-        "app.modules.students.repository.StudentRepository.get_by_id",
-        new_callable=AsyncMock,
-    ) as mock_get_student, patch(
-        "app.modules.student_academics.repository.StudentAcademicRepository.get_academic_session_by_id",
-        new_callable=AsyncMock,
-    ) as mock_get_session, patch(
-        "app.modules.student_academics.repository.StudentAcademicRepository.get_term_by_id",
-        new_callable=AsyncMock,
-    ) as mock_get_term, patch(
-        "app.modules.students.repository.StudentEnrollmentRepository.get_current",
-        new_callable=AsyncMock,
-    ) as mock_get_current:
-
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._resolve_assignment_context",
+            new_callable=AsyncMock,
+        ) as mock_resolve,
+        patch(
+            "app.modules.students.repository.StudentRepository.get_by_id",
+            new_callable=AsyncMock,
+        ) as mock_get_student,
+        patch(
+            "app.modules.student_academics.repository.StudentAcademicRepository.get_academic_session_by_id",
+            new_callable=AsyncMock,
+        ) as mock_get_session,
+        patch(
+            "app.modules.student_academics.repository.StudentAcademicRepository.get_term_by_id",
+            new_callable=AsyncMock,
+        ) as mock_get_term,
+        patch(
+            "app.modules.students.repository.StudentEnrollmentRepository.get_current",
+            new_callable=AsyncMock,
+        ) as mock_get_current,
+    ):
         mock_resolve.return_value = (assignment, compatibility, class_subject)
         mock_get_student.return_value = student
         mock_get_session.return_value = session
@@ -163,18 +168,14 @@ async def test_upsert_student_result_not_enrolled(mock_db, tenant_admin):
             ForbiddenException,
             match="Student is not enrolled in the assigned class for this session.",
         ):
-            await StudentAcademicService.upsert_student_result(
-                mock_db, tenant_admin, payload
-            )
+            await StudentAcademicService.upsert_student_result(mock_db, tenant_admin, payload)
 
 
 @pytest.mark.asyncio
 async def test_update_grading_scale_blocks_active(mock_db, tenant_admin):
     from app.modules.student_academics.schemas import GradingScaleUpdate
 
-    scale = GradingScale(
-        is_active=True, min_score=Decimal("0.0"), max_score=Decimal("10.0")
-    )
+    scale = GradingScale(is_active=True, min_score=Decimal("0.0"), max_score=Decimal("10.0"))
 
     with patch(
         "app.modules.student_academics.repository.StudentAcademicRepository.get_grading_scale_by_id",
@@ -182,9 +183,7 @@ async def test_update_grading_scale_blocks_active(mock_db, tenant_admin):
     ) as mock_get:
         mock_get.return_value = scale
         payload = GradingScaleUpdate(grade="A")
-        with pytest.raises(
-            ConflictException, match="Active grading scales cannot be modified."
-        ):
+        with pytest.raises(ConflictException, match="Active grading scales cannot be modified."):
             await StudentAcademicService.update_grading_scale(
                 mock_db, tenant_admin.tenant_id, uuid.uuid4(), payload
             )

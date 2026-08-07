@@ -76,9 +76,7 @@ class SecurityIPBlockCreate(InputBase):
 class SecurityIPBlockUnblock(InputBase):
     """Disable a manual IP block rule."""
 
-    reason: str = Field(
-        default="Manual unblock by superadmin", min_length=3, max_length=255
-    )
+    reason: str = Field(default="Manual unblock by superadmin", min_length=3, max_length=255)
 
 
 class SecurityIPBlockResponse(OutputBase):
@@ -110,9 +108,7 @@ class SecurityRevokeActorSessionsRequest(InputBase):
 
     actor_type: str = Field(min_length=3, max_length=50)
     actor_id: uuid.UUID
-    reason: str = Field(
-        default="manual_actor_containment", min_length=3, max_length=100
-    )
+    reason: str = Field(default="manual_actor_containment", min_length=3, max_length=100)
 
 
 class SecurityActionResponse(OutputBase):

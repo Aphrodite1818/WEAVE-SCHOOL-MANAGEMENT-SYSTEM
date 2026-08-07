@@ -265,9 +265,7 @@ class SubjectRepository:
             )
             .where(*filters)
         )
-        total = (
-            await db.execute(select(func.count()).select_from(joined.subquery()))
-        ).scalar_one()
+        total = (await db.execute(select(func.count()).select_from(joined.subquery()))).scalar_one()
         result = await db.execute(
             joined.options(*_subject_teacher_load_options())
             .order_by(Subject.name.asc())
@@ -325,9 +323,7 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(
-                    ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id
-                )
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
                     ClassSubject.tenant_id == tenant_id,
@@ -398,9 +394,7 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(
-                    ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id
-                )
+                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
                     TeacherAssignment.is_active.is_(True),

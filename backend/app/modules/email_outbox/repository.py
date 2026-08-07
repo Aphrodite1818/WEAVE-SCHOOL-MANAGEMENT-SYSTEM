@@ -100,10 +100,7 @@ class EmailOutboxRepository:
             select(EmailOutbox)
             .where(
                 EmailOutbox.status == EmailOutboxStatus.PENDING,
-                (
-                    EmailOutbox.next_retry_at.is_(None)
-                    | (EmailOutbox.next_retry_at <= now)
-                ),
+                (EmailOutbox.next_retry_at.is_(None) | (EmailOutbox.next_retry_at <= now)),
                 EmailOutbox.attempts < EmailOutbox.max_attempts,
             )
             .order_by(EmailOutbox.created_at.asc())
@@ -253,10 +250,7 @@ class EmailOutboxRepository:
             .select_from(EmailOutbox)
             .where(
                 EmailOutbox.status == EmailOutboxStatus.PENDING,
-                (
-                    EmailOutbox.next_retry_at.is_(None)
-                    | (EmailOutbox.next_retry_at <= now)
-                ),
+                (EmailOutbox.next_retry_at.is_(None) | (EmailOutbox.next_retry_at <= now)),
                 EmailOutbox.attempts < EmailOutbox.max_attempts,
             )
         )
@@ -275,16 +269,13 @@ class EmailOutboxRepository:
         filters = [EmailOutbox.tenant_id == tenant_id]
         if import_job_id is not None:
             filters.append(
-                EmailOutbox.metadata_json.op("->>")("import_job_id")
-                == str(import_job_id)
+                EmailOutbox.metadata_json.op("->>")("import_job_id") == str(import_job_id)
             )
         if source is not None:
             filters.append(EmailOutbox.metadata_json.op("->>")("source") == source)
 
         result = await db.execute(
-            select(EmailOutbox.status, func.count())
-            .where(*filters)
-            .group_by(EmailOutbox.status)
+            select(EmailOutbox.status, func.count()).where(*filters).group_by(EmailOutbox.status)
         )
 
         counts = {status.value: 0 for status in EmailOutboxStatus}

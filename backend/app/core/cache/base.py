@@ -110,9 +110,7 @@ def build_cache_key(*parts: Any) -> str:
     """
 
     cleaned_parts = [
-        normalize_cache_part(part)
-        for part in parts
-        if part is not None and str(part).strip() != ""
+        normalize_cache_part(part) for part in parts if part is not None and str(part).strip() != ""
     ]
 
     return ":".join(cleaned_parts)

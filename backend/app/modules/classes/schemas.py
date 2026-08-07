@@ -21,9 +21,7 @@ class InputBase(BaseModel):
 
 
 class OutputBase(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True, use_enum_values=True, populate_by_name=True
-    )
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
 
 
 class ClassRoomBase(InputBase):

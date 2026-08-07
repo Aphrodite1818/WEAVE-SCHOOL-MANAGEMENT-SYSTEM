@@ -84,9 +84,7 @@ class TeacherPatchService:
                 "receive_push_notifications",
             }
             if not set(update_data).issubset(allowed):
-                raise ForbiddenException(
-                    "Employment fields are controlled by the school."
-                )
+                raise ForbiddenException("Employment fields are controlled by the school.")
 
         for boolean_field in (
             "receive_email_notifications",

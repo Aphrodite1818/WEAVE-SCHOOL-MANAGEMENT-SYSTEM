@@ -18,9 +18,7 @@ async def test_parent_invitation_preflight_rejects_incompatible_role(
 ) -> None:
     async def ensure_available(db, email, *, invited_actor_type):
         if email == "teacher@example.com":
-            raise ConflictException(
-                "This email is already registered under another role."
-            )
+            raise ConflictException("This email is already registered under another role.")
         return str(email).casefold()
 
     monkeypatch.setattr(

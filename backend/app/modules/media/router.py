@@ -41,9 +41,7 @@ router = APIRouter(
     tags=["Media"],
 )
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentProfileMediaActor: TypeAlias = Annotated[
     TenantAdmin | TeacherAccount | Teacher | Student | object,
     Depends(get_current_actor),
@@ -192,9 +190,7 @@ async def upload_profile_passport_photo(
             file=file,
         )
 
-    raise ForbiddenException(
-        detail="This account does not support profile photo uploads"
-    )
+    raise ForbiddenException(detail="This account does not support profile photo uploads")
 
 
 @router.delete(
@@ -221,9 +217,7 @@ async def delete_profile_passport_photo(
             delete_object=delete_object,
         )
 
-    raise ForbiddenException(
-        detail="This account does not support profile photo uploads"
-    )
+    raise ForbiddenException(detail="This account does not support profile photo uploads")
 
 
 @router.get(

@@ -70,31 +70,23 @@ from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-tenant_admin_router = APIRouter(
-    prefix="/tenant-admin/attendance", tags=["Tenant Admin Attendance"]
-)
+tenant_admin_router = APIRouter(prefix="/tenant-admin/attendance", tags=["Tenant Admin Attendance"])
 teacher_router = APIRouter(prefix="/teacher/attendance", tags=["Teacher Attendance"])
 student_router = APIRouter(prefix="/student/attendance", tags=["Student Attendance"])
 parent_router = APIRouter(prefix="/parent/attendance", tags=["Parent Attendance"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
 CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_student)]
 CurrentParent: TypeAlias = Annotated[Parent, Depends(get_current_parent)]
 
 
 async def _ensure_attendance(db: DbSession, tenant_id: UUID) -> None:
-    await SubscriptionFeatureService.ensure_feature_enabled(
-        db, tenant_id, FeatureCode.ATTENDANCE
-    )
+    await SubscriptionFeatureService.ensure_feature_enabled(db, tenant_id, FeatureCode.ATTENDANCE)
 
 
 async def _ensure_geofencing(db: DbSession, tenant_id: UUID) -> None:
-    await SubscriptionFeatureService.ensure_feature_enabled(
-        db, tenant_id, FeatureCode.GEOFENCING
-    )
+    await SubscriptionFeatureService.ensure_feature_enabled(db, tenant_id, FeatureCode.GEOFENCING)
 
 
 @tenant_admin_router.get("/settings", response_model=AttendanceSettingsResponse)
@@ -151,9 +143,7 @@ async def admin_create_geofence(
     )
 
 
-@tenant_admin_router.patch(
-    "/geofences/{geofence_id}", response_model=SchoolGeofenceResponse
-)
+@tenant_admin_router.patch("/geofences/{geofence_id}", response_model=SchoolGeofenceResponse)
 async def admin_update_geofence(
     geofence_id: UUID,
     payload: SchoolGeofenceUpdate,
@@ -202,9 +192,7 @@ async def admin_deactivate_geofence(
     )
 
 
-@tenant_admin_router.post(
-    "/geofences/{geofence_id}/archive", response_model=SchoolGeofenceResponse
-)
+@tenant_admin_router.post("/geofences/{geofence_id}/archive", response_model=SchoolGeofenceResponse)
 async def admin_archive_geofence(
     geofence_id: UUID, db: DbSession, current_admin: CurrentTenantAdmin
 ) -> SchoolGeofenceResponse:
@@ -218,9 +206,7 @@ async def admin_archive_geofence(
     )
 
 
-@tenant_admin_router.post(
-    "/geofences/preview", response_model=GeofenceEvaluationResponse
-)
+@tenant_admin_router.post("/geofences/preview", response_model=GeofenceEvaluationResponse)
 async def admin_preview_geofence(
     payload: GeofencePreviewRequest,
     db: DbSession,
@@ -236,18 +222,14 @@ async def admin_preview_geofence(
     )
 
 
-@tenant_admin_router.get(
-    "/student-sheets", response_model=StudentAttendanceSheetListResponse
-)
+@tenant_admin_router.get("/student-sheets", response_model=StudentAttendanceSheetListResponse)
 async def admin_list_student_sheets(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
     class_id: UUID | None = Query(default=None),
-    status_filter: StudentAttendanceSheetStatus | None = Query(
-        default=None, alias="status"
-    ),
+    status_filter: StudentAttendanceSheetStatus | None = Query(default=None, alias="status"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> StudentAttendanceSheetListResponse:
@@ -376,15 +358,11 @@ async def admin_create_temporary_assignment(
     )
 
 
-@tenant_admin_router.get(
-    "/corrections", response_model=AttendanceCorrectionListResponse
-)
+@tenant_admin_router.get("/corrections", response_model=AttendanceCorrectionListResponse)
 async def admin_list_corrections(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-    status_filter: AttendanceCorrectionStatus | None = Query(
-        default=None, alias="status"
-    ),
+    status_filter: AttendanceCorrectionStatus | None = Query(default=None, alias="status"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=100),
 ) -> AttendanceCorrectionListResponse:
@@ -443,9 +421,7 @@ async def admin_readiness(
     )
 
 
-@teacher_router.get(
-    "/student-sheets", response_model=StudentAttendanceSheetListResponse
-)
+@teacher_router.get("/student-sheets", response_model=StudentAttendanceSheetListResponse)
 async def teacher_list_student_sheets(
     db: DbSession,
     current_teacher: CurrentTeacher,
@@ -640,9 +616,7 @@ async def _ensure_parent_can_view_student(
         raise ForbiddenException("You cannot view attendance for this student.")
 
 
-@parent_router.get(
-    "/students/{student_id}", response_model=StudentAttendanceRecordListResponse
-)
+@parent_router.get("/students/{student_id}", response_model=StudentAttendanceRecordListResponse)
 async def parent_student_attendance(
     student_id: UUID,
     db: DbSession,

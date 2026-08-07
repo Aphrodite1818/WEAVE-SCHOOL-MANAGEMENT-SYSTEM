@@ -261,10 +261,7 @@ class TeacherMembership(BaseModel):
 
     @property
     def is_active(self) -> bool:
-        return (
-            self.teacher_account.is_active
-            and self.status != TeacherMembershipStatus.INACTIVE
-        )
+        return self.teacher_account.is_active and self.status != TeacherMembershipStatus.INACTIVE
 
     @property
     def profile_completed(self) -> bool:
@@ -407,7 +404,7 @@ class TeacherMembershipSubject(BaseModel):
             "tenant_id",
             "teacher_membership_id",
             "subject_id",
-            name=("uq_teacher_membership_subjects_" "tenant_membership_subject"),
+            name=("uq_teacher_membership_subjects_tenant_membership_subject"),
         ),
         Index(
             "ix_teacher_membership_subjects_membership",

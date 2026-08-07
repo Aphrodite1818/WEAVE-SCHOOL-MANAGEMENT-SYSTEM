@@ -49,9 +49,7 @@ class AnnouncementService:
     @staticmethod
     def _ensure_creator(actor) -> None:
         if not isinstance(actor, (SuperAdmin, TenantAdmin)):
-            raise ForbiddenException(
-                "Teachers, parents, and students cannot create announcements"
-            )
+            raise ForbiddenException("Teachers, parents, and students cannot create announcements")
 
     @staticmethod
     async def _resolve_audience_or_raise(db: AsyncSession, *, actor, audiences):
@@ -73,11 +71,7 @@ class AnnouncementService:
         await AnnouncementService._resolve_audience_or_raise(
             db, actor=actor, audiences=payload.audiences
         )
-        status = (
-            AnnouncementStatus.SCHEDULED
-            if payload.publish_at
-            else AnnouncementStatus.DRAFT
-        )
+        status = AnnouncementStatus.SCHEDULED if payload.publish_at else AnnouncementStatus.DRAFT
         announcement = Announcement(
             tenant_id=actor_tenant_id(actor),
             created_by_actor_type=actor_type_for(actor),
@@ -129,15 +123,11 @@ class AnnouncementService:
             stmt = stmt.where(Announcement.tenant_id == actor_tenant_id(actor))
         if status is not None:
             stmt = stmt.where(Announcement.status == status)
-        total = (
-            await db.execute(select(func.count()).select_from(stmt.subquery()))
-        ).scalar_one()
+        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
         rows = (
             (
                 await db.execute(
-                    stmt.order_by(Announcement.updated_at.desc())
-                    .offset(offset)
-                    .limit(limit)
+                    stmt.order_by(Announcement.updated_at.desc()).offset(offset).limit(limit)
                 )
             )
             .unique()
@@ -150,9 +140,7 @@ class AnnouncementService:
     async def get_manageable(
         db: AsyncSession, *, actor, announcement_id: uuid.UUID
     ) -> Announcement:
-        announcement = await CommunicationRepository.get_announcement(
-            db, announcement_id
-        )
+        announcement = await CommunicationRepository.get_announcement(db, announcement_id)
         if announcement is None:
             raise NotFoundException("Announcement not found")
         if (
@@ -160,9 +148,7 @@ class AnnouncementService:
             or announcement.created_by_actor_id != actor.id
         ):
             raise NotFoundException("Announcement not found")
-        if actor_tenant_id(
-            actor
-        ) is not None and announcement.tenant_id != actor_tenant_id(actor):
+        if actor_tenant_id(actor) is not None and announcement.tenant_id != actor_tenant_id(actor):
             raise NotFoundException("Announcement not found")
         return announcement
 
@@ -224,9 +210,7 @@ class AnnouncementService:
             AnnouncementStatus.DRAFT,
             AnnouncementStatus.SCHEDULED,
         }:
-            raise BadRequestException(
-                "Only draft or scheduled announcements can be published"
-            )
+            raise BadRequestException("Only draft or scheduled announcements can be published")
         recipients, _ = await AnnouncementService._resolve_audience_or_raise(
             db, actor=actor, audiences=announcement.audiences
         )
@@ -245,18 +229,14 @@ class AnnouncementService:
                 source_id=announcement.id,
                 title=announcement.title,
                 preview=announcement.body,
-                action_path=_announcement_action_path(
-                    recipient.actor_type, announcement.id
-                ),
+                action_path=_announcement_action_path(recipient.actor_type, announcement.id),
                 tenant_id=announcement.tenant_id,
             )
         await db.flush()
         return await CommunicationRepository.get_announcement(db, announcement.id)
 
     @staticmethod
-    async def archive(
-        db: AsyncSession, *, actor, announcement_id: uuid.UUID
-    ) -> Announcement:
+    async def archive(db: AsyncSession, *, actor, announcement_id: uuid.UUID) -> Announcement:
         announcement = await AnnouncementService.get_manageable(
             db, actor=actor, announcement_id=announcement_id
         )
@@ -267,9 +247,7 @@ class AnnouncementService:
         return await CommunicationRepository.save(db, announcement)
 
     @staticmethod
-    async def cancel(
-        db: AsyncSession, *, actor, announcement_id: uuid.UUID
-    ) -> Announcement:
+    async def cancel(db: AsyncSession, *, actor, announcement_id: uuid.UUID) -> Announcement:
         announcement = await AnnouncementService.get_manageable(
             db, actor=actor, announcement_id=announcement_id
         )
@@ -277,8 +255,6 @@ class AnnouncementService:
             AnnouncementStatus.DRAFT,
             AnnouncementStatus.SCHEDULED,
         }:
-            raise BadRequestException(
-                "Only draft or scheduled announcements can be cancelled"
-            )
+            raise BadRequestException("Only draft or scheduled announcements can be cancelled")
         announcement.status = AnnouncementStatus.CANCELLED
         return await CommunicationRepository.save(db, announcement)

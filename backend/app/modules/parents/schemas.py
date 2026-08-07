@@ -417,9 +417,7 @@ class ParentInvitationCreateItem(InputBase):
 class ParentInvitationBatchCreateRequest(InputBase):
     """Optional parent invitations created with or after a student."""
 
-    parents: list[ParentInvitationCreateItem] = Field(
-        default_factory=list, max_length=2
-    )
+    parents: list[ParentInvitationCreateItem] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode="after")
     def validate_unique_parent_emails(self) -> "ParentInvitationBatchCreateRequest":

@@ -45,21 +45,15 @@ class AttendanceRepository:
         return entity
 
     @staticmethod
-    async def get_settings(
-        db: AsyncSession, tenant_id: uuid.UUID
-    ) -> AttendanceSettings | None:
+    async def get_settings(db: AsyncSession, tenant_id: uuid.UUID) -> AttendanceSettings | None:
         return (
             await db.execute(
-                select(AttendanceSettings).where(
-                    AttendanceSettings.tenant_id == tenant_id
-                )
+                select(AttendanceSettings).where(AttendanceSettings.tenant_id == tenant_id)
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def save_settings(
-        db: AsyncSession, settings: AttendanceSettings
-    ) -> AttendanceSettings:
+    async def save_settings(db: AsyncSession, settings: AttendanceSettings) -> AttendanceSettings:
         return await AttendanceRepository._save(db, settings)
 
     @staticmethod
@@ -68,9 +62,7 @@ class AttendanceRepository:
     ) -> ClassRoom | None:
         return (
             await db.execute(
-                select(ClassRoom).where(
-                    ClassRoom.tenant_id == tenant_id, ClassRoom.id == class_id
-                )
+                select(ClassRoom).where(ClassRoom.tenant_id == tenant_id, ClassRoom.id == class_id)
             )
         ).scalar_one_or_none()
 
@@ -223,9 +215,7 @@ class AttendanceRepository:
         total = int(
             (
                 await db.execute(
-                    select(func.count())
-                    .select_from(StudentAttendanceSheet)
-                    .where(*filters)
+                    select(func.count()).select_from(StudentAttendanceSheet).where(*filters)
                 )
             ).scalar_one()
         )
@@ -325,8 +315,7 @@ class AttendanceRepository:
                         TemporaryAttendanceAssignment.tenant_id == tenant_id,
                         TemporaryAttendanceAssignment.teacher_membership_id
                         == teacher_membership_id,
-                        TemporaryAttendanceAssignment.status
-                        == TemporaryAssignmentStatus.ACTIVE,
+                        TemporaryAttendanceAssignment.status == TemporaryAssignmentStatus.ACTIVE,
                         TemporaryAttendanceAssignment.starts_on <= target_date,
                         TemporaryAttendanceAssignment.ends_on >= target_date,
                     )
@@ -367,9 +356,7 @@ class AttendanceRepository:
             filters.append(SchoolGeofence.id == geofence_id)
         order_by = (SchoolGeofence.is_primary.desc(), SchoolGeofence.created_at.asc())
         return (
-            await db.execute(
-                select(SchoolGeofence).where(*filters).order_by(*order_by).limit(1)
-            )
+            await db.execute(select(SchoolGeofence).where(*filters).order_by(*order_by).limit(1))
         ).scalar_one_or_none()
 
     @staticmethod
@@ -384,9 +371,7 @@ class AttendanceRepository:
             filters.append(SchoolGeofence.status != SchoolGeofenceStatus.ARCHIVED)
         total = int(
             (
-                await db.execute(
-                    select(func.count()).select_from(SchoolGeofence).where(*filters)
-                )
+                await db.execute(select(func.count()).select_from(SchoolGeofence).where(*filters))
             ).scalar_one()
         )
         rows = list(
@@ -394,9 +379,7 @@ class AttendanceRepository:
                 await db.execute(
                     select(SchoolGeofence)
                     .where(*filters)
-                    .order_by(
-                        SchoolGeofence.is_primary.desc(), SchoolGeofence.name.asc()
-                    )
+                    .order_by(SchoolGeofence.is_primary.desc(), SchoolGeofence.name.asc())
                 )
             )
             .scalars()
@@ -440,9 +423,7 @@ class AttendanceRepository:
         await db.flush()
 
     @staticmethod
-    async def save_geofence(
-        db: AsyncSession, geofence: SchoolGeofence
-    ) -> SchoolGeofence:
+    async def save_geofence(db: AsyncSession, geofence: SchoolGeofence) -> SchoolGeofence:
         return await AttendanceRepository._save(db, geofence)
 
     @staticmethod
@@ -508,15 +489,11 @@ class AttendanceRepository:
         if end_date is not None:
             filters.append(WorkforceAttendanceRecord.attendance_date <= end_date)
         if teacher_membership_id is not None:
-            filters.append(
-                WorkforceAttendanceRecord.teacher_membership_id == teacher_membership_id
-            )
+            filters.append(WorkforceAttendanceRecord.teacher_membership_id == teacher_membership_id)
         total = int(
             (
                 await db.execute(
-                    select(func.count())
-                    .select_from(WorkforceAttendanceRecord)
-                    .where(*filters)
+                    select(func.count()).select_from(WorkforceAttendanceRecord).where(*filters)
                 )
             ).scalar_one()
         )
@@ -578,9 +555,7 @@ class AttendanceRepository:
         total = int(
             (
                 await db.execute(
-                    select(func.count())
-                    .select_from(AttendanceCorrection)
-                    .where(*filters)
+                    select(func.count()).select_from(AttendanceCorrection).where(*filters)
                 )
             ).scalar_one()
         )
@@ -606,9 +581,7 @@ class AttendanceRepository:
         return await AttendanceRepository._save(db, notification)
 
     @staticmethod
-    async def add_audit_log(
-        db: AsyncSession, audit: AttendanceAuditLog
-    ) -> AttendanceAuditLog:
+    async def add_audit_log(db: AsyncSession, audit: AttendanceAuditLog) -> AttendanceAuditLog:
         return await AttendanceRepository._save(db, audit)
 
     @staticmethod
@@ -642,9 +615,7 @@ class AttendanceRepository:
         evidence_result = await db.execute(
             update(GeofenceEvaluation)
             .where(*evidence_filters)
-            .values(
-                reason="Expired attendance geofence evidence retained without raw location."
-            )
+            .values(reason="Expired attendance geofence evidence retained without raw location.")
             .execution_options(synchronize_session=False)
         )
         await db.flush()

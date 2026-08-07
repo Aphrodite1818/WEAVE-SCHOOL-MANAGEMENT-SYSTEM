@@ -17,9 +17,7 @@ from app.modules.student_academics.schemas import (
 from app.modules.student_academics.service import StudentAcademicService
 
 
-def _assignment(
-    *, active: bool = True, effective_to: date | None = None
-) -> TeacherAssignment:
+def _assignment(*, active: bool = True, effective_to: date | None = None) -> TeacherAssignment:
     now = datetime.now(timezone.utc)
     return TeacherAssignment(
         id=uuid.uuid4(),
@@ -133,9 +131,7 @@ async def test_dependency_preview_reports_structured_counts_and_capabilities() -
 
 
 @pytest.mark.asyncio
-async def test_delete_assignment_returns_structured_dependency_payload_when_blocked() -> (
-    None
-):
+async def test_delete_assignment_returns_structured_dependency_payload_when_blocked() -> None:
     assignment = _assignment(active=False, effective_to=date(2026, 1, 20))
 
     with (

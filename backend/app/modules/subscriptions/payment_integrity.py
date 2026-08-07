@@ -117,9 +117,7 @@ def _recurring_integrity_failures(
     plan = coerce_subscription_plan(subscription.plan_code)
     interval = BillingInterval(subscription.billing_interval)
     expected_amount = SubscriptionPaymentService._get_amount_kobo(plan, interval)
-    expected_provider_plan = SubscriptionPaymentService._get_paystack_plan_code(
-        plan, interval
-    )
+    expected_provider_plan = SubscriptionPaymentService._get_paystack_plan_code(plan, interval)
     metadata = SubscriptionPaymentService._extract_metadata(data)
 
     failures: list[str] = []
@@ -140,10 +138,7 @@ def _recurring_integrity_failures(
         "billing_interval": interval.value,
     }
     for key, expected in optional_metadata.items():
-        if (
-            key in metadata
-            and _metadata_value(metadata, key).lower() != expected.lower()
-        ):
+        if key in metadata and _metadata_value(metadata, key).lower() != expected.lower():
             failures.append(key)
     return failures
 
@@ -186,9 +181,7 @@ async def _record_transaction_integrity_failure(
             "integrity_mismatches": sorted(set(failures)),
             "provider_transaction_id": data.get("id"),
         },
-        provider_transaction_id=(
-            str(data.get("id")) if data.get("id") is not None else None
-        ),
+        provider_transaction_id=(str(data.get("id")) if data.get("id") is not None else None),
     )
 
 
@@ -224,13 +217,9 @@ async def verify_subscription_checkout_secure(
             db=db,
             transaction=transaction,
             status=mapped_status,
-            failure_reason=str(
-                data.get("gateway_response") or "Payment not successful"
-            ),
+            failure_reason=str(data.get("gateway_response") or "Payment not successful"),
             raw_payload=provider_response,
-            provider_transaction_id=(
-                str(data.get("id")) if data.get("id") is not None else None
-            ),
+            provider_transaction_id=(str(data.get("id")) if data.get("id") is not None else None),
         )
         await db.commit()
         await flush_cache_invalidation_events(db)
@@ -278,10 +267,12 @@ async def _resolve_recurring_subscription(
             provider_subscription_code=subscription_code,
         )
     if subscription is None and customer_code:
-        subscription = await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
-            db=db,
-            provider=PaymentProvider.PAYSTACK,
-            provider_customer_code=customer_code,
+        subscription = (
+            await SubscriptionRepository.find_current_subscription_by_provider_customer_code(
+                db=db,
+                provider=PaymentProvider.PAYSTACK,
+                provider_customer_code=customer_code,
+            )
         )
     return subscription
 
@@ -292,9 +283,7 @@ async def _validate_charge_success(
 ) -> None:
     data = SubscriptionPaymentService._extract_data(payload)
     reference = str(data.get("reference") or "")
-    transaction = (
-        await _get_transaction_for_update(db, reference) if reference else None
-    )
+    transaction = await _get_transaction_for_update(db, reference) if reference else None
 
     if transaction is not None:
         failures = _transaction_integrity_failures(transaction, data)
@@ -305,9 +294,7 @@ async def _validate_charge_success(
                 payload,
                 failures,
             )
-            raise BadRequestException(
-                "Paystack webhook payment details did not match checkout."
-            )
+            raise BadRequestException("Paystack webhook payment details did not match checkout.")
         return
 
     subscription = await _resolve_recurring_subscription(db, data)
@@ -324,9 +311,7 @@ async def _validate_charge_success(
                 "mismatches": sorted(set(failures)),
             },
         )
-        raise BadRequestException(
-            "Recurring Paystack payment details did not match the plan."
-        )
+        raise BadRequestException("Recurring Paystack payment details did not match the plan.")
 
 
 async def process_paystack_webhook_secure(

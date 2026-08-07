@@ -658,8 +658,7 @@ class StudentParentLinkRequestRepository:
             .where(
                 StudentParentLinkRequest.tenant_id == tenant_id,
                 StudentParentLinkRequest.student_id == student_id,
-                StudentParentLinkRequest.status
-                == StudentParentLinkRequestStatus.PENDING,
+                StudentParentLinkRequest.status == StudentParentLinkRequestStatus.PENDING,
             )
             .order_by(StudentParentLinkRequest.requested_at.asc())
         )
@@ -679,9 +678,7 @@ class StudentParentLinkRequestRepository:
         ]
         total = (
             await db.execute(
-                select(func.count())
-                .select_from(StudentParentLinkRequest)
-                .where(*filters)
+                select(func.count()).select_from(StudentParentLinkRequest).where(*filters)
             )
         ).scalar_one()
         result = await db.execute(

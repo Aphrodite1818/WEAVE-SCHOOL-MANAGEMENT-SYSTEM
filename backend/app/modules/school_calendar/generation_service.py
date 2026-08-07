@@ -73,13 +73,9 @@ class SchoolCalendarGenerationService:
         if term is None:
             raise NotFoundException("Academic term not found.")
         if term.academic_session_id != session.id:
-            raise BadRequestException(
-                "Academic term does not belong to the selected session."
-            )
+            raise BadRequestException("Academic term does not belong to the selected session.")
         if term.start_date is None or term.end_date is None:
-            raise BadRequestException(
-                "Complete term dates before generating a calendar."
-            )
+            raise BadRequestException("Complete term dates before generating a calendar.")
         if session.start_date and term.start_date < session.start_date:
             raise BadRequestException("Term starts before the academic session.")
         if session.end_date and term.end_date > session.end_date:
@@ -89,9 +85,7 @@ class SchoolCalendarGenerationService:
         if config is None:
             raise ConflictException("Configure the school calendar before generation.")
 
-        calendar = await SchoolCalendarRepository.get_calendar_by_term(
-            db, tenant_id, term.id
-        )
+        calendar = await SchoolCalendarRepository.get_calendar_by_term(db, tenant_id, term.id)
         now = _utc_now()
         configuration_revision = getattr(config, "revision", 1)
         if calendar is None:
@@ -131,9 +125,7 @@ class SchoolCalendarGenerationService:
         for target_date in SchoolCalendarGenerationService._iter_dates(
             term.start_date, term.end_date
         ):
-            is_instructional = target_date.weekday() in set(
-                config.instructional_weekdays
-            )
+            is_instructional = target_date.weekday() in set(config.instructional_weekdays)
             day_type = (
                 SchoolCalendarDayType.INSTRUCTIONAL_DAY
                 if is_instructional

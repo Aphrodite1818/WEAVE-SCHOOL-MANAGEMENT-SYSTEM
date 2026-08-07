@@ -139,10 +139,7 @@ class TenantService:
         if tenant is not None and tenant.is_deleted:
             return EmailRegistrationState.DELETED
 
-        if (
-            tenant is not None
-            and tenant.verification_status == TenantVerificationStatus.REJECTED
-        ):
+        if tenant is not None and tenant.verification_status == TenantVerificationStatus.REJECTED:
             return EmailRegistrationState.REJECTED
 
         if admin is None and tenant is None:
@@ -153,8 +150,7 @@ class TenantService:
 
         if (
             tenant is not None
-            and tenant.verification_status
-            == TenantVerificationStatus.PENDING_VERIFICATION
+            and tenant.verification_status == TenantVerificationStatus.PENDING_VERIFICATION
         ):
             return EmailRegistrationState.PENDING
 
@@ -231,9 +227,7 @@ class TenantService:
             )
 
             if state != EmailRegistrationState.PENDING:
-                raise ConflictException(
-                    "This email is already registered. Please log in."
-                )
+                raise ConflictException("This email is already registered. Please log in.")
 
             if tenant.school_name.strip().casefold() != school_name.casefold():
                 raise ConflictException(
@@ -303,12 +297,10 @@ class TenantService:
                 normalized_email,
                 lock=True,
             )
-            existing_tenant_by_email = (
-                await TenantRepository.get_by_email_including_deleted(
-                    db,
-                    normalized_email,
-                    lock=True,
-                )
+            existing_tenant_by_email = await TenantRepository.get_by_email_including_deleted(
+                db,
+                normalized_email,
+                lock=True,
             )
 
             if existing_tenant_by_name is not None:
@@ -325,19 +317,14 @@ class TenantService:
 
             if email_state == EmailRegistrationState.DELETED:
                 raise ConflictException(
-                    "This email belongs to a deleted school account. "
-                    "Please contact support."
+                    "This email belongs to a deleted school account. Please contact support."
                 )
 
             if email_state == EmailRegistrationState.ACTIVE:
-                raise ConflictException(
-                    "This email is already registered. Please log in."
-                )
+                raise ConflictException("This email is already registered. Please log in.")
 
             if email_state == EmailRegistrationState.REJECTED:
-                raise ConflictException(
-                    "This registration was rejected. Please contact support."
-                )
+                raise ConflictException("This registration was rejected. Please contact support.")
 
             if email_state == EmailRegistrationState.PENDING:
                 if existing_admin is None or existing_tenant_by_email is None:
@@ -576,10 +563,7 @@ class TenantService:
 
             update_data["school_name"] = normalized_school_name
 
-            if (
-                normalized_school_name.casefold()
-                != tenant.school_name.strip().casefold()
-            ):
+            if normalized_school_name.casefold() != tenant.school_name.strip().casefold():
                 update_data["slug"] = await TenantService._unique_slug_for_tenant(
                     db,
                     normalized_school_name,
@@ -608,16 +592,12 @@ class TenantService:
             )
 
             if existing and existing.id != tenant_id:
-                raise ConflictException(
-                    "This WhatsApp number is already in use by another school"
-                )
+                raise ConflictException("This WhatsApp number is already in use by another school")
 
         admission_number_prefix = update_data.get("admission_number_prefix")
 
         if admission_number_prefix is not None:
-            normalized_prefix = _normalize_admission_number_prefix(
-                admission_number_prefix
-            )
+            normalized_prefix = _normalize_admission_number_prefix(admission_number_prefix)
             update_data["admission_number_prefix"] = normalized_prefix
 
             if normalized_prefix is not None:

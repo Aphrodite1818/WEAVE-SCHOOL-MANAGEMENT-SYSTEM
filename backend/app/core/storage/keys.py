@@ -43,35 +43,24 @@ def build_media_object_key(
     normalized_extension = _normalize_extension(extension)
 
     if owner_type == MediaOwnerType.TENANT and purpose == MediaPurpose.SCHOOL_LOGO:
-        return f"tenants/{tenant_id}/logos/" f"{media_asset_id}.{normalized_extension}"
+        return f"tenants/{tenant_id}/logos/{media_asset_id}.{normalized_extension}"
 
-    if (
-        owner_type == MediaOwnerType.STUDENT
-        and purpose == MediaPurpose.STUDENT_PASSPORT
-    ):
+    if owner_type == MediaOwnerType.STUDENT and purpose == MediaPurpose.STUDENT_PASSPORT:
         return (
             f"tenants/{tenant_id}/students/{owner_id}/passport/"
             f"{media_asset_id}.{normalized_extension}"
         )
 
-    if (
-        owner_type == MediaOwnerType.TEACHER
-        and purpose == MediaPurpose.TEACHER_PASSPORT
-    ):
+    if owner_type == MediaOwnerType.TEACHER and purpose == MediaPurpose.TEACHER_PASSPORT:
         return (
             f"tenants/{tenant_id}/teachers/{owner_id}/passport/"
             f"{media_asset_id}.{normalized_extension}"
         )
 
-    if (
-        owner_type == MediaOwnerType.TENANT_ADMIN
-        and purpose == MediaPurpose.TENANT_ADMIN_PASSPORT
-    ):
+    if owner_type == MediaOwnerType.TENANT_ADMIN and purpose == MediaPurpose.TENANT_ADMIN_PASSPORT:
         return (
             f"tenants/{tenant_id}/tenant-admins/{owner_id}/passport/"
             f"{media_asset_id}.{normalized_extension}"
         )
 
-    raise StorageKeyError(
-        f"Unsupported owner/purpose pair: {owner_type.value}/{purpose.value}"
-    )
+    raise StorageKeyError(f"Unsupported owner/purpose pair: {owner_type.value}/{purpose.value}")

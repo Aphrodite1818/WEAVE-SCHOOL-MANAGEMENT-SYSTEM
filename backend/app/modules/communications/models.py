@@ -60,13 +60,9 @@ class Conversation(UUIDMixin, TimestampMixin, Base):
         ),
         nullable=False,
     )
-    created_by_actor_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
+    created_by_actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     subject: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     participants: Mapped[list["ConversationParticipant"]] = relationship(
         "ConversationParticipant",
@@ -102,22 +98,16 @@ class ConversationParticipant(UUIDMixin, TimestampMixin, Base):
         ),
         nullable=False,
     )
-    actor_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
-    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    left_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_read_message_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
 
-    conversation: Mapped[Conversation] = relationship(
-        "Conversation", back_populates="participants"
-    )
+    conversation: Mapped[Conversation] = relationship("Conversation", back_populates="participants")
 
     __table_args__ = (
         Index(
@@ -157,16 +147,10 @@ class Message(UUIDMixin, TimestampMixin, Base):
         UUID(as_uuid=True), nullable=False, index=True
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    edited_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    conversation: Mapped[Conversation] = relationship(
-        "Conversation", back_populates="messages"
-    )
+    conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
 
 
 class Announcement(UUIDMixin, TimestampMixin, Base):
@@ -222,18 +206,12 @@ class Announcement(UUIDMixin, TimestampMixin, Base):
         default=AnnouncementStatus.DRAFT,
         server_default=AnnouncementStatus.DRAFT.value,
     )
-    publish_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_pinned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     audiences: Mapped[list["AnnouncementAudience"]] = relationship(
         "AnnouncementAudience",
@@ -242,9 +220,7 @@ class Announcement(UUIDMixin, TimestampMixin, Base):
     )
 
     __table_args__ = (
-        Index(
-            "ix_comm_announcements_tenant_status", "tenant_id", "status", "publish_at"
-        ),
+        Index("ix_comm_announcements_tenant_status", "tenant_id", "status", "publish_at"),
     )
 
 
@@ -279,9 +255,7 @@ class AnnouncementAudience(UUIDMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True
     )
 
-    announcement: Mapped[Announcement] = relationship(
-        "Announcement", back_populates="audiences"
-    )
+    announcement: Mapped[Announcement] = relationship("Announcement", back_populates="audiences")
 
     __table_args__ = (
         UniqueConstraint(
@@ -322,13 +296,9 @@ class NotificationDelivery(UUIDMixin, TimestampMixin, Base):
         ),
         nullable=False,
     )
-    source_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
-    )
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    preview: Mapped[str] = mapped_column(
-        String(500), nullable=False, default="", server_default=""
-    )
+    preview: Mapped[str] = mapped_column(String(500), nullable=False, default="", server_default="")
     action_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[NotificationStatus] = mapped_column(
         SQLEnum(
@@ -344,15 +314,9 @@ class NotificationDelivery(UUIDMixin, TimestampMixin, Base):
     delivered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    read_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    acknowledged_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    dismissed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(

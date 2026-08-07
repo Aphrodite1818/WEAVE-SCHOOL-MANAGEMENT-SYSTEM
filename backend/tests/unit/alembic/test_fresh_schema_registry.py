@@ -33,8 +33,7 @@ def test_model_registry_contains_critical_fresh_schema_tables() -> None:
     missing_tables = CRITICAL_TABLES - registered_table_names
 
     assert not missing_tables, (
-        "The fresh migration baseline is missing registered model tables: "
-        f"{sorted(missing_tables)}"
+        f"The fresh migration baseline is missing registered model tables: {sorted(missing_tables)}"
     )
 
 

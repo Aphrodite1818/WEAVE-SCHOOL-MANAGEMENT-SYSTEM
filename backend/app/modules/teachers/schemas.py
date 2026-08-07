@@ -27,15 +27,11 @@ PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9()\-\s]{5,28}[0-9]$")
 
 
 class InputBase(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid", str_strip_whitespace=True, use_enum_values=False
-    )
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, use_enum_values=False)
 
 
 class OutputBase(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True, use_enum_values=True, populate_by_name=True
-    )
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
 
 
 def clean_optional(value: str | None) -> str | None:
@@ -72,9 +68,7 @@ class TeacherAccountOnboardingRequest(InputBase):
     qualification: str | None = Field(default=None, max_length=100)
     specialization: str | None = Field(default=None, max_length=150)
 
-    @field_validator(
-        "first_name", "last_name", "qualification", "specialization", mode="before"
-    )
+    @field_validator("first_name", "last_name", "qualification", "specialization", mode="before")
     @classmethod
     def clean_fields(cls, value: str | None) -> str | None:
         return clean_optional(value)

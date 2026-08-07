@@ -14,9 +14,7 @@ async def _unavailable_client():
 @pytest.mark.asyncio
 async def test_production_rate_limiter_fails_closed(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ENV", EnvironmentType.PRODUCTION)
-    monkeypatch.setattr(
-        redis_limiter, "get_rate_limit_redis_client", _unavailable_client
-    )
+    monkeypatch.setattr(redis_limiter, "get_rate_limit_redis_client", _unavailable_client)
 
     result = await RedisFixedWindowRateLimiter().consume(
         "login:ip:203.0.113.5",
@@ -32,9 +30,7 @@ async def test_production_rate_limiter_fails_closed(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_development_rate_limiter_keeps_local_fallback(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ENV", EnvironmentType.DEVELOPMENT)
-    monkeypatch.setattr(
-        redis_limiter, "get_rate_limit_redis_client", _unavailable_client
-    )
+    monkeypatch.setattr(redis_limiter, "get_rate_limit_redis_client", _unavailable_client)
 
     result = await RedisFixedWindowRateLimiter().consume(
         "test:development-fallback:unique",

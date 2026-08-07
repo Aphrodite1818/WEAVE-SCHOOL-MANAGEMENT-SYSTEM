@@ -181,9 +181,7 @@ class StudentAcademicService:
             raise NotFoundException("Next academic session not found.")
         if next_session.start_date is not None:
             if start_date is not None and next_session.start_date <= start_date:
-                raise BadRequestException(
-                    "Next academic session must start after this session."
-                )
+                raise BadRequestException("Next academic session must start after this session.")
             if end_date is not None and next_session.start_date <= end_date:
                 raise BadRequestException(
                     "Next academic session must start after this session ends."
@@ -204,9 +202,7 @@ class StudentAcademicService:
                 lock=True,
             )
             if cursor is None:
-                raise NotFoundException(
-                    "Next academic session chain references a missing session."
-                )
+                raise NotFoundException("Next academic session chain references a missing session.")
 
     @staticmethod
     async def _validate_term_dates_and_order(
@@ -226,17 +222,9 @@ class StudentAcademicService:
             and start_date is not None
             and start_date < session.start_date
         ):
-            raise BadRequestException(
-                "Term start date must fall within the session date range."
-            )
-        if (
-            session.end_date is not None
-            and end_date is not None
-            and end_date > session.end_date
-        ):
-            raise BadRequestException(
-                "Term end date must fall within the session date range."
-            )
+            raise BadRequestException("Term start date must fall within the session date range.")
+        if session.end_date is not None and end_date is not None and end_date > session.end_date:
+            raise BadRequestException("Term end date must fall within the session date range.")
         if start_date is None or end_date is None:
             return
 
@@ -258,9 +246,7 @@ class StudentAcademicService:
             ):
                 overlaps = start_date < term.end_date and end_date > term.start_date
                 if overlaps:
-                    raise ConflictException(
-                        "Academic terms in the same session cannot overlap."
-                    )
+                    raise ConflictException("Academic terms in the same session cannot overlap.")
             if (
                 start_date is not None
                 and end_date is not None
@@ -270,13 +256,9 @@ class StudentAcademicService:
                 current_order = StudentAcademicService._TERM_ORDER[name]
                 other_order = StudentAcademicService._TERM_ORDER[term.name]
                 if current_order < other_order and start_date >= term.start_date:
-                    raise BadRequestException(
-                        "Earlier terms must start before later terms."
-                    )
+                    raise BadRequestException("Earlier terms must start before later terms.")
                 if current_order > other_order and start_date <= term.start_date:
-                    raise BadRequestException(
-                        "Later terms must start after earlier terms."
-                    )
+                    raise BadRequestException("Later terms must start after earlier terms.")
 
     @staticmethod
     async def academic_session_dependency_preview(
@@ -357,38 +339,26 @@ class StudentAcademicService:
         blockers: list[str] = []
         can_open = session.status == AcademicSessionStatus.DRAFT and counts["terms"] > 0
         if session.status == AcademicSessionStatus.DRAFT and counts["terms"] == 0:
-            blockers.append(
-                "Add at least one academic term before opening the session."
-            )
+            blockers.append("Add at least one academic term before opening the session.")
         if session.status == AcademicSessionStatus.OPEN:
             if session.next_academic_session_id is None:
                 blockers.append("Configure next_academic_session_id before closure.")
             if counts["open_terms"]:
-                blockers.append(
-                    "Close every term in this session before closing the session."
-                )
+                blockers.append("Close every term in this session before closing the session.")
             if counts["closing_terms"]:
-                blockers.append(
-                    "Finalize every closing term before closing the session."
-                )
+                blockers.append("Finalize every closing term before closing the session.")
             if counts["draft_results"]:
                 blockers.append(
                     "Draft results must be submitted, approved, or removed before closure."
                 )
             if counts["submitted_results"]:
-                blockers.append(
-                    "Submitted results must be approved or returned before closure."
-                )
+                blockers.append("Submitted results must be approved or returned before closure.")
             if counts["approved_but_unlocked_results"]:
                 blockers.append("Approved results must be locked before closure.")
             if counts["unpublished_report_cards"]:
-                blockers.append(
-                    "Report cards must be published or archived before closure."
-                )
+                blockers.append("Report cards must be published or archived before closure.")
             if counts["active_or_pending_progression_runs"]:
-                blockers.append(
-                    "A progression run is already active or pending for this session."
-                )
+                blockers.append("A progression run is already active or pending for this session.")
             from app.modules.school_calendar.service import SchoolCalendarService
 
             terms, _ = await StudentAcademicRepository.list_terms_by_session(
@@ -401,12 +371,10 @@ class StudentAcademicService:
             calendar_history_missing = 0
             calendar_history_incomplete = 0
             for term in terms:
-                contribution = (
-                    await SchoolCalendarService.inspect_term_closure_readiness(
-                        db,
-                        tenant_id=tenant_id,
-                        term_id=term.id,
-                    )
+                contribution = await SchoolCalendarService.inspect_term_closure_readiness(
+                    db,
+                    tenant_id=tenant_id,
+                    term_id=term.id,
                 )
                 if contribution.get("calendar_id") is None:
                     calendar_history_missing += 1
@@ -417,9 +385,7 @@ class StudentAcademicService:
                 blockers.extend(contribution.get("blockers", []))
             counts["calendar_history_missing_terms"] = calendar_history_missing
             counts["missing_calendar_dates"] = calendar_history_incomplete
-        can_start_closing = (
-            session.status == AcademicSessionStatus.OPEN and not blockers
-        )
+        can_start_closing = session.status == AcademicSessionStatus.OPEN and not blockers
         can_delete = (
             session.status == AcademicSessionStatus.DRAFT
             and not session.is_current
@@ -437,8 +403,7 @@ class StudentAcademicService:
             can_open=can_open,
             can_close=can_start_closing,
             can_start_closing=can_start_closing,
-            can_progress=can_start_closing
-            and session.next_academic_session_id is not None,
+            can_progress=can_start_closing and session.next_academic_session_id is not None,
             can_delete=can_delete,
         )
 
@@ -494,9 +459,7 @@ class StudentAcademicService:
                     "Submitted results must be approved or returned before closing the term."
                 )
             if counts["approved_but_unlocked_results"]:
-                blockers.append(
-                    "Approved results must be locked before closing the term."
-                )
+                blockers.append("Approved results must be locked before closing the term.")
             if counts["unpublished_report_cards"]:
                 blockers.append(
                     "Report cards must be published or archived before closing the term."
@@ -517,8 +480,7 @@ class StudentAcademicService:
             and counts["report_cards"] == 0
         )
         can_close = (
-            term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
-            and not blockers
+            term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING} and not blockers
         )
         return AcademicTermDependencyPreview(
             term_id=term_id,
@@ -550,7 +512,9 @@ class StudentAcademicService:
         lifecycle_status = (
             "archived"
             if class_subject.archived_at is not None
-            else "active" if class_subject.is_active else "inactive"
+            else "active"
+            if class_subject.is_active
+            else "inactive"
         )
         class_is_archived = classroom.archived_at is not None if classroom else None
         subject_is_archived = subject.archived_at is not None if subject else None
@@ -564,19 +528,13 @@ class StudentAcademicService:
         elif not classroom.is_active:
             activation_blocker = "Class must be active before activating this mapping."
         elif classroom.archived_at is not None:
-            activation_blocker = (
-                "Class must be restored before activating this mapping."
-            )
+            activation_blocker = "Class must be restored before activating this mapping."
         elif subject is None:
             activation_blocker = "Subject not found."
         elif not subject.is_active:
-            activation_blocker = (
-                "Subject must be active before activating this mapping."
-            )
+            activation_blocker = "Subject must be active before activating this mapping."
         elif subject.archived_at is not None:
-            activation_blocker = (
-                "Subject must be restored before activating this mapping."
-            )
+            activation_blocker = "Subject must be restored before activating this mapping."
         return ClassSubjectResponse(
             id=class_subject.id,
             tenant_id=class_subject.tenant_id,
@@ -693,13 +651,11 @@ class StudentAcademicService:
         teacher_membership_id: uuid.UUID,
         is_active: bool,
     ) -> ClassSubjectTeacher:
-        row = (
-            await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-                db,
-                tenant_id,
-                class_subject.class_id,
-                class_subject.subject_id,
-            )
+        row = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+            db,
+            tenant_id,
+            class_subject.class_id,
+            class_subject.subject_id,
         )
         if row is None:
             row = ClassSubjectTeacher(
@@ -790,11 +746,7 @@ class StudentAcademicService:
         payload: ClassSubjectCreate,
     ) -> ClassSubjectResponse:
         classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise NotFoundException("Class not found or inactive.")
         subject = await SubjectRepository.get_subject_by_id(
             db,
@@ -803,13 +755,11 @@ class StudentAcademicService:
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise NotFoundException("Subject not found or inactive.")
-        existing = (
-            await StudentAcademicRepository.get_class_subject_by_class_and_subject(
-                db,
-                tenant_id,
-                class_id,
-                payload.subject_id,
-            )
+        existing = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+            db,
+            tenant_id,
+            class_id,
+            payload.subject_id,
         )
         if existing is not None:
             if existing.archived_at is not None:
@@ -844,11 +794,7 @@ class StudentAcademicService:
         payload: ClassSubjectBulkCreate,
     ) -> list[ClassSubjectResponse]:
         classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise NotFoundException("Class not found or inactive.")
 
         subjects = await SubjectRepository.get_subjects_by_id(
@@ -897,7 +843,9 @@ class StudentAcademicService:
                 status = (
                     "archived"
                     if row.archived_at is not None
-                    else "active" if row.is_active else "inactive"
+                    else "active"
+                    if row.is_active
+                    else "inactive"
                 )
                 conflicts.append(
                     {
@@ -928,10 +876,7 @@ class StudentAcademicService:
             rows.append(row)
 
         await db.commit()
-        return [
-            await StudentAcademicService._build_class_subject_response(db, row)
-            for row in rows
-        ]
+        return [await StudentAcademicService._build_class_subject_response(db, row) for row in rows]
 
     @staticmethod
     async def list_class_subjects(
@@ -956,8 +901,7 @@ class StudentAcademicService:
             limit=limit,
         )
         return [
-            await StudentAcademicService._build_class_subject_response(db, row)
-            for row in rows
+            await StudentAcademicService._build_class_subject_response(db, row) for row in rows
         ], total
 
     @staticmethod
@@ -1003,21 +947,17 @@ class StudentAcademicService:
             tenant_id,
             assignment.id,
         )
-        later_assignments = (
-            await StudentAcademicRepository.get_later_teacher_assignments(
-                db,
-                tenant_id,
-                assignment.class_subject_id,
-                assignment.effective_from,
-                exclude_id=assignment.id,
-            )
+        later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
+            db,
+            tenant_id,
+            assignment.class_subject_id,
+            assignment.effective_from,
+            exclude_id=assignment.id,
         )
         counts["later_assignment_history"] = len(later_assignments)
         blockers: list[str] = []
         is_current = assignment.is_active and assignment.effective_to is None
-        is_malformed_historical = (
-            not assignment.is_active and assignment.effective_to is None
-        )
+        is_malformed_historical = not assignment.is_active and assignment.effective_to is None
         if is_malformed_historical:
             blockers.append(
                 "This ended assignment is missing an effective end date and requires administrative repair."
@@ -1029,9 +969,7 @@ class StudentAcademicService:
             or counts["report_card_references"]
             or counts["other_academic_records"]
         ):
-            blockers.append(
-                "This teacher assignment is referenced by academic records."
-            )
+            blockers.append("This teacher assignment is referenced by academic records.")
         if counts["later_assignment_history"]:
             blockers.append("This teacher assignment has later assignment history.")
         return TeacherAssignmentDependencyPreview(
@@ -1100,9 +1038,7 @@ class StudentAcademicService:
         if row is None:
             raise NotFoundException("Class subject not found.")
         if row.archived_at is not None:
-            raise ConflictException(
-                "Archived records cannot be deactivated. Restore them first."
-            )
+            raise ConflictException("Archived records cannot be deactivated. Restore them first.")
         if not row.is_active:
             return await StudentAcademicService._build_class_subject_response(db, row)
         counts = await StudentAcademicService._class_subject_dependency_counts(
@@ -1140,25 +1076,15 @@ class StudentAcademicService:
         if row is None:
             raise NotFoundException("Class subject not found.")
         if row.archived_at is not None:
-            raise ConflictException(
-                "Archived class subjects must be restored before activation."
-            )
+            raise ConflictException("Archived class subjects must be restored before activation.")
         classroom = await ClassRoomRepository.get_by_id(db, tenant_id, row.class_id)
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise ConflictException(
                 "Classroom must be active before activating this class subject."
             )
-        subject = await SubjectRepository.get_subject_by_id(
-            db, tenant_id, row.subject_id
-        )
+        subject = await SubjectRepository.get_subject_by_id(db, tenant_id, row.subject_id)
         if subject is None or not subject.is_active or subject.archived_at is not None:
-            raise ConflictException(
-                "Subject must be active before activating this class subject."
-            )
+            raise ConflictException("Subject must be active before activating this class subject.")
         if row.is_active:
             return await StudentAcademicService._build_class_subject_response(db, row)
         row.is_active = True
@@ -1181,9 +1107,7 @@ class StudentAcademicService:
         if row is None:
             raise NotFoundException("Class subject not found.")
         if row.archived_at is not None:
-            raise ConflictException(
-                "Archived class-subject mappings cannot be updated."
-            )
+            raise ConflictException("Archived class-subject mappings cannot be updated.")
         row.is_core = payload.is_core
         row = await StudentAcademicRepository.save_class_subject(db, row)
         await db.commit()
@@ -1214,10 +1138,7 @@ class StudentAcademicService:
             tenant_id=tenant_id,
             class_subject_id=row.id,
         )
-        if (
-            counts["active_teacher_assignments"]
-            or counts["active_compatibility_teacher_rows"]
-        ):
+        if counts["active_teacher_assignments"] or counts["active_compatibility_teacher_rows"]:
             raise ConflictException(
                 "End active teacher state before archiving this class-subject mapping.",
                 payload={"dependency_counts": counts},
@@ -1300,15 +1221,15 @@ class StudentAcademicService:
                 payload={"dependency_counts": counts},
             )
         response = await StudentAcademicService._build_class_subject_response(db, row)
-        compatibility_rows = await StudentAcademicRepository.list_class_subject_teachers_for_class_subject(
-            db,
-            tenant_id,
-            row.id,
+        compatibility_rows = (
+            await StudentAcademicRepository.list_class_subject_teachers_for_class_subject(
+                db,
+                tenant_id,
+                row.id,
+            )
         )
         for compatibility_row in compatibility_rows:
-            await StudentAcademicRepository.delete_class_subject_teacher(
-                db, compatibility_row
-            )
+            await StudentAcademicRepository.delete_class_subject_teacher(db, compatibility_row)
         await StudentAcademicRepository.delete_class_subject(db, row)
         await db.commit()
         return response
@@ -1341,23 +1262,15 @@ class StudentAcademicService:
             tenant_id,
             class_subject.class_id,
         )
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
-            raise ConflictException(
-                "Classroom must be active before assigning a teacher."
-            )
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
+            raise ConflictException("Classroom must be active before assigning a teacher.")
         subject = await SubjectRepository.get_subject_by_id(
             db,
             tenant_id,
             class_subject.subject_id,
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
-            raise ConflictException(
-                "Subject must be active before assigning a teacher."
-            )
+            raise ConflictException("Subject must be active before assigning a teacher.")
         await StudentAcademicService._validate_teacher_capability(
             db,
             tenant_id=tenant_id,
@@ -1451,10 +1364,7 @@ class StudentAcademicService:
                 raise ConflictException(
                     "This historical assignment is missing an effective end date and requires administrative repair."
                 )
-            if (
-                payload.effective_to is not None
-                and payload.effective_to != assignment.effective_to
-            ):
+            if payload.effective_to is not None and payload.effective_to != assignment.effective_to:
                 raise ConflictException(
                     "Teacher assignment is already ended with a different effective date."
                 )
@@ -1464,9 +1374,7 @@ class StudentAcademicService:
             )
         effective_to = payload.effective_to or date.today()
         if effective_to < assignment.effective_from:
-            raise ConflictException(
-                "Assignment end date cannot be before its start date."
-            )
+            raise ConflictException("Assignment end date cannot be before its start date.")
         assignment.is_active = False
         assignment.effective_to = effective_to
         assignment = await StudentAcademicRepository.save_teacher_assignment(
@@ -1525,9 +1433,7 @@ class StudentAcademicService:
         if current is None:
             raise NotFoundException("Teacher assignment not found.")
         if not current.is_active or current.effective_to is not None:
-            raise ConflictException(
-                "Only the current active teacher assignment can be reassigned."
-            )
+            raise ConflictException("Only the current active teacher assignment can be reassigned.")
         class_subject = await StudentAcademicRepository.get_class_subject_by_id(
             db,
             tenant_id,
@@ -1544,23 +1450,15 @@ class StudentAcademicService:
             tenant_id,
             class_subject.class_id,
         )
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
-            raise ConflictException(
-                "Classroom must be active before reassigning a teacher."
-            )
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
+            raise ConflictException("Classroom must be active before reassigning a teacher.")
         subject = await SubjectRepository.get_subject_by_id(
             db,
             tenant_id,
             class_subject.subject_id,
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
-            raise ConflictException(
-                "Subject must be active before reassigning a teacher."
-            )
+            raise ConflictException("Subject must be active before reassigning a teacher.")
         await StudentAcademicService._validate_teacher_capability(
             db,
             tenant_id=tenant_id,
@@ -1584,15 +1482,13 @@ class StudentAcademicService:
             raise ConflictException(
                 "Replacement effective date cannot be before the current assignment start date."
             )
-        later_assignments = (
-            await StudentAcademicRepository.get_later_teacher_assignments(
-                db,
-                tenant_id,
-                class_subject.id,
-                current.effective_from,
-                exclude_id=current.id,
-                lock=True,
-            )
+        later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
+            db,
+            tenant_id,
+            class_subject.id,
+            current.effective_from,
+            exclude_id=current.id,
+            lock=True,
         )
         if later_assignments:
             raise ConflictException(
@@ -1740,9 +1636,7 @@ class StudentAcademicService:
             limit=limit,
         )
         return [
-            StudentAcademicService._build_teacher_assignment_response_from_record(
-                record
-            )
+            StudentAcademicService._build_teacher_assignment_response_from_record(record)
             for record in records
         ], total
 
@@ -1753,29 +1647,19 @@ class StudentAcademicService:
         payload: ClassSubjectTeacherCreate,
     ) -> ClassSubjectTeacherResponse:
         classroom = await ClassRoomRepository.get_by_id(db, tenant_id, payload.class_id)
-        if (
-            classroom is None
-            or not classroom.is_active
-            or classroom.archived_at is not None
-        ):
+        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise NotFoundException("Class not found or inactive.")
-        subject = await SubjectRepository.get_subject_by_id(
-            db, tenant_id, payload.subject_id
-        )
+        subject = await SubjectRepository.get_subject_by_id(db, tenant_id, payload.subject_id)
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise NotFoundException("Subject not found or inactive.")
-        class_subject = (
-            await StudentAcademicRepository.get_class_subject_by_class_and_subject(
-                db,
-                tenant_id,
-                payload.class_id,
-                payload.subject_id,
-            )
+        class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+            db,
+            tenant_id,
+            payload.class_id,
+            payload.subject_id,
         )
         if class_subject is not None and class_subject.archived_at is not None:
-            raise ConflictException(
-                "This class subject is archived. Restore it before activation."
-            )
+            raise ConflictException("This class subject is archived. Restore it before activation.")
         if class_subject is None:
             class_subject = await StudentAcademicRepository.create_class_subject(
                 db,
@@ -1797,13 +1681,11 @@ class StudentAcademicService:
                 class_subject_id=class_subject.id,
             ),
         )
-        row = (
-            await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-                db,
-                tenant_id,
-                payload.class_id,
-                payload.subject_id,
-            )
+        row = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+            db,
+            tenant_id,
+            payload.class_id,
+            payload.subject_id,
         )
         if row is None:
             raise ConflictException("Assignment compatibility row was not created.")
@@ -1853,20 +1735,20 @@ class StudentAcademicService:
         if row is None:
             raise NotFoundException("Subject assignment not found.")
         if payload.teacher_membership_id is not None:
-            class_subject = (
-                await StudentAcademicRepository.get_class_subject_by_class_and_subject(
-                    db,
-                    tenant_id,
-                    row.class_id,
-                    row.subject_id,
-                )
+            class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+                db,
+                tenant_id,
+                row.class_id,
+                row.subject_id,
             )
             if class_subject is None:
                 raise NotFoundException("Class subject not found.")
-            active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
-                db,
-                tenant_id,
-                class_subject.id,
+            active = (
+                await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+                    db,
+                    tenant_id,
+                    class_subject.id,
+                )
             )
             if active is None:
                 await StudentAcademicService.create_teacher_assignment(
@@ -1888,10 +1770,7 @@ class StudentAcademicService:
                 )
             row.teacher_membership_id = payload.teacher_membership_id
         for field in ("is_core", "sort_order", "is_active"):
-            if (
-                field in payload.model_fields_set
-                and getattr(payload, field) is not None
-            ):
+            if field in payload.model_fields_set and getattr(payload, field) is not None:
                 setattr(row, field, getattr(payload, field))
         row = await StudentAcademicRepository.save_class_subject_teacher(db, row)
         await db.commit()
@@ -1985,9 +1864,7 @@ class StudentAcademicService:
                 update_data["name"],
             ):
                 raise ConflictException("Academic session name already exists.")
-        next_id = update_data.get(
-            "next_academic_session_id", row.next_academic_session_id
-        )
+        next_id = update_data.get("next_academic_session_id", row.next_academic_session_id)
         await StudentAcademicService._validate_next_session_link(
             db,
             tenant_id=tenant_id,
@@ -2198,13 +2075,8 @@ class StudentAcademicService:
         if academic_session is None:
             raise NotFoundException("Academic session not found")
 
-        if (
-            academic_session.status != AcademicSessionStatus.OPEN
-            or not academic_session.is_current
-        ):
-            raise ConflictException(
-                "The session must be open before a term can be opened"
-            )
+        if academic_session.status != AcademicSessionStatus.OPEN or not academic_session.is_current:
+            raise ConflictException("The session must be open before a term can be opened")
 
         await StudentAcademicService._validate_term_dates_and_order(
             db,
@@ -2222,9 +2094,7 @@ class StudentAcademicService:
         )
 
         if current_term is not None and current_term.id != term.id:
-            raise ConflictException(
-                "Another academic term is currently open. Close it first"
-            )
+            raise ConflictException("Another academic term is currently open. Close it first")
 
         from app.modules.school_calendar.service import SchoolCalendarService
 
@@ -2406,9 +2276,7 @@ class StudentAcademicService:
         if term is None:
             raise NotFoundException("Academic term not found")
         if term.status != AcademicTermStatus.CLOSING:
-            raise ConflictException(
-                "Only a closing academic term can have closure cancelled."
-            )
+            raise ConflictException("Only a closing academic term can have closure cancelled.")
 
         current_term = await StudentAcademicRepository.get_current_term(
             db,
@@ -2691,9 +2559,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         scale_id: uuid.UUID,
     ) -> GradingScale:
-        row = await StudentAcademicRepository.get_grading_scale_by_id(
-            db, tenant_id, scale_id
-        )
+        row = await StudentAcademicRepository.get_grading_scale_by_id(db, tenant_id, scale_id)
         if row is None:
             raise NotFoundException("Grading scale not found.")
         if row.is_active:
@@ -2718,9 +2584,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         scale_id: uuid.UUID,
     ) -> GradingScale:
-        row = await StudentAcademicRepository.get_grading_scale_by_id(
-            db, tenant_id, scale_id
-        )
+        row = await StudentAcademicRepository.get_grading_scale_by_id(db, tenant_id, scale_id)
         if row is None:
             raise NotFoundException("Grading scale not found.")
         if not row.is_active:
@@ -2818,26 +2682,28 @@ class StudentAcademicService:
                 assignment.class_subject_id,
             )
             if class_subject is not None:
-                compatibility = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-                    db,
-                    tenant_id,
-                    class_subject.class_id,
-                    class_subject.subject_id,
+                compatibility = (
+                    await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+                        db,
+                        tenant_id,
+                        class_subject.class_id,
+                        class_subject.subject_id,
+                    )
                 )
         else:
-            compatibility = (
-                await StudentAcademicRepository.get_class_subject_teacher_by_id(
-                    db,
-                    tenant_id,
-                    payload.class_subject_teacher_id,
-                )
+            compatibility = await StudentAcademicRepository.get_class_subject_teacher_by_id(
+                db,
+                tenant_id,
+                payload.class_subject_teacher_id,
             )
             if compatibility is not None:
-                class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
-                    db,
-                    tenant_id,
-                    compatibility.class_id,
-                    compatibility.subject_id,
+                class_subject = (
+                    await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+                        db,
+                        tenant_id,
+                        compatibility.class_id,
+                        compatibility.subject_id,
+                    )
                 )
                 if class_subject is not None:
                     assignment = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
@@ -2860,14 +2726,12 @@ class StudentAcademicService:
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise ConflictException("Subject must be active before recording results.")
         if compatibility is None:
-            compatibility = (
-                await StudentAcademicService._ensure_compatibility_assignment(
-                    db,
-                    tenant_id=tenant_id,
-                    class_subject=class_subject,
-                    teacher_membership_id=assignment.teacher_membership_id,
-                    is_active=True,
-                )
+            compatibility = await StudentAcademicService._ensure_compatibility_assignment(
+                db,
+                tenant_id=tenant_id,
+                class_subject=class_subject,
+                teacher_membership_id=assignment.teacher_membership_id,
+                is_active=True,
             )
         return assignment, compatibility, class_subject
 
@@ -2924,10 +2788,7 @@ class StudentAcademicService:
         student_name = None
         if student is not None:
             student_name = (
-                " ".join(
-                    part for part in [student.first_name, student.last_name] if part
-                )
-                or None
+                " ".join(part for part in [student.first_name, student.last_name] if part) or None
             )
         return StudentSubjectResultResponse(
             id=result.id,
@@ -2951,7 +2812,9 @@ class StudentAcademicService:
             academic_term_name=(
                 term.name.value
                 if term and hasattr(term.name, "value")
-                else str(term.name) if term else None
+                else str(term.name)
+                if term
+                else None
             ),
             test_score=result.test_score,
             assessment_score=result.assessment_score,
@@ -3025,9 +2888,7 @@ class StudentAcademicService:
         current_status: AcademicResultStatus,
         next_status: AcademicResultStatus,
     ) -> None:
-        expected = StudentAcademicService._RESULT_FORWARD_TRANSITIONS.get(
-            current_status
-        )
+        expected = StudentAcademicService._RESULT_FORWARD_TRANSITIONS.get(current_status)
         if expected != next_status:
             raise BadRequestException(
                 f"Invalid result lifecycle transition: {current_status.value} to {next_status.value}."
@@ -3049,13 +2910,8 @@ class StudentAcademicService:
             tenant_id,
             payload,
         )
-        if (
-            isinstance(actor, TeacherMembership)
-            and assignment.teacher_membership_id != actor.id
-        ):
-            raise ForbiddenException(
-                "Teachers may record scores only for their own assignments."
-            )
+        if isinstance(actor, TeacherMembership) and assignment.teacher_membership_id != actor.id:
+            raise ForbiddenException("Teachers may record scores only for their own assignments.")
 
         student = await StudentRepository.get_by_id(
             db,
@@ -3078,17 +2934,11 @@ class StudentAcademicService:
         if session is None or term is None or term.academic_session_id != session.id:
             raise NotFoundException("Academic session or term is invalid.")
         if not session.is_current or session.status != AcademicSessionStatus.OPEN:
-            raise ConflictException(
-                "Results can only be modified in the current open session."
-            )
+            raise ConflictException("Results can only be modified in the current open session.")
         if not term.is_current or term.status != AcademicTermStatus.OPEN:
-            raise ConflictException(
-                "Results can only be modified in the current open term."
-            )
+            raise ConflictException("Results can only be modified in the current open term.")
 
-        enrollment = await StudentEnrollmentRepository.get_current(
-            db, tenant_id, student.id
-        )
+        enrollment = await StudentEnrollmentRepository.get_current(db, tenant_id, student.id)
         if (
             enrollment is None
             or enrollment.academic_session_id != session.id
@@ -3149,9 +2999,7 @@ class StudentAcademicService:
 
         config = (
             await db.execute(
-                select(SchoolAssessmentConfig).where(
-                    SchoolAssessmentConfig.tenant_id == tenant_id
-                )
+                select(SchoolAssessmentConfig).where(SchoolAssessmentConfig.tenant_id == tenant_id)
             )
         ).scalar_one_or_none()
         if config is None:
@@ -3165,9 +3013,7 @@ class StudentAcademicService:
             payload.assessment_score is not None
             and payload.assessment_score > config.assessment_max
         ):
-            raise BadRequestException(
-                f"Assessment score cannot exceed {config.assessment_max}."
-            )
+            raise BadRequestException(f"Assessment score cannot exceed {config.assessment_max}.")
         if payload.exam_score is not None and payload.exam_score > config.exam_max:
             raise BadRequestException(f"Exam score cannot exceed {config.exam_max}.")
 
@@ -3206,9 +3052,7 @@ class StudentAcademicService:
                 grading_scale_id = scale.id
 
         if payload.status == AcademicResultStatus.SUBMITTED and not complete:
-            raise BadRequestException(
-                "All three scores are required before submission."
-            )
+            raise BadRequestException("All three scores are required before submission.")
 
         is_new = False
         if existing is None:
@@ -3233,9 +3077,7 @@ class StudentAcademicService:
                 remark=remark,
                 status=payload.status,
                 recorded_by_actor_type=(
-                    "teacher"
-                    if isinstance(actor, TeacherMembership)
-                    else "tenant_admin"
+                    "teacher" if isinstance(actor, TeacherMembership) else "tenant_admin"
                 ),
                 recorded_by_actor_id=actor.id,
             )
@@ -3292,9 +3134,7 @@ class StudentAcademicService:
                 acting_admin_id=actor_id if isinstance(actor, TenantAdmin) else None,
             )
         elif not is_new and payload.status != existing.status:
-            action = (
-                "submit" if payload.status == AcademicResultStatus.SUBMITTED else "edit"
-            )
+            action = "submit" if payload.status == AcademicResultStatus.SUBMITTED else "edit"
             await StudentAcademicService._record_academic_lifecycle(
                 db,
                 tenant_id=tenant_id,
@@ -3330,16 +3170,10 @@ class StudentAcademicService:
         term = await StudentAcademicRepository.get_term_by_id(
             db, actor.tenant_id, result.academic_term_id
         )
-        if session and (
-            not session.is_current or session.status != AcademicSessionStatus.OPEN
-        ):
-            raise ConflictException(
-                "Results can only be modified in the current open session."
-            )
+        if session and (not session.is_current or session.status != AcademicSessionStatus.OPEN):
+            raise ConflictException("Results can only be modified in the current open session.")
         if term and (not term.is_current or term.status != AcademicTermStatus.OPEN):
-            raise ConflictException(
-                "Results can only be modified in the current open term."
-            )
+            raise ConflictException("Results can only be modified in the current open term.")
 
         previous_status = result.status
         StudentAcademicService._ensure_forward_result_transition(
@@ -3401,16 +3235,10 @@ class StudentAcademicService:
         term = await StudentAcademicRepository.get_term_by_id(
             db, actor.tenant_id, result.academic_term_id
         )
-        if session and (
-            not session.is_current or session.status != AcademicSessionStatus.OPEN
-        ):
-            raise ConflictException(
-                "Results can only be modified in the current open session."
-            )
+        if session and (not session.is_current or session.status != AcademicSessionStatus.OPEN):
+            raise ConflictException("Results can only be modified in the current open session.")
         if term and (not term.is_current or term.status != AcademicTermStatus.OPEN):
-            raise ConflictException(
-                "Results can only be modified in the current open term."
-            )
+            raise ConflictException("Results can only be modified in the current open term.")
 
         from app.modules.report_cards.service import ReportCardService
 
@@ -3498,9 +3326,7 @@ class StudentAcademicService:
             finalized_only = True
         elif isinstance(actor, ParentMembership):
             if student_id is None:
-                raise BadRequestException(
-                    "student_id is required for parent result access."
-                )
+                raise BadRequestException("student_id is required for parent result access.")
             await StudentAcademicService._ensure_parent_can_view_student(
                 db,
                 actor,
@@ -3526,9 +3352,7 @@ class StudentAcademicService:
             has_grade=has_grade,
             finalized_only=finalized_only,
         )
-        return [
-            await StudentAcademicService._build_result_response(db, row) for row in rows
-        ], total
+        return [await StudentAcademicService._build_result_response(db, row) for row in rows], total
 
     @staticmethod
     async def list_student_subject_cards(
@@ -3591,16 +3415,20 @@ class StudentAcademicService:
                 actor.tenant_id,
                 class_subject.subject_id,
             )
-            assignment = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
-                db,
-                actor.tenant_id,
-                class_subject.id,
+            assignment = (
+                await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+                    db,
+                    actor.tenant_id,
+                    class_subject.id,
+                )
             )
-            compatibility = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-                db,
-                actor.tenant_id,
-                class_subject.class_id,
-                class_subject.subject_id,
+            compatibility = (
+                await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
+                    db,
+                    actor.tenant_id,
+                    class_subject.class_id,
+                    class_subject.subject_id,
+                )
             )
             result = None
             if compatibility is not None and session is not None and term is not None:
@@ -3633,9 +3461,7 @@ class StudentAcademicService:
                     )
                     or None
                 )
-            submitted = bool(
-                result is not None and result.status == AcademicResultStatus.LOCKED
-            )
+            submitted = bool(result is not None and result.status == AcademicResultStatus.LOCKED)
             cards.append(
                 StudentSubjectCardResponse(
                     id=class_subject.id,
@@ -3656,7 +3482,9 @@ class StudentAcademicService:
                     academic_term_name=(
                         term.name.value
                         if term and hasattr(term.name, "value")
-                        else str(term.name) if term else None
+                        else str(term.name)
+                        if term
+                        else None
                     ),
                     test_score=result.test_score if submitted else None,
                     assessment_score=result.assessment_score if submitted else None,
@@ -3681,7 +3509,9 @@ class StudentAcademicService:
                 academic_term_name=(
                     term.name.value
                     if term and hasattr(term.name, "value")
-                    else str(term.name) if term else None
+                    else str(term.name)
+                    if term
+                    else None
                 ),
             ),
         )

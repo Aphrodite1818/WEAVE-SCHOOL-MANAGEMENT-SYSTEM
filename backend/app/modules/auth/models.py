@@ -68,9 +68,7 @@ class AuthRecord(UUIDMixin, TimestampMixin, Base):
         ),
         nullable=False,
     )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_used: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
@@ -221,9 +219,7 @@ class AuthSession(UUIDMixin, TimestampMixin, Base):
     def is_expired(self) -> bool:
         """Return whether the session has passed its expiry time."""
 
-        return datetime.now(timezone.utc) >= self._ensure_timezone_aware(
-            self.expires_at
-        )
+        return datetime.now(timezone.utc) >= self._ensure_timezone_aware(self.expires_at)
 
     @property
     def is_active(self) -> bool:
@@ -266,9 +262,7 @@ class AuthRefreshToken(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -324,9 +318,7 @@ class AuthRefreshToken(UUIDMixin, TimestampMixin, Base):
     def is_expired(self) -> bool:
         """Return whether this refresh token has passed its expiry time."""
 
-        return datetime.now(timezone.utc) >= self._ensure_timezone_aware(
-            self.expires_at
-        )
+        return datetime.now(timezone.utc) >= self._ensure_timezone_aware(self.expires_at)
 
     @property
     def is_reuse_detected(self) -> bool:
@@ -364,6 +356,4 @@ class AuthRefreshTokenReuseEvent(UUIDMixin, Base):
         index=True,
     )
 
-    __table_args__ = (
-        Index("ix_auth_refresh_token_reuse_events_window", "detected_at", "id"),
-    )
+    __table_args__ = (Index("ix_auth_refresh_token_reuse_events_window", "detected_at", "id"),)

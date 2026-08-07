@@ -122,18 +122,14 @@ class SuperadminSecurityService:
 
         sessions_last_24h = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count())
-            .select_from(AuthSession)
-            .where(AuthSession.created_at >= last_24h),
+            select(func.count()).select_from(AuthSession).where(AuthSession.created_at >= last_24h),
             label="sessions_last_24h",
             warnings=warnings,
         )
 
         sessions_last_7d = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count())
-            .select_from(AuthSession)
-            .where(AuthSession.created_at >= last_7d),
+            select(func.count()).select_from(AuthSession).where(AuthSession.created_at >= last_7d),
             label="sessions_last_7d",
             warnings=warnings,
         )
@@ -209,18 +205,14 @@ class SuperadminSecurityService:
 
         inactive_superadmins = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count())
-            .select_from(SuperAdmin)
-            .where(SuperAdmin.is_active.is_(False)),
+            select(func.count()).select_from(SuperAdmin).where(SuperAdmin.is_active.is_(False)),
             label="inactive_superadmins",
             warnings=warnings,
         )
 
         never_logged_in_superadmins = await SuperadminSecurityService._safe_scalar(
             db,
-            select(func.count())
-            .select_from(SuperAdmin)
-            .where(SuperAdmin.last_login_at.is_(None)),
+            select(func.count()).select_from(SuperAdmin).where(SuperAdmin.last_login_at.is_(None)),
             label="never_logged_in_superadmins",
             warnings=warnings,
         )
@@ -320,9 +312,7 @@ class SuperadminSecurityService:
         reuse_day_rows = await SuperadminSecurityService._safe_rows(
             db,
             select(
-                func.date_trunc("day", AuthRefreshToken.reuse_detected_at).label(
-                    "period"
-                ),
+                func.date_trunc("day", AuthRefreshToken.reuse_detected_at).label("period"),
                 func.count(AuthRefreshToken.id).label("value"),
             )
             .where(
@@ -381,9 +371,7 @@ class SuperadminSecurityService:
             + stale_superadmins * 3,
         )
         risk_level = SuperadminSecurityService._risk_level(platform_risk_score)
-        session_pressure_score = min(
-            100, sessions_last_24h * 4 + distinct_login_ips_7d * 3
-        )
+        session_pressure_score = min(100, sessions_last_24h * 4 + distinct_login_ips_7d * 3)
 
         findings: list[dict[str, object]] = []
         if compromised_sessions_last_7d:

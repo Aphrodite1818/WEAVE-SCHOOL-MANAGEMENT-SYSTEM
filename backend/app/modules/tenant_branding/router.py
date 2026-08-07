@@ -28,9 +28,7 @@ router = APIRouter(
 )
 workspace_router = APIRouter(tags=["Workspace Branding"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentTenantMember: TypeAlias = Annotated[
     TenantAdmin | Teacher | Student | Parent,
     Depends(get_current_tenant_member),

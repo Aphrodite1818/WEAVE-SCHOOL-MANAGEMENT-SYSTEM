@@ -64,25 +64,13 @@ class AttendanceSettings(BaseModel):
         default=AttendanceSettingsStatus.ACTIVE,
         server_default=AttendanceSettingsStatus.ACTIVE.value,
     )
-    timezone: Mapped[str] = mapped_column(
-        String(80), nullable=False, server_default="Africa/Lagos"
-    )
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False, server_default="Africa/Lagos")
     student_marking_opens_at: Mapped[time | None] = mapped_column(Time(), nullable=True)
-    student_marking_closes_at: Mapped[time | None] = mapped_column(
-        Time(), nullable=True
-    )
-    workforce_check_in_opens_at: Mapped[time | None] = mapped_column(
-        Time(), nullable=True
-    )
-    workforce_check_in_closes_at: Mapped[time | None] = mapped_column(
-        Time(), nullable=True
-    )
-    workforce_check_out_opens_at: Mapped[time | None] = mapped_column(
-        Time(), nullable=True
-    )
-    workforce_check_out_closes_at: Mapped[time | None] = mapped_column(
-        Time(), nullable=True
-    )
+    student_marking_closes_at: Mapped[time | None] = mapped_column(Time(), nullable=True)
+    workforce_check_in_opens_at: Mapped[time | None] = mapped_column(Time(), nullable=True)
+    workforce_check_in_closes_at: Mapped[time | None] = mapped_column(Time(), nullable=True)
+    workforce_check_out_opens_at: Mapped[time | None] = mapped_column(Time(), nullable=True)
+    workforce_check_out_closes_at: Mapped[time | None] = mapped_column(Time(), nullable=True)
     late_after_time: Mapped[time | None] = mapped_column(Time(), nullable=True)
     require_geofence_for_workforce: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
@@ -174,9 +162,7 @@ class SchoolGeofence(BaseModel):
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
@@ -188,9 +174,7 @@ class SchoolGeofence(BaseModel):
     )
 
     __table_args__ = (
-        CheckConstraint(
-            "latitude BETWEEN -90 AND 90", name="ck_school_geofences_latitude_range"
-        ),
+        CheckConstraint("latitude BETWEEN -90 AND 90", name="ck_school_geofences_latitude_range"),
         CheckConstraint(
             "longitude BETWEEN -180 AND 180", name="ck_school_geofences_longitude_range"
         ),
@@ -225,12 +209,8 @@ class GeofenceEvaluation(BaseModel):
     )
     distance_m: Mapped[int | None] = mapped_column(Integer, nullable=True)
     accuracy_m: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    tolerance_m: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    provided_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    tolerance_m: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    provided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     latitude_raw: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
     longitude_raw: Mapped[Decimal | None] = mapped_column(Numeric(9, 6), nullable=True)
     raw_location_expires_at: Mapped[datetime | None] = mapped_column(
@@ -339,18 +319,10 @@ class StudentAttendanceSheet(BaseModel):
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-    submitted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    approved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    locked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    cancelled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     records: Mapped[list["StudentAttendanceRecord"]] = relationship(
@@ -364,9 +336,7 @@ class StudentAttendanceSheet(BaseModel):
             "attendance_date",
             name="uq_student_attendance_sheet_class_date",
         ),
-        Index(
-            "ix_student_attendance_sheets_tenant_date", "tenant_id", "attendance_date"
-        ),
+        Index("ix_student_attendance_sheets_tenant_date", "tenant_id", "attendance_date"),
         Index(
             "ix_student_attendance_sheets_tenant_status",
             "tenant_id",
@@ -402,15 +372,11 @@ class StudentAttendanceRecord(BaseModel):
         default=StudentAttendanceStatus.UNMARKED,
         server_default=StudentAttendanceStatus.UNMARKED.value,
     )
-    marked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    marked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     marked_by_actor_type: Mapped[AttendanceActorType | None] = mapped_column(
         _enum(AttendanceActorType, "student_attendance_marked_by_type"), nullable=True
     )
-    marked_by_actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    marked_by_actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -425,9 +391,7 @@ class StudentAttendanceRecord(BaseModel):
             "student_id",
             name="uq_student_attendance_record_sheet_student",
         ),
-        Index(
-            "ix_student_attendance_records_tenant_student", "tenant_id", "student_id"
-        ),
+        Index("ix_student_attendance_records_tenant_student", "tenant_id", "student_id"),
         Index("ix_student_attendance_records_tenant_status", "tenant_id", "status"),
     )
 
@@ -464,12 +428,8 @@ class WorkforceAttendanceRecord(BaseModel):
         default=WorkforceAttendanceStatus.CHECKED_IN,
         server_default=WorkforceAttendanceStatus.CHECKED_IN.value,
     )
-    check_in_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    check_out_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    check_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     check_in_geofence_evaluation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("geofence_evaluations.id", ondelete="SET NULL"),
@@ -487,9 +447,7 @@ class WorkforceAttendanceRecord(BaseModel):
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-    corrected_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -581,17 +539,13 @@ class AttendanceCorrection(BaseModel):
     requested_by_actor_type: Mapped[AttendanceActorType] = mapped_column(
         _enum(AttendanceActorType, "attendance_correction_actor_type"), nullable=False
     )
-    requested_by_actor_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False
-    )
+    requested_by_actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     reviewed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-    reviewed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     previous_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -633,18 +587,12 @@ class AttendanceNotification(BaseModel):
     recipient_actor_type: Mapped[AttendanceActorType] = mapped_column(
         _enum(AttendanceActorType, "attendance_notification_actor_type"), nullable=False
     )
-    recipient_actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    recipient_actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     recipient_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    scheduled_for: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
@@ -670,17 +618,11 @@ class AttendanceAuditLog(BaseModel):
     actor_type: Mapped[AttendanceActorType] = mapped_column(
         _enum(AttendanceActorType, "attendance_audit_actor_type"), nullable=False
     )
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     action: Mapped[str] = mapped_column(String(120), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(120), nullable=False)
-    entity_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
-    details: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True, default=dict
-    )
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=dict)
 
     __table_args__ = (
         Index(

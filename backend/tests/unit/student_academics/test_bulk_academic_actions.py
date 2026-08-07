@@ -33,9 +33,7 @@ class _FakeDb:
 
 
 @pytest.mark.asyncio
-async def test_teacher_bulk_submit_processes_complete_drafts_and_skips_incomplete() -> (
-    None
-):
+async def test_teacher_bulk_submit_processes_complete_drafts_and_skips_incomplete() -> None:
     tenant_id = uuid.uuid4()
     teacher_id = uuid.uuid4()
     complete = SimpleNamespace(

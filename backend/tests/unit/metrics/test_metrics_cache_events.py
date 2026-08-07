@@ -81,9 +81,7 @@ def test_student_result_change_invalidates_metric_dashboard_sources() -> None:
 
 
 def test_tenant_change_invalidates_superadmin_metrics() -> None:
-    tenant = Tenant(
-        id=uuid.uuid4(), school_name="Example", slug="example", email="a@example.com"
-    )
+    tenant = Tenant(id=uuid.uuid4(), school_name="Example", slug="example", email="a@example.com")
     session = _session(tenant)
 
     queue_metrics_cache_invalidations(session)

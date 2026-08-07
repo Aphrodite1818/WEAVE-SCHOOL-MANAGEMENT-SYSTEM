@@ -119,9 +119,7 @@ class OTPRateLimiter:
 
         with self._lock:
             timestamps = [
-                timestamp
-                for timestamp in self._records[key]
-                if now - timestamp < longest_window
+                timestamp for timestamp in self._records[key] if now - timestamp < longest_window
             ]
             self._records[key] = timestamps
 
@@ -129,9 +127,7 @@ class OTPRateLimiter:
 
             for rule in rules:
                 timestamps_in_window = [
-                    timestamp
-                    for timestamp in timestamps
-                    if now - timestamp < rule.window_seconds
+                    timestamp for timestamp in timestamps if now - timestamp < rule.window_seconds
                 ]
 
                 if len(timestamps_in_window) >= rule.limit:

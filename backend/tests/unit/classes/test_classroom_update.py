@@ -426,9 +426,7 @@ async def test_activate_classroom_rejects_inactive_assigned_teacher() -> None:
         ),
         patch(
             "app.modules.classes.service.ClassRoomService._validate_teacher_assignment",
-            new=AsyncMock(
-                side_effect=BadRequestException("Cannot assign an inactive teacher")
-            ),
+            new=AsyncMock(side_effect=BadRequestException("Cannot assign an inactive teacher")),
         ),
     ):
         with pytest.raises(BadRequestException, match="inactive teacher"):

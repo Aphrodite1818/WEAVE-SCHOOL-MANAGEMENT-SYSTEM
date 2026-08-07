@@ -66,12 +66,8 @@ def protect_result_row(row: dict[str, Any]) -> dict[str, Any]:
         return protected
 
     now = _utc_now()
-    access_code_expires_at = _parse_datetime(
-        protected.get(ACCESS_CODE_EXPIRES_AT_FIELD)
-    )
-    retention_expires_at = now + timedelta(
-        hours=settings.BULK_IMPORT_SETUP_CODE_RETENTION_HOURS
-    )
+    access_code_expires_at = _parse_datetime(protected.get(ACCESS_CODE_EXPIRES_AT_FIELD))
+    retention_expires_at = now + timedelta(hours=settings.BULK_IMPORT_SETUP_CODE_RETENTION_HOURS)
     available_until = min(
         access_code_expires_at or retention_expires_at,
         retention_expires_at,
@@ -94,8 +90,7 @@ def protect_import_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] |
     result_rows = protected.get("result_rows")
     if isinstance(result_rows, list):
         protected["result_rows"] = [
-            protect_result_row(row) if isinstance(row, dict) else row
-            for row in result_rows
+            protect_result_row(row) if isinstance(row, dict) else row for row in result_rows
         ]
     return protected
 
@@ -131,8 +126,7 @@ def redact_result_row(row: dict[str, Any]) -> dict[str, Any]:
 
     redacted = dict(row)
     redacted["setup_code_available"] = _ciphertext_is_available(redacted) or (
-        redacted.get(SETUP_CODE_FIELD) not in {None, ""}
-        and _plaintext_is_available(redacted)
+        redacted.get(SETUP_CODE_FIELD) not in {None, ""} and _plaintext_is_available(redacted)
     )
     for field in (
         SETUP_CODE_FIELD,
@@ -155,7 +149,6 @@ def sanitize_import_metadata_for_response(
     result_rows = sanitized.get("result_rows")
     if isinstance(result_rows, list):
         sanitized["result_rows"] = [
-            redact_result_row(row) if isinstance(row, dict) else row
-            for row in result_rows
+            redact_result_row(row) if isinstance(row, dict) else row for row in result_rows
         ]
     return sanitized

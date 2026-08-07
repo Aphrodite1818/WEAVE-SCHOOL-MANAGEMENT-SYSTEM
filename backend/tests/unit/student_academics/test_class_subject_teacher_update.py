@@ -21,9 +21,7 @@ from app.modules.student_academics.service import StudentAcademicService
 @contextmanager
 def patch_many(*context_managers):
     with ExitStack() as stack:
-        yield [
-            stack.enter_context(context_manager) for context_manager in context_managers
-        ]
+        yield [stack.enter_context(context_manager) for context_manager in context_managers]
 
 
 def _assignment(tenant_id: uuid.UUID) -> ClassSubjectTeacher:
@@ -53,9 +51,7 @@ def _class_subject(tenant_id: uuid.UUID) -> ClassSubject:
     )
 
 
-def _classroom(
-    class_subject: ClassSubject, *, active: bool = True, archived: bool = False
-):
+def _classroom(class_subject: ClassSubject, *, active: bool = True, archived: bool = False):
     return SimpleNamespace(
         id=class_subject.class_id,
         is_active=active,
@@ -63,9 +59,7 @@ def _classroom(
     )
 
 
-def _subject(
-    class_subject: ClassSubject, *, active: bool = True, archived: bool = False
-):
+def _subject(class_subject: ClassSubject, *, active: bool = True, archived: bool = False):
     return SimpleNamespace(
         id=class_subject.subject_id,
         name="Mathematics",
@@ -87,9 +81,7 @@ def _response_parent_patches(
         patch(
             "app.modules.student_academics.service.ClassRoomRepository.get_by_id",
             new=AsyncMock(
-                return_value=_classroom(
-                    class_subject, active=class_active, archived=class_archived
-                )
+                return_value=_classroom(class_subject, active=class_active, archived=class_archived)
             ),
         ),
         patch(
@@ -113,9 +105,7 @@ def _dependency_count_patches(
     active_compatibility_rows=0,
 ):
     assignment_counts = AsyncMock(side_effect=[active_assignments, assignment_history])
-    compatibility_counts = AsyncMock(
-        side_effect=[compatibility_rows, active_compatibility_rows]
-    )
+    compatibility_counts = AsyncMock(side_effect=[compatibility_rows, active_compatibility_rows])
     return (
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.count_teacher_assignments_for_class_subject",
@@ -297,9 +287,7 @@ async def test_create_class_subject_creates_new_mapping_only() -> None:
             db=db,
             tenant_id=tenant_id,
             class_id=class_subject.class_id,
-            payload=ClassSubjectCreate(
-                subject_id=class_subject.subject_id, is_core=True
-            ),
+            payload=ClassSubjectCreate(subject_id=class_subject.subject_id, is_core=True),
         )
 
     assert response.id == class_subject.id
@@ -352,9 +340,7 @@ async def test_create_class_subject_rejects_duplicate_lifecycle_states(
                 db=db,
                 tenant_id=tenant_id,
                 class_id=class_subject.class_id,
-                payload=ClassSubjectCreate(
-                    subject_id=class_subject.subject_id, is_core=False
-                ),
+                payload=ClassSubjectCreate(subject_id=class_subject.subject_id, is_core=False),
             )
 
     assert exc_info.value.detail == message
@@ -375,13 +361,9 @@ async def test_deactivate_class_subject_blocks_active_teacher_assignment() -> No
         *_dependency_count_patches(active_assignments=1, assignment_history=1),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await StudentAcademicService.deactivate_class_subject(
-                db, tenant_id, class_subject.id
-            )
+            await StudentAcademicService.deactivate_class_subject(db, tenant_id, class_subject.id)
 
-    assert (
-        exc_info.value.payload["dependency_counts"]["active_teacher_assignments"] == 1
-    )
+    assert exc_info.value.payload["dependency_counts"]["active_teacher_assignments"] == 1
     assert class_subject.is_active is True
 
 
@@ -534,9 +516,7 @@ async def test_activate_class_subject_requires_active_parent_records(
         ),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await StudentAcademicService.activate_class_subject(
-                db, tenant_id, class_subject.id
-            )
+            await StudentAcademicService.activate_class_subject(db, tenant_id, class_subject.id)
 
     assert exc_info.value.detail == expected
 
@@ -554,9 +534,7 @@ async def test_archived_class_subject_cannot_be_activated_directly() -> None:
         new=AsyncMock(return_value=class_subject),
     ):
         with pytest.raises(ConflictException):
-            await StudentAcademicService.activate_class_subject(
-                db, tenant_id, class_subject.id
-            )
+            await StudentAcademicService.activate_class_subject(db, tenant_id, class_subject.id)
 
 
 @pytest.mark.asyncio
@@ -589,9 +567,7 @@ async def test_class_subject_hard_delete_rejects_invalid_lifecycle_state(
         new=AsyncMock(return_value=class_subject),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await StudentAcademicService.delete_class_subject(
-                db, tenant_id, class_subject.id
-            )
+            await StudentAcademicService.delete_class_subject(db, tenant_id, class_subject.id)
 
     assert exc_info.value.detail == message
 
@@ -625,9 +601,7 @@ async def test_class_subject_hard_delete_returns_dependency_counts(
         ),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await StudentAcademicService.delete_class_subject(
-                db, tenant_id, class_subject.id
-            )
+            await StudentAcademicService.delete_class_subject(db, tenant_id, class_subject.id)
 
     assert exc_info.value.payload["dependency_counts"][dependency_key] == 1
 

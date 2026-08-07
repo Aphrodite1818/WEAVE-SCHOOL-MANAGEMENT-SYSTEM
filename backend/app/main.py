@@ -215,9 +215,7 @@ def create_app() -> FastAPI:
         "allow_headers": ["*"],
     }
     if settings.is_development:
-        middleware_options["allow_origin_regex"] = (
-            r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
-        )
+        middleware_options["allow_origin_regex"] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     app.add_middleware(PlatformLockdownMiddleware)
     app.add_middleware(CookieRequestProtectionMiddleware)
@@ -235,9 +233,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(runtime_config_router, prefix="/api/v1")
     app.include_router(superadmin_router, prefix="/api/v1")
-    app.include_router(
-        tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"]
-    )
+    app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
     app.include_router(media_router, prefix="/api/v1/tenant-admin")
     app.include_router(tenant_branding_router, prefix="/api/v1/tenant-admin")
     app.include_router(workspace_branding_router, prefix="/api/v1")
@@ -286,9 +282,7 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         dependencies=admin_write_guard,
     )
-    app.include_router(
-        assessment_config_router, prefix="/api/v1", dependencies=admin_write_guard
-    )
+    app.include_router(assessment_config_router, prefix="/api/v1", dependencies=admin_write_guard)
     app.include_router(
         grading_scale_lifecycle_router,
         prefix="/api/v1",
@@ -334,9 +328,7 @@ def create_app() -> FastAPI:
         redis_ok = await redis_health_check()
         ready = database_ok and redis_ok
         return JSONResponse(
-            status_code=(
-                status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE
-            ),
+            status_code=(status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE),
             content={
                 "status": "ready" if ready else "unavailable",
                 "dependencies": {

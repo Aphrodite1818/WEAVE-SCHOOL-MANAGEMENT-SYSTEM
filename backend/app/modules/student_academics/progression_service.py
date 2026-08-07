@@ -88,10 +88,7 @@ class AcademicProgressionService:
             )
             from app.modules.school_calendar.repository import SchoolCalendarRepository
 
-            if (
-                await SchoolCalendarRepository.get_configuration(db, actor.tenant_id)
-                is None
-            ):
+            if await SchoolCalendarRepository.get_configuration(db, actor.tenant_id) is None:
                 raise ConflictException(
                     "Configure the school calendar before opening an academic session.",
                     payload={
@@ -193,9 +190,7 @@ class AcademicProgressionService:
                 lock=True,
             )
             if classroom is None:
-                raise ConflictException(
-                    f"Enrollment references missing class {class_id}."
-                )
+                raise ConflictException(f"Enrollment references missing class {class_id}.")
 
             if classroom.is_terminal:
                 if classroom.next_class_id is not None:
@@ -285,15 +280,9 @@ class AcademicProgressionService:
             include_archived=True,
         )
         if student is None:
-            raise ConflictException(
-                f"Enrollment {enrollment.id} references a missing student."
-            )
+            raise ConflictException(f"Enrollment {enrollment.id} references a missing student.")
 
-        if (
-            student.is_archived
-            or student.promotion_hold
-            or student.status != AcademicStatus.ACTIVE
-        ):
+        if student.is_archived or student.promotion_hold or student.status != AcademicStatus.ACTIVE:
             return await StudentProgressionRepository.add_item(
                 db,
                 StudentProgressionItem(
@@ -433,29 +422,17 @@ class AcademicProgressionService:
                     lock=True,
                 )
 
-            if (
-                existing is not None
-                and existing.status == StudentProgressionRunStatus.COMPLETED
-            ):
+            if existing is not None and existing.status == StudentProgressionRunStatus.COMPLETED:
                 completed_run_id = existing.id
             else:
-                if (
-                    session.status != AcademicSessionStatus.OPEN
-                    or not session.is_current
-                ):
-                    raise ConflictException(
-                        "Only the current open session can be closed."
-                    )
+                if session.status != AcademicSessionStatus.OPEN or not session.is_current:
+                    raise ConflictException("Only the current open session can be closed.")
                 if session.next_academic_session_id is None:
-                    raise BadRequestException(
-                        "Configure next_academic_session_id before closure."
-                    )
-                preview = (
-                    await StudentAcademicService.academic_session_dependency_preview(
-                        db,
-                        actor.tenant_id,
-                        session.id,
-                    )
+                    raise BadRequestException("Configure next_academic_session_id before closure.")
+                preview = await StudentAcademicService.academic_session_dependency_preview(
+                    db,
+                    actor.tenant_id,
+                    session.id,
                 )
                 if not preview.can_progress:
                     StudentAcademicService._raise_dependency_conflict(
@@ -472,20 +449,14 @@ class AcademicProgressionService:
                 if next_session is None:
                     raise NotFoundException("Next academic session not found.")
                 if next_session.status != AcademicSessionStatus.DRAFT:
-                    raise ConflictException(
-                        "The next academic session must still be draft."
-                    )
+                    raise ConflictException("The next academic session must still be draft.")
                 if existing is not None and existing.idempotency_key != idempotency_key:
-                    raise ConflictException(
-                        "This academic session already has a progression run."
-                    )
+                    raise ConflictException("This academic session already has a progression run.")
 
-                enrollments = (
-                    await AcademicProgressionService._load_progression_enrollments(
-                        db,
-                        tenant_id=actor.tenant_id,
-                        academic_session_id=session.id,
-                    )
+                enrollments = await AcademicProgressionService._load_progression_enrollments(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    academic_session_id=session.id,
                 )
                 graph = await AcademicProgressionService._validate_class_graph(
                     db,
@@ -719,9 +690,7 @@ class AcademicProgressionService:
         run_summary = StudentProgressionRunResponse.model_validate(run)
         run_payload = StudentProgressionRunDetailResponse(
             **run_summary.model_dump(),
-            items=[
-                StudentProgressionItemResponse.model_validate(item) for item in items
-            ],
+            items=[StudentProgressionItemResponse.model_validate(item) for item in items],
         )
 
         return AcademicSessionCloseResponse(

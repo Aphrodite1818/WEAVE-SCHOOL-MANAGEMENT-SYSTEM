@@ -90,9 +90,7 @@ async def get_tenant(
     include_deleted: bool = Query(default=True),
 ) -> Tenant:
     """Return tenant."""
-    return await SuperadminService.get_tenant(
-        db, tenant_id, include_deleted=include_deleted
-    )
+    return await SuperadminService.get_tenant(db, tenant_id, include_deleted=include_deleted)
 
 
 @router.get("/tenants/{tenant_id}/usage", status_code=status.HTTP_200_OK)
@@ -115,9 +113,7 @@ async def get_tenant_usage(
     )
 
     return {
-        "tenant": TenantManagementResponse.model_validate(tenant).model_dump(
-            mode="json"
-        ),
+        "tenant": TenantManagementResponse.model_validate(tenant).model_dump(mode="json"),
         "entitlements": entitlements.model_dump(mode="json"),
         "subscription": subscription.model_dump(mode="json") if subscription else None,
     }

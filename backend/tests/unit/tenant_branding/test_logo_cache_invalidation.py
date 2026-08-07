@@ -23,9 +23,7 @@ async def test_school_logo_attachment_invalidates_effective_branding_cache() -> 
             return_value="https://cdn.test/logo.png",
         ),
         patch.object(MediaService, "_get_tenant", new=AsyncMock(return_value=tenant)),
-        patch(
-            "app.modules.media.service.TenantRepository.save", new=AsyncMock()
-        ) as save_tenant,
+        patch("app.modules.media.service.TenantRepository.save", new=AsyncMock()) as save_tenant,
         patch(
             "app.modules.media.service.invalidate_tenant_branding", new=AsyncMock()
         ) as invalidate,

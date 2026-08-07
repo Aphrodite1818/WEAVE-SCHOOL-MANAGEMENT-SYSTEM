@@ -129,9 +129,7 @@ class AcademicSession(BaseModel):
     closing_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
@@ -152,9 +150,7 @@ class AcademicSession(BaseModel):
             postgresql_where=text("is_current = true AND status = 'open'"),
         ),
         Index("ix_academic_sessions_tenant_status", "tenant_id", "status"),
-        Index(
-            "ix_academic_sessions_tenant_next", "tenant_id", "next_academic_session_id"
-        ),
+        Index("ix_academic_sessions_tenant_next", "tenant_id", "next_academic_session_id"),
         CheckConstraint(
             "next_academic_session_id IS NULL OR next_academic_session_id <> id",
             name="ck_academic_session_next_not_self",
@@ -305,23 +301,17 @@ class GradingScale(BaseModel):
         Boolean, default=True, server_default="true", nullable=False
     )
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),)
 
 
 class SchoolAssessmentConfig(BaseModel):
     __tablename__ = "school_assessment_configs"
 
-    test_max: Mapped[int] = mapped_column(
-        Integer, default=20, server_default="20", nullable=False
-    )
+    test_max: Mapped[int] = mapped_column(Integer, default=20, server_default="20", nullable=False)
     assessment_max: Mapped[int] = mapped_column(
         Integer, default=20, server_default="20", nullable=False
     )
-    exam_max: Mapped[int] = mapped_column(
-        Integer, default=60, server_default="60", nullable=False
-    )
+    exam_max: Mapped[int] = mapped_column(Integer, default=60, server_default="60", nullable=False)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_school_assessment_config_tenant"),
@@ -347,9 +337,7 @@ class ClassSubject(BaseModel):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
@@ -502,12 +490,8 @@ class StudentProgressionRun(BaseModel):
     failed_students: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     initiated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
@@ -587,9 +571,7 @@ class StudentProgressionItem(BaseModel):
         nullable=False,
     )
     reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    processed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -627,9 +609,7 @@ class ClassSubjectTeacher(BaseModel):
     is_core: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )
-    sort_order: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )
@@ -705,9 +685,7 @@ class StudentSubjectResult(BaseModel):
         index=True,
     )
     test_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
-    assessment_score: Mapped[Decimal | None] = mapped_column(
-        Numeric(5, 2), nullable=True
-    )
+    assessment_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     exam_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     total_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     grade: Mapped[str | None] = mapped_column(String(10), nullable=True)
@@ -725,24 +703,16 @@ class StudentSubjectResult(BaseModel):
     )
     recorded_by_actor_type: Mapped[str] = mapped_column(String(50), nullable=False)
     recorded_by_actor_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
-    submitted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    submitted_by_actor_type: Mapped[str | None] = mapped_column(
-        String(50), nullable=True
-    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    submitted_by_actor_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     submitted_by_actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
-    approved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-    locked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     locked_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),

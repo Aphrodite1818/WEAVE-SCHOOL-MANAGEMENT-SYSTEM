@@ -19,9 +19,7 @@ from app.modules.superadmin.security_alert_service import SecurityAlertService
 
 PLATFORM_LOCKDOWN_CACHE_KEY = "platform:control:lockdown"
 PLATFORM_LOCKDOWN_CACHE_TTL_SECONDS = 15
-DEFAULT_MAINTENANCE_MESSAGE = (
-    "Weave is temporarily in maintenance mode. Please try again later."
-)
+DEFAULT_MAINTENANCE_MESSAGE = "Weave is temporarily in maintenance mode. Please try again later."
 
 
 class PlatformControlService:
@@ -48,24 +46,16 @@ class PlatformControlService:
             "lockdown_reason": control.lockdown_reason,
             "lockdown_message": control.lockdown_message or DEFAULT_MAINTENANCE_MESSAGE,
             "enabled_by_superadmin_id": (
-                str(control.enabled_by_superadmin_id)
-                if control.enabled_by_superadmin_id
-                else None
+                str(control.enabled_by_superadmin_id) if control.enabled_by_superadmin_id else None
             ),
-            "enabled_at": (
-                control.enabled_at.isoformat() if control.enabled_at else None
-            ),
+            "enabled_at": (control.enabled_at.isoformat() if control.enabled_at else None),
             "disabled_by_superadmin_id": (
                 str(control.disabled_by_superadmin_id)
                 if control.disabled_by_superadmin_id
                 else None
             ),
-            "disabled_at": (
-                control.disabled_at.isoformat() if control.disabled_at else None
-            ),
-            "updated_at": (
-                control.updated_at.isoformat() if control.updated_at else None
-            ),
+            "disabled_at": (control.disabled_at.isoformat() if control.disabled_at else None),
+            "updated_at": (control.updated_at.isoformat() if control.updated_at else None),
         }
 
     @staticmethod
@@ -74,9 +64,7 @@ class PlatformControlService:
         *,
         lock: bool = False,
     ) -> PlatformControl | None:
-        statement = (
-            select(PlatformControl).order_by(PlatformControl.created_at.asc()).limit(1)
-        )
+        statement = select(PlatformControl).order_by(PlatformControl.created_at.asc()).limit(1)
         if lock:
             statement = statement.with_for_update()
 
@@ -143,9 +131,7 @@ class PlatformControlService:
         if not state.get("lockdown_enabled"):
             return
 
-        actor_type_value = (
-            str(getattr(actor_type, "value", actor_type) or "").strip().lower()
-        )
+        actor_type_value = str(getattr(actor_type, "value", actor_type) or "").strip().lower()
         if actor_type_value == AuthSessionActorType.SUPERADMIN.value:
             return
 

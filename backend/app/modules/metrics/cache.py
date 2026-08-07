@@ -32,9 +32,7 @@ def tenant_admin_dashboard_cache_key(tenant_id: UUID) -> str:
     Output:
     tenant:{tenant_id}:dashboard:tenant-admin:metrics
     """
-    return build_cache_key(
-        tenant_prefix(str(tenant_id)), "dashboard", "tenant-admin", "metrics"
-    )
+    return build_cache_key(tenant_prefix(str(tenant_id)), "dashboard", "tenant-admin", "metrics")
 
 
 def teacher_dashboard_cache_key(tenant_id: UUID, teacher_id: UUID):

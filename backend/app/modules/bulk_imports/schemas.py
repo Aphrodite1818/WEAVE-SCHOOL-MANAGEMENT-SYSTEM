@@ -43,9 +43,7 @@ def _clean_optional_string(value: str | None) -> str | None:
 
 
 class ImportOptions(InputBase):
-    dry_run: bool = Field(
-        default=False, description="Validate without creating records"
-    )
+    dry_run: bool = Field(default=False, description="Validate without creating records")
     notify_on_completion: bool = Field(default=True)
 
 
@@ -57,15 +55,11 @@ class ImportJobCreate(InputBase):
     source_file_path: str | None = None
     file_size_bytes: int | None = Field(default=None, ge=0)
     source_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
-    confirmed_fingerprint: str | None = Field(
-        default=None, min_length=64, max_length=64
-    )
+    confirmed_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
     created_by_admin_id: uuid.UUID | None = None
     metadata_json: dict[str, Any] | None = None
 
-    @field_validator(
-        "original_filename", "stored_filename", "source_file_path", mode="before"
-    )
+    @field_validator("original_filename", "stored_filename", "source_file_path", mode="before")
     @classmethod
     def clean_optional_text(cls, value: str | None) -> str | None:
         return _clean_optional_string(value)
@@ -78,9 +72,7 @@ class ImportJobUpdate(InputBase):
     result_file_path: str | None = None
     file_size_bytes: int | None = Field(default=None, ge=0)
     source_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
-    confirmed_fingerprint: str | None = Field(
-        default=None, min_length=64, max_length=64
-    )
+    confirmed_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
     total_rows: int | None = Field(default=None, ge=0)
     processed_rows: int | None = Field(default=None, ge=0)
     successful_rows: int | None = Field(default=None, ge=0)

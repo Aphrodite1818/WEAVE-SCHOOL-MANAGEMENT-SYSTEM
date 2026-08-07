@@ -24,9 +24,7 @@ class LegalComplianceAcceptance(UUIDMixin, TimestampMixin, Base):
         index=True,
     )
     actor_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    actor_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
-    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     policy_version: Mapped[str] = mapped_column(String(40), nullable=False)
     accepted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

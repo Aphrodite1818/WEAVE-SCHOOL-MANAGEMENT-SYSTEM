@@ -16,9 +16,7 @@ class ReportCardRepository:
         return report_card
 
     @staticmethod
-    async def create_line(
-        db: AsyncSession, line: ReportCardSubjectLine
-    ) -> ReportCardSubjectLine:
+    async def create_line(db: AsyncSession, line: ReportCardSubjectLine) -> ReportCardSubjectLine:
         db.add(line)
         await db.flush()
         await db.refresh(line)
@@ -92,9 +90,7 @@ class ReportCardRepository:
             filters.append(ReportCard.status == ReportCardStatus.PUBLISHED)
 
         total = (
-            await db.execute(
-                select(func.count()).select_from(ReportCard).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(ReportCard).where(*filters))
         ).scalar_one()
         rows = (
             (

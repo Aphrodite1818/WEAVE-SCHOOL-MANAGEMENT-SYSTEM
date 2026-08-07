@@ -178,9 +178,7 @@ def append_validation_error(
 def _format_class_reference(class_name: Any, class_arm: Any) -> str:
     """Build a concise class label for validation messages."""
 
-    parts = [
-        str(part).strip() for part in (class_name, class_arm) if not _is_blank(part)
-    ]
+    parts = [str(part).strip() for part in (class_name, class_arm) if not _is_blank(part)]
     return " ".join(parts) or "the supplied class"
 
 
@@ -268,9 +266,7 @@ class BulkImportService:
         }[resource_type]
 
     @staticmethod
-    def resolve_final_status(
-        *, successful_rows: int, failed_rows: int
-    ) -> ImportJobStatus:
+    def resolve_final_status(*, successful_rows: int, failed_rows: int) -> ImportJobStatus:
         """Resolve final import job status from row counters."""
 
         if failed_rows == 0:
@@ -289,36 +285,21 @@ class BulkImportService:
 
         metadata_json = dict(import_job.metadata_json or {})
         if import_job.status in {ImportJobStatus.PENDING, ImportJobStatus.PROCESSING}:
-            raise ConflictException(
-                detail="This import job is already pending or processing."
-            )
+            raise ConflictException(detail="This import job is already pending or processing.")
         if not metadata_json.get("dry_run"):
-            raise BadRequestException(
-                detail="Only dry-run import jobs can be confirmed."
-            )
+            raise BadRequestException(detail="Only dry-run import jobs can be confirmed.")
         if not metadata_json.get("confirmation_required"):
-            raise BadRequestException(
-                detail="This dry-run job does not require confirmation."
-            )
+            raise BadRequestException(detail="This dry-run job does not require confirmation.")
         if metadata_json.get("confirmed_at"):
-            raise ConflictException(
-                detail="This import job has already been confirmed."
-            )
-        if (
-            import_job.status != ImportJobStatus.COMPLETED
-            or import_job.completed_at is None
-        ):
+            raise ConflictException(detail="This import job has already been confirmed.")
+        if import_job.status != ImportJobStatus.COMPLETED or import_job.completed_at is None:
             raise BadRequestException(
                 detail="The dry run must complete successfully before confirmation."
             )
         if int(import_job.failed_rows or 0) != 0:
-            raise BadRequestException(
-                detail="All rows must pass validation before confirmation."
-            )
+            raise BadRequestException(detail="All rows must pass validation before confirmation.")
         if int(import_job.successful_rows or 0) <= 0:
-            raise BadRequestException(
-                detail="This dry-run job has no valid rows to confirm."
-            )
+            raise BadRequestException(detail="This dry-run job has no valid rows to confirm.")
         if staged_row_count <= 0:
             raise BadRequestException(
                 detail="This dry-run job has no valid staged rows to confirm."
@@ -470,9 +451,7 @@ class BulkImportService:
                 resource_type=resource_type,
                 raw_row=raw_data,
             )
-            row_items.append(
-                (parsed_row.row_number, raw_data, normalized_row, ignored_fields)
-            )
+            row_items.append((parsed_row.row_number, raw_data, normalized_row, ignored_fields))
 
         return row_items
 
@@ -576,12 +555,10 @@ class BulkImportService:
         preflight_by_email: dict[str, dict[str, object]] = {}
         for normalized_email in unique_parent_emails:
             try:
-                checked_email = (
-                    await AccountEmailGuard.ensure_available_for_invitation_role(
-                        db=db,
-                        email=normalized_email,
-                        invited_actor_type=ActorType.PARENT_ACCOUNT,
-                    )
+                checked_email = await AccountEmailGuard.ensure_available_for_invitation_role(
+                    db=db,
+                    email=normalized_email,
+                    invited_actor_type=ActorType.PARENT_ACCOUNT,
                 )
                 existing_parent = await ParentAccountRepository.get_by_email(
                     db,
@@ -616,9 +593,7 @@ class BulkImportService:
                 )
                 continue
 
-            validation_result.normalized_row[email_field] = str(
-                preflight["normalized_email"]
-            )
+            validation_result.normalized_row[email_field] = str(preflight["normalized_email"])
             summary["new_parent_invitations_expected"] += 1
             summary["parent_links_expected_after_acceptance"] += 1
 
@@ -635,9 +610,7 @@ class BulkImportService:
 
         first_name = normalized_row.get("first_name")
         last_name = normalized_row.get("last_name")
-        date_of_birth = BulkImportValidator.parse_date(
-            normalized_row.get("date_of_birth")
-        )
+        date_of_birth = BulkImportValidator.parse_date(normalized_row.get("date_of_birth"))
         class_id = BulkImportValidator.parse_uuid(normalized_row.get("class_id"))
         if (
             _is_blank(first_name)
@@ -645,9 +618,7 @@ class BulkImportService:
             or date_of_birth is None
             or class_id is None
         ):
-            raise BadRequestException(
-                detail="Validated student row is missing required fields."
-            )
+            raise BadRequestException(detail="Validated student row is missing required fields.")
 
         student_data = StudentCreate(
             first_name=str(first_name),
@@ -699,9 +670,7 @@ class BulkImportService:
                 "error_message": "",
             }
 
-        raise BadRequestException(
-            detail=f"{resource_type.value} bulk import is not supported yet."
-        )
+        raise BadRequestException(detail=f"{resource_type.value} bulk import is not supported yet.")
 
     @staticmethod
     async def process_valid_rows(
@@ -769,9 +738,7 @@ class BulkImportService:
 
                 except IntegrityError:
                     failed_rows += 1
-                    error_message = (
-                        "Row failed because of a duplicate or invalid database value."
-                    )
+                    error_message = "Row failed because of a duplicate or invalid database value."
                     row_error_items.append(
                         ImportRowErrorCreate(
                             import_job_id=import_job_id,
@@ -833,9 +800,7 @@ class BulkImportService:
 
         parsed_file = await BulkImportParser.parse_upload(upload_file)
         if not parsed_file.rows:
-            raise BadRequestException(
-                detail="Import file does not contain any data rows."
-            )
+            raise BadRequestException(detail="Import file does not contain any data rows.")
 
         BulkImportService.validate_import_template_contract(
             tenant_id=actor.tenant_id,
@@ -850,10 +815,7 @@ class BulkImportService:
         source_fingerprint = build_import_source_fingerprint(
             resource_type=resource_type,
             template_version=parsed_file.metadata.get("_import_template_version"),
-            rows=[
-                (row_number, normalized_row)
-                for row_number, _, normalized_row, _ in row_items
-            ],
+            rows=[(row_number, normalized_row) for row_number, _, normalized_row, _ in row_items],
         )
         existing_import = await ImportJobRepository.get_confirmed_job_by_fingerprint(
             db=db,
@@ -879,12 +841,8 @@ class BulkImportService:
                     "dry_run": True,
                     "confirmation_required": True,
                     "notify_on_completion": notify_on_completion,
-                    "template_version": parsed_file.metadata.get(
-                        "_import_template_version"
-                    ),
-                    "template_headers_hash": parsed_file.metadata.get(
-                        "_import_headers_hash"
-                    ),
+                    "template_version": parsed_file.metadata.get("_import_template_version"),
+                    "template_headers_hash": parsed_file.metadata.get("_import_headers_hash"),
                     "source_fingerprint": source_fingerprint,
                     "result_rows": [],
                 },
@@ -912,18 +870,14 @@ class BulkImportService:
                 tenant_id=actor.tenant_id,
                 validation_results=validation_results,
             )
-            parent_preflight_summary = (
-                await BulkImportService.preflight_student_parent_invitations(
-                    db=db,
-                    validation_results=validation_results,
-                )
+            parent_preflight_summary = await BulkImportService.preflight_student_parent_invitations(
+                db=db,
+                validation_results=validation_results,
             )
         else:
             parent_preflight_summary = {}
 
-        invalid_results = [
-            result for result in validation_results if not result.is_valid
-        ]
+        invalid_results = [result for result in validation_results if not result.is_valid]
         valid_results = [result for result in validation_results if result.is_valid]
 
         validation_error_items: list[ImportRowErrorCreate] = []
@@ -1063,13 +1017,10 @@ class BulkImportService:
             staged_row_count=len(staged_rows),
         )
 
-        source_fingerprint = (
-            import_job.source_fingerprint
-            or build_import_source_fingerprint(
-                resource_type=import_job.resource_type,
-                template_version=metadata_json.get("template_version"),
-                rows=[(row.row_number, row.normalized_row) for row in staged_rows],
-            )
+        source_fingerprint = import_job.source_fingerprint or build_import_source_fingerprint(
+            resource_type=import_job.resource_type,
+            template_version=metadata_json.get("template_version"),
+            rows=[(row.row_number, row.normalized_row) for row in staged_rows],
         )
         existing_import = await ImportJobRepository.get_confirmed_job_by_fingerprint(
             db=db,
@@ -1138,9 +1089,7 @@ class BulkImportService:
             )
 
         existing_result_rows = list(metadata_json.get("result_rows") or [])
-        invalid_result_rows = [
-            row for row in existing_result_rows if row.get("status") == "failed"
-        ]
+        invalid_result_rows = [row for row in existing_result_rows if row.get("status") == "failed"]
 
         invalid_rows = int(metadata_json.get("invalid_rows") or 0)
         successful_rows = created_count
@@ -1194,9 +1143,7 @@ class BulkImportService:
                 )
 
         if successful_rows > 0:
-            await SubscriptionFeatureService.invalidate_tenant_subscription_state(
-                actor.tenant_id
-            )
+            await SubscriptionFeatureService.invalidate_tenant_subscription_state(actor.tenant_id)
 
         await db.commit()
         await AuthIdentityService.invalidate_after_commit(db)

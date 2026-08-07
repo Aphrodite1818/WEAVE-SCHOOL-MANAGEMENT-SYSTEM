@@ -286,9 +286,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived classrooms cannot be updated. Restore them first."
-            )
+            raise ConflictException("Archived classrooms cannot be updated. Restore them first.")
 
         update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
@@ -303,18 +301,14 @@ class ClassRoomService:
             new_normalized_name != classroom.normalized_name
             or new_normalized_arm != classroom.normalized_arm
         ):
-            existing_classroom = (
-                await ClassRoomRepository.get_by_normalized_name_and_arm(
-                    db=db,
-                    tenant_id=actor.tenant_id,
-                    class_name=new_name,
-                    class_arm=new_arm,
-                )
+            existing_classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
+                db=db,
+                tenant_id=actor.tenant_id,
+                class_name=new_name,
+                class_arm=new_arm,
             )
             if existing_classroom is not None and existing_classroom.id != classroom.id:
-                raise BadRequestException(
-                    "Classroom with this name and arm already exists"
-                )
+                raise BadRequestException("Classroom with this name and arm already exists")
 
         if "teacher_membership_id" in update_data:
             await ClassRoomService._validate_teacher_assignment(
@@ -372,13 +366,9 @@ class ClassRoomService:
 
         while current_id is not None:
             if current_id == class_id:
-                raise BadRequestException(
-                    "Class progression cannot create a circular chain"
-                )
+                raise BadRequestException("Class progression cannot create a circular chain")
             if current_id in visited:
-                raise BadRequestException(
-                    "Existing class progression contains a circular chain"
-                )
+                raise BadRequestException("Existing class progression contains a circular chain")
             visited.add(current_id)
 
             current = await ClassRoomRepository.get_by_id(
@@ -409,9 +399,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived classrooms cannot be configured. Restore them first."
-            )
+            raise ConflictException("Archived classrooms cannot be configured. Restore them first.")
 
         next_classroom: ClassRoom | None = None
         if payload.next_class_id is not None:
@@ -449,9 +437,7 @@ class ClassRoomService:
             )
         except IntegrityError as exc:
             await db.rollback()
-            raise BadRequestException(
-                "Class progression configuration is invalid."
-            ) from exc
+            raise BadRequestException("Class progression configuration is invalid.") from exc
 
     @staticmethod
     async def clear_class_progression(
@@ -473,9 +459,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived classrooms cannot be configured. Restore them first."
-            )
+            raise ConflictException("Archived classrooms cannot be configured. Restore them first.")
 
         classroom.next_class_id = None
         classroom.is_terminal = False
@@ -503,13 +487,11 @@ class ClassRoomService:
                 "This class still has active students. Move or resolve all students before deactivating the class."
             )
 
-        suspended_students = (
-            await ClassRoomRepository.count_assigned_students_by_status(
-                db,
-                tenant_id,
-                class_id,
-                AcademicStatus.SUSPENDED,
-            )
+        suspended_students = await ClassRoomRepository.count_assigned_students_by_status(
+            db,
+            tenant_id,
+            class_id,
+            AcademicStatus.SUSPENDED,
         )
         if suspended_students > 0:
             raise ConflictException(
@@ -564,9 +546,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived records cannot be deactivated. Restore them first."
-            )
+            raise ConflictException("Archived records cannot be deactivated. Restore them first.")
         if not classroom.is_active:
             return ClassRoomResponse.model_validate(classroom)
 
@@ -637,9 +617,7 @@ class ClassRoomService:
         if classroom is None:
             raise NotFoundException("Classroom not found")
         if classroom.archived_at is not None:
-            raise ConflictException(
-                "Archived classrooms must be restored before activation."
-            )
+            raise ConflictException("Archived classrooms must be restored before activation.")
 
         await ClassRoomService._validate_teacher_assignment(
             db=db,

@@ -86,9 +86,7 @@ class AuthSessionService:
     def _session_lifetime(*, remember_me: bool) -> timedelta:
         return timedelta(
             days=(
-                settings.REMEMBER_ME_SESSION_DAYS
-                if remember_me
-                else settings.DEFAULT_SESSION_DAYS
+                settings.REMEMBER_ME_SESSION_DAYS if remember_me else settings.DEFAULT_SESSION_DAYS
             )
         )
 
@@ -261,8 +259,7 @@ class AuthSessionService:
                 }
                 or not membership.parent_account.is_active
                 or not membership.parent_account.is_verified
-                or membership.parent_account.account_status
-                != ParentAccountStatus.ACTIVE
+                or membership.parent_account.account_status != ParentAccountStatus.ACTIVE
             ):
                 raise UnauthorizedException("Parent membership is not active.")
             return {
@@ -286,8 +283,7 @@ class AuthSessionService:
                 or membership.status != TeacherMembershipStatus.ACTIVE
                 or not membership.teacher_account.is_active
                 or not membership.teacher_account.is_verified
-                or membership.teacher_account.account_status
-                != TeacherAccountStatus.ACTIVE
+                or membership.teacher_account.account_status != TeacherAccountStatus.ACTIVE
             ):
                 raise UnauthorizedException("Teacher membership is not active.")
             return {

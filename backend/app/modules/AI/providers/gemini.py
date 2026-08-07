@@ -44,9 +44,7 @@ class GeminiProvider(BaseLLMProvider):
         contents = [
             types.Content(
                 role="model" if message.get("role") == "assistant" else "user",
-                parts=[
-                    types.Part.from_text(text=text_from_content(message.get("content")))
-                ],
+                parts=[types.Part.from_text(text=text_from_content(message.get("content")))],
             )
             for message in messages
             if message.get("role") in {"user", "assistant"}

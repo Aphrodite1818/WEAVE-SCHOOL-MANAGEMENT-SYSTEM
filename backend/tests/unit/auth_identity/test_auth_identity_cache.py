@@ -75,9 +75,7 @@ async def test_resolve_identifier_caches_positive_database_result() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_identifier_returns_valid_cached_result_without_database() -> (
-    None
-):
+async def test_resolve_identifier_returns_valid_cached_result_without_database() -> None:
     payload = {
         "found": True,
         "actor_type": ActorType.TEACHER.value,
@@ -218,9 +216,7 @@ async def test_create_invalidates_negative_identifier_cache() -> None:
     )
 
     with (
-        patch.object(
-            AuthIdentityService, "ensure_identifier_available", new=AsyncMock()
-        ),
+        patch.object(AuthIdentityService, "ensure_identifier_available", new=AsyncMock()),
         patch(
             "app.modules.auth_identity.service.AuthIdentityRepository.get_by_actor",
             new=AsyncMock(return_value=None),
@@ -238,9 +234,7 @@ async def test_create_invalidates_negative_identifier_cache() -> None:
             return_value=object(),
         ),
     ):
-        await AuthIdentityService.create_for_actor(
-            db, tenant_id=TENANT_ID, payload=payload
-        )
+        await AuthIdentityService.create_for_actor(db, tenant_id=TENANT_ID, payload=payload)
         delete_many.assert_not_awaited()
         await AuthIdentityService.invalidate_after_commit(db)
 
@@ -258,9 +252,7 @@ async def test_update_invalidates_old_positive_and_new_negative_keys() -> None:
             "app.modules.auth_identity.service.AuthIdentityRepository.get_by_actor",
             new=AsyncMock(return_value=identity),
         ),
-        patch.object(
-            AuthIdentityService, "ensure_identifier_available", new=AsyncMock()
-        ),
+        patch.object(AuthIdentityService, "ensure_identifier_available", new=AsyncMock()),
         patch(
             "app.modules.auth_identity.service.AuthIdentityRepository.save",
             new=AsyncMock(return_value=identity),
@@ -290,9 +282,7 @@ async def test_update_invalidates_old_positive_and_new_negative_keys() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ensure_for_actor_refreshes_reactivated_identity_before_response() -> (
-    None
-):
+async def test_ensure_for_actor_refreshes_reactivated_identity_before_response() -> None:
     db = AsyncMock()
     identity = _identity(is_active=False)
     identity.actor_type = ActorType.STUDENT

@@ -45,24 +45,16 @@ class SchoolCalendarConfiguration(BaseModel):
         default="Africa/Lagos",
         server_default="Africa/Lagos",
     )
-    instructional_weekdays: Mapped[list[int]] = mapped_column(
-        ARRAY(Integer), nullable=False
-    )
-    default_open_time: Mapped[time | None] = mapped_column(
-        Time(timezone=False), nullable=True
-    )
-    default_close_time: Mapped[time | None] = mapped_column(
-        Time(timezone=False), nullable=True
-    )
+    instructional_weekdays: Mapped[list[int]] = mapped_column(ARRAY(Integer), nullable=False)
+    default_open_time: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
+    default_close_time: Mapped[time | None] = mapped_column(Time(timezone=False), nullable=True)
     default_student_attendance_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
     default_workforce_attendance_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
-    revision: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1"
-    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     __table_args__ = (
         UniqueConstraint("tenant_id", name="uq_school_calendar_configurations_tenant"),
@@ -107,29 +99,21 @@ class SchoolCalendar(BaseModel):
         default=SchoolCalendarStatus.DRAFT,
         server_default=SchoolCalendarStatus.DRAFT.value,
     )
-    generated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     generated_from_configuration_revision: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
-    activated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "academic_term_id", name="uq_school_calendars_tenant_term"
-        ),
+        UniqueConstraint("tenant_id", "academic_term_id", name="uq_school_calendars_tenant_term"),
         Index("ix_school_calendars_tenant_status", "tenant_id", "status"),
         Index(
             "uq_school_calendars_active_term",
@@ -301,12 +285,8 @@ class SchoolCalendarEvent(BaseModel):
     created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
-    published_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    cancelled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index(
@@ -315,9 +295,7 @@ class SchoolCalendarEvent(BaseModel):
             "status",
             "starts_at",
         ),
-        CheckConstraint(
-            "ends_at > starts_at", name="ck_school_calendar_events_ends_after_start"
-        ),
+        CheckConstraint("ends_at > starts_at", name="ck_school_calendar_events_ends_after_start"),
         CheckConstraint(
             "status <> 'published' OR published_at IS NOT NULL",
             name="ck_school_calendar_events_published_at",
@@ -350,7 +328,5 @@ class SchoolCalendarLifecycleAudit(BaseModel):
             "entity_type",
             "entity_id",
         ),
-        Index(
-            "ix_school_calendar_lifecycle_audits_tenant_action", "tenant_id", "action"
-        ),
+        Index("ix_school_calendar_lifecycle_audits_tenant_action", "tenant_id", "action"),
     )

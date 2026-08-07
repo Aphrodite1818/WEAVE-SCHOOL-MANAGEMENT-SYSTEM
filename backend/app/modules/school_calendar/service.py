@@ -152,9 +152,9 @@ class SchoolCalendarService:
             entity_id=config.id,
             action="created",
             previous_state=None,
-            new_state=SchoolCalendarConfigurationResponse.model_validate(
-                config
-            ).model_dump(mode="json"),
+            new_state=SchoolCalendarConfigurationResponse.model_validate(config).model_dump(
+                mode="json"
+            ),
             acting_admin_id=acting_admin_id,
         )
         await db.commit()
@@ -172,8 +172,7 @@ class SchoolCalendarService:
         if config is None:
             create_payload = SchoolCalendarConfigurationCreate(
                 timezone=payload.timezone or "Africa/Lagos",
-                instructional_weekdays=payload.instructional_weekdays
-                or [0, 1, 2, 3, 4],
+                instructional_weekdays=payload.instructional_weekdays or [0, 1, 2, 3, 4],
                 default_open_time=payload.default_open_time,
                 default_close_time=payload.default_close_time,
                 default_student_attendance_required=(
@@ -193,9 +192,9 @@ class SchoolCalendarService:
                 payload=create_payload,
                 acting_admin_id=acting_admin_id,
             )
-        previous = SchoolCalendarConfigurationResponse.model_validate(
-            config
-        ).model_dump(mode="json")
+        previous = SchoolCalendarConfigurationResponse.model_validate(config).model_dump(
+            mode="json"
+        )
         before_revision_values = _configuration_values(config)
         update_data = payload.model_dump(exclude_unset=True)
         changed = False
@@ -218,9 +217,9 @@ class SchoolCalendarService:
             entity_id=config.id,
             action="updated",
             previous_state=previous,
-            new_state=SchoolCalendarConfigurationResponse.model_validate(
-                config
-            ).model_dump(mode="json"),
+            new_state=SchoolCalendarConfigurationResponse.model_validate(config).model_dump(
+                mode="json"
+            ),
             acting_admin_id=acting_admin_id,
         )
         await db.commit()
@@ -299,10 +298,7 @@ class SchoolCalendarService:
             limit=limit,
         )
         return SchoolCalendarListResponse(
-            items=[
-                await SchoolCalendarService.build_calendar_response(db, row)
-                for row in rows
-            ],
+            items=[await SchoolCalendarService.build_calendar_response(db, row) for row in rows],
             total=total,
         )
 
@@ -310,9 +306,7 @@ class SchoolCalendarService:
     async def get_calendar(
         db: AsyncSession, tenant_id: uuid.UUID, calendar_id: uuid.UUID
     ) -> SchoolCalendarResponse:
-        calendar = await SchoolCalendarRepository.get_calendar_by_id(
-            db, tenant_id, calendar_id
-        )
+        calendar = await SchoolCalendarRepository.get_calendar_by_id(db, tenant_id, calendar_id)
         if calendar is None:
             raise NotFoundException("School calendar not found.")
         return await SchoolCalendarService.build_calendar_response(db, calendar)
@@ -323,9 +317,7 @@ class SchoolCalendarService:
         tenant_id: uuid.UUID,
         calendar_id: uuid.UUID,
     ) -> SchoolCalendarDependencyPreview:
-        calendar = await SchoolCalendarRepository.get_calendar_by_id(
-            db, tenant_id, calendar_id
-        )
+        calendar = await SchoolCalendarRepository.get_calendar_by_id(db, tenant_id, calendar_id)
         if calendar is None:
             raise NotFoundException("School calendar not found.")
         session = await StudentAcademicRepository.get_academic_session_by_id(
@@ -336,9 +328,7 @@ class SchoolCalendarService:
         )
         config = await SchoolCalendarRepository.get_configuration(db, tenant_id)
         counts = {
-            "days": await SchoolCalendarRepository.count_days(
-                db, tenant_id, calendar.id
-            ),
+            "days": await SchoolCalendarRepository.count_days(db, tenant_id, calendar.id),
             "unresolved_days": await SchoolCalendarRepository.count_unresolved_days(
                 db, tenant_id, calendar.id
             ),
@@ -381,23 +371,19 @@ class SchoolCalendarService:
             if term.start_date is None or term.end_date is None:
                 block("TERM_DATES_INCOMPLETE", "Academic term dates are incomplete.")
             else:
-                counts["missing_dates"] = (
-                    await SchoolCalendarRepository.count_missing_dates(
-                        db,
-                        tenant_id,
-                        calendar.id,
-                        start_date=term.start_date,
-                        end_date=term.end_date,
-                    )
+                counts["missing_dates"] = await SchoolCalendarRepository.count_missing_dates(
+                    db,
+                    tenant_id,
+                    calendar.id,
+                    start_date=term.start_date,
+                    end_date=term.end_date,
                 )
-                counts["extra_dates"] = (
-                    await SchoolCalendarRepository.count_extra_dates(
-                        db,
-                        tenant_id,
-                        calendar.id,
-                        start_date=term.start_date,
-                        end_date=term.end_date,
-                    )
+                counts["extra_dates"] = await SchoolCalendarRepository.count_extra_dates(
+                    db,
+                    tenant_id,
+                    calendar.id,
+                    start_date=term.start_date,
+                    end_date=term.end_date,
                 )
                 if counts["missing_dates"]:
                     block(
@@ -418,9 +404,7 @@ class SchoolCalendarService:
         if counts["duplicate_dates"]:
             block("DUPLICATE_DATES", "Calendar contains duplicate dates.")
         if counts["invalid_days"]:
-            block(
-                "INVALID_DAYS", "Calendar contains invalid operational flags or hours."
-            )
+            block("INVALID_DAYS", "Calendar contains invalid operational flags or hours.")
         can_activate = calendar.status == SchoolCalendarStatus.DRAFT and not blockers
         can_archive = calendar.status == SchoolCalendarStatus.ACTIVE and (
             term is not None
@@ -440,8 +424,7 @@ class SchoolCalendarService:
             blocker_codes=blocker_codes,
             can_activate=can_activate,
             can_archive=can_archive,
-            can_edit=calendar.status
-            in {SchoolCalendarStatus.DRAFT, SchoolCalendarStatus.ACTIVE},
+            can_edit=calendar.status in {SchoolCalendarStatus.DRAFT, SchoolCalendarStatus.ACTIVE},
             can_regenerate=calendar.status == SchoolCalendarStatus.DRAFT,
             missing_dates=counts["missing_dates"],
             extra_dates=counts["extra_dates"],
@@ -457,9 +440,7 @@ class SchoolCalendarService:
         tenant_id: uuid.UUID,
         term_id: uuid.UUID,
     ) -> LifecycleReadinessContribution:
-        calendar = await SchoolCalendarRepository.get_calendar_by_term(
-            db, tenant_id, term_id
-        )
+        calendar = await SchoolCalendarRepository.get_calendar_by_term(db, tenant_id, term_id)
         blockers: list[str] = []
         counts: dict[str, int] = {
             "calendar_days": 0,
@@ -475,12 +456,8 @@ class SchoolCalendarService:
             db, tenant_id, calendar.id
         )
         counts["calendar_days"] = preview.dependency_counts.get("days", 0)
-        counts["missing_calendar_dates"] = preview.dependency_counts.get(
-            "missing_dates", 0
-        )
-        counts["unresolved_calendar_days"] = preview.dependency_counts.get(
-            "unresolved_days", 0
-        )
+        counts["missing_calendar_dates"] = preview.dependency_counts.get("missing_dates", 0)
+        counts["unresolved_calendar_days"] = preview.dependency_counts.get("unresolved_days", 0)
         if calendar.status != SchoolCalendarStatus.ACTIVE:
             blockers.append("The term calendar must be active.")
         blockers.extend(preview.blocker_messages)
@@ -497,9 +474,7 @@ class SchoolCalendarService:
         tenant_id: uuid.UUID,
         term_id: uuid.UUID,
     ) -> LifecycleReadinessContribution:
-        calendar = await SchoolCalendarRepository.get_calendar_by_term(
-            db, tenant_id, term_id
-        )
+        calendar = await SchoolCalendarRepository.get_calendar_by_term(db, tenant_id, term_id)
         blockers: list[str] = []
         counts = {"missing_calendar_dates": 0, "unresolved_calendar_days": 0}
         if calendar is None:
@@ -510,12 +485,8 @@ class SchoolCalendarService:
         preview = await SchoolCalendarService.calendar_dependency_preview(
             db, tenant_id, calendar.id
         )
-        counts["missing_calendar_dates"] = preview.dependency_counts.get(
-            "missing_dates", 0
-        )
-        counts["unresolved_calendar_days"] = preview.dependency_counts.get(
-            "unresolved_days", 0
-        )
+        counts["missing_calendar_dates"] = preview.dependency_counts.get("missing_dates", 0)
+        counts["unresolved_calendar_days"] = preview.dependency_counts.get("unresolved_days", 0)
         if counts["missing_calendar_dates"]:
             blockers.append("Calendar coverage is incomplete.")
         if counts["unresolved_calendar_days"]:
@@ -532,9 +503,7 @@ class SchoolCalendarService:
         calendar_id: uuid.UUID,
         acting_admin_id: uuid.UUID,
     ) -> SchoolCalendarResponse:
-        calendar = await SchoolCalendarRepository.lock_calendar(
-            db, tenant_id, calendar_id
-        )
+        calendar = await SchoolCalendarRepository.lock_calendar(db, tenant_id, calendar_id)
         if calendar is None:
             raise NotFoundException("School calendar not found.")
         if calendar.status == SchoolCalendarStatus.ACTIVE:
@@ -575,9 +544,7 @@ class SchoolCalendarService:
         payload: SchoolCalendarArchiveRequest,
         acting_admin_id: uuid.UUID,
     ) -> SchoolCalendarResponse:
-        calendar = await SchoolCalendarRepository.lock_calendar(
-            db, tenant_id, calendar_id
-        )
+        calendar = await SchoolCalendarRepository.lock_calendar(db, tenant_id, calendar_id)
         if calendar is None:
             raise NotFoundException("School calendar not found.")
         if calendar.status == SchoolCalendarStatus.ARCHIVED:
@@ -739,12 +706,8 @@ class SchoolCalendarService:
             limit=limit,
         )
         return SchoolCalendarUpcomingResponse(
-            days=[
-                SchoolCalendarDayResponse.model_validate(day) for day in notable_days
-            ],
-            events=[
-                SchoolCalendarEventResponse.model_validate(event) for event in events
-            ],
+            days=[SchoolCalendarDayResponse.model_validate(day) for day in notable_days],
+            events=[SchoolCalendarEventResponse.model_validate(event) for event in events],
             total_days=len(notable_days),
             total_events=len(events),
         )
@@ -812,18 +775,14 @@ class SchoolCalendarService:
         if calendar_date < today and (
             not payload.historical_correction_confirmed or not payload.reason
         ):
-            raise ConflictException(
-                "Past calendar corrections require confirmation and a reason."
-            )
+            raise ConflictException("Past calendar corrections require confirmation and a reason.")
         if (
             calendar.status == SchoolCalendarStatus.ACTIVE
             and calendar_date >= today
             and significant_fields.intersection(payload.model_fields_set)
             and not payload.reason
         ):
-            raise ConflictException(
-                "Active calendar operational changes require a reason."
-            )
+            raise ConflictException("Active calendar operational changes require a reason.")
         previous = SchoolCalendarDayResponse.model_validate(day).model_dump(mode="json")
         SchoolCalendarService._apply_day_update(day, payload, acting_admin_id)
         day = await SchoolCalendarRepository.update_day(db, day)
@@ -834,9 +793,7 @@ class SchoolCalendarService:
             entity_id=day.id,
             action="updated",
             previous_state=previous,
-            new_state=SchoolCalendarDayResponse.model_validate(day).model_dump(
-                mode="json"
-            ),
+            new_state=SchoolCalendarDayResponse.model_validate(day).model_dump(mode="json"),
             acting_admin_id=acting_admin_id,
             reason=payload.reason,
         )
@@ -869,9 +826,7 @@ class SchoolCalendarService:
             raise NotFoundException("No calendar days were found for this range.")
         expected_days = (payload.end_date - payload.start_date).days + 1
         if len({day.calendar_date for day in days}) != expected_days:
-            raise ConflictException(
-                "Calendar coverage is incomplete for this date range."
-            )
+            raise ConflictException("Calendar coverage is incomplete for this date range.")
         if len({day.calendar_id for day in days}) != 1:
             raise ConflictException(
                 "Date range spans multiple calendars. Select a range within one active calendar."
@@ -936,13 +891,9 @@ class SchoolCalendarService:
             payload.end_date,
         )
         if start_calendar is None or end_calendar is None:
-            raise NotFoundException(
-                "No active school calendar covers this closure range."
-            )
+            raise NotFoundException("No active school calendar covers this closure range.")
         if start_calendar.id != end_calendar.id:
-            raise ConflictException(
-                "Emergency closure must stay within one active calendar."
-            )
+            raise ConflictException("Emergency closure must stay within one active calendar.")
         if selected_calendar is not None and selected_calendar.id != start_calendar.id:
             raise ConflictException(
                 "Emergency closure dates must belong to the selected active calendar."
@@ -1042,9 +993,7 @@ class SchoolCalendarService:
         event_id: uuid.UUID,
         payload: SchoolCalendarEventUpdate,
     ) -> SchoolCalendarEventResponse:
-        event = await SchoolCalendarRepository.get_event_by_id(
-            db, tenant_id, event_id, lock=True
-        )
+        event = await SchoolCalendarRepository.get_event_by_id(db, tenant_id, event_id, lock=True)
         if event is None:
             raise NotFoundException("Calendar event not found.")
         if event.status == SchoolCalendarEventStatus.CANCELLED:
@@ -1070,9 +1019,7 @@ class SchoolCalendarService:
         acting_admin_id: uuid.UUID,
     ) -> SchoolCalendarEventResponse:
         _ = payload.confirmation
-        event = await SchoolCalendarRepository.get_event_by_id(
-            db, tenant_id, event_id, lock=True
-        )
+        event = await SchoolCalendarRepository.get_event_by_id(db, tenant_id, event_id, lock=True)
         if event is None:
             raise NotFoundException("Calendar event not found.")
         if event.status == SchoolCalendarEventStatus.PUBLISHED:
@@ -1103,9 +1050,7 @@ class SchoolCalendarService:
         acting_admin_id: uuid.UUID,
     ) -> SchoolCalendarEventResponse:
         _ = payload.confirmation
-        event = await SchoolCalendarRepository.get_event_by_id(
-            db, tenant_id, event_id, lock=True
-        )
+        event = await SchoolCalendarRepository.get_event_by_id(db, tenant_id, event_id, lock=True)
         if event is None:
             raise NotFoundException("Calendar event not found.")
         if event.status == SchoolCalendarEventStatus.CANCELLED:

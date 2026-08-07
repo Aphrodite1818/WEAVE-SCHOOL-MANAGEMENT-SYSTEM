@@ -95,9 +95,7 @@ def create_xlsx_template(
     for note in template_definition.notes:
         instructions_sheet.append([note])
     instructions_sheet.append([""])
-    instructions_sheet.append(
-        ["Column", "Required", "Example", "Accepted values", "Description"]
-    )
+    instructions_sheet.append(["Column", "Required", "Example", "Accepted values", "Description"])
     header_row_number = instructions_sheet.max_row
     for cell in instructions_sheet[header_row_number]:
         cell.font = Font(bold=True)

@@ -19,15 +19,7 @@ CURRENT_LEGAL_POLICY_VERSION = "weave-legal-compliance-v1"
 
 
 def _actor_compliance_identity(
-    actor: (
-        SuperAdmin
-        | TenantAdmin
-        | Teacher
-        | Parent
-        | Student
-        | TeacherAccount
-        | ParentAccount
-    ),
+    actor: (SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount),
 ) -> tuple[str, uuid.UUID, uuid.UUID | None]:
     if isinstance(actor, SuperAdmin):
         return "superadmin", actor.id, None
@@ -61,8 +53,7 @@ class LegalComplianceService:
             .where(
                 LegalComplianceAcceptance.actor_type == actor_type,
                 LegalComplianceAcceptance.actor_id == actor_id,
-                LegalComplianceAcceptance.policy_version
-                == CURRENT_LEGAL_POLICY_VERSION,
+                LegalComplianceAcceptance.policy_version == CURRENT_LEGAL_POLICY_VERSION,
             )
             .order_by(LegalComplianceAcceptance.accepted_at.desc())
         )
@@ -77,13 +68,7 @@ class LegalComplianceService:
     async def get_status(
         db: AsyncSession,
         actor: (
-            SuperAdmin
-            | TenantAdmin
-            | Teacher
-            | Parent
-            | Student
-            | TeacherAccount
-            | ParentAccount
+            SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount
         ),
     ) -> dict[str, object]:
         actor_type, actor_id, _ = _actor_compliance_identity(actor)
@@ -97,13 +82,7 @@ class LegalComplianceService:
     async def accept(
         db: AsyncSession,
         actor: (
-            SuperAdmin
-            | TenantAdmin
-            | Teacher
-            | Parent
-            | Student
-            | TeacherAccount
-            | ParentAccount
+            SuperAdmin | TenantAdmin | Teacher | Parent | Student | TeacherAccount | ParentAccount
         ),
     ) -> dict[str, object]:
         status = await LegalComplianceService.get_status(db, actor)

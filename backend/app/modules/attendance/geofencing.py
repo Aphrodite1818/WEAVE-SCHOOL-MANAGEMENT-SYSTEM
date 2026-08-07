@@ -39,9 +39,9 @@ class GeofenceEvaluationResult:
 
 
 def _valid_coordinate(latitude: Decimal, longitude: Decimal) -> bool:
-    return Decimal("-90") <= latitude <= Decimal("90") and Decimal(
-        "-180"
-    ) <= longitude <= Decimal("180")
+    return Decimal("-90") <= latitude <= Decimal("90") and Decimal("-180") <= longitude <= Decimal(
+        "180"
+    )
 
 
 def haversine_distance_m(

@@ -19,9 +19,7 @@ router = APIRouter(
     prefix="/tenant-admin/setup-assistant",
     tags=["Tenant Admin Setup Assistant"],
 )
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 
 
 class SetupAssistantRemoveClassRequest(BaseModel):

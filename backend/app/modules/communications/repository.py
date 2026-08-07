@@ -84,9 +84,7 @@ class CommunicationRepository:
                     ConversationParticipant.tenant_id == tenant_id,
                 )
             )
-        total = (
-            await db.execute(select(func.count()).select_from(base.subquery()))
-        ).scalar_one()
+        total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
         rows = (
             (
                 await db.execute(
@@ -173,9 +171,7 @@ class CommunicationRepository:
         if source_type:
             filters.append(NotificationDelivery.source_type == source_type)
         stmt = select(NotificationDelivery).where(and_(*filters))
-        total = (
-            await db.execute(select(func.count()).select_from(stmt.subquery()))
-        ).scalar_one()
+        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
         unread = (
             await db.execute(
                 select(func.count())
@@ -219,9 +215,7 @@ class CommunicationRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_announcement(
-        db: AsyncSession, announcement_id: uuid.UUID
-    ) -> Announcement | None:
+    async def get_announcement(db: AsyncSession, announcement_id: uuid.UUID) -> Announcement | None:
         return (
             (
                 await db.execute(

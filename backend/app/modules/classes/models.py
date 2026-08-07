@@ -107,14 +107,10 @@ class ClassRoom(BaseModel):
             "archived_at IS NULL OR is_active = false",
             name="ck_classes_archived_requires_inactive",
         ),
-        Index(
-            "ix_classes_tenant_teacher_membership", "tenant_id", "teacher_membership_id"
-        ),
+        Index("ix_classes_tenant_teacher_membership", "tenant_id", "teacher_membership_id"),
         Index("ix_classes_tenant_active", "tenant_id", "is_active"),
         Index("ix_classes_tenant_next_class", "tenant_id", "next_class_id"),
-        Index(
-            "ix_classes_tenant_terminal_active", "tenant_id", "is_terminal", "is_active"
-        ),
+        Index("ix_classes_tenant_terminal_active", "tenant_id", "is_terminal", "is_active"),
         Index(
             "ix_classes_tenant_archived",
             "tenant_id",
@@ -123,9 +119,7 @@ class ClassRoom(BaseModel):
     )
 
 
-def _populate_classroom_normalized_fields(
-    _: object, __: object, target: ClassRoom
-) -> None:
+def _populate_classroom_normalized_fields(_: object, __: object, target: ClassRoom) -> None:
     normalized_name = normalized_class_name_key(target.name)
     if normalized_name is None:
         return

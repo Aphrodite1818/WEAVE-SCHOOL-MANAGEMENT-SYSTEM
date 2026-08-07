@@ -102,9 +102,7 @@ class SchoolCalendarRepository:
         if status is not None:
             filters.append(SchoolCalendar.status == status)
         total = (
-            await db.execute(
-                select(func.count()).select_from(SchoolCalendar).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(SchoolCalendar).where(*filters))
         ).scalar_one()
         rows = (
             (
@@ -161,9 +159,7 @@ class SchoolCalendarRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def save_calendar(
-        db: AsyncSession, calendar: SchoolCalendar
-    ) -> SchoolCalendar:
+    async def save_calendar(db: AsyncSession, calendar: SchoolCalendar) -> SchoolCalendar:
         return await SchoolCalendarRepository._save(db, calendar)
 
     @staticmethod
@@ -212,9 +208,7 @@ class SchoolCalendarRepository:
             filters.append(SchoolCalendarDay.calendar_id == calendar_id)
         query = select(SchoolCalendarDay)
         if active_only:
-            query = query.join(
-                SchoolCalendar, SchoolCalendar.id == SchoolCalendarDay.calendar_id
-            )
+            query = query.join(SchoolCalendar, SchoolCalendar.id == SchoolCalendarDay.calendar_id)
             filters.extend(
                 [
                     SchoolCalendar.tenant_id == tenant_id,
@@ -236,9 +230,7 @@ class SchoolCalendarRepository:
         return (
             await db.execute(
                 select(SchoolCalendarDay)
-                .join(
-                    SchoolCalendar, SchoolCalendar.id == SchoolCalendarDay.calendar_id
-                )
+                .join(SchoolCalendar, SchoolCalendar.id == SchoolCalendarDay.calendar_id)
                 .where(
                     SchoolCalendarDay.tenant_id == tenant_id,
                     SchoolCalendar.tenant_id == tenant_id,
@@ -252,9 +244,7 @@ class SchoolCalendarRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def count_days(
-        db: AsyncSession, tenant_id: uuid.UUID, calendar_id: uuid.UUID
-    ) -> int:
+    async def count_days(db: AsyncSession, tenant_id: uuid.UUID, calendar_id: uuid.UUID) -> int:
         return int(
             (
                 await db.execute(
@@ -299,9 +289,7 @@ class SchoolCalendarRepository:
         existing = int(
             (
                 await db.execute(
-                    select(
-                        func.count(func.distinct(SchoolCalendarDay.calendar_date))
-                    ).where(
+                    select(func.count(func.distinct(SchoolCalendarDay.calendar_date))).where(
                         SchoolCalendarDay.tenant_id == tenant_id,
                         SchoolCalendarDay.calendar_id == calendar_id,
                         SchoolCalendarDay.calendar_date >= start_date,
@@ -353,9 +341,7 @@ class SchoolCalendarRepository:
             .subquery()
         )
         return int(
-            (
-                await db.execute(select(func.count()).select_from(duplicate_groups))
-            ).scalar_one()
+            (await db.execute(select(func.count()).select_from(duplicate_groups))).scalar_one()
         )
 
     @staticmethod
@@ -380,10 +366,7 @@ class SchoolCalendarRepository:
                             )
                             | (
                                 SchoolCalendarDay.school_open.is_(True)
-                                & (
-                                    SchoolCalendarDay.closes_at
-                                    <= SchoolCalendarDay.opens_at
-                                )
+                                & (SchoolCalendarDay.closes_at <= SchoolCalendarDay.opens_at)
                             )
                             | (
                                 SchoolCalendarDay.student_attendance_required.is_(True)
@@ -427,9 +410,7 @@ class SchoolCalendarRepository:
         return int(result.rowcount or 0)
 
     @staticmethod
-    async def create_event(
-        db: AsyncSession, event: SchoolCalendarEvent
-    ) -> SchoolCalendarEvent:
+    async def create_event(db: AsyncSession, event: SchoolCalendarEvent) -> SchoolCalendarEvent:
         return await SchoolCalendarRepository._save(db, event)
 
     @staticmethod
@@ -473,9 +454,7 @@ class SchoolCalendarRepository:
         if audience:
             filters.append(SchoolCalendarEvent.audience.in_(audience))
         total = (
-            await db.execute(
-                select(func.count()).select_from(SchoolCalendarEvent).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(SchoolCalendarEvent).where(*filters))
         ).scalar_one()
         rows = (
             (
@@ -493,9 +472,7 @@ class SchoolCalendarRepository:
         return list(rows), int(total)
 
     @staticmethod
-    async def update_event(
-        db: AsyncSession, event: SchoolCalendarEvent
-    ) -> SchoolCalendarEvent:
+    async def update_event(db: AsyncSession, event: SchoolCalendarEvent) -> SchoolCalendarEvent:
         return await SchoolCalendarRepository._save(db, event)
 
     @staticmethod

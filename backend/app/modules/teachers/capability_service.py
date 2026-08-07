@@ -100,9 +100,7 @@ class TeacherSubjectCapabilityService:
                 subject_id,
             )
             if subject is None or not subject.is_active:
-                raise NotFoundException(
-                    f"Subject {subject_id} was not found or is inactive."
-                )
+                raise NotFoundException(f"Subject {subject_id} was not found or is inactive.")
 
         existing_links = await TeacherMembershipSubjectRepository.list_for_membership(
             db,

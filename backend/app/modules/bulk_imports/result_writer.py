@@ -19,9 +19,7 @@ from openpyxl.utils import get_column_letter
 
 from app.modules.bulk_imports.models import ImportResourceType
 
-SPREADSHEET_CONTENT_TYPE = (
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+SPREADSHEET_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 HTML_CONTENT_TYPE = "text/html; charset=utf-8"
 FORMULA_PREFIXES = ("=", "+", "-", "@")
 
@@ -97,9 +95,7 @@ def write_csv_bytes(
     writer.writeheader()
 
     for row in rows:
-        writer.writerow(
-            {header: convert_value_for_csv(row.get(header)) for header in headers}
-        )
+        writer.writerow({header: convert_value_for_csv(row.get(header)) for header in headers})
 
     return output.getvalue().encode("utf-8-sig")
 
@@ -249,7 +245,8 @@ def create_student_access_slip_report(
     safe_school_name = html.escape(school_name or "School")
 
     if slip_rows:
-        slip_markup = "\n".join(f"""
+        slip_markup = "\n".join(
+            f"""
             <article class="slip">
               <header class="slip-header">
                 <div>
@@ -269,7 +266,9 @@ def create_student_access_slip_report(
               </table>
               <p class="note">Give this slip only to the student or guardian. The student must change their password after first login.</p>
             </article>
-            """ for row in slip_rows)
+            """
+            for row in slip_rows
+        )
     else:
         slip_markup = """
         <section class="empty-state">

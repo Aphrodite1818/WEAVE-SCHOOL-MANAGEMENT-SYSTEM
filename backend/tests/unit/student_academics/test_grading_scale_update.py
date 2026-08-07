@@ -81,9 +81,7 @@ async def test_update_grading_scale_applies_explicit_scores() -> None:
             db=db,
             tenant_id=tenant_id,
             scale_id=scale.id,
-            payload=GradingScaleUpdate(
-                min_score=Decimal("75"), max_score=Decimal("95")
-            ),
+            payload=GradingScaleUpdate(min_score=Decimal("75"), max_score=Decimal("95")),
         )
 
     assert updated.min_score == Decimal("75")
@@ -105,7 +103,5 @@ async def test_update_grading_scale_rejects_invalid_effective_range() -> None:
                 db=db,
                 tenant_id=tenant_id,
                 scale_id=scale.id,
-                payload=GradingScaleUpdate(
-                    min_score=Decimal("95"), max_score=Decimal("90")
-                ),
+                payload=GradingScaleUpdate(min_score=Decimal("95"), max_score=Decimal("90")),
             )

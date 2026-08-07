@@ -661,12 +661,10 @@ async def reassign_teacher_assignment(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherAssignmentResponse:
-    active = (
-        await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
-            db,
-            current_admin.tenant_id,
-            class_subject_id,
-        )
+    active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+        db,
+        current_admin.tenant_id,
+        class_subject_id,
     )
     if active is None:
         raise NotFoundException("Active teacher assignment not found.")
@@ -829,9 +827,7 @@ async def list_my_assignment_students(
         or assignment.teacher_membership_id != current_teacher.id
         or not assignment.is_active
     ):
-        raise ForbiddenException(
-            "You may view students only for your active assignments."
-        )
+        raise ForbiddenException("You may view students only for your active assignments.")
     class_subject = await StudentAcademicRepository.get_class_subject_by_id(
         db,
         current_teacher.tenant_id,

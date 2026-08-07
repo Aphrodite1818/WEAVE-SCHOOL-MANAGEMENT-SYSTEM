@@ -138,9 +138,7 @@ def create_access_token(
     expire = datetime.now(timezone.utc) + (
         expires_delta
         or timedelta(
-            minutes=(
-                60 if settings.ENV == "dev" else settings.ACCESS_TOKEN_EXPIRE_MINUTES
-            )
+            minutes=(60 if settings.ENV == "dev" else settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
     )
 

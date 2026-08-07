@@ -46,9 +46,7 @@ class CacheManager:
                 return None
             return loads(cached_value)
         except Exception:
-            logger.exception(
-                "Failed to read JSON cache value", extra={"cache_key": key}
-            )
+            logger.exception("Failed to read JSON cache value", extra={"cache_key": key})
             return None
 
     @staticmethod
@@ -66,9 +64,7 @@ class CacheManager:
             await redis.set(key, dumps(value), ex=ttl)
             return True
         except Exception:
-            logger.exception(
-                "Failed to write JSON cache value", extra={"cache_key": key}
-            )
+            logger.exception("Failed to write JSON cache value", extra={"cache_key": key})
             return False
 
     @staticmethod
@@ -160,9 +156,7 @@ class CacheManager:
         try:
             return bool(await redis.exists(key))
         except Exception:
-            logger.exception(
-                "Failed to check cache-key existence", extra={"cache_key": key}
-            )
+            logger.exception("Failed to check cache-key existence", extra={"cache_key": key})
             return False
 
     @classmethod

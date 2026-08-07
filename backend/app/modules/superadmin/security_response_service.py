@@ -94,8 +94,7 @@ class SecurityResponseService:
                 SecurityIPBlock.ip_address_hash == cls.hash_ip_address(ip_address),
                 SecurityIPBlock.is_active.is_(True),
                 SecurityIPBlock.unblocked_at.is_(None),
-                (SecurityIPBlock.expires_at.is_(None))
-                | (SecurityIPBlock.expires_at > now),
+                (SecurityIPBlock.expires_at.is_(None)) | (SecurityIPBlock.expires_at > now),
             )
             .order_by(SecurityIPBlock.blocked_at.desc())
             .limit(1)
@@ -103,9 +102,7 @@ class SecurityResponseService:
         return result.scalar_one_or_none()
 
     @classmethod
-    async def is_ip_blocked(
-        cls, db: AsyncSession, ip_address: str | None
-    ) -> dict[str, Any]:
+    async def is_ip_blocked(cls, db: AsyncSession, ip_address: str | None) -> dict[str, Any]:
         """Return active IP block state for middleware checks."""
 
         normalized_ip = cls.normalize_ip_address(ip_address)
@@ -120,17 +117,11 @@ class SecurityResponseService:
         block = await cls._active_block_for_ip(db, normalized_ip)
         state = {
             "blocked": block is not None,
-            "ip_label": (
-                block.ip_address_label if block else cls.mask_ip_address(normalized_ip)
-            ),
+            "ip_label": (block.ip_address_label if block else cls.mask_ip_address(normalized_ip)),
             "reason": block.reason if block else None,
-            "expires_at": (
-                block.expires_at.isoformat() if block and block.expires_at else None
-            ),
+            "expires_at": (block.expires_at.isoformat() if block and block.expires_at else None),
         }
-        await CacheManager.set_json(
-            cache_key, state, SECURITY_IP_BLOCK_CACHE_TTL_SECONDS
-        )
+        await CacheManager.set_json(cache_key, state, SECURITY_IP_BLOCK_CACHE_TTL_SECONDS)
         return state
 
     @classmethod
@@ -155,9 +146,7 @@ class SecurityResponseService:
             detail="Access from this network has been temporarily blocked for security reasons.",
             reason=str(state.get("reason") or "Manual IP block is active."),
             ip_label=str(state.get("ip_label") or "blocked-network"),
-            expires_at=(
-                str(state.get("expires_at")) if state.get("expires_at") else None
-            ),
+            expires_at=(str(state.get("expires_at")) if state.get("expires_at") else None),
         )
 
     @classmethod
@@ -170,11 +159,7 @@ class SecurityResponseService:
     ) -> list[SecurityIPBlock]:
         """List manual IP blocks."""
 
-        statement = (
-            select(SecurityIPBlock)
-            .order_by(SecurityIPBlock.blocked_at.desc())
-            .limit(limit)
-        )
+        statement = select(SecurityIPBlock).order_by(SecurityIPBlock.blocked_at.desc()).limit(limit)
         if not include_inactive:
             statement = statement.where(SecurityIPBlock.is_active.is_(True))
 
@@ -198,9 +183,7 @@ class SecurityResponseService:
 
         now = datetime.now(timezone.utc)
         expires_at = (
-            now + timedelta(hours=payload.duration_hours)
-            if payload.duration_hours
-            else None
+            now + timedelta(hours=payload.duration_hours) if payload.duration_hours else None
         )
         block = SecurityIPBlock(
             ip_address_hash=cls.hash_ip_address(normalized_ip),
@@ -235,9 +218,7 @@ class SecurityResponseService:
     ) -> SecurityIPBlock:
         """Disable a manual IP block rule."""
 
-        result = await db.execute(
-            select(SecurityIPBlock).where(SecurityIPBlock.id == block_id)
-        )
+        result = await db.execute(select(SecurityIPBlock).where(SecurityIPBlock.id == block_id))
         block = result.scalar_one_or_none()
         if block is None:
             raise NotFoundException("IP block not found")
@@ -250,9 +231,7 @@ class SecurityResponseService:
         db.add(block)
         await db.commit()
         await db.refresh(block)
-        await CacheManager.delete(
-            f"{SECURITY_IP_BLOCK_CACHE_PREFIX}:{block.ip_address_hash}"
-        )
+        await CacheManager.delete(f"{SECURITY_IP_BLOCK_CACHE_PREFIX}:{block.ip_address_hash}")
         return block
 
     @classmethod

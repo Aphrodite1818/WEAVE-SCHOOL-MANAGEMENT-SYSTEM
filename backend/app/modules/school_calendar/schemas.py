@@ -20,15 +20,11 @@ from app.modules.school_calendar.calendar_enums import (
 
 
 class CalendarInputBase(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid", str_strip_whitespace=True, use_enum_values=False
-    )
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, use_enum_values=False)
 
 
 class CalendarOutputBase(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True, use_enum_values=True, populate_by_name=True
-    )
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
 
 
 def _validate_weekdays(values: list[int]) -> list[int]:
@@ -159,17 +155,12 @@ class SchoolCalendarDayUpdate(CalendarInputBase):
             raise ValueError("at least one day field is required")
         if self.opens_at and self.closes_at and self.closes_at <= self.opens_at:
             raise ValueError("closes_at must be later than opens_at")
-        if (
-            self.student_attendance_required is True
-            and self.student_activity_allowed is False
-        ):
+        if self.student_attendance_required is True and self.student_activity_allowed is False:
             raise ValueError(
                 "student attendance cannot be required when student activity is disallowed"
             )
         if self.student_attendance_required is True and self.school_open is False:
-            raise ValueError(
-                "student attendance cannot be required when school is closed"
-            )
+            raise ValueError("student attendance cannot be required when school is closed")
         return self
 
 
@@ -199,9 +190,7 @@ class SchoolCalendarDateRangeUpdate(CalendarInputBase):
                 "student attendance cannot be required when student activity is disallowed"
             )
         if self.student_attendance_required and not self.school_open:
-            raise ValueError(
-                "student attendance cannot be required when school is closed"
-            )
+            raise ValueError("student attendance cannot be required when school is closed")
         return self
 
 

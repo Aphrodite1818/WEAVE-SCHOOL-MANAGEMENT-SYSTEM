@@ -20,9 +20,7 @@ from app.modules.communications.enums import (
 
 
 class InputBase(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid", str_strip_whitespace=True, use_enum_values=True
-    )
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, use_enum_values=True)
 
 
 class OutputBase(BaseModel):

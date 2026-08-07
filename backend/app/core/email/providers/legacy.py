@@ -228,10 +228,7 @@ class LegacyEmailProvider(EmailProviderAdapter):
             )
             return True
 
-        if (
-            isinstance(response_payload, dict)
-            and response_payload.get("success") is False
-        ):
+        if isinstance(response_payload, dict) and response_payload.get("success") is False:
             logger.warning(
                 "Apps Script rejected email delivery for recipient %s.",
                 request.to_email,

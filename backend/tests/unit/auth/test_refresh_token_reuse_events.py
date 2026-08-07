@@ -21,9 +21,7 @@ async def test_each_reuse_attempt_appends_a_new_event() -> None:
     )
     detected_at = datetime.now(timezone.utc)
 
-    first = await AuthRefreshTokenRepository.mark_reuse_detected(
-        db, token, detected_at=detected_at
-    )
+    first = await AuthRefreshTokenRepository.mark_reuse_detected(db, token, detected_at=detected_at)
     second = await AuthRefreshTokenRepository.mark_reuse_detected(
         db, token, detected_at=detected_at
     )
@@ -41,12 +39,8 @@ async def test_each_reuse_attempt_appends_a_new_event() -> None:
 async def test_different_tokens_also_append_independent_events() -> None:
     db = SimpleNamespace(add=Mock(), flush=AsyncMock())
     detected_at = datetime.now(timezone.utc)
-    first_token = SimpleNamespace(
-        id=uuid4(), session_id=uuid4(), reuse_detected_at=None
-    )
-    second_token = SimpleNamespace(
-        id=uuid4(), session_id=uuid4(), reuse_detected_at=None
-    )
+    first_token = SimpleNamespace(id=uuid4(), session_id=uuid4(), reuse_detected_at=None)
+    second_token = SimpleNamespace(id=uuid4(), session_id=uuid4(), reuse_detected_at=None)
 
     first = await AuthRefreshTokenRepository.mark_reuse_detected(
         db, first_token, detected_at=detected_at

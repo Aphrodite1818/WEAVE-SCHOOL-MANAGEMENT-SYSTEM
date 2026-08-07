@@ -60,9 +60,7 @@ class GlobalTeacherProfileMediaService:
         if isinstance(actor, TeacherMembership):
             if actor.status != TeacherMembershipStatus.ACTIVE:
                 raise ForbiddenException(detail="Inactive teacher membership")
-            return GlobalTeacherProfileMediaService._ensure_active_account(
-                actor.teacher_account
-            )
+            return GlobalTeacherProfileMediaService._ensure_active_account(actor.teacher_account)
         raise ForbiddenException(detail="Teacher account credentials are required.")
 
     @staticmethod
@@ -86,9 +84,7 @@ class GlobalTeacherProfileMediaService:
         )
         if membership is None:
             raise NotFoundException(detail="Teacher membership not found")
-        return GlobalTeacherProfileMediaService._ensure_active_account(
-            membership.teacher_account
-        )
+        return GlobalTeacherProfileMediaService._ensure_active_account(membership.teacher_account)
 
     @staticmethod
     async def upload(

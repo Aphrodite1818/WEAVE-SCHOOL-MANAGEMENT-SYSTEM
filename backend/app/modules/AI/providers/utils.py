@@ -61,9 +61,7 @@ def openai_tool_to_anthropic(tool: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": function.get("name"),
         "description": function.get("description", ""),
-        "input_schema": function.get(
-            "parameters", {"type": "object", "properties": {}}
-        ),
+        "input_schema": function.get("parameters", {"type": "object", "properties": {}}),
     }
 
 

@@ -23,9 +23,7 @@ class SuperadminBootstrapService:
         email = (settings.BOOTSTRAP_SUPERADMIN_EMAIL or "").strip().lower()
         password = settings.BOOTSTRAP_SUPERADMIN_PASSWORD or ""
         if not email or not password:
-            logger.info(
-                "Bootstrap superadmin skipped; email or password is not configured."
-            )
+            logger.info("Bootstrap superadmin skipped; email or password is not configured.")
             return
 
         try:

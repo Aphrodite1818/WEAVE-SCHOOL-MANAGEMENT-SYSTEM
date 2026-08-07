@@ -211,9 +211,7 @@ async def test_delete_subject_rejects_active_subject_before_dependency_check() -
             new=count_mock,
         ),
     ):
-        with pytest.raises(
-            ConflictException, match="Active subjects cannot be deleted"
-        ):
+        with pytest.raises(ConflictException, match="Active subjects cannot be deleted"):
             await SubjectService.delete_subject(
                 db=db,
                 actor=_actor(tenant_id),

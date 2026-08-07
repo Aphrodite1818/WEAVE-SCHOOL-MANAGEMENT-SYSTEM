@@ -195,9 +195,7 @@ class ParentMembershipRepository:
             )
 
         total = (
-            await db.execute(
-                select(func.count()).select_from(ParentMembership).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(ParentMembership).where(*filters))
         ).scalar_one()
 
         result = await db.execute(
@@ -401,9 +399,7 @@ class ParentInvitationRepository:
             filters.append(ParentInvitation.status == status)
 
         total = (
-            await db.execute(
-                select(func.count()).select_from(ParentInvitation).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(ParentInvitation).where(*filters))
         ).scalar_one()
 
         result = await db.execute(

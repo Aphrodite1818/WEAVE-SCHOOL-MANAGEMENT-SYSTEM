@@ -144,9 +144,7 @@ async def test_unverified_tenant_admin_login_returns_verification_metadata(
         "resolve_identifier",
         resolve_identifier,
     )
-    monkeypatch.setattr(
-        login_service.TenantAdminRepository, "get_by_id", get_admin_by_id
-    )
+    monkeypatch.setattr(login_service.TenantAdminRepository, "get_by_id", get_admin_by_id)
     monkeypatch.setattr(login_service, "verify_password", lambda password, hashed: True)
 
     with pytest.raises(AccountNotVerifiedException) as exc_info:

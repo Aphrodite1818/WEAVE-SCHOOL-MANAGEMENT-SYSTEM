@@ -192,16 +192,10 @@ class AuthService:
         db: AsyncSession,
         account: ParentAccount,
     ) -> AuthenticatedActor:
-        memberships = await ParentMembershipRepository.list_usable_for_account(
-            db, account.id
-        )
+        memberships = await ParentMembershipRepository.list_usable_for_account(db, account.id)
         if len(memberships) == 1:
-            return await AuthService._parent_membership_actor(
-                db, account, memberships[0]
-            )
-        summaries = [
-            await AuthService._tenant_summary(db, item) for item in memberships
-        ]
+            return await AuthService._parent_membership_actor(db, account, memberships[0])
+        summaries = [await AuthService._tenant_summary(db, item) for item in memberships]
         return AuthenticatedActor(
             actor_type=AuthSessionActorType.PARENT_ACCOUNT.value,
             account_type=AuthSessionActorType.PARENT_ACCOUNT.value,
@@ -230,21 +224,13 @@ class AuthService:
         db: AsyncSession,
         account: TeacherAccount,
     ) -> AuthenticatedActor:
-        memberships = await TeacherMembershipRepository.list_usable_for_account(
-            db, account.id
-        )
+        memberships = await TeacherMembershipRepository.list_usable_for_account(db, account.id)
         active_memberships = [
-            item
-            for item in memberships
-            if item.status == TeacherMembershipStatus.ACTIVE
+            item for item in memberships if item.status == TeacherMembershipStatus.ACTIVE
         ]
         if len(active_memberships) == 1:
-            return await AuthService._teacher_membership_actor(
-                db, account, active_memberships[0]
-            )
-        summaries = [
-            await AuthService._tenant_summary(db, item) for item in active_memberships
-        ]
+            return await AuthService._teacher_membership_actor(db, account, active_memberships[0])
+        summaries = [await AuthService._tenant_summary(db, item) for item in active_memberships]
         return AuthenticatedActor(
             actor_type=AuthSessionActorType.TEACHER_ACCOUNT.value,
             account_type=AuthSessionActorType.TEACHER_ACCOUNT.value,
@@ -321,10 +307,7 @@ class AuthService:
                 raise UnauthorizedException("Invalid email or password.")
             if not verify_password(payload.password, admin.password_hash):
                 raise UnauthorizedException("Invalid email or password.")
-            if (
-                not admin.is_verified
-                or admin.account_status == TenantAdminStatus.PENDING
-            ):
+            if not admin.is_verified or admin.account_status == TenantAdminStatus.PENDING:
                 raise _verification_required_exception(
                     detail="Account verification is required before login.",
                     email=admin.email,
@@ -361,22 +344,14 @@ class AuthService:
 
         if resolution.actor_type in {ActorType.PARENT_ACCOUNT, ActorType.PARENT}:
             account = await ParentAccountRepository.get_by_id(db, resolution.actor_id)
-            if account is None or not verify_password(
-                payload.password, account.password_hash
-            ):
+            if account is None or not verify_password(payload.password, account.password_hash):
                 raise UnauthorizedException("Invalid email or password.")
-            if (
-                not account.is_verified
-                or account.account_status == ParentAccountStatus.PENDING
-            ):
+            if not account.is_verified or account.account_status == ParentAccountStatus.PENDING:
                 raise _verification_required_exception(
                     detail="Verify the parent account before login.",
                     email=account.email,
                 )
-            if (
-                not account.is_active
-                or account.account_status != ParentAccountStatus.ACTIVE
-            ):
+            if not account.is_active or account.account_status != ParentAccountStatus.ACTIVE:
                 raise UnauthorizedException("Parent account is not active.")
             account.last_login_at = _utc_now()
             db.add(account)
@@ -385,22 +360,14 @@ class AuthService:
 
         if resolution.actor_type in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}:
             account = await TeacherAccountRepository.get_by_id(db, resolution.actor_id)
-            if account is None or not verify_password(
-                payload.password, account.password_hash
-            ):
+            if account is None or not verify_password(payload.password, account.password_hash):
                 raise UnauthorizedException("Invalid email or password.")
-            if (
-                not account.is_verified
-                or account.account_status == TeacherAccountStatus.PENDING
-            ):
+            if not account.is_verified or account.account_status == TeacherAccountStatus.PENDING:
                 raise _verification_required_exception(
                     detail="Verify the teacher account before login.",
                     email=account.email,
                 )
-            if (
-                not account.is_active
-                or account.account_status != TeacherAccountStatus.ACTIVE
-            ):
+            if not account.is_active or account.account_status != TeacherAccountStatus.ACTIVE:
                 raise UnauthorizedException("Teacher account is not active.")
             account.last_login_at = _utc_now()
             db.add(account)
@@ -423,9 +390,7 @@ class AuthService:
                 load_account=True,
             )
             if membership is None or membership.parent_account_id != account.id:
-                raise ForbiddenException(
-                    "Parent membership does not belong to this account."
-                )
+                raise ForbiddenException("Parent membership does not belong to this account.")
             return await AuthService._parent_membership_actor(db, account, membership)
 
         membership = await TeacherMembershipRepository.get_by_id(
@@ -434,9 +399,7 @@ class AuthService:
             load_account=True,
         )
         if membership is None or membership.teacher_account_id != account.id:
-            raise ForbiddenException(
-                "Teacher membership does not belong to this account."
-            )
+            raise ForbiddenException("Teacher membership does not belong to this account.")
         return await AuthService._teacher_membership_actor(db, account, membership)
 
     @staticmethod
@@ -452,17 +415,11 @@ class AuthService:
             identifier_type=IdentifierType.EMAIL,
         )
         if resolution.actor_type == ActorType.TENANT_ADMIN:
-            actor = await TenantAdminRepository.get_by_id(
-                db, resolution.actor_id, lock=lock
-            )
+            actor = await TenantAdminRepository.get_by_id(db, resolution.actor_id, lock=lock)
         elif resolution.actor_type in {ActorType.PARENT_ACCOUNT, ActorType.PARENT}:
-            actor = await ParentAccountRepository.get_by_id(
-                db, resolution.actor_id, lock=lock
-            )
+            actor = await ParentAccountRepository.get_by_id(db, resolution.actor_id, lock=lock)
         elif resolution.actor_type in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}:
-            actor = await TeacherAccountRepository.get_by_id(
-                db, resolution.actor_id, lock=lock
-            )
+            actor = await TeacherAccountRepository.get_by_id(db, resolution.actor_id, lock=lock)
         else:
             actor = None
         if actor is None:

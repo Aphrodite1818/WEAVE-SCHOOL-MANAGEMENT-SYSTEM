@@ -14,14 +14,10 @@ class SuperAdmin(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "superadmins"
 
-    email: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
-    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SuperAdminInvite(UUIDMixin, TimestampMixin, Base):
@@ -36,9 +32,7 @@ class SuperAdminInvite(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
@@ -67,18 +61,14 @@ class PlatformControl(UUIDMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
-    enabled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_by_superadmin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("public.superadmins.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    disabled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SecurityIPBlock(UUIDMixin, TimestampMixin, Base):
@@ -86,9 +76,7 @@ class SecurityIPBlock(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "security_ip_blocks"
 
-    ip_address_hash: Mapped[str] = mapped_column(
-        String(255), nullable=False, index=True
-    )
+    ip_address_hash: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     ip_address_label: Mapped[str] = mapped_column(String(64), nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     blocked_by_superadmin_id: Mapped[uuid.UUID | None] = mapped_column(

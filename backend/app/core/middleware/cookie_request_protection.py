@@ -73,9 +73,7 @@ class CookieRequestProtectionMiddleware:
             origin = _normalized_origin(request.headers.get("referer"))
 
         allowed = _allowed_origins()
-        if origin is None or (
-            origin not in allowed and not _development_local_origin(origin)
-        ):
+        if origin is None or (origin not in allowed and not _development_local_origin(origin)):
             response = JSONResponse(
                 status_code=403,
                 content={"detail": "Untrusted request origin."},

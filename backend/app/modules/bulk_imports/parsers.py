@@ -103,33 +103,23 @@ def _validate_xlsx_archive(file_bytes: bytes) -> None:
         with ZipFile(io.BytesIO(file_bytes)) as archive:
             entries = archive.infolist()
             if len(entries) > MAX_XLSX_ARCHIVE_ENTRIES:
-                raise ImportParserError(
-                    "XLSX archive contains too many internal files."
-                )
+                raise ImportParserError("XLSX archive contains too many internal files.")
 
             total_uncompressed = 0
             for entry in entries:
                 path = PurePosixPath(entry.filename)
                 if path.is_absolute() or ".." in path.parts:
-                    raise ImportParserError(
-                        "XLSX archive contains an unsafe internal path."
-                    )
+                    raise ImportParserError("XLSX archive contains an unsafe internal path.")
                 if entry.flag_bits & 0x1:
-                    raise ImportParserError(
-                        "Encrypted XLSX archives are not supported."
-                    )
+                    raise ImportParserError("Encrypted XLSX archives are not supported.")
 
                 total_uncompressed += int(entry.file_size or 0)
                 if total_uncompressed > MAX_XLSX_UNCOMPRESSED_BYTES:
-                    raise ImportParserError(
-                        "XLSX archive expands beyond the allowed size."
-                    )
+                    raise ImportParserError("XLSX archive expands beyond the allowed size.")
 
                 compressed_size = max(int(entry.compress_size or 0), 1)
                 if entry.file_size / compressed_size > MAX_XLSX_COMPRESSION_RATIO:
-                    raise ImportParserError(
-                        "XLSX archive has a suspicious compression ratio."
-                    )
+                    raise ImportParserError("XLSX archive has a suspicious compression ratio.")
     except BadZipFile as exc:
         raise ImportParserError(
             "Uploaded file is not a readable XLSX workbook. Download a fresh backend-generated template and try again."
@@ -229,9 +219,7 @@ class BulkImportParser:
                 "Bulk imports are XLSX-only. Download the backend-generated .xlsx template."
             )
         if not filename:
-            raise ImportParserError(
-                "Uploaded file must have a filename ending in .xlsx."
-            )
+            raise ImportParserError("Uploaded file must have a filename ending in .xlsx.")
         extension = Path(filename).suffix.lower().lstrip(".")
         if extension != ImportFileType.XLSX.value:
             raise ImportParserError(
@@ -269,9 +257,7 @@ class BulkImportParser:
 
             headers = _trim_trailing_blank_headers(_clean_headers(header_row))
             if not any(headers):
-                raise ImportParserError(
-                    "XLSX file must contain at least one valid column header."
-                )
+                raise ImportParserError("XLSX file must contain at least one valid column header.")
             if len(headers) > MAX_XLSX_WORKSHEET_COLUMNS:
                 raise ImportParserError(
                     f"XLSX worksheet cannot exceed {MAX_XLSX_WORKSHEET_COLUMNS} columns."
@@ -281,9 +267,7 @@ class BulkImportParser:
             parsed_rows: list[ParsedImportRow] = []
             for row_number, row_values in enumerate(rows_iter, start=2):
                 if row_number > MAX_XLSX_WORKSHEET_ROWS:
-                    raise ImportParserError(
-                        "XLSX worksheet exceeds the safe row scan limit."
-                    )
+                    raise ImportParserError("XLSX worksheet exceeds the safe row scan limit.")
                 if _has_values_beyond_headers(headers=headers, values=row_values):
                     raise ImportParserError(
                         f"Row {row_number} contains data outside the template columns. Remove extra columns and try again."
@@ -293,13 +277,9 @@ class BulkImportParser:
                 if _is_blank_row(raw_data):
                     continue
 
-                parsed_rows.append(
-                    ParsedImportRow(row_number=row_number, raw_data=raw_data)
-                )
+                parsed_rows.append(ParsedImportRow(row_number=row_number, raw_data=raw_data))
                 if len(parsed_rows) > max_rows:
-                    raise ImportParserError(
-                        f"Import file cannot exceed {max_rows} data rows."
-                    )
+                    raise ImportParserError(f"Import file cannot exceed {max_rows} data rows.")
 
             return ParsedImportFile(
                 file_type=ImportFileType.XLSX,
@@ -338,9 +318,7 @@ class BulkImportParser:
                 f"Uploaded file is too large. Maximum allowed size is {max_file_size_bytes} bytes."
             )
 
-        BulkImportParser.resolve_file_type(
-            filename=upload_file.filename, file_type=file_type
-        )
+        BulkImportParser.resolve_file_type(filename=upload_file.filename, file_type=file_type)
         return BulkImportParser.parse_xlsx_bytes(
             file_bytes=file_bytes,
             file_size_bytes=file_size_bytes,

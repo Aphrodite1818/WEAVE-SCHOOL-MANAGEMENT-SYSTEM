@@ -22,9 +22,7 @@ router = APIRouter(
     tags=["Class Subjects"],
 )
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 
 
 @router.post(

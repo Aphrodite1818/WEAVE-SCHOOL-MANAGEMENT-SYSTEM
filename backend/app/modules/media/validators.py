@@ -424,10 +424,7 @@ async def validate_uploaded_image(
 
     detected_content_type, width_px, height_px = _detect_image_metadata(file_bytes)
 
-    if (
-        browser_content_type is not None
-        and browser_content_type != detected_content_type
-    ):
+    if browser_content_type is not None and browser_content_type != detected_content_type:
         raise MediaValidationError(
             "Uploaded file content type does not match the actual image type.",
             code="content_type_mismatch",

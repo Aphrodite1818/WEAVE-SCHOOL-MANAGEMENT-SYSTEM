@@ -35,9 +35,7 @@ class ClaudeProvider(BaseLLMProvider):
             if message.get("role") == "system"
         ]
         claude_messages = [
-            message
-            for message in messages
-            if message.get("role") in {"user", "assistant"}
+            message for message in messages if message.get("role") in {"user", "assistant"}
         ]
 
         payload: dict[str, Any] = {
@@ -67,13 +65,9 @@ class ClaudeProvider(BaseLLMProvider):
         raw_response = response.json()
         content_blocks = raw_response.get("content", [])
         text_blocks = [
-            block.get("text", "")
-            for block in content_blocks
-            if block.get("type") == "text"
+            block.get("text", "") for block in content_blocks if block.get("type") == "text"
         ]
-        tool_calls = [
-            block for block in content_blocks if block.get("type") == "tool_use"
-        ]
+        tool_calls = [block for block in content_blocks if block.get("type") == "tool_use"]
 
         return {
             "content": "\n".join(text_blocks),

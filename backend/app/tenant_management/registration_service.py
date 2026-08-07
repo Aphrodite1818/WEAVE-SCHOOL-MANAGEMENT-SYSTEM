@@ -105,18 +105,14 @@ class TenantRegistrationService:
                 tenant=tenant,
             )
             if state != EmailRegistrationState.PENDING:
-                raise ConflictException(
-                    "This email is already registered. Please log in."
-                )
+                raise ConflictException("This email is already registered. Please log in.")
             if tenant.school_name.strip().casefold() != school_name.casefold():
                 raise ConflictException(
                     "A pending registration already exists for this email "
                     "under a different school name."
                 )
 
-            admin = TenantRegistrationService._require_replaceable_pending_admin(
-                admin=admin
-            )
+            admin = TenantRegistrationService._require_replaceable_pending_admin(admin=admin)
             await TenantRegistrationService._replace_pending_password(
                 db,
                 admin=admin,
@@ -165,12 +161,10 @@ class TenantRegistrationService:
                 normalized_email,
                 lock=True,
             )
-            existing_tenant_by_email = (
-                await TenantRepository.get_by_email_including_deleted(
-                    db,
-                    normalized_email,
-                    lock=True,
-                )
+            existing_tenant_by_email = await TenantRepository.get_by_email_including_deleted(
+                db,
+                normalized_email,
+                lock=True,
             )
 
             if existing_tenant_by_name is not None:
@@ -189,13 +183,9 @@ class TenantRegistrationService:
                     "This email belongs to a deleted school account. Please contact support."
                 )
             if state == EmailRegistrationState.ACTIVE:
-                raise ConflictException(
-                    "This email is already registered. Please log in."
-                )
+                raise ConflictException("This email is already registered. Please log in.")
             if state == EmailRegistrationState.REJECTED:
-                raise ConflictException(
-                    "This registration was rejected. Please contact support."
-                )
+                raise ConflictException("This registration was rejected. Please contact support.")
 
             if state == EmailRegistrationState.PENDING:
                 if existing_tenant_by_email is None:
@@ -211,10 +201,8 @@ class TenantRegistrationService:
                         "under a different school name."
                     )
 
-                existing_admin = (
-                    TenantRegistrationService._require_replaceable_pending_admin(
-                        admin=existing_admin,
-                    )
+                existing_admin = TenantRegistrationService._require_replaceable_pending_admin(
+                    admin=existing_admin,
                 )
                 await TenantRegistrationService._replace_pending_password(
                     db,
@@ -257,15 +245,13 @@ class TenantRegistrationService:
         except IntegrityError:
             await db.rollback()
             AuthIdentityService.discard_pending_invalidations(db)
-            tenant, _admin = (
-                await TenantRegistrationService._recover_concurrent_registration(
-                    db,
-                    normalized_email=normalized_email,
-                    school_name=school_name,
-                    password=payload.password,
-                    selected_plan_code=selected_plan_code,
-                    billing_interval=billing_interval,
-                )
+            tenant, _admin = await TenantRegistrationService._recover_concurrent_registration(
+                db,
+                normalized_email=normalized_email,
+                school_name=school_name,
+                password=payload.password,
+                selected_plan_code=selected_plan_code,
+                billing_interval=billing_interval,
             )
             reused_pending_account = True
             logger.info(
@@ -288,9 +274,7 @@ class TenantRegistrationService:
         message = (
             "Registration successful. Please check your email for the verification code."
             if not reused_pending_account
-            else (
-                "Your pending registration was updated. We sent you a new verification code."
-            )
+            else ("Your pending registration was updated. We sent you a new verification code.")
         )
 
         try:

@@ -58,17 +58,13 @@ async def authenticate_student_actor(
         raise UnauthorizedException("Invalid admission number or credential.")
 
     if student.status == AcademicStatus.EXPELLED:
-        raise UnauthorizedException(
-            "This account has been expelled and can no longer be accessed."
-        )
+        raise UnauthorizedException("This account has been expelled and can no longer be accessed.")
     if student.status == AcademicStatus.SUSPENDED:
         raise UnauthorizedException("This account is currently suspended.")
     if student.status == AcademicStatus.WITHDRAWN:
         raise UnauthorizedException("This account has been withdrawn.")
     if student.status == AcademicStatus.GRADUATED:
-        raise UnauthorizedException(
-            "This account has graduated and is now read-only or inactive."
-        )
+        raise UnauthorizedException("This account has graduated and is now read-only or inactive.")
 
     if (
         not student.is_active
@@ -98,9 +94,7 @@ async def authenticate_student_actor(
     db.add(student)
     await db.flush()
 
-    profile_status = getattr(
-        student.profile_status, "value", str(student.profile_status)
-    )
+    profile_status = getattr(student.profile_status, "value", str(student.profile_status))
     return AuthenticatedActor(
         actor_type=AuthSessionActorType.STUDENT.value,
         account_type=AuthSessionActorType.STUDENT.value,

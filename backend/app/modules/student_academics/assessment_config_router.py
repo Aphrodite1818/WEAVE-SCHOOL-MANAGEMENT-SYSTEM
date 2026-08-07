@@ -49,9 +49,7 @@ async def _get_config(
     *,
     lock: bool = False,
 ) -> SchoolAssessmentConfig | None:
-    query = select(SchoolAssessmentConfig).where(
-        SchoolAssessmentConfig.tenant_id == tenant_id
-    )
+    query = select(SchoolAssessmentConfig).where(SchoolAssessmentConfig.tenant_id == tenant_id)
     if lock:
         query = query.with_for_update()
     return (await db.execute(query)).scalar_one_or_none()

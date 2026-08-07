@@ -19,9 +19,7 @@ from app.modules.subscriptions.subscription_enums import (
 
 
 @pytest.mark.asyncio
-async def test_request_cancellation_disables_paystack_renewal_and_marks_non_renewing() -> (
-    None
-):
+async def test_request_cancellation_disables_paystack_renewal_and_marks_non_renewing() -> None:
     tenant_id = uuid.uuid4()
     subscription = SimpleNamespace(
         id=uuid.uuid4(),
@@ -30,9 +28,7 @@ async def test_request_cancellation_disables_paystack_renewal_and_marks_non_rene
         cancel_at_period_end=False,
         provider=PaymentProvider.PAYSTACK,
     )
-    saved = SimpleNamespace(
-        **{**subscription.__dict__, "status": SubscriptionStatus.NON_RENEWING}
-    )
+    saved = SimpleNamespace(**{**subscription.__dict__, "status": SubscriptionStatus.NON_RENEWING})
     db = SimpleNamespace(commit=AsyncMock())
 
     with (

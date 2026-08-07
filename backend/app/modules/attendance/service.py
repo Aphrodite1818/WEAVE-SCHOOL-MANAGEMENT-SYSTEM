@@ -110,9 +110,7 @@ def _actor_audit(
 
 class AttendanceSettingsService:
     @staticmethod
-    async def get_or_create_settings(
-        db: AsyncSession, tenant_id: uuid.UUID
-    ) -> AttendanceSettings:
+    async def get_or_create_settings(db: AsyncSession, tenant_id: uuid.UUID) -> AttendanceSettings:
         settings = await AttendanceRepository.get_settings(db, tenant_id)
         if settings is not None:
             return settings
@@ -122,9 +120,7 @@ class AttendanceSettingsService:
         return settings
 
     @staticmethod
-    async def response(
-        db: AsyncSession, tenant_id: uuid.UUID
-    ) -> AttendanceSettingsResponse:
+    async def response(db: AsyncSession, tenant_id: uuid.UUID) -> AttendanceSettingsResponse:
         settings = await AttendanceSettingsService.get_or_create_settings(db, tenant_id)
         return AttendanceSettingsResponse.model_validate(settings)
 
@@ -215,9 +211,7 @@ class GeofenceService:
         payload: SchoolGeofenceUpdate,
         acting_admin_id: uuid.UUID,
     ) -> SchoolGeofenceResponse:
-        geofence = await AttendanceRepository.get_geofence(
-            db, tenant_id, geofence_id, lock=True
-        )
+        geofence = await AttendanceRepository.get_geofence(db, tenant_id, geofence_id, lock=True)
         if geofence is None:
             raise NotFoundException("Geofence not found.")
         if geofence.status == SchoolGeofenceStatus.ARCHIVED:
@@ -251,9 +245,7 @@ class GeofenceService:
         status: SchoolGeofenceStatus,
         acting_admin_id: uuid.UUID,
     ) -> SchoolGeofenceResponse:
-        geofence = await AttendanceRepository.get_geofence(
-            db, tenant_id, geofence_id, lock=True
-        )
+        geofence = await AttendanceRepository.get_geofence(db, tenant_id, geofence_id, lock=True)
         if geofence is None:
             raise NotFoundException("Geofence not found.")
         geofence.status = status
@@ -279,9 +271,7 @@ class GeofenceService:
         persist: bool = True,
     ) -> GeofenceEvaluationResponse:
         settings = await AttendanceSettingsService.get_or_create_settings(db, tenant_id)
-        geofence = await AttendanceRepository.get_active_geofence(
-            db, tenant_id, geofence_id
-        )
+        geofence = await AttendanceRepository.get_active_geofence(db, tenant_id, geofence_id)
         result = evaluate_geofence(
             geofence=(
                 None
@@ -367,9 +357,7 @@ class StudentAttendanceService:
         resolved = await SchoolDayPolicyService().require_student_attendance_day(
             db, tenant_id=tenant_id, target_date=target_date
         )
-        classroom = await AttendanceRepository.get_class(
-            db, tenant_id, payload.class_id
-        )
+        classroom = await AttendanceRepository.get_class(db, tenant_id, payload.class_id)
         if classroom is None:
             raise NotFoundException("Class not found.")
         if teacher_membership_id is not None:
@@ -380,9 +368,7 @@ class StudentAttendanceService:
                 target_date=target_date,
             )
             if payload.class_id not in allowed_classes:
-                raise ForbiddenException(
-                    "You are not assigned to take attendance for this class."
-                )
+                raise ForbiddenException("You are not assigned to take attendance for this class.")
         existing = await AttendanceRepository.get_sheet_by_class_date(
             db,
             tenant_id,
@@ -423,9 +409,7 @@ class StudentAttendanceService:
             )
             for enrollment in enrollments
         ]
-        await AttendanceRepository.create_student_sheet(
-            db, sheet=sheet, records=records
-        )
+        await AttendanceRepository.create_student_sheet(db, sheet=sheet, records=records)
         actor_type = (
             AttendanceActorType.TEACHER
             if teacher_membership_id
@@ -456,9 +440,7 @@ class StudentAttendanceService:
         actor_type: AttendanceActorType,
         actor_id: uuid.UUID,
     ) -> StudentAttendanceSheetResponse:
-        sheet = await AttendanceRepository.get_sheet_by_id(
-            db, tenant_id, sheet_id, lock=True
-        )
+        sheet = await AttendanceRepository.get_sheet_by_id(db, tenant_id, sheet_id, lock=True)
         if sheet is None:
             raise NotFoundException("Attendance sheet not found.")
         if sheet.status not in {
@@ -516,17 +498,12 @@ class StudentAttendanceService:
         payload: StudentAttendanceSheetSubmitRequest,
         teacher_membership_id: uuid.UUID,
     ) -> StudentAttendanceSheetResponse:
-        sheet = await AttendanceRepository.get_sheet_by_id(
-            db, tenant_id, sheet_id, lock=True
-        )
+        sheet = await AttendanceRepository.get_sheet_by_id(db, tenant_id, sheet_id, lock=True)
         if sheet is None:
             raise NotFoundException("Attendance sheet not found.")
         if sheet.status != StudentAttendanceSheetStatus.DRAFT:
             raise ConflictException("Only draft attendance sheets can be submitted.")
-        if any(
-            record.status == StudentAttendanceStatus.UNMARKED
-            for record in sheet.records
-        ):
+        if any(record.status == StudentAttendanceStatus.UNMARKED for record in sheet.records):
             raise ConflictException("All students must be marked before submission.")
         sheet.status = StudentAttendanceSheetStatus.SUBMITTED
         sheet.submitted_at = utc_now()
@@ -545,9 +522,7 @@ class StudentAttendanceService:
         status: StudentAttendanceSheetStatus,
         acting_admin_id: uuid.UUID,
     ) -> StudentAttendanceSheetResponse:
-        sheet = await AttendanceRepository.get_sheet_by_id(
-            db, tenant_id, sheet_id, lock=True
-        )
+        sheet = await AttendanceRepository.get_sheet_by_id(db, tenant_id, sheet_id, lock=True)
         if sheet is None:
             raise NotFoundException("Attendance sheet not found.")
         now = utc_now()
@@ -556,9 +531,7 @@ class StudentAttendanceService:
                 StudentAttendanceSheetStatus.SUBMITTED,
                 StudentAttendanceSheetStatus.DRAFT,
             }:
-                raise ConflictException(
-                    "Only draft or submitted sheets can be approved."
-                )
+                raise ConflictException("Only draft or submitted sheets can be approved.")
             sheet.approved_at = now
             sheet.approved_by_admin_id = acting_admin_id
         elif status == StudentAttendanceSheetStatus.LOCKED:
@@ -566,9 +539,7 @@ class StudentAttendanceService:
                 StudentAttendanceSheetStatus.APPROVED,
                 StudentAttendanceSheetStatus.SUBMITTED,
             }:
-                raise ConflictException(
-                    "Only approved or submitted sheets can be locked."
-                )
+                raise ConflictException("Only approved or submitted sheets can be locked.")
             sheet.locked_at = now
             sheet.locked_by_admin_id = acting_admin_id
         elif status == StudentAttendanceSheetStatus.CANCELLED:
@@ -783,10 +754,7 @@ class AttendanceAdminService:
         payload: TemporaryAttendanceAssignmentCreate,
         acting_admin_id: uuid.UUID,
     ) -> TemporaryAttendanceAssignmentResponse:
-        if (
-            await AttendanceRepository.get_class(db, tenant_id, payload.class_id)
-            is None
-        ):
+        if await AttendanceRepository.get_class(db, tenant_id, payload.class_id) is None:
             raise NotFoundException("Class not found.")
         if (
             await AttendanceRepository.get_teacher_membership(
@@ -917,15 +885,11 @@ class AttendanceAdminService:
                 record.status = WorkforceAttendanceStatus(data["status"])
             if "check_in_at" in data:
                 record.check_in_at = (
-                    datetime.fromisoformat(data["check_in_at"])
-                    if data["check_in_at"]
-                    else None
+                    datetime.fromisoformat(data["check_in_at"]) if data["check_in_at"] else None
                 )
             if "check_out_at" in data:
                 record.check_out_at = (
-                    datetime.fromisoformat(data["check_out_at"])
-                    if data["check_out_at"]
-                    else None
+                    datetime.fromisoformat(data["check_out_at"]) if data["check_out_at"] else None
                 )
             record.corrected_by_admin_id = acting_admin_id
             record.corrected_at = now
@@ -984,14 +948,10 @@ class AttendanceAnalyticsService:
             student_totals=student_totals,
             workforce_totals=workforce_totals,
             student_attendance_rate=(
-                None
-                if student_marked == 0
-                else round(student_positive / student_marked, 4)
+                None if student_marked == 0 else round(student_positive / student_marked, 4)
             ),
             workforce_check_in_rate=(
-                None
-                if workforce_total == 0
-                else round(workforce_positive / workforce_total, 4)
+                None if workforce_total == 0 else round(workforce_positive / workforce_total, 4)
             ),
         )
 
@@ -1020,15 +980,11 @@ class AttendanceAnalyticsService:
             if record.status == StudentAttendanceStatus.UNMARKED
         )
         if unsubmitted:
-            blockers.append(
-                "One or more student attendance sheets are still draft or cancelled."
-            )
+            blockers.append("One or more student attendance sheets are still draft or cancelled.")
         if unmarked:
             blockers.append("One or more student attendance records are unmarked.")
         if not sheets:
-            warnings.append(
-                "No student attendance sheets exist in the selected date range."
-            )
+            warnings.append("No student attendance sheets exist in the selected date range.")
         return AttendanceReadinessResponse(
             ready=not blockers,
             blockers=blockers,

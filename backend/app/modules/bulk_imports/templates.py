@@ -216,9 +216,7 @@ def convert_template_to_response(
         file_type=file_type,
         filename=f"{template.resource_type.value}_import_template.{file_type.value}",
         template_version=TEMPLATE_VERSION_BY_RESOURCE.get(template.resource_type),
-        columns=[
-            convert_column_to_response(column=column) for column in template.columns
-        ],
+        columns=[convert_column_to_response(column=column) for column in template.columns],
         notes=template.notes,
     )
 

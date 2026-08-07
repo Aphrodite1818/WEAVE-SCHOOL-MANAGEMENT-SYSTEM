@@ -79,16 +79,12 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
     )
 
     # ── Contact / location ───────────────────────────────────────────────────
-    email: Mapped[str] = mapped_column(
-        String(255), nullable=False, unique=True, index=True
-    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     state: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    country: Mapped[str] = mapped_column(
-        String(100), nullable=False, server_default="Nigeria"
-    )
+    country: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Nigeria")
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Status & subscription ────────────────────────────────────────────────
@@ -112,20 +108,14 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
         default=SubscriptionPlan.FREE_TRIAL,
         nullable=False,
     )
-    trial_ends_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     subscription_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # ── Soft-delete ──────────────────────────────────────────────────────────
-    is_deleted: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Limits / feature flags ───────────────────────────────────────────────
     max_students: Mapped[int] = mapped_column(
@@ -136,26 +126,16 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
     )
     max_teachers: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     # Flexible bag for feature flags, e.g. {"whatsapp_bot": true, "stt": true}
-    feature_flags: Mapped[dict | None] = mapped_column(
-        JSONB, nullable=True, default=dict
-    )
+    feature_flags: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
 
     # ── Timezone / locale ────────────────────────────────────────────────────
-    timezone: Mapped[str] = mapped_column(
-        String(50), nullable=False, server_default="Africa/Lagos"
-    )
-    language: Mapped[str] = mapped_column(
-        String(10), nullable=False, server_default="en"
-    )
+    timezone: Mapped[str] = mapped_column(String(50), nullable=False, server_default="Africa/Lagos")
+    language: Mapped[str] = mapped_column(String(10), nullable=False, server_default="en")
 
     # ── Onboarding ───────────────────────────────────────────────────────────
-    onboarding_completed: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    branches: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True, default=None
-    )
+    branches: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=None)
 
     verification_status: Mapped[TenantVerificationStatus] = mapped_column(
         SQLEnum(

@@ -65,9 +65,7 @@ class OTPService:
             if getattr(actor, "is_verified", False):
                 raise ConflictException("Account is already verified.")
         elif purpose == AuthPurpose.PASSWORD_RESET:
-            if not getattr(actor, "is_active", False) or not getattr(
-                actor, "is_verified", False
-            ):
+            if not getattr(actor, "is_active", False) or not getattr(actor, "is_verified", False):
                 raise BadRequestException("Account is not eligible for password reset.")
         else:
             raise BadRequestException("Unsupported OTP purpose.")
@@ -158,9 +156,7 @@ class OTPService:
             actor.is_active = True
             if isinstance(actor, TenantAdmin):
                 actor.account_status = TenantAdminStatus.ACTIVE
-                tenant = await TenantRepository.get_by_id(
-                    db, actor.tenant_id, lock=True
-                )
+                tenant = await TenantRepository.get_by_id(db, actor.tenant_id, lock=True)
                 if tenant is not None:
                     tenant.verification_status = TenantVerificationStatus.ACTIVE
                     if tenant.status == TenantStatus.INACTIVE:
@@ -222,11 +218,7 @@ class TenantActivationService:
             .all()
         )
         record = next(
-            (
-                item
-                for item in records
-                if verify_auth_secret(payload.token, item.hashed_value)
-            ),
+            (item for item in records if verify_auth_secret(payload.token, item.hashed_value)),
             None,
         )
         if record is None:

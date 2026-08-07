@@ -63,9 +63,7 @@ class MediaAssetRepository:
     ) -> None:
         """Link replaced rows after the replacement asset exists in PostgreSQL."""
 
-        pending: dict[str, dict[str, Any]] | None = db.info.get(
-            _PENDING_MEDIA_REPLACEMENTS_KEY
-        )
+        pending: dict[str, dict[str, Any]] | None = db.info.get(_PENDING_MEDIA_REPLACEMENTS_KEY)
         if not pending:
             return
 
@@ -174,10 +172,7 @@ class MediaAssetRepository:
             conditions.append(MediaAsset.visibility == visibility)
 
         query = (
-            select(MediaAsset)
-            .where(*conditions)
-            .order_by(MediaAsset.created_at.desc())
-            .limit(1)
+            select(MediaAsset).where(*conditions).order_by(MediaAsset.created_at.desc()).limit(1)
         )
 
         if lock:

@@ -54,17 +54,13 @@ def test_ses_payload_contains_route_content_reply_to_and_tags() -> None:
         route=route,
     )
 
-    assert payload["FromEmailAddress"] == (
-        "WEAVE <security@notifications.weavecloudspace.com>"
-    )
+    assert payload["FromEmailAddress"] == ("WEAVE <security@notifications.weavecloudspace.com>")
     assert payload["Destination"] == {"ToAddresses": ["user@example.com"]}
     assert payload["ConfigurationSetName"] == "weave-security"
     assert payload["ReplyToAddresses"] == ["support@weavecloudspace.com"]
     assert payload["EmailTags"] == [{"Name": "email_type", "Value": "security_alert"}]
     assert payload["Content"]["Simple"]["Body"]["Html"]["Data"] == request.body
-    assert payload["Content"]["Simple"]["Body"]["Text"]["Data"] == (
-        "Review your account"
-    )
+    assert payload["Content"]["Simple"]["Body"]["Text"]["Data"] == ("Review your account")
 
 
 def test_ses_payload_rejects_invalid_tag_characters() -> None:
