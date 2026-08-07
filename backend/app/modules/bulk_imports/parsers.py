@@ -22,7 +22,6 @@ from app.core.exceptions import ImportParserError
 from app.modules.bulk_imports.models import ImportFileType
 from app.modules.bulk_imports.templates import TEMPLATE_METADATA_SHEET_NAME
 
-
 MAX_IMPORT_FILE_SIZE_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 5_000
 MAX_XLSX_ARCHIVE_ENTRIES = 2_000

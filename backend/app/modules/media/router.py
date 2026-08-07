@@ -12,7 +12,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_actor, get_current_tenant_admin
+from app.core.dependencies.route_guards import (
+    get_current_actor,
+    get_current_tenant_admin,
+)
 from app.core.exceptions import ForbiddenException
 from app.modules.media.global_teacher_profile import GlobalTeacherProfileMediaService
 from app.modules.media.models import (
@@ -32,7 +35,6 @@ from app.modules.media.service import MediaService
 from app.modules.tenant_admins.models import TenantAdmin
 from app.modules.students.models import Student
 from app.modules.teachers.models import Teacher, TeacherAccount
-
 
 router = APIRouter(
     prefix="/media",

@@ -40,7 +40,9 @@ def test_untrusted_forwarding_header_is_ignored(monkeypatch) -> None:
     assert resolved == "10.0.0.5"
 
 
-def test_invalid_selected_forwarded_address_falls_back_to_socket_client(monkeypatch) -> None:
+def test_invalid_selected_forwarded_address_falls_back_to_socket_client(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(settings, "TRUST_PROXY_HEADERS", True)
     monkeypatch.setattr(settings, "TRUSTED_PROXY_HOPS", 1)
 

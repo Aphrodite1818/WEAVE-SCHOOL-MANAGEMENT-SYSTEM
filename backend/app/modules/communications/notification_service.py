@@ -22,7 +22,6 @@ from app.modules.communications.recipient_resolver import (
 )
 from app.modules.communications.repository import CommunicationRepository
 
-
 logger = logging.getLogger(__name__)
 
 

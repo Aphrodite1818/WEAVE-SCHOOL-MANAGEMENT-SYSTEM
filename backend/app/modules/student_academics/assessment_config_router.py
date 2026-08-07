@@ -39,9 +39,7 @@ class AssessmentConfigUpdate(BaseModel):
     @model_validator(mode="after")
     def validate_total(self):
         if self.test_max + self.assessment_max + self.exam_max != 100:
-            raise ValueError(
-                "Configured assessment component maximums must total 100."
-            )
+            raise ValueError("Configured assessment component maximums must total 100.")
         return self
 
 
@@ -51,9 +49,7 @@ async def _get_config(
     *,
     lock: bool = False,
 ) -> SchoolAssessmentConfig | None:
-    query = select(SchoolAssessmentConfig).where(
-        SchoolAssessmentConfig.tenant_id == tenant_id
-    )
+    query = select(SchoolAssessmentConfig).where(SchoolAssessmentConfig.tenant_id == tenant_id)
     if lock:
         query = query.with_for_update()
     return (await db.execute(query)).scalar_one_or_none()

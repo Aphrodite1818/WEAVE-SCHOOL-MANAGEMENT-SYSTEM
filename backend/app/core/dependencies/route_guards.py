@@ -51,7 +51,6 @@ from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import TenantStatus, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
 
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 TokenDependency: TypeAlias = Annotated[str, Depends(oauth2_scheme)]
 DbDependency: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
@@ -296,8 +295,7 @@ async def get_current_parent(
         not actor.parent_account.is_active
         or not actor.parent_account.is_verified
         or actor.parent_account.account_status != ParentAccountStatus.ACTIVE
-        or actor.status
-        not in {ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY}
+        or actor.status not in {ParentMembershipStatus.ACTIVE, ParentMembershipStatus.READ_ONLY}
     ):
         raise ForbiddenException("Inactive parent membership")
     await _ensure_active_tenant(db, actor.tenant_id)

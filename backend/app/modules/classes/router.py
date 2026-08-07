@@ -38,7 +38,6 @@ from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLi
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(
     prefix="/classes",
     tags=["Classes"],

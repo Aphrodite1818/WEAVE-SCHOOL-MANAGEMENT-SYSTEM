@@ -12,10 +12,13 @@ from sqlalchemy import text
 import app.models  # noqa: F401
 from app.config.database import AsyncSessionLocal, engine
 from app.config.logging import get_logger
+from app.config.sentry import flush_sentry, initialize_sentry
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
 from app.core.exception_handlers import register_exception_handlers
-from app.core.middleware.cookie_request_protection import CookieRequestProtectionMiddleware
+from app.core.middleware.cookie_request_protection import (
+    CookieRequestProtectionMiddleware,
+)
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
@@ -51,8 +54,12 @@ from app.modules.report_cards.router import (
     student_router as student_report_card_router,
     tenant_admin_router as tenant_admin_report_card_router,
 )
-from app.modules.school_calendar.admin_router import router as school_calendar_admin_router
-from app.modules.school_calendar.shared_router import router as school_calendar_shared_router
+from app.modules.school_calendar.admin_router import (
+    router as school_calendar_admin_router,
+)
+from app.modules.school_calendar.shared_router import (
+    router as school_calendar_shared_router,
+)
 from app.modules.search.router import router as tenant_search_router
 from app.modules.setup_assistant.router import router as setup_assistant_router
 from app.modules.student_academics.assessment_config_router import (
@@ -82,7 +89,9 @@ from app.modules.student_academics.router import (
     teacher_router as teacher_academic_router,
     tenant_admin_router as tenant_admin_academic_router,
 )
-from app.modules.student_academics.session_closure_router import router as session_closure_router
+from app.modules.student_academics.session_closure_router import (
+    router as session_closure_router,
+)
 from app.modules.student_academics.student_subject_cards_router import (
     router as student_subject_cards_router,
 )
@@ -166,8 +175,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
     finally:
         logger.info("Closing Redis and database resources")
-        await close_redis()
-        await engine.dispose()
+        try:
+            await close_redis()
+            await engine.dispose()
+        finally:
+            await flush_sentry()
 
 
 async def _database_health_check() -> bool:
@@ -182,7 +194,7 @@ async def _database_health_check() -> bool:
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-
+    initialize_sentry(service="api")
     register_metrics_cache_invalidation_events()
     _prepare_academic_routers()
 
@@ -316,7 +328,7 @@ def create_app() -> FastAPI:
         redis_ok = await redis_health_check()
         ready = database_ok and redis_ok
         return JSONResponse(
-            status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=(status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE),
             content={
                 "status": "ready" if ready else "unavailable",
                 "dependencies": {

@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import ValidationError
 
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.classes.models import ClassRoom
 from app.modules.classes.schemas import (
     ClassProgressionConfigureRequest,

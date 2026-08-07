@@ -51,4 +51,3 @@ class SchoolCalendarEventStatus(str, PyEnum):
     DRAFT = "draft"
     PUBLISHED = "published"
     CANCELLED = "cancelled"
-

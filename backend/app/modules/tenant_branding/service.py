@@ -7,7 +7,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache.events import flush_cache_invalidation_events
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.teachers.models import Teacher

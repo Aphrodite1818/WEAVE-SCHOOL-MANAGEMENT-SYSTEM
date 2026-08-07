@@ -8,11 +8,21 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.security import create_access_token, hash_auth_secret, hash_otp, hash_password
+from app.config.security import (
+    create_access_token,
+    hash_auth_secret,
+    hash_otp,
+    hash_password,
+)
 from app.config.settings import settings
 from app.core.dependencies.db import get_db
 from app.main import app
-from app.modules.auth.models import AuthPurpose, AuthRecord, AuthSession, AuthSessionActorType
+from app.modules.auth.models import (
+    AuthPurpose,
+    AuthRecord,
+    AuthSession,
+    AuthSessionActorType,
+)
 from app.modules.auth.otp_service import OTPService
 from app.modules.auth.schemas import VerifyOTP
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType

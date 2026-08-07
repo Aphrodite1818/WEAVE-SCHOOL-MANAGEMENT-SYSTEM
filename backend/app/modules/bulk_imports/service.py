@@ -17,7 +17,11 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
@@ -52,7 +56,10 @@ from app.modules.bulk_imports.template_security import (
     build_headers_hash,
     verify_template_signature,
 )
-from app.modules.bulk_imports.template_writer import GeneratedImportTemplate, create_import_template
+from app.modules.bulk_imports.template_writer import (
+    GeneratedImportTemplate,
+    create_import_template,
+)
 from app.modules.bulk_imports.templates import (
     CONTROL_COLUMNS,
     DATA_HEADERS_BY_RESOURCE,
@@ -77,7 +84,6 @@ from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLimitCode
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
-
 
 IMPORT_PROCESSING_CHUNK_SIZE = 100
 
@@ -1332,7 +1338,9 @@ class BulkImportService:
 
     @staticmethod
     def get_template(
-        *, resource_type: ImportResourceType, file_type: ImportFileType = ImportFileType.XLSX
+        *,
+        resource_type: ImportResourceType,
+        file_type: ImportFileType = ImportFileType.XLSX,
     ):
         """Return one supported import template."""
 

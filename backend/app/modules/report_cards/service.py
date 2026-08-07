@@ -5,11 +5,19 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.auth_identity.models import ActorType
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.parents.models import Parent
-from app.modules.report_cards.models import ReportCard, ReportCardStatus, ReportCardSubjectLine
+from app.modules.report_cards.models import (
+    ReportCard,
+    ReportCardStatus,
+    ReportCardSubjectLine,
+)
 from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards.schemas import (
     ReportCardBulkGenerateResponse,
@@ -23,7 +31,10 @@ from app.modules.report_cards.schemas import (
 from app.modules.student_academics.models import AcademicResultStatus, ClassSubject
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import Student
-from app.modules.students.repository import StudentParentLinkRepository, StudentRepository
+from app.modules.students.repository import (
+    StudentParentLinkRepository,
+    StudentRepository,
+)
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.teachers.repository import TeacherRepository
 from app.modules.tenant_admins.models import TenantAdmin
@@ -118,7 +129,9 @@ class ReportCardService:
         return ranks
 
     @staticmethod
-    async def _teacher_name_for_result(db: AsyncSession, tenant_id: uuid.UUID, result) -> str | None:
+    async def _teacher_name_for_result(
+        db: AsyncSession, tenant_id: uuid.UUID, result
+    ) -> str | None:
         teacher = None
         if result.teacher_assignment_id is not None:
             teacher_assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
@@ -140,7 +153,10 @@ class ReportCardService:
             )
         if teacher is None:
             return None
-        return " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip() or None
+        return (
+            " ".join(part for part in [teacher.first_name, teacher.last_name] if part).strip()
+            or None
+        )
 
     @staticmethod
     async def _create_card_from_results(
@@ -207,8 +223,12 @@ class ReportCardService:
         card = await ReportCardRepository.create(db, card)
 
         for result in results:
-            subject = await SubjectRepository.get_subject_by_id(db, actor.tenant_id, result.subject_id)
-            teacher_name = await ReportCardService._teacher_name_for_result(db, actor.tenant_id, result)
+            subject = await SubjectRepository.get_subject_by_id(
+                db, actor.tenant_id, result.subject_id
+            )
+            teacher_name = await ReportCardService._teacher_name_for_result(
+                db, actor.tenant_id, result
+            )
             grade = result.grade
             remark = result.remark
             if grade is None:
@@ -331,7 +351,9 @@ class ReportCardService:
             academic_term_id,
         )
         if existing is not None:
-            raise BadRequestException("A report card already exists for this student and academic period.")
+            raise BadRequestException(
+                "A report card already exists for this student and academic period."
+            )
 
         results = await ReportCardService._finalized_results_for_student(
             db, actor.tenant_id, student_id, academic_session_id, academic_term_id
@@ -469,7 +491,9 @@ class ReportCardService:
                 ReportCardClassOverviewRow(
                     student_id=student.id,
                     student_name=(
-                        " ".join(part for part in [student.first_name, student.last_name] if part).strip()
+                        " ".join(
+                            part for part in [student.first_name, student.last_name] if part
+                        ).strip()
                         or None
                     ),
                     admission_number=student.admission_number,
@@ -495,7 +519,7 @@ class ReportCardService:
     async def publish(
         db: AsyncSession,
         actor: TenantAdmin,
-            report_card_id: uuid.UUID,
+        report_card_id: uuid.UUID,
     ) -> ReportCardResponse:
         card = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if card is None:
@@ -505,9 +529,13 @@ class ReportCardService:
         if card.superseded_at is not None:
             raise BadRequestException("Superseded report cards cannot be published.")
         if card.is_outdated:
-            raise BadRequestException("Outdated report cards must be regenerated before publication.")
+            raise BadRequestException(
+                "Outdated report cards must be regenerated before publication."
+            )
         lines = await ReportCardRepository.list_lines(db, actor.tenant_id, card.id)
-        expected = await ReportCardService._expected_class_subjects(db, actor.tenant_id, card.class_id)
+        expected = await ReportCardService._expected_class_subjects(
+            db, actor.tenant_id, card.class_id
+        )
         expected_subject_ids = {class_subject.subject_id for class_subject in expected}
         line_subject_ids = {line.subject_id for line in lines}
         if line_subject_ids != expected_subject_ids:
@@ -519,7 +547,9 @@ class ReportCardService:
                 line.student_subject_result_id,
             )
             if result is None or result.status != AcademicResultStatus.LOCKED:
-                raise BadRequestException("Report card source scores must be locked before publication.")
+                raise BadRequestException(
+                    "Report card source scores must be locked before publication."
+                )
         card.status = ReportCardStatus.PUBLISHED
         card.published_at = datetime.now(timezone.utc)
         card.published_by = actor.id
@@ -546,8 +576,12 @@ class ReportCardService:
     async def _response(db: AsyncSession, card: ReportCard) -> ReportCardResponse:
         student = await StudentRepository.get_student_by_id(db, card.tenant_id, card.student_id)
         classroom = await ClassRoomRepository.get_by_id(db, card.tenant_id, card.class_id)
-        session = await StudentAcademicRepository.get_academic_session_by_id(db, card.tenant_id, card.academic_session_id)
-        term = await StudentAcademicRepository.get_term_by_id(db, card.tenant_id, card.academic_term_id)
+        session = await StudentAcademicRepository.get_academic_session_by_id(
+            db, card.tenant_id, card.academic_session_id
+        )
+        term = await StudentAcademicRepository.get_term_by_id(
+            db, card.tenant_id, card.academic_term_id
+        )
         lines = await ReportCardRepository.list_lines(db, card.tenant_id, card.id)
         return ReportCardResponse(
             id=card.id,
@@ -640,7 +674,11 @@ class ReportCardService:
         return [await ReportCardService._response(db, card) for card in cards], total
 
     @staticmethod
-    async def render_html(db: AsyncSession, actor: TenantAdmin | Parent | Student, report_card_id: uuid.UUID) -> str:
+    async def render_html(
+        db: AsyncSession,
+        actor: TenantAdmin | Parent | Student,
+        report_card_id: uuid.UUID,
+    ) -> str:
         card = await ReportCardService.get(db, actor, report_card_id)
         tenant = await TenantRepository.get_by_id(db, actor.tenant_id)
 
@@ -666,7 +704,9 @@ class ReportCardService:
 
         student_name = html.escape(card.student_name or card.admission_number or "")
         admission_number = html.escape(card.admission_number or "Not assigned")
-        class_label = html.escape(" ".join(part for part in [card.class_name, card.class_arm] if part) or "Not assigned")
+        class_label = html.escape(
+            " ".join(part for part in [card.class_name, card.class_arm] if part) or "Not assigned"
+        )
         session_label = html.escape(card.academic_session_name or "—")
         term_label = html.escape(_format_term(card.academic_term_name))
         school_name = html.escape((tenant.school_name if tenant else None) or "Weave")

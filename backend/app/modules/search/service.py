@@ -118,21 +118,26 @@ class TenantSearchService:
             )
 
         teachers = (
-            await db.execute(
-                select(Teacher)
-                .join(TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id)
-                .options(selectinload(Teacher.teacher_account))
-                .where(
-                    Teacher.tenant_id == tenant_id,
-                    or_(
-                        TeacherAccount.first_name.ilike(term),
-                        TeacherAccount.last_name.ilike(term),
-                        TeacherAccount.email.ilike(term),
-                        Teacher.staff_id.ilike(term),
-                    ),
-                ).limit(per_type_limit)
+            (
+                await db.execute(
+                    select(Teacher)
+                    .join(TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id)
+                    .options(selectinload(Teacher.teacher_account))
+                    .where(
+                        Teacher.tenant_id == tenant_id,
+                        or_(
+                            TeacherAccount.first_name.ilike(term),
+                            TeacherAccount.last_name.ilike(term),
+                            TeacherAccount.email.ilike(term),
+                            Teacher.staff_id.ilike(term),
+                        ),
+                    )
+                    .limit(per_type_limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for teacher in teachers:
             items.append(
                 TenantSearchResult(
@@ -146,20 +151,25 @@ class TenantSearchService:
             )
 
         parents = (
-            await db.execute(
-                select(Parent)
-                .join(ParentAccount, ParentAccount.id == Parent.parent_account_id)
-                .options(selectinload(Parent.parent_account))
-                .where(
-                    Parent.tenant_id == tenant_id,
-                    or_(
-                        ParentAccount.first_name.ilike(term),
-                        ParentAccount.last_name.ilike(term),
-                        ParentAccount.email.ilike(term),
-                    ),
-                ).limit(per_type_limit)
+            (
+                await db.execute(
+                    select(Parent)
+                    .join(ParentAccount, ParentAccount.id == Parent.parent_account_id)
+                    .options(selectinload(Parent.parent_account))
+                    .where(
+                        Parent.tenant_id == tenant_id,
+                        or_(
+                            ParentAccount.first_name.ilike(term),
+                            ParentAccount.last_name.ilike(term),
+                            ParentAccount.email.ilike(term),
+                        ),
+                    )
+                    .limit(per_type_limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for parent in parents:
             items.append(
                 TenantSearchResult(
@@ -172,13 +182,19 @@ class TenantSearchService:
             )
 
         classes = (
-            await db.execute(
-                select(ClassRoom).where(
-                    ClassRoom.tenant_id == tenant_id,
-                    or_(ClassRoom.name.ilike(term), ClassRoom.arm.ilike(term)),
-                ).limit(per_type_limit)
+            (
+                await db.execute(
+                    select(ClassRoom)
+                    .where(
+                        ClassRoom.tenant_id == tenant_id,
+                        or_(ClassRoom.name.ilike(term), ClassRoom.arm.ilike(term)),
+                    )
+                    .limit(per_type_limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for classroom in classes:
             label = TenantSearchService._name(classroom.name, classroom.arm)
             items.append(
@@ -192,13 +208,19 @@ class TenantSearchService:
             )
 
         subjects = (
-            await db.execute(
-                select(Subject).where(
-                    Subject.tenant_id == tenant_id,
-                    or_(Subject.name.ilike(term), Subject.code.ilike(term)),
-                ).limit(per_type_limit)
+            (
+                await db.execute(
+                    select(Subject)
+                    .where(
+                        Subject.tenant_id == tenant_id,
+                        or_(Subject.name.ilike(term), Subject.code.ilike(term)),
+                    )
+                    .limit(per_type_limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for subject in subjects:
             items.append(
                 TenantSearchResult(
@@ -227,7 +249,10 @@ class TenantSearchService:
             await db.execute(
                 select(ClassRoom, Subject)
                 .join(ClassSubject, ClassSubject.class_id == ClassRoom.id)
-                .join(TeacherAssignment, TeacherAssignment.class_subject_id == ClassSubject.id)
+                .join(
+                    TeacherAssignment,
+                    TeacherAssignment.class_subject_id == ClassSubject.id,
+                )
                 .join(Subject, Subject.id == ClassSubject.subject_id)
                 .where(
                     ClassRoom.tenant_id == tenant_id,
@@ -292,9 +317,7 @@ class TenantSearchService:
             ).all()
             for student, classroom in student_rows:
                 class_label = (
-                    TenantSearchService._name(classroom.name, classroom.arm)
-                    if classroom
-                    else None
+                    TenantSearchService._name(classroom.name, classroom.arm) if classroom else None
                 )
                 if TenantSearchService._matches(
                     query,
@@ -316,12 +339,25 @@ class TenantSearchService:
 
         result_rows = (
             await db.execute(
-                select(StudentSubjectResult, Student, ClassRoom, Subject, AcademicSession, AcademicTerm)
+                select(
+                    StudentSubjectResult,
+                    Student,
+                    ClassRoom,
+                    Subject,
+                    AcademicSession,
+                    AcademicTerm,
+                )
                 .join(Student, Student.id == StudentSubjectResult.student_id)
                 .join(ClassRoom, ClassRoom.id == StudentSubjectResult.class_id)
                 .join(Subject, Subject.id == StudentSubjectResult.subject_id)
-                .join(AcademicSession, AcademicSession.id == StudentSubjectResult.academic_session_id)
-                .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
+                .join(
+                    AcademicSession,
+                    AcademicSession.id == StudentSubjectResult.academic_session_id,
+                )
+                .join(
+                    AcademicTerm,
+                    AcademicTerm.id == StudentSubjectResult.academic_term_id,
+                )
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.teacher_membership_id == teacher_id,
@@ -370,20 +406,24 @@ class TenantSearchService:
         items: list[TenantSearchResult] = []
 
         tenant_rows = (
-            await db.execute(
-                select(Tenant)
-                .where(
-                    or_(
-                        Tenant.school_name.ilike(f"%{query.strip()}%"),
-                        Tenant.email.ilike(f"%{query.strip()}%"),
-                        Tenant.slug.ilike(f"%{query.strip()}%"),
-                        cast(Tenant.status, String).ilike(f"%{query.strip()}%"),
-                        cast(Tenant.plan, String).ilike(f"%{query.strip()}%"),
+            (
+                await db.execute(
+                    select(Tenant)
+                    .where(
+                        or_(
+                            Tenant.school_name.ilike(f"%{query.strip()}%"),
+                            Tenant.email.ilike(f"%{query.strip()}%"),
+                            Tenant.slug.ilike(f"%{query.strip()}%"),
+                            cast(Tenant.status, String).ilike(f"%{query.strip()}%"),
+                            cast(Tenant.plan, String).ilike(f"%{query.strip()}%"),
+                        )
                     )
+                    .order_by(Tenant.school_name)
                 )
-                .order_by(Tenant.school_name)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for tenant in tenant_rows[:per_type_limit]:
             items.append(
                 TenantSearchService._result(
@@ -396,12 +436,16 @@ class TenantSearchService:
             )
 
         superadmin_rows = (
-            await db.execute(
-                select(SuperAdmin)
-                .where(SuperAdmin.email.ilike(f"%{query.strip()}%"))
-                .order_by(SuperAdmin.email)
+            (
+                await db.execute(
+                    select(SuperAdmin)
+                    .where(SuperAdmin.email.ilike(f"%{query.strip()}%"))
+                    .order_by(SuperAdmin.email)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for superadmin in superadmin_rows[:per_type_limit]:
             items.append(
                 TenantSearchService._result(

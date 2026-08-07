@@ -30,14 +30,11 @@ from app.modules.student_academics.models import (
 from app.modules.students.models import Student, StudentEnrollment
 from app.modules.teachers.models import TeacherAccount, TeacherMembership
 
-
 FINALIZED_RESULT_STATUSES = (AcademicResultStatus.LOCKED,)
+
+
 def escape_like(value: str) -> str:
-    return (
-        value.replace("\\", "\\\\")
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-    )
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class StudentAcademicRepository:
@@ -49,7 +46,9 @@ class StudentAcademicRepository:
         return entity
 
     @staticmethod
-    async def create_academic_session(db: AsyncSession, academic_session: AcademicSession) -> AcademicSession:
+    async def create_academic_session(
+        db: AsyncSession, academic_session: AcademicSession
+    ) -> AcademicSession:
         return await StudentAcademicRepository._save(db, academic_session)
 
     @staticmethod
@@ -113,7 +112,9 @@ class StudentAcademicRepository:
     ) -> tuple[list[AcademicSession], int]:
         filters = [AcademicSession.tenant_id == tenant_id]
         if search:
-            filters.append(AcademicSession.name.ilike(f"%{escape_like(search.strip())}%", escape="\\"))
+            filters.append(
+                AcademicSession.name.ilike(f"%{escape_like(search.strip())}%", escape="\\")
+            )
         if status is not None:
             filters.append(AcademicSession.status == status)
         if is_current is not None:
@@ -123,26 +124,30 @@ class StudentAcademicRepository:
         if start_date_to is not None:
             filters.append(AcademicSession.start_date <= start_date_to)
         total = (
-            await db.execute(
-                select(func.count()).select_from(AcademicSession).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(AcademicSession).where(*filters))
         ).scalar_one()
         rows = (
-            await db.execute(
-                select(AcademicSession)
-                .where(*filters)
-                .order_by(
-                    AcademicSession.is_current.desc(),
-                    AcademicSession.created_at.desc(),
+            (
+                await db.execute(
+                    select(AcademicSession)
+                    .where(*filters)
+                    .order_by(
+                        AcademicSession.is_current.desc(),
+                        AcademicSession.created_at.desc(),
+                    )
+                    .offset(skip)
+                    .limit(limit)
                 )
-                .offset(skip)
-                .limit(limit)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows), int(total)
 
     @staticmethod
-    async def save_academic_session(db: AsyncSession, academic_session: AcademicSession) -> AcademicSession:
+    async def save_academic_session(
+        db: AsyncSession, academic_session: AcademicSession
+    ) -> AcademicSession:
         return await StudentAcademicRepository._save(db, academic_session)
 
     @staticmethod
@@ -268,9 +273,7 @@ class StudentAcademicRepository:
         ]
 
         if academic_session_id is not None:
-            filters.append(
-                AcademicTerm.academic_session_id == academic_session_id
-            )
+            filters.append(AcademicTerm.academic_session_id == academic_session_id)
 
         if statuses is None:
             filters.append(AcademicTerm.status != AcademicTermStatus.CLOSED)
@@ -286,25 +289,25 @@ class StudentAcademicRepository:
             filters.append(AcademicTerm.start_date <= start_date_to)
 
         total = (
-            await db.execute(
-                select(func.count())
-                .select_from(AcademicTerm)
-                .where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(AcademicTerm).where(*filters))
         ).scalar_one()
 
         rows = (
-            await db.execute(
-                select(AcademicTerm)
-                .where(*filters)
-                .order_by(
-                    AcademicTerm.is_current.desc(),
-                    AcademicTerm.created_at.desc(),
+            (
+                await db.execute(
+                    select(AcademicTerm)
+                    .where(*filters)
+                    .order_by(
+                        AcademicTerm.is_current.desc(),
+                        AcademicTerm.created_at.desc(),
+                    )
+                    .offset(skip)
+                    .limit(limit)
                 )
-                .offset(skip)
-                .limit(limit)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         return list(rows), int(total)
 
@@ -325,7 +328,11 @@ class StudentAcademicRepository:
             filters.append(AcademicTerm.academic_session_id == academic_session_id)
         if statuses is not None:
             filters.append(AcademicTerm.status.in_(statuses))
-        return int((await db.execute(select(func.count()).select_from(AcademicTerm).where(*filters))).scalar_one())
+        return int(
+            (
+                await db.execute(select(func.count()).select_from(AcademicTerm).where(*filters))
+            ).scalar_one()
+        )
 
     @staticmethod
     async def count_results(
@@ -343,7 +350,13 @@ class StudentAcademicRepository:
             filters.append(StudentSubjectResult.academic_term_id == academic_term_id)
         if statuses is not None:
             filters.append(StudentSubjectResult.status.in_(statuses))
-        return int((await db.execute(select(func.count()).select_from(StudentSubjectResult).where(*filters))).scalar_one())
+        return int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(StudentSubjectResult).where(*filters)
+                )
+            ).scalar_one()
+        )
 
     @staticmethod
     async def count_report_cards(
@@ -361,7 +374,11 @@ class StudentAcademicRepository:
             filters.append(ReportCard.academic_term_id == academic_term_id)
         if statuses is not None:
             filters.append(ReportCard.status.in_(statuses))
-        return int((await db.execute(select(func.count()).select_from(ReportCard).where(*filters))).scalar_one())
+        return int(
+            (
+                await db.execute(select(func.count()).select_from(ReportCard).where(*filters))
+            ).scalar_one()
+        )
 
     @staticmethod
     async def count_enrollments(
@@ -372,7 +389,9 @@ class StudentAcademicRepository:
         return int(
             (
                 await db.execute(
-                    select(func.count()).select_from(StudentEnrollment).where(
+                    select(func.count())
+                    .select_from(StudentEnrollment)
+                    .where(
                         StudentEnrollment.tenant_id == tenant_id,
                         StudentEnrollment.academic_session_id == academic_session_id,
                     )
@@ -393,7 +412,13 @@ class StudentAcademicRepository:
             filters.append(StudentProgressionRun.academic_session_id == academic_session_id)
         if statuses is not None:
             filters.append(StudentProgressionRun.status.in_(statuses))
-        return int((await db.execute(select(func.count()).select_from(StudentProgressionRun).where(*filters))).scalar_one())
+        return int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(StudentProgressionRun).where(*filters)
+                )
+            ).scalar_one()
+        )
 
     @staticmethod
     async def count_inbound_next_sessions(
@@ -404,7 +429,9 @@ class StudentAcademicRepository:
         return int(
             (
                 await db.execute(
-                    select(func.count()).select_from(AcademicSession).where(
+                    select(func.count())
+                    .select_from(AcademicSession)
+                    .where(
                         AcademicSession.tenant_id == tenant_id,
                         AcademicSession.next_academic_session_id == academic_session_id,
                     )
@@ -475,19 +502,21 @@ class StudentAcademicRepository:
         if active_only:
             filters.append(GradingScale.is_active.is_(True))
         total = (
-            await db.execute(
-                select(func.count()).select_from(GradingScale).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(GradingScale).where(*filters))
         ).scalar_one()
         rows = (
-            await db.execute(
-                select(GradingScale)
-                .where(*filters)
-                .order_by(GradingScale.min_score.desc())
-                .offset(skip)
-                .limit(limit)
+            (
+                await db.execute(
+                    select(GradingScale)
+                    .where(*filters)
+                    .order_by(GradingScale.min_score.desc())
+                    .offset(skip)
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows), int(total)
 
     @staticmethod
@@ -571,19 +600,24 @@ class StudentAcademicRepository:
         if active_only:
             filters.append(ClassSubjectTeacher.is_active.is_(True))
         total = (
-            await db.execute(
-                select(func.count()).select_from(ClassSubjectTeacher).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(ClassSubjectTeacher).where(*filters))
         ).scalar_one()
         rows = (
-            await db.execute(
-                select(ClassSubjectTeacher)
-                .where(*filters)
-                .order_by(ClassSubjectTeacher.is_active.desc(), ClassSubjectTeacher.sort_order.asc())
-                .offset(skip)
-                .limit(limit)
+            (
+                await db.execute(
+                    select(ClassSubjectTeacher)
+                    .where(*filters)
+                    .order_by(
+                        ClassSubjectTeacher.is_active.desc(),
+                        ClassSubjectTeacher.sort_order.asc(),
+                    )
+                    .offset(skip)
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows), int(total)
 
     @staticmethod
@@ -756,24 +790,31 @@ class StudentAcademicRepository:
         count_query = select(func.count()).select_from(StudentSubjectResult)
         rows_query = select(StudentSubjectResult)
         if search_term:
-            count_query = count_query.join(Student, Student.id == StudentSubjectResult.student_id).join(
+            count_query = count_query.join(
+                Student, Student.id == StudentSubjectResult.student_id
+            ).join(
                 Subject,
                 Subject.id == StudentSubjectResult.subject_id,
             )
-            rows_query = rows_query.join(Student, Student.id == StudentSubjectResult.student_id).join(
+            rows_query = rows_query.join(
+                Student, Student.id == StudentSubjectResult.student_id
+            ).join(
                 Subject,
                 Subject.id == StudentSubjectResult.subject_id,
             )
         total = (await db.execute(count_query.where(*filters))).scalar_one()
         rows = (
-            await db.execute(
-                rows_query
-                .where(*filters)
-                .order_by(StudentSubjectResult.created_at.desc())
-                .offset(skip)
-                .limit(limit)
+            (
+                await db.execute(
+                    rows_query.where(*filters)
+                    .order_by(StudentSubjectResult.created_at.desc())
+                    .offset(skip)
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows), int(total)
 
     @staticmethod
@@ -842,19 +883,21 @@ class StudentAcademicRepository:
         if not include_archived and lifecycle_status != "archived":
             filters.append(ClassSubject.archived_at.is_(None))
         total = (
-            await db.execute(
-                select(func.count()).select_from(ClassSubject).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(ClassSubject).where(*filters))
         ).scalar_one()
         rows = (
-            await db.execute(
-                select(ClassSubject)
-                .where(*filters)
-                .order_by(ClassSubject.created_at.desc())
-                .offset(skip)
-                .limit(limit)
+            (
+                await db.execute(
+                    select(ClassSubject)
+                    .where(*filters)
+                    .order_by(ClassSubject.created_at.desc())
+                    .offset(skip)
+                    .limit(limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows), int(total)
 
     @staticmethod
@@ -965,14 +1008,18 @@ class StudentAcademicRepository:
         if class_subject is None:
             return []
         rows = (
-            await db.execute(
-                select(ClassSubjectTeacher).where(
-                    ClassSubjectTeacher.tenant_id == tenant_id,
-                    ClassSubjectTeacher.class_id == class_subject.class_id,
-                    ClassSubjectTeacher.subject_id == class_subject.subject_id,
+            (
+                await db.execute(
+                    select(ClassSubjectTeacher).where(
+                        ClassSubjectTeacher.tenant_id == tenant_id,
+                        ClassSubjectTeacher.class_id == class_subject.class_id,
+                        ClassSubjectTeacher.subject_id == class_subject.subject_id,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(rows)
 
     @staticmethod
@@ -1004,7 +1051,9 @@ class StudentAcademicRepository:
         return int(result.scalar_one())
 
     @staticmethod
-    async def create_teacher_assignment(db: AsyncSession, assignment: TeacherAssignment) -> TeacherAssignment:
+    async def create_teacher_assignment(
+        db: AsyncSession, assignment: TeacherAssignment
+    ) -> TeacherAssignment:
         return await StudentAcademicRepository._save(db, assignment)
 
     @staticmethod
@@ -1021,9 +1070,7 @@ class StudentAcademicRepository:
         )
         if lock:
             query = query.with_for_update()
-        return (
-            await db.execute(query)
-        ).scalar_one_or_none()
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def get_active_teacher_assignment_for_class_subject(
@@ -1042,9 +1089,7 @@ class StudentAcademicRepository:
         if exclude_id is not None:
             filters.append(TeacherAssignment.id != exclude_id)
         query = (
-            select(TeacherAssignment)
-            .where(*filters)
-            .order_by(TeacherAssignment.created_at.desc())
+            select(TeacherAssignment).where(*filters).order_by(TeacherAssignment.created_at.desc())
         )
         if lock:
             query = query.with_for_update()
@@ -1064,7 +1109,10 @@ class StudentAcademicRepository:
                 TeacherAssignment.tenant_id == tenant_id,
                 TeacherAssignment.class_subject_id == class_subject_id,
             )
-            .order_by(TeacherAssignment.effective_from.asc(), TeacherAssignment.created_at.asc())
+            .order_by(
+                TeacherAssignment.effective_from.asc(),
+                TeacherAssignment.created_at.asc(),
+            )
         )
         if lock:
             query = query.with_for_update()
@@ -1087,7 +1135,11 @@ class StudentAcademicRepository:
         ]
         if exclude_id is not None:
             filters.append(TeacherAssignment.id != exclude_id)
-        query = select(TeacherAssignment).where(*filters).order_by(TeacherAssignment.effective_from.asc())
+        query = (
+            select(TeacherAssignment)
+            .where(*filters)
+            .order_by(TeacherAssignment.effective_from.asc())
+        )
         if lock:
             query = query.with_for_update()
         return list((await db.execute(query)).scalars().all())
@@ -1124,7 +1176,12 @@ class StudentAcademicRepository:
             filters.append(TeacherAssignment.is_active.is_(True))
             filters.append(TeacherAssignment.effective_to.is_(None))
         elif status == "ended":
-            filters.append(or_(TeacherAssignment.is_active.is_(False), TeacherAssignment.effective_to.is_not(None)))
+            filters.append(
+                or_(
+                    TeacherAssignment.is_active.is_(False),
+                    TeacherAssignment.effective_to.is_not(None),
+                )
+            )
         if effective_from_from is not None:
             filters.append(TeacherAssignment.effective_from >= effective_from_from)
         if effective_from_to is not None:
@@ -1151,14 +1208,20 @@ class StudentAcademicRepository:
             .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
             .join(ClassRoom, ClassRoom.id == ClassSubject.class_id, isouter=True)
             .join(Subject, Subject.id == ClassSubject.subject_id, isouter=True)
-            .join(TeacherMembership, TeacherMembership.id == TeacherAssignment.teacher_membership_id, isouter=True)
-            .join(TeacherAccount, TeacherAccount.id == TeacherMembership.teacher_account_id, isouter=True)
+            .join(
+                TeacherMembership,
+                TeacherMembership.id == TeacherAssignment.teacher_membership_id,
+                isouter=True,
+            )
+            .join(
+                TeacherAccount,
+                TeacherAccount.id == TeacherMembership.teacher_account_id,
+                isouter=True,
+            )
             .where(*filters)
         )
         total = (
-            await db.execute(
-                select(func.count()).select_from(base_query.subquery())
-            )
+            await db.execute(select(func.count()).select_from(base_query.subquery()))
         ).scalar_one()
         rows = (
             await db.execute(
@@ -1177,10 +1240,21 @@ class StudentAcademicRepository:
                 .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
                 .join(ClassRoom, ClassRoom.id == ClassSubject.class_id, isouter=True)
                 .join(Subject, Subject.id == ClassSubject.subject_id, isouter=True)
-                .join(TeacherMembership, TeacherMembership.id == TeacherAssignment.teacher_membership_id, isouter=True)
-                .join(TeacherAccount, TeacherAccount.id == TeacherMembership.teacher_account_id, isouter=True)
+                .join(
+                    TeacherMembership,
+                    TeacherMembership.id == TeacherAssignment.teacher_membership_id,
+                    isouter=True,
+                )
+                .join(
+                    TeacherAccount,
+                    TeacherAccount.id == TeacherMembership.teacher_account_id,
+                    isouter=True,
+                )
                 .where(*filters)
-                .order_by(TeacherAssignment.is_active.desc(), TeacherAssignment.created_at.desc())
+                .order_by(
+                    TeacherAssignment.is_active.desc(),
+                    TeacherAssignment.created_at.desc(),
+                )
                 .offset(skip)
                 .limit(limit)
             )
@@ -1197,13 +1271,16 @@ class StudentAcademicRepository:
                 "teacher_staff_id": row.teacher_staff_id,
                 "teacher_name": " ".join(
                     part for part in [row.teacher_first_name, row.teacher_last_name] if part
-                ) or None,
+                )
+                or None,
             }
             for row in rows
         ], int(total)
 
     @staticmethod
-    async def save_teacher_assignment(db: AsyncSession, assignment: TeacherAssignment) -> TeacherAssignment:
+    async def save_teacher_assignment(
+        db: AsyncSession, assignment: TeacherAssignment
+    ) -> TeacherAssignment:
         return await StudentAcademicRepository._save(db, assignment)
 
     @staticmethod
@@ -1264,9 +1341,7 @@ class StudentAcademicRepository:
         audit: TeacherAssignmentLifecycleAudit,
     ) -> TeacherAssignmentLifecycleAudit:
         audit_table = (
-            await db.execute(
-                select(func.to_regclass("public.teacher_assignment_lifecycle_audits"))
-            )
+            await db.execute(select(func.to_regclass("public.teacher_assignment_lifecycle_audits")))
         ).scalar_one()
         if audit_table is None:
             return audit

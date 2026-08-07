@@ -4,7 +4,10 @@ import uuid
 from types import SimpleNamespace
 
 from app.core.cache.events import CACHE_INVALIDATION_EVENTS, CacheInvalidationEvent
-from app.modules.communications.enums import CommunicationActorType, NotificationSourceType
+from app.modules.communications.enums import (
+    CommunicationActorType,
+    NotificationSourceType,
+)
 from app.modules.communications.models import NotificationDelivery
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,

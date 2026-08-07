@@ -66,8 +66,7 @@ class ParentAccountRepository:
     ) -> bool:
         result = await db.execute(
             select(ParentAccount.id).where(
-                ParentAccount.email
-                == normalized_email.strip().casefold(),
+                ParentAccount.email == normalized_email.strip().casefold(),
             )
         )
         return result.scalar_one_or_none() is not None
@@ -196,11 +195,7 @@ class ParentMembershipRepository:
             )
 
         total = (
-            await db.execute(
-                select(func.count())
-                .select_from(ParentMembership)
-                .where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(ParentMembership).where(*filters))
         ).scalar_one()
 
         result = await db.execute(
@@ -261,8 +256,7 @@ class ParentMembershipRepository:
             .select_from(ParentMembership)
             .where(
                 ParentMembership.tenant_id == tenant_id,
-                ParentMembership.status
-                == ParentMembershipStatus.ACTIVE,
+                ParentMembership.status == ParentMembershipStatus.ACTIVE,
             )
         )
         return int(result.scalar_one() or 0)
@@ -280,15 +274,11 @@ class ParentMembershipRepository:
             )
             .where(
                 StudentParentLink.tenant_id == tenant_id,
-                StudentParentLink.parent_membership_id
-                == membership_id,
+                StudentParentLink.parent_membership_id == membership_id,
             )
             .group_by(StudentParentLink.status)
         )
-        return {
-            link_status: count
-            for link_status, count in result.all()
-        }
+        return {link_status: count for link_status, count in result.all()}
 
     @staticmethod
     async def email_exists(
@@ -308,9 +298,7 @@ class ParentMembershipRepository:
             query = query.where(
                 ParentMembership.id != exclude_parent_id,
             )
-        return (
-            await db.execute(query)
-        ).scalar_one_or_none() is not None
+        return (await db.execute(query)).scalar_one_or_none() is not None
 
     @staticmethod
     async def save(
@@ -390,10 +378,8 @@ class ParentInvitationRepository:
         query = select(ParentInvitation).where(
             ParentInvitation.tenant_id == tenant_id,
             ParentInvitation.student_id == student_id,
-            ParentInvitation.invited_email
-            == normalized_email.strip().casefold(),
-            ParentInvitation.status
-            == ParentInvitationStatus.PENDING,
+            ParentInvitation.invited_email == normalized_email.strip().casefold(),
+            ParentInvitation.status == ParentInvitationStatus.PENDING,
         )
         if lock:
             query = query.with_for_update()
@@ -413,11 +399,7 @@ class ParentInvitationRepository:
             filters.append(ParentInvitation.status == status)
 
         total = (
-            await db.execute(
-                select(func.count())
-                .select_from(ParentInvitation)
-                .where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(ParentInvitation).where(*filters))
         ).scalar_one()
 
         result = await db.execute(

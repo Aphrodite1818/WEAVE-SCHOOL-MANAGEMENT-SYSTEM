@@ -23,11 +23,7 @@ def build_parent_account(*, active: bool = True) -> ParentAccount:
         password_hash="not-used-by-guard-tests",
         first_name="Bola",
         last_name="Parent",
-        account_status=(
-            ParentAccountStatus.ACTIVE
-            if active
-            else ParentAccountStatus.INACTIVE
-        ),
+        account_status=(ParentAccountStatus.ACTIVE if active else ParentAccountStatus.INACTIVE),
         is_verified=active,
         is_active=active,
     )

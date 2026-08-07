@@ -1,6 +1,6 @@
-#==========================#
+# ==========================#
 #   GEMINI PROVIDER.PY     #
-#==========================#
+# ==========================#
 
 
 from typing import Any
@@ -18,8 +18,8 @@ from app.modules.AI.providers.utils import (
 
 
 class GeminiProvider(BaseLLMProvider):
-
     """Represent the GeminiProvider type."""
+
     def __init__(self, api_key: str | None, model: str, max_tokens: int):
         """Initialize the GeminiProvider instance."""
         self.api_key = require_api_key(api_key, "Gemini")
@@ -28,17 +28,19 @@ class GeminiProvider(BaseLLMProvider):
         self.client = genai.Client(api_key=self.api_key)
 
     async def chat(
-            self,
-            messages: list[dict[str, str]],
-            tools: list[dict[str, Any]] | None = None,
-
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Perform chat."""
-        system_instruction = "\n\n".join(
-            text_from_content(message.get("content"))
-            for message in messages
-            if message.get("role") == "system"
-        ) or None
+        system_instruction = (
+            "\n\n".join(
+                text_from_content(message.get("content"))
+                for message in messages
+                if message.get("role") == "system"
+            )
+            or None
+        )
         contents = [
             types.Content(
                 role="model" if message.get("role") == "assistant" else "user",
@@ -59,8 +61,7 @@ class GeminiProvider(BaseLLMProvider):
             config_kwargs["tools"] = [
                 types.Tool(
                     function_declarations=[
-                        openai_tool_to_gemini_declaration(tool)
-                        for tool in tools
+                        openai_tool_to_gemini_declaration(tool) for tool in tools
                     ]
                 )
             ]
@@ -76,4 +77,3 @@ class GeminiProvider(BaseLLMProvider):
             "tool_calls": model_to_dict(response.function_calls) or None,
             "raw_response": model_to_dict(response),
         }
-

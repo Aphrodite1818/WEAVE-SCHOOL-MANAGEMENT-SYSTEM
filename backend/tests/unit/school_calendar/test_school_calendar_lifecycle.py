@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.exceptions import ConflictException, NotFoundException
-from app.modules.school_calendar.calendar_enums import SchoolCalendarDaySource, SchoolCalendarDayType, SchoolCalendarStatus
+from app.modules.school_calendar.calendar_enums import (
+    SchoolCalendarDaySource,
+    SchoolCalendarDayType,
+    SchoolCalendarStatus,
+)
 from app.modules.school_calendar.models import SchoolCalendar, SchoolCalendarDay
 from app.modules.school_calendar.schemas import (
     SchoolCalendarConfigurationCreate,
@@ -18,7 +22,9 @@ from app.modules.school_calendar.schemas import (
     SchoolCalendarGenerateRequest,
     SchoolCalendarResponse,
 )
-from app.modules.school_calendar.generation_service import SchoolCalendarGenerationService
+from app.modules.school_calendar.generation_service import (
+    SchoolCalendarGenerationService,
+)
 from app.modules.school_calendar.service import SchoolCalendarService
 from app.modules.student_academics.models import (
     AcademicSession,
@@ -148,7 +154,10 @@ async def test_calendar_activation_preview_blocks_closed_session() -> None:
         )
 
     assert preview.can_activate is False
-    assert "Academic session must be open and current before calendar activation." in preview.blocker_messages
+    assert (
+        "Academic session must be open and current before calendar activation."
+        in preview.blocker_messages
+    )
     assert "SESSION_NOT_OPEN_CURRENT" in preview.blocker_codes
     assert preview.dependency_counts["missing_dates"] == 90
 
@@ -230,18 +239,50 @@ async def test_calendar_activation_preview_blocks_outdated_configuration() -> No
     )
 
     with (
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_calendar_by_id", new=AsyncMock(return_value=calendar)),
-        patch("app.modules.school_calendar.service.StudentAcademicRepository.get_academic_session_by_id", new=AsyncMock(return_value=session)),
-        patch("app.modules.school_calendar.service.StudentAcademicRepository.get_term_by_id", new=AsyncMock(return_value=term)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_configuration", new=AsyncMock(return_value=SimpleNamespace(revision=2))),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_days", new=AsyncMock(return_value=5)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_unresolved_days", new=AsyncMock(return_value=0)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_duplicate_dates", new=AsyncMock(return_value=0)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_invalid_days", new=AsyncMock(return_value=0)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_missing_dates", new=AsyncMock(return_value=0)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.count_extra_dates", new=AsyncMock(return_value=0)),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.get_calendar_by_id",
+            new=AsyncMock(return_value=calendar),
+        ),
+        patch(
+            "app.modules.school_calendar.service.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.modules.school_calendar.service.StudentAcademicRepository.get_term_by_id",
+            new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.get_configuration",
+            new=AsyncMock(return_value=SimpleNamespace(revision=2)),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_days",
+            new=AsyncMock(return_value=5),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_unresolved_days",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_duplicate_dates",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_invalid_days",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_missing_dates",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.count_extra_dates",
+            new=AsyncMock(return_value=0),
+        ),
     ):
-        preview = await SchoolCalendarService.calendar_dependency_preview(AsyncMock(), tenant_id, calendar.id)
+        preview = await SchoolCalendarService.calendar_dependency_preview(
+            AsyncMock(), tenant_id, calendar.id
+        )
 
     assert preview.can_activate is False
     assert preview.configuration_outdated is True
@@ -268,8 +309,14 @@ async def test_configuration_revision_does_not_increment_for_noop_save() -> None
     )
 
     with (
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_configuration", new=AsyncMock(return_value=config)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.update_configuration", new=AsyncMock()) as update_config,
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.get_configuration",
+            new=AsyncMock(return_value=config),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.update_configuration",
+            new=AsyncMock(),
+        ) as update_config,
     ):
         response = await SchoolCalendarService.upsert_configuration(
             AsyncMock(),
@@ -323,17 +370,38 @@ async def test_update_day_allows_selected_draft_calendar_day() -> None:
     )
 
     with (
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_calendar_by_id", new=AsyncMock(return_value=calendar)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.get_day_by_date", new=AsyncMock(return_value=day)),
-        patch("app.modules.school_calendar.service.SchoolCalendarService.tenant_today", new=AsyncMock(return_value=date(2026, 9, 1))),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.update_day", new=AsyncMock(return_value=day)),
-        patch("app.modules.school_calendar.service.SchoolCalendarRepository.add_audit", new=AsyncMock()),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.get_calendar_by_id",
+            new=AsyncMock(return_value=calendar),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.get_day_by_date",
+            new=AsyncMock(return_value=day),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarService.tenant_today",
+            new=AsyncMock(return_value=date(2026, 9, 1)),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.update_day",
+            new=AsyncMock(return_value=day),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.add_audit",
+            new=AsyncMock(),
+        ),
     ):
         response = await SchoolCalendarService.update_day(
             AsyncMock(),
             tenant_id=tenant_id,
             calendar_date=day.calendar_date,
-            payload=SchoolCalendarDayUpdate(calendar_id=calendar_id, day_type=SchoolCalendarDayType.PUBLIC_HOLIDAY, school_open=False, student_activity_allowed=False, student_attendance_required=False),
+            payload=SchoolCalendarDayUpdate(
+                calendar_id=calendar_id,
+                day_type=SchoolCalendarDayType.PUBLIC_HOLIDAY,
+                school_open=False,
+                student_activity_allowed=False,
+                student_attendance_required=False,
+            ),
             acting_admin_id=admin_id,
         )
 
@@ -539,12 +607,15 @@ async def test_emergency_closure_requires_selected_active_calendar_to_match_rang
 async def test_emergency_closure_requires_active_calendar_range() -> None:
     db = AsyncMock()
 
-    with patch(
-        "app.modules.school_calendar.service.SchoolCalendarRepository.get_active_calendar_for_date",
-        new=AsyncMock(return_value=None),
-    ), patch(
-        "app.modules.school_calendar.service.SchoolCalendarService.tenant_today",
-        new=AsyncMock(return_value=date(2026, 1, 1)),
+    with (
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarRepository.get_active_calendar_for_date",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarService.tenant_today",
+            new=AsyncMock(return_value=date(2026, 1, 1)),
+        ),
     ):
         with pytest.raises(NotFoundException):
             await SchoolCalendarService.emergency_closure(
@@ -773,8 +844,14 @@ async def test_regeneration_keeps_calendar_outdated_when_generated_days_are_skip
     )
 
     with (
-        patch("app.modules.school_calendar.generation_service.StudentAcademicRepository.get_academic_session_by_id", new=AsyncMock(return_value=session)),
-        patch("app.modules.school_calendar.generation_service.StudentAcademicRepository.get_term_by_id", new=AsyncMock(return_value=term)),
+        patch(
+            "app.modules.school_calendar.generation_service.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.modules.school_calendar.generation_service.StudentAcademicRepository.get_term_by_id",
+            new=AsyncMock(return_value=term),
+        ),
         patch(
             "app.modules.school_calendar.generation_service.SchoolCalendarRepository.get_configuration",
             new=AsyncMock(
@@ -788,12 +865,30 @@ async def test_regeneration_keeps_calendar_outdated_when_generated_days_are_skip
                 )
             ),
         ),
-        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.get_calendar_by_term", new=AsyncMock(return_value=calendar)),
-        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.save_calendar", new=AsyncMock(return_value=calendar)),
-        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.list_days_by_range", new=AsyncMock(return_value=[existing_day])),
-        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.bulk_insert_days", new=AsyncMock(return_value=[])),
-        patch("app.modules.school_calendar.generation_service.SchoolCalendarRepository.add_audit", new=AsyncMock()),
-        patch("app.modules.school_calendar.service.SchoolCalendarService.build_calendar_response", new=AsyncMock(return_value=calendar_response)),
+        patch(
+            "app.modules.school_calendar.generation_service.SchoolCalendarRepository.get_calendar_by_term",
+            new=AsyncMock(return_value=calendar),
+        ),
+        patch(
+            "app.modules.school_calendar.generation_service.SchoolCalendarRepository.save_calendar",
+            new=AsyncMock(return_value=calendar),
+        ),
+        patch(
+            "app.modules.school_calendar.generation_service.SchoolCalendarRepository.list_days_by_range",
+            new=AsyncMock(return_value=[existing_day]),
+        ),
+        patch(
+            "app.modules.school_calendar.generation_service.SchoolCalendarRepository.bulk_insert_days",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.modules.school_calendar.generation_service.SchoolCalendarRepository.add_audit",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.school_calendar.service.SchoolCalendarService.build_calendar_response",
+            new=AsyncMock(return_value=calendar_response),
+        ),
     ):
         response = await SchoolCalendarGenerationService.generate(
             db,

@@ -18,7 +18,6 @@ from app.modules.superadmin.models import SuperAdmin
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(prefix="/metrics", tags=["Metrics"])
 
 CurrentSuperadmin: TypeAlias = Annotated[SuperAdmin, Depends(get_current_superadmin)]

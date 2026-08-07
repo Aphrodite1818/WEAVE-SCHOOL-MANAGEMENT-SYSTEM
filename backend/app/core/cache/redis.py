@@ -11,7 +11,6 @@ from redis.asyncio import Redis
 from app.config.logging import get_logger
 from app.config.settings import settings
 
-
 logger = get_logger(__name__)
 _redis_client: Redis | None = None
 

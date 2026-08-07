@@ -1,6 +1,6 @@
-#======================================#
+# ======================================#
 #      tenant_management/models.py     #
-#======================================#
+# ======================================#
 
 import uuid
 from datetime import datetime
@@ -14,35 +14,35 @@ from sqlalchemy import (
     Text,
     Enum as SQLEnum,
 )
-from sqlalchemy.dialects.postgresql import  JSONB, ARRAY
-from sqlalchemy.orm import  Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+from sqlalchemy.orm import Mapped, mapped_column
 from app.shared.mixins import TimestampMixin, UUIDMixin
-from app.shared.base_model import  Base, PUBLIC_SCHEMA
+from app.shared.base_model import Base, PUBLIC_SCHEMA
 from typing import List
-
-
 
 
 class TenantStatus(str, PyEnum):
     """Represent the lifecycle state of a tenant account."""
-    ACTIVE    = "active"
-    INACTIVE  = "inactive"
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
     SUSPENDED = "suspended"
-    TRIAL     = "trial"          # schools evaluating the product
-    EXPIRED   = "expired"        # subscription lapsed
+    TRIAL = "trial"  # schools evaluating the product
+    EXPIRED = "expired"  # subscription lapsed
 
 
 class SubscriptionPlan(str, PyEnum):
     """Represents the subscription plan options for a tenant (school)."""
-    FREE_TRIAL  = "free_trial"
-    PLUS    = "plus"
+
+    FREE_TRIAL = "free_trial"
+    PLUS = "plus"
     PROFESSIONAL = "professional"
     ENTERPRISE = "enterprise"
 
 
-
-class TenantVerificationStatus(str , PyEnum):
+class TenantVerificationStatus(str, PyEnum):
     """Represent a tenant's verification state during onboarding."""
+
     PENDING_VERIFICATION = "pending_verification"
     ACTIVE = "active"
     REJECTED = "rejected"
@@ -54,9 +54,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
 
     __tablename__ = "tenants"
 
-    school_name: Mapped[str] = mapped_column(
-        String(255), nullable=False
-    )
+    school_name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     slug: Mapped[str] = mapped_column(
         String(100),
@@ -64,7 +62,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
         comment="URL/subdomain slug e.g. 'greenfield-lagos'. "
-                "Used by tenant middleware to resolve the school.",
+        "Used by tenant middleware to resolve the school.",
     )
 
     admission_number_prefix: Mapped[str | None] = mapped_column(
@@ -86,9 +84,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     state: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    country: Mapped[str] = mapped_column(
-        String(100), nullable=False, server_default="Nigeria"
-    )
+    country: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Nigeria")
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Status & subscription ────────────────────────────────────────────────
@@ -99,7 +95,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
             schema=PUBLIC_SCHEMA,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
-        default=TenantStatus.TRIAL,   # new schools start on trial
+        default=TenantStatus.TRIAL,  # new schools start on trial
         nullable=False,
     )
     plan: Mapped[SubscriptionPlan] = mapped_column(
@@ -112,50 +108,36 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
         default=SubscriptionPlan.FREE_TRIAL,
         nullable=False,
     )
-    trial_ends_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     subscription_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # ── Soft-delete ──────────────────────────────────────────────────────────
-    is_deleted: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Limits / feature flags ───────────────────────────────────────────────
     max_students: Mapped[int] = mapped_column(
-        Integer, default=500, nullable=False,
+        Integer,
+        default=500,
+        nullable=False,
         comment="Hard cap on student count for this tenant's plan.",
     )
-    max_teachers: Mapped[int] = mapped_column(
-        Integer, default=50, nullable=False
-    )
+    max_teachers: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     # Flexible bag for feature flags, e.g. {"whatsapp_bot": true, "stt": true}
-    feature_flags: Mapped[dict | None] = mapped_column(
-        JSONB, nullable=True, default=dict
-    )
+    feature_flags: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
 
     # ── Timezone / locale ────────────────────────────────────────────────────
-    timezone: Mapped[str] = mapped_column(
-        String(50), nullable=False, server_default="Africa/Lagos"
-    )
-    language: Mapped[str] = mapped_column(
-        String(10), nullable=False, server_default="en"
-    )
+    timezone: Mapped[str] = mapped_column(String(50), nullable=False, server_default="Africa/Lagos")
+    language: Mapped[str] = mapped_column(String(10), nullable=False, server_default="en")
 
     # ── Onboarding ───────────────────────────────────────────────────────────
-    onboarding_completed: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    branches : Mapped[list[str] | None] = mapped_column(ARRAY(String) , nullable = True , default = None) 
+    branches: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=None)
 
-    verification_status : Mapped[TenantVerificationStatus] = mapped_column(
+    verification_status: Mapped[TenantVerificationStatus] = mapped_column(
         SQLEnum(
             TenantVerificationStatus,
             name="tenantverificationstatus",
@@ -165,6 +147,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         default=TenantVerificationStatus.PENDING_VERIFICATION,
     )
+
     def __repr__(self) -> str:
         """Return a string representation of the Tenant instance."""
         return f"<Tenant id={self.id} slug={self.slug!r} status={self.status}>"
@@ -180,4 +163,3 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
         if not self.feature_flags:
             return False
         return bool(self.feature_flags.get("whatsapp_bot", False))
-

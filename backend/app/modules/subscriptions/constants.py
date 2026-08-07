@@ -4,7 +4,6 @@ from app.modules.subscriptions.subscription_enums import (
 )
 from app.tenant_management.models import SubscriptionPlan
 
-
 DEFAULT_TRIAL_DAYS = 30
 DEFAULT_GRACE_DAYS = 3
 DEFAULT_CURRENCY = "NGN"

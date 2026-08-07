@@ -10,7 +10,6 @@ from starlette.requests import Request
 
 from app.config.logging import get_logger
 
-
 logger = get_logger(__name__)
 
 _IGNORED_PATHS = frozenset({"/health", "/healthz", "/favicon.ico"})
@@ -31,6 +30,7 @@ class RequestTimingMiddleware:
 
         request = Request(scope, receive=receive)
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.request_id = request_id
         started = time.perf_counter()
         status_code = 500
 

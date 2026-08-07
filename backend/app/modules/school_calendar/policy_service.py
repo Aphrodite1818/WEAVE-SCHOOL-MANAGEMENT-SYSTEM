@@ -13,7 +13,10 @@ from app.modules.school_calendar.calendar_enums import (
     SchoolCalendarEventStatus,
 )
 from app.modules.school_calendar.repository import SchoolCalendarRepository
-from app.modules.school_calendar.schemas import ResolvedSchoolDayResponse, SchoolCalendarEventResponse
+from app.modules.school_calendar.schemas import (
+    ResolvedSchoolDayResponse,
+    SchoolCalendarEventResponse,
+)
 
 
 class SchoolDayPolicyService:
@@ -93,26 +96,46 @@ class SchoolDayPolicyService:
             next_operational_day=next_day.calendar_date if next_day else None,
         )
 
-    async def require_school_open(self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date) -> ResolvedSchoolDayResponse:
+    async def require_school_open(
+        self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
+    ) -> ResolvedSchoolDayResponse:
         resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.school_open:
-            raise ConflictException(resolved.reason or "School is not open on this date.", payload={"code": resolved.code})
+            raise ConflictException(
+                resolved.reason or "School is not open on this date.",
+                payload={"code": resolved.code},
+            )
         return resolved
 
-    async def require_student_activity_allowed(self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date) -> ResolvedSchoolDayResponse:
+    async def require_student_activity_allowed(
+        self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
+    ) -> ResolvedSchoolDayResponse:
         resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.student_activity_allowed:
-            raise ConflictException(resolved.reason or "Student activity is not allowed on this date.", payload={"code": resolved.code})
+            raise ConflictException(
+                resolved.reason or "Student activity is not allowed on this date.",
+                payload={"code": resolved.code},
+            )
         return resolved
 
-    async def require_student_attendance_day(self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date) -> ResolvedSchoolDayResponse:
+    async def require_student_attendance_day(
+        self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
+    ) -> ResolvedSchoolDayResponse:
         resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.student_attendance_required:
-            raise ConflictException(resolved.reason or "Student attendance is not required on this date.", payload={"code": resolved.code})
+            raise ConflictException(
+                resolved.reason or "Student attendance is not required on this date.",
+                payload={"code": resolved.code},
+            )
         return resolved
 
-    async def require_workforce_attendance_day(self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date) -> ResolvedSchoolDayResponse:
+    async def require_workforce_attendance_day(
+        self, db: AsyncSession, *, tenant_id: uuid.UUID, target_date: date
+    ) -> ResolvedSchoolDayResponse:
         resolved = await self.resolve_day(db, tenant_id=tenant_id, target_date=target_date)
         if not resolved.workforce_attendance_required:
-            raise ConflictException(resolved.reason or "Workforce attendance is not required on this date.", payload={"code": resolved.code})
+            raise ConflictException(
+                resolved.reason or "Workforce attendance is not required on this date.",
+                payload={"code": resolved.code},
+            )
         return resolved

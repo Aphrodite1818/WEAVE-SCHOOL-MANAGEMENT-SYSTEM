@@ -29,7 +29,6 @@ from app.modules.subjects.service import SubjectService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(tags=["Subjects"])
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
@@ -119,7 +118,7 @@ async def list_subjects(
         is_active=is_active,
         include_archived=include_archived and isinstance(current_user, TenantAdmin),
         search=search,
-        lifecycle_status=lifecycle_status if isinstance(current_user, TenantAdmin) else None,
+        lifecycle_status=(lifecycle_status if isinstance(current_user, TenantAdmin) else None),
     )
 
     return SubjectListResponse(

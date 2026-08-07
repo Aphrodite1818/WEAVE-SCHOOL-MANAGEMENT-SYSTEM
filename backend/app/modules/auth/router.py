@@ -6,7 +6,15 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    Request,
+    Response,
+    status,
+)
 
 from app.config.settings import settings
 from app.core.dependencies.db import DbSession
@@ -223,7 +231,9 @@ class LoginResponse(Token):
     legal_compliance_accepted_at: str | None = None
 
 
-def _legal_identity_from_authenticated_actor(actor: AuthenticatedActor) -> tuple[str, str]:
+def _legal_identity_from_authenticated_actor(
+    actor: AuthenticatedActor,
+) -> tuple[str, str]:
     actor_type = str(actor.actor_type)
     account_type = str(actor.account_type)
     user_meta = actor.user.meta if actor.user and actor.user.meta else {}

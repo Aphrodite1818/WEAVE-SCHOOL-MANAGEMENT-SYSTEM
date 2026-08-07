@@ -12,7 +12,6 @@ from typing import Any
 from app.core.utils.normalization import normalize_class_arm, normalize_class_name
 from app.modules.bulk_imports.models import ImportResourceType
 
-
 SUPPORTED_IMPORT_RESOURCE_TYPES = {
     ImportResourceType.STUDENTS,
 }

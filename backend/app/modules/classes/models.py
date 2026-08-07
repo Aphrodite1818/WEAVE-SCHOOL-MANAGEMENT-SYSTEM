@@ -40,8 +40,12 @@ class ClassRoom(BaseModel):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(120), nullable=False)
     arm: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    normalized_arm: Mapped[str] = mapped_column(String(40), nullable=False, default="", server_default="")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    normalized_arm: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="", server_default=""
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
 
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -64,7 +68,9 @@ class ClassRoom(BaseModel):
         ForeignKey("classes.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    is_terminal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_terminal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     teacher_membership: Mapped[TeacherMembership | None] = relationship(
         "TeacherMembership",
@@ -83,8 +89,16 @@ class ClassRoom(BaseModel):
     )
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "normalized_name", "normalized_arm", name="uq_classes_tenant_normalized_name_arm"),
-        CheckConstraint("next_class_id IS NULL OR next_class_id <> id", name="ck_classes_next_class_not_self"),
+        UniqueConstraint(
+            "tenant_id",
+            "normalized_name",
+            "normalized_arm",
+            name="uq_classes_tenant_normalized_name_arm",
+        ),
+        CheckConstraint(
+            "next_class_id IS NULL OR next_class_id <> id",
+            name="ck_classes_next_class_not_self",
+        ),
         CheckConstraint(
             "(is_terminal = true AND next_class_id IS NULL) OR is_terminal = false",
             name="ck_classes_terminal_has_no_next_class",

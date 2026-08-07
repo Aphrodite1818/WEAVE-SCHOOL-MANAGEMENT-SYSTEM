@@ -118,8 +118,12 @@ class SchoolGeofenceCreate(InputBase):
 class SchoolGeofenceUpdate(InputBase):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
-    latitude: Decimal | None = Field(default=None, ge=Decimal("-90"), le=Decimal("90"), decimal_places=6)
-    longitude: Decimal | None = Field(default=None, ge=Decimal("-180"), le=Decimal("180"), decimal_places=6)
+    latitude: Decimal | None = Field(
+        default=None, ge=Decimal("-90"), le=Decimal("90"), decimal_places=6
+    )
+    longitude: Decimal | None = Field(
+        default=None, ge=Decimal("-180"), le=Decimal("180"), decimal_places=6
+    )
     radius_m: int | None = Field(default=None, gt=0, le=10000)
     is_primary: bool | None = None
 
@@ -186,7 +190,9 @@ class StudentAttendanceBulkMarkRequest(InputBase):
 
     @field_validator("records")
     @classmethod
-    def unique_students(cls, value: list[StudentAttendanceRecordMark]) -> list[StudentAttendanceRecordMark]:
+    def unique_students(
+        cls, value: list[StudentAttendanceRecordMark]
+    ) -> list[StudentAttendanceRecordMark]:
         ids = [item.student_id for item in value]
         if len(ids) != len(set(ids)):
             raise ValueError("records cannot contain duplicate student_id values")

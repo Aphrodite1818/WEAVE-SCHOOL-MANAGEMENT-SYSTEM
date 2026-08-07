@@ -14,7 +14,6 @@ from app.core.cache.events import (
 )
 from app.core.cache.manager import CacheManager
 
-
 TENANT_BRANDING_CACHE_TTL_SECONDS = 30 * 60
 
 

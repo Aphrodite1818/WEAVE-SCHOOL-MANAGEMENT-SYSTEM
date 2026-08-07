@@ -1,6 +1,6 @@
-#=================================#
+# =================================#
 #     core.cache.serialization    #
-#=================================#
+# =================================#
 """Helpers for converting cache payloads to and from Redis-safe JSON values.
 
 Redis stores strings, bytes, and a small set of scalar values. The application

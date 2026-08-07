@@ -254,7 +254,11 @@ class PaymentTransaction(BaseModel):
 
     __table_args__ = (
         Index("ix_payment_transactions_tenant_status", "tenant_id", "status"),
-        Index("ix_payment_transactions_tenant_subscription", "tenant_id", "subscription_id"),
+        Index(
+            "ix_payment_transactions_tenant_subscription",
+            "tenant_id",
+            "subscription_id",
+        ),
     )
 
 

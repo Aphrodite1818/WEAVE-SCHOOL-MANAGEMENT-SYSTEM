@@ -160,12 +160,15 @@ async def test_update_academic_term_rejects_invalid_effective_date_range() -> No
     term = _academic_term(tenant_id)
     db = AsyncMock()
 
-    with patch(
-        "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
-        new=AsyncMock(return_value=term),
-    ), patch(
-        "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
-        new=AsyncMock(return_value=_academic_session(tenant_id)),
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id",
+            new=AsyncMock(return_value=term),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(return_value=_academic_session(tenant_id)),
+        ),
     ):
         with pytest.raises(BadRequestException):
             await StudentAcademicService.update_academic_term(
@@ -203,7 +206,13 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
         ),
         patch(
             "app.modules.school_calendar.service.SchoolCalendarService.term_calendar_readiness",
-            new=AsyncMock(return_value={"blockers": [], "counts": {}, "calendar_id": str(uuid.uuid4())}),
+            new=AsyncMock(
+                return_value={
+                    "blockers": [],
+                    "counts": {},
+                    "calendar_id": str(uuid.uuid4()),
+                }
+            ),
         ),
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",

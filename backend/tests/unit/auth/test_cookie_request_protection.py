@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.core.middleware.cookie_request_protection import CookieRequestProtectionMiddleware
+from app.core.middleware.cookie_request_protection import (
+    CookieRequestProtectionMiddleware,
+)
 
 
 def _build_client() -> TestClient:

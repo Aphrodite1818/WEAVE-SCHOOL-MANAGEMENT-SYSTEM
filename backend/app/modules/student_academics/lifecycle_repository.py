@@ -136,9 +136,9 @@ class StudentProgressionRunRepository:
         limit: int = 50,
     ) -> tuple[list[StudentProgressionRun], int]:
         count_result = await db.execute(
-            select(func.count()).select_from(StudentProgressionRun).where(
-                StudentProgressionRun.tenant_id == tenant_id
-            )
+            select(func.count())
+            .select_from(StudentProgressionRun)
+            .where(StudentProgressionRun.tenant_id == tenant_id)
         )
         result = await db.execute(
             select(StudentProgressionRun)

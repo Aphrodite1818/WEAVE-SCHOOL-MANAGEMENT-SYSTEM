@@ -14,7 +14,6 @@ from app.modules.user_guides.models import UserGuideState
 from app.modules.user_guides.repository import UserGuideRepository
 from app.modules.user_guides.schemas import UserGuideStateResponse, UserGuideStateUpdate
 
-
 _ACTOR_TYPE_BY_CLASS_NAME = {
     "TenantAdmin": "tenant_admin",
     "Teacher": "teacher",

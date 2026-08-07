@@ -14,10 +14,12 @@ from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.student_academics.models import AcademicSessionStatus
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.student_academics.schemas import AcademicSessionResponse, AcademicSessionUpdate
+from app.modules.student_academics.schemas import (
+    AcademicSessionResponse,
+    AcademicSessionUpdate,
+)
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
-
 
 router = APIRouter(
     prefix="/tenant-admin/academics/sessions",
@@ -86,9 +88,7 @@ async def configure_academic_session(
         "start_date": session.start_date.isoformat() if session.start_date else None,
         "end_date": session.end_date.isoformat() if session.end_date else None,
         "next_academic_session_id": (
-            str(session.next_academic_session_id)
-            if session.next_academic_session_id
-            else None
+            str(session.next_academic_session_id) if session.next_academic_session_id else None
         ),
     }
     for field, value in update_data.items():

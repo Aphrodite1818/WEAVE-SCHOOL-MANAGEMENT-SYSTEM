@@ -10,7 +10,6 @@ from starlette.requests import Request
 
 from app.config.settings import settings
 
-
 _PROTECTED_ROUTES = frozenset(
     {
         f"{settings.API_V1_PREFIX}/auth/refresh",

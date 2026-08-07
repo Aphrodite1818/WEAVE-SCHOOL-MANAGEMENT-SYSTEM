@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.core.cache.manager import CacheManager
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException, SecurityBlockException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+    SecurityBlockException,
+)
 from app.modules.auth.models import AuthRefreshToken, AuthSession, AuthSessionActorType
 from app.modules.superadmin.models import SecurityIPBlock, SuperAdmin
 from app.modules.superadmin.schemas import (
@@ -23,7 +28,6 @@ from app.modules.superadmin.schemas import (
 )
 from app.modules.superadmin.security_alert_service import SecurityAlertService
 from fastapi import BackgroundTasks
-
 
 SECURITY_IP_BLOCK_CACHE_PREFIX = "security:ip-block"
 SECURITY_IP_BLOCK_CACHE_TTL_SECONDS = 30
@@ -80,7 +84,9 @@ class SecurityResponseService:
         return f"{SECURITY_IP_BLOCK_CACHE_PREFIX}:{cls.hash_ip_address(ip_address)}"
 
     @classmethod
-    async def _active_block_for_ip(cls, db: AsyncSession, ip_address: str) -> SecurityIPBlock | None:
+    async def _active_block_for_ip(
+        cls, db: AsyncSession, ip_address: str
+    ) -> SecurityIPBlock | None:
         now = datetime.now(timezone.utc)
         result = await db.execute(
             select(SecurityIPBlock)
@@ -111,9 +117,9 @@ class SecurityResponseService:
         block = await cls._active_block_for_ip(db, normalized_ip)
         state = {
             "blocked": block is not None,
-            "ip_label": block.ip_address_label if block else cls.mask_ip_address(normalized_ip),
+            "ip_label": (block.ip_address_label if block else cls.mask_ip_address(normalized_ip)),
             "reason": block.reason if block else None,
-            "expires_at": block.expires_at.isoformat() if block and block.expires_at else None,
+            "expires_at": (block.expires_at.isoformat() if block and block.expires_at else None),
         }
         await CacheManager.set_json(cache_key, state, SECURITY_IP_BLOCK_CACHE_TTL_SECONDS)
         return state
@@ -140,7 +146,7 @@ class SecurityResponseService:
             detail="Access from this network has been temporarily blocked for security reasons.",
             reason=str(state.get("reason") or "Manual IP block is active."),
             ip_label=str(state.get("ip_label") or "blocked-network"),
-            expires_at=str(state.get("expires_at")) if state.get("expires_at") else None,
+            expires_at=(str(state.get("expires_at")) if state.get("expires_at") else None),
         )
 
     @classmethod
@@ -176,7 +182,9 @@ class SecurityResponseService:
             raise BadRequestException("Enter a valid IPv4 or IPv6 address.")
 
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(hours=payload.duration_hours) if payload.duration_hours else None
+        expires_at = (
+            now + timedelta(hours=payload.duration_hours) if payload.duration_hours else None
+        )
         block = SecurityIPBlock(
             ip_address_hash=cls.hash_ip_address(normalized_ip),
             ip_address_label=cls.mask_ip_address(normalized_ip),
@@ -290,8 +298,13 @@ class SecurityResponseService:
         except ValueError as exc:
             raise BadRequestException("Unsupported actor type.") from exc
 
-        if actor_type == AuthSessionActorType.SUPERADMIN and payload.actor_id == current_superadmin.id:
-            raise ForbiddenException("You cannot revoke your own superadmin sessions from this action.")
+        if (
+            actor_type == AuthSessionActorType.SUPERADMIN
+            and payload.actor_id == current_superadmin.id
+        ):
+            raise ForbiddenException(
+                "You cannot revoke your own superadmin sessions from this action."
+            )
 
         now = datetime.now(timezone.utc)
         session_ids_result = await db.execute(

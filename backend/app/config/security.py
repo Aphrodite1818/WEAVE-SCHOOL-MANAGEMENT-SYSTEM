@@ -16,7 +16,6 @@ from pwdlib import PasswordHash
 from app.config.logging import get_logger
 from app.config.settings import settings
 
-
 logger = get_logger(__name__)
 
 
@@ -137,7 +136,10 @@ def create_access_token(
     to_encode = data.copy()
 
     expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=60 if settings.ENV == "dev" else settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta
+        or timedelta(
+            minutes=(60 if settings.ENV == "dev" else settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
     )
 
     to_encode.update(

@@ -20,7 +20,10 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultUpsert,
 )
 from app.modules.student_academics.service import StudentAcademicService
-from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
+from app.modules.students.repository import (
+    StudentEnrollmentRepository,
+    StudentRepository,
+)
 from app.modules.teachers.models import TeacherMembership, TeacherMembershipStatus
 
 
@@ -266,7 +269,9 @@ async def test_admin_result_status_cannot_skip_lifecycle_states(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_admin_result_forward_lifecycle_writes_service_metadata(monkeypatch) -> None:
+async def test_admin_result_forward_lifecycle_writes_service_metadata(
+    monkeypatch,
+) -> None:
     result = _result(AcademicResultStatus.DRAFT)
     admin = _admin(result.tenant_id)
     monkeypatch.setattr(

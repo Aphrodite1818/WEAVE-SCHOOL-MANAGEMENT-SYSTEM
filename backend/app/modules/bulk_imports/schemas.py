@@ -13,7 +13,9 @@ from app.modules.bulk_imports.models import (
     ImportJobStatus,
     ImportResourceType,
 )
-from app.modules.bulk_imports.sensitive_results import sanitize_import_metadata_for_response
+from app.modules.bulk_imports.sensitive_results import (
+    sanitize_import_metadata_for_response,
+)
 
 
 class InputBase(BaseModel):

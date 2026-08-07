@@ -84,7 +84,9 @@ def create_xlsx_template(
         cell = data_sheet.cell(row=1, column=column_index)
         cell.font = Font(bold=True)
         cell.fill = header_fill
-        data_sheet.column_dimensions[get_column_letter(column_index)].width = min(max(len(header) + 6, 16), 34)
+        data_sheet.column_dimensions[get_column_letter(column_index)].width = min(
+            max(len(header) + 6, 16), 34
+        )
 
     template_definition = get_template_definition(resource_type=resource_type)
     instructions_sheet = workbook.create_sheet("Instructions")

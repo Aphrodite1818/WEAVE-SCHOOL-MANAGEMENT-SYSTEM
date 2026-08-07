@@ -1,6 +1,6 @@
-#======================================#
+# ======================================#
 #    tenant_management/repository.py   #
-#======================================#
+# ======================================#
 
 """Provide data-access helpers for tenant entities."""
 
@@ -26,9 +26,7 @@ class TenantRepository:
         tenant_id: uuid.UUID,
     ) -> Tenant | None:
         """Return a tenant by ID whether or not it has been soft-deleted."""
-        result = await db.execute(
-            select(Tenant).where(Tenant.id == tenant_id)
-        )
+        result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -40,10 +38,7 @@ class TenantRepository:
     ) -> Tenant | None:
         """Return a non-deleted tenant by ID."""
 
-        query = select(Tenant).where(
-            Tenant.id == tenant_id,
-            Tenant.is_deleted == False
-        )
+        query = select(Tenant).where(Tenant.id == tenant_id, Tenant.is_deleted == False)
 
         if lock:
             query = query.with_for_update()
@@ -59,10 +54,7 @@ class TenantRepository:
         lock: bool = False,
     ) -> Tenant | None:
         """Return a non-deleted tenant by slug."""
-        query = select(Tenant).where(
-            Tenant.slug == slug,
-            Tenant.is_deleted == False
-        )
+        query = select(Tenant).where(Tenant.slug == slug, Tenant.is_deleted == False)
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)
@@ -96,8 +88,7 @@ class TenantRepository:
         """Return a non-deleted tenant by email address."""
         normalized_email = _normalize_email(email)
         query = select(Tenant).where(
-            func.lower(Tenant.email) == normalized_email,
-            Tenant.is_deleted == False
+            func.lower(Tenant.email) == normalized_email, Tenant.is_deleted == False
         )
         if lock:
             query = query.with_for_update()
@@ -113,9 +104,7 @@ class TenantRepository:
     ) -> Tenant | None:
         """Return a tenant by email address whether or not it has been soft-deleted."""
         normalized_email = _normalize_email(email)
-        query = select(Tenant).where(
-            func.lower(Tenant.email) == normalized_email
-        )
+        query = select(Tenant).where(func.lower(Tenant.email) == normalized_email)
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)
@@ -148,7 +137,7 @@ class TenantRepository:
         result = await db.execute(
             select(Tenant).where(
                 Tenant.school_bot_whatssap_number == school_bot_whatssap_number,
-                Tenant.is_deleted == False
+                Tenant.is_deleted == False,
             )
         )
         return result.scalar_one_or_none()
@@ -186,8 +175,6 @@ class TenantRepository:
         await db.refresh(tenant)
         return tenant
 
-
-
     @staticmethod
     async def email_exists(db: AsyncSession, email: str) -> bool:
         """Return whether a tenant already exists for the given email."""
@@ -196,23 +183,17 @@ class TenantRepository:
         result = await db.execute(
             select(Tenant.id)
             .where(Tenant.email == normalized_email)
-            .limit(1) #stop searching after first match
+            .limit(1)  # stop searching after first match
         )
 
         return result.scalar_one_or_none() is not None
-
 
     @staticmethod
     async def slug_exists(db: AsyncSession, slug: str) -> bool:
         """Return whether a tenant slug is already in use."""
-        result = await db.execute(
-            select(Tenant.id)
-            .where(Tenant.slug == slug)
-            .limit(1)
-        )
+        result = await db.execute(select(Tenant.id).where(Tenant.slug == slug).limit(1))
 
         return result.scalar_one_or_none() is not None
-
 
     @staticmethod
     async def school_bot_whatssap_number_exists(
@@ -221,13 +202,10 @@ class TenantRepository:
     ) -> bool:
         """Return whether a WhatsApp bot number is already assigned."""
         result = await db.execute(
-            select(Tenant.id)
-            .where(Tenant.school_bot_whatssap_number == whatssap_number)
-            .limit(1)
+            select(Tenant.id).where(Tenant.school_bot_whatssap_number == whatssap_number).limit(1)
         )
 
         return result.scalar_one_or_none() is not None
-
 
     @staticmethod
     async def is_verified(db: AsyncSession, email: str) -> bool:
@@ -235,9 +213,7 @@ class TenantRepository:
         normalized_email = _normalize_email(email)
 
         result = await db.execute(
-            select(Tenant.verification_status)
-            .where(Tenant.email == normalized_email)
-            .limit(1)
+            select(Tenant.verification_status).where(Tenant.email == normalized_email).limit(1)
         )
 
         return result.scalar_one_or_none() == TenantVerificationStatus.ACTIVE

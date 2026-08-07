@@ -1,6 +1,6 @@
-#==========================#
+# ==========================#
 #     CLAUDE PROVIDER.PY   #
-#==========================#
+# ==========================#
 
 from typing import Any
 
@@ -15,8 +15,8 @@ from app.modules.AI.providers.utils import (
 
 
 class ClaudeProvider(BaseLLMProvider):
-
     """Represent the ClaudeProvider type."""
+
     def __init__(self, api_key: str | None, model: str, max_tokens: int) -> None:
         """Initialize the ClaudeProvider instance."""
         self.api_key = require_api_key(api_key, "Anthropic")
@@ -35,9 +35,7 @@ class ClaudeProvider(BaseLLMProvider):
             if message.get("role") == "system"
         ]
         claude_messages = [
-            message
-            for message in messages
-            if message.get("role") in {"user", "assistant"}
+            message for message in messages if message.get("role") in {"user", "assistant"}
         ]
 
         payload: dict[str, Any] = {
@@ -67,19 +65,12 @@ class ClaudeProvider(BaseLLMProvider):
         raw_response = response.json()
         content_blocks = raw_response.get("content", [])
         text_blocks = [
-            block.get("text", "")
-            for block in content_blocks
-            if block.get("type") == "text"
+            block.get("text", "") for block in content_blocks if block.get("type") == "text"
         ]
-        tool_calls = [
-            block
-            for block in content_blocks
-            if block.get("type") == "tool_use"
-        ]
+        tool_calls = [block for block in content_blocks if block.get("type") == "tool_use"]
 
         return {
             "content": "\n".join(text_blocks),
             "tool_calls": tool_calls or None,
             "raw_response": raw_response,
         }
-

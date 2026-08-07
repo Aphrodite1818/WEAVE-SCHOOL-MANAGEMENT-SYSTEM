@@ -114,10 +114,7 @@ export const teacherService = {
     }),
 
   getTeachers: (options = {}) =>
-    api.get(`/tenant-admin/teachers?${buildTeacherQuery(options)}`),
-
-  createTeacher: (payload) =>
-    api.post("/tenant-admin/teachers", payload),
+    api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
 
   createInvitation: (payload) =>
     api.post("/teachers/invitations", payload),
@@ -189,18 +186,9 @@ export const teacherService = {
     };
   },
 
-  getTeacher: (teacherId) =>
-    api.get(`/tenant-admin/teachers/${teacherId}`),
-
-  updateTeacher: (teacherId, payload) =>
-    api.patch(`/tenant-admin/teachers/${teacherId}`, payload),
-
   updateMyTeacherProfile: async (payload) => {
     const response = await api.patch("/teachers/accounts/me/profile", payload);
     clearDashboardMetricsCache();
     return response;
   },
-
-  deleteTeacher: (teacherId) =>
-    api.delete(`/tenant-admin/teachers/${teacherId}`),
 };

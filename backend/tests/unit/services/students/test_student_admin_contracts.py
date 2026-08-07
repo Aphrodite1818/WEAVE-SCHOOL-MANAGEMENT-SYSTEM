@@ -16,7 +16,10 @@ from app.modules.students.models import (
     StudentEnrollmentOutcome,
     StudentProfileStatus,
 )
-from app.modules.students.schemas import StudentAdminProfileUpdate, StudentEnrollmentDetailResponse
+from app.modules.students.schemas import (
+    StudentAdminProfileUpdate,
+    StudentEnrollmentDetailResponse,
+)
 from app.modules.students.service import StudentEnrollmentService
 
 

@@ -221,7 +221,7 @@ class StudentService:
             class_arm=classroom.arm if classroom else student.arm,
             current_enrollment_id=enrollment.id if enrollment else None,
             current_academic_session_id=current_session.id if current_session else None,
-            current_academic_session_name=current_session.name if current_session else None,
+            current_academic_session_name=(current_session.name if current_session else None),
             current_academic_term_id=current_term.id if current_term else None,
             current_academic_term_name=(
                 current_term.name.value if current_term and current_term.name else None

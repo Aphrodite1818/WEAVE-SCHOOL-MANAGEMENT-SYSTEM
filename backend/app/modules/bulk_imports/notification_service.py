@@ -12,7 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bulk_imports.models import ImportJob
-from app.modules.communications.enums import CommunicationActorType, NotificationSourceType
+from app.modules.communications.enums import (
+    CommunicationActorType,
+    NotificationSourceType,
+)
 from app.modules.communications.notification_service import NotificationService
 from app.modules.communications.recipient_resolver import ResolvedRecipient
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus

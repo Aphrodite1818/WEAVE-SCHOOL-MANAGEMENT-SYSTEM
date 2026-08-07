@@ -29,9 +29,11 @@ class BulkReportCardService:
     async def _scope_cards(
         db: AsyncSession,
         actor: TenantAdmin,
-        payload: ReportCardBulkPublishRequest
-        | ReportCardBulkArchiveRequest
-        | ReportCardBulkReopenRequest,
+        payload: (
+            ReportCardBulkPublishRequest
+            | ReportCardBulkArchiveRequest
+            | ReportCardBulkReopenRequest
+        ),
     ):
         return await ReportCardRepository.list_active_cards_for_class_period(
             db,

@@ -54,7 +54,6 @@ from app.modules.subscriptions.subscription_enums import PaymentStatus
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.tenant_admins.models import TenantAdmin
 
-
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 
 CurrentTenantAdmin: TypeAlias = Annotated[

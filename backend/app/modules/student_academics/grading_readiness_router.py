@@ -16,9 +16,7 @@ router = APIRouter(
     tags=["Tenant Admin Academics"],
 )
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin, Depends(get_current_tenant_admin)
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 
 
 @router.get(
@@ -70,9 +68,13 @@ async def preview_grading_scale_readiness(
         overlaps.append(f"100-{previous.max_score}")
 
     ready = not missing and not overlaps
-    messages = [] if ready else [
-        "Active grading scales must cover every whole-number score from 0 through 100 exactly once."
-    ]
+    messages = (
+        []
+        if ready
+        else [
+            "Active grading scales must cover every whole-number score from 0 through 100 exactly once."
+        ]
+    )
     return GradingScaleReadiness(
         is_ready=ready,
         missing_coverage=missing,

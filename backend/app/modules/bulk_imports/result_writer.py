@@ -95,12 +95,7 @@ def write_csv_bytes(
     writer.writeheader()
 
     for row in rows:
-        writer.writerow(
-            {
-                header: convert_value_for_csv(row.get(header))
-                for header in headers
-            }
-        )
+        writer.writerow({header: convert_value_for_csv(row.get(header)) for header in headers})
 
     return output.getvalue().encode("utf-8-sig")
 
@@ -142,8 +137,13 @@ def write_xlsx_bytes(
 
     for column_index, header in enumerate(headers, start=1):
         values = [convert_value_for_csv(row.get(header)) for row in rows[:250]]
-        max_length = max([len(str(header)), *[len(value) for value in values]], default=len(str(header)))
-        sheet.column_dimensions[get_column_letter(column_index)].width = min(max(max_length + 2, 12), 42)
+        max_length = max(
+            [len(str(header)), *[len(value) for value in values]],
+            default=len(str(header)),
+        )
+        sheet.column_dimensions[get_column_letter(column_index)].width = min(
+            max(max_length + 2, 12), 42
+        )
 
     output = io.BytesIO()
     workbook.save(output)
@@ -182,7 +182,9 @@ def create_result_report(
         headers = ["row_number", "status", "error_message"]
 
     return ImportResultFile(
-        filename=create_result_filename(resource_type=resource_type, suffix="result", extension="xlsx"),
+        filename=create_result_filename(
+            resource_type=resource_type, suffix="result", extension="xlsx"
+        ),
         content_type=SPREADSHEET_CONTENT_TYPE,
         content_bytes=write_xlsx_bytes(
             rows=result_rows,
@@ -226,7 +228,8 @@ def _student_slip_rows(result_rows: list[dict[str, Any]]) -> list[dict[str, Any]
     return [
         row
         for row in result_rows
-        if str(row.get("status") or "").lower() == "created" and convert_value_for_csv(row.get("setup_code")).strip()
+        if str(row.get("status") or "").lower() == "created"
+        and convert_value_for_csv(row.get("setup_code")).strip()
     ]
 
 
@@ -456,7 +459,9 @@ def create_error_report(
     )
 
     return ImportResultFile(
-        filename=create_result_filename(resource_type=resource_type, suffix="errors", extension="csv"),
+        filename=create_result_filename(
+            resource_type=resource_type, suffix="errors", extension="csv"
+        ),
         content_type="text/csv",
         content_bytes=write_csv_bytes(rows=row_errors, headers=headers),
     )

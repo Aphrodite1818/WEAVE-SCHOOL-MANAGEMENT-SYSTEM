@@ -63,8 +63,7 @@ class TeacherAccountRepository:
     ) -> bool:
         result = await db.execute(
             select(TeacherAccount.id).where(
-                TeacherAccount.email
-                == normalized_email.strip().casefold(),
+                TeacherAccount.email == normalized_email.strip().casefold(),
             )
         )
         return result.scalar_one_or_none() is not None
@@ -214,8 +213,7 @@ class TeacherMembershipRepository:
             .options(joinedload(TeacherMembership.teacher_account))
             .where(
                 TeacherMembership.tenant_id == tenant_id,
-                func.lower(TeacherMembership.staff_id)
-                == staff_id.strip().lower(),
+                func.lower(TeacherMembership.staff_id) == staff_id.strip().lower(),
             )
         )
         return result.scalar_one_or_none()
@@ -232,8 +230,7 @@ class TeacherMembershipRepository:
         excluded_id = exclude_membership_id or exclude_teacher_id
         query = select(TeacherMembership.id).where(
             TeacherMembership.tenant_id == tenant_id,
-            func.lower(TeacherMembership.staff_id)
-            == staff_id.strip().lower(),
+            func.lower(TeacherMembership.staff_id) == staff_id.strip().lower(),
         )
         if excluded_id is not None:
             query = query.where(TeacherMembership.id != excluded_id)
@@ -274,11 +271,7 @@ class TeacherMembershipRepository:
             )
 
         total = (
-            await db.execute(
-                select(func.count())
-                .select_from(TeacherMembership)
-                .where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(TeacherMembership).where(*filters))
         ).scalar_one()
 
         result = await db.execute(
@@ -344,8 +337,7 @@ class TeacherMembershipRepository:
             .select_from(TeacherMembership)
             .where(
                 TeacherMembership.tenant_id == tenant_id,
-                TeacherMembership.status
-                == TeacherMembershipStatus.ACTIVE,
+                TeacherMembership.status == TeacherMembershipStatus.ACTIVE,
             )
         )
         return int(result.scalar_one() or 0)
@@ -424,10 +416,8 @@ class TeacherInvitationRepository:
     ) -> TeacherInvitation | None:
         query = select(TeacherInvitation).where(
             TeacherInvitation.tenant_id == tenant_id,
-            TeacherInvitation.invited_email
-            == normalized_email.strip().casefold(),
-            TeacherInvitation.status
-            == TeacherInvitationStatus.PENDING,
+            TeacherInvitation.invited_email == normalized_email.strip().casefold(),
+            TeacherInvitation.status == TeacherInvitationStatus.PENDING,
         )
         if lock:
             query = query.with_for_update()
@@ -447,11 +437,7 @@ class TeacherInvitationRepository:
             filters.append(TeacherInvitation.status == status)
 
         total = (
-            await db.execute(
-                select(func.count())
-                .select_from(TeacherInvitation)
-                .where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(TeacherInvitation).where(*filters))
         ).scalar_one()
 
         result = await db.execute(
@@ -508,8 +494,7 @@ class TeacherMembershipSubjectRepository:
             )
             .where(
                 TeacherMembershipSubject.tenant_id == tenant_id,
-                TeacherMembershipSubject.teacher_membership_id
-                == membership_id,
+                TeacherMembershipSubject.teacher_membership_id == membership_id,
             )
             .order_by(TeacherMembershipSubject.created_at.asc())
         )
@@ -526,8 +511,7 @@ class TeacherMembershipSubjectRepository:
     ) -> TeacherMembershipSubject | None:
         query = select(TeacherMembershipSubject).where(
             TeacherMembershipSubject.tenant_id == tenant_id,
-            TeacherMembershipSubject.teacher_membership_id
-            == membership_id,
+            TeacherMembershipSubject.teacher_membership_id == membership_id,
             TeacherMembershipSubject.subject_id == subject_id,
         )
         if lock:

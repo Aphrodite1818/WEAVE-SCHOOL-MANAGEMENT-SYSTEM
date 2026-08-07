@@ -38,7 +38,10 @@ class CommunicationRepository:
         stmt = (
             select(Conversation)
             .join(ConversationParticipant)
-            .options(selectinload(Conversation.participants), selectinload(Conversation.messages))
+            .options(
+                selectinload(Conversation.participants),
+                selectinload(Conversation.messages),
+            )
             .where(
                 Conversation.id == conversation_id,
                 ConversationParticipant.actor_type == actor_type,
@@ -86,7 +89,8 @@ class CommunicationRepository:
             (
                 await db.execute(
                     base.options(
-                        selectinload(Conversation.participants), selectinload(Conversation.messages)
+                        selectinload(Conversation.participants),
+                        selectinload(Conversation.messages),
                     )
                     .order_by(Conversation.updated_at.desc())
                     .offset(offset)
@@ -129,7 +133,8 @@ class CommunicationRepository:
             (
                 await db.execute(
                     stmt.options(
-                        selectinload(Conversation.participants), selectinload(Conversation.messages)
+                        selectinload(Conversation.participants),
+                        selectinload(Conversation.messages),
                     )
                 )
             )

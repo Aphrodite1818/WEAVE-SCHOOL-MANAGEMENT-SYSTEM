@@ -6,7 +6,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.modules.teachers.models import TeacherMembership
 from app.modules.teachers.repository import (
     TeacherAccountRepository,
@@ -80,18 +84,14 @@ class TeacherPatchService:
                 "receive_push_notifications",
             }
             if not set(update_data).issubset(allowed):
-                raise ForbiddenException(
-                    "Employment fields are controlled by the school."
-                )
+                raise ForbiddenException("Employment fields are controlled by the school.")
 
         for boolean_field in (
             "receive_email_notifications",
             "receive_push_notifications",
         ):
             if boolean_field in update_data and update_data[boolean_field] is None:
-                raise BadRequestException(
-                    f"{boolean_field} must be true or false."
-                )
+                raise BadRequestException(f"{boolean_field} must be true or false.")
 
         for field, value in update_data.items():
             setattr(membership, field, value)

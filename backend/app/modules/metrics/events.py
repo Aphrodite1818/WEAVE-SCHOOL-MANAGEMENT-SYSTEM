@@ -48,7 +48,6 @@ from app.modules.teachers.models import (
 )
 from app.tenant_management.models import Tenant
 
-
 TENANT_ADMIN_METRIC_MODELS = (
     AcademicSession,
     AcademicTerm,

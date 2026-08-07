@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-#==========================#
+# ==========================#
 #    PROVIDER FACTORY      #
-#==========================#
+# ==========================#
 
 from typing import TYPE_CHECKING
 
@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from app.modules.AI.providers.base import BaseLLMProvider
 
 
-
 logger = get_logger(__name__)
+
 
 class ProviderFactory:
     """Factory for selecting AI providers."""
@@ -50,8 +50,9 @@ class ProviderFactory:
 
         if not factory:
             logger.error(f"Provider not available: {provider_name}")
-            raise ValueError(f"Unknown provider: '{provider_name}'. Available: {list(providers.keys())}")
+            raise ValueError(
+                f"Unknown provider: '{provider_name}'. Available: {list(providers.keys())}"
+            )
 
         logger.info(f"Returning provider: {provider_name}")
         return factory()
-

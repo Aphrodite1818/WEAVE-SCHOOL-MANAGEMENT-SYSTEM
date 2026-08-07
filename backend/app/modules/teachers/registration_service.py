@@ -29,7 +29,6 @@ from app.modules.teachers.repository import TeacherAccountRepository
 from app.modules.teachers.schemas import TeacherAccountRegisterRequest
 from app.modules.tenant_admins.repository import TenantAdminRepository
 
-
 logger = get_logger(__name__)
 
 
@@ -53,10 +52,7 @@ class TeacherRegistrationService:
             return TeacherRegistrationState.AVAILABLE
         if account.is_verified:
             return TeacherRegistrationState.ACTIVE
-        if (
-            account.is_active
-            and account.account_status == TeacherAccountStatus.PENDING
-        ):
+        if account.is_active and account.account_status == TeacherAccountStatus.PENDING:
             return TeacherRegistrationState.PENDING
         return TeacherRegistrationState.BLOCKED
 
@@ -74,9 +70,7 @@ class TeacherRegistrationService:
             lock=True,
         )
         if tenant_admin is not None:
-            raise ConflictException(
-                "This email is already registered to another account."
-            )
+            raise ConflictException("This email is already registered to another account.")
 
         parent_account = await ParentAccountRepository.get_by_email(
             db,
@@ -84,9 +78,7 @@ class TeacherRegistrationService:
             lock=True,
         )
         if parent_account is not None:
-            raise ConflictException(
-                "This email is already registered to another account."
-            )
+            raise ConflictException("This email is already registered to another account.")
 
     @staticmethod
     async def _ensure_teacher_identity(
@@ -112,8 +104,7 @@ class TeacherRegistrationService:
             if canonical_actor_identity is not None:
                 if (
                     canonical_actor_identity.identifier != normalized_email
-                    or canonical_actor_identity.identifier_type
-                    != IdentifierType.EMAIL
+                    or canonical_actor_identity.identifier_type != IdentifierType.EMAIL
                     or canonical_actor_identity.tenant_id is not None
                 ):
                     raise ConflictException(
@@ -147,21 +138,13 @@ class TeacherRegistrationService:
             return
 
         if (
-            identity.actor_type
-            not in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}
+            identity.actor_type not in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}
             or identity.actor_id != account.id
         ):
-            raise ConflictException(
-                "This email is already registered to another account."
-            )
+            raise ConflictException("This email is already registered to another account.")
 
-        if (
-            canonical_actor_identity is not None
-            and canonical_actor_identity.id != identity.id
-        ):
-            raise ConflictException(
-                "The teacher account has conflicting login identities."
-            )
+        if canonical_actor_identity is not None and canonical_actor_identity.id != identity.id:
+            raise ConflictException("The teacher account has conflicting login identities.")
 
         changed = (
             identity.actor_type != ActorType.TEACHER_ACCOUNT
@@ -210,15 +193,10 @@ class TeacherRegistrationService:
 
             if account is None:
                 if identity is not None:
-                    raise ConflictException(
-                        "This email is already registered to another account."
-                    )
-                await (
-                    TeacherRegistrationService
-                    ._ensure_no_unindexed_cross_account_owner(
-                        db,
-                        normalized_email=normalized_email,
-                    )
+                    raise ConflictException("This email is already registered to another account.")
+                await TeacherRegistrationService._ensure_no_unindexed_cross_account_owner(
+                    db,
+                    normalized_email=normalized_email,
                 )
                 account = await TeacherAccountRepository.add(
                     db,
@@ -240,23 +218,17 @@ class TeacherRegistrationService:
 
             state = TeacherRegistrationService._registration_state(account)
             if state == TeacherRegistrationState.ACTIVE:
-                raise ConflictException(
-                    "This teacher account already exists. Please log in."
-                )
+                raise ConflictException("This teacher account already exists. Please log in.")
             if state == TeacherRegistrationState.BLOCKED:
                 raise ForbiddenException(
-                    "This teacher account cannot be registered again. "
-                    "Please contact support."
+                    "This teacher account cannot be registered again. Please contact support."
                 )
 
             if identity is not None and (
-                identity.actor_type
-                not in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}
+                identity.actor_type not in {ActorType.TEACHER_ACCOUNT, ActorType.TEACHER}
                 or identity.actor_id != account.id
             ):
-                raise ConflictException(
-                    "This email is already registered to another account."
-                )
+                raise ConflictException("This email is already registered to another account.")
 
             account.password_hash = hash_password(password)
             account.account_status = TeacherAccountStatus.PENDING
@@ -295,13 +267,10 @@ class TeacherRegistrationService:
                     "Teacher registration could not be recovered. Please try again."
                 )
             if state == TeacherRegistrationState.ACTIVE:
-                raise ConflictException(
-                    "This teacher account already exists. Please log in."
-                )
+                raise ConflictException("This teacher account already exists. Please log in.")
             if state == TeacherRegistrationState.BLOCKED:
                 raise ForbiddenException(
-                    "This teacher account cannot be registered again. "
-                    "Please contact support."
+                    "This teacher account cannot be registered again. Please contact support."
                 )
 
             account.password_hash = hash_password(password)
@@ -332,23 +301,18 @@ class TeacherRegistrationService:
         created = False
 
         try:
-            account, created = (
-                await TeacherRegistrationService._apply_registration(
-                    db,
-                    normalized_email=normalized_email,
-                    password=payload.password,
-                )
+            account, created = await TeacherRegistrationService._apply_registration(
+                db,
+                normalized_email=normalized_email,
+                password=payload.password,
             )
         except IntegrityError:
             await db.rollback()
             AuthIdentityService.discard_pending_invalidations(db)
-            account = (
-                await TeacherRegistrationService
-                ._recover_concurrent_registration(
-                    db,
-                    normalized_email=normalized_email,
-                    password=payload.password,
-                )
+            account = await TeacherRegistrationService._recover_concurrent_registration(
+                db,
+                normalized_email=normalized_email,
+                password=payload.password,
             )
             created = False
             logger.info(

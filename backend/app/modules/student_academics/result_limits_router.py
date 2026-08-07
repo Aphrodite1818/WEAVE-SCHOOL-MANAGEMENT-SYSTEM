@@ -14,7 +14,10 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
 )
 from app.core.exceptions import BadRequestException
-from app.modules.student_academics.models import AcademicResultStatus, SchoolAssessmentConfig
+from app.modules.student_academics.models import (
+    AcademicResultStatus,
+    SchoolAssessmentConfig,
+)
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
     StudentSubjectResultResponse,
@@ -46,9 +49,7 @@ class AssessmentLimitsResponse(BaseModel):
 async def _get_limits(db: DbSession, tenant_id: UUID) -> SchoolAssessmentConfig | None:
     return (
         await db.execute(
-            select(SchoolAssessmentConfig).where(
-                SchoolAssessmentConfig.tenant_id == tenant_id
-            )
+            select(SchoolAssessmentConfig).where(SchoolAssessmentConfig.tenant_id == tenant_id)
         )
     ).scalar_one_or_none()
 

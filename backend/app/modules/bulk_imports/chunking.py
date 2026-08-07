@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from math import ceil
 from typing import Generic, Iterable, TypeVar
 
-
 RowItem = TypeVar("RowItem")
 
 

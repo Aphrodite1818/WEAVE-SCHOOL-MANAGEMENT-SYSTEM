@@ -179,7 +179,12 @@ async def create_tenant_admin(
 
 
 async def create_teacher(
-    db_session: AsyncSession, *, tenant: Tenant, email: str, first_name: str, last_name: str
+    db_session: AsyncSession,
+    *,
+    tenant: Tenant,
+    email: str,
+    first_name: str,
+    last_name: str,
 ) -> Teacher:
     account = TeacherAccount(
         email=email,

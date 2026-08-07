@@ -58,9 +58,6 @@ export const parentService = {
   getParents: (options = {}) =>
     api.get(`/parents/memberships?${buildParentQuery(options)}`),
 
-  createParent: (payload) =>
-    api.post("/tenant-admin/parents", payload),
-
   createInvitation: (payload) =>
     api.post("/parents/invitations", payload),
 
@@ -114,10 +111,4 @@ export const parentService = {
 
   getParent: (parentId) =>
     api.get(`/parents/memberships/${parentId}`),
-
-  updateParent: (parentId, payload) =>
-    api.patch(`/tenant-admin/parents/${parentId}`, payload),
-
-  deleteParent: (parentId) =>
-    api.delete(`/tenant-admin/parents/${parentId}`),
 };

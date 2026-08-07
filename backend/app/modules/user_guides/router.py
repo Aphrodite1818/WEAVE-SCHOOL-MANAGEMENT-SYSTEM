@@ -12,7 +12,6 @@ from app.core.exceptions import BadRequestException
 from app.modules.user_guides.schemas import UserGuideStateResponse, UserGuideStateUpdate
 from app.modules.user_guides.service import UserGuideService
 
-
 router = APIRouter(prefix="/guides", tags=["User Guides"])
 CurrentGuideActor: TypeAlias = Annotated[CurrentActor, Depends(get_current_actor)]
 GuideKey = Annotated[str, Path(min_length=2, max_length=100, pattern=r"^[a-z0-9][a-z0-9_-]+$")]

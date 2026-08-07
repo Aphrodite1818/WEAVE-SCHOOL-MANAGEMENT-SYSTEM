@@ -11,6 +11,8 @@ import app.models  # noqa: F401
 
 from app.config.database import AsyncSessionLocal, engine  # noqa: E402
 from app.config.logging import get_logger  # noqa: E402
+from app.config.sentry import flush_sentry, initialize_sentry  # noqa: E402
+from app.core.queue.sentry import capture_worker_exceptions  # noqa: E402
 from app.core.queue.arq import HEAVY_QUEUE_NAME, get_arq_redis_settings  # noqa: E402
 from app.core.queue.context import (  # noqa: E402
     reset_current_bulk_import_job_id,
@@ -27,10 +29,10 @@ from app.modules.student_academics.session_closure_service import (  # noqa: E40
     SessionClosureService,
 )
 
-
 logger = get_logger(__name__)
 
 
+@capture_worker_exceptions(queue_name=HEAVY_QUEUE_NAME)
 async def process_bulk_import_job(
     ctx: dict[str, Any],
     job_id: str,
@@ -71,6 +73,7 @@ async def process_bulk_import_job(
     return result
 
 
+@capture_worker_exceptions(queue_name=HEAVY_QUEUE_NAME)
 async def process_session_progression_job(
     ctx: dict[str, Any],
     run_id: str,
@@ -147,11 +150,25 @@ async def process_session_progression_job(
         raise failure_exception
 
 
-async def shutdown(ctx: dict[str, Any]) -> None:
-    """Dispose this worker process's database engine."""
+async def startup(ctx: dict[str, Any]) -> None:
+    """Initialize optional monitoring for this worker process."""
 
     _ = ctx
-    await engine.dispose()
+
+    initialize_sentry(
+        service="worker-heavy",
+    )
+
+
+async def shutdown(ctx: dict[str, Any]) -> None:
+    """Dispose the worker's database and monitoring resources."""
+
+    _ = ctx
+
+    try:
+        await engine.dispose()
+    finally:
+        await flush_sentry()
 
 
 class WorkerSettings:
@@ -163,6 +180,8 @@ class WorkerSettings:
         process_bulk_import_job,
         process_session_progression_job,
     ]
+
+    on_startup = startup
     on_shutdown = shutdown
     max_jobs = 1
     job_timeout = 3600

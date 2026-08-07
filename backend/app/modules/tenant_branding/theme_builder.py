@@ -8,7 +8,6 @@ from typing import Final
 
 from app.modules.tenant_branding.models import TenantBrandingThemeMode
 
-
 DEFAULT_BRAND_NAME: Final[str] = "Weave"
 DEFAULT_PRIMARY_COLOR: Final[str] = "#1D4ED8"
 DEFAULT_ACCENT_COLOR: Final[str] = "#4F46E5"
@@ -286,10 +285,10 @@ def _semantic_tokens(
         "--color-header-background": head,
         "--color-header-text": head_text,
         "--color-header-text-muted": _blend_towards(head_text, head, 0.35),
-        "--color-header-surface": (24, 34, 54) if dark else _blend_towards(head, head_text, 0.08),
-        "--color-header-surface-hover": (30, 41, 59)
-        if dark
-        else _blend_towards(head, head_text, 0.14),
+        "--color-header-surface": ((24, 34, 54) if dark else _blend_towards(head, head_text, 0.08)),
+        "--color-header-surface-hover": (
+            (30, 41, 59) if dark else _blend_towards(head, head_text, 0.14)
+        ),
         "--color-header-border": _blend_towards(head, head_text, 0.18),
         "--color-focus-ring": primary,
     }

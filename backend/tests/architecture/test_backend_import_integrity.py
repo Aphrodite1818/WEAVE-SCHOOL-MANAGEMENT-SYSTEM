@@ -28,8 +28,6 @@ def test_every_backend_module_imports() -> None:
         try:
             importlib.import_module(module_name)
         except Exception as exc:  # noqa: BLE001 - aggregate every import failure
-            failures.append(
-                f"{module_name}: {type(exc).__name__}: {exc}"
-            )
+            failures.append(f"{module_name}: {type(exc).__name__}: {exc}")
 
     assert not failures, "Backend import failures:\n" + "\n".join(failures)

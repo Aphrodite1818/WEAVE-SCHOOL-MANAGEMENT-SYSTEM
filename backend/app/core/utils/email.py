@@ -12,7 +12,6 @@ from app.core.email.enums import EmailCategory
 from app.core.email.exceptions import EmailError
 from app.core.email.service import email_service
 
-
 logger = get_logger(__name__)
 
 

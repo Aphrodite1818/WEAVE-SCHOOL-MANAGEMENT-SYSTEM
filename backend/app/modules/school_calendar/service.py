@@ -9,7 +9,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+)
 from app.modules.school_calendar.calendar_enums import (
     SchoolCalendarDaySource,
     SchoolCalendarDayType,
@@ -360,7 +364,10 @@ class SchoolCalendarService:
                     "Academic term does not belong to the calendar session.",
                 )
             if term.status != AcademicTermStatus.DRAFT:
-                block("TERM_NOT_DRAFT", "Academic term must be draft before calendar activation.")
+                block(
+                    "TERM_NOT_DRAFT",
+                    "Academic term must be draft before calendar activation.",
+                )
             if term.start_date is None or term.end_date is None:
                 block("TERM_DATES_INCOMPLETE", "Academic term dates are incomplete.")
             else:
@@ -379,7 +386,10 @@ class SchoolCalendarService:
                     end_date=term.end_date,
                 )
                 if counts["missing_dates"]:
-                    block("MISSING_DATES", "Calendar does not cover every date in the term.")
+                    block(
+                        "MISSING_DATES",
+                        "Calendar does not cover every date in the term.",
+                    )
                 if counts["extra_dates"]:
                     block("EXTRA_DATES", "Calendar contains dates outside the term.")
         if config is None:
@@ -452,7 +462,9 @@ class SchoolCalendarService:
             blockers.append("The term calendar must be active.")
         blockers.extend(preview.blocker_messages)
         return LifecycleReadinessContribution(
-            blockers=list(dict.fromkeys(blockers)), counts=counts, calendar_id=str(calendar.id)
+            blockers=list(dict.fromkeys(blockers)),
+            counts=counts,
+            calendar_id=str(calendar.id),
         )
 
     @staticmethod
@@ -501,7 +513,8 @@ class SchoolCalendarService:
         )
         if not preview.can_activate:
             raise ConflictException(
-                "School calendar cannot be activated.", payload=preview.model_dump(mode="json")
+                "School calendar cannot be activated.",
+                payload=preview.model_dump(mode="json"),
             )
         previous = {"status": calendar.status.value}
         calendar.status = SchoolCalendarStatus.ACTIVE
@@ -541,7 +554,8 @@ class SchoolCalendarService:
         )
         if not preview.can_archive and not payload.force_replacement:
             raise ConflictException(
-                "School calendar cannot be archived yet.", payload=preview.model_dump(mode="json")
+                "School calendar cannot be archived yet.",
+                payload=preview.model_dump(mode="json"),
             )
         if payload.force_replacement and not payload.reason:
             raise BadRequestException("A reason is required for forced archival.")
@@ -740,7 +754,10 @@ class SchoolCalendarService:
             )
         if calendar is None:
             raise NotFoundException("No calendar covers this date.")
-        if calendar.status not in {SchoolCalendarStatus.DRAFT, SchoolCalendarStatus.ACTIVE}:
+        if calendar.status not in {
+            SchoolCalendarStatus.DRAFT,
+            SchoolCalendarStatus.ACTIVE,
+        }:
             raise ConflictException("Archived calendar days cannot be edited.")
         day = await SchoolCalendarRepository.get_day_by_date(
             db, tenant_id, calendar.id, calendar_date, lock=True
@@ -833,7 +850,8 @@ class SchoolCalendarService:
         )
         await db.commit()
         return SchoolCalendarRangeResponse(
-            items=[SchoolCalendarDayResponse.model_validate(day) for day in days], total=len(days)
+            items=[SchoolCalendarDayResponse.model_validate(day) for day in days],
+            total=len(days),
         )
 
     @staticmethod

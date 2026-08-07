@@ -55,7 +55,7 @@ class TenantAdminResponse(OutputBase):
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
-    passport_photo_url : str | None = None
+    passport_photo_url: str | None = None
 
 
 class TenantAdminLoginProfile(OutputBase):
@@ -65,4 +65,4 @@ class TenantAdminLoginProfile(OutputBase):
     account_status: TenantAdminStatus
     is_verified: bool
     is_active: bool
-    passport_photo_url : str | None
+    passport_photo_url: str | None

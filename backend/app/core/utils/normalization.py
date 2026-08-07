@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 _CLASS_PREFIX_ALIASES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^J\.?S\.?S\.?\s*[-_]?\s*(\d+)$", re.IGNORECASE), "JSS"),
     (re.compile(r"^JUNIOR\s+SECONDARY\s*[-_]?\s*(\d+)$", re.IGNORECASE), "JSS"),

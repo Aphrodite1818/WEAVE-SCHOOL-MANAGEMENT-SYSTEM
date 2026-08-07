@@ -10,9 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.logging import get_logger
 from app.config.security import hash_auth_secret, hash_password, verify_password
 from app.config.settings import settings
-from app.core.exceptions import BadRequestException, ConflictException, NotFoundException, UnauthorizedException
+from app.core.exceptions import (
+    BadRequestException,
+    ConflictException,
+    NotFoundException,
+    UnauthorizedException,
+)
 from app.core.utils.email import send_email
-from app.core.utils.email_templates import get_superadmin_invite_email_html, get_tenant_invite_email_html
+from app.core.utils.email_templates import (
+    get_superadmin_invite_email_html,
+    get_tenant_invite_email_html,
+)
 from app.modules.auth.models import AuthPurpose, AuthRecord
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
@@ -28,7 +36,6 @@ from app.tenant_management.models import Tenant, TenantStatus, TenantVerificatio
 from app.tenant_management.repository import TenantRepository
 from app.tenant_management.schemas import TenantCreate, TenantStatusUpdate
 from app.tenant_management.service import TenantService
-
 
 logger = get_logger(__name__)
 
@@ -60,7 +67,9 @@ class SuperadminService:
         existing_admin = await TenantAdminRepository.get_by_email(db, normalized_email)
         existing_teacher = await TeacherRepository.get_by_email(db, normalized_email)
         existing_parent = await ParentRepository.get_by_email(db, normalized_email)
-        existing_tenant = await TenantRepository.get_by_email_including_deleted(db, normalized_email)
+        existing_tenant = await TenantRepository.get_by_email_including_deleted(
+            db, normalized_email
+        )
         existing_superadmin = await SuperAdminRepository.get_by_email(db, normalized_email)
 
         existing_actor = existing_admin or existing_teacher or existing_parent
@@ -109,7 +118,11 @@ class SuperadminService:
         """Create tenant and a pending tenant admin actor."""
 
         normalized_email = _normalize_email(payload.email)
-        existing_actor, existing_tenant, existing_superadmin = await SuperadminService.get_email_conflicts(
+        (
+            existing_actor,
+            existing_tenant,
+            existing_superadmin,
+        ) = await SuperadminService.get_email_conflicts(
             db,
             normalized_email,
         )
@@ -317,7 +330,11 @@ class SuperadminService:
         """Perform invite superadmin."""
 
         normalized_email = _normalize_email(payload.email)
-        existing_actor, existing_tenant, existing_superadmin = await SuperadminService.get_email_conflicts(
+        (
+            existing_actor,
+            existing_tenant,
+            existing_superadmin,
+        ) = await SuperadminService.get_email_conflicts(
             db,
             normalized_email,
         )
@@ -350,9 +367,13 @@ class SuperadminService:
             logger.exception("Superadmin invite failed", extra={"email": normalized_email})
             raise
 
-        invite_link = SuperadminService._build_invite_link(raw_token, frontend_app_url=frontend_app_url)
+        invite_link = SuperadminService._build_invite_link(
+            raw_token, frontend_app_url=frontend_app_url
+        )
         subject = f"Set up your {settings.APP_NAME} superadmin account"
-        html_body = get_superadmin_invite_email_html(normalized_email, settings.APP_NAME, invite_link)
+        html_body = get_superadmin_invite_email_html(
+            normalized_email, settings.APP_NAME, invite_link
+        )
 
         if background_tasks is not None:
             background_tasks.add_task(
@@ -380,12 +401,12 @@ class SuperadminService:
     ) -> dict[str, object]:
         """Return platform analytics for the superadmin dashboard."""
 
-        total_tenants = (
-            await db.execute(select(func.count()).select_from(Tenant))
-        ).scalar_one()
+        total_tenants = (await db.execute(select(func.count()).select_from(Tenant))).scalar_one()
         active_tenants = (
             await db.execute(
-                select(func.count()).select_from(Tenant).where(
+                select(func.count())
+                .select_from(Tenant)
+                .where(
                     Tenant.is_deleted.is_(False),
                     Tenant.verification_status == TenantVerificationStatus.ACTIVE,
                     Tenant.status == TenantStatus.ACTIVE,
@@ -394,7 +415,9 @@ class SuperadminService:
         ).scalar_one()
         pending_verification = (
             await db.execute(
-                select(func.count()).select_from(Tenant).where(
+                select(func.count())
+                .select_from(Tenant)
+                .where(
                     Tenant.is_deleted.is_(False),
                     Tenant.verification_status == TenantVerificationStatus.PENDING_VERIFICATION,
                 )
@@ -402,7 +425,9 @@ class SuperadminService:
         ).scalar_one()
         rejected_verification = (
             await db.execute(
-                select(func.count()).select_from(Tenant).where(
+                select(func.count())
+                .select_from(Tenant)
+                .where(
                     Tenant.is_deleted.is_(False),
                     Tenant.verification_status == TenantVerificationStatus.REJECTED,
                 )
@@ -428,7 +453,9 @@ class SuperadminService:
         for status in TenantStatus:
             value = (
                 await db.execute(
-                    select(func.count()).select_from(Tenant).where(
+                    select(func.count())
+                    .select_from(Tenant)
+                    .where(
                         Tenant.is_deleted.is_(False),
                         Tenant.status == status,
                     )

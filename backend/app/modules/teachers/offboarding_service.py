@@ -180,9 +180,7 @@ class TeacherOffboardingService:
         )
         if replacement_id is None:
             await db.execute(
-                update(ClassSubjectTeacher)
-                .where(*legacy_filter)
-                .values(is_active=False)
+                update(ClassSubjectTeacher).where(*legacy_filter).values(is_active=False)
             )
         else:
             await db.execute(
