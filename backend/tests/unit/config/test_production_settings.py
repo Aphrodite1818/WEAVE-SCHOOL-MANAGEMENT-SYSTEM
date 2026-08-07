@@ -18,10 +18,10 @@ def _production_values() -> dict[str, object]:
         "TRUST_PROXY_HEADERS": True,
         "TRUSTED_PROXY_HOPS": 1,
         "BULK_IMPORT_RESULT_ENCRYPTION_KEY": "b" * 64,
-        "EMAIL_PROVIDER": "ses",
-        "AWS_REGION": "eu-west-1",
-        "AWS_ACCESS_KEY_ID": "test-access-key",
-        "AWS_SECRET_ACCESS_KEY": "test-secret-key",
+        "EMAIL_PROVIDER": "resend",
+        "RESEND_API_KEY": "re_test_key",
+        "AWS_ACCESS_KEY_ID": None,
+        "AWS_SECRET_ACCESS_KEY": None,
         "MEDIA_STORAGE_PROVIDER": "r2",
         "R2_ACCOUNT_ID": "account",
         "R2_ACCESS_KEY_ID": "access-key",
@@ -35,25 +35,27 @@ def test_valid_production_configuration_is_accepted() -> None:
     settings = Settings(_env_file=None, **_production_values())
 
     assert settings.is_production_like is True
-    assert settings.EMAIL_PROVIDER == "ses"
+    assert settings.EMAIL_PROVIDER == "resend"
     assert settings.MEDIA_STORAGE_PROVIDER == "r2"
 
 
 def test_production_accepts_resend_without_aws_credentials() -> None:
-    values = _production_values()
-    values.update(
-        {
-            "EMAIL_PROVIDER": "resend",
-            "RESEND_API_KEY": "re_test_key",
-            "AWS_ACCESS_KEY_ID": None,
-            "AWS_SECRET_ACCESS_KEY": None,
-        }
-    )
-
-    settings = Settings(_env_file=None, **values)
+    settings = Settings(_env_file=None, **_production_values())
 
     assert settings.EMAIL_PROVIDER == "resend"
     assert settings.AWS_ACCESS_KEY_ID is None
+    assert settings.AWS_SECRET_ACCESS_KEY is None
+
+
+def test_production_rejects_missing_resend_api_key() -> None:
+    values = _production_values()
+    values["RESEND_API_KEY"] = None
+
+    with pytest.raises(
+        ValidationError,
+        match="Resend configuration is incomplete.*RESEND_API_KEY",
+    ):
+        Settings(_env_file=None, **values)
 
 
 def test_production_rejects_missing_sentry_dsn() -> None:
@@ -69,17 +71,6 @@ def test_production_rejects_wildcard_cors() -> None:
     values["ALLOWED_ORIGINS"] = ["*"]
 
     with pytest.raises(ValidationError, match="Wildcard CORS origins"):
-        Settings(_env_file=None, **values)
-
-
-def test_production_rejects_missing_ses_credentials() -> None:
-    values = _production_values()
-    values["AWS_ACCESS_KEY_ID"] = None
-
-    with pytest.raises(
-        ValidationError,
-        match="Amazon SES configuration is incomplete.*AWS_ACCESS_KEY_ID",
-    ):
         Settings(_env_file=None, **values)
 
 
