@@ -68,7 +68,7 @@ async def process_bulk_import_job(
 
     logger.info(
         "bulk_import.completed",
-        extra={"job_id": job_id, "tenant_id": tenant_id, **result},
+        extra={"job_id": job_id, "tenant_id": tenant_id, "bulk_import_result": result},
     )
     return result
 
