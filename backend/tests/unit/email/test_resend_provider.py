@@ -61,7 +61,9 @@ async def test_resend_provider_sends_category_route(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
-async def test_resend_provider_translates_retryable_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_resend_provider_translates_retryable_rate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class RateLimitError(Exception):
         code = "rate_limit_exceeded"
         status_code = 429
