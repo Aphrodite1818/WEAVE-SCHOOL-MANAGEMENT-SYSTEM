@@ -50,3 +50,22 @@ test("stale guide reads cannot trigger a second automatic tutorial", () => {
   );
   assert.match(roleGuide, /window\.addEventListener\("online", retryPendingState\)/);
 });
+
+test("role guides follow runtime attendance exposure", () => {
+  const roleGuide = readSource("features", "guides", "useRoleGuide.js");
+
+  assert.match(roleGuide, /useRuntimeConfig/);
+  assert.match(
+    roleGuide,
+    /runtimeConfig\?\.features\?\.attendance !== false/,
+  );
+  assert.match(
+    roleGuide,
+    /baseConfig\.steps[\s\S]*\.filter\(\(step\) => step\.id !== "attendance"\)/,
+  );
+  assert.match(roleGuide, /ATTENDANCE_HIDDEN_DESCRIPTIONS/);
+  assert.match(roleGuide, /ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS/);
+  assert.match(roleGuide, /before entering scores/);
+  assert.match(roleGuide, /const storedIndex = baseConfig\.steps\.findIndex/);
+  assert.match(roleGuide, /baseIndex < storedIndex/);
+});

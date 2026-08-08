@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { guideService } from "../../services/guideService";
 import { hasGuideExitSuppression } from "./guideNavigation";
 import { guideForRole } from "./roleGuideConfig";
 
 export const GUIDE_STATE_CHANGED_EVENT = "weave:guide-state-changed";
+
+const ATTENDANCE_HIDDEN_DESCRIPTIONS = {
+  parent: "Learn where to find linked children, report cards, and school dates.",
+  student: "A short introduction to subjects, report cards, and school dates.",
+};
+
+const ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS = {
+  teacher: {
+    classes: "Confirm your class and subject assignments before entering scores.",
+  },
+};
 
 const hasOwn = (value, key) =>
   Boolean(value) && Object.prototype.hasOwnProperty.call(value, key);
@@ -16,7 +28,28 @@ export function useRoleGuide({
   allowCompletedCurrentStep = false,
   allowSkippedCurrentStep = false,
 } = {}) {
-  const config = guideForRole(role);
+  const normalizedRole = String(role || "").toLowerCase();
+  const baseConfig = guideForRole(normalizedRole);
+  const runtimeConfig = useRuntimeConfig();
+  const attendanceEnabled = runtimeConfig?.features?.attendance !== false;
+  const config = useMemo(() => {
+    if (!baseConfig || attendanceEnabled) return baseConfig;
+
+    const stepDescriptionOverrides =
+      ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS[normalizedRole] || {};
+
+    return {
+      ...baseConfig,
+      description:
+        ATTENDANCE_HIDDEN_DESCRIPTIONS[normalizedRole] || baseConfig.description,
+      steps: baseConfig.steps
+        .filter((step) => step.id !== "attendance")
+        .map((step) => ({
+          ...step,
+          description: stepDescriptionOverrides[step.id] || step.description,
+        })),
+    };
+  }, [attendanceEnabled, baseConfig, normalizedRole]);
   const [guideState, setGuideState] = useState(null);
   const [loading, setLoading] = useState(Boolean(config && enabled));
   const stateVersionRef = useRef(0);
@@ -91,21 +124,26 @@ export function useRoleGuide({
   }, [config, enabled, publishState]);
 
   const steps = useMemo(() => {
-    if (!config) return [];
+    if (!config || !baseConfig) return [];
     const skipped = new Set(guideState?.skipped_steps || []);
-    const storedIndex = Math.max(
-      0,
-      config.steps.findIndex((step) => step.id === guideState?.current_step),
+    const storedIndex = baseConfig.steps.findIndex(
+      (step) => step.id === guideState?.current_step,
     );
 
-    return config.steps.map((step, index) => ({
-      ...step,
-      complete: hasOwn(completionMap, step.id)
-        ? Boolean(completionMap[step.id])
-        : guideState?.status === "completed" || index < storedIndex,
-      skipped: skipped.has(step.id),
-    }));
-  }, [completionMap, config, guideState]);
+    return config.steps.map((step) => {
+      const baseIndex = baseConfig.steps.findIndex(
+        (configuredStep) => configuredStep.id === step.id,
+      );
+      return {
+        ...step,
+        complete: hasOwn(completionMap, step.id)
+          ? Boolean(completionMap[step.id])
+          : guideState?.status === "completed" ||
+            (storedIndex >= 0 && baseIndex >= 0 && baseIndex < storedIndex),
+        skipped: skipped.has(step.id),
+      };
+    });
+  }, [baseConfig, completionMap, config, guideState]);
 
   const firstPendingIndex = useMemo(() => {
     const index = steps.findIndex((step) => !step.complete && !step.skipped);
