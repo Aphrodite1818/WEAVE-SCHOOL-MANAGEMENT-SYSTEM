@@ -13,9 +13,10 @@ from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile,
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.core.exceptions import BadRequestException
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.modules.bulk_imports.live_service import BulkImportLiveService
 from app.modules.bulk_imports.models import ImportJobStatus, ImportResourceType
+from app.modules.bulk_imports.repository import ImportJobRepository
 from app.modules.bulk_imports.result_writer import (
     create_error_report,
     create_result_report,
@@ -40,6 +41,7 @@ from app.modules.bulk_imports.slip_schemas import (
     StudentSlipSummaryResponse,
 )
 from app.modules.bulk_imports.slip_service import StudentSlipService
+from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
 from app.modules.tenant_admins.models import TenantAdmin
 from app.tenant_management.repository import TenantRepository
 
@@ -109,6 +111,19 @@ async def confirm_bulk_import(
     current_user: CurrentTenantAdmin,
     notify_on_completion: bool = Query(default=True),
 ) -> ImportJobDetailResponse:
+    import_job = await ImportJobRepository.get_job_by_id(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        job_id=job_id,
+    )
+    if import_job is None:
+        raise NotFoundException(detail="Import job not found")
+
+    await acquire_resource_quota_lock(
+        db,
+        tenant_id=current_user.tenant_id,
+        resource=BulkImportService.resource_limit_code(import_job.resource_type),
+    )
     return await BulkImportLiveService.queue_confirmed_import(
         db=db,
         actor=current_user,

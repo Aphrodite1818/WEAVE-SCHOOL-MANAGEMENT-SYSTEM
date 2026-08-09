@@ -3,6 +3,8 @@ from typing import Annotated, TypeAlias
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 
+from app.core.cache.base import build_cache_key, tenant_prefix
+from app.core.cache.events import invalidate_cache_key_now
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_superadmin
 from app.core.utils.frontend_urls import resolve_frontend_app_url
@@ -34,6 +36,16 @@ from app.tenant_management.schemas import (
 
 router = APIRouter(prefix="/superadmin", tags=["Superadmin"])
 SuperadminActor: TypeAlias = Annotated[SuperAdmin, Depends(get_current_superadmin)]
+
+
+async def _invalidate_tenant_authorization_cache(tenant_id: uuid.UUID) -> None:
+    await invalidate_cache_key_now(
+        build_cache_key(
+            tenant_prefix(str(tenant_id)),
+            "auth",
+            "active-tenant",
+        )
+    )
 
 
 @router.post(
@@ -131,7 +143,9 @@ async def update_tenant_status(
     current_superadmin: SuperadminActor,
 ) -> Tenant:
     """Update tenant status."""
-    return await SuperadminService.update_tenant_status(db, tenant_id, payload)
+    tenant = await SuperadminService.update_tenant_status(db, tenant_id, payload)
+    await _invalidate_tenant_authorization_cache(tenant_id)
+    return tenant
 
 
 @router.patch(
@@ -145,7 +159,9 @@ async def restore_tenant(
     current_superadmin: SuperadminActor,
 ) -> Tenant:
     """Perform restore tenant."""
-    return await SuperadminService.restore_tenant(db, tenant_id)
+    tenant = await SuperadminService.restore_tenant(db, tenant_id)
+    await _invalidate_tenant_authorization_cache(tenant_id)
+    return tenant
 
 
 @router.delete("/tenants/{tenant_id}", status_code=status.HTTP_200_OK)
@@ -155,7 +171,9 @@ async def delete_tenant(
     current_superadmin: SuperadminActor,
 ) -> dict[str, str]:
     """Delete tenant."""
-    return await SuperadminService.delete_tenant(db, tenant_id)
+    result = await SuperadminService.delete_tenant(db, tenant_id)
+    await _invalidate_tenant_authorization_cache(tenant_id)
+    return result
 
 
 @router.get(

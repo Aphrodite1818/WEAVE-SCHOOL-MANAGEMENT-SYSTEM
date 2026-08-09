@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache.events import flush_cache_invalidation_events
@@ -66,6 +67,25 @@ def _extract_provider_plan_code(data: dict[str, Any]) -> str | None:
 def _metadata_value(metadata: dict[str, Any], key: str) -> str:
     value = metadata.get(key)
     return "" if value is None else str(value)
+
+
+def _webhook_lock_key(event_type: str, event_key: str) -> int:
+    digest = hashlib.sha256(f"{event_type}:{event_key}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=True)
+
+
+async def _acquire_webhook_lock(
+    db: AsyncSession,
+    *,
+    event_type: str,
+    event_key: str,
+) -> None:
+    """Serialize duplicate webhook processing inside the current transaction."""
+
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_key)"),
+        {"lock_key": _webhook_lock_key(event_type, event_key)},
+    )
 
 
 def _transaction_integrity_failures(
@@ -330,6 +350,11 @@ async def process_paystack_webhook_secure(
     payload = provider.parse_webhook_body(body)
     event_type = str(payload.get("event") or "unknown")
     event_key = SubscriptionPaymentService._extract_event_key(event_type, payload)
+    await _acquire_webhook_lock(
+        db,
+        event_type=event_type,
+        event_key=event_key,
+    )
     webhook_event = await SubscriptionRepository.get_webhook_event_by_provider(
         db=db,
         provider=PaymentProvider.PAYSTACK,
@@ -380,9 +405,30 @@ async def process_paystack_webhook_secure(
             message="Webhook event processed successfully.",
         )
     except Exception as exc:
+        await db.rollback()
+
+        failed_event = await SubscriptionRepository.get_webhook_event_by_provider(
+            db=db,
+            provider=PaymentProvider.PAYSTACK,
+            event_type=event_type,
+            event_key=event_key,
+        )
+        if failed_event is None:
+            failed_event = await SubscriptionRepository.create_webhook_event(
+                db=db,
+                webhook_event=PaymentWebhookEvent(
+                    provider=PaymentProvider.PAYSTACK,
+                    event_type=event_type,
+                    event_key=event_key,
+                    payload=payload,
+                ),
+            )
+        else:
+            failed_event.payload = payload
+
         await SubscriptionRepository.mark_webhook_failed(
             db=db,
-            webhook_event=webhook_event,
+            webhook_event=failed_event,
             error_message=str(exc),
         )
         await db.commit()
