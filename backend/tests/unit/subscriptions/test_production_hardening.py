@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 
@@ -261,6 +261,7 @@ async def test_bulk_import_confirmation_locks_resource_before_existing_quota_che
     actor = SimpleNamespace(tenant_id=tenant_id)
     import_job = SimpleNamespace(resource_type=ImportResourceType.STUDENTS)
     expected = SimpleNamespace(id=job_id)
+    db = AsyncMock()
 
     with (
         patch(
@@ -278,14 +279,14 @@ async def test_bulk_import_confirmation_locks_resource_before_existing_quota_che
     ):
         result = await confirm_bulk_import(
             job_id=job_id,
-            db=AsyncMock(),
+            db=db,
             current_user=actor,
             notify_on_completion=True,
         )
 
     assert result is expected
     quota_lock.assert_awaited_once_with(
-        pytest.ANY,
+        db,
         tenant_id=tenant_id,
         resource=ResourceLimitCode.STUDENTS,
     )
