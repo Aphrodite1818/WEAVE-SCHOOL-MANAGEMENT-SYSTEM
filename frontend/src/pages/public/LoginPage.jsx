@@ -8,9 +8,9 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import AuthLayout from "../../components/layout/AuthLayout";
+import SessionBootstrapScreen from "../../components/layout/SessionBootstrapScreen";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
-import Spinner from "../../components/ui/Spinner";
 import { authService } from "../../services/auth.service";
 import { authSession, parseApiError } from "../../services/api";
 
@@ -330,20 +330,7 @@ function LoginPage() {
   const submitDisabled = isLoading || retryAfterSeconds > 0;
 
   if (isRestoringSession) {
-    return (
-      <AuthLayout
-        title="Restoring session"
-        description="Checking your saved login before showing the sign-in form."
-        iconPosition="below"
-      >
-        <div className="flex flex-col items-center py-6 text-center">
-          <Spinner className="h-10 w-10" />
-          <p className="mt-4 text-sm text-text-soft">
-            Getting your workspace ready...
-          </p>
-        </div>
-      </AuthLayout>
-    );
+    return <SessionBootstrapScreen />;
   }
 
   return (
