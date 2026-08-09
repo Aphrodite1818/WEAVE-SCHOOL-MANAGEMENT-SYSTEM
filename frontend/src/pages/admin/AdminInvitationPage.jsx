@@ -17,12 +17,12 @@ const RELATIONSHIP_OPTIONS = ["father", "mother", "guardian", "sponsor", "other"
 const roleConfig = {
   teacher: {
     title: "Invite Teacher",
-    description: "Send a school invitation to a new or existing global teacher account.",
+    description: "Send an invitation to a teacher to join your school on Weave.",
     directoryPath: "/admin/teachers",
   },
   parent: {
     title: "Invite Parent",
-    description: "Invite a parent to request access to one specific student in this school.",
+    description: "Invite a parent or guardian to connect with a student in your school.",
     directoryPath: "/admin/parents",
   },
 };
@@ -97,7 +97,7 @@ function AdminInvitationPage() {
       } else {
         setParentForm({ student_id: "", email: "", relationship_type: "guardian" });
       }
-      showSuccess(`${titleCase(role)} invitation queued successfully.`);
+      showSuccess(`${titleCase(role)} invitation is on its way.`);
     } catch (requestError) {
       const parsed = parseApiError(requestError, `Could not send ${role} invitation.`);
       setFieldErrors(parsed.fieldErrors || {});
@@ -127,8 +127,8 @@ function AdminInvitationPage() {
               <h2 className="text-lg font-semibold text-text">{config.title}</h2>
               <p className="mt-1 text-sm leading-6 text-text-muted">
                 {role === "teacher"
-                  ? "The recipient creates or uses one global teacher account, then accepts this school's membership invitation."
-                  : "Search the full active-student directory. The invitation carries the selected student reference; the parent never types an admission number."}
+                  ? "They can sign in or create an account, then accept your school invitation."
+                  : "Choose the student and enter the parent or guardian's email. Weave includes the student automatically."}
               </p>
             </div>
           </div>
@@ -173,24 +173,24 @@ function AdminInvitationPage() {
 
             <Button type="submit" disabled={isSubmitting || (role === "parent" && !parentForm.student_id)}>
               <MailPlus className="h-4 w-4" />
-              {isSubmitting ? "Queueing invitation..." : `Send ${role} invitation`}
+              {isSubmitting ? "Sending invitation..." : `Send ${role} invitation`}
             </Button>
           </form>
         </Card>
 
         <Card className="h-fit p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">Delivery status</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">Invitation details</h2>
           {result ? (
             <div className="mt-4 space-y-3">
-              <div className="rounded-2xl border border-success/30 bg-success-soft px-4 py-3 text-sm text-emerald-800">Invitation accepted by the API and queued for delivery.</div>
+              <div className="rounded-2xl border border-success/30 bg-success-soft px-4 py-3 text-sm text-emerald-800">Invitation created and ready for delivery.</div>
               <div className="space-y-2 text-sm text-text-muted">
                 <p>Email: <span className="font-semibold text-text">{result.invited_email || result.email}</span></p>
-                <p>Status: <span className="font-semibold text-text">{result.status || "pending"}</span></p>
+                <p>Status: <span className="font-semibold text-text">{titleCase(result.status || "pending")}</span></p>
                 {result.expires_at ? <p>Expires: <span className="font-semibold text-text">{new Date(result.expires_at).toLocaleString()}</span></p> : null}
               </div>
             </div>
           ) : (
-            <p className="mt-4 text-sm leading-6 text-text-muted">After submission, the invitation appears in the directory Invitations tab. Email delivery remains asynchronous.</p>
+            <p className="mt-4 text-sm leading-6 text-text-muted">After you send an invitation, you can track it from the Invitations tab.</p>
           )}
         </Card>
       </section>
