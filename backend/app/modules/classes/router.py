@@ -9,6 +9,7 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_member,
 )
 from app.core.exceptions import NotFoundException
+from app.modules.classes.repository import ClassRoomRepository
 from app.modules.classes.schemas import (
     ClassProgressionClearRequest,
     ClassProgressionConfigureRequest,
@@ -202,16 +203,22 @@ async def activate_classroom(
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
     _ = payload.confirmation
-    await acquire_resource_quota_lock(
-        db,
-        tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.CLASSES,
-    )
-    await SubscriptionFeatureService.ensure_resource_limit_available(
+    existing = await ClassRoomRepository.get_by_id(
         db=db,
         tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.CLASSES,
+        class_id=class_id,
     )
+    if existing is not None and not existing.is_active and existing.archived_at is None:
+        await acquire_resource_quota_lock(
+            db,
+            tenant_id=current_user.tenant_id,
+            resource=ResourceLimitCode.CLASSES,
+        )
+        await SubscriptionFeatureService.ensure_resource_limit_available(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            resource=ResourceLimitCode.CLASSES,
+        )
     classroom = await ClassRoomService.activate_classroom(
         db=db,
         actor=current_user,
