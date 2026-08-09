@@ -48,6 +48,7 @@ from app.modules.students.service import (
     StudentParentLinkService,
     StudentService,
 )
+from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.tenant_admins.models import TenantAdmin
@@ -120,6 +121,11 @@ async def create_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentDetailResponse:
+    await acquire_resource_quota_lock(
+        db,
+        tenant_id=current_admin.tenant_id,
+        resource=ResourceLimitCode.STUDENTS,
+    )
     await SubscriptionFeatureService.ensure_resource_limit_available(
         db,
         current_admin.tenant_id,
@@ -392,12 +398,24 @@ async def restore_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentDetailResponse:
-    return await StudentLifecycleService.restore(
+    await acquire_resource_quota_lock(
+        db,
+        tenant_id=current_admin.tenant_id,
+        resource=ResourceLimitCode.STUDENTS,
+    )
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db,
+        current_admin.tenant_id,
+        ResourceLimitCode.STUDENTS,
+    )
+    student = await StudentLifecycleService.restore(
         db,
         actor=current_admin,
         student_id=student_id,
         reason=payload.reason,
     )
+    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_admin.tenant_id)
+    return student
 
 
 @router.get(
