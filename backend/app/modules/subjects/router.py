@@ -194,16 +194,22 @@ async def activate_subject(
     """Activate subject."""
 
     _ = payload.confirmation
-    await acquire_resource_quota_lock(
-        db,
-        tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.SUBJECTS,
-    )
-    await SubscriptionFeatureService.ensure_resource_limit_available(
+    existing = await SubjectRepository.get_subject_by_id(
         db=db,
         tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.SUBJECTS,
+        subject_id=subject_id,
     )
+    if existing is not None and not existing.is_active and existing.archived_at is None:
+        await acquire_resource_quota_lock(
+            db,
+            tenant_id=current_user.tenant_id,
+            resource=ResourceLimitCode.SUBJECTS,
+        )
+        await SubscriptionFeatureService.ensure_resource_limit_available(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            resource=ResourceLimitCode.SUBJECTS,
+        )
     subject = await SubjectService.activate_subject(
         db=db,
         actor=current_user,
