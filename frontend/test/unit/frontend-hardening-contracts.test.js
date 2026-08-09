@@ -66,3 +66,17 @@ test("student creation copy describes outcomes instead of implementation details
   assert.doesNotMatch(source, /invitations queued/i);
   assert.doesNotMatch(source, /atomically/i);
 });
+
+test("session restoration uses one dedicated responsive bootstrap presentation", async () => {
+  const loginSource = await readSource("src/pages/public/LoginPage.jsx");
+  const bootstrapSource = await readSource("src/components/layout/SessionBootstrapScreen.jsx");
+
+  assert.match(loginSource, /return <SessionBootstrapScreen \/>/);
+  assert.doesNotMatch(loginSource, /Getting your workspace ready/);
+  assert.doesNotMatch(loginSource, /title="Restoring session"/);
+  assert.match(bootstrapSource, /min-h-\[100dvh\]/);
+  assert.match(bootstrapSource, /env\(safe-area-inset-top\)/);
+  assert.match(bootstrapSource, /env\(safe-area-inset-bottom\)/);
+  assert.match(bootstrapSource, /Restoring your session…/);
+  assert.equal((bootstrapSource.match(/<Spinner/g) || []).length, 1);
+});
