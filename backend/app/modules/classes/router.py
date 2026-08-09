@@ -22,6 +22,7 @@ from app.modules.classes.schemas import (
     ClassRoomUpdate,
 )
 from app.modules.classes.service import ClassRoomService
+from app.modules.parents.models import Parent
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
     ClassSubjectActivateRequest,
@@ -31,8 +32,8 @@ from app.modules.student_academics.schemas import (
     ClassSubjectResponse,
 )
 from app.modules.student_academics.service import StudentAcademicService
-from app.modules.parents.models import Parent
 from app.modules.students.models import Student
+from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode, ResourceLimitCode
 from app.modules.teachers.models import Teacher
@@ -61,6 +62,11 @@ async def create_classroom(
 ) -> ClassRoomResponse:
     """Create a new classroom."""
 
+    await acquire_resource_quota_lock(
+        db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.CLASSES,
+    )
     await SubscriptionFeatureService.ensure_resource_limit_available(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -196,6 +202,16 @@ async def activate_classroom(
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
     _ = payload.confirmation
+    await acquire_resource_quota_lock(
+        db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.CLASSES,
+    )
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.CLASSES,
+    )
     classroom = await ClassRoomService.activate_classroom(
         db=db,
         actor=current_user,
