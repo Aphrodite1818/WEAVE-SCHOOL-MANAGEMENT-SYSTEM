@@ -15,6 +15,7 @@ from app.modules.students.models import (
     AcademicStatus,
     StudentAccessCodePurpose,
 )
+from app.modules.students.repository import StudentRepository
 from app.modules.students.schemas import (
     StudentAccessCodeGenerateRequest,
     StudentAdminAccessCodeResponse,
@@ -398,16 +399,22 @@ async def restore_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentDetailResponse:
-    await acquire_resource_quota_lock(
-        db,
-        tenant_id=current_admin.tenant_id,
-        resource=ResourceLimitCode.STUDENTS,
-    )
-    await SubscriptionFeatureService.ensure_resource_limit_available(
+    existing = await StudentRepository.get_by_id(
         db,
         current_admin.tenant_id,
-        ResourceLimitCode.STUDENTS,
+        student_id,
     )
+    if existing is not None and existing.is_archived:
+        await acquire_resource_quota_lock(
+            db,
+            tenant_id=current_admin.tenant_id,
+            resource=ResourceLimitCode.STUDENTS,
+        )
+        await SubscriptionFeatureService.ensure_resource_limit_available(
+            db,
+            current_admin.tenant_id,
+            ResourceLimitCode.STUDENTS,
+        )
     student = await StudentLifecycleService.restore(
         db,
         actor=current_admin,
