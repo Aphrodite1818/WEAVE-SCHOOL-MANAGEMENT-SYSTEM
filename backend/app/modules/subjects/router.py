@@ -10,9 +10,8 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
     get_current_tenant_member,
 )
-from app.modules.subscriptions.service import SubscriptionFeatureService
-from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.subjects.models import Subject
+from app.modules.subjects.repository import SubjectRepository
 from app.modules.subjects.schemas import (
     SubjectActivateRequest,
     SubjectArchiveRequest,
@@ -24,8 +23,10 @@ from app.modules.subjects.schemas import (
     SubjectResponse,
     SubjectUpdate,
 )
-from app.modules.subjects.repository import SubjectRepository
 from app.modules.subjects.service import SubjectService
+from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -79,6 +80,11 @@ async def create_subject(
 ) -> Subject:
     """Create subject."""
 
+    await acquire_resource_quota_lock(
+        db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.SUBJECTS,
+    )
     await SubscriptionFeatureService.ensure_resource_limit_available(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -188,6 +194,16 @@ async def activate_subject(
     """Activate subject."""
 
     _ = payload.confirmation
+    await acquire_resource_quota_lock(
+        db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.SUBJECTS,
+    )
+    await SubscriptionFeatureService.ensure_resource_limit_available(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        resource=ResourceLimitCode.SUBJECTS,
+    )
     subject = await SubjectService.activate_subject(
         db=db,
         actor=current_user,
