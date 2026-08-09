@@ -1,10 +1,18 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import Button from "./Button";
 import { cn } from "../../utils/cn";
 
 const MODAL_LOCKS_KEY = "__weaveModalScrollLocks";
 const MODAL_LOCK_COUNT_KEY = "__weaveModalLockCount";
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
 
 const getModalScrollTarget = () =>
   document.querySelector('[data-guide-page="true"]') ||
@@ -85,6 +93,8 @@ function Modal({
   showClose = true,
   placement = "responsive",
 }) {
+  const panelRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
   const [visualViewportRect, setVisualViewportRect] = useState(
     readVisualViewportRect,
   );
@@ -130,10 +140,56 @@ function Modal({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !onClose) return undefined;
+    if (!open) return undefined;
+
+    previouslyFocusedRef.current = document.activeElement;
+    const panel = panelRef.current;
+    const focusTarget = panel?.querySelector(FOCUSABLE_SELECTOR) || panel;
+    focusTarget?.focus({ preventScroll: true });
+
+    return () => {
+      const previous = previouslyFocusedRef.current;
+      if (previous instanceof HTMLElement && document.contains(previous)) {
+        previous.focus({ preventScroll: true });
+      }
+      previouslyFocusedRef.current = null;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
 
     const handleKeyDown = (event) => {
-      if (event.key === "Escape" && closeOnOverlay) onClose();
+      if (event.key === "Escape" && closeOnOverlay && onClose) {
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = Array.from(panel.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+        (element) => element instanceof HTMLElement && !element.hidden,
+      );
+
+      if (!focusable.length) {
+        event.preventDefault();
+        panel.focus({ preventScroll: true });
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -163,9 +219,11 @@ function Modal({
       onClick={handleOverlayClick}
     >
       <div
+        ref={panelRef}
         data-modal-panel="true"
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         className={cn(
           "flex min-h-0 max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-premium animate-fadein",
           className,
