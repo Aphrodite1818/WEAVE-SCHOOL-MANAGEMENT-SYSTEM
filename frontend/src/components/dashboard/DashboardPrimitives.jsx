@@ -36,12 +36,20 @@ const toneStyles = {
   },
 };
 
-export function DashboardSectionHeader({ title, description, action, className = "" }) {
+export function DashboardSectionHeader({
+  title,
+  description,
+  action,
+  className = "",
+  showDescription = false,
+}) {
   return (
     <div className={cn("flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between", className)}>
       <div className="min-w-0">
         <h2 className="section-title">{title}</h2>
-        {description ? <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">{description}</p> : null}
+        {showDescription && description ? (
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">{description}</p>
+        ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -65,6 +73,7 @@ export function DashboardWelcomePanel({
   className = "",
   profileCompletion,
   variant = "default",
+  showDescription,
 }) {
   const user = authSession.getUser() || {};
   const role = String(user?.role || authSession.getRole() || "").toLowerCase();
@@ -73,6 +82,7 @@ export function DashboardWelcomePanel({
   const isBlueHero = variant === "student" || variant === "blue";
   const hasSchoolLogo = Boolean(logoUrl) && failedLogoUrl !== logoUrl;
   const brandLabel = hasSchoolLogo ? schoolName || "School workspace" : "Weave";
+  const shouldShowDescription = showDescription ?? variant !== "blue";
   const visibleChips = [
     isProfileIncomplete(profileCompletion)
       ? { label: "Profile incomplete", tone: "warning" }
@@ -119,7 +129,9 @@ export function DashboardWelcomePanel({
           </div>
           {eyebrow ? <p className={cn("text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted sm:text-xs", isBlueHero && "text-white/80")}>{eyebrow}</p> : null}
           <h2 className={cn("mt-2 text-xl font-semibold leading-tight text-text sm:text-3xl", isBlueHero && "text-white")}>{title}</h2>
-          {description ? <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/85")}>{description}</p> : null}
+          {shouldShowDescription && description ? (
+            <p className={cn("mt-2 max-w-3xl text-sm leading-6 text-text-muted", isBlueHero && "text-white/85")}>{description}</p>
+          ) : null}
           {visibleChips.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {visibleChips.map((chip) => {
@@ -197,7 +209,17 @@ export function DashboardMetricCard({
   );
 }
 
-export function DashboardFocusCard({ title, description, icon: Icon, tone = "primary", primaryAction, secondaryAction, children, className = "" }) {
+export function DashboardFocusCard({
+  title,
+  description,
+  icon: Icon,
+  tone = "primary",
+  primaryAction,
+  secondaryAction,
+  children,
+  className = "",
+  showDescription = false,
+}) {
   const toneStyle = toneStyles[tone] || toneStyles.primary;
 
   return (
@@ -210,7 +232,9 @@ export function DashboardFocusCard({ title, description, icon: Icon, tone = "pri
         ) : null}
         <div className="min-w-0">
           <h3 className="section-title">{title}</h3>
-          {description ? <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p> : null}
+          {showDescription && description ? (
+            <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p>
+          ) : null}
         </div>
       </div>
       {children ? <div className="mt-5 flex-1">{children}</div> : null}
@@ -289,10 +313,20 @@ export function DashboardListItem({ title, description, meta, icon: Icon, tone =
   );
 }
 
-export function DashboardQuickActions({ actions = [], title = "Quick actions", description }) {
+export function DashboardQuickActions({
+  actions = [],
+  title = "Quick actions",
+  description,
+  showDescription = false,
+  showActionDescriptions = false,
+}) {
   return (
     <Card className="p-4 sm:p-6">
-      <DashboardSectionHeader title={title} description={description} />
+      <DashboardSectionHeader
+        title={title}
+        description={description}
+        showDescription={showDescription}
+      />
       <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(9.25rem, 100%), 1fr))" }}>
         {actions.map((action) => {
           const ActionIcon = action.icon;
@@ -304,13 +338,17 @@ export function DashboardQuickActions({ actions = [], title = "Quick actions", d
               to={action.to}
               type={action.to ? undefined : "button"}
               onClick={action.onClick}
-              className="group flex min-h-[8.75rem] flex-col rounded-2xl border border-border/70 bg-surface px-3 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium sm:min-h-[9.25rem] sm:px-4"
+              className="group flex min-h-[7rem] flex-col rounded-2xl border border-border/70 bg-surface px-3 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium sm:min-h-[7.5rem] sm:px-4"
             >
               <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
                 {ActionIcon ? <ActionIcon className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
               </div>
               <p className="mt-3 break-words text-sm font-semibold leading-5 text-text">{action.label}</p>
-              {action.description ? <p className="mt-1 break-words text-xs leading-5 text-text-muted">{action.description}</p> : null}
+              {showActionDescriptions && action.description ? (
+                <p className="mt-1 break-words text-xs leading-5 text-text-muted">
+                  {action.description}
+                </p>
+              ) : null}
             </Wrapper>
           );
         })}
