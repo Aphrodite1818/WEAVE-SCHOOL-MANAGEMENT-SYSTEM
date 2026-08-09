@@ -19,6 +19,8 @@ from app.core.queue.context import (  # noqa: E402
     set_current_bulk_import_job_id,
 )
 from app.modules.bulk_imports.live_service import BulkImportLiveService  # noqa: E402
+from app.modules.bulk_imports.models import ImportJobStatus  # noqa: E402
+from app.modules.bulk_imports.repository import ImportJobRepository  # noqa: E402
 from app.modules.student_academics.lifecycle_repository import (  # noqa: E402
     StudentProgressionRepository,
 )
@@ -43,6 +45,9 @@ async def process_bulk_import_job(
     """Process one confirmed bulk-import job."""
 
     _ = ctx
+    parsed_job_id = UUID(job_id)
+    parsed_tenant_id = UUID(tenant_id)
+    parsed_actor_id = UUID(actor_id)
     context_token = set_current_bulk_import_job_id(job_id)
     logger.info(
         "bulk_import.started",
@@ -50,18 +55,38 @@ async def process_bulk_import_job(
     )
     try:
         async with AsyncSessionLocal() as db:
-            result = await BulkImportLiveService.process_confirmed_import_job(
-                db=db,
-                tenant_id=UUID(tenant_id),
-                actor_id=UUID(actor_id),
-                job_id=UUID(job_id),
-                notify_on_completion=notify_on_completion,
-            )
-    except Exception:
+            try:
+                result = await BulkImportLiveService.process_confirmed_import_job(
+                    db=db,
+                    tenant_id=parsed_tenant_id,
+                    actor_id=parsed_actor_id,
+                    job_id=parsed_job_id,
+                    notify_on_completion=notify_on_completion,
+                )
+            except Exception:
+                await db.rollback()
+                raise
+    except Exception as exc:
         logger.exception(
             "bulk_import.failed",
             extra={"job_id": job_id, "tenant_id": tenant_id, "actor_id": actor_id},
         )
+        async with AsyncSessionLocal() as failure_db:
+            failed_job = await ImportJobRepository.get_job_by_id(
+                db=failure_db,
+                tenant_id=parsed_tenant_id,
+                job_id=parsed_job_id,
+                lock=True,
+            )
+            if failed_job is not None and failed_job.status in {
+                ImportJobStatus.PENDING,
+                ImportJobStatus.PROCESSING,
+            }:
+                await BulkImportLiveService._mark_job_failed(
+                    db=failure_db,
+                    import_job=failed_job,
+                    error_message=str(exc),
+                )
         raise
     finally:
         reset_current_bulk_import_job_id(context_token)
