@@ -148,7 +148,6 @@ export function SubscriptionProvider({ children }) {
     });
   }, [isTenantAdmin, location.pathname, refreshSubscriptionState]);
 
-
   useEffect(() => {
     if (!isTenantAdmin) return undefined;
     const handlePullRefresh = () => {
@@ -199,7 +198,14 @@ export function SubscriptionProvider({ children }) {
 
       const features = visibleEntitlements?.features;
       if (!features) {
-        return { allowed: true, pending: false, reason: null };
+        if (visibleErrors.entitlements) {
+          return {
+            allowed: false,
+            pending: false,
+            reason: "We couldn't confirm access for this feature. Refresh and try again.",
+          };
+        }
+        return { allowed: true, pending: true, reason: null };
       }
 
       if (features[featureCode] === false) {
@@ -212,7 +218,7 @@ export function SubscriptionProvider({ children }) {
 
       return { allowed: true, pending: false, reason: null };
     },
-    [isLoading, isRefreshing, isTenantAdmin, visibleEntitlements]
+    [isLoading, isRefreshing, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements]
   );
 
   const getResourceGuard = useCallback(
@@ -227,6 +233,23 @@ export function SubscriptionProvider({ children }) {
           pending: featureGuard.pending,
           reason: featureGuard.reason,
           usage: visibleEntitlements?.usage?.[resourceCode] || null,
+        };
+      }
+
+      if (isTenantAdmin && !visibleEntitlements) {
+        if (visibleErrors.entitlements) {
+          return {
+            allowed: false,
+            pending: false,
+            reason: "We couldn't confirm your plan limits. Refresh and try again.",
+            usage: null,
+          };
+        }
+        return {
+          allowed: true,
+          pending: true,
+          reason: null,
+          usage: null,
         };
       }
 
@@ -248,7 +271,7 @@ export function SubscriptionProvider({ children }) {
         usage: usage || null,
       };
     },
-    [getFeatureGuard, visibleEntitlements]
+    [getFeatureGuard, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements]
   );
 
   const value = useMemo(
