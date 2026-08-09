@@ -112,6 +112,53 @@ test("JSON and multipart requests preserve the backend transport contract", asyn
   assert.equal(new Headers(calls[1].init.headers).has("content-type"), false);
 });
 
+test("request params are serialized into the fetch URL", async () => {
+  let requestedUrl = "";
+  const fetchImpl = async (url) => {
+    requestedUrl = String(url);
+    return jsonResponse(200, { ok: true });
+  };
+
+  installBrowserHarness({ fetchImpl });
+  const { api } = await importFreshApi();
+
+  await api.get("/tenant-admin/media/assets/current", {
+    params: {
+      owner_type: "tenant_admin",
+      owner_id: "admin-123",
+      purpose: "tenant_admin_passport",
+    },
+  });
+
+  const url = new URL(requestedUrl);
+  assert.equal(url.pathname, "/api/v1/tenant-admin/media/assets/current");
+  assert.equal(url.searchParams.get("owner_type"), "tenant_admin");
+  assert.equal(url.searchParams.get("owner_id"), "admin-123");
+  assert.equal(url.searchParams.get("purpose"), "tenant_admin_passport");
+});
+
+test("blob responses use the same authenticated request pipeline", async () => {
+  const calls = [];
+  const expected = "spreadsheet-data";
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return new Response(expected, {
+      status: 200,
+      headers: { "content-type": "application/octet-stream" },
+    });
+  };
+
+  installBrowserHarness({ fetchImpl });
+  const { api, authSession } = await importFreshApi();
+  authSession.setToken("download-token", { remember: false });
+
+  const blob = await api.getBlob("/tenant-admin/imports/template/download");
+
+  assert.equal(await blob.text(), expected);
+  assert.equal(calls[0].init.credentials, "include");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer download-token");
+});
+
 test("maintenance responses persist control state and navigate away from protected UI", async () => {
   const fetchImpl = async () =>
     jsonResponse(503, {
