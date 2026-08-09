@@ -120,6 +120,24 @@ const isRefreshManagedEndpoint = (endpoint) =>
 const isCookieProtectedEndpoint = (endpoint) =>
   endpoint === AUTH_REFRESH_ENDPOINT || endpoint === AUTH_LOGOUT_ENDPOINT;
 
+const buildEndpointWithParams = (endpoint, params) => {
+  if (!params || typeof params !== "object") return endpoint;
+
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => query.append(key, String(item)));
+      return;
+    }
+    query.set(key, String(value));
+  });
+
+  const queryString = query.toString();
+  if (!queryString) return endpoint;
+  return `${endpoint}${endpoint.includes("?") ? "&" : "?"}${queryString}`;
+};
+
 const clearRefreshTimer = () => {
   if (refreshTimerId !== null) {
     window.clearTimeout(refreshTimerId);
@@ -242,7 +260,7 @@ const getVerificationMetadata = (data = {}, headers = {}) => ({
   resendOtpAvailable: normalizeBoolean(
     data?.resend_otp_available ??
       headers["x-resend-otp-available"] ??
-      headers["X-Resend-OTP-Available"]
+      headers["X-Resend-Otp-Available"]
   ),
 });
 
@@ -582,6 +600,8 @@ async function request(endpoint, options = {}, hasRetried = false) {
     skipAuthRefresh = false,
     headers: optionHeaders = {},
     signal: providedSignal,
+    params,
+    responseType = "json",
     ...restOptions
   } = options;
   const token = auth ? authSession.getToken() : null;
@@ -590,6 +610,7 @@ async function request(endpoint, options = {}, hasRetried = false) {
   const method = restOptions.method || "GET";
   const autoAbortController = !providedSignal && method === "GET" ? new AbortController() : null;
   const requestSignal = providedSignal || autoAbortController?.signal;
+  const requestEndpoint = buildEndpointWithParams(endpoint, params);
 
   const headers = {
     ...(hasBody && !isFormData ? { "Content-Type": "application/json" } : {}),
@@ -616,9 +637,13 @@ async function request(endpoint, options = {}, hasRetried = false) {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-    const data = await response.json().catch(() => ({}));
+    const response = await fetch(`${API_BASE_URL}${requestEndpoint}`, config);
     const responseHeaders = Object.fromEntries(response.headers.entries());
+    const data = response.ok && responseType === "blob"
+      ? await response.blob()
+      : response.ok && responseType === "text"
+        ? await response.text()
+        : await response.json().catch(() => ({}));
 
     if (!response.ok) {
       handleControlResponse(response, data);
@@ -666,6 +691,9 @@ async function request(endpoint, options = {}, hasRetried = false) {
 
 export const api = {
   get: (endpoint, options) => request(endpoint, { method: "GET", ...options }),
+
+  getBlob: (endpoint, options) =>
+    request(endpoint, { method: "GET", responseType: "blob", ...options }),
 
   post: (endpoint, body, options) =>
     request(endpoint, {

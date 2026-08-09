@@ -5,6 +5,7 @@ import EmptyState from "../../../components/shared/EmptyState";
 import LoadingState from "../../../components/shared/LoadingState";
 import { getErrorMessage, isAbortError } from "../../../services/api";
 import { academicService } from "../../../services/academicService";
+import { useToast } from "../../../hooks/useToast";
 import Badge from "../../../components/ui/Badge";
 import Button from "../../../components/ui/Button";
 import Input from "../../../components/ui/Input";
@@ -45,8 +46,8 @@ const calendarLabel = (calendar, sessions = [], terms = []) => {
 const generationResultMessage = (result) => {
   const created = Number(result?.generated_days_created || 0);
   const updated = Number(result?.generated_days_updated || 0);
-  if (!created && !updated) return "No calendar days changed.";
-  return `${result.total_days} total dates, ${result.instructional_days} instructional days, ${result.weekend_days} weekends, ${created} created, ${updated} updated, ${result.manual_days_preserved} manual overrides preserved.`;
+  if (!created && !updated) return "Calendar is already up to date.";
+  return `Calendar updated. ${result.instructional_days} school day${Number(result.instructional_days) === 1 ? "" : "s"} and ${result.weekend_days} weekend day${Number(result.weekend_days) === 1 ? "" : "s"} are ready. Manual changes were preserved.`;
 };
 
 export const CLOSED_DAY_TYPES = new Set([
@@ -96,6 +97,7 @@ export const buildDayUpdatePayload = (dayForm, selectedCalendarId) => {
 };
 
 function SchoolCalendarWorkspace({ activeTab = "manage" }) {
+  const { showSuccess } = useToast();
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [calendars, setCalendars] = useState([]);
@@ -110,7 +112,6 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [saving, setSaving] = useState("");
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [configForm, setConfigForm] = useState({
     timezone: "Africa/Lagos",
@@ -213,7 +214,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
         });
       }
     } catch (err) {
-      if (!isAbortError(err)) setError(getErrorMessage(err, "Failed to load school calendar."));
+      if (!isAbortError(err)) setError(getErrorMessage(err, "We couldn't load the school calendar."));
     } finally {
       setLoading(false);
     }
@@ -233,7 +234,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
           start_date: rangeStart,
           end_date: rangeEnd,
         }),
-          schoolCalendarService.getAdminEvents({
+        schoolCalendarService.getAdminEvents({
           calendar_id: selectedCalendarId,
           start_date: rangeStart,
           end_date: rangeEnd,
@@ -244,7 +245,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
       setDays(asItems(dayResponse));
       setEvents(asItems(eventResponse));
     } catch (err) {
-      if (!isAbortError(err)) setError(getErrorMessage(err, "Failed to load calendar days."));
+      if (!isAbortError(err)) setError(getErrorMessage(err, "We couldn't load the calendar days."));
     } finally {
       setDetailsLoading(false);
     }
@@ -281,14 +282,14 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   const runAction = async (busyKey, action, success) => {
     setSaving(busyKey);
     setError("");
-    setMessage("");
     try {
       const result = await action();
-      setMessage(typeof success === "function" ? success(result) : success);
+      const successMessage = typeof success === "function" ? success(result) : success;
+      if (successMessage) showSuccess(successMessage);
       await load();
       await loadCalendarDetails();
     } catch (err) {
-      setError(getErrorMessage(err, "Calendar action failed."));
+      setError(getErrorMessage(err, "We couldn't complete that calendar update."));
     } finally {
       setSaving("");
     }
@@ -296,7 +297,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
 
   const saveConfiguration = (event) => {
     event.preventDefault();
-    runAction("configuration", () => schoolCalendarService.updateConfiguration(configForm), "Calendar configuration saved.");
+    runAction("configuration", () => schoolCalendarService.updateConfiguration(configForm), "Calendar settings saved.");
   };
 
   const executeGenerateCalendar = (overwriteGeneratedDays) => {
@@ -337,7 +338,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
           ...closureForm,
           calendar_id: selectedCalendarId || undefined,
         }),
-      "Emergency closure applied.",
+      "Emergency closure saved.",
     );
   };
 
@@ -359,7 +360,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
     runAction(
       "event",
       () => schoolCalendarService.createEvent({ ...eventPayload, calendar_id: selectedCalendarId }),
-      "Calendar event created as draft.",
+      "Calendar event saved as a draft.",
     );
   };
 
@@ -427,7 +428,6 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
   return (
     <section className="space-y-4">
       {error ? <Notice tone="error" message={error} /> : null}
-      {message ? <Notice tone="success" message={message} /> : null}
 
       {activeTab === "overview" ? (
         <OverviewTab
@@ -545,8 +545,8 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
       ) : null}
 
       {activeTab === "history" ? (
-        <WorkspacePanel title="History" description="Lifecycle audit history will appear here once the backend exposes a read endpoint.">
-          <p className="text-sm text-text-muted">Calendar mutations are already written to audit records on configuration, generation, activation, archival, day, range, closure, and event actions.</p>
+        <WorkspacePanel title="History" description="Calendar activity history will appear here when this view is available.">
+          <p className="text-sm text-text-muted">Calendar changes are recorded automatically as you update settings, days, closures, and events.</p>
         </WorkspacePanel>
       ) : null}
 
@@ -582,8 +582,8 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
         {regenerationPreview ? (
           <div className="space-y-2 text-sm text-text-muted">
             <p>{regenerationPreview.generatedDays} generated day{regenerationPreview.generatedDays === 1 ? "" : "s"} will be refreshed.</p>
-            <p>{regenerationPreview.manualOverrides} manual override{regenerationPreview.manualOverrides === 1 ? "" : "s"} will stay unchanged.</p>
-            <p>Calendar setup version: {regenerationPreview.fromRevision} to {regenerationPreview.toRevision}.</p>
+            <p>{regenerationPreview.manualOverrides} manual change{regenerationPreview.manualOverrides === 1 ? "" : "s"} will stay unchanged.</p>
+            <p>Your latest calendar settings will be used.</p>
           </div>
         ) : null}
       </Modal>
@@ -701,7 +701,7 @@ function SetupTab({
 
           {isRegeneration ? (
             <div className="rounded-lg border border-warning/40 bg-warning-soft px-3 py-3 text-sm font-medium text-amber-950">
-              Regeneration will update {generatedDays} generated day{generatedDays === 1 ? "" : "s"}, preserve {manualOverrides} manual override{manualOverrides === 1 ? "" : "s"}, and move revision {selectedCalendar.generated_from_configuration_revision || "none"} to {configuration?.revision || "current"} after confirmation.
+              Regeneration will update {generatedDays} generated day{generatedDays === 1 ? "" : "s"} and keep {manualOverrides} manual change{manualOverrides === 1 ? "" : "s"}. Review the details before continuing.
             </div>
           ) : null}
 
@@ -778,7 +778,7 @@ function OverviewTab({ selectedSession, selectedTerm, selectedCalendar, configur
               </div>
             ))
           ) : (
-            <p className="text-sm text-text-muted">No blockers reported for the selected calendar.</p>
+            <p className="text-sm text-text-muted">Nothing is blocking this calendar.</p>
           )}
         </div>
       </WorkspacePanel>
@@ -851,12 +851,12 @@ function ManageTab({
                   <CalendarStatusBadge status={selectedCalendar.status} />
                   {selectedCalendar.can_activate ? <Badge variant="warning">Activation ready</Badge> : null}
                   {selectedCalendar.can_archive ? <Badge variant="default">Archive available</Badge> : null}
-                  {selectedCalendar.configuration_outdated ? <Badge variant="warning">Configuration outdated</Badge> : null}
+                  {selectedCalendar.configuration_outdated ? <Badge variant="warning">Settings changed</Badge> : null}
                 </div>
                 <p className="mt-3 text-sm text-text-muted">
                   {selectedCalendar.blocker_messages?.length
                     ? selectedCalendar.blocker_messages.join(" ")
-                    : "No lifecycle blockers reported."}
+                    : "Nothing is blocking this calendar."}
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -871,7 +871,7 @@ function ManageTab({
               <Input label="End" type="date" value={rangeEnd} onChange={(event) => onRangeEndChange(event.target.value)} />
             </div>
 
-            {detailsLoading ? <LoadingState label="Loading generated days..." /> : <CalendarMonthView days={days} onDayClick={onDayClick} />}
+            {detailsLoading ? <LoadingState label="Loading calendar days..." /> : <CalendarMonthView days={days} onDayClick={onDayClick} />}
           </div>
         )}
       </WorkspacePanel>
@@ -903,7 +903,7 @@ function EventsTab({
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.85fr)_minmax(0,1.35fr)]">
-      <WorkspacePanel title={editingEventId ? "Edit Event" : "Create Event"} description="Create or edit calendar events for the selected generated calendar.">
+      <WorkspacePanel title={editingEventId ? "Edit Event" : "Create Event"} description="Create or edit calendar events for the selected calendar.">
         <form className="space-y-4" onSubmit={onCreate}>
           <SelectControl
             label="Calendar"
@@ -930,7 +930,7 @@ function EventsTab({
         </form>
       </WorkspacePanel>
 
-      <WorkspacePanel title="Event List" description="Review events in the currently selected calendar range.">
+      <WorkspacePanel title="Event List" description="Review events in the selected date range.">
         <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <SelectControl
             label="Status"
@@ -987,7 +987,7 @@ function ClosuresTab({
   onCreate,
 }) {
   return (
-    <WorkspacePanel title="Emergency Closure" description="Mark a date range closed when the school must suspend normal operations.">
+    <WorkspacePanel title="Emergency Closure" description="Close the school for a date range when normal operations need to stop.">
       <form className="max-w-3xl space-y-4" onSubmit={onCreate}>
         <SelectControl
           label="Calendar"
@@ -1001,7 +1001,7 @@ function ClosuresTab({
         </div>
         <Input label="Reason" value={closureForm.reason} onChange={(event) => onClosureChange((current) => ({ ...current, reason: event.target.value }))} />
         <div className="rounded-2xl border border-warning/40 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-950">
-          School operations will be marked closed for these dates. Student activities will be disabled.
+          The school will be marked closed for these dates, and student activities will be unavailable.
         </div>
         <Button type="submit" variant="danger" disabled={busy || !selectedCalendarId || !closureForm.reason}>
           <ShieldAlert className="h-4 w-4" />
@@ -1178,8 +1178,8 @@ export function DayEditor({ day, form, busy, saving, onChange, onClose, onSubmit
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <CheckboxControl label="School open" checked={form.school_open} onChange={(value) => onChange((current) => ({ ...current, school_open: value }))} />
               <CheckboxControl label="Student activity allowed" checked={form.student_activity_allowed} onChange={(value) => onChange((current) => ({ ...current, student_activity_allowed: value }))} />
-              <CheckboxControl label="Student operational expectation" checked={form.student_attendance_required} onChange={(value) => onChange((current) => ({ ...current, student_attendance_required: value }))} />
-              <CheckboxControl label="Workforce operational expectation" checked={form.workforce_attendance_required} onChange={(value) => onChange((current) => ({ ...current, workforce_attendance_required: value }))} />
+              <CheckboxControl label="Student attendance expected" checked={form.student_attendance_required} onChange={(value) => onChange((current) => ({ ...current, student_attendance_required: value }))} />
+              <CheckboxControl label="Staff attendance expected" checked={form.workforce_attendance_required} onChange={(value) => onChange((current) => ({ ...current, workforce_attendance_required: value }))} />
             </div>
           </>
         )}
