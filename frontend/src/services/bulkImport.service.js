@@ -1,51 +1,41 @@
-import { API_BASE_URL, api, authSession } from "./api";
+import { api } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
 
 const STUDENT_RESOURCE_TYPE = "students";
+const JOB_POLL_CACHE_MS = 1500;
+const ERROR_POLL_CACHE_MS = 15000;
+const inFlightJobRequests = new Map();
+const inFlightErrorRequests = new Map();
+const jobResponseCache = new Map();
+const errorResponseCache = new Map();
 
-const getAuthHeaders = () => {
-  const token = authSession.getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+const withRequestDeduplication = ({ key, inFlight, cache, ttlMs, loader }) => {
+  const now = Date.now();
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > now) return Promise.resolve(cached.value);
+  if (inFlight.has(key)) return inFlight.get(key);
+
+  const promise = Promise.resolve()
+    .then(loader)
+    .then((value) => {
+      cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+      return value;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+    });
+
+  inFlight.set(key, promise);
+  return promise;
 };
 
-const buildApiError = async (response, fallback) => {
-  const data = await response.json().catch(() => ({ detail: fallback }));
-  const error = new Error(data?.detail || data?.message || fallback);
-  error.response = {
-    status: response.status,
-    data,
-    headers: Object.fromEntries(response.headers.entries()),
-  };
-  return error;
-};
-
-const fetchJsonWithBody = async (endpoint, { method = "GET", body, signal, fallback } = {}) => {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method,
-    headers: getAuthHeaders(),
-    body,
-    signal,
-  });
-
-  if (!response.ok) {
-    throw await buildApiError(response, fallback || "Bulk import request failed.");
-  }
-
-  return response.json();
+const clearImportRequestCaches = () => {
+  jobResponseCache.clear();
+  errorResponseCache.clear();
 };
 
 const downloadBlob = async (endpoint, filename, signal) => {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: "GET",
-    headers: getAuthHeaders(),
-    signal,
-  });
-
-  if (!response.ok) {
-    throw await buildApiError(response, "Download failed.");
-  }
-
-  const blob = await response.blob();
+  const blob = await api.getBlob(endpoint, { signal });
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -57,6 +47,7 @@ const downloadBlob = async (endpoint, filename, signal) => {
 };
 
 const invalidateImportRelatedCaches = () => {
+  clearImportRequestCaches();
   clearDashboardMetricsCache();
   window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
 };
@@ -76,12 +67,11 @@ export const bulkImportService = {
     formData.append("file", file);
     formData.append("notify_on_completion", "true");
 
-    return fetchJsonWithBody(`/tenant-admin/imports/${STUDENT_RESOURCE_TYPE}/dry-run`, {
-      method: "POST",
-      body: formData,
-      signal: requestOptions.signal,
-      fallback: "Could not validate the import file.",
-    });
+    return api.postForm(
+      `/tenant-admin/imports/${STUDENT_RESOURCE_TYPE}/dry-run`,
+      formData,
+      requestOptions,
+    );
   },
 
   confirm: async (jobId, requestOptions = {}) => {
@@ -96,7 +86,14 @@ export const bulkImportService = {
     return result;
   },
 
-  getJob: (jobId, requestOptions) => api.get(`/tenant-admin/imports/${jobId}`, requestOptions),
+  getJob: (jobId, requestOptions = {}) =>
+    withRequestDeduplication({
+      key: jobId,
+      inFlight: inFlightJobRequests,
+      cache: jobResponseCache,
+      ttlMs: JOB_POLL_CACHE_MS,
+      loader: () => api.get(`/tenant-admin/imports/${jobId}`, requestOptions),
+    }),
 
   listJobs: ({ skip = 0, limit = 20, status, signal } = {}) => {
     const params = new URLSearchParams({
@@ -113,8 +110,14 @@ export const bulkImportService = {
     return result;
   },
 
-  getErrors: (jobId, requestOptions) =>
-    api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, requestOptions),
+  getErrors: (jobId, requestOptions = {}) =>
+    withRequestDeduplication({
+      key: jobId,
+      inFlight: inFlightErrorRequests,
+      cache: errorResponseCache,
+      ttlMs: ERROR_POLL_CACHE_MS,
+      loader: () => api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, requestOptions),
+    }),
 
   getSlipSummary: (jobId, requestOptions) =>
     api.get(`/tenant-admin/imports/${jobId}/slips/summary`, requestOptions),
