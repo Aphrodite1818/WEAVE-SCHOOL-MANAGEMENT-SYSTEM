@@ -289,10 +289,19 @@ export function DashboardListItem({ title, description, meta, icon: Icon, tone =
   );
 }
 
-export function DashboardQuickActions({ actions = [], title = "Quick actions", description }) {
+export function DashboardQuickActions({
+  actions = [],
+  title = "Quick actions",
+  description,
+  showDescription = false,
+  showActionDescriptions = false,
+}) {
   return (
     <Card className="p-4 sm:p-6">
-      <DashboardSectionHeader title={title} description={description} />
+      <DashboardSectionHeader
+        title={title}
+        description={showDescription ? description : undefined}
+      />
       <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(9.25rem, 100%), 1fr))" }}>
         {actions.map((action) => {
           const ActionIcon = action.icon;
@@ -304,13 +313,17 @@ export function DashboardQuickActions({ actions = [], title = "Quick actions", d
               to={action.to}
               type={action.to ? undefined : "button"}
               onClick={action.onClick}
-              className="group flex min-h-[8.75rem] flex-col rounded-2xl border border-border/70 bg-surface px-3 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium sm:min-h-[9.25rem] sm:px-4"
+              className="group flex min-h-[7rem] flex-col rounded-2xl border border-border/70 bg-surface px-3 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium sm:min-h-[7.5rem] sm:px-4"
             >
               <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
                 {ActionIcon ? <ActionIcon className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
               </div>
               <p className="mt-3 break-words text-sm font-semibold leading-5 text-text">{action.label}</p>
-              {action.description ? <p className="mt-1 break-words text-xs leading-5 text-text-muted">{action.description}</p> : null}
+              {showActionDescriptions && action.description ? (
+                <p className="mt-1 break-words text-xs leading-5 text-text-muted">
+                  {action.description}
+                </p>
+              ) : null}
             </Wrapper>
           );
         })}
