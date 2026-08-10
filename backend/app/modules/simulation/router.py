@@ -17,7 +17,7 @@ from app.modules.simulation.schemas import (
 from app.modules.simulation.simulation_subscription import SubscriptionSimulationService
 from app.modules.superadmin.models import SuperAdmin
 
-router = APIRouter(prefix="/superadmin/simulations", tags=["Superadmin Simulations"])
+router = APIRouter(prefix="/simulations", tags=["Superadmin Simulations"])
 SuperadminActor: TypeAlias = Annotated[SuperAdmin, Depends(get_current_superadmin)]
 
 
@@ -35,6 +35,7 @@ async def get_subscription_simulation_state(
     db: DbSession,
     current_superadmin: SuperadminActor,
 ) -> SubscriptionSimulationState:
+    _ = current_superadmin
     _require_staging()
     return await SubscriptionSimulationService.get_state(db, tenant_id=tenant_id)
 
@@ -49,6 +50,7 @@ async def simulate_subscription(
     db: DbSession,
     current_superadmin: SuperadminActor,
 ) -> SubscriptionSimulationResponse:
+    _ = current_superadmin
     _require_staging()
     return await SubscriptionSimulationService.simulate(
         db,
@@ -66,6 +68,7 @@ async def reconcile_subscription_simulation(
     db: DbSession,
     current_superadmin: SuperadminActor,
 ) -> SubscriptionReconcileResponse:
+    _ = current_superadmin
     _require_staging()
     return await SubscriptionSimulationService.reconcile(db, tenant_id=tenant_id)
 
@@ -79,5 +82,6 @@ async def reset_subscription_simulation(
     db: DbSession,
     current_superadmin: SuperadminActor,
 ) -> SubscriptionSimulationResponse:
+    _ = current_superadmin
     _require_staging()
     return await SubscriptionSimulationService.reset(db, tenant_id=tenant_id)
