@@ -12,18 +12,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.cache.events import flush_cache_invalidation_events
 from app.core.cache.redis import create_redis_health_client, get_redis
 from app.modules.simulation.schemas import (
+    SubscriptionPlanChangeSimulationState,
     SubscriptionReconcileResponse,
     SubscriptionSimulationRequest,
     SubscriptionSimulationResponse,
     SubscriptionSimulationScenario,
     SubscriptionSimulationState,
 )
+from app.modules.subscriptions.plan_change_service import SubscriptionPlanChangeService
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.service import (
     SubscriptionFeatureService,
     SubscriptionLifecycleService,
 )
-from app.modules.subscriptions.subscription_enums import SubscriptionStatus
+from app.modules.subscriptions.subscription_enums import (
+    SubscriptionPlanChangeStatus,
+    SubscriptionPlanChangeType,
+    SubscriptionStatus,
+)
 from app.tenant_management.models import SubscriptionPlan, TenantStatus
 
 _SNAPSHOT_TTL_SECONDS = 24 * 60 * 60
@@ -49,6 +55,17 @@ def _parse_datetime(value: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _plan_change_snapshot(plan_change: Any) -> dict[str, Any]:
+    return {
+        "id": str(plan_change.id),
+        "status": _enum_value(plan_change.status),
+        "effective_at": _serialize_datetime(plan_change.effective_at),
+        "failure_reason": plan_change.failure_reason,
+        "usage_snapshot_json": plan_change.usage_snapshot_json or {},
+        "blockers_json": plan_change.blockers_json or [],
+    }
 
 
 class SubscriptionSimulationService:
@@ -90,18 +107,30 @@ class SubscriptionSimulationService:
         *,
         tenant_id: uuid.UUID,
         subscription: Any,
+        plan_change: Any | None = None,
     ) -> None:
         client, temporary = await SubscriptionSimulationService._with_redis()
         key = SubscriptionSimulationService._snapshot_key(tenant_id)
         try:
-            if await client.exists(key):
+            raw_snapshot = await client.get(key)
+            if raw_snapshot:
+                if plan_change is None:
+                    return
+                snapshot = json.loads(raw_snapshot)
+                if snapshot.get("plan_change") is None:
+                    snapshot["plan_change"] = _plan_change_snapshot(plan_change)
+                    await client.set(
+                        key,
+                        json.dumps(snapshot),
+                        ex=_SNAPSHOT_TTL_SECONDS,
+                    )
                 return
 
             tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
             if tenant is None:
                 raise HTTPException(status_code=404, detail="Tenant not found.")
 
-            snapshot = {
+            snapshot: dict[str, Any] = {
                 "subscription": {
                     "id": str(subscription.id),
                     "status": _enum_value(subscription.status),
@@ -120,6 +149,9 @@ class SubscriptionSimulationService:
                     "trial_ends_at": _serialize_datetime(tenant.trial_ends_at),
                     "subscription_ends_at": _serialize_datetime(tenant.subscription_ends_at),
                 },
+                "plan_change": (
+                    _plan_change_snapshot(plan_change) if plan_change is not None else None
+                ),
             }
             await client.set(key, json.dumps(snapshot), ex=_SNAPSHOT_TTL_SECONDS)
         finally:
@@ -144,10 +176,57 @@ class SubscriptionSimulationService:
         return subscription
 
     @staticmethod
+    async def _get_simulated_plan_change(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> Any | None:
+        open_change = await SubscriptionRepository.get_open_plan_change(
+            db,
+            tenant_id=tenant_id,
+        )
+        if open_change is not None:
+            return open_change
+
+        client, temporary = await SubscriptionSimulationService._with_redis()
+        try:
+            raw_snapshot = await client.get(SubscriptionSimulationService._snapshot_key(tenant_id))
+            if not raw_snapshot:
+                return None
+            snapshot = json.loads(raw_snapshot)
+            original = snapshot.get("plan_change")
+            if not original:
+                return None
+            return await SubscriptionRepository.get_plan_change_by_id(
+                db,
+                tenant_id=tenant_id,
+                plan_change_id=uuid.UUID(original["id"]),
+            )
+        finally:
+            if temporary:
+                await client.aclose()
+
+    @staticmethod
     async def _state(
+        db: AsyncSession,
         tenant_id: uuid.UUID,
         subscription: Any,
     ) -> SubscriptionSimulationState:
+        plan_change = await SubscriptionSimulationService._get_simulated_plan_change(
+            db,
+            tenant_id,
+        )
+        plan_change_state = None
+        if plan_change is not None:
+            plan_change_state = SubscriptionPlanChangeSimulationState(
+                plan_change_id=plan_change.id,
+                current_plan_code=_enum_value(plan_change.current_plan_code),
+                target_plan_code=_enum_value(plan_change.target_plan_code),
+                change_type=_enum_value(plan_change.change_type),
+                status=_enum_value(plan_change.status),
+                effective_at=plan_change.effective_at,
+                failure_reason=plan_change.failure_reason,
+            )
+
         return SubscriptionSimulationState(
             tenant_id=tenant_id,
             subscription_id=subscription.id,
@@ -159,6 +238,7 @@ class SubscriptionSimulationService:
             grace_ends_at=subscription.grace_ends_at,
             cancel_at_period_end=bool(subscription.cancel_at_period_end),
             next_payment_at=subscription.next_payment_at,
+            plan_change=plan_change_state,
             snapshot_available=await SubscriptionSimulationService._snapshot_exists(tenant_id),
         )
 
@@ -167,11 +247,14 @@ class SubscriptionSimulationService:
         db: AsyncSession,
         *,
         subscription: Any,
+        plan_change: Any | None = None,
     ) -> None:
         await SubscriptionRepository.save_subscription(
             db=db,
             subscription=subscription,
         )
+        if plan_change is not None:
+            await SubscriptionRepository.save_plan_change(db, plan_change)
         await SubscriptionRepository.update_tenant_plan_snapshot(
             db=db,
             tenant_id=subscription.tenant_id,
@@ -188,6 +271,36 @@ class SubscriptionSimulationService:
         await flush_cache_invalidation_events(db)
 
     @staticmethod
+    async def _scheduled_downgrade_for_update(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> Any:
+        plan_change = await SubscriptionRepository.get_open_plan_change(
+            db,
+            tenant_id=tenant_id,
+            for_update=True,
+        )
+        if plan_change is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This tenant does not have an open scheduled plan change.",
+            )
+        if plan_change.change_type != SubscriptionPlanChangeType.DOWNGRADE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The tenant's open plan change is not a downgrade.",
+            )
+        if plan_change.status != SubscriptionPlanChangeStatus.SCHEDULED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "The downgrade has already moved beyond the scheduled state. "
+                    "Reset the simulation before changing its effective date again."
+                ),
+            )
+        return plan_change
+
+    @staticmethod
     async def simulate(
         db: AsyncSession,
         *,
@@ -198,14 +311,20 @@ class SubscriptionSimulationService:
             db,
             tenant_id,
         )
+        existing_plan_change = await SubscriptionRepository.get_open_plan_change(
+            db,
+            tenant_id=tenant_id,
+        )
         await SubscriptionSimulationService._store_snapshot_if_missing(
             db,
             tenant_id=tenant_id,
             subscription=subscription,
+            plan_change=existing_plan_change,
         )
 
         now = _utc_now()
         scenario = payload.scenario
+        plan_change = None
 
         if scenario == SubscriptionSimulationScenario.EXPIRES_IN_DAYS:
             period_end = now + timedelta(days=payload.days or 1)
@@ -250,6 +369,40 @@ class SubscriptionSimulationService:
                     "Grace period was moved to one minute in the past. "
                     "Run reconciliation to expire it."
                 )
+
+        elif scenario in {
+            SubscriptionSimulationScenario.DOWNGRADE_EFFECTIVE_IN_DAYS,
+            SubscriptionSimulationScenario.DOWNGRADE_DUE_NOW,
+        }:
+            plan_change = await SubscriptionSimulationService._scheduled_downgrade_for_update(
+                db,
+                tenant_id,
+            )
+            await SubscriptionSimulationService._store_snapshot_if_missing(
+                db,
+                tenant_id=tenant_id,
+                subscription=subscription,
+                plan_change=plan_change,
+            )
+            boundary = (
+                now + timedelta(days=payload.days or 1)
+                if scenario == SubscriptionSimulationScenario.DOWNGRADE_EFFECTIVE_IN_DAYS
+                else now - timedelta(minutes=1)
+            )
+            subscription.current_period_end = boundary
+            plan_change.effective_at = boundary
+            if scenario == SubscriptionSimulationScenario.DOWNGRADE_EFFECTIVE_IN_DAYS:
+                detail = (
+                    f"Scheduled downgrade and subscription period now become due in "
+                    f"{payload.days} day(s)."
+                )
+            else:
+                detail = (
+                    "Scheduled downgrade and subscription period were moved to one "
+                    "minute in the past. Run reconciliation to process the real "
+                    "downgrade boundary."
+                )
+
         else:
             raise HTTPException(
                 status_code=400,
@@ -259,11 +412,13 @@ class SubscriptionSimulationService:
         await SubscriptionSimulationService._save_local_dates(
             db,
             subscription=subscription,
+            plan_change=plan_change,
         )
         return SubscriptionSimulationResponse(
             scenario=scenario.value,
             detail=detail,
             state=await SubscriptionSimulationService._state(
+                db,
                 tenant_id,
                 subscription,
             ),
@@ -279,14 +434,21 @@ class SubscriptionSimulationService:
             db,
             tenant_id,
         )
+        plan_change = await SubscriptionRepository.get_open_plan_change(
+            db,
+            tenant_id=tenant_id,
+            for_update=True,
+        )
         await SubscriptionSimulationService._store_snapshot_if_missing(
             db,
             tenant_id=tenant_id,
             subscription=subscription,
+            plan_change=plan_change,
         )
 
         now = _utc_now()
         lifecycle = {"past_due": 0, "grace_period": 0, "expired": 0}
+        plan_changes = {"awaiting_payment": 0, "blocked": 0}
         period_end = (
             subscription.trial_ends_at
             if subscription.status == SubscriptionStatus.TRIALING
@@ -344,12 +506,42 @@ class SubscriptionSimulationService:
             )
             lifecycle["expired"] += 1
 
+        if (
+            plan_change is not None
+            and plan_change.change_type == SubscriptionPlanChangeType.DOWNGRADE
+            and plan_change.status == SubscriptionPlanChangeStatus.SCHEDULED
+            and plan_change.effective_at is not None
+            and plan_change.effective_at <= now
+        ):
+            usage, blockers = await SubscriptionPlanChangeService._usage_and_blockers(
+                db,
+                tenant_id=tenant_id,
+                target_plan=plan_change.target_plan_code,
+            )
+            plan_change.usage_snapshot_json = {
+                resource.value: count for resource, count in usage.items()
+            }
+            plan_change.blockers_json = [item.model_dump(mode="json") for item in blockers]
+            if blockers:
+                plan_change.status = SubscriptionPlanChangeStatus.BLOCKED
+                plan_change.failure_reason = (
+                    "Usage exceeded the target plan at the scheduled effective date."
+                )
+                plan_changes["blocked"] += 1
+            else:
+                plan_change.status = SubscriptionPlanChangeStatus.AWAITING_PAYMENT
+                plan_change.failure_reason = None
+                plan_changes["awaiting_payment"] += 1
+            await SubscriptionRepository.save_plan_change(db, plan_change)
+
         await db.commit()
         await flush_cache_invalidation_events(db)
         return SubscriptionReconcileResponse(
-            detail="Tenant subscription reconciliation completed.",
+            detail="Tenant subscription and downgrade reconciliation completed.",
             lifecycle=lifecycle,
+            plan_changes=plan_changes,
             state=await SubscriptionSimulationService._state(
+                db,
                 tenant_id,
                 subscription,
             ),
@@ -365,7 +557,11 @@ class SubscriptionSimulationService:
             db,
             tenant_id,
         )
-        return await SubscriptionSimulationService._state(tenant_id, subscription)
+        return await SubscriptionSimulationService._state(
+            db,
+            tenant_id,
+            subscription,
+        )
 
     @staticmethod
     async def reset(
@@ -398,6 +594,41 @@ class SubscriptionSimulationService:
                         "subscription data."
                     ),
                 )
+
+            original_plan_change = snapshot.get("plan_change")
+            if original_plan_change:
+                plan_change = await SubscriptionRepository.get_plan_change_by_id(
+                    db,
+                    tenant_id=tenant_id,
+                    plan_change_id=uuid.UUID(original_plan_change["id"]),
+                    for_update=True,
+                )
+                if plan_change is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "The scheduled plan change no longer exists. Reset was "
+                            "refused to avoid restoring incomplete billing state."
+                        ),
+                    )
+                if plan_change.status not in {
+                    SubscriptionPlanChangeStatus.SCHEDULED,
+                    SubscriptionPlanChangeStatus.AWAITING_PAYMENT,
+                    SubscriptionPlanChangeStatus.BLOCKED,
+                }:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "The plan change advanced outside simulation-controlled "
+                            "states. Reset was refused to protect newer billing data."
+                        ),
+                    )
+                plan_change.status = SubscriptionPlanChangeStatus(original_plan_change["status"])
+                plan_change.effective_at = _parse_datetime(original_plan_change["effective_at"])
+                plan_change.failure_reason = original_plan_change["failure_reason"]
+                plan_change.usage_snapshot_json = original_plan_change["usage_snapshot_json"]
+                plan_change.blockers_json = original_plan_change["blockers_json"]
+                await SubscriptionRepository.save_plan_change(db, plan_change)
 
             subscription.status = SubscriptionStatus(original["status"])
             subscription.current_period_start = _parse_datetime(original["current_period_start"])
@@ -433,8 +664,12 @@ class SubscriptionSimulationService:
 
             return SubscriptionSimulationResponse(
                 scenario="reset",
-                detail=("Original subscription state restored and simulation snapshot removed."),
+                detail=(
+                    "Original subscription and scheduled downgrade state restored "
+                    "and simulation snapshot removed."
+                ),
                 state=await SubscriptionSimulationService._state(
+                    db,
                     tenant_id,
                     subscription,
                 ),

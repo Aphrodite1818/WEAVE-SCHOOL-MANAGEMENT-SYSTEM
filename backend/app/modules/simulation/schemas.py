@@ -12,6 +12,8 @@ class SubscriptionSimulationScenario(str, Enum):
     PERIOD_ENDED = "period_ended"
     GRACE_EXPIRES_IN_DAYS = "grace_expires_in_days"
     GRACE_EXPIRED = "grace_expired"
+    DOWNGRADE_EFFECTIVE_IN_DAYS = "downgrade_effective_in_days"
+    DOWNGRADE_DUE_NOW = "downgrade_due_now"
 
 
 class SubscriptionSimulationRequest(BaseModel):
@@ -25,11 +27,22 @@ class SubscriptionSimulationRequest(BaseModel):
             in {
                 SubscriptionSimulationScenario.EXPIRES_IN_DAYS,
                 SubscriptionSimulationScenario.GRACE_EXPIRES_IN_DAYS,
+                SubscriptionSimulationScenario.DOWNGRADE_EFFECTIVE_IN_DAYS,
             }
             and self.days is None
         ):
             raise ValueError("days is required for this simulation scenario")
         return self
+
+
+class SubscriptionPlanChangeSimulationState(BaseModel):
+    plan_change_id: uuid.UUID
+    current_plan_code: str
+    target_plan_code: str
+    change_type: str
+    status: str
+    effective_at: datetime | None = None
+    failure_reason: str | None = None
 
 
 class SubscriptionSimulationState(BaseModel):
@@ -43,6 +56,7 @@ class SubscriptionSimulationState(BaseModel):
     grace_ends_at: datetime | None = None
     cancel_at_period_end: bool
     next_payment_at: datetime | None = None
+    plan_change: SubscriptionPlanChangeSimulationState | None = None
     snapshot_available: bool = False
 
 
@@ -55,4 +69,5 @@ class SubscriptionSimulationResponse(BaseModel):
 class SubscriptionReconcileResponse(BaseModel):
     detail: str
     lifecycle: dict[str, int]
+    plan_changes: dict[str, int] = Field(default_factory=dict)
     state: SubscriptionSimulationState
