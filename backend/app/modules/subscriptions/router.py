@@ -13,6 +13,7 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
 )
 from app.core.exceptions import ForbiddenException
+from app.modules.simulation.router import router as simulation_router
 from app.modules.subscriptions.cancellation_service import (
     SubscriptionCancellationService,
 )
@@ -296,3 +297,6 @@ async def sync_expired_subscriptions(
         "plan_changes_awaiting_payment": plan_changes["awaiting_payment"],
         "plan_changes_blocked": plan_changes["blocked"],
     }
+
+
+router.include_router(simulation_router)
