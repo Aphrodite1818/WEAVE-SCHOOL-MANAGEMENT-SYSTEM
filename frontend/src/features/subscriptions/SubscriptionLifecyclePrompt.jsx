@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarClock, CreditCard, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CreditCard, ShieldAlert } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
@@ -7,50 +7,42 @@ import Modal from "../../components/ui/Modal";
 import { formatDateTime, formatPlanName } from "./subscriptionConfig";
 
 const PROMPTABLE_STATUSES = new Set([
-  "past_due",
   "grace_period",
   "expired",
   "cancelled",
 ]);
 
 const STATUS_CONTENT = {
-  past_due: {
-    title: "Payment needs attention",
-    eyebrow: "Payment issue",
-    message:
-      "We could not confirm your latest subscription payment. Update billing to prevent an interruption to school management actions.",
-    icon: AlertTriangle,
-    toneClass: "bg-error-soft text-error",
-    deadlineLabel: "Billing period ended",
-    primaryLabel: "Update payment",
-  },
   grace_period: {
-    title: "Your subscription is in grace period",
-    eyebrow: "Action required",
+    title: "Payment needs attention",
+    description:
+      "We are still trying to renew your subscription. Your school remains available during the grace period.",
+    eyebrow: "Grace period",
     message:
-      "Your school is temporarily still accessible, but write actions may become restricted when the grace period ends.",
-    icon: CalendarClock,
-    toneClass: "bg-warning-soft text-warning",
+      "Update your payment details before the grace period ends to avoid an interruption to school management actions.",
+    icon: AlertTriangle,
     deadlineLabel: "Grace period ends",
     primaryLabel: "Update payment",
   },
   expired: {
-    title: "Your subscription has expired",
-    eyebrow: "Subscription expired",
+    title: "Subscription paused",
+    description:
+      "We could not renew your subscription before the grace period ended.",
+    eyebrow: "Action required",
     message:
-      "Some school management actions are temporarily restricted. Renew your subscription to restore full access. Your existing school data remains available.",
+      "School management actions are temporarily paused. Your existing data remains safe and full access returns after payment is restored.",
     icon: ShieldAlert,
-    toneClass: "bg-error-soft text-error",
-    deadlineLabel: "Subscription ended",
-    primaryLabel: "Renew subscription",
+    deadlineLabel: "Access paused",
+    primaryLabel: "Update payment",
   },
   cancelled: {
-    title: "Your subscription is no longer active",
-    eyebrow: "Subscription cancelled",
+    title: "Subscription inactive",
+    description:
+      "This subscription is no longer active for your school.",
+    eyebrow: "Subscription inactive",
     message:
-      "Billing access remains available, but restricted school management actions require an active subscription.",
+      "Your school data remains available, but restricted management actions require an active subscription.",
     icon: CreditCard,
-    toneClass: "bg-surface-muted text-text-soft",
     deadlineLabel: "Access ended",
     primaryLabel: "Choose a plan",
   },
@@ -83,7 +75,7 @@ const getDeadline = (statusCode, subscription) => {
     );
   }
 
-  return subscription.current_period_end || null;
+  return null;
 };
 
 const buildDismissalKey = (statusCode, subscription) => {
@@ -160,16 +152,17 @@ function SubscriptionLifecyclePrompt({
     <Modal
       open={shouldOpen}
       title={content.title}
+      description={content.description}
       onClose={dismiss}
       closeOnOverlay
       showClose
       placement="center"
-      className="max-w-[31rem] rounded-[1.75rem]"
+      className="max-w-[29rem]"
       footer={
-        <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             onClick={goToBilling}
             className="w-full sm:w-auto"
           >
@@ -186,45 +179,37 @@ function SubscriptionLifecyclePrompt({
         </div>
       }
     >
-      <div className="space-y-5">
-        <div className="flex items-start gap-4">
-          <div
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${content.toneClass}`}
-          >
-            <Icon className="h-6 w-6" aria-hidden="true" />
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-primary/20 bg-primary-subtle/50 p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              <Icon className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-text">{content.eyebrow}</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">{content.message}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-              {content.eyebrow}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-text-soft">
-              {content.message}
-            </p>
+
+          <div className="mt-4 grid gap-3 border-t border-primary/15 pt-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                Current plan
+              </p>
+              <p className="mt-1 text-sm font-semibold text-text">
+                {planCode ? formatPlanName(planCode) : "Subscription"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                {content.deadlineLabel}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-text">
+                {deadline ? formatDateTime(deadline) : "Payment required"}
+              </p>
+            </div>
           </div>
         </div>
-
-        <div className="grid gap-3 rounded-2xl border border-border/80 bg-surface-muted/35 p-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-              Current plan
-            </p>
-            <p className="mt-1 text-sm font-semibold text-text">
-              {planCode ? formatPlanName(planCode) : "Subscription"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-              {content.deadlineLabel}
-            </p>
-            <p className="mt-1 text-sm font-semibold text-text">
-              {deadline ? formatDateTime(deadline) : "Payment required"}
-            </p>
-          </div>
-        </div>
-
-        <p className="text-xs leading-5 text-text-muted">
-          You can dismiss this message and continue to any area that remains available. Subscription restrictions are still enforced securely by the server.
-        </p>
       </div>
     </Modal>
   );
