@@ -174,14 +174,14 @@ export function SubscriptionProvider({ children }) {
   );
   const tenantSnapshot = user?.tenant?.tenant || user?.tenant || {};
   const planCode =
-    visibleEntitlements?.plan ||
     visibleCurrentSubscription?.plan_code ||
+    visibleEntitlements?.plan ||
     tenantSnapshot?.plan ||
     user?.plan ||
     null;
   const statusCode =
-    visibleEntitlements?.subscription_status ||
     visibleCurrentSubscription?.status ||
+    visibleEntitlements?.subscription_status ||
     tenantSnapshot?.subscription_status ||
     user?.subscription_status ||
     null;
