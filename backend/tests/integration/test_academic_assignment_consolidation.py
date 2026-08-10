@@ -30,10 +30,12 @@ from app.modules.student_academics.models import (
     AcademicTerm,
     AcademicTermName,
     AcademicTermStatus,
+    AssessmentComponent,
+    AssessmentScheme,
+    AssessmentSchemeStatus,
     ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
-    SchoolAssessmentConfig,
     StudentSubjectResult,
     TeacherAssignment,
 )
@@ -369,17 +371,30 @@ async def create_grading_scale(db_session: AsyncSession, *, tenant: Tenant) -> G
 
 async def create_assessment_config(
     db_session: AsyncSession, *, tenant: Tenant
-) -> SchoolAssessmentConfig:
-    config = SchoolAssessmentConfig(
+) -> tuple[AssessmentScheme, list[AssessmentComponent]]:
+    scheme = AssessmentScheme(
         tenant_id=tenant.id,
-        test_max=40,
-        assessment_max=30,
-        exam_max=30,
+        name="Configured assessment",
+        status=AssessmentSchemeStatus.ACTIVE,
+        activated_at=datetime.now(timezone.utc),
     )
-    db_session.add(config)
+    db_session.add(scheme)
     await db_session.flush()
-    await db_session.refresh(config)
-    return config
+    components = [
+        AssessmentComponent(
+            tenant_id=tenant.id,
+            assessment_scheme_id=scheme.id,
+            name=name,
+            maximum_score=maximum,
+            position=position,
+        )
+        for position, (name, maximum) in enumerate(
+            (("Coursework", 40), ("Project", 30), ("Final", 30))
+        )
+    ]
+    db_session.add_all(components)
+    await db_session.flush()
+    return scheme, components
 
 
 async def create_student_enrollment(
@@ -490,7 +505,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
         academic_session=academic_session,
     )
     await create_grading_scale(db_session, tenant=tenant)
-    await create_assessment_config(db_session, tenant=tenant)
+    _, assessment_components = await create_assessment_config(db_session, tenant=tenant)
     await db_session.commit()
 
     admin_headers = await auth_headers(
@@ -601,9 +616,10 @@ async def test_teacher_assignment_reassignment_stays_canonical(
             "teacher_assignment_id": str(assignment_b_id),
             "academic_session_id": str(academic_session.id),
             "academic_term_id": str(academic_term.id),
-            "test_score": "30",
-            "assessment_score": "30",
-            "exam_score": "30",
+            "component_scores": [
+                {"assessment_component_id": str(component.id), "score": score}
+                for component, score in zip(assessment_components, ("30", "30", "30"), strict=True)
+            ],
             "status": "submitted",
         },
         headers=teacher_b_headers,
@@ -731,7 +747,7 @@ async def test_teacher_assignment_reassignment_stays_canonical(
 
 
 @pytest.mark.asyncio
-async def test_student_subject_cards_show_every_class_subject_and_keep_partial_scores_ungraded(
+async def test_student_subject_cards_show_structure_but_hide_unpublished_partial_scores(
     api_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
@@ -776,7 +792,7 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
         academic_session=academic_session,
     )
     await create_grading_scale(db_session, tenant=tenant)
-    await create_assessment_config(db_session, tenant=tenant)
+    _, assessment_components = await create_assessment_config(db_session, tenant=tenant)
     await db_session.commit()
 
     admin_headers = await auth_headers(
@@ -828,9 +844,9 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
             "teacher_assignment_id": math_assignment.json()["id"],
             "academic_session_id": str(academic_session.id),
             "academic_term_id": str(academic_term.id),
-            "test_score": "18",
-            "assessment_score": None,
-            "exam_score": None,
+            "component_scores": [
+                {"assessment_component_id": str(assessment_components[0].id), "score": "18"}
+            ],
             "status": "draft",
         },
         headers=teacher_headers,
@@ -838,9 +854,9 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     assert partial_result.status_code == 200
     partial_payload = partial_result.json()
     assert partial_payload["grade"] is None
-    assert float(partial_payload["test_score"]) == 18.0
-    assert partial_payload["assessment_score"] is None
-    assert partial_payload["exam_score"] is None
+    assert float(partial_payload["components"][0]["score"]) == 18.0
+    assert partial_payload["components"][1]["score"] is None
+    assert partial_payload["components"][2]["score"] is None
 
     rejected_submit = await api_client.post(
         "/api/v1/teachers/academics/results",
@@ -849,14 +865,14 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
             "teacher_assignment_id": math_assignment.json()["id"],
             "academic_session_id": str(academic_session.id),
             "academic_term_id": str(academic_term.id),
-            "test_score": "18",
-            "assessment_score": None,
-            "exam_score": None,
+            "component_scores": [
+                {"assessment_component_id": str(assessment_components[0].id), "score": "18"}
+            ],
             "status": "submitted",
         },
         headers=teacher_headers,
     )
-    assert rejected_submit.status_code == 422
+    assert rejected_submit.status_code == 400
 
     student_subjects = await api_client.get(
         "/api/v1/students/academics/subjects",
@@ -870,17 +886,13 @@ async def test_student_subject_cards_show_every_class_subject_and_keep_partial_s
     math_card = by_subject_code["MTH"]
     english_card = by_subject_code["ENG"]
 
-    assert math_card["result_id"] == partial_payload["id"]
-    assert float(math_card["test_score"]) == 18.0
-    assert math_card["assessment_score"] is None
-    assert math_card["exam_score"] is None
+    assert math_card["result_id"] is None
+    assert all(component["score"] is None for component in math_card["components"])
     assert math_card["grade"] is None
-    assert math_card["status"] == "draft"
+    assert math_card["status"] == "pending"
 
     assert english_card["result_id"] is None
-    assert english_card["test_score"] is None
-    assert english_card["assessment_score"] is None
-    assert english_card["exam_score"] is None
+    assert all(component["score"] is None for component in english_card["components"])
     assert english_card["grade"] is None
     assert english_card["status"] == "pending"
 

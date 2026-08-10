@@ -86,7 +86,7 @@ function AcademicWorkflowPage() {
   const renderWorkspace = (activeTab) => {
     const pageKey = `${workflow}:${activeTab}`;
 
-    if (workflow === "grading" && activeTab === "assessment-limits") {
+    if (workflow === "grading" && activeTab === "assessment-schemes") {
       return <AssessmentConfigWorkspace key={pageKey} />;
     }
     if (workflow === "grading") {

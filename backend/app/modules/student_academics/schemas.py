@@ -500,25 +500,31 @@ class StudentSubjectResultUpsert(InputBase):
     class_subject_teacher_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
-    test_score: Decimal | None = Field(default=None, ge=0)
-    assessment_score: Decimal | None = Field(default=None, ge=0)
-    exam_score: Decimal | None = Field(default=None, ge=0)
+    component_scores: list["StudentAssessmentScoreUpsert"] = Field(default_factory=list)
     status: AcademicResultStatus = AcademicResultStatus.DRAFT
 
     @model_validator(mode="after")
     def validate_result(self):
         if self.teacher_assignment_id is None and self.class_subject_teacher_id is None:
             raise ValueError("an assignment reference is required")
-        if self.status == AcademicResultStatus.SUBMITTED and any(
-            score is None
-            for score in (
-                self.test_score,
-                self.assessment_score,
-                self.exam_score,
-            )
-        ):
-            raise ValueError("all scores are required before submission")
+        component_ids = [item.assessment_component_id for item in self.component_scores]
+        if len(component_ids) != len(set(component_ids)):
+            raise ValueError("assessment components must be unique")
         return self
+
+
+class StudentAssessmentScoreUpsert(InputBase):
+    assessment_component_id: uuid.UUID
+    score: Decimal | None = Field(default=None, ge=0)
+
+
+class AssessmentComponentScoreResponse(OutputBase):
+    assessment_component_id: uuid.UUID
+    name: str
+    code: str | None = None
+    position: int
+    maximum_score: Decimal
+    score: Decimal | None = None
 
 
 class StudentSubjectResultStatusUpdate(InputBase):
@@ -558,9 +564,10 @@ class StudentSubjectResultResponse(OutputBase):
     academic_session_name: str | None = None
     academic_term_id: uuid.UUID
     academic_term_name: str | None = None
-    test_score: Decimal | None = None
-    assessment_score: Decimal | None = None
-    exam_score: Decimal | None = None
+    assessment_scheme_id: uuid.UUID
+    assessment_scheme_name: str
+    components: list[AssessmentComponentScoreResponse] = Field(default_factory=list)
+    maximum_score: Decimal = Decimal("100")
     total_score: Decimal
     grade: str | None = None
     remark: str | None = None
@@ -593,9 +600,10 @@ class StudentSubjectCardResponse(OutputBase):
     academic_session_name: str | None = None
     academic_term_id: uuid.UUID | None = None
     academic_term_name: str | None = None
-    test_score: Decimal | None = None
-    assessment_score: Decimal | None = None
-    exam_score: Decimal | None = None
+    assessment_scheme_id: uuid.UUID | None = None
+    assessment_scheme_name: str | None = None
+    components: list[AssessmentComponentScoreResponse] = Field(default_factory=list)
+    maximum_score: Decimal = Decimal("100")
     total_score: Decimal | None = None
     grade: str | None = None
     remark: str | None = None

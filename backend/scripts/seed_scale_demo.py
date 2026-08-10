@@ -59,6 +59,7 @@ from app.modules.parents.models import (
 from app.modules.report_cards.models import (
     ReportCard,
     ReportCardStatus,
+    ReportCardSubjectComponent,
     ReportCardSubjectLine,
 )
 from app.modules.school_calendar.calendar_enums import (
@@ -78,10 +79,13 @@ from app.modules.student_academics.models import (
     AcademicTerm,
     AcademicTermName,
     AcademicTermStatus,
+    AssessmentComponent,
+    AssessmentScheme,
+    AssessmentSchemeStatus,
     ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
-    SchoolAssessmentConfig,
+    StudentAssessmentScore,
     StudentSubjectResult,
     TeacherAssignment,
 )
@@ -367,7 +371,28 @@ async def seed_school(
     db.add(academic_term)
     await db.flush()
 
-    db.add(SchoolAssessmentConfig(tenant_id=tenant.id, test_max=20, assessment_max=20, exam_max=60))
+    assessment_scheme = AssessmentScheme(
+        tenant_id=tenant.id,
+        name="Standard assessment",
+        status=AssessmentSchemeStatus.ACTIVE,
+        activated_at=now,
+    )
+    db.add(assessment_scheme)
+    await db.flush()
+    assessment_components = [
+        AssessmentComponent(
+            tenant_id=tenant.id,
+            assessment_scheme_id=assessment_scheme.id,
+            name=name,
+            code=code,
+            maximum_score=maximum,
+            position=position,
+        )
+        for position, (name, code, maximum) in enumerate(
+            (("CA 1", "CA1", 20), ("CA 2", "CA2", 20), ("Final Exam", "FINAL", 60))
+        )
+    ]
+    db.add_all(assessment_components)
     grading_scales = [
         GradingScale(
             tenant_id=tenant.id,
@@ -691,6 +716,9 @@ async def seed_school(
     result_rows: list[StudentSubjectResult] = []
     report_cards: list[ReportCard] = []
     report_lines: list[ReportCardSubjectLine] = []
+    report_component_values: list[tuple[ReportCardSubjectLine, tuple[Decimal, ...]]] = []
+    component_score_rows: list[StudentAssessmentScore] = []
+    result_component_values: list[tuple[StudentSubjectResult, tuple[Decimal, ...]]] = []
 
     core_subjects = subjects[:6]
     for position, student in enumerate(students, start=1):
@@ -700,10 +728,12 @@ async def seed_school(
             teacher_membership, teacher_link, assignment = teacher_by_scope[
                 (classroom.id, subject_ref.id)
             ]
-            test_score = score(random.randint(8, 20))
-            assessment_score = score(random.randint(8, 20))
-            exam_score = score(random.randint(24, 60))
-            total = score(test_score + assessment_score + exam_score)
+            component_values = (
+                score(random.randint(8, 20)),
+                score(random.randint(8, 20)),
+                score(random.randint(24, 60)),
+            )
+            total = score(sum(component_values))
             scale = grade_for(total, grading_scales)
             result = StudentSubjectResult(
                 tenant_id=tenant.id,
@@ -716,10 +746,8 @@ async def seed_school(
                 student_enrollment_id=enrollment_by_student[student.id].id,
                 academic_session_id=academic_session.id,
                 academic_term_id=academic_term.id,
+                assessment_scheme_id=assessment_scheme.id,
                 grading_scale_id=scale.id,
-                test_score=test_score,
-                assessment_score=assessment_score,
-                exam_score=exam_score,
                 total_score=total,
                 grade=scale.grade,
                 remark=scale.remark,
@@ -735,9 +763,10 @@ async def seed_school(
                 locked_by_admin_id=admin.id,
             )
             result_rows.append(result)
-            student_results.append((result, subject_ref, teacher_membership))
+            result_component_values.append((result, component_values))
+            student_results.append((result, subject_ref, teacher_membership, component_values))
 
-        total_score = score(sum(result.total_score for result, _, _ in student_results))
+        total_score = score(sum(result.total_score for result, _, _, _ in student_results))
         average = score(total_score / Decimal(len(student_results)))
         card = ReportCard(
             tenant_id=tenant.id,
@@ -763,6 +792,20 @@ async def seed_school(
             await db.flush()
 
     await flush_chunk(db, result_rows)
+    component_values_by_result_id = {
+        result.id: component_values for result, component_values in result_component_values
+    }
+    for result, component_values in result_component_values:
+        for component, component_score in zip(assessment_components, component_values, strict=True):
+            component_score_rows.append(
+                StudentAssessmentScore(
+                    tenant_id=tenant.id,
+                    student_subject_result_id=result.id,
+                    assessment_component_id=component.id,
+                    score=component_score,
+                )
+            )
+    await flush_chunk(db, component_score_rows)
 
     for card in report_cards:
         db.add(card)
@@ -779,24 +822,37 @@ async def seed_school(
         teacher_account = next(
             account for account, membership in teachers if membership.id == teacher_membership.id
         )
-        report_lines.append(
-            ReportCardSubjectLine(
-                tenant_id=tenant.id,
-                report_card_id=cards_by_student[result.student_id].id,
-                student_subject_result_id=result.id,
-                subject_id=subject_ref.id,
-                subject_name=subject_ref.name,
-                subject_code=subject_ref.code,
-                teacher_name=f"{teacher_account.first_name} {teacher_account.last_name}",
-                test_score=result.test_score,
-                assessment_score=result.assessment_score,
-                exam_score=result.exam_score,
-                total_score=result.total_score,
-                grade=result.grade,
-                remark=result.remark,
-            )
+        line = ReportCardSubjectLine(
+            tenant_id=tenant.id,
+            report_card_id=cards_by_student[result.student_id].id,
+            student_subject_result_id=result.id,
+            subject_id=subject_ref.id,
+            subject_name=subject_ref.name,
+            subject_code=subject_ref.code,
+            teacher_name=f"{teacher_account.first_name} {teacher_account.last_name}",
+            total_score=result.total_score,
+            grade=result.grade,
+            remark=result.remark,
         )
+        report_lines.append(line)
+        component_values = component_values_by_result_id[result.id]
+        report_component_values.append((line, component_values))
     await flush_chunk(db, report_lines)
+    report_component_rows = [
+        ReportCardSubjectComponent(
+            tenant_id=tenant.id,
+            report_card_subject_line_id=line.id,
+            assessment_component_id=component.id,
+            name=component.name,
+            code=component.code,
+            position=component.position,
+            maximum_score=component.maximum_score,
+            score=component_score,
+        )
+        for line, component_values in report_component_values
+        for component, component_score in zip(assessment_components, component_values, strict=True)
+    ]
+    await flush_chunk(db, report_component_rows)
 
     announcement = Announcement(
         tenant_id=tenant.id,

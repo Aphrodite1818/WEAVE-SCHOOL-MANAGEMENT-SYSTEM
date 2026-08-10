@@ -196,10 +196,28 @@ export const academicService = {
   listTeacherTerms: (params) =>
     api.get(`/teachers/academics/terms${queryString(params)}`),
 
-  getAssessmentConfig: () =>
-    api.get("/tenant-admin/academics/assessment-config"),
-  updateAssessmentConfig: (payload) =>
-    api.patch("/tenant-admin/academics/assessment-config", payload),
+  listAssessmentSchemes: () =>
+    api.get("/tenant-admin/academics/assessment-schemes"),
+  getActiveAssessmentScheme: () =>
+    api.get("/tenant-admin/academics/assessment-schemes/active"),
+  createAssessmentScheme: (payload) =>
+    api.post("/tenant-admin/academics/assessment-schemes", payload),
+  updateAssessmentScheme: (schemeId, payload) =>
+    api.patch(`/tenant-admin/academics/assessment-schemes/${schemeId}`, payload),
+  addAssessmentComponent: (schemeId, payload) =>
+    api.post(`/tenant-admin/academics/assessment-schemes/${schemeId}/components`, payload),
+  updateAssessmentComponent: (schemeId, componentId, payload) =>
+    api.patch(`/tenant-admin/academics/assessment-schemes/${schemeId}/components/${componentId}`, payload),
+  removeAssessmentComponent: (schemeId, componentId) =>
+    api.delete(`/tenant-admin/academics/assessment-schemes/${schemeId}/components/${componentId}`),
+  reorderAssessmentComponents: (schemeId, componentIds) =>
+    api.put(`/tenant-admin/academics/assessment-schemes/${schemeId}/component-order`, {
+      component_ids: componentIds,
+    }),
+  activateAssessmentScheme: (schemeId) =>
+    api.post(`/tenant-admin/academics/assessment-schemes/${schemeId}/activate`, {}),
+  getTeacherAssessmentScheme: () => api.get("/teachers/academics/assessment-scheme"),
+  getStudentAssessmentScheme: () => api.get("/students/academics/assessment-scheme"),
 
   listGradingScales: (params) =>
     api.get(`/tenant-admin/academics/grading-scales${queryString(params)}`),
