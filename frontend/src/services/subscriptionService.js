@@ -107,25 +107,25 @@ export const getSubscriptionCheckoutErrorMessage = (message) => {
   const normalizedMessage = String(message || "").toLowerCase();
 
   if (normalizedMessage.includes("selected plan billing is not configured")) {
-    return "Billing for this plan is not configured yet.";
+    return "Checkout for this plan is temporarily unavailable. Please try again later.";
   }
   if (normalizedMessage.includes("provider plan configuration")) {
-    return "Billing configuration is being synchronized. Please try again shortly.";
+    return "We couldn't start checkout right now. Please try again in a moment.";
   }
   if (normalizedMessage.includes("payment verification failed")) {
-    return "The payment details did not match the selected plan. Contact support before retrying.";
+    return "We couldn't confirm this payment. Please try again or contact support if the problem continues.";
   }
   if (normalizedMessage.includes("school exceeds the selected plan limits")) {
-    return "Your current school usage exceeds this plan. Reduce active usage before scheduling the downgrade.";
+    return "Your current school usage is above this plan's limits. Reduce usage before switching to this plan.";
   }
   if (normalizedMessage.includes("schedule this downgrade first")) {
-    return "Schedule this downgrade first. Payment for the lower plan becomes available after the current paid period ends.";
+    return "This plan change is not ready for payment yet. Please wait until your current billing period ends.";
   }
   if (
     normalizedMessage.includes("unable to initialize subscription checkout") ||
     normalizedMessage.includes("paystack")
   ) {
-    return "We could not start billing right now. Please try again shortly.";
+    return "We couldn't start checkout right now. Please try again in a moment.";
   }
   return null;
 };
