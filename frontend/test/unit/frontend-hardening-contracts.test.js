@@ -45,6 +45,17 @@ test("subscription lifecycle attention states surface a centered tenant-admin pr
   assert.match(modalSource, /window\.visualViewport/);
 });
 
+test("simulation lab exposes scheduled downgrade timeline controls", async () => {
+  const source = await readSource("src/pages/superadmin/SuperadminSimulationPage.jsx");
+
+  assert.match(source, /downgrade_effective_in_days/);
+  assert.match(source, /downgrade_due_now/);
+  assert.match(source, /state\.plan_change/);
+  assert.match(source, /Effective date/);
+  assert.match(source, /downgrade awaiting payment/);
+  assert.match(source, /downgrade blocked/);
+});
+
 test("modal traps keyboard focus and restores the previously focused element", async () => {
   const source = await readSource("src/components/ui/Modal.jsx");
 
