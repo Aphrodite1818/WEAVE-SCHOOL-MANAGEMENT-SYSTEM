@@ -97,7 +97,7 @@ export const buildDayUpdatePayload = (dayForm, selectedCalendarId) => {
 };
 
 function SchoolCalendarWorkspace({ activeTab = "manage" }) {
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [calendars, setCalendars] = useState([]);
@@ -289,7 +289,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
       await load();
       await loadCalendarDetails();
     } catch (err) {
-      setError(getErrorMessage(err, "We couldn't complete that calendar update."));
+      showError(getErrorMessage(err, "We couldn't complete that calendar update."));
     } finally {
       setSaving("");
     }
