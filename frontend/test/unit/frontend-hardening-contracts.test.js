@@ -28,16 +28,23 @@ test("subscription guards do not treat missing entitlements as confirmed access"
   assert.match(source, /allowed:\s*false,[\s\S]*We couldn't confirm your plan limits/);
 });
 
-test("subscription lifecycle attention states surface a centered tenant-admin prompt", async () => {
+test("subscription lifecycle prompt waits until grace and uses tenant-brand styling", async () => {
   const providerSource = await readSource("src/features/subscriptions/SubscriptionProvider.jsx");
   const promptSource = await readSource("src/features/subscriptions/SubscriptionLifecyclePrompt.jsx");
   const modalSource = await readSource("src/components/ui/Modal.jsx");
 
   assert.match(providerSource, /<SubscriptionLifecyclePrompt/);
-  assert.match(promptSource, /"past_due"/);
-  assert.match(promptSource, /"grace_period"/);
-  assert.match(promptSource, /"expired"/);
-  assert.match(promptSource, /Renew subscription/);
+  assert.match(
+    providerSource,
+    /const statusCode =\s*visibleCurrentSubscription\?\.status \|\|\s*visibleEntitlements\?\.subscription_status/,
+  );
+  assert.match(promptSource, /const PROMPTABLE_STATUSES = new Set\(\[\s*"grace_period",\s*"expired",\s*"cancelled",\s*\]\)/);
+  assert.doesNotMatch(promptSource, /PROMPTABLE_STATUSES[\s\S]{0,120}"past_due"/);
+  assert.match(promptSource, /title: "Subscription paused"/);
+  assert.match(promptSource, /description=\{content\.description\}/);
+  assert.match(promptSource, /border-primary\/20 bg-primary-subtle\/50/);
+  assert.match(promptSource, /bg-primary\/10 text-primary/);
+  assert.match(promptSource, /<Icon className="h-5 w-5"/);
   assert.match(promptSource, /navigate\("\/admin\/billing\/plans"\)/);
   assert.match(promptSource, /placement="center"/);
   assert.match(promptSource, /sessionStorage/);
