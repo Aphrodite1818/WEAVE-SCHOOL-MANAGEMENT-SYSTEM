@@ -31,6 +31,16 @@ const SCENARIOS = [
     label: "Grace period already expired",
     needsDays: false,
   },
+  {
+    value: "downgrade_effective_in_days",
+    label: "Scheduled downgrade becomes due in N days",
+    needsDays: true,
+  },
+  {
+    value: "downgrade_due_now",
+    label: "Scheduled downgrade is due now",
+    needsDays: false,
+  },
 ];
 
 const formatDate = (value) => {
@@ -162,7 +172,7 @@ function SuperadminSimulationPage() {
             <div>
               <h2 className="section-title">Subscription simulation</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Staging only. This changes Weave's local subscription dates and never calls Paystack.
+                Staging only. This changes Weave's local subscription and scheduled downgrade dates and never calls Paystack.
               </p>
             </div>
           </div>
@@ -222,7 +232,7 @@ function SuperadminSimulationPage() {
             <div>
               <h2 className="section-title">Current simulated state</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Only subscription lifecycle fields are shown here. Provider credentials and tenant personal data are never returned.
+                Only lifecycle and plan-change fields are shown. Provider credentials and tenant personal data are never returned.
               </p>
             </div>
             {state ? (
@@ -233,15 +243,32 @@ function SuperadminSimulationPage() {
           </div>
 
           {state ? (
-            <div className="mt-4 rounded-2xl border border-border/70 px-4">
-              <StateRow label="Plan" value={state.plan_code} />
-              <StateRow label="Status" value={state.status} />
-              <StateRow label="Period starts" value={formatDate(state.current_period_start)} />
-              <StateRow label="Period ends" value={formatDate(state.current_period_end)} />
-              <StateRow label="Trial ends" value={formatDate(state.trial_ends_at)} />
-              <StateRow label="Grace ends" value={formatDate(state.grace_ends_at)} />
-              <StateRow label="Next payment" value={formatDate(state.next_payment_at)} />
-              <StateRow label="Cancel at period end" value={state.cancel_at_period_end ? "Yes" : "No"} />
+            <div className="mt-4 space-y-4">
+              <div className="rounded-2xl border border-border/70 px-4">
+                <StateRow label="Plan" value={state.plan_code} />
+                <StateRow label="Status" value={state.status} />
+                <StateRow label="Period starts" value={formatDate(state.current_period_start)} />
+                <StateRow label="Period ends" value={formatDate(state.current_period_end)} />
+                <StateRow label="Trial ends" value={formatDate(state.trial_ends_at)} />
+                <StateRow label="Grace ends" value={formatDate(state.grace_ends_at)} />
+                <StateRow label="Next payment" value={formatDate(state.next_payment_at)} />
+                <StateRow label="Cancel at period end" value={state.cancel_at_period_end ? "Yes" : "No"} />
+              </div>
+
+              {state.plan_change ? (
+                <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-4">
+                  <StateRow
+                    label="Scheduled plan change"
+                    value={`${state.plan_change.current_plan_code} → ${state.plan_change.target_plan_code}`}
+                  />
+                  <StateRow label="Change type" value={state.plan_change.change_type} />
+                  <StateRow label="Change status" value={state.plan_change.status} />
+                  <StateRow label="Effective date" value={formatDate(state.plan_change.effective_at)} />
+                  {state.plan_change.failure_reason ? (
+                    <StateRow label="Failure reason" value={state.plan_change.failure_reason} />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="mt-5 rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-text-muted">
@@ -262,7 +289,7 @@ function SuperadminSimulationPage() {
 
           {lastResult?.lifecycle ? (
             <div className="mt-4 rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
-              Reconciliation: {lastResult.lifecycle.past_due || 0} past due, {lastResult.lifecycle.grace_period || 0} grace, {lastResult.lifecycle.expired || 0} expired.
+              Reconciliation: {lastResult.lifecycle.past_due || 0} past due, {lastResult.lifecycle.grace_period || 0} grace, {lastResult.lifecycle.expired || 0} expired; {lastResult.plan_changes?.awaiting_payment || 0} downgrade awaiting payment, {lastResult.plan_changes?.blocked || 0} downgrade blocked.
             </div>
           ) : null}
         </Card>
