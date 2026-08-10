@@ -14,26 +14,15 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
-import assessmentLimitsService from "../../services/assessmentLimitsService";
 import { getErrorMessage } from "../../services/api";
 import { bulkAcademicService } from "../../services/bulkAcademicService";
 import { subscriptionService } from "../../services/subscriptionService";
 
-const emptyScores = {
-  test_score: "",
-  assessment_score: "",
-  exam_score: "",
-};
-const scoreFields = ["test_score", "assessment_score", "exam_score"];
-const scoreLabels = {
-  test_score: "Test",
-  assessment_score: "Assessment",
-  exam_score: "Exam",
-};
 const toNullableScore = (value) =>
   value === "" || value === null || value === undefined ? null : Number(value);
-const scoreTotal = (draft) =>
-  scoreFields.reduce((sum, field) => sum + (Number(draft[field]) || 0), 0);
+const scoresFromResult = (result) => Object.fromEntries(
+  (result?.components || []).map((item) => [item.assessment_component_id, item.score ?? ""]),
+);
 const isEditable = (result) => !result || result.status === "draft";
 const displayStudent = (student) =>
   [student.first_name, student.last_name].filter(Boolean).join(" ") ||
@@ -46,7 +35,7 @@ function TeacherResultsPage() {
   const [assignments, setAssignments] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
-  const [limits, setLimits] = useState(null);
+  const [scheme, setScheme] = useState(null);
   const [bulkSubmissionAllowed, setBulkSubmissionAllowed] = useState(false);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [academicSessionId, setAcademicSessionId] = useState("");
@@ -71,13 +60,13 @@ function TeacherResultsPage() {
           assignmentResponse,
           sessionResponse,
           termResponse,
-          limitsResponse,
+          schemeResponse,
           entitlementResponse,
         ] = await Promise.all([
           academicService.listMyTeacherAssignments(),
           academicService.listTeacherSessions(),
           academicService.listTeacherTerms(),
-          assessmentLimitsService.getTeacherLimits(),
+          academicService.getTeacherAssessmentScheme().catch(() => null),
           subscriptionService.getActorEntitlements().catch(() => null),
         ]);
         if (!mounted) return;
@@ -87,7 +76,7 @@ function TeacherResultsPage() {
         setAssignments(assignmentItems);
         setSessions(sessionItems);
         setTerms(termItems);
-        setLimits(limitsResponse);
+        setScheme(schemeResponse);
         setBulkSubmissionAllowed(
           Boolean(
             entitlementResponse?.features?.bulk_academic_operations,
@@ -228,44 +217,37 @@ function TeacherResultsPage() {
     );
   }, [studentSearch, students]);
 
-  const maximumFor = (field) => {
-    if (field === "test_score") return limits?.test_max;
-    if (field === "assessment_score") return limits?.assessment_max;
-    return limits?.exam_max;
-  };
-
-  const updateDraft = (studentId, field, value) => {
+  const updateDraft = (studentId, componentId, value) => {
     if (!isEditable(resultByStudent[studentId])) return;
     setDrafts((current) => ({
       ...current,
       [studentId]: {
-        ...emptyScores,
-        ...(resultByStudent[studentId] || {}),
+        ...scoresFromResult(resultByStudent[studentId]),
         ...(current[studentId] || {}),
-        [field]: value,
+        [componentId]: value,
       },
     }));
   };
 
   const validateDraft = (draft, forSubmission) => {
-    if (!limits?.is_configured) {
+    if (!scheme?.is_configured) {
       showWarning(
-        "Assessment limits have not been configured by the school admin.",
+        "An assessment scheme has not been configured by the school admin.",
       );
       return false;
     }
-    for (const field of scoreFields) {
-      const value = toNullableScore(draft[field]);
-      const maximum = Number(maximumFor(field));
+    for (const component of scheme.components) {
+      const value = toNullableScore(draft[component.id]);
+      const maximum = Number(component.maximum_score);
       if (forSubmission && value === null) {
         showWarning(
-          "All three assessment scores are required before submitting.",
+          "Every configured component is required before submitting.",
         );
         return false;
       }
       if (value !== null && (value < 0 || value > maximum)) {
         showWarning(
-          `${scoreLabels[field]} must be between 0 and ${maximum}.`,
+          `${component.name} must be between 0 and ${maximum}.`,
         );
         return false;
       }
@@ -282,8 +264,7 @@ function TeacherResultsPage() {
       return;
     }
     const draft = {
-      ...emptyScores,
-      ...(existing || {}),
+      ...scoresFromResult(existing),
       ...(drafts[studentId] || {}),
     };
     if (!validateDraft(draft, status === "submitted")) return;
@@ -295,9 +276,10 @@ function TeacherResultsPage() {
         teacher_assignment_id: selectedAssignmentId,
         academic_session_id: academicSessionId,
         academic_term_id: academicTermId,
-        test_score: toNullableScore(draft.test_score),
-        assessment_score: toNullableScore(draft.assessment_score),
-        exam_score: toNullableScore(draft.exam_score),
+        component_scores: scheme.components.map((component) => ({
+          assessment_component_id: component.id,
+          score: toNullableScore(draft[component.id]),
+        })),
         status,
       });
       await loadResults();
@@ -391,7 +373,7 @@ function TeacherResultsPage() {
           {error}
         </div>
       ) : null}
-      {!limits?.is_configured ? (
+      {!scheme?.is_configured ? (
         <div className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm font-medium text-amber-900">
           Score entry is disabled until the school admin configures assessment maximums.
         </div>
@@ -484,7 +466,7 @@ function TeacherResultsPage() {
                 !bulkSubmissionAllowed ||
                 isBulkSubmitting ||
                 draftCount === 0 ||
-                !limits?.is_configured
+                !scheme?.is_configured
               }
               title={
                 bulkSubmissionAllowed
@@ -544,16 +526,22 @@ function TeacherResultsPage() {
             const existing = resultByStudent[student.id];
             const editable = isEditable(existing);
             const draft = {
-              ...emptyScores,
-              ...(existing || {}),
+              ...scoresFromResult(existing),
               ...(drafts[student.id] || {}),
             };
-            const complete = scoreFields.every(
-              (field) => toNullableScore(draft[field]) !== null,
+            const complete = (scheme?.components || []).every(
+              (component) => toNullableScore(draft[component.id]) !== null,
             );
+            const total = (scheme?.components || []).reduce(
+              (sum, component) => sum + (Number(draft[component.id]) || 0),
+              0,
+            );
+            const enteredCount = (scheme?.components || []).filter(
+              (component) => toNullableScore(draft[component.id]) !== null,
+            ).length;
             return (
               <Card key={student.id} className="p-3 sm:p-4">
-                <div className="grid gap-3 xl:grid-cols-[minmax(160px,1fr)_repeat(3,minmax(100px,0.5fr))_minmax(145px,0.7fr)_minmax(130px,auto)] xl:items-end">
+                <div className="grid gap-3 xl:grid-cols-[minmax(160px,1fr)_minmax(0,3fr)_minmax(145px,0.7fr)_minmax(130px,auto)] xl:items-end">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-text">
                       {displayStudent(student)}
@@ -573,27 +561,32 @@ function TeacherResultsPage() {
                       {existing?.status || "pending"}
                     </Badge>
                   </div>
-                  {scoreFields.map((field) => (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {(scheme?.components || []).map((component) => (
                     <TextField
-                      key={field}
-                      label={`${scoreLabels[field]} / ${maximumFor(field) ?? "-"}`}
+                      key={component.id}
+                      label={`${component.name} / ${component.maximum_score}`}
                       type="number"
                       min="0"
-                      max={maximumFor(field) ?? undefined}
-                      value={draft[field] ?? ""}
+                      max={component.maximum_score}
+                      value={draft[component.id] ?? ""}
                       onChange={(value) =>
-                        updateDraft(student.id, field, value)
+                        updateDraft(student.id, component.id, value)
                       }
-                      disabled={!editable || !limits?.is_configured}
+                      disabled={!editable || !scheme?.is_configured}
                     />
                   ))}
+                  </div>
                   <div className="rounded-xl border border-border bg-surface px-3 py-2">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                       Total / grade
                     </p>
                     <p className="mt-1 font-semibold text-text">
                       <Calculator className="mr-1 inline h-4 w-4" />
-                      {scoreTotal(draft) || "--"} / {existing?.grade || "--"}
+                      {enteredCount > 0 ? total : "--"} / {existing?.grade || "--"}
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {enteredCount} of {scheme?.components?.length || 0} components entered
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
@@ -602,7 +595,7 @@ function TeacherResultsPage() {
                       onClick={() => saveResult(student.id, "draft")}
                       disabled={
                         !editable ||
-                        !limits?.is_configured ||
+                        !scheme?.is_configured ||
                         isSaving === `${student.id}-draft`
                       }
                     >
@@ -616,7 +609,7 @@ function TeacherResultsPage() {
                       disabled={
                         !editable ||
                         !complete ||
-                        !limits?.is_configured ||
+                        !scheme?.is_configured ||
                         isSaving === `${student.id}-submitted`
                       }
                     >

@@ -7,7 +7,6 @@ import StudentSubjectPerformanceCard from "../../components/student/StudentSubje
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import { academicService } from "../../services/academicService";
-import { assessmentLimitsService } from "../../services/assessmentLimitsService";
 import { getErrorMessage } from "../../services/api";
 import { cleanText } from "../../utils/academicDashboard";
 import { cn } from "../../utils/cn";
@@ -15,7 +14,6 @@ import { cn } from "../../utils/cn";
 function StudentSubjectsPage() {
   const [subjectCards, setSubjectCards] = useState([]);
   const [context, setContext] = useState(null);
-  const [assessmentLimits, setAssessmentLimits] = useState({ is_configured: false });
   const [viewMode, setViewMode] = useState("grid");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -28,14 +26,10 @@ function StudentSubjectsPage() {
       setLoadError(null);
 
       try {
-        const [response, limitsResponse] = await Promise.all([
-          academicService.listMySubjectCards(),
-          assessmentLimitsService.getStudentLimits(),
-        ]);
+        const response = await academicService.listMySubjectCards();
         if (!mounted) return;
         setSubjectCards(response?.items || []);
         setContext(response?.context || null);
-        setAssessmentLimits(limitsResponse || { is_configured: false });
       } catch (error) {
         if (mounted) {
           setLoadError(getErrorMessage(error, "Failed to load subjects."));
@@ -169,7 +163,6 @@ function StudentSubjectsPage() {
                 card={card}
                 classLabel={classLabel}
                 compact={!isGridView}
-                limits={assessmentLimits}
               />
             ))}
           </section>

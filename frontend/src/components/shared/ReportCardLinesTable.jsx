@@ -9,6 +9,7 @@ function ReportCardLinesTable({ lines = [] }) {
       </p>
     );
   }
+  const componentHeaders = lines[0]?.components || [];
 
   return (
     <div className="mt-4 overflow-hidden rounded-[1.3rem] border border-border/70 bg-surface shadow-sm">
@@ -27,10 +28,10 @@ function ReportCardLinesTable({ lines = [] }) {
               </p>
             </div>
 
-            <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-              <ScoreCell label="Test" value={line.test_score} />
-              <ScoreCell label="Assess." value={line.assessment_score} />
-              <ScoreCell label="Exam" value={line.exam_score} />
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-3">
+              {(line.components || []).map((component) => (
+                <ScoreCell key={component.assessment_component_id} label={component.name} value={`${cleanText(component.score, "-")} / ${cleanText(component.maximum_score, "-")}`} />
+              ))}
             </dl>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -50,23 +51,12 @@ function ReportCardLinesTable({ lines = [] }) {
 
       <div className="hidden max-w-full overflow-x-auto overscroll-x-contain md:block">
         <table className="w-full min-w-[54rem] table-fixed text-left text-sm text-text lg:min-w-[72rem] xl:min-w-full">
-          <colgroup>
-            <col className="w-[28%]" />
-            <col className="w-[10%]" />
-            <col className="w-[12%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[20%]" />
-          </colgroup>
           <thead className="border-b border-border/70 bg-surface-muted/30 text-[11px] uppercase tracking-[0.12em] text-text-muted">
             <tr>
               <th className="whitespace-nowrap px-4 py-3.5 font-semibold">Subject</th>
-              <th className="whitespace-nowrap px-4 py-3.5 text-center font-semibold">Test</th>
-              <th className="whitespace-nowrap px-4 py-3.5 text-center font-semibold">
-                Assessment
-              </th>
-              <th className="whitespace-nowrap px-4 py-3.5 text-center font-semibold">Exam</th>
+              {componentHeaders.map((component) => (
+                <th key={component.assessment_component_id} className="whitespace-nowrap px-4 py-3.5 text-center font-semibold">{component.name}</th>
+              ))}
               <th className="whitespace-nowrap px-4 py-3.5 text-center font-semibold">Total</th>
               <th className="whitespace-nowrap px-4 py-3.5 text-center font-semibold">Grade</th>
               <th className="whitespace-nowrap px-4 py-3.5 text-right font-semibold">Remark</th>
@@ -88,15 +78,10 @@ function ReportCardLinesTable({ lines = [] }) {
                     </p>
                   </div>
                 </td>
-                <td className="whitespace-nowrap px-4 py-4 text-center font-medium">
-                  {cleanText(line.test_score, "-")}
-                </td>
-                <td className="whitespace-nowrap px-4 py-4 text-center font-medium">
-                  {cleanText(line.assessment_score, "-")}
-                </td>
-                <td className="whitespace-nowrap px-4 py-4 text-center font-medium">
-                  {cleanText(line.exam_score, "-")}
-                </td>
+                {componentHeaders.map((header) => {
+                  const component = (line.components || []).find((item) => item.assessment_component_id === header.assessment_component_id);
+                  return <td key={header.assessment_component_id} className="whitespace-nowrap px-4 py-4 text-center font-medium">{cleanText(component?.score, "-")}</td>;
+                })}
                 <td className="whitespace-nowrap px-4 py-4 text-center">
                   <span className="inline-flex min-w-[4.5rem] items-center justify-center rounded-full bg-primary-soft px-3 py-1 text-sm font-bold text-primary">
                     {cleanText(line.total_score, "-")}

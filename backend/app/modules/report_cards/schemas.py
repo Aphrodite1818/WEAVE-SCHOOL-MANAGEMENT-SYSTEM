@@ -52,15 +52,22 @@ class ReportCardCommentsUpdate(InputBase):
     principal_comment: str | None = Field(default=None, max_length=2000)
 
 
+class ReportCardSubjectComponentResponse(OutputBase):
+    assessment_component_id: uuid.UUID
+    name: str
+    code: str | None = None
+    position: int
+    maximum_score: Decimal
+    score: Decimal
+
+
 class ReportCardSubjectLineResponse(OutputBase):
     id: uuid.UUID
     subject_id: uuid.UUID
     subject_name: str
     subject_code: str | None = None
     teacher_name: str | None = None
-    test_score: Decimal
-    assessment_score: Decimal
-    exam_score: Decimal
+    components: list[ReportCardSubjectComponentResponse] = Field(default_factory=list)
     total_score: Decimal
     grade: str
     remark: str | None = None

@@ -208,6 +208,14 @@ function ParentResultsPage() {
                       </div>
                       <Badge variant="success">{cleanText(result.grade)}</Badge>
                     </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      {(result.components || []).map((component) => (
+                        <div key={component.assessment_component_id} className="rounded-xl bg-surface-muted/30 px-3 py-2 text-sm">
+                          <p className="truncate text-xs text-text-muted">{component.name}</p>
+                          <p className="mt-1 font-semibold text-text">{component.score ?? "—"} / {component.maximum_score}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -44,9 +44,7 @@ def _payload(*, assignment_id=None) -> StudentSubjectResultUpsert:
         teacher_assignment_id=assignment_id or uuid4(),
         academic_session_id=uuid4(),
         academic_term_id=uuid4(),
-        test_score=20,
-        assessment_score=20,
-        exam_score=50,
+        component_scores=[],
         status=AcademicResultStatus.DRAFT,
     )
 
@@ -62,9 +60,7 @@ def _result(status: AcademicResultStatus):
         student_id=uuid4(),
         academic_session_id=uuid4(),
         academic_term_id=uuid4(),
-        test_score=20,
-        assessment_score=20,
-        exam_score=50,
+        assessment_scheme_id=uuid4(),
         status=status,
         recorded_by_actor_type="teacher",
         recorded_by_actor_id=uuid4(),
@@ -303,6 +299,11 @@ async def test_admin_result_forward_lifecycle_writes_service_metadata(
         StudentAcademicService,
         "_build_result_response",
         AsyncMock(side_effect=_save_result),
+    )
+    monkeypatch.setattr(
+        StudentAcademicService,
+        "_ensure_result_complete",
+        AsyncMock(),
     )
 
     await StudentAcademicService.update_result_status(

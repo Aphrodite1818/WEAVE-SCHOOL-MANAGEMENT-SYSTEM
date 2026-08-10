@@ -138,9 +138,44 @@ class ReportCardSubjectLine(BaseModel):
     subject_name: Mapped[str] = mapped_column(String(100), nullable=False)
     subject_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     teacher_name: Mapped[str | None] = mapped_column(String(210), nullable=True)
-    test_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    assessment_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    exam_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     total_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     grade: Mapped[str] = mapped_column(String(10), nullable=False)
     remark: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
+class ReportCardSubjectComponent(BaseModel):
+    __tablename__ = "report_card_subject_components"
+
+    report_card_subject_line_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("report_card_subject_lines.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assessment_component_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assessment_components.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    maximum_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "report_card_subject_line_id",
+            "assessment_component_id",
+            name="uq_report_card_component_line_component",
+        ),
+        CheckConstraint(
+            "score >= 0 AND maximum_score > 0 AND score <= maximum_score",
+            name="ck_report_card_component_score",
+        ),
+        Index(
+            "ix_report_card_subject_components_tenant_line_position",
+            "tenant_id",
+            "report_card_subject_line_id",
+            "position",
+        ),
+    )

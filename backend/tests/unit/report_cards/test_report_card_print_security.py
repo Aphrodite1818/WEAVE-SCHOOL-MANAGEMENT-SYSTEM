@@ -14,6 +14,7 @@ from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards.schemas import ReportCardCommentsUpdate
 from app.modules.report_cards.service import ReportCardService
 from app.modules.student_academics.models import AcademicResultStatus
+from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.subjects.repository import SubjectRepository
 
 
@@ -102,9 +103,6 @@ async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_ve
         subject_id=subject_id,
         teacher_assignment_id=None,
         teacher_membership_id=uuid4(),
-        test_score=Decimal("20"),
-        assessment_score=Decimal("20"),
-        exam_score=Decimal("50"),
         total_score=Decimal("90"),
         grade="A",
         remark="Excellent",
@@ -136,6 +134,24 @@ async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_ve
         ReportCardRepository,
         "create_line",
         AsyncMock(side_effect=_save),
+    )
+    monkeypatch.setattr(
+        ReportCardRepository,
+        "create_component",
+        AsyncMock(side_effect=_save),
+    )
+    component = SimpleNamespace(
+        id=uuid4(),
+        name="Final",
+        code="FINAL",
+        position=0,
+        maximum_score=Decimal("100"),
+    )
+    score = SimpleNamespace(score=Decimal("90"))
+    monkeypatch.setattr(
+        StudentAcademicRepository,
+        "list_result_component_scores_batch",
+        AsyncMock(return_value={result.id: [(component, score)]}),
     )
     monkeypatch.setattr(
         SubjectRepository,

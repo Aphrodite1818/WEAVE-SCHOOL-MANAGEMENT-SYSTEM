@@ -59,6 +59,7 @@ function ReportCardPrintSheet({ card, onAfterPrint }) {
   const schoolLogo = card.school_logo_url || "/icons/weave-email-icon.png";
   const studentPhoto = card.student_passport_photo_url;
   const lines = Array.isArray(card.lines) ? card.lines : [];
+  const componentHeaders = lines[0]?.components || [];
 
   return (
     <section className="report-card-print-root" aria-hidden="true">
@@ -215,23 +216,11 @@ function ReportCardPrintSheet({ card, onAfterPrint }) {
         </section>
 
         <table className="rc-table">
-          <colgroup>
-            <col style={{ width: "23%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "27%" }} />
-          </colgroup>
           <thead>
             <tr>
               <th>Subject</th>
               <th>Code</th>
-              <th>Test</th>
-              <th>Assessment</th>
-              <th>Exam</th>
+              {componentHeaders.map((component) => <th key={component.assessment_component_id}>{component.name}</th>)}
               <th>Total</th>
               <th>Grade</th>
               <th>Remark</th>
@@ -242,9 +231,10 @@ function ReportCardPrintSheet({ card, onAfterPrint }) {
               <tr key={line.id || line.subject_id}>
                 <td className="left">{cleanText(line.subject_name)}</td>
                 <td>{cleanText(line.subject_code)}</td>
-                <td>{cleanText(line.test_score)}</td>
-                <td>{cleanText(line.assessment_score)}</td>
-                <td>{cleanText(line.exam_score)}</td>
+                {componentHeaders.map((header) => {
+                  const component = (line.components || []).find((item) => item.assessment_component_id === header.assessment_component_id);
+                  return <td key={header.assessment_component_id}>{cleanText(component?.score)}</td>;
+                })}
                 <td className="strong">{cleanText(line.total_score)}</td>
                 <td>{cleanText(line.grade)}</td>
                 <td className="left">{cleanText(line.remark, "")}</td>

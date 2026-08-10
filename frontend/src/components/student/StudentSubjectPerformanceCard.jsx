@@ -114,19 +114,13 @@ function TeacherLine({ name }) {
   );
 }
 
-function StudentSubjectPerformanceCard({ card, classLabel, compact = false, limits }) {
+function StudentSubjectPerformanceCard({ card, classLabel, compact = false }) {
   const subjectName = cleanText(card?.subject_name, "Subject");
   const statusLabel = displayStatusLabel(card?.status, card?.result_id ? "Pending" : "Awaiting marks");
   const grade = cleanText(card?.grade, "--").toUpperCase();
   const link = card?.id ? `/student/subjects/${card.id}` : undefined;
-  const testMax = card?.test_max ?? limits?.test_max ?? null;
-  const assessmentMax = card?.assessment_max ?? limits?.assessment_max ?? null;
-  const examMax = card?.exam_max ?? limits?.exam_max ?? null;
-  const totalMax = card?.total_max ?? limits?.total_max ?? (
-    [testMax, assessmentMax, examMax].every(hasValue)
-      ? Number(testMax) + Number(assessmentMax) + Number(examMax)
-      : null
-  );
+  const components = card?.components || [];
+  const totalMax = card?.maximum_score ?? null;
 
   return (
     <Card
@@ -158,9 +152,9 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false, limi
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4">
           <ScoreRing value={card?.total_score} max={totalMax} />
           <div className="min-w-0 space-y-2">
-            <ScoreBar label="Test" value={card?.test_score} max={testMax} />
-            <ScoreBar label="Assess." value={card?.assessment_score} max={assessmentMax} />
-            <ScoreBar label="Exam" value={card?.exam_score} max={examMax} />
+            {components.map((component) => (
+              <ScoreBar key={component.assessment_component_id} label={component.name} value={component.score} max={component.maximum_score} />
+            ))}
           </div>
           <div className={cn("grid h-16 w-16 shrink-0 place-items-center rounded-full border text-center sm:h-20 sm:w-20", gradeTone(grade))}>
             <div>
@@ -169,8 +163,8 @@ function StudentSubjectPerformanceCard({ card, classLabel, compact = false, limi
             </div>
           </div>
         </div>
-        {!limits?.is_configured && !hasValue(card?.test_max) ? (
-          <p className="rounded-xl bg-warning-soft px-3 py-2 text-xs text-amber-900">Assessment limits have not been configured by the school.</p>
+        {components.length === 0 ? (
+          <p className="rounded-xl bg-warning-soft px-3 py-2 text-xs text-amber-900">An assessment scheme has not been configured by the school.</p>
         ) : null}
         <TeacherLine name={card?.teacher_name} />
       </div>

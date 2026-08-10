@@ -18,8 +18,8 @@ from app.core.exceptions import (
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.report_cards.models import ReportCardStatus
 from app.modules.parents.models import ParentMembership
+from app.modules.student_academics.assessment_repository import AssessmentRepository
 from app.modules.student_academics.models import (
-    SchoolAssessmentConfig,
     AcademicLifecycleAudit,
     AcademicResultStatus,
     AcademicSession,
@@ -27,6 +27,7 @@ from app.modules.student_academics.models import (
     AcademicTerm,
     AcademicTermName,
     AcademicTermStatus,
+    AssessmentSchemeStatus,
     ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
@@ -37,6 +38,7 @@ from app.modules.student_academics.models import (
 )
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
+    AssessmentComponentScoreResponse,
     GradingScaleReadiness,
     AcademicSessionCreate,
     AcademicSessionDependencyPreview,
@@ -2739,6 +2741,8 @@ class StudentAcademicService:
     async def _build_result_response(
         db: AsyncSession,
         result: StudentSubjectResult,
+        component_rows=None,
+        scheme=None,
     ) -> StudentSubjectResultResponse:
         student = await StudentRepository.get_by_id(
             db,
@@ -2772,6 +2776,25 @@ class StudentAcademicService:
             result.tenant_id,
             result.academic_term_id,
         )
+        if scheme is None:
+            scheme = await AssessmentRepository.get_scheme(
+                db, result.tenant_id, result.assessment_scheme_id
+            )
+        if component_rows is None:
+            component_rows = await StudentAcademicRepository.list_result_component_scores(
+                db, result.tenant_id, result
+            )
+        components = [
+            AssessmentComponentScoreResponse(
+                assessment_component_id=component.id,
+                name=component.name,
+                code=component.code,
+                position=component.position,
+                maximum_score=component.maximum_score,
+                score=score.score if score is not None else None,
+            )
+            for component, score in component_rows
+        ]
         teacher_name = None
         if teacher is not None:
             teacher_name = (
@@ -2816,9 +2839,12 @@ class StudentAcademicService:
                 if term
                 else None
             ),
-            test_score=result.test_score,
-            assessment_score=result.assessment_score,
-            exam_score=result.exam_score,
+            assessment_scheme_id=result.assessment_scheme_id,
+            assessment_scheme_name=scheme.name if scheme else "Assessment scheme",
+            components=components,
+            maximum_score=sum(
+                (component.maximum_score for component, _ in component_rows), Decimal("0")
+            ),
             total_score=result.total_score,
             grade=result.grade,
             remark=result.remark,
@@ -2841,16 +2867,12 @@ class StudentAcademicService:
         return "teacher" if isinstance(actor, TeacherMembership) else "tenant_admin"
 
     @staticmethod
-    def _ensure_result_complete(result: StudentSubjectResult) -> None:
-        if any(
-            score is None
-            for score in (
-                result.test_score,
-                result.assessment_score,
-                result.exam_score,
-            )
-        ):
-            raise BadRequestException("All scores are required before submission.")
+    async def _ensure_result_complete(db: AsyncSession, result: StudentSubjectResult) -> None:
+        rows = await StudentAcademicRepository.list_result_component_scores(
+            db, result.tenant_id, result
+        )
+        if not rows or any(score is None for _, score in rows):
+            raise BadRequestException("Every configured assessment component is required.")
 
     @staticmethod
     def _apply_result_lifecycle_metadata(
@@ -2995,48 +3017,32 @@ class StudentAcademicService:
                 "Use the dedicated lifecycle endpoint for approval and locking."
             )
 
-        from sqlalchemy import select
-
-        config = (
-            await db.execute(
-                select(SchoolAssessmentConfig).where(SchoolAssessmentConfig.tenant_id == tenant_id)
+        scheme = await AssessmentRepository.get_active_scheme(db, tenant_id)
+        if scheme is None or scheme.status != AssessmentSchemeStatus.ACTIVE:
+            raise ConflictException("An active assessment scheme is required before score entry.")
+        components = await AssessmentRepository.list_components(db, tenant_id, scheme.id)
+        if not components or sum((item.maximum_score for item in components), Decimal("0")) != 100:
+            raise ConflictException("The active assessment scheme must total 100.")
+        component_by_id = {item.id: item for item in components}
+        provided = {
+            item.assessment_component_id: item.score
+            for item in payload.component_scores
+            if item.score is not None
+        }
+        unknown_ids = set(provided) - set(component_by_id)
+        if unknown_ids:
+            raise BadRequestException(
+                "One or more scores reference an invalid assessment component."
             )
-        ).scalar_one_or_none()
-        if config is None:
-            config = SchoolAssessmentConfig(
-                tenant_id=tenant_id, test_max=20, assessment_max=20, exam_max=60
-            )
-
-        if payload.test_score is not None and payload.test_score > config.test_max:
-            raise BadRequestException(f"Test score cannot exceed {config.test_max}.")
-        if (
-            payload.assessment_score is not None
-            and payload.assessment_score > config.assessment_max
-        ):
-            raise BadRequestException(f"Assessment score cannot exceed {config.assessment_max}.")
-        if payload.exam_score is not None and payload.exam_score > config.exam_max:
-            raise BadRequestException(f"Exam score cannot exceed {config.exam_max}.")
-
-        total = sum(
-            (
-                score
-                for score in (
-                    payload.test_score,
-                    payload.assessment_score,
-                    payload.exam_score,
+        for component_id, score in provided.items():
+            if score > component_by_id[component_id].maximum_score:
+                component = component_by_id[component_id]
+                raise BadRequestException(
+                    f"{component.name} score cannot exceed {component.maximum_score}."
                 )
-                if score is not None
-            ),
-            Decimal("0"),
-        )
-        complete = all(
-            score is not None
-            for score in (
-                payload.test_score,
-                payload.assessment_score,
-                payload.exam_score,
-            )
-        )
+
+        total = sum(provided.values(), Decimal("0"))
+        complete = len(provided) == len(components)
         grade = None
         remark = None
         grading_scale_id = None
@@ -3052,7 +3058,9 @@ class StudentAcademicService:
                 grading_scale_id = scale.id
 
         if payload.status == AcademicResultStatus.SUBMITTED and not complete:
-            raise BadRequestException("All three scores are required before submission.")
+            raise BadRequestException("Every configured assessment component is required.")
+        if payload.status == AcademicResultStatus.SUBMITTED and grade is None:
+            raise ConflictException("An active grading scale must cover the final numeric score.")
 
         is_new = False
         if existing is None:
@@ -3068,10 +3076,8 @@ class StudentAcademicService:
                 student_enrollment_id=enrollment.id,
                 academic_session_id=session.id,
                 academic_term_id=term.id,
+                assessment_scheme_id=scheme.id,
                 grading_scale_id=grading_scale_id,
-                test_score=payload.test_score,
-                assessment_score=payload.assessment_score,
-                exam_score=payload.exam_score,
                 total_score=total,
                 grade=grade,
                 remark=remark,
@@ -3090,11 +3096,12 @@ class StudentAcademicService:
         else:
             result = existing
             previous_status = result.status
+            if result.assessment_scheme_id != scheme.id:
+                raise ConflictException(
+                    "This result belongs to a different assessment scheme and cannot be edited."
+                )
             result.teacher_assignment_id = assignment.id
             result.teacher_membership_id = assignment.teacher_membership_id
-            result.test_score = payload.test_score
-            result.assessment_score = payload.assessment_score
-            result.exam_score = payload.exam_score
             result.total_score = total
             result.grade = grade
             result.remark = remark
@@ -3117,6 +3124,7 @@ class StudentAcademicService:
 
         try:
             result = await StudentAcademicRepository.upsert_result(db, result)
+            await StudentAcademicRepository.replace_result_scores(db, result, provided)
             await db.flush()
         except IntegrityError:
             raise ConflictException("Concurrent modification of this result.")
@@ -3133,7 +3141,7 @@ class StudentAcademicService:
                 new_status=result.status.value,
                 acting_admin_id=actor_id if isinstance(actor, TenantAdmin) else None,
             )
-        elif not is_new and payload.status != existing.status:
+        elif not is_new and payload.status != previous_status:
             action = "submit" if payload.status == AcademicResultStatus.SUBMITTED else "edit"
             await StudentAcademicService._record_academic_lifecycle(
                 db,
@@ -3181,7 +3189,7 @@ class StudentAcademicService:
             payload.status,
         )
         if payload.status == AcademicResultStatus.SUBMITTED:
-            StudentAcademicService._ensure_result_complete(result)
+            await StudentAcademicService._ensure_result_complete(db, result)
         result.status = payload.status
         StudentAcademicService._apply_result_lifecycle_metadata(
             result,
@@ -3352,7 +3360,21 @@ class StudentAcademicService:
             has_grade=has_grade,
             finalized_only=finalized_only,
         )
-        return [await StudentAcademicService._build_result_response(db, row) for row in rows], total
+        component_rows = await StudentAcademicRepository.list_result_component_scores_batch(
+            db, tenant_id, rows
+        )
+        schemes = await AssessmentRepository.get_schemes_by_id(
+            db, tenant_id, {row.assessment_scheme_id for row in rows}
+        )
+        return [
+            await StudentAcademicService._build_result_response(
+                db,
+                row,
+                component_rows.get(row.id, []),
+                schemes.get(row.assessment_scheme_id),
+            )
+            for row in rows
+        ], total
 
     @staticmethod
     async def list_student_subject_cards(
@@ -3406,6 +3428,12 @@ class StudentAcademicService:
             )
             if student.class_id
             else ([], 0)
+        )
+        active_scheme = await AssessmentRepository.get_active_scheme(db, actor.tenant_id)
+        active_components = (
+            await AssessmentRepository.list_components(db, actor.tenant_id, active_scheme.id)
+            if active_scheme is not None
+            else []
         )
 
         cards: list[StudentSubjectCardResponse] = []
@@ -3462,6 +3490,24 @@ class StudentAcademicService:
                     or None
                 )
             submitted = bool(result is not None and result.status == AcademicResultStatus.LOCKED)
+            component_rows = (
+                await StudentAcademicRepository.list_result_component_scores(
+                    db, actor.tenant_id, result
+                )
+                if submitted
+                else [(component, None) for component in active_components]
+            )
+            component_scores = [
+                AssessmentComponentScoreResponse(
+                    assessment_component_id=component.id,
+                    name=component.name,
+                    code=component.code,
+                    position=component.position,
+                    maximum_score=component.maximum_score,
+                    score=score.score if score is not None else None,
+                )
+                for component, score in component_rows
+            ]
             cards.append(
                 StudentSubjectCardResponse(
                     id=class_subject.id,
@@ -3486,9 +3532,18 @@ class StudentAcademicService:
                         if term
                         else None
                     ),
-                    test_score=result.test_score if submitted else None,
-                    assessment_score=result.assessment_score if submitted else None,
-                    exam_score=result.exam_score if submitted else None,
+                    assessment_scheme_id=(
+                        result.assessment_scheme_id
+                        if submitted
+                        else active_scheme.id
+                        if active_scheme
+                        else None
+                    ),
+                    assessment_scheme_name=(active_scheme.name if active_scheme else None),
+                    components=component_scores,
+                    maximum_score=sum(
+                        (item.maximum_score for item, _ in component_rows), Decimal("0")
+                    ),
                     total_score=result.total_score if submitted else None,
                     grade=result.grade if submitted else None,
                     remark=result.remark if submitted else None,

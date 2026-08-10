@@ -172,30 +172,16 @@ function StudentSubjectDetailsPage() {
             </p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-              <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                  Test
-                </p>
-                <p className="mt-2 text-xl font-semibold text-text">
-                  {metricValue(result.test_score)}
-                </p>
-              </div>
-              <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                  Assessment
-                </p>
-                <p className="mt-2 text-xl font-semibold text-text">
-                  {metricValue(result.assessment_score)}
-                </p>
-              </div>
-              <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-                  Exam
-                </p>
-                <p className="mt-2 text-xl font-semibold text-text">
-                  {metricValue(result.exam_score)}
-                </p>
-              </div>
+              {(result.components || []).map((component) => (
+                <div key={component.assessment_component_id} className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    {component.name}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-text">
+                    {metricValue(component.score)} / {metricValue(component.maximum_score)}
+                  </p>
+                </div>
+              ))}
               <div className="rounded-[1.1rem] border border-border/70 bg-surface px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                   Status

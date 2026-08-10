@@ -19,10 +19,13 @@ from app.modules.student_academics.models import (
     AcademicSessionStatus,
     AcademicTerm,
     AcademicTermStatus,
+    AssessmentComponent,
+    AssessmentScheme,
     ClassSubject,
     ClassSubjectTeacher,
     GradingScale,
     StudentProgressionRun,
+    StudentAssessmentScore,
     StudentSubjectResult,
     TeacherAssignment,
     TeacherAssignmentLifecycleAudit,
@@ -672,6 +675,124 @@ class StudentAcademicRepository:
         return await StudentAcademicRepository._save(db, result)
 
     @staticmethod
+    async def list_result_component_scores(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        result: StudentSubjectResult,
+    ) -> list[tuple[AssessmentComponent, StudentAssessmentScore | None]]:
+        rows = (
+            await db.execute(
+                select(AssessmentComponent, StudentAssessmentScore)
+                .outerjoin(
+                    StudentAssessmentScore,
+                    and_(
+                        StudentAssessmentScore.tenant_id == tenant_id,
+                        StudentAssessmentScore.student_subject_result_id == result.id,
+                        StudentAssessmentScore.assessment_component_id == AssessmentComponent.id,
+                    ),
+                )
+                .where(
+                    AssessmentComponent.tenant_id == tenant_id,
+                    AssessmentComponent.assessment_scheme_id == result.assessment_scheme_id,
+                    AssessmentComponent.is_active.is_(True),
+                )
+                .order_by(AssessmentComponent.position.asc())
+            )
+        ).all()
+        return [(component, score) for component, score in rows]
+
+    @staticmethod
+    async def list_result_component_scores_batch(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        results: list[StudentSubjectResult],
+    ) -> dict[uuid.UUID, list[tuple[AssessmentComponent, StudentAssessmentScore | None]]]:
+        if not results:
+            return {}
+        scheme_ids = {result.assessment_scheme_id for result in results}
+        result_ids = {result.id for result in results}
+        components = list(
+            (
+                await db.execute(
+                    select(AssessmentComponent)
+                    .where(
+                        AssessmentComponent.tenant_id == tenant_id,
+                        AssessmentComponent.assessment_scheme_id.in_(scheme_ids),
+                        AssessmentComponent.is_active.is_(True),
+                    )
+                    .order_by(AssessmentComponent.position.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        scores = list(
+            (
+                await db.execute(
+                    select(StudentAssessmentScore).where(
+                        StudentAssessmentScore.tenant_id == tenant_id,
+                        StudentAssessmentScore.student_subject_result_id.in_(result_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        components_by_scheme: dict[uuid.UUID, list[AssessmentComponent]] = {}
+        for component in components:
+            components_by_scheme.setdefault(component.assessment_scheme_id, []).append(component)
+        scores_by_result = {
+            (score.student_subject_result_id, score.assessment_component_id): score
+            for score in scores
+        }
+        return {
+            result.id: [
+                (component, scores_by_result.get((result.id, component.id)))
+                for component in components_by_scheme.get(result.assessment_scheme_id, [])
+            ]
+            for result in results
+        }
+
+    @staticmethod
+    async def replace_result_scores(
+        db: AsyncSession,
+        result: StudentSubjectResult,
+        values: dict[uuid.UUID, Decimal],
+    ) -> None:
+        existing = {
+            item.assessment_component_id: item
+            for item in (
+                (
+                    await db.execute(
+                        select(StudentAssessmentScore).where(
+                            StudentAssessmentScore.tenant_id == result.tenant_id,
+                            StudentAssessmentScore.student_subject_result_id == result.id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        }
+        for component_id, item in existing.items():
+            if component_id not in values:
+                await db.delete(item)
+        for component_id, value in values.items():
+            item = existing.get(component_id)
+            if item is None:
+                db.add(
+                    StudentAssessmentScore(
+                        tenant_id=result.tenant_id,
+                        student_subject_result_id=result.id,
+                        assessment_component_id=component_id,
+                        score=value,
+                    )
+                )
+            else:
+                item.score = value
+        await db.flush()
+
+    @staticmethod
     async def get_result_by_id(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -764,24 +885,32 @@ class StudentAcademicRepository:
                 )
             )
         if is_complete is not None:
+            component_count = (
+                select(func.count())
+                .select_from(AssessmentComponent)
+                .where(
+                    AssessmentComponent.tenant_id == tenant_id,
+                    AssessmentComponent.assessment_scheme_id
+                    == StudentSubjectResult.assessment_scheme_id,
+                    AssessmentComponent.is_active.is_(True),
+                )
+                .correlate(StudentSubjectResult)
+                .scalar_subquery()
+            )
+            score_count = (
+                select(func.count())
+                .select_from(StudentAssessmentScore)
+                .where(
+                    StudentAssessmentScore.tenant_id == tenant_id,
+                    StudentAssessmentScore.student_subject_result_id == StudentSubjectResult.id,
+                )
+                .correlate(StudentSubjectResult)
+                .scalar_subquery()
+            )
             if is_complete:
-                filters.append(
-                    and_(
-                        StudentSubjectResult.test_score.is_not(None),
-                        StudentSubjectResult.assessment_score.is_not(None),
-                        StudentSubjectResult.exam_score.is_not(None),
-                        StudentSubjectResult.grade.is_not(None),
-                    )
-                )
+                filters.append(and_(component_count > 0, score_count == component_count))
             else:
-                filters.append(
-                    or_(
-                        StudentSubjectResult.test_score.is_(None),
-                        StudentSubjectResult.assessment_score.is_(None),
-                        StudentSubjectResult.exam_score.is_(None),
-                        StudentSubjectResult.grade.is_(None),
-                    )
-                )
+                filters.append(or_(component_count == 0, score_count != component_count))
         if has_grade is not None:
             if has_grade:
                 filters.append(StudentSubjectResult.grade.is_not(None))

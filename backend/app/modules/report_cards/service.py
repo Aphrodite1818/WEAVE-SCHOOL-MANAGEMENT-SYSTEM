@@ -16,6 +16,7 @@ from app.modules.parents.models import Parent
 from app.modules.report_cards.models import (
     ReportCard,
     ReportCardStatus,
+    ReportCardSubjectComponent,
     ReportCardSubjectLine,
 )
 from app.modules.report_cards.repository import ReportCardRepository
@@ -27,6 +28,7 @@ from app.modules.report_cards.schemas import (
     ReportCardGenerateRequest,
     ReportCardResponse,
     ReportCardSubjectLineResponse,
+    ReportCardSubjectComponentResponse,
 )
 from app.modules.student_academics.models import AcademicResultStatus, ClassSubject
 from app.modules.student_academics.repository import StudentAcademicRepository
@@ -222,6 +224,11 @@ class ReportCardService:
         )
         card = await ReportCardRepository.create(db, card)
 
+        component_scores_by_result = (
+            await StudentAcademicRepository.list_result_component_scores_batch(
+                db, actor.tenant_id, results
+            )
+        )
         for result in results:
             subject = await SubjectRepository.get_subject_by_id(
                 db, actor.tenant_id, result.subject_id
@@ -241,7 +248,7 @@ class ReportCardService:
                     grade = grading_scale.grade
                     remark = remark or grading_scale.remark
 
-            await ReportCardRepository.create_line(
+            line = await ReportCardRepository.create_line(
                 db,
                 ReportCardSubjectLine(
                     tenant_id=actor.tenant_id,
@@ -251,14 +258,30 @@ class ReportCardService:
                     subject_name=subject.name if subject else "Unknown subject",
                     subject_code=subject.code if subject else None,
                     teacher_name=teacher_name,
-                    test_score=result.test_score,
-                    assessment_score=result.assessment_score,
-                    exam_score=result.exam_score,
                     total_score=result.total_score,
                     grade=grade or "Pending",
                     remark=remark,
                 ),
             )
+            component_rows = component_scores_by_result.get(result.id, [])
+            for component, score in component_rows:
+                if score is None:
+                    raise BadRequestException(
+                        f"{component.name} is missing for {subject.name if subject else 'subject'}."
+                    )
+                await ReportCardRepository.create_component(
+                    db,
+                    ReportCardSubjectComponent(
+                        tenant_id=actor.tenant_id,
+                        report_card_subject_line_id=line.id,
+                        assessment_component_id=component.id,
+                        name=component.name,
+                        code=component.code,
+                        position=component.position,
+                        maximum_score=component.maximum_score,
+                        score=score.score,
+                    ),
+                )
 
         return card
 
@@ -583,6 +606,27 @@ class ReportCardService:
             db, card.tenant_id, card.academic_term_id
         )
         lines = await ReportCardRepository.list_lines(db, card.tenant_id, card.id)
+        components_by_line = await ReportCardRepository.list_line_components_batch(
+            db, card.tenant_id, [line.id for line in lines]
+        )
+        response_lines = []
+        for line in lines:
+            response_lines.append(
+                ReportCardSubjectLineResponse(
+                    id=line.id,
+                    subject_id=line.subject_id,
+                    subject_name=line.subject_name,
+                    subject_code=line.subject_code,
+                    teacher_name=line.teacher_name,
+                    components=[
+                        ReportCardSubjectComponentResponse.model_validate(item)
+                        for item in components_by_line.get(line.id, [])
+                    ],
+                    total_score=line.total_score,
+                    grade=line.grade,
+                    remark=line.remark,
+                )
+            )
         return ReportCardResponse(
             id=card.id,
             tenant_id=card.tenant_id,
@@ -613,7 +657,7 @@ class ReportCardService:
             is_outdated=card.is_outdated,
             superseded_at=card.superseded_at,
             status=card.status,
-            lines=[ReportCardSubjectLineResponse.model_validate(line) for line in lines],
+            lines=response_lines,
             created_at=card.created_at,
             updated_at=card.updated_at,
         )
@@ -712,14 +756,19 @@ class ReportCardService:
         school_name = html.escape((tenant.school_name if tenant else None) or "Weave")
         status_value = getattr(card.status, "value", card.status)
         status_label = html.escape(str(status_value).replace("_", " ").title())
+        component_headers = card.lines[0].components if card.lines else []
+        component_heading_cells = "".join(
+            f"<th>{html.escape(component.name)}</th>" for component in component_headers
+        )
         rows = "".join(
             "<tr>"
             f"<td>{html.escape(_format_subject(line.subject_name))}</td>"
             f"<td>{html.escape(line.subject_code or '—')}</td>"
-            f"<td>{_format_score(line.test_score)}</td>"
-            f"<td>{_format_score(line.assessment_score)}</td>"
-            f"<td>{_format_score(line.exam_score)}</td>"
-            f"<td>{_format_score(line.total_score)}</td>"
+            + "".join(
+                f"<td>{_format_score(next((item.score for item in line.components if item.assessment_component_id == header.assessment_component_id), None))}</td>"
+                for header in component_headers
+            )
+            + f"<td>{_format_score(line.total_score)}</td>"
             f"<td>{html.escape(line.grade)}</td>"
             f"<td>{html.escape(line.remark or '')}</td>"
             "</tr>"
@@ -781,7 +830,7 @@ class ReportCardService:
             </section>
             <div class="table-wrapper">
                 <table>
-                    <thead><tr><th>Subject</th><th>Code</th><th>Test</th><th>Assessment</th><th>Exam</th><th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
+                    <thead><tr><th>Subject</th><th>Code</th>{component_heading_cells}<th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </div>

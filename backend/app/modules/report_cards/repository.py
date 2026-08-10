@@ -3,7 +3,11 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.report_cards.models import ReportCard, ReportCardSubjectLine
+from app.modules.report_cards.models import (
+    ReportCard,
+    ReportCardSubjectComponent,
+    ReportCardSubjectLine,
+)
 from app.modules.report_cards.models import ReportCardStatus
 
 
@@ -21,6 +25,14 @@ class ReportCardRepository:
         await db.flush()
         await db.refresh(line)
         return line
+
+    @staticmethod
+    async def create_component(
+        db: AsyncSession, component: ReportCardSubjectComponent
+    ) -> ReportCardSubjectComponent:
+        db.add(component)
+        await db.flush()
+        return component
 
     @staticmethod
     async def get_by_id(
@@ -128,6 +140,34 @@ class ReportCardRepository:
             .all()
         )
         return list(rows)
+
+    @staticmethod
+    async def list_line_components_batch(
+        db: AsyncSession, tenant_id: uuid.UUID, line_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[ReportCardSubjectComponent]]:
+        if not line_ids:
+            return {}
+        rows = list(
+            (
+                await db.execute(
+                    select(ReportCardSubjectComponent)
+                    .where(
+                        ReportCardSubjectComponent.tenant_id == tenant_id,
+                        ReportCardSubjectComponent.report_card_subject_line_id.in_(line_ids),
+                    )
+                    .order_by(
+                        ReportCardSubjectComponent.report_card_subject_line_id.asc(),
+                        ReportCardSubjectComponent.position.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        components_by_line: dict[uuid.UUID, list[ReportCardSubjectComponent]] = {}
+        for row in rows:
+            components_by_line.setdefault(row.report_card_subject_line_id, []).append(row)
+        return components_by_line
 
     @staticmethod
     async def list_active_cards_for_class_period(
