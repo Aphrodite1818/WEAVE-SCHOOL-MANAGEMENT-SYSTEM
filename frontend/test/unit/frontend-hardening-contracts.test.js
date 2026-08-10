@@ -90,6 +90,19 @@ test("simulation lab exposes a one-step enter-grace lifecycle action", async () 
   assert.match(source, /Subscription entered grace period\./);
 });
 
+test("simulation lifecycle validation errors are not presented as network failures", async () => {
+  const source = await readSource("src/pages/superadmin/SuperadminSimulationPage.jsx");
+
+  assert.match(source, /class SimulationLifecycleError extends Error/);
+  assert.match(source, /throw new SimulationLifecycleError\(/);
+  assert.match(source, /error instanceof SimulationLifecycleError/);
+  assert.match(source, /Reset the simulation first\./);
+  assert.match(
+    source,
+    /getSimulationErrorMessage\(error, "Unable to apply the subscription simulation\."\)/,
+  );
+});
+
 test("modal traps keyboard focus and restores the previously focused element", async () => {
   const source = await readSource("src/components/ui/Modal.jsx");
 
