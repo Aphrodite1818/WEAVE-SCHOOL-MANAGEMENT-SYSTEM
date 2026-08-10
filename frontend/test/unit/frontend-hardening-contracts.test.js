@@ -51,12 +51,11 @@ test("registration checkout prompt is exclusive to a resolved trialing subscript
   assert.match(source, /const subscriptionStateResolved = Boolean\(currentSubscription \|\| entitlements\)/);
   assert.match(
     source,
-    /subscriptionStateResolved && activeSubscriptionStatus === "trialing"/,
+    /const registrationCheckoutEligible = Boolean\([\s\S]*subscriptionStateResolved && activeSubscriptionStatus === "trialing"[\s\S]*\);/,
   );
-  assert.match(source, /registrationCheckoutEligible &&[\s\S]*registrationCheckoutPlanCode/);
-  assert.doesNotMatch(
+  assert.match(
     source,
-    /registrationCheckoutPlanCode &&[\s\S]*!registrationCheckoutSatisfied &&[\s\S]*location\.pathname !== "\/billing\/subscription\/verify"/,
+    /const registrationCheckoutOpen = Boolean\([\s\S]*onboardingModalEnabled &&[\s\S]*registrationCheckoutEligible &&[\s\S]*registrationCheckoutPlanCode &&[\s\S]*!registrationCheckoutSatisfied/,
   );
 });
 
