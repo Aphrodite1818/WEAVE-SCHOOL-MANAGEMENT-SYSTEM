@@ -156,6 +156,10 @@ function DashboardShellFrame({
   const activeSubscriptionStatus = String(
     currentSubscription?.status || entitlements?.subscription_status || "",
   ).toLowerCase();
+  const subscriptionStateResolved = Boolean(currentSubscription || entitlements);
+  const registrationCheckoutEligible = Boolean(
+    subscriptionStateResolved && activeSubscriptionStatus === "trialing",
+  );
   const registrationCheckoutSatisfied = Boolean(
     registrationCheckoutPlanCode &&
       activeSubscriptionPlanCode === registrationCheckoutPlanCode &&
@@ -164,6 +168,7 @@ function DashboardShellFrame({
   const registrationCheckoutOpen = Boolean(
     role === "admin" &&
       onboardingModalEnabled &&
+      registrationCheckoutEligible &&
       registrationCheckoutPlanCode &&
       !registrationCheckoutSatisfied &&
       location.pathname !== "/billing/subscription/verify",

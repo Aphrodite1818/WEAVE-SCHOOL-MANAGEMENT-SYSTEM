@@ -45,6 +45,20 @@ test("subscription lifecycle attention states surface a centered tenant-admin pr
   assert.match(modalSource, /window\.visualViewport/);
 });
 
+test("registration checkout prompt is exclusive to a resolved trialing subscription", async () => {
+  const source = await readSource("src/components/layout/DashboardLayout.jsx");
+
+  assert.match(source, /const subscriptionStateResolved = Boolean\(currentSubscription \|\| entitlements\)/);
+  assert.match(
+    source,
+    /const registrationCheckoutEligible = Boolean\([\s\S]*subscriptionStateResolved && activeSubscriptionStatus === "trialing"[\s\S]*\);/,
+  );
+  assert.match(
+    source,
+    /const registrationCheckoutOpen = Boolean\([\s\S]*onboardingModalEnabled &&[\s\S]*registrationCheckoutEligible &&[\s\S]*registrationCheckoutPlanCode &&[\s\S]*!registrationCheckoutSatisfied/,
+  );
+});
+
 test("simulation lab exposes scheduled downgrade timeline controls", async () => {
   const source = await readSource("src/pages/superadmin/SuperadminSimulationPage.jsx");
 
