@@ -180,6 +180,7 @@ export const navGroups = {
         { label: "Control Center", to: "/superadmin/control-center", icon: Shield },
         { label: "Tenant Usage", to: "/superadmin/usage", icon: Database },
         { label: "Traffic Monitor", to: "/superadmin/traffic", icon: Activity },
+        { label: "Simulation Lab", to: "/superadmin/simulations", icon: Activity, runtimeFeature: "simulations" },
       ],
     },
     {
