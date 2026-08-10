@@ -96,9 +96,7 @@ class SubscriptionSimulationService:
     async def _snapshot_exists(tenant_id: uuid.UUID) -> bool:
         client, temporary = await SubscriptionSimulationService._with_redis()
         try:
-            return bool(
-                await client.exists(SubscriptionSimulationService._snapshot_key(tenant_id))
-            )
+            return bool(await client.exists(SubscriptionSimulationService._snapshot_key(tenant_id)))
         finally:
             if temporary:
                 await client.aclose()
@@ -136,12 +134,8 @@ class SubscriptionSimulationService:
                 "subscription": {
                     "id": str(subscription.id),
                     "status": _enum_value(subscription.status),
-                    "current_period_start": _serialize_datetime(
-                        subscription.current_period_start
-                    ),
-                    "current_period_end": _serialize_datetime(
-                        subscription.current_period_end
-                    ),
+                    "current_period_start": _serialize_datetime(subscription.current_period_start),
+                    "current_period_end": _serialize_datetime(subscription.current_period_end),
                     "trial_ends_at": _serialize_datetime(subscription.trial_ends_at),
                     "grace_ends_at": _serialize_datetime(subscription.grace_ends_at),
                     "cancel_at_period_end": bool(subscription.cancel_at_period_end),
@@ -153,9 +147,7 @@ class SubscriptionSimulationService:
                     "plan": _enum_value(tenant.plan),
                     "status": _enum_value(tenant.status),
                     "trial_ends_at": _serialize_datetime(tenant.trial_ends_at),
-                    "subscription_ends_at": _serialize_datetime(
-                        tenant.subscription_ends_at
-                    ),
+                    "subscription_ends_at": _serialize_datetime(tenant.subscription_ends_at),
                 },
                 "plan_change": (
                     _plan_change_snapshot(plan_change) if plan_change is not None else None
@@ -197,9 +189,7 @@ class SubscriptionSimulationService:
 
         client, temporary = await SubscriptionSimulationService._with_redis()
         try:
-            raw_snapshot = await client.get(
-                SubscriptionSimulationService._snapshot_key(tenant_id)
-            )
+            raw_snapshot = await client.get(SubscriptionSimulationService._snapshot_key(tenant_id))
             if not raw_snapshot:
                 return None
             snapshot = json.loads(raw_snapshot)
@@ -249,9 +239,7 @@ class SubscriptionSimulationService:
             cancel_at_period_end=bool(subscription.cancel_at_period_end),
             next_payment_at=subscription.next_payment_at,
             plan_change=plan_change_state,
-            snapshot_available=await SubscriptionSimulationService._snapshot_exists(
-                tenant_id
-            ),
+            snapshot_available=await SubscriptionSimulationService._snapshot_exists(tenant_id),
         )
 
     @staticmethod
@@ -319,11 +307,9 @@ class SubscriptionSimulationService:
         tenant_id: uuid.UUID,
         payload: SubscriptionSimulationRequest,
     ) -> SubscriptionSimulationResponse:
-        subscription = (
-            await SubscriptionSimulationService._get_current_subscription_for_update(
-                db,
-                tenant_id,
-            )
+        subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
+            db,
+            tenant_id,
         )
         existing_plan_change = await SubscriptionRepository.get_open_plan_change(
             db,
@@ -400,8 +386,7 @@ class SubscriptionSimulationService:
             )
             boundary = (
                 now + timedelta(days=payload.days or 1)
-                if scenario
-                == SubscriptionSimulationScenario.DOWNGRADE_EFFECTIVE_IN_DAYS
+                if scenario == SubscriptionSimulationScenario.DOWNGRADE_EFFECTIVE_IN_DAYS
                 else now - timedelta(minutes=1)
             )
             subscription.current_period_end = boundary
@@ -445,11 +430,9 @@ class SubscriptionSimulationService:
         *,
         tenant_id: uuid.UUID,
     ) -> SubscriptionReconcileResponse:
-        subscription = (
-            await SubscriptionSimulationService._get_current_subscription_for_update(
-                db,
-                tenant_id,
-            )
+        subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
+            db,
+            tenant_id,
         )
         plan_change = await SubscriptionRepository.get_open_plan_change(
             db,
@@ -472,11 +455,7 @@ class SubscriptionSimulationService:
             else subscription.current_period_end
         )
 
-        if (
-            subscription.status == SubscriptionStatus.TRIALING
-            and period_end
-            and period_end <= now
-        ):
+        if subscription.status == SubscriptionStatus.TRIALING and period_end and period_end <= now:
             subscription = await SubscriptionLifecycleService.expire_subscription(
                 db=db,
                 subscription=subscription,
@@ -494,11 +473,7 @@ class SubscriptionSimulationService:
                 notes="Subscription simulation: non-renewing period elapsed.",
             )
             lifecycle["expired"] += 1
-        elif (
-            subscription.status == SubscriptionStatus.ACTIVE
-            and period_end
-            and period_end <= now
-        ):
+        elif subscription.status == SubscriptionStatus.ACTIVE and period_end and period_end <= now:
             subscription = await SubscriptionLifecycleService.mark_past_due(
                 db=db,
                 subscription=subscription,
@@ -546,9 +521,7 @@ class SubscriptionSimulationService:
             plan_change.usage_snapshot_json = {
                 resource.value: count for resource, count in usage.items()
             }
-            plan_change.blockers_json = [
-                item.model_dump(mode="json") for item in blockers
-            ]
+            plan_change.blockers_json = [item.model_dump(mode="json") for item in blockers]
             if blockers:
                 plan_change.status = SubscriptionPlanChangeStatus.BLOCKED
                 plan_change.failure_reason = (
@@ -580,11 +553,9 @@ class SubscriptionSimulationService:
         *,
         tenant_id: uuid.UUID,
     ) -> SubscriptionSimulationState:
-        subscription = (
-            await SubscriptionSimulationService._get_current_subscription_for_update(
-                db,
-                tenant_id,
-            )
+        subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
+            db,
+            tenant_id,
         )
         return await SubscriptionSimulationService._state(
             db,
@@ -609,11 +580,9 @@ class SubscriptionSimulationService:
                 )
             snapshot = json.loads(raw_snapshot)
 
-            subscription = (
-                await SubscriptionSimulationService._get_current_subscription_for_update(
-                    db,
-                    tenant_id,
-                )
+            subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
+                db,
+                tenant_id,
             )
             original = snapshot["subscription"]
             if str(subscription.id) != original["id"]:
@@ -654,26 +623,16 @@ class SubscriptionSimulationService:
                             "states. Reset was refused to protect newer billing data."
                         ),
                     )
-                plan_change.status = SubscriptionPlanChangeStatus(
-                    original_plan_change["status"]
-                )
-                plan_change.effective_at = _parse_datetime(
-                    original_plan_change["effective_at"]
-                )
+                plan_change.status = SubscriptionPlanChangeStatus(original_plan_change["status"])
+                plan_change.effective_at = _parse_datetime(original_plan_change["effective_at"])
                 plan_change.failure_reason = original_plan_change["failure_reason"]
-                plan_change.usage_snapshot_json = original_plan_change[
-                    "usage_snapshot_json"
-                ]
+                plan_change.usage_snapshot_json = original_plan_change["usage_snapshot_json"]
                 plan_change.blockers_json = original_plan_change["blockers_json"]
                 await SubscriptionRepository.save_plan_change(db, plan_change)
 
             subscription.status = SubscriptionStatus(original["status"])
-            subscription.current_period_start = _parse_datetime(
-                original["current_period_start"]
-            )
-            subscription.current_period_end = _parse_datetime(
-                original["current_period_end"]
-            )
+            subscription.current_period_start = _parse_datetime(original["current_period_start"])
+            subscription.current_period_end = _parse_datetime(original["current_period_end"])
             subscription.trial_ends_at = _parse_datetime(original["trial_ends_at"])
             subscription.grace_ends_at = _parse_datetime(original["grace_ends_at"])
             subscription.cancel_at_period_end = bool(original["cancel_at_period_end"])
@@ -692,9 +651,7 @@ class SubscriptionSimulationService:
             tenant.plan = SubscriptionPlan(original_tenant["plan"])
             tenant.status = TenantStatus(original_tenant["status"])
             tenant.trial_ends_at = _parse_datetime(original_tenant["trial_ends_at"])
-            tenant.subscription_ends_at = _parse_datetime(
-                original_tenant["subscription_ends_at"]
-            )
+            tenant.subscription_ends_at = _parse_datetime(original_tenant["subscription_ends_at"])
             await SubscriptionRepository.save_tenant(db, tenant)
 
             await SubscriptionFeatureService.invalidate_tenant_subscription_state(
