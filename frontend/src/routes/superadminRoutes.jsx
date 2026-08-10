@@ -11,6 +11,7 @@ const SuperadminAnalyticsPage = lazy(() => import("../pages/superadmin/Superadmi
 const SuperadminControlCenterPage = lazy(() => import("../pages/superadmin/SuperadminControlCenterPage"));
 const SuperadminDashboardPage = lazy(() => import("../pages/superadmin/SuperadminDashboardPage"));
 const SuperadminSettingsPage = lazy(() => import("../pages/superadmin/SuperadminSettingsPage"));
+const SuperadminSimulationPage = lazy(() => import("../pages/superadmin/SuperadminSimulationPage"));
 const SuperadminTenantUsagePage = lazy(() => import("../pages/superadmin/SuperadminTenantUsagePage"));
 const SuperadminTrafficMonitorPage = lazy(() => import("../pages/superadmin/SuperadminTrafficMonitorPage"));
 const AnnouncementManagementPage = lazy(() => import("../pages/shared/AnnouncementManagementPage"));
@@ -27,6 +28,7 @@ export const superadminRoutes = (
       <Route path="/superadmin/verification" element={<SuperadminControlCenterPage />} />
       <Route path="/superadmin/usage" element={<SuperadminTenantUsagePage />} />
       <Route path="/superadmin/traffic" element={<SuperadminTrafficMonitorPage />} />
+      <Route path="/superadmin/simulations" element={<RuntimeFeatureRoute feature="simulations" role="superadmin"><SuperadminSimulationPage /></RuntimeFeatureRoute>} />
       <Route path="/superadmin/calendar" element={<SchoolCalendarPage role="superadmin" />} />
       <Route path="/superadmin/inbox" element={<CommunicationInboxPage />} />
       <Route path="/superadmin/messages" element={<RuntimeFeatureRoute feature="messaging" role="superadmin"><MessagesPage /></RuntimeFeatureRoute>} />

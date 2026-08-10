@@ -15,6 +15,7 @@ class RuntimeFeatureFlags(BaseModel):
     messaging: bool
     announcements: bool = True
     inbox: bool = True
+    simulations: bool = False
 
 
 class RuntimeConfigResponse(BaseModel):
@@ -33,5 +34,6 @@ async def get_runtime_config() -> RuntimeConfigResponse:
         features=RuntimeFeatureFlags(
             attendance=show_unreleased_features,
             messaging=show_unreleased_features,
+            simulations=settings.ENV == EnvironmentType.STAGING,
         ),
     )
