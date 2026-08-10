@@ -28,6 +28,23 @@ test("subscription guards do not treat missing entitlements as confirmed access"
   assert.match(source, /allowed:\s*false,[\s\S]*We couldn't confirm your plan limits/);
 });
 
+test("subscription lifecycle attention states surface a centered tenant-admin prompt", async () => {
+  const providerSource = await readSource("src/features/subscriptions/SubscriptionProvider.jsx");
+  const promptSource = await readSource("src/features/subscriptions/SubscriptionLifecyclePrompt.jsx");
+  const modalSource = await readSource("src/components/ui/Modal.jsx");
+
+  assert.match(providerSource, /<SubscriptionLifecyclePrompt/);
+  assert.match(promptSource, /"past_due"/);
+  assert.match(promptSource, /"grace_period"/);
+  assert.match(promptSource, /"expired"/);
+  assert.match(promptSource, /Renew subscription/);
+  assert.match(promptSource, /navigate\("\/admin\/billing\/plans"\)/);
+  assert.match(promptSource, /placement="center"/);
+  assert.match(promptSource, /sessionStorage/);
+  assert.match(modalSource, /items-center justify-center/);
+  assert.match(modalSource, /window\.visualViewport/);
+});
+
 test("modal traps keyboard focus and restores the previously focused element", async () => {
   const source = await readSource("src/components/ui/Modal.jsx");
 

@@ -2,6 +2,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useLocation } from "react-router-dom";
 import { authSession, getErrorMessage } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
+import SubscriptionLifecyclePrompt from "./SubscriptionLifecyclePrompt";
 import {
   getSubscriptionStatusMeta,
   isAttentionStatus,
@@ -81,14 +82,14 @@ export function SubscriptionProvider({ children }) {
       if (subscriptionResult.status !== "fulfilled") {
         nextErrors.currentSubscription = getErrorMessage(
           subscriptionResult.reason,
-          "Failed to load current subscription."
+          "Failed to load current subscription.",
         );
       }
 
       if (entitlementsResult.status !== "fulfilled") {
         nextErrors.entitlements = getErrorMessage(
           entitlementsResult.reason,
-          "Failed to load subscription entitlements."
+          "Failed to load subscription entitlements.",
         );
       }
 
@@ -115,7 +116,7 @@ export function SubscriptionProvider({ children }) {
         entitlements: nextEntitlements,
       };
     },
-    [isTenantAdmin]
+    [isTenantAdmin],
   );
 
   useEffect(() => {
@@ -169,7 +170,7 @@ export function SubscriptionProvider({ children }) {
             currentSubscription: null,
             entitlements: null,
           },
-    [errors, isTenantAdmin]
+    [errors, isTenantAdmin],
   );
   const tenantSnapshot = user?.tenant?.tenant || user?.tenant || {};
   const planCode =
@@ -218,7 +219,7 @@ export function SubscriptionProvider({ children }) {
 
       return { allowed: true, pending: false, reason: null };
     },
-    [isLoading, isRefreshing, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements]
+    [isLoading, isRefreshing, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements],
   );
 
   const getResourceGuard = useCallback(
@@ -271,7 +272,7 @@ export function SubscriptionProvider({ children }) {
         usage: usage || null,
       };
     },
-    [getFeatureGuard, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements]
+    [getFeatureGuard, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements],
   );
 
   const value = useMemo(
@@ -303,12 +304,20 @@ export function SubscriptionProvider({ children }) {
       visibleCurrentSubscription,
       visibleEntitlements,
       visibleErrors,
-    ]
+    ],
   );
 
   return (
     <SubscriptionContext.Provider value={value}>
       {children}
+      <SubscriptionLifecyclePrompt
+        isTenantAdmin={isTenantAdmin}
+        currentSubscription={visibleCurrentSubscription}
+        entitlements={visibleEntitlements}
+        statusCode={statusCode}
+        isLoading={isTenantAdmin ? isLoading : false}
+        isRefreshing={isTenantAdmin ? isRefreshing : false}
+      />
     </SubscriptionContext.Provider>
   );
 }
