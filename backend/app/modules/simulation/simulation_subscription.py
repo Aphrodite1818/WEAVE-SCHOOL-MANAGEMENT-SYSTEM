@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.cache.events import flush_cache_invalidation_events
 from app.core.cache.redis import create_redis_health_client, get_redis
 from app.modules.simulation.schemas import (
+    SubscriptionReconcileResponse,
     SubscriptionSimulationRequest,
     SubscriptionSimulationResponse,
     SubscriptionSimulationScenario,
     SubscriptionSimulationState,
-    SubscriptionReconcileResponse,
 )
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.service import (
@@ -79,7 +79,11 @@ class SubscriptionSimulationService:
     async def _snapshot_exists(tenant_id: uuid.UUID) -> bool:
         client, temporary = await SubscriptionSimulationService._with_redis()
         try:
-            return bool(await client.exists(SubscriptionSimulationService._snapshot_key(tenant_id)))
+            return bool(
+                await client.exists(
+                    SubscriptionSimulationService._snapshot_key(tenant_id)
+                )
+            )
         finally:
             if temporary:
                 await client.aclose()
@@ -105,8 +109,12 @@ class SubscriptionSimulationService:
                 "subscription": {
                     "id": str(subscription.id),
                     "status": _enum_value(subscription.status),
-                    "current_period_start": _serialize_datetime(subscription.current_period_start),
-                    "current_period_end": _serialize_datetime(subscription.current_period_end),
+                    "current_period_start": _serialize_datetime(
+                        subscription.current_period_start
+                    ),
+                    "current_period_end": _serialize_datetime(
+                        subscription.current_period_end
+                    ),
                     "trial_ends_at": _serialize_datetime(subscription.trial_ends_at),
                     "grace_ends_at": _serialize_datetime(subscription.grace_ends_at),
                     "cancel_at_period_end": bool(subscription.cancel_at_period_end),
@@ -118,7 +126,9 @@ class SubscriptionSimulationService:
                     "plan": _enum_value(tenant.plan),
                     "status": _enum_value(tenant.status),
                     "trial_ends_at": _serialize_datetime(tenant.trial_ends_at),
-                    "subscription_ends_at": _serialize_datetime(tenant.subscription_ends_at),
+                    "subscription_ends_at": _serialize_datetime(
+                        tenant.subscription_ends_at
+                    ),
                 },
             }
             await client.set(key, json.dumps(snapshot), ex=_SNAPSHOT_TTL_SECONDS)
@@ -159,7 +169,9 @@ class SubscriptionSimulationService:
             grace_ends_at=subscription.grace_ends_at,
             cancel_at_period_end=bool(subscription.cancel_at_period_end),
             next_payment_at=subscription.next_payment_at,
-            snapshot_available=await SubscriptionSimulationService._snapshot_exists(tenant_id),
+            snapshot_available=await SubscriptionSimulationService._snapshot_exists(
+                tenant_id
+            ),
         )
 
     @staticmethod
@@ -168,7 +180,10 @@ class SubscriptionSimulationService:
         *,
         subscription: Any,
     ) -> None:
-        await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
+        await SubscriptionRepository.save_subscription(
+            db=db,
+            subscription=subscription,
+        )
         await SubscriptionRepository.update_tenant_plan_snapshot(
             db=db,
             tenant_id=subscription.tenant_id,
@@ -191,9 +206,11 @@ class SubscriptionSimulationService:
         tenant_id: uuid.UUID,
         payload: SubscriptionSimulationRequest,
     ) -> SubscriptionSimulationResponse:
-        subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
-            db,
-            tenant_id,
+        subscription = (
+            await SubscriptionSimulationService._get_current_subscription_for_update(
+                db,
+                tenant_id,
+            )
         )
         await SubscriptionSimulationService._store_snapshot_if_missing(
             db,
@@ -218,7 +235,10 @@ class SubscriptionSimulationService:
             subscription.next_payment_at = period_end
             if subscription.status == SubscriptionStatus.TRIALING:
                 subscription.trial_ends_at = period_end
-            detail = "Subscription period was moved to one minute in the past. Run reconciliation to apply the real lifecycle transition."
+            detail = (
+                "Subscription period was moved to one minute in the past. "
+                "Run reconciliation to apply the real lifecycle transition."
+            )
 
         elif scenario in {
             SubscriptionSimulationScenario.GRACE_EXPIRES_IN_DAYS,
@@ -230,16 +250,25 @@ class SubscriptionSimulationService:
             }:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="Move the subscription into past-due/grace state before adjusting grace expiry.",
+                    detail=(
+                        "Move the subscription into past-due/grace state before "
+                        "adjusting grace expiry."
+                    ),
                 )
             if scenario == SubscriptionSimulationScenario.GRACE_EXPIRES_IN_DAYS:
                 subscription.grace_ends_at = now + timedelta(days=payload.days or 1)
                 detail = f"Grace period now ends in {payload.days} day(s)."
             else:
                 subscription.grace_ends_at = now - timedelta(minutes=1)
-                detail = "Grace period was moved to one minute in the past. Run reconciliation to expire it."
+                detail = (
+                    "Grace period was moved to one minute in the past. "
+                    "Run reconciliation to expire it."
+                )
         else:
-            raise HTTPException(status_code=400, detail="Unsupported simulation scenario.")
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported simulation scenario.",
+            )
 
         await SubscriptionSimulationService._save_local_dates(
             db,
@@ -248,7 +277,10 @@ class SubscriptionSimulationService:
         return SubscriptionSimulationResponse(
             scenario=scenario.value,
             detail=detail,
-            state=await SubscriptionSimulationService._state(tenant_id, subscription),
+            state=await SubscriptionSimulationService._state(
+                tenant_id,
+                subscription,
+            ),
         )
 
     @staticmethod
@@ -257,9 +289,11 @@ class SubscriptionSimulationService:
         *,
         tenant_id: uuid.UUID,
     ) -> SubscriptionReconcileResponse:
-        subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
-            db,
-            tenant_id,
+        subscription = (
+            await SubscriptionSimulationService._get_current_subscription_for_update(
+                db,
+                tenant_id,
+            )
         )
         await SubscriptionSimulationService._store_snapshot_if_missing(
             db,
@@ -269,23 +303,39 @@ class SubscriptionSimulationService:
 
         now = _utc_now()
         lifecycle = {"past_due": 0, "grace_period": 0, "expired": 0}
-        period_end = subscription.trial_ends_at if subscription.status == SubscriptionStatus.TRIALING else subscription.current_period_end
+        period_end = (
+            subscription.trial_ends_at
+            if subscription.status == SubscriptionStatus.TRIALING
+            else subscription.current_period_end
+        )
 
-        if subscription.status == SubscriptionStatus.TRIALING and period_end and period_end <= now:
+        if (
+            subscription.status == SubscriptionStatus.TRIALING
+            and period_end
+            and period_end <= now
+        ):
             subscription = await SubscriptionLifecycleService.expire_subscription(
                 db=db,
                 subscription=subscription,
                 notes="Subscription simulation: trial period elapsed.",
             )
             lifecycle["expired"] += 1
-        elif subscription.status == SubscriptionStatus.NON_RENEWING and period_end and period_end <= now:
+        elif (
+            subscription.status == SubscriptionStatus.NON_RENEWING
+            and period_end
+            and period_end <= now
+        ):
             subscription = await SubscriptionLifecycleService.expire_subscription(
                 db=db,
                 subscription=subscription,
                 notes="Subscription simulation: non-renewing period elapsed.",
             )
             lifecycle["expired"] += 1
-        elif subscription.status == SubscriptionStatus.ACTIVE and period_end and period_end <= now:
+        elif (
+            subscription.status == SubscriptionStatus.ACTIVE
+            and period_end
+            and period_end <= now
+        ):
             subscription = await SubscriptionLifecycleService.mark_past_due(
                 db=db,
                 subscription=subscription,
@@ -323,7 +373,10 @@ class SubscriptionSimulationService:
         return SubscriptionReconcileResponse(
             detail="Tenant subscription reconciliation completed.",
             lifecycle=lifecycle,
-            state=await SubscriptionSimulationService._state(tenant_id, subscription),
+            state=await SubscriptionSimulationService._state(
+                tenant_id,
+                subscription,
+            ),
         )
 
     @staticmethod
@@ -332,9 +385,11 @@ class SubscriptionSimulationService:
         *,
         tenant_id: uuid.UUID,
     ) -> SubscriptionSimulationState:
-        subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
-            db,
-            tenant_id,
+        subscription = (
+            await SubscriptionSimulationService._get_current_subscription_for_update(
+                db,
+                tenant_id,
+            )
         )
         return await SubscriptionSimulationService._state(tenant_id, subscription)
 
@@ -355,27 +410,40 @@ class SubscriptionSimulationService:
                 )
             snapshot = json.loads(raw_snapshot)
 
-            subscription = await SubscriptionSimulationService._get_current_subscription_for_update(
-                db,
-                tenant_id,
+            subscription = (
+                await SubscriptionSimulationService._get_current_subscription_for_update(
+                    db,
+                    tenant_id,
+                )
             )
             original = snapshot["subscription"]
             if str(subscription.id) != original["id"]:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="The tenant's current subscription changed after the snapshot. Reset was refused to avoid overwriting newer subscription data.",
+                    detail=(
+                        "The tenant's current subscription changed after the "
+                        "snapshot. Reset was refused to avoid overwriting newer "
+                        "subscription data."
+                    ),
                 )
 
             subscription.status = SubscriptionStatus(original["status"])
-            subscription.current_period_start = _parse_datetime(original["current_period_start"])
-            subscription.current_period_end = _parse_datetime(original["current_period_end"])
+            subscription.current_period_start = _parse_datetime(
+                original["current_period_start"]
+            )
+            subscription.current_period_end = _parse_datetime(
+                original["current_period_end"]
+            )
             subscription.trial_ends_at = _parse_datetime(original["trial_ends_at"])
             subscription.grace_ends_at = _parse_datetime(original["grace_ends_at"])
             subscription.cancel_at_period_end = bool(original["cancel_at_period_end"])
             subscription.cancelled_at = _parse_datetime(original["cancelled_at"])
             subscription.expired_at = _parse_datetime(original["expired_at"])
             subscription.next_payment_at = _parse_datetime(original["next_payment_at"])
-            await SubscriptionRepository.save_subscription(db=db, subscription=subscription)
+            await SubscriptionRepository.save_subscription(
+                db=db,
+                subscription=subscription,
+            )
 
             tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
             if tenant is None:
@@ -384,7 +452,9 @@ class SubscriptionSimulationService:
             tenant.plan = SubscriptionPlan(original_tenant["plan"])
             tenant.status = TenantStatus(original_tenant["status"])
             tenant.trial_ends_at = _parse_datetime(original_tenant["trial_ends_at"])
-            tenant.subscription_ends_at = _parse_datetime(original_tenant["subscription_ends_at"])
+            tenant.subscription_ends_at = _parse_datetime(
+                original_tenant["subscription_ends_at"]
+            )
             await SubscriptionRepository.save_tenant(db, tenant)
 
             await SubscriptionFeatureService.invalidate_tenant_subscription_state(
@@ -397,8 +467,14 @@ class SubscriptionSimulationService:
 
             return SubscriptionSimulationResponse(
                 scenario="reset",
-                detail="Original subscription state restored and simulation snapshot removed.",
-                state=await SubscriptionSimulationService._state(tenant_id, subscription),
+                detail=(
+                    "Original subscription state restored and simulation snapshot "
+                    "removed."
+                ),
+                state=await SubscriptionSimulationService._state(
+                    tenant_id,
+                    subscription,
+                ),
             )
         finally:
             if temporary:
