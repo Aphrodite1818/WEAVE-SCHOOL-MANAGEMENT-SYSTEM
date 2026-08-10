@@ -10,6 +10,8 @@ import { simulationService } from "../../features/simulation/simulationService";
 import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../services/api";
 
+const ENTER_GRACE_SCENARIO = "enter_grace_period";
+
 const SCENARIOS = [
   {
     value: "expires_in_days",
@@ -19,6 +21,11 @@ const SCENARIOS = [
   {
     value: "period_ended",
     label: "Subscription period already ended",
+    needsDays: false,
+  },
+  {
+    value: ENTER_GRACE_SCENARIO,
+    label: "Enter grace period now",
     needsDays: false,
   },
   {
@@ -97,22 +104,60 @@ function SuperadminSimulationPage() {
     }
   };
 
+  const enterGracePeriod = async (normalizedTenantId) => {
+    const currentState = await simulationService.getSubscriptionState(normalizedTenantId);
+
+    if (currentState.status === "grace_period") {
+      setState(currentState);
+      setLastResult(null);
+      showSuccess("Subscription is already in grace period.");
+      return;
+    }
+
+    if (currentState.status === "active") {
+      await simulationService.runSubscriptionSimulation(normalizedTenantId, {
+        scenario: "period_ended",
+      });
+    } else if (currentState.status !== "past_due") {
+      throw new Error(
+        `Enter grace period is only available from active or past-due state. Current status: ${currentState.status}. Reset the simulation first.`,
+      );
+    }
+
+    const result = await simulationService.reconcileSubscription(normalizedTenantId);
+    setState(result.state);
+    setLastResult(result);
+
+    if (result.state.status !== "grace_period") {
+      throw new Error(
+        `Expected grace period after reconciliation, but the subscription is ${result.state.status}.`,
+      );
+    }
+
+    showSuccess("Subscription entered grace period.");
+  };
+
   const runSimulation = async () => {
     const normalizedTenantId = requireTenantId();
     if (!normalizedTenantId) return;
 
-    const payload = { scenario };
-    if (selectedScenario.needsDays) {
-      const parsedDays = Number(days);
-      if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 90) {
-        showError("Days must be a whole number between 1 and 90.");
-        return;
-      }
-      payload.days = parsedDays;
-    }
-
     setBusyAction("simulate");
     try {
+      if (scenario === ENTER_GRACE_SCENARIO) {
+        await enterGracePeriod(normalizedTenantId);
+        return;
+      }
+
+      const payload = { scenario };
+      if (selectedScenario.needsDays) {
+        const parsedDays = Number(days);
+        if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 90) {
+          showError("Days must be a whole number between 1 and 90.");
+          return;
+        }
+        payload.days = parsedDays;
+      }
+
       const result = await simulationService.runSubscriptionSimulation(
         normalizedTenantId,
         payload,
@@ -202,6 +247,11 @@ function SuperadminSimulationPage() {
                   </option>
                 ))}
               </select>
+              {scenario === ENTER_GRACE_SCENARIO ? (
+                <p className="mt-1.5 text-xs text-text-muted">
+                  Moves an active subscription past its billing boundary and runs the real lifecycle reconciliation so it enters grace period in one controlled step.
+                </p>
+              ) : null}
             </div>
 
             {selectedScenario.needsDays ? (

@@ -77,6 +77,19 @@ test("simulation lab exposes scheduled downgrade timeline controls", async () =>
   assert.match(source, /downgrade blocked/);
 });
 
+test("simulation lab exposes a one-step enter-grace lifecycle action", async () => {
+  const source = await readSource("src/pages/superadmin/SuperadminSimulationPage.jsx");
+
+  assert.match(source, /const ENTER_GRACE_SCENARIO = "enter_grace_period"/);
+  assert.match(source, /label: "Enter grace period now"/);
+  assert.match(source, /scenario: "period_ended"/);
+  assert.match(source, /reconcileSubscription\(normalizedTenantId\)/);
+  assert.match(source, /currentState\.status === "active"/);
+  assert.match(source, /currentState\.status !== "past_due"/);
+  assert.match(source, /result\.state\.status !== "grace_period"/);
+  assert.match(source, /Subscription entered grace period\./);
+});
+
 test("modal traps keyboard focus and restores the previously focused element", async () => {
   const source = await readSource("src/components/ui/Modal.jsx");
 
