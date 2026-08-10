@@ -40,17 +40,11 @@ async def test_teacher_bulk_submit_processes_complete_drafts_and_skips_incomplet
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         status=AcademicResultStatus.DRAFT,
-        test_score=10,
-        assessment_score=15,
-        exam_score=50,
     )
     incomplete = SimpleNamespace(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         status=AcademicResultStatus.DRAFT,
-        test_score=10,
-        assessment_score=None,
-        exam_score=50,
     )
     actor = SimpleNamespace(id=teacher_id, tenant_id=tenant_id)
     payload = TeacherBulkSubmitRequest(
@@ -80,6 +74,10 @@ async def test_teacher_bulk_submit_processes_complete_drafts_and_skips_incomplet
             "app.modules.student_academics.bulk_results_router.StudentAcademicRepository.upsert_result",
             new=AsyncMock(),
         ) as upsert_result,
+        patch(
+            "app.modules.student_academics.bulk_results_router.StudentAcademicService._ensure_result_complete",
+            new=AsyncMock(side_effect=[None, ValueError("Missing component")]),
+        ),
         patch.object(
             BulkResultLifecycleService,
             "_audit",

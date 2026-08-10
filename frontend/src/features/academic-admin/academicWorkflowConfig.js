@@ -133,7 +133,7 @@ export const academicWorkflowConfig = {
     defaultTab: "overview",
     tabs: [
       { id: "overview", label: "Overview" },
-      { id: "assessment-limits", label: "Assessment Limits" },
+      { id: "assessment-schemes", label: "Assessment Scheme" },
       { id: "create", label: "Create Rule" },
       { id: "active", label: "Active Rules" },
       { id: "inactive", label: "Inactive Rules" },

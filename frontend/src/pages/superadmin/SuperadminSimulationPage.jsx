@@ -12,6 +12,18 @@ import { getErrorMessage } from "../../services/api";
 
 const ENTER_GRACE_SCENARIO = "enter_grace_period";
 
+class SimulationLifecycleError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "SimulationLifecycleError";
+  }
+}
+
+const getSimulationErrorMessage = (error, fallback) =>
+  error instanceof SimulationLifecycleError
+    ? error.message
+    : getErrorMessage(error, fallback);
+
 const SCENARIOS = [
   {
     value: "expires_in_days",
@@ -119,7 +131,7 @@ function SuperadminSimulationPage() {
         scenario: "period_ended",
       });
     } else if (currentState.status !== "past_due") {
-      throw new Error(
+      throw new SimulationLifecycleError(
         `Enter grace period is only available from active or past-due state. Current status: ${currentState.status}. Reset the simulation first.`,
       );
     }
@@ -129,7 +141,7 @@ function SuperadminSimulationPage() {
     setLastResult(result);
 
     if (result.state.status !== "grace_period") {
-      throw new Error(
+      throw new SimulationLifecycleError(
         `Expected grace period after reconciliation, but the subscription is ${result.state.status}.`,
       );
     }
@@ -166,7 +178,9 @@ function SuperadminSimulationPage() {
       setLastResult(result);
       showSuccess(result.detail || "Simulation applied.");
     } catch (error) {
-      showError(getErrorMessage(error, "Unable to apply the subscription simulation."));
+      showError(
+        getSimulationErrorMessage(error, "Unable to apply the subscription simulation."),
+      );
     } finally {
       setBusyAction("");
     }

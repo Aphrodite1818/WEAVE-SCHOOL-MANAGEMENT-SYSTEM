@@ -19,7 +19,6 @@ from app.modules.student_academics.models import (
     ClassSubject,
     GradingScale,
     StudentSubjectResult,
-    SchoolAssessmentConfig,
     AcademicResultStatus,
 )
 from app.modules.student_academics.schemas import StudentSubjectResultUpsert

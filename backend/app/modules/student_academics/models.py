@@ -52,6 +52,12 @@ class AcademicResultStatus(str, PyEnum):
     LOCKED = "locked"
 
 
+class AssessmentSchemeStatus(str, PyEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
 class AcademicSessionStatus(str, PyEnum):
     DRAFT = "draft"
     OPEN = "open"
@@ -304,20 +310,72 @@ class GradingScale(BaseModel):
     __table_args__ = (UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),)
 
 
-class SchoolAssessmentConfig(BaseModel):
-    __tablename__ = "school_assessment_configs"
+class AssessmentScheme(BaseModel):
+    __tablename__ = "assessment_schemes"
 
-    test_max: Mapped[int] = mapped_column(Integer, default=20, server_default="20", nullable=False)
-    assessment_max: Mapped[int] = mapped_column(
-        Integer, default=20, server_default="20", nullable=False
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[AssessmentSchemeStatus] = mapped_column(
+        SQLEnum(
+            AssessmentSchemeStatus,
+            name="assessment_scheme_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+        default=AssessmentSchemeStatus.DRAFT,
+        server_default=AssessmentSchemeStatus.DRAFT.value,
     )
-    exam_max: Mapped[int] = mapped_column(Integer, default=60, server_default="60", nullable=False)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", name="uq_school_assessment_config_tenant"),
+        UniqueConstraint("tenant_id", "name", name="uq_assessment_scheme_tenant_name"),
+        Index(
+            "uq_assessment_scheme_active_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
         CheckConstraint(
-            "test_max + assessment_max + exam_max = 100",
-            name="ck_school_assessment_config_total",
+            "(status = 'draft' AND activated_at IS NULL AND archived_at IS NULL) OR "
+            "(status = 'active' AND activated_at IS NOT NULL AND archived_at IS NULL) OR "
+            "(status = 'archived' AND archived_at IS NOT NULL)",
+            name="ck_assessment_scheme_status_timestamps",
+        ),
+    )
+
+
+class AssessmentComponent(BaseModel):
+    __tablename__ = "assessment_components"
+
+    assessment_scheme_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("assessment_schemes.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    maximum_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "assessment_scheme_id", "name", name="uq_assessment_component_scheme_name"
+        ),
+        UniqueConstraint(
+            "assessment_scheme_id", "position", name="uq_assessment_component_scheme_position"
+        ),
+        CheckConstraint(
+            "maximum_score > 0 AND maximum_score <= 100",
+            name="ck_assessment_component_maximum",
+        ),
+        CheckConstraint("position >= 0", name="ck_assessment_component_position"),
+        Index(
+            "ix_assessment_components_tenant_scheme_position",
+            "tenant_id",
+            "assessment_scheme_id",
+            "position",
         ),
     )
 
@@ -684,9 +742,12 @@ class StudentSubjectResult(BaseModel):
         nullable=True,
         index=True,
     )
-    test_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
-    assessment_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
-    exam_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    assessment_scheme_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("assessment_schemes.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     total_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     grade: Mapped[str | None] = mapped_column(String(10), nullable=True)
     remark: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -783,5 +844,36 @@ class StudentSubjectResult(BaseModel):
         CheckConstraint(
             "status <> 'locked' OR (locked_at IS NOT NULL AND locked_by_admin_id IS NOT NULL)",
             name="ck_student_subject_results_locked_metadata",
+        ),
+    )
+
+
+class StudentAssessmentScore(BaseModel):
+    __tablename__ = "student_assessment_scores"
+
+    student_subject_result_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("student_subject_results.id", ondelete="CASCADE"), nullable=False
+    )
+    assessment_component_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("assessment_components.id", ondelete="RESTRICT"), nullable=False
+    )
+    score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "student_subject_result_id",
+            "assessment_component_id",
+            name="uq_student_assessment_score_result_component",
+        ),
+        CheckConstraint("score >= 0", name="ck_student_assessment_score_nonnegative"),
+        Index(
+            "ix_student_assessment_scores_tenant_result",
+            "tenant_id",
+            "student_subject_result_id",
+        ),
+        Index(
+            "ix_student_assessment_scores_tenant_component",
+            "tenant_id",
+            "assessment_component_id",
         ),
     )

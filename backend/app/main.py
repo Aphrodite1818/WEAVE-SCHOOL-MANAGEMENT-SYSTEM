@@ -66,6 +66,8 @@ from app.modules.search.router import router as tenant_search_router
 from app.modules.setup_assistant.router import router as setup_assistant_router
 from app.modules.student_academics.assessment_config_router import (
     router as assessment_config_router,
+    student_router as assessment_student_router,
+    teacher_router as assessment_teacher_router,
 )
 from app.modules.student_academics.bulk_results_router import (
     admin_router as bulk_results_admin_router,
@@ -80,11 +82,6 @@ from app.modules.student_academics.grading_scale_lifecycle_router import (
 from app.modules.student_academics.open_session_config_router import (
     router as open_session_config_router,
 )
-from app.modules.student_academics.result_limits_router import (
-    admin_router as result_limits_admin_router,
-    student_router as result_limits_student_router,
-    teacher_router as result_limits_teacher_router,
-)
 from app.modules.student_academics.router import (
     parent_router as parent_academic_router,
     student_router as student_academic_router,
@@ -93,9 +90,6 @@ from app.modules.student_academics.router import (
 )
 from app.modules.student_academics.session_closure_router import (
     router as session_closure_router,
-)
-from app.modules.student_academics.student_subject_cards_router import (
-    router as student_subject_cards_router,
 )
 from app.modules.student_academics.write_guard import (
     ensure_admin_academic_write_window,
@@ -119,18 +113,12 @@ logger = get_logger(__name__)
 
 RouteKey = tuple[str, str]
 _TENANT_ADMIN_ACADEMIC_OVERRIDES: set[RouteKey] = {
-    ("POST", "/tenant-admin/academics/results"),
-    ("PATCH", "/tenant-admin/academics/results/{result_id}/status"),
     ("GET", "/tenant-admin/academics/grading-scales/readiness-preview"),
     ("PATCH", "/tenant-admin/academics/sessions/{session_id}"),
     ("POST", "/tenant-admin/academics/sessions/{session_id}/close-and-progress"),
 }
-_TEACHER_ACADEMIC_OVERRIDES: set[RouteKey] = {
-    ("POST", "/teachers/academics/results"),
-}
-_STUDENT_ACADEMIC_OVERRIDES: set[RouteKey] = {
-    ("GET", "/students/academics/subjects"),
-}
+_TEACHER_ACADEMIC_OVERRIDES: set[RouteKey] = set()
+_STUDENT_ACADEMIC_OVERRIDES: set[RouteKey] = set()
 
 
 def _exclude_overridden_routes(router: APIRouter, overrides: set[RouteKey]) -> None:
@@ -257,11 +245,9 @@ def create_app() -> FastAPI:
     app.include_router(tenant_admin_announcement_router, prefix="/api/v1")
     app.include_router(metrics_router, prefix="/api/v1")
 
-    app.include_router(result_limits_admin_router, prefix="/api/v1")
-    app.include_router(result_limits_teacher_router, prefix="/api/v1")
-    app.include_router(result_limits_student_router, prefix="/api/v1")
+    app.include_router(assessment_teacher_router, prefix="/api/v1")
+    app.include_router(assessment_student_router, prefix="/api/v1")
     app.include_router(grading_readiness_router, prefix="/api/v1")
-    app.include_router(student_subject_cards_router, prefix="/api/v1")
     app.include_router(open_session_config_router, prefix="/api/v1")
     app.include_router(session_closure_router, prefix="/api/v1")
     app.include_router(school_calendar_admin_router, prefix="/api/v1")

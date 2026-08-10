@@ -1,106 +1,129 @@
-"""Tenant assessment-component configuration routes."""
+"""Tenant assessment-scheme management and actor read routes."""
 
+import uuid
 from typing import Annotated, TypeAlias
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, status
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.student_academics.models import SchoolAssessmentConfig
+from app.core.dependencies.route_guards import (
+    get_current_student,
+    get_current_teacher,
+    get_current_tenant_admin,
+)
+from app.modules.student_academics.assessment_repository import AssessmentRepository
+from app.modules.student_academics.assessment_schemas import (
+    AssessmentComponentCreate,
+    AssessmentComponentOrder,
+    AssessmentComponentUpdate,
+    AssessmentSchemeCreate,
+    AssessmentSchemeListResponse,
+    AssessmentSchemeResponse,
+    AssessmentSchemeUpdate,
+)
+from app.modules.student_academics.assessment_service import AssessmentService
+from app.modules.students.models import Student
+from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(
-    prefix="/tenant-admin/academics/assessment-config",
-    tags=["Tenant Admin Academics"],
+    prefix="/tenant-admin/academics/assessment-schemes", tags=["Tenant Admin Academics"]
 )
+teacher_router = APIRouter(prefix="/teachers/academics", tags=["Teacher Academics"])
+student_router = APIRouter(prefix="/students/academics", tags=["Student Academics"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin,
-    Depends(get_current_tenant_admin),
-]
-
-
-class AssessmentConfigResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    test_max: int | None = None
-    assessment_max: int | None = None
-    exam_max: int | None = None
-    is_configured: bool = False
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
+CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_student)]
 
 
-class AssessmentConfigUpdate(BaseModel):
-    test_max: int = Field(gt=0, le=100)
-    assessment_max: int = Field(gt=0, le=100)
-    exam_max: int = Field(gt=0, le=100)
-
-    @model_validator(mode="after")
-    def validate_total(self):
-        if self.test_max + self.assessment_max + self.exam_max != 100:
-            raise ValueError("Configured assessment component maximums must total 100.")
-        return self
+@router.get("", response_model=AssessmentSchemeListResponse)
+async def list_schemes(db: DbSession, current_admin: CurrentTenantAdmin):
+    rows = await AssessmentRepository.list_schemes(db, current_admin.tenant_id)
+    items = [await AssessmentService.response(db, row) for row in rows]
+    return AssessmentSchemeListResponse(items=items, total=len(items))
 
 
-async def _get_config(
-    db: DbSession,
-    tenant_id,
-    *,
-    lock: bool = False,
-) -> SchoolAssessmentConfig | None:
-    query = select(SchoolAssessmentConfig).where(SchoolAssessmentConfig.tenant_id == tenant_id)
-    if lock:
-        query = query.with_for_update()
-    return (await db.execute(query)).scalar_one_or_none()
+@router.get("/active", response_model=AssessmentSchemeResponse)
+async def get_active_scheme(db: DbSession, current_admin: CurrentTenantAdmin):
+    return await AssessmentService.active(db, current_admin.tenant_id)
 
 
-@router.get("", response_model=AssessmentConfigResponse)
-async def get_assessment_config(
+@router.post("", response_model=AssessmentSchemeResponse, status_code=status.HTTP_201_CREATED)
+async def create_scheme(
+    payload: AssessmentSchemeCreate, db: DbSession, current_admin: CurrentTenantAdmin
+):
+    return await AssessmentService.create(db, current_admin.tenant_id, payload)
+
+
+@router.patch("/{scheme_id}", response_model=AssessmentSchemeResponse)
+async def update_scheme(
+    scheme_id: uuid.UUID,
+    payload: AssessmentSchemeUpdate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> AssessmentConfigResponse:
-    config = await _get_config(db, current_admin.tenant_id)
-    if config is None:
-        return AssessmentConfigResponse(is_configured=False)
-    return AssessmentConfigResponse(
-        test_max=config.test_max,
-        assessment_max=config.assessment_max,
-        exam_max=config.exam_max,
-        is_configured=True,
-    )
+):
+    return await AssessmentService.rename(db, current_admin.tenant_id, scheme_id, payload)
 
 
-@router.patch("", response_model=AssessmentConfigResponse)
-async def update_assessment_config(
-    payload: AssessmentConfigUpdate,
+@router.post("/{scheme_id}/components", response_model=AssessmentSchemeResponse)
+async def add_component(
+    scheme_id: uuid.UUID,
+    payload: AssessmentComponentCreate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-) -> AssessmentConfigResponse:
-    config = await _get_config(
-        db,
-        current_admin.tenant_id,
-        lock=True,
-    )
-    if config is None:
-        config = SchoolAssessmentConfig(
-            tenant_id=current_admin.tenant_id,
-            test_max=payload.test_max,
-            assessment_max=payload.assessment_max,
-            exam_max=payload.exam_max,
-        )
-        db.add(config)
-    else:
-        config.test_max = payload.test_max
-        config.assessment_max = payload.assessment_max
-        config.exam_max = payload.exam_max
+):
+    return await AssessmentService.add_component(db, current_admin.tenant_id, scheme_id, payload)
 
-    await db.flush()
-    await db.commit()
-    await db.refresh(config)
-    return AssessmentConfigResponse(
-        test_max=config.test_max,
-        assessment_max=config.assessment_max,
-        exam_max=config.exam_max,
-        is_configured=True,
+
+@router.patch("/{scheme_id}/components/{component_id}", response_model=AssessmentSchemeResponse)
+async def update_component(
+    scheme_id: uuid.UUID,
+    component_id: uuid.UUID,
+    payload: AssessmentComponentUpdate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AssessmentService.update_component(
+        db, current_admin.tenant_id, scheme_id, component_id, payload
     )
+
+
+@router.delete(
+    "/{scheme_id}/components/{component_id}",
+    response_model=AssessmentSchemeResponse,
+)
+async def remove_component(
+    scheme_id: uuid.UUID,
+    component_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AssessmentService.remove_component(
+        db, current_admin.tenant_id, scheme_id, component_id
+    )
+
+
+@router.put("/{scheme_id}/component-order", response_model=AssessmentSchemeResponse)
+async def reorder_components(
+    scheme_id: uuid.UUID,
+    payload: AssessmentComponentOrder,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AssessmentService.reorder(db, current_admin.tenant_id, scheme_id, payload)
+
+
+@router.post("/{scheme_id}/activate", response_model=AssessmentSchemeResponse)
+async def activate_scheme(scheme_id: uuid.UUID, db: DbSession, current_admin: CurrentTenantAdmin):
+    return await AssessmentService.activate(db, current_admin.tenant_id, scheme_id)
+
+
+@teacher_router.get("/assessment-scheme", response_model=AssessmentSchemeResponse)
+async def get_teacher_assessment_scheme(db: DbSession, current_teacher: CurrentTeacher):
+    return await AssessmentService.active(db, current_teacher.tenant_id)
+
+
+@student_router.get("/assessment-scheme", response_model=AssessmentSchemeResponse)
+async def get_student_assessment_scheme(db: DbSession, current_student: CurrentStudent):
+    return await AssessmentService.active(db, current_student.tenant_id)

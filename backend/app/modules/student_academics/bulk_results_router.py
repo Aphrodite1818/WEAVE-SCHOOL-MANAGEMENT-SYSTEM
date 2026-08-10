@@ -215,7 +215,7 @@ class BulkResultLifecycleService:
                         target,
                     )
                     if target == AcademicResultStatus.SUBMITTED:
-                        StudentAcademicService._ensure_result_complete(result)
+                        await StudentAcademicService._ensure_result_complete(db, result)
                     if (
                         target
                         in {
@@ -278,7 +278,7 @@ class BulkResultLifecycleService:
         for result in results:
             try:
                 async with db.begin_nested():
-                    StudentAcademicService._ensure_result_complete(result)
+                    await StudentAcademicService._ensure_result_complete(db, result)
                     previous = result.status
                     result.status = AcademicResultStatus.SUBMITTED
                     StudentAcademicService._apply_result_lifecycle_metadata(

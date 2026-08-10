@@ -17,9 +17,7 @@ const BLANK_FORM = {
   result_id: "",
   student_id: "",
   teacher_assignment_id: "",
-  test_score: "",
-  assessment_score: "",
-  exam_score: "",
+  component_scores: {},
 };
 
 const asItems = (response) =>
@@ -61,12 +59,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   const [assignments, setAssignments] = useState([]);
   const [students, setStudents] = useState([]);
   const [results, setResults] = useState([]);
-  const [assessmentConfig, setAssessmentConfig] = useState({
-    test_max: null,
-    assessment_max: null,
-    exam_max: null,
-    is_configured: false,
-  });
+  const [assessmentConfig, setAssessmentConfig] = useState(null);
   const [contextFilters, setContextFilters] = useState({
     class_id: "",
     academic_session_id: "",
@@ -89,9 +82,9 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       result_id: item.id,
       student_id: item.student_id || "",
       teacher_assignment_id: item.teacher_assignment_id || "",
-      test_score: item.test_score ?? "",
-      assessment_score: item.assessment_score ?? "",
-      exam_score: item.exam_score ?? "",
+      component_scores: Object.fromEntries(
+        (item.components || []).map((component) => [component.assessment_component_id, component.score ?? ""]),
+      ),
     });
     setSearchParams(
       (prev) => {
@@ -113,7 +106,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
           academicService.listTerms({ limit: 100 }),
           classService.getClasses({ limit: 100, activeOnly: true }),
           academicService.listTeacherAssignments({ active_only: true, limit: 100 }),
-          academicService.getAssessmentConfig(),
+          academicService.getActiveAssessmentScheme().catch(() => null),
         ]);
 
       const nextSessions = asItems(sessionResponse);
@@ -126,14 +119,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       setTerms(nextTerms);
       setClasses(nextClasses);
       setAssignments(asItems(assignmentResponse).filter((item) => item.is_active));
-      setAssessmentConfig(
-        configResponse || {
-          test_max: null,
-          assessment_max: null,
-          exam_max: null,
-          is_configured: false,
-        },
-      );
+      setAssessmentConfig(configResponse || null);
       setContextFilters((current) => ({
         class_id: current.class_id || nextClasses[0]?.id || "",
         academic_session_id:
@@ -229,9 +215,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   );
   const limitsConfigured = Boolean(
     assessmentConfig?.is_configured &&
-      assessmentConfig.test_max != null &&
-      assessmentConfig.assessment_max != null &&
-      assessmentConfig.exam_max != null,
+      assessmentConfig.components?.length,
   );
 
   const sessionOptions = sessions.map((item) => ({ value: item.id, label: item.name }));
@@ -267,27 +251,23 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     return results;
   }, [activeTab, results]);
 
-  const scoreTotal =
-    Number(form.test_score || 0) +
-    Number(form.assessment_score || 0) +
-    Number(form.exam_score || 0);
+  const scoreTotal = (assessmentConfig?.components || []).reduce(
+    (sum, component) => sum + (Number(form.component_scores?.[component.id]) || 0),
+    0,
+  );
   const totalMaximum = limitsConfigured
-    ? Number(assessmentConfig.test_max) +
-      Number(assessmentConfig.assessment_max) +
-      Number(assessmentConfig.exam_max)
+    ? Number(assessmentConfig.total_maximum_score)
     : null;
 
   const validateScores = () => {
     if (!limitsConfigured) {
-      showWarning("Configure assessment limits under Grading before entering scores.");
+      showWarning("Configure and activate an assessment scheme before entering scores.");
       return false;
     }
-    const checks = [
-      ["Test", form.test_score, assessmentConfig.test_max],
-      ["Assessment", form.assessment_score, assessmentConfig.assessment_max],
-      ["Exam", form.exam_score, assessmentConfig.exam_max],
-    ];
-    for (const [label, value, maximum] of checks) {
+    for (const component of assessmentConfig.components) {
+      const label = component.name;
+      const value = form.component_scores?.[component.id];
+      const maximum = component.maximum_score;
       if (value !== "" && (Number(value) < 0 || Number(value) > Number(maximum))) {
         showWarning(`${label} must be between 0 and ${maximum}.`);
         return false;
@@ -315,9 +295,10 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         teacher_assignment_id: form.teacher_assignment_id,
         academic_session_id: contextFilters.academic_session_id,
         academic_term_id: contextFilters.academic_term_id,
-        test_score: scoreValue(form.test_score),
-        assessment_score: scoreValue(form.assessment_score),
-        exam_score: scoreValue(form.exam_score),
+        component_scores: assessmentConfig.components.map((component) => ({
+          assessment_component_id: component.id,
+          score: scoreValue(form.component_scores?.[component.id]),
+        })),
         status: "draft",
       });
       showSuccess(form.result_id ? "Draft result updated." : "Draft result saved.");
@@ -400,13 +381,8 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
                 </div>
                 <Badge variant={item.status === "draft" ? "warning" : item.status === "locked" ? "default" : "success"}>{item.status}</Badge>
               </div>
-              <div className="mt-4 grid grid-cols-4 gap-2 text-center">
-                {[
-                  ["Test", item.test_score, assessmentConfig.test_max],
-                  ["Assess", item.assessment_score, assessmentConfig.assessment_max],
-                  ["Exam", item.exam_score, assessmentConfig.exam_max],
-                  ["Total", item.total_score, totalMaximum],
-                ].map(([label, value, maximum]) => (
+              <div className="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-3">
+                {[...(item.components || []).map((component) => ({ label: component.name, value: component.score, maximum: component.maximum_score })), { label: "Total", value: item.total_score, maximum: item.maximum_score }].map(({ label, value, maximum }) => (
                   <div key={label} className="rounded-xl bg-surface-muted/40 px-2 py-2">
                     <p className="text-[10px] uppercase tracking-wide text-text-muted">{label}</p>
                     <p className="mt-1 text-sm font-semibold text-text">
@@ -471,7 +447,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
             {periodEditable ? "Current period is open. Score entry and lifecycle actions are available." : "The selected period is read-only. Choose the current open session and term to make changes."}
           </div>
           {!limitsConfigured ? (
-            <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-900">Assessment limits are not configured. Score entry and result finalization remain unavailable until an admin configures them under Grading.</div>
+            <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-900">No assessment scheme is active. Score entry remains unavailable until an admin activates one under Grading.</div>
           ) : null}
         </WorkspacePanel>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -485,19 +461,19 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     pageContent = (
       <div className="space-y-4">
         {contextSummary}
-        <WorkspacePanel title="Score entry" description="Enter scores against the limits configured by the school and save them as a draft.">
+        <WorkspacePanel title="Score entry" description="Enter scores for the configured assessment components and save them as a draft.">
           {!limitsConfigured ? (
-            <p className="rounded-xl bg-warning-soft px-4 py-3 text-sm text-amber-900">Assessment limits have not been configured. Open Grading → Assessment Limits before entering scores.</p>
+            <p className="rounded-xl bg-warning-soft px-4 py-3 text-sm text-amber-900">No assessment scheme is active. Open Grading → Assessment Scheme before entering scores.</p>
           ) : null}
           <form className="mt-3 space-y-3" onSubmit={saveDraft}>
             <div className="grid gap-3 lg:grid-cols-2">
               <SelectControl label="Student" value={form.student_id} onChange={(value) => setForm((current) => ({ ...current, student_id: value }))} options={studentOptions} placeholder="Select student" disabled={!periodEditable || !limitsConfigured} required />
               <SelectControl label="Subject assignment" value={form.teacher_assignment_id} onChange={(value) => setForm((current) => ({ ...current, teacher_assignment_id: value }))} options={assignmentOptions} placeholder={assignmentOptions.length === 0 ? "No active assignments for this class" : "Select assignment"} disabled={!periodEditable || !limitsConfigured || assignmentOptions.length === 0} required />
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Input label={limitsConfigured ? `Test (0–${assessmentConfig.test_max})` : "Test"} type="number" min="0" max={assessmentConfig.test_max ?? undefined} disabled={!periodEditable || !limitsConfigured} value={form.test_score} onChange={(event) => setForm((current) => ({ ...current, test_score: event.target.value }))} />
-              <Input label={limitsConfigured ? `Assessment (0–${assessmentConfig.assessment_max})` : "Assessment"} type="number" min="0" max={assessmentConfig.assessment_max ?? undefined} disabled={!periodEditable || !limitsConfigured} value={form.assessment_score} onChange={(event) => setForm((current) => ({ ...current, assessment_score: event.target.value }))} />
-              <Input label={limitsConfigured ? `Exam (0–${assessmentConfig.exam_max})` : "Exam"} type="number" min="0" max={assessmentConfig.exam_max ?? undefined} disabled={!periodEditable || !limitsConfigured} value={form.exam_score} onChange={(event) => setForm((current) => ({ ...current, exam_score: event.target.value }))} />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(assessmentConfig?.components || []).map((component) => (
+                <Input key={component.id} label={`${component.name} (0–${component.maximum_score})`} type="number" min="0" max={component.maximum_score} disabled={!periodEditable || !limitsConfigured} value={form.component_scores?.[component.id] ?? ""} onChange={(event) => setForm((current) => ({ ...current, component_scores: { ...current.component_scores, [component.id]: event.target.value } }))} />
+              ))}
             </div>
             <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-3 py-2 text-sm text-text-muted">Combined score: <span className="font-semibold text-text">{scoreTotal}</span>{totalMaximum != null ? ` / ${totalMaximum}` : ""}</div>
             <div className="flex flex-wrap gap-2">

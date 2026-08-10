@@ -82,14 +82,20 @@ class ReportCardPrintService:
         )
         student_photo = card.student_passport_photo_url
 
+        component_headers = card.lines[0].components if card.lines else []
+        component_heading_cells = "".join(
+            f"<th>{ReportCardPrintService._text(component.name)}</th>"
+            for component in component_headers
+        )
         rows = "".join(
             "<tr>"
             f"<td class='subject'>{ReportCardPrintService._text(line.subject_name)}</td>"
             f"<td>{ReportCardPrintService._text(line.subject_code)}</td>"
-            f"<td>{ReportCardPrintService._score(line.test_score)}</td>"
-            f"<td>{ReportCardPrintService._score(line.assessment_score)}</td>"
-            f"<td>{ReportCardPrintService._score(line.exam_score)}</td>"
-            f"<td class='total'>{ReportCardPrintService._score(line.total_score)}</td>"
+            + "".join(
+                f"<td>{ReportCardPrintService._score(next((item.score for item in line.components if item.assessment_component_id == header.assessment_component_id), None))}</td>"
+                for header in component_headers
+            )
+            + f"<td class='total'>{ReportCardPrintService._score(line.total_score)}</td>"
             f"<td>{ReportCardPrintService._text(line.grade)}</td>"
             f"<td class='remark'>{ReportCardPrintService._text(line.remark, '')}</td>"
             "</tr>"
@@ -226,7 +232,7 @@ class ReportCardPrintService:
           <colgroup>
             <col style="width:23%"><col style="width:8%"><col style="width:8%"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:27%">
           </colgroup>
-          <thead><tr><th>Subject</th><th>Code</th><th>Test</th><th>Assessment</th><th>Exam</th><th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
+          <thead><tr><th>Subject</th><th>Code</th>{component_heading_cells}<th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
           <tbody>{rows}</tbody>
         </table>
       </div>
