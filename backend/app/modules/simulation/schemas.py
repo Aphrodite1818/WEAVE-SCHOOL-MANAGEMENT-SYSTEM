@@ -20,10 +20,14 @@ class SubscriptionSimulationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_adjustments(self) -> "SubscriptionSimulationRequest":
-        if self.scenario in {
-            SubscriptionSimulationScenario.EXPIRES_IN_DAYS,
-            SubscriptionSimulationScenario.GRACE_EXPIRES_IN_DAYS,
-        } and self.days is None:
+        if (
+            self.scenario
+            in {
+                SubscriptionSimulationScenario.EXPIRES_IN_DAYS,
+                SubscriptionSimulationScenario.GRACE_EXPIRES_IN_DAYS,
+            }
+            and self.days is None
+        ):
             raise ValueError("days is required for this simulation scenario")
         return self
 
