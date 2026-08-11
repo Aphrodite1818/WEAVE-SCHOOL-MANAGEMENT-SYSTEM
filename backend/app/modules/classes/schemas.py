@@ -75,6 +75,10 @@ class AcademicLevelProgressionConfigureRequest(InputBase):
     def validate_terminal_configuration(self):
         if self.is_terminal and self.next_level_id is not None:
             raise ValueError("a terminal academic level cannot have next_level_id")
+        if not self.is_terminal and self.next_level_id is None:
+            raise ValueError(
+                "choose a next academic level or mark this level as terminal"
+            )
         return self
 
 
