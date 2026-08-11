@@ -2,6 +2,11 @@ import { API_BASE_URL, api } from "./api";
 
 const PUBLIC_CATALOGUE_ETAG_KEY = "weave:public-pricing-etag";
 const PUBLIC_CATALOGUE_VALUE_KEY = "weave:public-pricing-catalogue";
+const TERM_ORDER = {
+  first_term: 1,
+  second_term: 2,
+  third_term: 3,
+};
 
 const backgroundAuthOptions = {
   clearAuthOnUnauthorized: false,
@@ -61,20 +66,35 @@ const getPublicPlans = async ({ force = false } = {}) => {
 const resolveCheckoutTermId = async (explicitTermId) => {
   if (explicitTermId) return explicitTermId;
 
-  const terms = await api.get("/tenant-admin/academics/terms?limit=100");
-  const items = terms?.items || terms || [];
-  const currentTerm = items.find(
+  const [termsResponse, sessionsResponse] = await Promise.all([
+    api.get("/tenant-admin/academics/terms?limit=100"),
+    api.get("/tenant-admin/academics/sessions?limit=100&status=open&is_current=true"),
+  ]);
+  const terms = termsResponse?.items || termsResponse || [];
+  const sessions = sessionsResponse?.items || sessionsResponse || [];
+
+  const currentTerm = terms.find(
     (item) => item.is_current && item.status === "open",
   );
   if (currentTerm?.id) return currentTerm.id;
 
-  const draftTerms = items.filter((item) => item.status === "draft");
-  if (draftTerms.length === 1) return draftTerms[0].id;
-  if (draftTerms.length > 1) {
-    throw new Error(
-      "Choose the exact draft term from Academic Setup before starting checkout.",
-    );
-  }
+  const currentSession = sessions.find(
+    (item) => item.is_current && item.status === "open",
+  );
+  const draftTerms = terms
+    .filter(
+      (item) =>
+        item.status === "draft" &&
+        (!currentSession?.id || item.academic_session_id === currentSession.id),
+    )
+    .sort((left, right) => {
+      const orderDifference =
+        (TERM_ORDER[left.name] ?? 99) - (TERM_ORDER[right.name] ?? 99);
+      if (orderDifference !== 0) return orderDifference;
+      return String(left.start_date || "").localeCompare(String(right.start_date || ""));
+    });
+
+  if (draftTerms[0]?.id) return draftTerms[0].id;
   throw new Error("Create a draft academic term before purchasing a term plan.");
 };
 
