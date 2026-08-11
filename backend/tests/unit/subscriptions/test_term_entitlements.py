@@ -199,7 +199,10 @@ async def test_paid_activation_revalidates_term_state_at_settlement() -> None:
             new=AsyncMock(return_value=SimpleNamespace(status=AcademicTermStatus.CLOSED)),
         ),
     ):
-        with pytest.raises(ConflictException, match="draft or open"):
+        with pytest.raises(
+            ConflictException,
+            match="cannot be activated after the academic term is closed",
+        ):
             await TermPlanEntitlementService.activate_verified_transaction(
                 MagicMock(), transaction, _successful_payment_payload(transaction)
             )
