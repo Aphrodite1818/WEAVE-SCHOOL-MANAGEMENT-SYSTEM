@@ -25,7 +25,7 @@ from app.modules.subscriptions.subscription_enums import (
 from app.tenant_management.models import SubscriptionPlan
 
 TERM_SAFETY_LIFETIME_DAYS = 214
-PENDING_CHECKOUT_TTL = timedelta(minutes=30)
+PENDING_CHECKOUT_TTL = timedelta(minutes=1 if settings.ENV == "dev" else 30)
 PAID_TERM_PLANS = {
     SubscriptionPlan.PLUS,
     SubscriptionPlan.PROFESSIONAL,
@@ -181,16 +181,19 @@ class TermPlanEntitlementService:
             entitlement.safety_expires_at and entitlement.safety_expires_at <= now
         ):
             tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
-            suggested = getattr(tenant, "initial_plan_intent", None) or SubscriptionPlan.FREE
+            suggested = getattr(tenant, "initial_plan_intent", None)
             raise ConflictException(
                 "Activate a plan for this academic term before opening it.",
                 payload={
                     "code": "TERM_PLAN_ACTIVATION_REQUIRED",
                     "term_id": str(term_id),
-                    "suggested_plan": suggested.value,
-                    "payment_required": suggested
-                    not in {SubscriptionPlan.FREE, SubscriptionPlan.FREE_TRIAL},
-                    "amount_kobo": TermPlanEntitlementService.amount_kobo(suggested),
+                    "suggested_plan": suggested.value if suggested else None,
+                    "payment_required": suggested in PAID_TERM_PLANS,
+                    "amount_kobo": (
+                        TermPlanEntitlementService.amount_kobo(suggested)
+                        if suggested
+                        else 0
+                    ),
                 },
             )
         return entitlement

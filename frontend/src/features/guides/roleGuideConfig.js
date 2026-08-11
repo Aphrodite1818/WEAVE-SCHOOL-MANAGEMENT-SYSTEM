@@ -58,7 +58,7 @@ export const ROLE_GUIDES = {
         shortLabel: "Structure",
         label: "Create classes and subjects",
         description:
-          "Create at least one active class and one active subject before launching normal academic work.",
+          "Create an academic level, add at least one class arm under it, and create a subject before launching normal academic work.",
         icon: School,
       },
       {

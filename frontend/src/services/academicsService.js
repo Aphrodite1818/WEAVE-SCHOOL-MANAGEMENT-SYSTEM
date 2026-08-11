@@ -58,6 +58,8 @@ export const academicLevelService = {
   updateLevel: (levelId, payload) => api.patch(`/academic-levels/${levelId}`, payload),
   configureProgression: (levelId, payload) =>
     api.put(`/academic-levels/${levelId}/progression`, normalizeLevelProgressionPayload(payload)),
+  removeLevelFromSetup: (levelId) =>
+    api.post(`/tenant-admin/setup-assistant/levels/${levelId}/remove`, {}),
 };
 
 export const classService = {

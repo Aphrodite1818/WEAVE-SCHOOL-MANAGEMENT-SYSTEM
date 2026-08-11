@@ -19,6 +19,7 @@ from app.modules.subscriptions.subscription_enums import (
 )
 from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
 from app.tenant_management.models import SubscriptionPlan
+from app.tenant_management.schemas import TenantRegisterRequest
 
 
 def test_free_is_distinct_from_trial_and_does_not_inherit_paid_features() -> None:
@@ -45,7 +46,35 @@ async def test_missing_entitlement_blocks_term_open_with_frontend_context() -> N
         with pytest.raises(ConflictException) as exc_info:
             await TermPlanEntitlementService.ensure_open_eligible(MagicMock(), tenant_id, term_id)
     assert exc_info.value.payload["code"] == "TERM_PLAN_ACTIVATION_REQUIRED"
+    assert exc_info.value.payload["suggested_plan"] == "professional"
     assert exc_info.value.payload["payment_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_missing_registration_plan_routes_term_open_to_plan_selection() -> None:
+    tenant_id, term_id = uuid4(), uuid4()
+    with (
+        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=None)),
+        patch(
+            "app.modules.subscriptions.term_entitlement_service.SubscriptionRepository.get_tenant",
+            new=AsyncMock(return_value=SimpleNamespace(initial_plan_intent=None)),
+        ),
+    ):
+        with pytest.raises(ConflictException) as exc_info:
+            await TermPlanEntitlementService.ensure_open_eligible(MagicMock(), tenant_id, term_id)
+
+    assert exc_info.value.payload["suggested_plan"] is None
+    assert exc_info.value.payload["payment_required"] is False
+
+
+def test_registration_without_plan_preserves_no_plan_intent() -> None:
+    payload = TenantRegisterRequest(
+        school_name="Example School",
+        email="admin@example.com",
+        password="valid-password",
+    )
+
+    assert payload.initial_plan_intent is None
 
 
 @pytest.mark.asyncio

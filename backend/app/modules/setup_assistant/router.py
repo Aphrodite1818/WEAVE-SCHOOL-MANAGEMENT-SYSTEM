@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.classes.schemas import ClassRoomResponse
-from app.modules.classes.service import ClassRoomService
+from app.modules.classes.schemas import AcademicLevelResponse, ClassRoomResponse
+from app.modules.classes.service import AcademicLevelService, ClassRoomService
 from app.modules.subjects.schemas import SubjectResponse
 from app.modules.subjects.service import SubjectService
 from app.modules.subscriptions.service import SubscriptionFeatureService
@@ -28,6 +28,27 @@ class SetupAssistantRemoveClassRequest(BaseModel):
 
 class SetupAssistantRemoveSubjectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class SetupAssistantRemoveLevelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+@router.post("/levels/{academic_level_id}/remove", response_model=AcademicLevelResponse)
+async def remove_level_from_setup(
+    academic_level_id: uuid.UUID,
+    payload: SetupAssistantRemoveLevelRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> AcademicLevelResponse:
+    """Remove an unused, arm-less academic level from assisted setup."""
+
+    _ = payload
+    return await AcademicLevelService.purge_setup_level(
+        db=db,
+        actor=current_user,
+        academic_level_id=academic_level_id,
+    )
 
 
 @router.post("/classes/{class_id}/remove", response_model=ClassRoomResponse)

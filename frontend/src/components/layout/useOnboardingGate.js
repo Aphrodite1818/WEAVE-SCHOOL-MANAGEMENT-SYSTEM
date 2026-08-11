@@ -3,6 +3,13 @@ import { useNavigate } from "react-router-dom";
 
 import { onboardingService } from "../../services/onboardingService";
 
+const GETTING_STARTED_ROUTE_BY_ROLE = {
+  admin: "/admin/getting-started",
+  teacher: "/teacher/getting-started",
+  parent: "/parent/getting-started",
+  student: "/student/getting-started",
+};
+
 export default function useOnboardingGate({ role, enabled = true }) {
   const navigate = useNavigate();
   const normalizedRole = onboardingService.normalizeRole(role);
@@ -57,14 +64,13 @@ export default function useOnboardingGate({ role, enabled = true }) {
 
   const handleProfileSaved = (status) => {
     const required = Boolean(status?.onboarding_required);
-    const completedInitialTenantOnboarding =
-      normalizedRole === "admin" && profileMode === "onboarding" && !required;
+    const completedInitialOnboarding = profileMode === "onboarding" && !required;
 
     setOnboardingState({ loading: false, required, status: status || null });
     if (!required) setProfileModalOpen(false);
 
-    if (completedInitialTenantOnboarding) {
-      navigate("/admin/getting-started", { replace: true });
+    if (completedInitialOnboarding && GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole]) {
+      navigate(GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole], { replace: true });
     }
   };
 

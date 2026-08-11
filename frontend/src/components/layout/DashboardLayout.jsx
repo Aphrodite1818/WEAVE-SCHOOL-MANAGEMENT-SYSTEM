@@ -93,6 +93,7 @@ function DashboardShellFrame({
   const navigate = useNavigate();
   const role = getRole(user, roleProp);
   const guidePageActive = location.pathname.endsWith("/getting-started");
+  const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
   const academicHubActive = location.pathname.startsWith("/admin/academic");
   const {
     entitlements,
@@ -149,6 +150,7 @@ function DashboardShellFrame({
     role,
     enabled:
       onboardingModalEnabled &&
+      hasValidSchoolContext &&
       !legalBlocksProgression &&
       !onboardingState.loading &&
       !onboardingState.required &&

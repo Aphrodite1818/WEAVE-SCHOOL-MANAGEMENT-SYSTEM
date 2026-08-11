@@ -22,6 +22,8 @@ const storageKey = (guideKey) => {
     user.account_id ||
     user.teacher_account_id ||
     user.parent_account_id ||
+    user.meta?.teacher_account_id ||
+    user.meta?.parent_account_id ||
     user.actor_id ||
     user.id ||
     user.email ||

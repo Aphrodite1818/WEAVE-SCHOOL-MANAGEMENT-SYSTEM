@@ -154,6 +154,43 @@ class AcademicLevelService:
             is_active=level.is_active,
         )
 
+    @staticmethod
+    async def purge_setup_level(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        academic_level_id: uuid.UUID,
+    ) -> AcademicLevelResponse:
+        """Permanently remove an unused academic level during assisted setup."""
+
+        AcademicLevelService._ensure_admin(actor)
+        level = await AcademicLevelRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            academic_level_id,
+            lock=True,
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found")
+
+        dependency_counts = await AcademicLevelRepository.count_setup_dependencies(
+            db,
+            actor.tenant_id,
+            academic_level_id,
+        )
+        if any(count > 0 for count in dependency_counts.values()):
+            raise ConflictException(
+                detail=(
+                    "This academic level has class arms or other references and cannot "
+                    "be removed from setup."
+                ),
+                payload={"dependency_counts": dependency_counts},
+            )
+
+        response = AcademicLevelResponse.model_validate(level)
+        await AcademicLevelRepository.delete(db, level)
+        await db.commit()
+        return response
+
 
 class ClassRoomService:
     """Business logic for classroom management."""

@@ -82,6 +82,55 @@ class AcademicLevelRepository:
         await db.flush()
         return level
 
+    @staticmethod
+    async def count_setup_dependencies(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        academic_level_id: uuid.UUID,
+    ) -> dict[str, int]:
+        from app.modules.student_academics.models import LevelSubject
+
+        classroom_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(ClassRoom)
+                .where(
+                    ClassRoom.tenant_id == tenant_id,
+                    ClassRoom.academic_level_id == academic_level_id,
+                )
+            )
+        ).scalar_one()
+        previous_level_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(AcademicLevel)
+                .where(
+                    AcademicLevel.tenant_id == tenant_id,
+                    AcademicLevel.next_level_id == academic_level_id,
+                )
+            )
+        ).scalar_one()
+        level_subject_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(LevelSubject)
+                .where(
+                    LevelSubject.tenant_id == tenant_id,
+                    LevelSubject.academic_level_id == academic_level_id,
+                )
+            )
+        ).scalar_one()
+        return {
+            "classrooms": int(classroom_count),
+            "previous_levels": int(previous_level_count),
+            "level_subjects": int(level_subject_count),
+        }
+
+    @staticmethod
+    async def delete(db: AsyncSession, level: AcademicLevel) -> None:
+        await db.delete(level)
+        await db.flush()
+
 
 class ClassRoomRepository:
     @staticmethod

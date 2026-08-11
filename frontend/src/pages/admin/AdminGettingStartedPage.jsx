@@ -43,6 +43,7 @@ import { authSession, getErrorMessage, parseApiError } from "../../services/api"
 import { mediaService } from "../../services/mediaService";
 import { tenantBrandingService } from "../../services/tenantBrandingService";
 import { subjectService } from "../../services/subject.service";
+import { subscriptionService } from "../../services/subscriptionService";
 
 const ACCEPTED_LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
@@ -160,7 +161,8 @@ function AdminGettingStartedPage() {
   const [sessionForm, setSessionForm] = useState(DEFAULT_SESSION);
   const [termForm, setTermForm] = useState(DEFAULT_TERM);
   const [calendarForm, setCalendarForm] = useState(DEFAULT_CALENDAR);
-  const [classForm, setClassForm] = useState({ level_name: "", arm: "" });
+  const [levelForm, setLevelForm] = useState({ name: "" });
+  const [classForm, setClassForm] = useState({ academic_level_id: "", arm: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
   const [progressionDrafts, setProgressionDrafts] = useState({});
   const [schoolLogoUrl, setSchoolLogoUrl] = useState(() =>
@@ -343,6 +345,15 @@ function AdminGettingStartedPage() {
         };
       }
       return next;
+    });
+  }, [activeLevels]);
+
+  useEffect(() => {
+    setClassForm((current) => {
+      if (activeLevels.some((level) => level.id === current.academic_level_id)) {
+        return current;
+      }
+      return { ...current, academic_level_id: activeLevels[0]?.id || "" };
     });
   }, [activeLevels]);
   const sessionDraft = statusValue(selectedSession) === "draft";
@@ -631,27 +642,31 @@ function AdminGettingStartedPage() {
     if (result) await guide.moveTo("structure");
   };
 
-  const createClass = async (event) => {
+  const createLevel = async (event) => {
     event.preventDefault();
     const created = await runAction(
+      "level",
+      () => academicLevelService.createLevel({ name: levelForm.name }),
+      "Academic level created. Now add its class arm.",
+    );
+    if (!created?.id) return;
+    setLevelForm({ name: "" });
+    setClassForm((current) => ({ ...current, academic_level_id: created.id }));
+  };
+
+  const createClass = async (event) => {
+    event.preventDefault();
+    if (!classForm.academic_level_id) {
+      showWarning("Create or select an academic level before adding an arm.");
+      return;
+    }
+    const created = await runAction(
       "class",
-      async () => {
-        const normalizedLevelName = classForm.level_name.trim();
-        let level = activeLevels.find(
-          (item) => item.name.trim().toLowerCase() === normalizedLevelName.toLowerCase(),
-        );
-        if (!level) {
-          level = await academicLevelService.createLevel({ name: normalizedLevelName });
-        }
-        return classService.createClass({
-          academic_level_id: level.id,
-          arm: classForm.arm,
-        });
-      },
+      () => classService.createClass(classForm),
       "Class created.",
     );
     if (!created) return;
-    setClassForm({ level_name: "", arm: "" });
+    setClassForm((current) => ({ ...current, arm: "" }));
   };
 
   const createSubject = async (event) => {
@@ -674,6 +689,14 @@ function AdminGettingStartedPage() {
     if (removed) await refreshSubscriptionState({ silent: true });
   };
 
+  const removeLevel = async (level, label = level?.name || "Academic level") => {
+    await runAction(
+      `level-delete-${level.id}`,
+      () => academicLevelService.removeLevelFromSetup(level.id),
+      `${label} removed from setup.`,
+    );
+  };
+
   const removeSubject = async (subject, label = subject?.name || "Subject") => {
     const removed = await runAction(
       `subject-delete-${subject.id}`,
@@ -684,7 +707,9 @@ function AdminGettingStartedPage() {
   };
 
   const requestSetupRemoval = (type, item) => {
-    const label = type === "class" ? classLabel(item) : item?.name || "Subject";
+    const label = type === "class"
+      ? classLabel(item)
+      : item?.name || (type === "level" ? "Academic level" : "Subject");
     setDeleteConfirmation({ type, item, label });
   };
 
@@ -694,6 +719,8 @@ function AdminGettingStartedPage() {
     const { type, item, label } = deleteConfirmation;
     if (type === "class") {
       await removeClass(item, label);
+    } else if (type === "level") {
+      await removeLevel(item, label);
     } else {
       await removeSubject(item, label);
     }
@@ -739,14 +766,62 @@ function AdminGettingStartedPage() {
 
   const openTerm = async () => {
     if (!selectedTerm?.id) return;
-    const result = await runAction(
-      "open-term",
-      () => academicService.openTerm(selectedTerm.id),
-      "Academic term opened.",
-    );
-    if (result) {
+    setSaving("open-term");
+    setError("");
+    try {
+      await academicService.openTerm(selectedTerm.id);
+      showSuccess("Academic term opened.");
       await guide.finish();
       navigate("/admin/dashboard", { replace: true });
+    } catch (requestError) {
+      const parsed = parseApiError(requestError, "Could not open the academic term.");
+      const activation = parsed.data?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
+        ? parsed.data
+        : parsed.data?.detail?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
+          ? parsed.data.detail
+          : null;
+
+      if (!activation) {
+        setError(parsed.message);
+        showError(parsed.message);
+        return;
+      }
+
+      try {
+        if (!activation.suggested_plan) {
+          navigate(`/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}`);
+          return;
+        }
+
+        if (activation.payment_required) {
+          const checkout = await subscriptionService.initializeTermCheckout({
+            academic_term_id: selectedTerm.id,
+            plan_code: activation.suggested_plan,
+          });
+          window.location.assign(checkout.authorization_url);
+          return;
+        }
+
+        if (activation.suggested_plan === "free") {
+          await subscriptionService.activateFreeTerm(selectedTerm.id);
+          await academicService.openTerm(selectedTerm.id);
+          showSuccess("Free plan activated and academic term opened.");
+          await guide.finish();
+          navigate("/admin/dashboard", { replace: true });
+          return;
+        }
+
+        navigate(`/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}`);
+      } catch (activationError) {
+        const message = getErrorMessage(
+          activationError,
+          "Could not prepare the selected plan for this academic term.",
+        );
+        setError(message);
+        showError(message);
+      }
+    } finally {
+      setSaving("");
     }
   };
 
@@ -775,6 +850,17 @@ function AdminGettingStartedPage() {
     label: termLabel(item),
     description: `${titleCase(item.status)}${item.is_current ? " · Current" : ""}`,
   }));
+
+  const levelOptions = activeLevels.map((item) => {
+    const armCount = activeClasses.filter(
+      (classroom) => classroom.academic_level_id === item.id,
+    ).length;
+    return {
+      value: item.id,
+      label: item.name,
+      description: `${armCount} class arm${armCount === 1 ? "" : "s"}`,
+    };
+  });
 
   const goPrevious = () => {
     if (!firstStep) guide.moveTo(guide.steps[guide.currentIndex - 1].id);
@@ -1167,7 +1253,7 @@ function AdminGettingStartedPage() {
   const renderStructureStep = () => (
     <div className="space-y-5">
       <div className="rounded-2xl border border-border bg-surface-muted/25 p-4 text-sm leading-6 text-text-muted">
-        Add as many classes and subjects as the school needs. The forms remain available after each creation. Continue when the minimum structure is ready, or skip the stage and return later.
+        Build the school structure in order: create an academic level first, then add one or more class arms under that level. Subjects are created separately. Continue when the minimum structure is ready, or skip the stage and return later.
       </div>
       {structureLimitNotice ? (
         <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 sm:p-5">
@@ -1198,15 +1284,48 @@ function AdminGettingStartedPage() {
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-semibold text-text">Classes</p>
+              <p className="font-semibold text-text">Academic levels and class arms</p>
               <p className="mt-1 text-sm text-text-muted">
-                {activeClasses.length} active class{activeClasses.length === 1 ? "" : "es"}
+                {activeLevels.length} level{activeLevels.length === 1 ? "" : "s"} · {activeClasses.length} class{activeClasses.length === 1 ? "" : "es"}
               </p>
             </div>
             {activeClasses.length ? <Badge variant="success">Ready</Badge> : null}
           </div>
+          {activeLevels.length ? (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-text-faint">Saved levels</p>
+              <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+                {activeLevels.map((level) => {
+                  const armCount = activeClasses.filter(
+                    (classroom) => classroom.academic_level_id === level.id,
+                  ).length;
+                  return (
+                    <span key={level.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/40 py-1 pl-3 pr-1 text-xs font-semibold text-text-soft">
+                      <span>{level.name} · {armCount} arm{armCount === 1 ? "" : "s"}</span>
+                      {armCount === 0 ? (
+                        <button
+                          type="button"
+                          className="grid h-6 w-6 place-items-center rounded-full text-text-faint transition hover:bg-error-soft hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+                          title={`Remove unused level ${level.name}`}
+                          aria-label={`Remove unused level ${level.name}`}
+                          disabled={saving === `level-delete-${level.id}`}
+                          onClick={() => requestSetupRemoval("level", level)}
+                        >
+                          {saving === `level-delete-${level.id}` ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      ) : null}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           {activeClasses.length ? (
-            <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+            <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto border-t border-border/70 pt-4">
               {activeClasses.map((item) => (
                 <span key={item.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/40 py-1 pl-3 pr-1 text-xs font-semibold text-text-soft">
                   <span>{classLabel(item)}</span>
@@ -1228,26 +1347,62 @@ function AdminGettingStartedPage() {
               ))}
             </div>
           ) : null}
-          <form onSubmit={createClass} className="mt-4 space-y-3 border-t border-border pt-4">
-            <Input
-              label="Academic level"
-              value={classForm.level_name}
-              placeholder="JSS 1"
-              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, level_name: event.target.value }))}
-              required
-            />
-            <Input
-              label="Arm"
-              value={classForm.arm}
-              placeholder="A"
-              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, arm: event.target.value }))}
-              required
-            />
-            <Button type="submit" disabled={saving === "class"} className="w-full">
-              {saving === "class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <School className="h-4 w-4" />}
-              {saving === "class" ? "Adding class..." : "Add another class"}
-            </Button>
-          </form>
+          <div className="mt-4 space-y-4 border-t border-border pt-4">
+            <form onSubmit={createLevel} className="rounded-xl border border-border/70 bg-surface-muted/25 p-3">
+              <div className="mb-3 flex items-start gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground">1</span>
+                <div>
+                  <p className="text-sm font-semibold text-text">Create the academic level</p>
+                  <p className="mt-0.5 text-xs leading-5 text-text-muted">Use the year or stage name only, for example JSS 1. Do not include the arm here.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <Input
+                  label="Level name"
+                  value={levelForm.name}
+                  placeholder="JSS 1"
+                  onChange={(event) => setLevelForm({ name: event.target.value })}
+                  required
+                />
+                <Button type="submit" variant="outline" disabled={saving === "level"} className="w-full">
+                  {saving === "level" ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
+                  {saving === "level" ? "Creating level..." : "Create level"}
+                </Button>
+              </div>
+            </form>
+
+            <form onSubmit={createClass} className="rounded-xl border border-border/70 bg-surface-muted/25 p-3">
+              <div className="mb-3 flex items-start gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
+                <div>
+                  <p className="text-sm font-semibold text-text">Add an arm to the level</p>
+                  <p className="mt-0.5 text-xs leading-5 text-text-muted">Select a saved level, then add one arm at a time, for example A, B, or Gold.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <SearchableSelect
+                  label="Academic level"
+                  value={classForm.academic_level_id}
+                  onChange={(value) => setClassForm((currentForm) => ({ ...currentForm, academic_level_id: value }))}
+                  options={levelOptions}
+                  placeholder={activeLevels.length ? "Select a level" : "Create a level first"}
+                  searchable={activeLevels.length > 5}
+                  required
+                />
+                <Input
+                  label="Class arm"
+                  value={classForm.arm}
+                  placeholder="A"
+                  onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, arm: event.target.value }))}
+                  required
+                />
+                <Button type="submit" disabled={!activeLevels.length || saving === "class"} className="w-full">
+                  {saving === "class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <School className="h-4 w-4" />}
+                  {saving === "class" ? "Adding arm..." : "Add class arm"}
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
@@ -1813,11 +1968,15 @@ function AdminGettingStartedPage() {
           title={
             deleteConfirmation?.type === "class"
               ? "Remove class from setup?"
-              : "Remove subject from setup?"
+              : deleteConfirmation?.type === "level"
+                ? "Remove academic level from setup?"
+                : "Remove subject from setup?"
           }
           description={
             deleteConfirmation
-              ? `${deleteConfirmation.label} will be deactivated for the assisted setup and your plan usage will be refreshed.`
+              ? deleteConfirmation.type === "level"
+                ? `${deleteConfirmation.label} has no class arms and will be permanently removed from assisted setup.`
+                : `${deleteConfirmation.label} is unused and will be permanently removed from assisted setup. Your plan usage will be refreshed.`
               : ""
           }
           confirmLabel="Remove"
