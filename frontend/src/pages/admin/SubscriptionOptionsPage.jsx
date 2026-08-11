@@ -68,11 +68,14 @@ function SubscriptionOptionsPage() {
               Term plans
             </p>
             <h1 className="mt-1 text-3xl font-semibold text-text">
-              Upgrade the current academic term
+              {checkoutTermId
+                ? "Choose a plan for this academic term"
+                : "Upgrade the current academic term"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-              The backend prices and activates the selected plan for the selected
-              term. Lower plans become available when the next term is activated.
+              {checkoutTermId
+                ? "This checkout is tied to the exact academic term selected in Academic Setup."
+                : "During an active paid term, you can only move to a higher paid plan. Lower plans become available when the next term is activated."}
             </p>
           </div>
           <Link
@@ -91,8 +94,9 @@ function SubscriptionOptionsPage() {
 
         <section className="mt-7 grid gap-5 lg:grid-cols-3">
           {paidPlans.map((plan) => {
-            const current = plan.planCode === planCode;
+            const current = !checkoutTermId && plan.planCode === planCode;
             const lowerOrEqualMidTerm =
+              !checkoutTermId &&
               hasCurrentPaidPlan &&
               (PLAN_RANK[plan.planCode] ?? 0) <= currentRank;
             const disabled =
@@ -135,7 +139,9 @@ function SubscriptionOptionsPage() {
                       ? "Current term plan"
                       : lowerOrEqualMidTerm
                         ? "Available next term"
-                        : `Upgrade to ${formatPlanName(plan.planCode)}`}
+                        : checkoutTermId
+                          ? `Choose ${formatPlanName(plan.planCode)}`
+                          : `Upgrade to ${formatPlanName(plan.planCode)}`}
                 </Button>
               </Card>
             );
