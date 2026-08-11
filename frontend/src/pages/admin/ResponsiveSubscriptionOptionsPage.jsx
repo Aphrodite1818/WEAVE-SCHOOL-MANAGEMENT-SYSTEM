@@ -69,9 +69,10 @@ function MobileSubscriptionOptionsPage() {
 
   const activePlan =
     paidPlans.find((plan) => plan.planCode === activePlanCode) || paidPlans[0];
-  const isCurrent = activePlan?.planCode === planCode;
+  const isCurrent = !checkoutTermId && activePlan?.planCode === planCode;
   const hasCurrentPaidPlan = PAID_PLAN_CODES.has(planCode);
   const lowerOrEqualMidTerm =
+    !checkoutTermId &&
     hasCurrentPaidPlan &&
     (PLAN_RANK[activePlan?.planCode] ?? 0) <= (PLAN_RANK[planCode] ?? 0);
 
@@ -112,15 +113,17 @@ function MobileSubscriptionOptionsPage() {
 
         <section className="mt-3 rounded-3xl border border-border/70 bg-surface p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-            Current term plans
+            Term plans
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-text">
-            Choose the capacity your school needs
+            {checkoutTermId
+              ? "Choose a plan for this term"
+              : "Choose the capacity your school needs"}
           </h1>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            Paid access applies to one academic term. During an active paid term
-            you can only move upward; lower plans become selectable for the next
-            term.
+            {checkoutTermId
+              ? "The selected plan will be attached to the exact academic term from Academic Setup."
+              : "Paid access applies to one academic term. During an active paid term you can only move upward; lower plans become selectable for the next term."}
           </p>
         </section>
 
@@ -208,7 +211,9 @@ function MobileSubscriptionOptionsPage() {
                   ? "Current term plan"
                   : lowerOrEqualMidTerm
                     ? "Available next term"
-                    : `Upgrade to ${formatPlanName(activePlan.planCode)}`}
+                    : checkoutTermId
+                      ? `Choose ${formatPlanName(activePlan.planCode)}`
+                      : `Upgrade to ${formatPlanName(activePlan.planCode)}`}
             </Button>
           </Card>
         ) : null}
