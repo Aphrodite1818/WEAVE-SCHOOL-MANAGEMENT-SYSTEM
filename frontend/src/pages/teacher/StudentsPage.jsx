@@ -60,7 +60,7 @@ function StudentsPage() {
       setError(null);
       try {
         const [classResponse, assignmentResponse] = await Promise.all([
-          classService.getClasses({ limit: 100, active_only: true }),
+          classService.getClasses({ limit: 100, activeOnly: true }),
           academicService.listMyTeacherAssignments(),
         ]);
         if (!mounted) return;
