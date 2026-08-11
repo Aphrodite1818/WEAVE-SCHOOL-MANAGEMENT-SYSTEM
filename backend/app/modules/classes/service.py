@@ -409,6 +409,8 @@ class ClassRoomService:
             raise ConflictException("Archived classrooms cannot be updated. Restore them first.")
 
         update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
+        if "teacher_membership_id" in payload.model_fields_set:
+            update_data["teacher_membership_id"] = payload.teacher_membership_id
 
         new_level_id = update_data.get("academic_level_id", classroom.academic_level_id)
         new_arm = update_data.get("arm", classroom.arm)
