@@ -21,7 +21,7 @@ const teacherClassConfig = {
   fetchItems: (filters) => classService.getClasses({
     search: filters.search,
     limit: 100,
-    active_only: true,
+    activeOnly: true,
   }),
   mapItemToForm: () => ({}),
   getItemLabel: (item) => displayClass(item),
