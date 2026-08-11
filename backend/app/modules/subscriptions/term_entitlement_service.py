@@ -45,7 +45,8 @@ class TermPlanEntitlementService:
         db: AsyncSession, tenant_id: uuid.UUID, term_id: uuid.UUID, *, lock: bool = False
     ) -> AcademicTerm:
         query = select(AcademicTerm).where(
-            AcademicTerm.id == term_id, AcademicTerm.tenant_id == tenant_id
+            AcademicTerm.id == term_id,
+            AcademicTerm.tenant_id == tenant_id,
         )
         if lock:
             query = query.with_for_update()
@@ -123,10 +124,21 @@ class TermPlanEntitlementService:
         return int(getattr(settings, fields[plan]))
 
     @staticmethod
-    def _ensure_paid_term_state(term: AcademicTerm) -> None:
+    def _ensure_paid_checkout_term_state(term: AcademicTerm) -> None:
         if term.status not in {AcademicTermStatus.DRAFT, AcademicTermStatus.OPEN}:
             raise ConflictException(
-                "Only a draft or open academic term can receive a paid plan."
+                "Only a draft or open academic term can start a paid-plan checkout."
+            )
+
+    @staticmethod
+    def _ensure_paid_settlement_term_state(term: AcademicTerm) -> None:
+        if term.status not in {
+            AcademicTermStatus.DRAFT,
+            AcademicTermStatus.OPEN,
+            AcademicTermStatus.CLOSING,
+        }:
+            raise ConflictException(
+                "A paid term transaction cannot be activated after the academic term is closed."
             )
 
     @staticmethod
@@ -253,7 +265,7 @@ class TermPlanEntitlementService:
             )
 
         term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
-        TermPlanEntitlementService._ensure_paid_term_state(term)
+        TermPlanEntitlementService._ensure_paid_checkout_term_state(term)
 
         existing_entitlement = await TermPlanEntitlementService.get_active(
             db, tenant_id, term_id, lock=True
@@ -372,7 +384,7 @@ class TermPlanEntitlementService:
             transaction.academic_term_id,
             lock=True,
         )
-        TermPlanEntitlementService._ensure_paid_term_state(term)
+        TermPlanEntitlementService._ensure_paid_settlement_term_state(term)
 
         existing = await TermPlanEntitlementService.get_active(
             db,
@@ -430,6 +442,15 @@ class TermPlanEntitlementService:
         *,
         reason: str = "term_closed",
     ) -> None:
+        pending = await TermPlanEntitlementService._get_pending_checkout(
+            db, tenant_id, term_id, lock=True
+        )
+        if pending is not None:
+            raise ConflictException(
+                "This academic term still has a pending Paystack checkout. "
+                "Complete the payment or wait for the checkout to expire before finalizing closure."
+            )
+
         entitlement = await TermPlanEntitlementService.get_active(
             db, tenant_id, term_id, lock=True
         )
