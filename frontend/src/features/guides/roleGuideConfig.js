@@ -64,9 +64,9 @@ export const ROLE_GUIDES = {
       {
         id: "progression",
         shortLabel: "Progression",
-        label: "Configure class progression",
+        label: "Configure level progression",
         description:
-          "Choose the next class for every non-terminal class and mark final classes as terminal.",
+          "Choose the next academic level for every non-terminal level and mark final levels as terminal.",
         icon: Route,
       },
       {
@@ -113,16 +113,6 @@ export const ROLE_GUIDES = {
         actionLabel: "Open my classes",
         to: "/teacher/classes",
         icon: School,
-      },
-      {
-        id: "results",
-        shortLabel: "Results",
-        label: "Understand score entry",
-        description:
-          "Choose an assignment, search students by name or admission number, save drafts, and submit complete results.",
-        actionLabel: "Open score entry",
-        to: "/teacher/score-entry",
-        icon: ClipboardCheck,
       },
       {
         id: "attendance",

@@ -1,6 +1,4 @@
-import { api, parseApiError } from "./api";
-
-const NEW_CLASS_SUBJECT_PREFIX = "catalog-subject";
+import { api } from "./api";
 
 const queryString = (params = {}) => {
   const query = new URLSearchParams();
@@ -23,86 +21,6 @@ const sessionPayload = (payload = {}) => ({
     : {}),
 });
 
-const newClassSubjectValue = (classId, subjectId) =>
-  `${NEW_CLASS_SUBJECT_PREFIX}:${classId}:${subjectId}`;
-
-const parseNewClassSubjectValue = (value) => {
-  if (typeof value !== "string" || !value.startsWith(`${NEW_CLASS_SUBJECT_PREFIX}:`)) {
-    return null;
-  }
-
-  const [, classId, subjectId] = value.split(":");
-  if (!classId || !subjectId) return null;
-
-  return { classId, subjectId };
-};
-
-const mergeClassSubjectPickerOptions = (classId, classSubjectResponse, subjectResponse) => {
-  const classSubjects = classSubjectResponse?.items || [];
-  const subjects = subjectResponse?.items || [];
-  const offeredBySubjectId = new Map(classSubjects.map((item) => [item.subject_id, item]));
-
-  return {
-    items: subjects.map((subject) => {
-      const offered = offeredBySubjectId.get(subject.id);
-      return offered || {
-        id: newClassSubjectValue(classId, subject.id),
-        class_subject_id: "",
-        subject_id: subject.id,
-        subject_name: subject.name,
-        subject_code: subject.code,
-        is_core: true,
-        is_active: subject.is_active !== false,
-        is_offered_by_class: false,
-      };
-    }),
-    total: subjects.length,
-  };
-};
-
-const activateClassSubject = (classId, classSubjectId) =>
-  api.patch(`/classes/${classId}/subjects/${classSubjectId}/activate`, {
-    confirmation: "ACTIVATE_CLASS_SUBJECT",
-  });
-
-const resolveExistingClassSubjectId = async (classId, subjectId) => {
-  const response = await api.get(`/classes/${classId}/subjects${queryString({ active_only: false, limit: 100 })}`);
-  const existing = (response?.items || []).find((item) => item.subject_id === subjectId);
-  if (!existing?.id) {
-    throw new Error("Subject is already attached to this class, but the existing class-subject could not be loaded.");
-  }
-
-  if (existing.is_active === false || existing.archived_at) {
-    throw new Error(
-      existing.archived_at
-        ? "This subject is archived for the class. Restore it before assigning a teacher."
-        : "This subject is inactive for the class. Activate it before assigning a teacher.",
-    );
-  }
-
-  return existing.id;
-};
-
-const resolveClassSubjectId = async (classSubjectId, isCore = true) => {
-  const pending = parseNewClassSubjectValue(classSubjectId);
-  if (!pending) return classSubjectId;
-
-  try {
-    const created = await api.post(`/classes/${pending.classId}/subjects`, {
-      subject_id: pending.subjectId,
-      is_core: isCore,
-    });
-
-    return created.id;
-  } catch (error) {
-    const parsed = parseApiError(error, "Could not attach subject to class.");
-    if (parsed.status === 409) {
-      return resolveExistingClassSubjectId(pending.classId, pending.subjectId);
-    }
-    throw error;
-  }
-};
-
 const stripTermCreateOnlyFields = (payload = {}) => {
   const updatablePayload = { ...payload };
   delete updatablePayload.academic_session_id;
@@ -110,16 +28,17 @@ const stripTermCreateOnlyFields = (payload = {}) => {
 };
 
 const buildTeacherAssignmentPayload = (payload = {}) => ({
-  teacher_membership_id:
-    payload.teacher_membership_id || payload.teacher_id,
+  class_id: payload.class_id,
+  level_subject_id: payload.level_subject_id,
+  teacher_membership_id: payload.teacher_membership_id || payload.teacher_id,
   ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
 });
 
-const reassignTeacherAssignment = async (classSubjectId, payload) => {
+const reassignTeacherAssignment = async (assignmentId, payload) => {
   const teacherMembershipId =
     payload.teacher_membership_id || payload.teacher_id;
   return api.post(
-    `/tenant-admin/academics/class-subjects/${classSubjectId}/reassign-teacher`,
+    `/tenant-admin/academics/teacher-assignments/${assignmentId}/reassign`,
     {
       teacher_membership_id: teacherMembershipId,
       ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
@@ -239,38 +158,34 @@ export const academicService = {
   getGradingReadiness: () =>
     api.get("/tenant-admin/academics/grading-scales/readiness-preview"),
 
-  listClassSubjects: async (classId, params) => {
-    const [classSubjectResponse, subjectResponse] = await Promise.all([
-      api.get(`/classes/${classId}/subjects${queryString(params)}`),
-      api.get(`/subjects${queryString({ is_active: true, limit: 100 })}`),
-    ]);
-    return mergeClassSubjectPickerOptions(classId, classSubjectResponse, subjectResponse);
-  },
-  listOfferedClassSubjects: (classId, params) =>
-    api.get(`/classes/${classId}/subjects${queryString(params)}`),
-  addClassSubject: (classId, payload) =>
-    api.post(`/classes/${classId}/subjects`, payload),
-  addClassSubjectsBulk: (classId, payload) =>
-    api.post(`/classes/${classId}/subjects/bulk`, payload),
-  activateClassSubject,
-  deactivateClassSubject: (classSubjectId) =>
-    api.post(`/class-subjects/${classSubjectId}/deactivate`, {
-      confirmation: "DEACTIVATE_CLASS_SUBJECT",
+  listLevelSubjects: (levelId, params) =>
+    api.get(`/academic-levels/${levelId}/subjects${queryString(params)}`),
+  addLevelSubject: (levelId, payload) =>
+    api.post(`/academic-levels/${levelId}/subjects`, payload),
+  addLevelSubjectsBulk: (levelId, payload) =>
+    api.post(`/academic-levels/${levelId}/subjects/bulk`, payload),
+  activateLevelSubject: (levelSubjectId) =>
+    api.post(`/academic-levels/subjects/${levelSubjectId}/activate`, {
+      confirmation: "ACTIVATE_LEVEL_SUBJECT",
     }),
-  updateClassSubject: (classSubjectId, payload) =>
-    api.patch(`/class-subjects/${classSubjectId}`, payload),
-  archiveClassSubject: (classSubjectId) =>
-    api.post(`/class-subjects/${classSubjectId}/archive`, {
-      confirmation: "ARCHIVE_CLASS_SUBJECT",
+  deactivateLevelSubject: (levelSubjectId) =>
+    api.post(`/academic-levels/subjects/${levelSubjectId}/deactivate`, {
+      confirmation: "DEACTIVATE_LEVEL_SUBJECT",
     }),
-  restoreClassSubject: (classSubjectId) =>
-    api.post(`/class-subjects/${classSubjectId}/restore`, {
-      confirmation: "RESTORE_CLASS_SUBJECT",
+  updateLevelSubject: (levelSubjectId, payload) =>
+    api.patch(`/academic-levels/subjects/${levelSubjectId}`, payload),
+  archiveLevelSubject: (levelSubjectId) =>
+    api.post(`/academic-levels/subjects/${levelSubjectId}/archive`, {
+      confirmation: "ARCHIVE_LEVEL_SUBJECT",
     }),
-  deleteClassSubject: (classSubjectId) =>
-    api.delete(`/class-subjects/${classSubjectId}`, {
+  restoreLevelSubject: (levelSubjectId) =>
+    api.post(`/academic-levels/subjects/${levelSubjectId}/restore`, {
+      confirmation: "RESTORE_LEVEL_SUBJECT",
+    }),
+  deleteLevelSubject: (levelSubjectId) =>
+    api.delete(`/academic-levels/subjects/${levelSubjectId}`, {
       body: JSON.stringify({
-        confirmation: "DELETE_CLASS_SUBJECT",
+        confirmation: "DELETE_LEVEL_SUBJECT",
       }),
       headers: { "Content-Type": "application/json" },
     }),
@@ -279,17 +194,8 @@ export const academicService = {
     api.get(`/tenant-admin/academics/teacher-assignments${queryString(params)}`),
   getTeacherAssignmentDependencies: (assignmentId) =>
     api.get(`/tenant-admin/academics/teacher-assignments/${assignmentId}/dependencies`),
-  createTeacherAssignment: async (payload) => {
-    const classSubjectId = await resolveClassSubjectId(
-      payload.class_subject_id,
-      payload.is_core ?? true,
-    );
-
-    return api.post(
-      `/tenant-admin/academics/class-subjects/${classSubjectId}/teacher-assignments`,
-      buildTeacherAssignmentPayload(payload),
-    );
-  },
+  createTeacherAssignment: (payload) =>
+    api.post("/tenant-admin/academics/teacher-assignments", buildTeacherAssignmentPayload(payload)),
   deactivateTeacherAssignment: (assignmentId) =>
     api.post(`/tenant-admin/academics/teacher-assignments/${assignmentId}/end`, {
       effective_to: new Date().toISOString().slice(0, 10),
@@ -305,7 +211,6 @@ export const academicService = {
       headers: { "Content-Type": "application/json" },
     }),
   reassignTeacherAssignment,
-  reassignClassSubjectTeacher: reassignTeacherAssignment,
 
   listAdminResults: (params, requestOptions) =>
     api.get(`/tenant-admin/academics/results${queryString(params)}`, requestOptions),
@@ -321,7 +226,6 @@ export const academicService = {
     api.get(`/teachers/academics/assignments/${assignmentId}/students${queryString(params)}`),
   listTeacherResults: (params, requestOptions) =>
     api.get(`/teachers/academics/results${queryString(params)}`, requestOptions),
-  saveTeacherResult: (payload) => api.post("/teachers/academics/results", payload),
 
   listMyResults: (requestOptions) =>
     api.get("/students/academics/results", requestOptions),

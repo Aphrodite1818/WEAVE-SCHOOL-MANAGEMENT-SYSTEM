@@ -88,12 +88,12 @@ class BulkReportCardService:
             actor.tenant_id,
             card.id,
         )
-        expected = await ReportCardService._expected_class_subjects(
+        expected = await ReportCardService._expected_level_subjects(
             db,
             actor.tenant_id,
             card.class_id,
         )
-        expected_subject_ids = {class_subject.subject_id for class_subject in expected}
+        expected_subject_ids = {level_subject.subject_id for level_subject in expected}
         line_subject_ids = {line.subject_id for line in lines}
         if line_subject_ids != expected_subject_ids:
             raise BadRequestException("Report card is missing expected subject lines.")

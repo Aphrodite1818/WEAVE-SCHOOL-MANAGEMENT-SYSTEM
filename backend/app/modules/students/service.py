@@ -217,8 +217,8 @@ class StudentService:
         current_term = terms[0] if terms else None
         return StudentDetailResponse(
             **StudentResponse.model_validate(student).model_dump(),
-            class_name=classroom.name if classroom else None,
-            class_arm=classroom.arm if classroom else student.arm,
+            class_name=classroom.academic_level_name if classroom else None,
+            class_arm=classroom.arm if classroom else None,
             current_enrollment_id=enrollment.id if enrollment else None,
             current_academic_session_id=current_session.id if current_session else None,
             current_academic_session_name=(current_session.name if current_session else None),
@@ -322,7 +322,6 @@ class StudentService:
             admission_date=today,
             graduation_date=None,
             class_id=classroom.id,
-            arm=classroom.arm,
             status=AcademicStatus.ACTIVE,
             account_status=StudentAccountStatus.ACTIVE,
             is_verified=True,
@@ -833,7 +832,7 @@ class StudentEnrollmentService:
                             "academic_session_name",
                         }
                     ),
-                    class_name=classroom.name if classroom else None,
+                    class_name=classroom.academic_level_name if classroom else None,
                     class_arm=classroom.arm if classroom else None,
                     academic_session_name=(session.name if session else None),
                 )
@@ -921,7 +920,6 @@ class StudentEnrollmentService:
             ),
         )
         student.class_id = target_class.id
-        student.arm = target_class.arm
         await StudentRepository.save(db, student)
         await db.commit()
         await db.refresh(student)
@@ -1070,7 +1068,6 @@ class StudentLifecycleService:
 
             student.status = target_status
             student.class_id = None
-            student.arm = None
             student.promotion_hold = True
             student.is_active = False
             student.account_status = StudentAccountStatus.INACTIVE
@@ -1246,7 +1243,6 @@ class StudentLifecycleService:
         )
         student.status = AcademicStatus.ACTIVE
         student.class_id = classroom.id
-        student.arm = classroom.arm
         student.promotion_hold = False
         student.is_active = True
         student.account_status = StudentAccountStatus.ACTIVE

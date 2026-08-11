@@ -30,14 +30,13 @@ def test_classroom_response_normalizes_existing_compact_full_name() -> None:
     response = ClassRoomResponse(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
-        name="JUNIORSECONDARYSCHOOL1",
-        arm=None,
-        next_class_id=None,
-        is_terminal=False,
+        academic_level_id=uuid.uuid4(),
+        academic_level_name="JUNIORSECONDARYSCHOOL1",
+        arm="A",
         teacher_membership_id=None,
         is_active=True,
         created_at=now,
         updated_at=now,
     )
 
-    assert response.name == "JUNIOR SECONDARY SCHOOL 1"
+    assert response.academic_level_name == "JUNIORSECONDARYSCHOOL1"

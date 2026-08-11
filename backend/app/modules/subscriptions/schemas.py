@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
@@ -13,10 +13,10 @@ from app.modules.subscriptions.subscription_enums import (
     PaymentProvider,
     PaymentStatus,
     ResourceLimitCode,
-    SubscriptionPlanChangeStatus,
-    SubscriptionPlanChangeType,
     SubscriptionStatus,
+    TermEntitlementStatus,
 )
+from app.tenant_management.models import SubscriptionPlan
 
 
 class ResourceUsageResponse(BaseModel):
@@ -38,12 +38,7 @@ class TenantSubscriptionResponse(BaseModel):
     plan_code: str
     status: SubscriptionStatus
     billing_interval: BillingInterval
-    current_period_start: datetime | None
-    current_period_end: datetime | None
     trial_ends_at: datetime | None
-    grace_ends_at: datetime | None
-    cancel_at_period_end: bool
-    next_payment_at: datetime | None
     provider: PaymentProvider
 
 
@@ -54,8 +49,7 @@ class SubscriptionStatusResponse(BaseModel):
     plan_code: str
     status: SubscriptionStatus
     is_write_access_allowed: bool
-    current_period_end: datetime | None = None
-    grace_ends_at: datetime | None = None
+    trial_ends_at: datetime | None = None
     provider: PaymentProvider | None = None
     subscription: TenantSubscriptionResponse | None = None
 
@@ -69,8 +63,7 @@ class TenantEntitlementsResponse(BaseModel):
     features: dict[FeatureCode, bool]
     limits: dict[ResourceLimitCode, int | None]
     usage: dict[ResourceLimitCode, ResourceUsageResponse]
-    current_period_end: datetime | None = None
-    grace_ends_at: datetime | None = None
+    trial_ends_at: datetime | None = None
 
 
 class FeatureCheckResponse(BaseModel):
@@ -96,26 +89,6 @@ class ResourceLimitCheckResponse(BaseModel):
     reason: str | None = None
 
 
-class SubscriptionCancellationRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    confirmation: Literal["CANCEL_SUBSCRIPTION"]
-    reason: str | None = Field(default=None, min_length=3, max_length=500)
-
-
-class SubscriptionCheckoutCreate(BaseModel):
-    plan_code: str
-    billing_interval: BillingInterval = BillingInterval.MONTHLY
-    billing_email: EmailStr
-
-    @field_validator("billing_interval")
-    @classmethod
-    def validate_monthly_only(cls, value: BillingInterval) -> BillingInterval:
-        if value != BillingInterval.MONTHLY:
-            raise ValueError("Only monthly billing is currently supported.")
-        return value
-
-
 class SubscriptionCheckoutResponse(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
@@ -134,7 +107,7 @@ class PaymentTransactionResponse(BaseModel):
 
     id: uuid.UUID
     tenant_id: uuid.UUID
-    subscription_id: uuid.UUID | None
+    academic_term_id: uuid.UUID
     provider: PaymentProvider
     status: PaymentStatus
     reference: str
@@ -157,55 +130,48 @@ class PaymentTransactionListResponse(BaseModel):
     limit: int
 
 
-class PlanLimitBlocker(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
-
-    resource: ResourceLimitCode
-    used: int
-    limit: int
-    excess: int
+class FreeTermActivationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    academic_term_id: uuid.UUID
+    confirmation: Literal["ACTIVATE_FREE_TERM"]
 
 
-class SubscriptionPlanChangeRequest(BaseModel):
+class PaidTermCheckoutCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    academic_term_id: uuid.UUID
+    plan_code: SubscriptionPlan
 
-    target_plan_code: str
-    confirmation: Literal["CHANGE_SUBSCRIPTION_PLAN"]
-
-
-class SubscriptionPlanChangePreviewResponse(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
-
-    current_plan_code: str
-    target_plan_code: str
-    change_type: SubscriptionPlanChangeType
-    eligible: bool
-    effective_at: datetime | None = None
-    usage_snapshot: dict[ResourceLimitCode, int]
-    blockers: list[PlanLimitBlocker]
+    @field_validator("plan_code")
+    @classmethod
+    def paid_plan_only(cls, value: SubscriptionPlan) -> SubscriptionPlan:
+        if value in {SubscriptionPlan.FREE, SubscriptionPlan.FREE_TRIAL}:
+            raise ValueError("Paid term checkout requires a paid plan.")
+        return value
 
 
-class SubscriptionPlanChangeResponse(BaseModel):
+class TermEntitlementResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
-
     id: uuid.UUID
     tenant_id: uuid.UUID
-    subscription_id: uuid.UUID | None
-    current_plan_code: str
-    target_plan_code: str
-    change_type: SubscriptionPlanChangeType
-    status: SubscriptionPlanChangeStatus
-    requested_by_admin_id: uuid.UUID | None
-    requested_at: datetime
-    effective_at: datetime | None
-    applied_at: datetime | None
-    cancelled_at: datetime | None
-    usage_snapshot_json: dict | None
-    blockers_json: list | None
-    provider_reference: str | None
-    failure_reason: str | None
-    created_at: datetime
-    updated_at: datetime
+    academic_term_id: uuid.UUID
+    plan_code: SubscriptionPlan
+    status: TermEntitlementStatus
+    payment_transaction_id: uuid.UUID | None
+    amount: Decimal
+    currency: str
+    provider: PaymentProvider
+    activated_at: datetime | None
+    closed_at: datetime | None
+    expired_at: datetime | None
+    safety_expires_at: datetime | None
+
+
+class TermPlanActivationContext(BaseModel):
+    term_id: uuid.UUID
+    entitlement: TermEntitlementResponse | None
+    suggested_plan: SubscriptionPlan
+    payment_required: bool
+    amount_kobo: int
 
 
 class WebhookProcessingResponse(BaseModel):

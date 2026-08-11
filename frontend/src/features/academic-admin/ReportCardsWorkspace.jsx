@@ -20,7 +20,7 @@ const asItems = (response) =>
       : [];
 
 const classLabel = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
+  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
 const studentLabel = (item) =>
   `${item?.student_name || item?.admission_number || "Student"}${item?.admission_number ? ` · ${item.admission_number}` : ""}`;
 const listTabs = ["draft", "published", "outdated", "archived"];

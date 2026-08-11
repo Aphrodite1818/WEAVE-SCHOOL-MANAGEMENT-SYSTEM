@@ -17,7 +17,6 @@ const SchoolCalendarPage = lazy(() => import("../pages/shared/SchoolCalendarPage
 const SchoolSwitchPage = lazy(() => import("../pages/shared/SchoolSwitchPage"));
 const TeacherAttendancePage = lazy(() => import("../pages/teacher/AttendancePage"));
 const TeacherClassesPage = lazy(() => import("../pages/teacher/MyClassesPage"));
-const TeacherResultsPage = lazy(() => import("../pages/teacher/ResultsPage"));
 const TeacherStudentsPage = lazy(() => import("../pages/teacher/StudentsPage"));
 const TeacherSubjectsPage = lazy(() => import("../pages/teacher/SubjectsPage"));
 const TeacherDashboardPage = lazy(() => import("../pages/teacher/TeacherDashboardPage"));
@@ -36,7 +35,6 @@ export const teacherRoutes = (
         <Route path="/teacher/students" element={<TeacherStudentsPage />} />
         <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />
         <Route path="/teacher/attendance" element={<RuntimeFeatureRoute feature="attendance" role="teacher"><TeacherAttendancePage /></RuntimeFeatureRoute>} />
-        <Route path="/teacher/score-entry" element={<TeacherResultsPage />} />
         <Route path="/teacher/calendar" element={<SchoolCalendarPage role="teacher" />} />
         <Route path="/teacher/inbox" element={<CommunicationInboxPage />} />
         <Route path="/teacher/messages" element={<RuntimeFeatureRoute feature="messaging" role="teacher"><MessagesPage /></RuntimeFeatureRoute>} />

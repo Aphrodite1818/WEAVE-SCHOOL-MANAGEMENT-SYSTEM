@@ -25,7 +25,7 @@ const asItems = (response) =>
       : [];
 
 const classLabel = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
+  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
 
 const teacherLabel = (item) => {
   const account = item?.teacher_account || item?.account || {};
@@ -53,11 +53,11 @@ const formatDependencyMessage = (preview) => {
 function TeacherAssignmentsWorkspace({ activeTab }) {
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [classSubjects, setClassSubjects] = useState([]);
+  const [levelSubjects, setLevelSubjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [form, setForm] = useState({
     class_id: "",
-    class_subject_id: "",
+    level_subject_id: "",
     teacher_membership_id: "",
     effective_from: today(),
   });
@@ -131,16 +131,20 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     showError,
   ]);
 
-  const loadClassSubjects = useCallback(async () => {
+  const loadLevelSubjects = useCallback(async () => {
     if (!form.class_id) {
-      setClassSubjects([]);
+      setLevelSubjects([]);
       return;
     }
     try {
+      const classroom = classes.find((item) => item.id === form.class_id);
+      if (!classroom?.academic_level_id) {
+        setLevelSubjects([]);
+        return;
+      }
       const [subjectsResponse, assignmentsResponse] = await Promise.all([
-        academicService.listOfferedClassSubjects(form.class_id, {
+        academicService.listLevelSubjects(classroom.academic_level_id, {
           active_only: true,
-          limit: 100,
         }),
         academicService.listTeacherAssignments({
           class_id: form.class_id,
@@ -150,16 +154,16 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       ]);
       const subjects = asItems(subjectsResponse);
       const activeAssignments = asItems(assignmentsResponse);
-      const assignedSubjectIds = new Set(activeAssignments.map((a) => a.class_subject_id));
+      const assignedSubjectIds = new Set(activeAssignments.map((a) => a.level_subject_id));
 
-      setClassSubjects(
-        subjects.filter((s) => !assignedSubjectIds.has(s.id) || s.id === form.class_subject_id)
+      setLevelSubjects(
+        subjects.filter((s) => !assignedSubjectIds.has(s.id) || s.id === form.level_subject_id)
       );
     } catch (err) {
-      setClassSubjects([]);
-      showError(getErrorMessage(err, "Could not load class subjects."));
+      setLevelSubjects([]);
+      showError(getErrorMessage(err, "Could not load subjects for this class level."));
     }
-  }, [form.class_id, form.class_subject_id, showError]);
+  }, [classes, form.class_id, form.level_subject_id, showError]);
 
   useEffect(() => {
     loadBase();
@@ -170,8 +174,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   }, [loadAssignments]);
 
   useEffect(() => {
-    loadClassSubjects();
-  }, [loadClassSubjects]);
+    loadLevelSubjects();
+  }, [loadLevelSubjects]);
 
   useEffect(() => {
     const nextStatus =
@@ -202,17 +206,17 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   );
   const subjectOptions = useMemo(
     () =>
-      classSubjects.map((item) => ({
+      levelSubjects.map((item) => ({
         value: item.id,
         label: [item.subject_name, item.subject_code].filter(Boolean).join(" · "),
       })),
-    [classSubjects],
+    [levelSubjects],
   );
   const resetForm = () => {
     setEditingAssignmentId("");
     setForm((current) => ({
       class_id: current.class_id,
-      class_subject_id: "",
+      level_subject_id: "",
       teacher_membership_id: "",
       effective_from: today(),
     }));
@@ -223,7 +227,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     setEditingAssignmentId(item.id);
     setForm({
       class_id: item.class_id || "",
-      class_subject_id: item.class_subject_id || "",
+      level_subject_id: item.level_subject_id || "",
       teacher_membership_id: item.teacher_membership_id || "",
       effective_from: today(),
     });
@@ -232,20 +236,21 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
 
   const saveAssignment = async (event) => {
     event.preventDefault();
-    if (!form.class_subject_id || !form.teacher_membership_id) {
-      showWarning("Select a class subject and teacher.");
+    if (!form.level_subject_id || !form.teacher_membership_id) {
+      showWarning("Select a subject and teacher.");
       return;
     }
     setSaving("assignment");
     try {
       if (editingAssignmentId) {
-        await academicService.reassignTeacherAssignment(form.class_subject_id, {
+        await academicService.reassignTeacherAssignment(editingAssignmentId, {
           teacher_membership_id: form.teacher_membership_id,
           effective_from: form.effective_from,
         });
       } else {
         await academicService.createTeacherAssignment({
-          class_subject_id: form.class_subject_id,
+          class_id: form.class_id,
+          level_subject_id: form.level_subject_id,
           teacher_membership_id: form.teacher_membership_id,
           effective_from: form.effective_from,
         });
@@ -332,7 +337,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             setForm((current) => ({
               ...current,
               class_id: value,
-              class_subject_id: "",
+              level_subject_id: "",
             }))
           }
           options={classOptions}
@@ -341,9 +346,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         />
         <SelectControl
           label="Class subject"
-          value={form.class_subject_id}
+          value={form.level_subject_id}
           onChange={(value) =>
-            setForm((current) => ({ ...current, class_subject_id: value }))
+            setForm((current) => ({ ...current, level_subject_id: value }))
           }
           options={subjectOptions}
           placeholder={

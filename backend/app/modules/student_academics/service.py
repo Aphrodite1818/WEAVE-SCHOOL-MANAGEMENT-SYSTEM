@@ -15,7 +15,7 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.report_cards.models import ReportCardStatus
 from app.modules.parents.models import ParentMembership
 from app.modules.student_academics.assessment_repository import AssessmentRepository
@@ -28,8 +28,7 @@ from app.modules.student_academics.models import (
     AcademicTermName,
     AcademicTermStatus,
     AssessmentSchemeStatus,
-    ClassSubject,
-    ClassSubjectTeacher,
+    LevelSubject,
     GradingScale,
     StudentProgressionRunStatus,
     StudentSubjectResult,
@@ -46,12 +45,9 @@ from app.modules.student_academics.schemas import (
     AcademicTermCreate,
     AcademicTermDependencyPreview,
     AcademicTermUpdate,
-    ClassSubjectCreate,
-    ClassSubjectBulkCreate,
-    ClassSubjectResponse,
-    ClassSubjectTeacherCreate,
-    ClassSubjectTeacherResponse,
-    ClassSubjectTeacherUpdate,
+    LevelSubjectCreate,
+    LevelSubjectBulkCreate,
+    LevelSubjectResponse,
     GradingScaleCreate,
     GradingScaleUpdate,
     StudentSubjectCardContextResponse,
@@ -67,7 +63,7 @@ from app.modules.student_academics.schemas import (
     TeacherAssignmentEnd,
     TeacherAssignmentReassign,
     TeacherAssignmentResponse,
-    ClassSubjectUpdate,
+    LevelSubjectUpdate,
 )
 from app.modules.students.models import Student, StudentParentLinkStatus
 from app.modules.students.repository import (
@@ -497,124 +493,97 @@ class StudentAcademicService:
         )
 
     @staticmethod
-    async def _build_class_subject_response(
+    async def _build_level_subject_response(
         db: AsyncSession,
-        class_subject: ClassSubject,
-    ) -> ClassSubjectResponse:
+        level_subject: LevelSubject,
+    ) -> LevelSubjectResponse:
         subject = await SubjectRepository.get_subject_by_id(
             db,
-            class_subject.tenant_id,
-            class_subject.subject_id,
+            level_subject.tenant_id,
+            level_subject.subject_id,
         )
-        classroom = await ClassRoomRepository.get_by_id(
+        level = await AcademicLevelRepository.get_by_id(
             db,
-            class_subject.tenant_id,
-            class_subject.class_id,
+            level_subject.tenant_id,
+            level_subject.academic_level_id,
         )
         lifecycle_status = (
             "archived"
-            if class_subject.archived_at is not None
+            if level_subject.archived_at is not None
             else "active"
-            if class_subject.is_active
+            if level_subject.is_active
             else "inactive"
         )
-        class_is_archived = classroom.archived_at is not None if classroom else None
+        level_is_archived = level.archived_at is not None if level else None
         subject_is_archived = subject.archived_at is not None if subject else None
-        class_is_active = classroom.is_active if classroom else None
+        level_is_active = level.is_active if level else None
         subject_is_active = subject.is_active if subject else None
         activation_blocker = None
-        if class_subject.archived_at is not None:
+        if level_subject.archived_at is not None:
             activation_blocker = "Restore the mapping before activation."
-        elif classroom is None:
-            activation_blocker = "Class not found."
-        elif not classroom.is_active:
-            activation_blocker = "Class must be active before activating this mapping."
-        elif classroom.archived_at is not None:
-            activation_blocker = "Class must be restored before activating this mapping."
+        elif level is None:
+            activation_blocker = "Academic level not found."
+        elif not level.is_active:
+            activation_blocker = "Academic level must be active before activating this mapping."
+        elif level.archived_at is not None:
+            activation_blocker = "Academic level must be restored before activating this mapping."
         elif subject is None:
             activation_blocker = "Subject not found."
         elif not subject.is_active:
             activation_blocker = "Subject must be active before activating this mapping."
         elif subject.archived_at is not None:
             activation_blocker = "Subject must be restored before activating this mapping."
-        return ClassSubjectResponse(
-            id=class_subject.id,
-            tenant_id=class_subject.tenant_id,
-            class_id=class_subject.class_id,
-            subject_id=class_subject.subject_id,
+        return LevelSubjectResponse(
+            id=level_subject.id,
+            tenant_id=level_subject.tenant_id,
+            academic_level_id=level_subject.academic_level_id,
+            academic_level_name=level.name if level else None,
+            subject_id=level_subject.subject_id,
             subject_name=subject.name if subject else None,
             subject_code=subject.code if subject else None,
-            is_core=class_subject.is_core,
-            is_active=class_subject.is_active,
+            is_core=level_subject.is_core,
+            is_active=level_subject.is_active,
             lifecycle_status=lifecycle_status,
-            archived_at=class_subject.archived_at,
-            archived_by_admin_id=class_subject.archived_by_admin_id,
-            class_is_active=class_is_active,
-            class_is_archived=class_is_archived,
+            archived_at=level_subject.archived_at,
+            archived_by_admin_id=level_subject.archived_by_admin_id,
+            level_is_active=level_is_active,
+            level_is_archived=level_is_archived,
             subject_is_active=subject_is_active,
             subject_is_archived=subject_is_archived,
             can_activate=activation_blocker is None,
             activation_blocker=activation_blocker,
-            created_at=class_subject.created_at,
-            updated_at=class_subject.updated_at,
+            created_at=level_subject.created_at,
+            updated_at=level_subject.updated_at,
         )
 
     @staticmethod
-    async def _set_compatibility_class_subject_teachers_active(
+    async def _level_subject_dependency_counts(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
-        is_active: bool,
-    ) -> None:
-        rows = await StudentAcademicRepository.list_class_subject_teachers_for_class_subject(
-            db,
-            tenant_id,
-            class_subject_id,
-        )
-        for row in rows:
-            row.is_active = is_active
-            await StudentAcademicRepository.save_class_subject_teacher(db, row)
-
-    @staticmethod
-    async def _class_subject_dependency_counts(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
+        level_subject_id: uuid.UUID,
     ) -> dict[str, int]:
         return {
-            "active_teacher_assignments": await StudentAcademicRepository.count_teacher_assignments_for_class_subject(
+            "active_teacher_assignments": await StudentAcademicRepository.count_teacher_assignments_for_level_subject(
                 db,
                 tenant_id,
-                class_subject_id,
+                level_subject_id,
                 active_only=True,
             ),
-            "teacher_assignment_history": await StudentAcademicRepository.count_teacher_assignments_for_class_subject(
+            "teacher_assignment_history": await StudentAcademicRepository.count_teacher_assignments_for_level_subject(
                 db,
                 tenant_id,
-                class_subject_id,
+                level_subject_id,
             ),
-            "student_results": await StudentAcademicRepository.count_results_for_class_subject(
+            "student_results": await StudentAcademicRepository.count_results_for_level_subject(
                 db,
                 tenant_id,
-                class_subject_id,
+                level_subject_id,
             ),
-            "report_card_lines": await StudentAcademicRepository.count_report_card_lines_for_class_subject(
+            "report_card_lines": await StudentAcademicRepository.count_report_card_lines_for_level_subject(
                 db,
                 tenant_id,
-                class_subject_id,
-            ),
-            "compatibility_teacher_rows": await StudentAcademicRepository.count_class_subject_teachers_for_class_subject(
-                db,
-                tenant_id,
-                class_subject_id,
-            ),
-            "active_compatibility_teacher_rows": await StudentAcademicRepository.count_class_subject_teachers_for_class_subject(
-                db,
-                tenant_id,
-                class_subject_id,
-                active_only=True,
+                level_subject_id,
             ),
         }
 
@@ -645,61 +614,27 @@ class StudentAcademicService:
         return membership
 
     @staticmethod
-    async def _ensure_compatibility_assignment(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        class_subject: ClassSubject,
-        teacher_membership_id: uuid.UUID,
-        is_active: bool,
-    ) -> ClassSubjectTeacher:
-        row = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-            db,
-            tenant_id,
-            class_subject.class_id,
-            class_subject.subject_id,
-        )
-        if row is None:
-            row = ClassSubjectTeacher(
-                tenant_id=tenant_id,
-                class_id=class_subject.class_id,
-                subject_id=class_subject.subject_id,
-                teacher_membership_id=teacher_membership_id,
-                is_core=class_subject.is_core,
-                sort_order=0,
-                is_active=is_active,
-            )
-            return await StudentAcademicRepository.create_class_subject_teacher(
-                db,
-                row,
-            )
-        row.teacher_membership_id = teacher_membership_id
-        row.is_core = class_subject.is_core
-        row.is_active = is_active
-        return await StudentAcademicRepository.save_class_subject_teacher(db, row)
-
-    @staticmethod
     async def _build_teacher_assignment_response(
         db: AsyncSession,
         assignment: TeacherAssignment,
     ) -> TeacherAssignmentResponse:
-        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+        level_subject = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             assignment.tenant_id,
-            assignment.class_subject_id,
+            assignment.level_subject_id,
         )
         classroom = None
         subject = None
-        if class_subject is not None:
+        if level_subject is not None:
             classroom = await ClassRoomRepository.get_by_id(
                 db,
                 assignment.tenant_id,
-                class_subject.class_id,
+                assignment.class_id,
             )
             subject = await SubjectRepository.get_subject_by_id(
                 db,
                 assignment.tenant_id,
-                class_subject.subject_id,
+                level_subject.subject_id,
             )
         teacher = await TeacherMembershipRepository.get_by_id(
             db,
@@ -723,12 +658,12 @@ class StudentAcademicService:
         return TeacherAssignmentResponse(
             id=assignment.id,
             tenant_id=assignment.tenant_id,
-            class_subject_id=assignment.class_subject_id,
+            level_subject_id=assignment.level_subject_id,
             teacher_membership_id=assignment.teacher_membership_id,
-            class_id=class_subject.class_id if class_subject else None,
-            class_name=classroom.name if classroom else None,
+            class_id=assignment.class_id,
+            class_name=classroom.academic_level_name if classroom else None,
             class_arm=classroom.arm if classroom else None,
-            subject_id=class_subject.subject_id if class_subject else None,
+            subject_id=level_subject.subject_id if level_subject else None,
             subject_name=subject.name if subject else None,
             subject_code=subject.code if subject else None,
             teacher_name=teacher_name,
@@ -741,15 +676,15 @@ class StudentAcademicService:
         )
 
     @staticmethod
-    async def create_class_subject(
+    async def create_level_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-        payload: ClassSubjectCreate,
-    ) -> ClassSubjectResponse:
-        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
-        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
-            raise NotFoundException("Class not found or inactive.")
+        academic_level_id: uuid.UUID,
+        payload: LevelSubjectCreate,
+    ) -> LevelSubjectResponse:
+        level = await AcademicLevelRepository.get_by_id(db, tenant_id, academic_level_id)
+        if level is None or not level.is_active or level.archived_at is not None:
+            raise NotFoundException("Academic level not found or inactive.")
         subject = await SubjectRepository.get_subject_by_id(
             db,
             tenant_id,
@@ -757,27 +692,27 @@ class StudentAcademicService:
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise NotFoundException("Subject not found or inactive.")
-        existing = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
+        existing = await StudentAcademicRepository.get_level_subject_by_level_and_subject(
             db,
             tenant_id,
-            class_id,
+            academic_level_id,
             payload.subject_id,
         )
         if existing is not None:
             if existing.archived_at is not None:
                 raise ConflictException(
-                    "This class-subject mapping is archived. Restore it before creating a new mapping."
+                    "This level-subject mapping is archived. Restore it before creating a new mapping."
                 )
             if existing.is_active:
                 raise ConflictException("This subject is already offered by the class.")
             raise ConflictException(
-                "This class-subject mapping is inactive. Activate it instead of creating a new mapping."
+                "This level-subject mapping is inactive. Activate it instead of creating a new mapping."
             )
-        row = await StudentAcademicRepository.create_class_subject(
+        row = await StudentAcademicRepository.create_level_subject(
             db,
-            ClassSubject(
+            LevelSubject(
                 tenant_id=tenant_id,
-                class_id=class_id,
+                academic_level_id=academic_level_id,
                 subject_id=payload.subject_id,
                 is_core=payload.is_core,
                 is_active=True,
@@ -786,18 +721,18 @@ class StudentAcademicService:
             ),
         )
         await db.commit()
-        return await StudentAcademicService._build_class_subject_response(db, row)
+        return await StudentAcademicService._build_level_subject_response(db, row)
 
     @staticmethod
-    async def create_class_subjects_bulk(
+    async def create_level_subjects_bulk(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-        payload: ClassSubjectBulkCreate,
-    ) -> list[ClassSubjectResponse]:
-        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
-        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
-            raise NotFoundException("Class not found or inactive.")
+        academic_level_id: uuid.UUID,
+        payload: LevelSubjectBulkCreate,
+    ) -> list[LevelSubjectResponse]:
+        level = await AcademicLevelRepository.get_by_id(db, tenant_id, academic_level_id)
+        if level is None or not level.is_active or level.archived_at is not None:
+            raise NotFoundException("Academic level not found or inactive.")
 
         subjects = await SubjectRepository.get_subjects_by_id(
             db=db,
@@ -826,10 +761,10 @@ class StudentAcademicService:
                 payload={"subjects": inactive_subject_names},
             )
 
-        existing_rows, _ = await StudentAcademicRepository.list_class_subjects(
+        existing_rows, _ = await StudentAcademicRepository.list_level_subjects(
             db,
             tenant_id,
-            class_id=class_id,
+            academic_level_id=academic_level_id,
             include_archived=True,
             limit=500,
         )
@@ -863,11 +798,11 @@ class StudentAcademicService:
 
         rows = []
         for subject_id in payload.subject_ids:
-            row = await StudentAcademicRepository.create_class_subject(
+            row = await StudentAcademicRepository.create_level_subject(
                 db,
-                ClassSubject(
+                LevelSubject(
                     tenant_id=tenant_id,
-                    class_id=class_id,
+                    academic_level_id=academic_level_id,
                     subject_id=subject_id,
                     is_core=payload.is_core,
                     is_active=True,
@@ -878,24 +813,24 @@ class StudentAcademicService:
             rows.append(row)
 
         await db.commit()
-        return [await StudentAcademicService._build_class_subject_response(db, row) for row in rows]
+        return [await StudentAcademicService._build_level_subject_response(db, row) for row in rows]
 
     @staticmethod
-    async def list_class_subjects(
+    async def list_level_subjects(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         *,
-        class_id: uuid.UUID | None = None,
+        academic_level_id: uuid.UUID | None = None,
         active_only: bool = False,
         include_archived: bool = False,
         lifecycle_status: str | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> tuple[list[ClassSubjectResponse], int]:
-        rows, total = await StudentAcademicRepository.list_class_subjects(
+    ) -> tuple[list[LevelSubjectResponse], int]:
+        rows, total = await StudentAcademicRepository.list_level_subjects(
             db,
             tenant_id,
-            class_id=class_id,
+            academic_level_id=academic_level_id,
             active_only=active_only,
             include_archived=include_archived,
             lifecycle_status=lifecycle_status,
@@ -903,7 +838,7 @@ class StudentAcademicService:
             limit=limit,
         )
         return [
-            await StudentAcademicService._build_class_subject_response(db, row) for row in rows
+            await StudentAcademicService._build_level_subject_response(db, row) for row in rows
         ], total
 
     @staticmethod
@@ -914,7 +849,7 @@ class StudentAcademicService:
         return TeacherAssignmentResponse(
             id=assignment.id,
             tenant_id=assignment.tenant_id,
-            class_subject_id=assignment.class_subject_id,
+            level_subject_id=assignment.level_subject_id,
             teacher_membership_id=assignment.teacher_membership_id,
             class_id=record.get("class_id"),
             class_name=record.get("class_name"),
@@ -952,7 +887,8 @@ class StudentAcademicService:
         later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
             db,
             tenant_id,
-            assignment.class_subject_id,
+            assignment.level_subject_id,
+            assignment.class_id,
             assignment.effective_from,
             exclude_id=assignment.id,
         )
@@ -993,7 +929,8 @@ class StudentAcademicService:
         *,
         tenant_id: uuid.UUID,
         assignment_id: uuid.UUID | None,
-        class_subject_id: uuid.UUID,
+        class_id: uuid.UUID,
+        level_subject_id: uuid.UUID,
         action: str,
         previous_teacher_membership_id: uuid.UUID | None = None,
         new_teacher_membership_id: uuid.UUID | None = None,
@@ -1011,7 +948,8 @@ class StudentAcademicService:
             TeacherAssignmentLifecycleAudit(
                 tenant_id=tenant_id,
                 assignment_id=assignment_id,
-                class_subject_id=class_subject_id,
+                class_id=class_id,
+                level_subject_id=level_subject_id,
                 action=action,
                 previous_teacher_membership_id=previous_teacher_membership_id,
                 new_teacher_membership_id=new_teacher_membership_id,
@@ -1027,190 +965,172 @@ class StudentAcademicService:
         )
 
     @staticmethod
-    async def deactivate_class_subject(
+    async def deactivate_level_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
-    ) -> ClassSubjectResponse:
-        row = await StudentAcademicRepository.get_class_subject_by_id(
+        level_subject_id: uuid.UUID,
+    ) -> LevelSubjectResponse:
+        row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            class_subject_id,
+            level_subject_id,
         )
         if row is None:
-            raise NotFoundException("Class subject not found.")
+            raise NotFoundException("Level subject not found.")
         if row.archived_at is not None:
             raise ConflictException("Archived records cannot be deactivated. Restore them first.")
         if not row.is_active:
-            return await StudentAcademicService._build_class_subject_response(db, row)
-        counts = await StudentAcademicService._class_subject_dependency_counts(
+            return await StudentAcademicService._build_level_subject_response(db, row)
+        counts = await StudentAcademicService._level_subject_dependency_counts(
             db,
             tenant_id=tenant_id,
-            class_subject_id=row.id,
+            level_subject_id=row.id,
         )
         if counts["active_teacher_assignments"]:
             raise ConflictException(
-                "Active teacher assignments must be ended before deactivating this class-subject mapping.",
+                "Active teacher assignments must be ended before deactivating this level-subject mapping.",
                 payload={"dependency_counts": counts},
             )
         row.is_active = False
-        row = await StudentAcademicRepository.save_class_subject(db, row)
-        await StudentAcademicService._set_compatibility_class_subject_teachers_active(
-            db,
-            tenant_id=tenant_id,
-            class_subject_id=row.id,
-            is_active=False,
-        )
+        row = await StudentAcademicRepository.save_level_subject(db, row)
         await db.commit()
-        return await StudentAcademicService._build_class_subject_response(db, row)
+        return await StudentAcademicService._build_level_subject_response(db, row)
 
     @staticmethod
-    async def activate_class_subject(
+    async def activate_level_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
-    ) -> ClassSubjectResponse:
-        row = await StudentAcademicRepository.get_class_subject_by_id(
+        level_subject_id: uuid.UUID,
+    ) -> LevelSubjectResponse:
+        row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            class_subject_id,
+            level_subject_id,
         )
         if row is None:
-            raise NotFoundException("Class subject not found.")
+            raise NotFoundException("Level subject not found.")
         if row.archived_at is not None:
-            raise ConflictException("Archived class subjects must be restored before activation.")
-        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, row.class_id)
-        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
+            raise ConflictException("Archived level subjects must be restored before activation.")
+        level = await AcademicLevelRepository.get_by_id(db, tenant_id, row.academic_level_id)
+        if level is None or not level.is_active or level.archived_at is not None:
             raise ConflictException(
-                "Classroom must be active before activating this class subject."
+                "Academic level must be active before activating this level subject."
             )
         subject = await SubjectRepository.get_subject_by_id(db, tenant_id, row.subject_id)
         if subject is None or not subject.is_active or subject.archived_at is not None:
-            raise ConflictException("Subject must be active before activating this class subject.")
+            raise ConflictException("Subject must be active before activating this level subject.")
         if row.is_active:
-            return await StudentAcademicService._build_class_subject_response(db, row)
+            return await StudentAcademicService._build_level_subject_response(db, row)
         row.is_active = True
-        row = await StudentAcademicRepository.save_class_subject(db, row)
+        row = await StudentAcademicRepository.save_level_subject(db, row)
         await db.commit()
-        return await StudentAcademicService._build_class_subject_response(db, row)
+        return await StudentAcademicService._build_level_subject_response(db, row)
 
     @staticmethod
-    async def update_class_subject(
+    async def update_level_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
-        payload: ClassSubjectUpdate,
-    ) -> ClassSubjectResponse:
-        row = await StudentAcademicRepository.get_class_subject_by_id(
+        level_subject_id: uuid.UUID,
+        payload: LevelSubjectUpdate,
+    ) -> LevelSubjectResponse:
+        row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            class_subject_id,
+            level_subject_id,
         )
         if row is None:
-            raise NotFoundException("Class subject not found.")
+            raise NotFoundException("Level subject not found.")
         if row.archived_at is not None:
-            raise ConflictException("Archived class-subject mappings cannot be updated.")
+            raise ConflictException("Archived level-subject mappings cannot be updated.")
         row.is_core = payload.is_core
-        row = await StudentAcademicRepository.save_class_subject(db, row)
+        row = await StudentAcademicRepository.save_level_subject(db, row)
         await db.commit()
-        return await StudentAcademicService._build_class_subject_response(db, row)
+        return await StudentAcademicService._build_level_subject_response(db, row)
 
     @staticmethod
-    async def archive_class_subject(
+    async def archive_level_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
+        level_subject_id: uuid.UUID,
         admin_id: uuid.UUID,
-    ) -> ClassSubjectResponse:
-        row = await StudentAcademicRepository.get_class_subject_by_id(
+    ) -> LevelSubjectResponse:
+        row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            class_subject_id,
+            level_subject_id,
         )
         if row is None:
-            raise NotFoundException("Class subject not found.")
+            raise NotFoundException("Level subject not found.")
         if row.archived_at is not None:
             raise ConflictException("Class-subject mapping is already archived.")
         if row.is_active:
             raise ConflictException(
-                "Active class-subject mappings cannot be archived. Deactivate the mapping first."
+                "Active level-subject mappings cannot be archived. Deactivate the mapping first."
             )
-        counts = await StudentAcademicService._class_subject_dependency_counts(
+        counts = await StudentAcademicService._level_subject_dependency_counts(
             db,
             tenant_id=tenant_id,
-            class_subject_id=row.id,
+            level_subject_id=row.id,
         )
-        if counts["active_teacher_assignments"] or counts["active_compatibility_teacher_rows"]:
+        if counts["active_teacher_assignments"]:
             raise ConflictException(
-                "End active teacher state before archiving this class-subject mapping.",
+                "End active teacher state before archiving this level-subject mapping.",
                 payload={"dependency_counts": counts},
             )
         row.is_active = False
         row.archived_at = datetime.now(timezone.utc)
         row.archived_by_admin_id = admin_id
-        row = await StudentAcademicRepository.save_class_subject(db, row)
-        await StudentAcademicService._set_compatibility_class_subject_teachers_active(
-            db,
-            tenant_id=tenant_id,
-            class_subject_id=row.id,
-            is_active=False,
-        )
+        row = await StudentAcademicRepository.save_level_subject(db, row)
         await db.commit()
-        return await StudentAcademicService._build_class_subject_response(db, row)
+        return await StudentAcademicService._build_level_subject_response(db, row)
 
     @staticmethod
-    async def restore_class_subject(
+    async def restore_level_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
-    ) -> ClassSubjectResponse:
-        row = await StudentAcademicRepository.get_class_subject_by_id(
+        level_subject_id: uuid.UUID,
+    ) -> LevelSubjectResponse:
+        row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            class_subject_id,
+            level_subject_id,
         )
         if row is None:
-            raise NotFoundException("Class subject not found.")
+            raise NotFoundException("Level subject not found.")
         if row.archived_at is None:
-            return await StudentAcademicService._build_class_subject_response(db, row)
+            return await StudentAcademicService._build_level_subject_response(db, row)
         row.archived_at = None
         row.archived_by_admin_id = None
         row.is_active = False
-        row = await StudentAcademicRepository.save_class_subject(db, row)
-        await StudentAcademicService._set_compatibility_class_subject_teachers_active(
-            db,
-            tenant_id=tenant_id,
-            class_subject_id=row.id,
-            is_active=False,
-        )
+        row = await StudentAcademicRepository.save_level_subject(db, row)
         await db.commit()
-        return await StudentAcademicService._build_class_subject_response(db, row)
+        return await StudentAcademicService._build_level_subject_response(db, row)
 
     @staticmethod
-    async def delete_class_subject(
+    async def delete_level_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_subject_id: uuid.UUID,
-    ) -> ClassSubjectResponse:
-        row = await StudentAcademicRepository.get_class_subject_by_id(
+        level_subject_id: uuid.UUID,
+    ) -> LevelSubjectResponse:
+        row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            class_subject_id,
+            level_subject_id,
         )
         if row is None:
-            raise NotFoundException("Class subject not found.")
+            raise NotFoundException("Level subject not found.")
         if row.is_active:
             raise ConflictException(
-                "Active class-subject mappings cannot be hard-deleted. Deactivate the mapping first."
+                "Active level-subject mappings cannot be hard-deleted. Deactivate the mapping first."
             )
         if row.archived_at is not None:
             raise ConflictException(
-                "Archived class-subject mappings cannot be hard-deleted. Restore them first."
+                "Archived level-subject mappings cannot be hard-deleted. Restore them first."
             )
-        counts = await StudentAcademicService._class_subject_dependency_counts(
+        counts = await StudentAcademicService._level_subject_dependency_counts(
             db,
             tenant_id=tenant_id,
-            class_subject_id=row.id,
+            level_subject_id=row.id,
         )
         blocking_counts = {
             "teacher_assignment_history": counts["teacher_assignment_history"],
@@ -1222,17 +1142,8 @@ class StudentAcademicService:
                 "Class-subject mapping has dependencies and cannot be hard-deleted.",
                 payload={"dependency_counts": counts},
             )
-        response = await StudentAcademicService._build_class_subject_response(db, row)
-        compatibility_rows = (
-            await StudentAcademicRepository.list_class_subject_teachers_for_class_subject(
-                db,
-                tenant_id,
-                row.id,
-            )
-        )
-        for compatibility_row in compatibility_rows:
-            await StudentAcademicRepository.delete_class_subject_teacher(db, compatibility_row)
-        await StudentAcademicRepository.delete_class_subject(db, row)
+        response = await StudentAcademicService._build_level_subject_response(db, row)
+        await StudentAcademicRepository.delete_level_subject(db, row)
         await db.commit()
         return response
 
@@ -1241,35 +1152,39 @@ class StudentAcademicService:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         payload: TeacherAssignmentCreate,
-        class_subject_id: uuid.UUID | None = None,
+        level_subject_id: uuid.UUID | None = None,
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
-        resolved_class_subject_id = class_subject_id or payload.class_subject_id
-        if resolved_class_subject_id is None:
-            raise BadRequestException("class_subject_id is required.")
-        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+        resolved_level_subject_id = level_subject_id or payload.level_subject_id
+        if resolved_level_subject_id is None:
+            raise BadRequestException("level_subject_id is required.")
+        level_subject = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            resolved_class_subject_id,
+            resolved_level_subject_id,
             lock=True,
         )
         if (
-            class_subject is None
-            or not class_subject.is_active
-            or class_subject.archived_at is not None
+            level_subject is None
+            or not level_subject.is_active
+            or level_subject.archived_at is not None
         ):
-            raise NotFoundException("Class subject not found or inactive.")
+            raise NotFoundException("Level subject not found or inactive.")
         classroom = await ClassRoomRepository.get_by_id(
             db,
             tenant_id,
-            class_subject.class_id,
+            payload.class_id,
         )
         if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise ConflictException("Classroom must be active before assigning a teacher.")
+        if classroom.academic_level_id != level_subject.academic_level_id:
+            raise ConflictException(
+                "The selected classroom and level subject must belong to the same academic level."
+            )
         subject = await SubjectRepository.get_subject_by_id(
             db,
             tenant_id,
-            class_subject.subject_id,
+            level_subject.subject_id,
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise ConflictException("Subject must be active before assigning a teacher.")
@@ -1277,23 +1192,25 @@ class StudentAcademicService:
             db,
             tenant_id=tenant_id,
             teacher_membership_id=payload.teacher_membership_id,
-            subject_id=class_subject.subject_id,
+            subject_id=level_subject.subject_id,
         )
-        active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+        active = await StudentAcademicRepository.get_active_teacher_assignment_for_level_subject(
             db,
             tenant_id,
-            class_subject.id,
+            level_subject.id,
+            classroom.id,
         )
         if active is not None:
             raise ConflictException(
-                "An active teacher assignment already exists for this class subject."
+                "An active teacher assignment already exists for this level subject."
             )
         effective_from = payload.effective_from or date.today()
         existing_assignments = (
-            await StudentAcademicRepository.list_teacher_assignments_for_class_subject(
+            await StudentAcademicRepository.list_teacher_assignments_for_level_subject(
                 db,
                 tenant_id,
-                class_subject.id,
+                level_subject.id,
+                classroom.id,
                 lock=True,
             )
         )
@@ -1307,7 +1224,8 @@ class StudentAcademicService:
                 db,
                 TeacherAssignment(
                     tenant_id=tenant_id,
-                    class_subject_id=class_subject.id,
+                    class_id=classroom.id,
+                    level_subject_id=level_subject.id,
                     teacher_membership_id=payload.teacher_membership_id,
                     is_active=True,
                     effective_from=effective_from,
@@ -1317,20 +1235,14 @@ class StudentAcademicService:
         except IntegrityError as exc:
             await db.rollback()
             raise ConflictException(
-                "An active teacher assignment already exists for this class subject."
+                "An active teacher assignment already exists for this level subject."
             ) from exc
-        await StudentAcademicService._ensure_compatibility_assignment(
-            db,
-            tenant_id=tenant_id,
-            class_subject=class_subject,
-            teacher_membership_id=payload.teacher_membership_id,
-            is_active=True,
-        )
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
             tenant_id=tenant_id,
             assignment_id=assignment.id,
-            class_subject_id=class_subject.id,
+            class_id=assignment.class_id,
+            level_subject_id=level_subject.id,
             action="assignment_created",
             new_teacher_membership_id=payload.teacher_membership_id,
             previous_state=None,
@@ -1383,24 +1295,12 @@ class StudentAcademicService:
             db,
             assignment,
         )
-        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
-            db,
-            tenant_id,
-            assignment.class_subject_id,
-        )
-        if class_subject is not None:
-            await StudentAcademicService._ensure_compatibility_assignment(
-                db,
-                tenant_id=tenant_id,
-                class_subject=class_subject,
-                teacher_membership_id=assignment.teacher_membership_id,
-                is_active=False,
-            )
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
             tenant_id=tenant_id,
             assignment_id=assignment.id,
-            class_subject_id=assignment.class_subject_id,
+            class_id=assignment.class_id,
+            level_subject_id=assignment.level_subject_id,
             action="assignment_ended",
             previous_teacher_membership_id=assignment.teacher_membership_id,
             new_teacher_membership_id=assignment.teacher_membership_id,
@@ -1436,28 +1336,28 @@ class StudentAcademicService:
             raise NotFoundException("Teacher assignment not found.")
         if not current.is_active or current.effective_to is not None:
             raise ConflictException("Only the current active teacher assignment can be reassigned.")
-        class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+        level_subject = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
-            current.class_subject_id,
+            current.level_subject_id,
         )
         if (
-            class_subject is None
-            or not class_subject.is_active
-            or class_subject.archived_at is not None
+            level_subject is None
+            or not level_subject.is_active
+            or level_subject.archived_at is not None
         ):
-            raise NotFoundException("Class subject not found or inactive.")
+            raise NotFoundException("Level subject not found or inactive.")
         classroom = await ClassRoomRepository.get_by_id(
             db,
             tenant_id,
-            class_subject.class_id,
+            current.class_id,
         )
         if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise ConflictException("Classroom must be active before reassigning a teacher.")
         subject = await SubjectRepository.get_subject_by_id(
             db,
             tenant_id,
-            class_subject.subject_id,
+            level_subject.subject_id,
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise ConflictException("Subject must be active before reassigning a teacher.")
@@ -1465,12 +1365,13 @@ class StudentAcademicService:
             db,
             tenant_id=tenant_id,
             teacher_membership_id=payload.teacher_membership_id,
-            subject_id=class_subject.subject_id,
+            subject_id=level_subject.subject_id,
         )
-        active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+        active = await StudentAcademicRepository.get_active_teacher_assignment_for_level_subject(
             db,
             tenant_id,
-            class_subject.id,
+            level_subject.id,
+            current.class_id,
             lock=True,
         )
         if active is None or active.id != current.id:
@@ -1487,7 +1388,8 @@ class StudentAcademicService:
         later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
             db,
             tenant_id,
-            class_subject.id,
+            level_subject.id,
+            current.class_id,
             current.effective_from,
             exclude_id=current.id,
             lock=True,
@@ -1514,7 +1416,8 @@ class StudentAcademicService:
                 db,
                 TeacherAssignment(
                     tenant_id=tenant_id,
-                    class_subject_id=class_subject.id,
+                    class_id=current.class_id,
+                    level_subject_id=level_subject.id,
                     teacher_membership_id=payload.teacher_membership_id,
                     is_active=True,
                     effective_from=effective_from,
@@ -1524,20 +1427,14 @@ class StudentAcademicService:
         except IntegrityError as exc:
             await db.rollback()
             raise ConflictException(
-                "An active teacher assignment already exists for this class subject."
+                "An active teacher assignment already exists for this level subject."
             ) from exc
-        await StudentAcademicService._ensure_compatibility_assignment(
-            db,
-            tenant_id=tenant_id,
-            class_subject=class_subject,
-            teacher_membership_id=payload.teacher_membership_id,
-            is_active=True,
-        )
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
             tenant_id=tenant_id,
             assignment_id=replacement.id,
-            class_subject_id=class_subject.id,
+            class_id=replacement.class_id,
+            level_subject_id=level_subject.id,
             action="teacher_reassigned",
             previous_teacher_membership_id=current.teacher_membership_id,
             new_teacher_membership_id=payload.teacher_membership_id,
@@ -1594,7 +1491,8 @@ class StudentAcademicService:
             db,
             tenant_id=tenant_id,
             assignment_id=assignment.id,
-            class_subject_id=assignment.class_subject_id,
+            class_id=assignment.class_id,
+            level_subject_id=assignment.level_subject_id,
             action="assignment_deleted",
             previous_teacher_membership_id=assignment.teacher_membership_id,
             previous_state="ended",
@@ -1614,7 +1512,7 @@ class StudentAcademicService:
         *,
         teacher_id: uuid.UUID | None = None,
         class_id: uuid.UUID | None = None,
-        class_subject_id: uuid.UUID | None = None,
+        level_subject_id: uuid.UUID | None = None,
         subject_id: uuid.UUID | None = None,
         status: str | None = None,
         effective_from_from: date | None = None,
@@ -1628,7 +1526,7 @@ class StudentAcademicService:
             tenant_id,
             teacher_id=teacher_id,
             class_id=class_id,
-            class_subject_id=class_subject_id,
+            level_subject_id=level_subject_id,
             subject_id=subject_id,
             status=status,
             effective_from_from=effective_from_from,
@@ -1641,142 +1539,6 @@ class StudentAcademicService:
             StudentAcademicService._build_teacher_assignment_response_from_record(record)
             for record in records
         ], total
-
-    @staticmethod
-    async def assign_subject_to_class(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        payload: ClassSubjectTeacherCreate,
-    ) -> ClassSubjectTeacherResponse:
-        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, payload.class_id)
-        if classroom is None or not classroom.is_active or classroom.archived_at is not None:
-            raise NotFoundException("Class not found or inactive.")
-        subject = await SubjectRepository.get_subject_by_id(db, tenant_id, payload.subject_id)
-        if subject is None or not subject.is_active or subject.archived_at is not None:
-            raise NotFoundException("Subject not found or inactive.")
-        class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
-            db,
-            tenant_id,
-            payload.class_id,
-            payload.subject_id,
-        )
-        if class_subject is not None and class_subject.archived_at is not None:
-            raise ConflictException("This class subject is archived. Restore it before activation.")
-        if class_subject is None:
-            class_subject = await StudentAcademicRepository.create_class_subject(
-                db,
-                ClassSubject(
-                    tenant_id=tenant_id,
-                    class_id=payload.class_id,
-                    subject_id=payload.subject_id,
-                    is_core=payload.is_core,
-                    is_active=True,
-                    archived_at=None,
-                    archived_by_admin_id=None,
-                ),
-            )
-        assignment = await StudentAcademicService.create_teacher_assignment(
-            db,
-            tenant_id,
-            TeacherAssignmentCreate(
-                teacher_membership_id=payload.teacher_membership_id,
-                class_subject_id=class_subject.id,
-            ),
-        )
-        row = await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-            db,
-            tenant_id,
-            payload.class_id,
-            payload.subject_id,
-        )
-        if row is None:
-            raise ConflictException("Assignment compatibility row was not created.")
-        row.sort_order = payload.sort_order
-        row.is_active = payload.is_active
-        row.is_core = payload.is_core
-        await StudentAcademicRepository.save_class_subject_teacher(db, row)
-        await db.commit()
-        return ClassSubjectTeacherResponse.model_validate(row)
-
-    @staticmethod
-    async def list_class_subject_teachers(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        *,
-        skip: int = 0,
-        limit: int = 100,
-        class_id: uuid.UUID | None = None,
-        subject_id: uuid.UUID | None = None,
-        teacher_id: uuid.UUID | None = None,
-        active_only: bool = False,
-    ) -> tuple[list[ClassSubjectTeacherResponse], int]:
-        rows, total = await StudentAcademicRepository.list_class_subject_teachers(
-            db,
-            tenant_id,
-            skip=skip,
-            limit=limit,
-            class_id=class_id,
-            subject_id=subject_id,
-            teacher_id=teacher_id,
-            active_only=active_only,
-        )
-        return [ClassSubjectTeacherResponse.model_validate(row) for row in rows], total
-
-    @staticmethod
-    async def update_class_subject_teacher(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        assignment_id: uuid.UUID,
-        payload: ClassSubjectTeacherUpdate,
-    ) -> ClassSubjectTeacherResponse:
-        row = await StudentAcademicRepository.get_class_subject_teacher_by_id(
-            db,
-            tenant_id,
-            assignment_id,
-        )
-        if row is None:
-            raise NotFoundException("Subject assignment not found.")
-        if payload.teacher_membership_id is not None:
-            class_subject = await StudentAcademicRepository.get_class_subject_by_class_and_subject(
-                db,
-                tenant_id,
-                row.class_id,
-                row.subject_id,
-            )
-            if class_subject is None:
-                raise NotFoundException("Class subject not found.")
-            active = (
-                await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
-                    db,
-                    tenant_id,
-                    class_subject.id,
-                )
-            )
-            if active is None:
-                await StudentAcademicService.create_teacher_assignment(
-                    db,
-                    tenant_id,
-                    TeacherAssignmentCreate(
-                        teacher_membership_id=payload.teacher_membership_id,
-                        class_subject_id=class_subject.id,
-                    ),
-                )
-            else:
-                await StudentAcademicService.reassign_teacher_assignment(
-                    db,
-                    tenant_id,
-                    active.id,
-                    TeacherAssignmentReassign(
-                        teacher_membership_id=payload.teacher_membership_id,
-                    ),
-                )
-            row.teacher_membership_id = payload.teacher_membership_id
-        for field in ("is_core", "sort_order", "is_active"):
-            if field in payload.model_fields_set and getattr(payload, field) is not None:
-                setattr(row, field, getattr(payload, field))
-        row = await StudentAcademicRepository.save_class_subject_teacher(db, row)
-        await db.commit()
-        return ClassSubjectTeacherResponse.model_validate(row)
 
     @staticmethod
     async def create_academic_session(
@@ -1975,6 +1737,9 @@ class StudentAcademicService:
         )
 
         await db.commit()
+        from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache
+
+        await invalidate_tenant_subscription_cache(tenant_id)
         return term
 
     @staticmethod
@@ -2097,6 +1862,10 @@ class StudentAcademicService:
 
         if current_term is not None and current_term.id != term.id:
             raise ConflictException("Another academic term is currently open. Close it first")
+
+        from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
+
+        await TermPlanEntitlementService.ensure_open_eligible(db, tenant_id, term.id)
 
         from app.modules.school_calendar.service import SchoolCalendarService
 
@@ -2257,7 +2026,14 @@ class StudentAcademicService:
             acting_admin_id=admin_id,
         )
 
+        from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
+
+        await TermPlanEntitlementService.close_for_term(db, tenant_id, term.id)
+
         await db.commit()
+        from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache
+
+        await invalidate_tenant_subscription_cache(tenant_id)
         return term
 
     @staticmethod
@@ -2666,76 +2442,30 @@ class StudentAcademicService:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         payload: StudentSubjectResultUpsert,
-    ) -> tuple[TeacherAssignment, ClassSubjectTeacher, ClassSubject]:
-        assignment = None
-        compatibility = None
-        class_subject = None
-        if payload.teacher_assignment_id is not None:
-            assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
-                db,
-                tenant_id,
-                payload.teacher_assignment_id,
-            )
-            if assignment is None or not assignment.is_active:
-                raise NotFoundException("Active teacher assignment not found.")
-            class_subject = await StudentAcademicRepository.get_class_subject_by_id(
-                db,
-                tenant_id,
-                assignment.class_subject_id,
-            )
-            if class_subject is not None:
-                compatibility = (
-                    await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-                        db,
-                        tenant_id,
-                        class_subject.class_id,
-                        class_subject.subject_id,
-                    )
-                )
-        else:
-            compatibility = await StudentAcademicRepository.get_class_subject_teacher_by_id(
-                db,
-                tenant_id,
-                payload.class_subject_teacher_id,
-            )
-            if compatibility is not None:
-                class_subject = (
-                    await StudentAcademicRepository.get_class_subject_by_class_and_subject(
-                        db,
-                        tenant_id,
-                        compatibility.class_id,
-                        compatibility.subject_id,
-                    )
-                )
-                if class_subject is not None:
-                    assignment = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
-                        db,
-                        tenant_id,
-                        class_subject.id,
-                    )
+    ) -> tuple[TeacherAssignment, LevelSubject]:
+        assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+            db, tenant_id, payload.teacher_assignment_id
+        )
+        if assignment is None or not assignment.is_active:
+            raise NotFoundException("Active teacher assignment not found.")
+        level_subject = await StudentAcademicRepository.get_level_subject_by_id(
+            db, tenant_id, assignment.level_subject_id
+        )
         if (
             assignment is None
-            or class_subject is None
-            or not class_subject.is_active
-            or class_subject.archived_at is not None
+            or level_subject is None
+            or not level_subject.is_active
+            or level_subject.archived_at is not None
         ):
-            raise NotFoundException("Active class-subject assignment not found.")
+            raise NotFoundException("Active level-subject assignment not found.")
         subject = await SubjectRepository.get_subject_by_id(
             db,
             tenant_id,
-            class_subject.subject_id,
+            level_subject.subject_id,
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise ConflictException("Subject must be active before recording results.")
-        if compatibility is None:
-            compatibility = await StudentAcademicService._ensure_compatibility_assignment(
-                db,
-                tenant_id=tenant_id,
-                class_subject=class_subject,
-                teacher_membership_id=assignment.teacher_membership_id,
-                is_active=True,
-            )
-        return assignment, compatibility, class_subject
+        return assignment, level_subject
 
     @staticmethod
     async def _build_result_response(
@@ -2820,14 +2550,14 @@ class StudentAcademicService:
             student_name=student_name,
             admission_number=student.admission_number if student else None,
             class_id=result.class_id,
-            class_name=classroom.name if classroom else None,
+            class_name=classroom.academic_level_name if classroom else None,
             class_arm=classroom.arm if classroom else None,
             subject_id=result.subject_id,
             subject_name=subject.name if subject else None,
             subject_code=subject.code if subject else None,
             teacher_membership_id=result.teacher_membership_id,
             teacher_name=teacher_name,
-            class_subject_teacher_id=result.class_subject_teacher_id,
+            level_subject_id=result.level_subject_id,
             teacher_assignment_id=result.teacher_assignment_id,
             academic_session_id=result.academic_session_id,
             academic_session_name=session.name if session else None,
@@ -2923,18 +2653,13 @@ class StudentAcademicService:
         payload: StudentSubjectResultUpsert,
     ) -> StudentSubjectResultResponse:
         tenant_id = actor.tenant_id
-        (
-            assignment,
-            compatibility,
-            class_subject,
-        ) = await StudentAcademicService._resolve_assignment_context(
+        if isinstance(actor, TeacherMembership):
+            raise ForbiddenException("Teachers have read-only access to academic results.")
+        assignment, level_subject = await StudentAcademicService._resolve_assignment_context(
             db,
             tenant_id,
             payload,
         )
-        if isinstance(actor, TeacherMembership) and assignment.teacher_membership_id != actor.id:
-            raise ForbiddenException("Teachers may record scores only for their own assignments.")
-
         student = await StudentRepository.get_by_id(
             db,
             tenant_id,
@@ -2964,7 +2689,7 @@ class StudentAcademicService:
         if (
             enrollment is None
             or enrollment.academic_session_id != session.id
-            or enrollment.class_id != class_subject.class_id
+            or enrollment.class_id != assignment.class_id
         ):
             raise ForbiddenException(
                 "Student is not enrolled in the assigned class for this session."
@@ -2988,7 +2713,7 @@ class StudentAcademicService:
                 db,
                 tenant_id,
                 student.id,
-                compatibility.id,
+                assignment.id,
                 session.id,
                 term.id,
                 lock=True,
@@ -2998,7 +2723,7 @@ class StudentAcademicService:
                 db,
                 tenant_id,
                 student.id,
-                compatibility.id,
+                assignment.id,
                 session.id,
                 term.id,
             )
@@ -3068,10 +2793,10 @@ class StudentAcademicService:
             result = StudentSubjectResult(
                 tenant_id=tenant_id,
                 student_id=student.id,
-                class_id=class_subject.class_id,
-                subject_id=class_subject.subject_id,
+                class_id=assignment.class_id,
+                subject_id=level_subject.subject_id,
                 teacher_membership_id=assignment.teacher_membership_id,
-                class_subject_teacher_id=compatibility.id,
+                level_subject_id=level_subject.id,
                 teacher_assignment_id=assignment.id,
                 student_enrollment_id=enrollment.id,
                 academic_session_id=session.id,
@@ -3418,15 +3143,15 @@ class StudentAcademicService:
             db,
             actor.tenant_id,
         )
-        class_subjects, _ = (
-            await StudentAcademicRepository.list_class_subjects(
+        level_subjects, _ = (
+            await StudentAcademicRepository.list_level_subjects(
                 db,
                 actor.tenant_id,
-                class_id=student.class_id,
+                academic_level_id=classroom.academic_level_id,
                 active_only=True,
                 limit=500,
             )
-            if student.class_id
+            if classroom
             else ([], 0)
         )
         active_scheme = await AssessmentRepository.get_active_scheme(db, actor.tenant_id)
@@ -3437,34 +3162,27 @@ class StudentAcademicService:
         )
 
         cards: list[StudentSubjectCardResponse] = []
-        for class_subject in class_subjects:
+        for level_subject in level_subjects:
             subject = await SubjectRepository.get_subject_by_id(
                 db,
                 actor.tenant_id,
-                class_subject.subject_id,
+                level_subject.subject_id,
             )
             assignment = (
-                await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
+                await StudentAcademicRepository.get_active_teacher_assignment_for_level_subject(
                     db,
                     actor.tenant_id,
-                    class_subject.id,
-                )
-            )
-            compatibility = (
-                await StudentAcademicRepository.get_class_subject_teacher_by_class_subject(
-                    db,
-                    actor.tenant_id,
-                    class_subject.class_id,
-                    class_subject.subject_id,
+                    level_subject.id,
+                    classroom.id,
                 )
             )
             result = None
-            if compatibility is not None and session is not None and term is not None:
+            if assignment is not None and session is not None and term is not None:
                 result = await StudentAcademicRepository.get_result_by_scope(
                     db,
                     actor.tenant_id,
                     student.id,
-                    compatibility.id,
+                    assignment.id,
                     session.id,
                     term.id,
                 )
@@ -3510,12 +3228,12 @@ class StudentAcademicService:
             ]
             cards.append(
                 StudentSubjectCardResponse(
-                    id=class_subject.id,
+                    id=level_subject.id,
                     result_id=result.id if submitted else None,
-                    class_id=class_subject.class_id,
-                    class_name=classroom.name if classroom else None,
+                    class_id=classroom.id,
+                    class_name=classroom.academic_level_name,
                     class_arm=classroom.arm if classroom else None,
-                    subject_id=class_subject.subject_id,
+                    subject_id=level_subject.subject_id,
                     subject_name=subject.name if subject else None,
                     subject_code=subject.code if subject else None,
                     teacher_membership_id=(
@@ -3556,7 +3274,7 @@ class StudentAcademicService:
             total=len(cards),
             context=StudentSubjectCardContextResponse(
                 class_id=student.class_id,
-                class_name=classroom.name if classroom else None,
+                class_name=classroom.academic_level_name if classroom else None,
                 class_arm=classroom.arm if classroom else None,
                 academic_session_id=session.id if session else None,
                 academic_session_name=session.name if session else None,

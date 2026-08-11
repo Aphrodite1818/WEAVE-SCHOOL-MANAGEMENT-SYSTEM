@@ -114,7 +114,7 @@ function AcademicWorkflowPage() {
         />
       );
     }
-    if (["classes", "class-subjects"].includes(workflow)) {
+    if (["levels", "classes", "level-subjects"].includes(workflow)) {
       return (
         <ClassStructureWorkspace
           key={pageKey}

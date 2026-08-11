@@ -4,10 +4,10 @@ import test from "node:test";
 import { filterClasses } from "./classSearch.js";
 
 const classes = [
-  { id: "1", name: "JSS 1", arm: "A" },
-  { id: "2", name: "JSS 1", arm: "B" },
-  { id: "3", name: "Primary 2", arm: "A" },
-  { id: "4", name: "Senior Secondary School 3", arm: "Science" },
+  { id: "1", academic_level_name: "JSS 1", arm: "A" },
+  { id: "2", academic_level_name: "JSS 1", arm: "B" },
+  { id: "3", academic_level_name: "Primary 2", arm: "A" },
+  { id: "4", academic_level_name: "Senior Secondary School 3", arm: "Science" },
 ];
 
 test("single-letter arm searches are consistent", () => {

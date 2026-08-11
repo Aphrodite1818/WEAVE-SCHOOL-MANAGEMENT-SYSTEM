@@ -95,7 +95,7 @@ function StudentCreatePage() {
     () =>
       classes.map((item) => ({
         value: item.id,
-        label: [item.name, item.arm].filter(Boolean).join(" ") || "Unnamed class",
+        label: [item.academic_level_name, item.arm].filter(Boolean).join(" ") || "Unnamed class",
       })),
     [classes],
   );

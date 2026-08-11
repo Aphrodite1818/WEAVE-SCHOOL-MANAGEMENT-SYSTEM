@@ -108,7 +108,8 @@ def test_teacher_assignment_contract_uses_membership_id() -> None:
     membership_id = uuid4()
     payload = TeacherAssignmentCreate(
         teacher_membership_id=membership_id,
-        class_subject_id=uuid4(),
+        class_id=uuid4(),
+        level_subject_id=uuid4(),
     )
     assert payload.teacher_membership_id == membership_id
 
@@ -116,7 +117,8 @@ def test_teacher_assignment_contract_uses_membership_id() -> None:
         TeacherAssignmentCreate.model_validate(
             {
                 "teacher_id": str(uuid4()),
-                "class_subject_id": str(uuid4()),
+                "class_id": str(uuid4()),
+                "level_subject_id": str(uuid4()),
             }
         )
 

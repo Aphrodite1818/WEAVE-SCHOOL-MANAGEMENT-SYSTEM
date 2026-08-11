@@ -31,8 +31,10 @@ const normalizeListResponse = (result) => {
 };
 
 const normalizeClassPayload = (payload = {}) => ({
-  ...(payload.name !== undefined ? { name: payload.name } : {}),
-  ...(payload.arm !== undefined ? { arm: payload.arm || null } : {}),
+  ...(payload.academic_level_id !== undefined
+    ? { academic_level_id: payload.academic_level_id }
+    : {}),
+  ...(payload.arm !== undefined ? { arm: payload.arm } : {}),
   ...(payload.teacher_membership_id !== undefined || payload.teacher_id !== undefined
     ? {
         teacher_membership_id:
@@ -41,10 +43,22 @@ const normalizeClassPayload = (payload = {}) => ({
     : {}),
 });
 
-const normalizeClassProgressionPayload = (payload = {}) => ({
-  next_class_id: payload.is_terminal ? null : payload.next_class_id || null,
+const normalizeLevelProgressionPayload = (payload = {}) => ({
+  next_level_id: payload.is_terminal ? null : payload.next_level_id || null,
   is_terminal: Boolean(payload.is_terminal),
 });
+
+export const academicLevelService = {
+  getLevels: (options = {}) =>
+    api.get(`/academic-levels?${buildQuery(options, {
+      activeOnly: "active_only",
+      includeArchived: "include_archived",
+    })}`),
+  createLevel: (payload) => api.post("/academic-levels", payload),
+  updateLevel: (levelId, payload) => api.patch(`/academic-levels/${levelId}`, payload),
+  configureProgression: (levelId, payload) =>
+    api.put(`/academic-levels/${levelId}/progression`, normalizeLevelProgressionPayload(payload)),
+};
 
 export const classService = {
   getClasses: async (options = {}, requestOptions = {}) => {
@@ -75,17 +89,6 @@ export const classService = {
 
   updateClass: (classId, payload) =>
     api.patch(`/classes/${classId}`, normalizeClassPayload(payload)),
-
-  configureClassProgression: (classId, payload) =>
-    api.put(
-      `/classes/${classId}/progression`,
-      normalizeClassProgressionPayload(payload)
-    ),
-
-  clearClassProgression: (classId) =>
-    api.post(`/classes/${classId}/progression/clear`, {
-      confirmation: "CLEAR_CLASS_PROGRESSION",
-    }),
 
   activateClass: (classId) =>
     api.post(`/classes/${classId}/activate`, {

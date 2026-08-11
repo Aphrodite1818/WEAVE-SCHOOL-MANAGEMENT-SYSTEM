@@ -215,6 +215,10 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
             ),
         ),
         patch(
+            "app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.ensure_open_eligible",
+            new=AsyncMock(),
+        ),
+        patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
             new=AsyncMock(return_value=term),
         ),
@@ -326,6 +330,10 @@ async def test_finalize_academic_term_closure_closes_and_archives_calendar() -> 
         patch(
             "app.modules.school_calendar.service.SchoolCalendarService.archive_term_calendar",
             new=archive_calendar,
+        ),
+        patch(
+            "app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.close_for_term",
+            new=AsyncMock(),
         ),
     ):
         closed = await StudentAcademicService.finalize_academic_term_closure(

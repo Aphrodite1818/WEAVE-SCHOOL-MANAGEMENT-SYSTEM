@@ -38,7 +38,7 @@ import { useSubscription } from "../../features/subscriptions/useSubscription";
 import useRoleGuide from "../../features/guides/useRoleGuide";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
-import { classService } from "../../services/academicsService";
+import { academicLevelService, classService } from "../../services/academicsService";
 import { authSession, getErrorMessage, parseApiError } from "../../services/api";
 import { mediaService } from "../../services/mediaService";
 import { tenantBrandingService } from "../../services/tenantBrandingService";
@@ -67,7 +67,7 @@ const statusValue = (item) => String(item?.status || "").toLowerCase();
 const sessionLabel = (item) => item?.name || "Academic session";
 const termLabel = (item) => titleCase(item?.display_name || item?.name || "Term");
 const classLabel = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || "Class";
+  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Class";
 const schoolLogoFromUser = (user) =>
   user?.tenant_logo_url || user?.tenant?.logo_url || "";
 const uploadedLogoUrl = (response) =>
@@ -147,6 +147,7 @@ function AdminGettingStartedPage() {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [calendars, setCalendars] = useState([]);
+  const [levels, setLevels] = useState([]);
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [calendarConfiguration, setCalendarConfiguration] = useState(null);
@@ -159,7 +160,7 @@ function AdminGettingStartedPage() {
   const [sessionForm, setSessionForm] = useState(DEFAULT_SESSION);
   const [termForm, setTermForm] = useState(DEFAULT_TERM);
   const [calendarForm, setCalendarForm] = useState(DEFAULT_CALENDAR);
-  const [classForm, setClassForm] = useState({ name: "", arm: "" });
+  const [classForm, setClassForm] = useState({ level_name: "", arm: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
   const [progressionDrafts, setProgressionDrafts] = useState({});
   const [schoolLogoUrl, setSchoolLogoUrl] = useState(() =>
@@ -185,6 +186,7 @@ function AdminGettingStartedPage() {
         sessionResponse,
         termResponse,
         calendarResponse,
+        levelResponse,
         classResponse,
         subjectResponse,
         configurationResponse,
@@ -192,6 +194,7 @@ function AdminGettingStartedPage() {
         academicService.listSessions({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
         schoolCalendarService.listAdminCalendars({ limit: 100 }),
+        academicLevelService.getLevels({ limit: 500, activeOnly: false }),
         classService.getClasses({ limit: 500, activeOnly: false }),
         subjectService.getSubjects({ limit: 500, includeArchived: false }),
         schoolCalendarService.getConfiguration().catch((requestError) => {
@@ -203,6 +206,7 @@ function AdminGettingStartedPage() {
       const sessionItems = asItems(sessionResponse);
       const termItems = asItems(termResponse);
       const calendarItems = asItems(calendarResponse);
+      const levelItems = asItems(levelResponse);
       const classItems = asItems(classResponse);
       const subjectItems = asItems(subjectResponse);
       const preferredSession =
@@ -224,6 +228,7 @@ function AdminGettingStartedPage() {
       setSessions(sessionItems);
       setTerms(termItems);
       setCalendars(calendarItems);
+      setLevels(levelItems);
       setClasses(classItems);
       setSubjects(subjectItems);
       setCalendarConfiguration(configurationResponse);
@@ -315,27 +320,31 @@ function AdminGettingStartedPage() {
     () => classes.filter((item) => item?.is_active !== false && !item?.archived_at),
     [classes],
   );
+  const activeLevels = useMemo(
+    () => levels.filter((item) => item?.is_active !== false && !item?.archived_at),
+    [levels],
+  );
   const activeSubjects = useMemo(
     () => subjects.filter((item) => item?.is_active !== false && !item?.archived_at),
     [subjects],
   );
   const progressionComplete = Boolean(
-    activeClasses.length > 0 &&
-      activeClasses.every((item) => item.is_terminal || item.next_class_id),
+    activeLevels.length > 0 &&
+      activeLevels.every((item) => item.is_terminal || item.next_level_id),
   );
 
   useEffect(() => {
     setProgressionDrafts((current) => {
       const next = {};
-      for (const classroom of activeClasses) {
-        next[classroom.id] = current[classroom.id] || {
-          is_terminal: Boolean(classroom.is_terminal),
-          next_class_id: classroom.next_class_id || "",
+      for (const level of activeLevels) {
+        next[level.id] = current[level.id] || {
+          is_terminal: Boolean(level.is_terminal),
+          next_level_id: level.next_level_id || "",
         };
       }
       return next;
     });
-  }, [activeClasses]);
+  }, [activeLevels]);
   const sessionDraft = statusValue(selectedSession) === "draft";
   const termDraft = statusValue(selectedTerm) === "draft";
   const sessionDatesComplete = Boolean(
@@ -405,7 +414,6 @@ function AdminGettingStartedPage() {
       selectedSession,
       selectedTerm,
       sessionActive,
-      subjects.length,
       termActive,
     ],
   );
@@ -415,25 +423,24 @@ function AdminGettingStartedPage() {
     allowCompletedCurrentStep: true,
     allowSkippedCurrentStep: true,
   });
+  const guideLoading = guide.loading;
+  const guideState = guide.guideState;
+  const startGuide = guide.start;
+  const moveGuideTo = guide.moveTo;
 
   useEffect(() => {
-    if (!guide.loading && guide.guideState?.status === "not_started") {
-      guide.start();
+    if (!guideLoading && guideState?.status === "not_started") {
+      startGuide();
     }
-  }, [guide.guideState?.status, guide.loading, guide.start]);
+  }, [guideLoading, guideState?.status, startGuide]);
 
   useEffect(() => {
-    if (guide.loading || !guide.guideState || schoolLogoUrl) return;
-    if (guide.guideState.status !== "in_progress") return;
-    if (guide.guideState.current_step === "school_logo") return;
-    if ((guide.guideState.skipped_steps || []).includes("school_logo")) return;
-    guide.moveTo("school_logo");
-  }, [
-    guide.guideState,
-    guide.loading,
-    guide.moveTo,
-    schoolLogoUrl,
-  ]);
+    if (guideLoading || !guideState || schoolLogoUrl) return;
+    if (guideState.status !== "in_progress") return;
+    if (guideState.current_step === "school_logo") return;
+    if ((guideState.skipped_steps || []).includes("school_logo")) return;
+    moveGuideTo("school_logo");
+  }, [guideLoading, guideState, moveGuideTo, schoolLogoUrl]);
 
   const persistSchoolLogo = (logoUrl) => {
     const currentUser = authSession.getUser() || {};
@@ -628,11 +635,23 @@ function AdminGettingStartedPage() {
     event.preventDefault();
     const created = await runAction(
       "class",
-      () => classService.createClass(classForm),
+      async () => {
+        const normalizedLevelName = classForm.level_name.trim();
+        let level = activeLevels.find(
+          (item) => item.name.trim().toLowerCase() === normalizedLevelName.toLowerCase(),
+        );
+        if (!level) {
+          level = await academicLevelService.createLevel({ name: normalizedLevelName });
+        }
+        return classService.createClass({
+          academic_level_id: level.id,
+          arm: classForm.arm,
+        });
+      },
       "Class created.",
     );
     if (!created) return;
-    setClassForm({ name: "", arm: "" });
+    setClassForm({ level_name: "", arm: "" });
   };
 
   const createSubject = async (event) => {
@@ -681,20 +700,20 @@ function AdminGettingStartedPage() {
     setDeleteConfirmation(null);
   };
 
-  const saveClassProgression = async (classroom) => {
-    const draft = progressionDrafts[classroom.id] || {};
-    if (!draft.is_terminal && !draft.next_class_id) {
-      showWarning(`Choose a next class or mark ${classLabel(classroom)} as terminal.`);
+  const saveLevelProgression = async (level) => {
+    const draft = progressionDrafts[level.id] || {};
+    if (!draft.is_terminal && !draft.next_level_id) {
+      showWarning(`Choose a next level or mark ${level.name} as terminal.`);
       return;
     }
     await runAction(
-      `progression-${classroom.id}`,
+      `progression-${level.id}`,
       () =>
-        classService.configureClassProgression(classroom.id, {
+        academicLevelService.configureProgression(level.id, {
           is_terminal: Boolean(draft.is_terminal),
-          next_class_id: draft.is_terminal ? null : draft.next_class_id,
+          next_level_id: draft.is_terminal ? null : draft.next_level_id,
         }),
-      `${classLabel(classroom)} progression saved.`,
+      `${level.name} progression saved.`,
     );
   };
 
@@ -1211,10 +1230,10 @@ function AdminGettingStartedPage() {
           ) : null}
           <form onSubmit={createClass} className="mt-4 space-y-3 border-t border-border pt-4">
             <Input
-              label="Class name"
-              value={classForm.name}
+              label="Academic level"
+              value={classForm.level_name}
               placeholder="JSS 1"
-              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, name: event.target.value }))}
+              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, level_name: event.target.value }))}
               required
             />
             <Input
@@ -1222,6 +1241,7 @@ function AdminGettingStartedPage() {
               value={classForm.arm}
               placeholder="A"
               onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, arm: event.target.value }))}
+              required
             />
             <Button type="submit" disabled={saving === "class"} className="w-full">
               {saving === "class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <School className="h-4 w-4" />}
@@ -1295,38 +1315,38 @@ function AdminGettingStartedPage() {
           <div>
             <p className="font-semibold text-text">Define what happens at session closure</p>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              Every active class must point to its next class, or be marked terminal when learners graduate from it.
+              Progression belongs to academic levels, so every arm at the same level follows one consistent destination.
             </p>
           </div>
         </div>
       </div>
 
-      {!activeClasses.length ? (
+      {!activeLevels.length ? (
         <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-soft">
-          Create at least one class before configuring progression. You may skip this stage and return later.
+          Create at least one academic level before configuring progression. You may skip this stage and return later.
         </div>
       ) : (
         <div className="grid gap-3">
-          {activeClasses.map((classroom) => {
-            const draft = progressionDrafts[classroom.id] || {
-              is_terminal: Boolean(classroom.is_terminal),
-              next_class_id: classroom.next_class_id || "",
+          {activeLevels.map((level) => {
+            const draft = progressionDrafts[level.id] || {
+              is_terminal: Boolean(level.is_terminal),
+              next_level_id: level.next_level_id || "",
             };
-            const configured = Boolean(classroom.is_terminal || classroom.next_class_id);
-            const nextOptions = activeClasses
-              .filter((candidate) => candidate.id !== classroom.id)
+            const configured = Boolean(level.is_terminal || level.next_level_id);
+            const nextOptions = activeLevels
+              .filter((candidate) => candidate.id !== level.id)
               .map((candidate) => ({
                 value: candidate.id,
-                label: classLabel(candidate),
-                description: candidate.is_terminal ? "Terminal class" : "Active class",
+                label: candidate.name,
+                description: candidate.is_terminal ? "Terminal level" : "Active level",
               }));
 
             return (
-              <div key={classroom.id} className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+              <div key={level.id} className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-text">{classLabel(classroom)}</p>
+                      <p className="font-semibold text-text">{level.name}</p>
                       {configured ? <Badge variant="success">Configured</Badge> : <Badge variant="warning">Required</Badge>}
                     </div>
                     <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface-muted/25 px-3 text-sm font-medium text-text-soft">
@@ -1337,47 +1357,47 @@ function AdminGettingStartedPage() {
                         onChange={(event) =>
                           setProgressionDrafts((current) => ({
                             ...current,
-                            [classroom.id]: {
+                            [level.id]: {
                               ...draft,
                               is_terminal: event.target.checked,
-                              next_class_id: event.target.checked ? "" : draft.next_class_id,
+                              next_level_id: event.target.checked ? "" : draft.next_level_id,
                             },
                           }))
                         }
                       />
-                      Terminal class — students graduate after this class
+                      Terminal level — students graduate after this level
                     </label>
                   </div>
                   <div className="grid min-w-0 flex-[1.2] gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                     <SearchableSelect
-                      label="Next class"
-                      value={draft.next_class_id || ""}
+                      label="Next level"
+                      value={draft.next_level_id || ""}
                       onChange={(value) =>
                         setProgressionDrafts((current) => ({
                           ...current,
-                          [classroom.id]: {
+                          [level.id]: {
                             ...draft,
                             is_terminal: false,
-                            next_class_id: value,
+                            next_level_id: value,
                           },
                         }))
                       }
                       options={nextOptions}
-                      placeholder={draft.is_terminal ? "Terminal class" : "Select next class"}
+                      placeholder={draft.is_terminal ? "Terminal level" : "Select next level"}
                       searchable={nextOptions.length > 5}
                       clearable
                       disabled={draft.is_terminal}
                     />
                     <Button
                       type="button"
-                      onClick={() => saveClassProgression(classroom)}
+                      onClick={() => saveLevelProgression(level)}
                       disabled={
-                        saving === `progression-${classroom.id}` ||
-                        (!draft.is_terminal && !draft.next_class_id)
+                        saving === `progression-${level.id}` ||
+                        (!draft.is_terminal && !draft.next_level_id)
                       }
                       className="w-full sm:w-auto"
                     >
-                      {saving === `progression-${classroom.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Route className="h-4 w-4" />}
+                      {saving === `progression-${level.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Route className="h-4 w-4" />}
                       Save
                     </Button>
                   </div>
@@ -1759,9 +1779,9 @@ function AdminGettingStartedPage() {
                   detail={`${activeClasses.length} classes · ${activeSubjects.length} subjects`}
                 />
                 <SetupCheck
-                  label="Class progression"
+                  label="Level progression"
                   complete={completionMap.progression}
-                  detail={progressionComplete ? "Every active class has a destination" : "Choose next classes or terminal classes"}
+                  detail={progressionComplete ? "Every active level has a destination" : "Choose next levels or terminal levels"}
                 />
                 <SetupCheck
                   label="Session open"

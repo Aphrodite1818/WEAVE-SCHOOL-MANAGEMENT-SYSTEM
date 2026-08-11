@@ -27,7 +27,7 @@ const asItems = (response) =>
       : [];
 
 const classLabel = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
+  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
 
 const RESULT_ACTIONS = [
   {

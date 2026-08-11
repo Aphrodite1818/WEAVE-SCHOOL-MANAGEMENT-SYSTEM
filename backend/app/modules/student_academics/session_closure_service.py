@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.communications.enums import (
     AnnouncementPriority,
     CommunicationActorType,
@@ -63,8 +63,8 @@ class SessionClosureService:
         "No result remains draft, submitted, or approved-but-unlocked.",
         "No draft report card remains unpublished.",
         "No assessment-record import is pending or processing.",
-        "Every enrolled non-terminal class has an active next-class target.",
-        "Terminal classes do not point to another class.",
+        "Every enrolled non-terminal level has a matching active arm in its next level.",
+        "Terminal academic levels do not point to another level.",
         "The next session has at least one configured term.",
         "No progression run is already processing.",
     ]
@@ -173,22 +173,31 @@ class SessionClosureService:
                     f"An active enrollment references missing class {enrollment.class_id}."
                 )
                 continue
-            if classroom.is_terminal:
-                if classroom.next_class_id is not None:
+            level = await AcademicLevelRepository.get_by_id(
+                db, tenant_id, classroom.academic_level_id
+            )
+            if level is None:
+                invalid_targets += 1
+                blockers.append(f"Class {classroom.id} has no academic level.")
+                continue
+            if level.is_terminal:
+                if level.next_level_id is not None:
                     invalid_targets += 1
                     blockers.append(
-                        f"Terminal class {classroom.name} must not have a next-class target."
+                        f"Terminal academic level {level.name} must not have a next-level target."
                     )
                 continue
-            if classroom.next_class_id is None:
+            if level.next_level_id is None:
                 invalid_targets += 1
-                blockers.append(f"Configure a next-class target for {classroom.name}.")
+                blockers.append(f"Configure a next-level target for {level.name}.")
                 continue
-            target = await ClassRoomRepository.get_by_id(db, tenant_id, classroom.next_class_id)
+            target = await ClassRoomRepository.get_by_level_and_arm(
+                db, tenant_id, level.next_level_id, classroom.arm
+            )
             if target is None or not target.is_active or target.archived_at is not None:
                 invalid_targets += 1
                 blockers.append(
-                    f"The next-class target configured for {classroom.name} is unavailable."
+                    f"The next level for {level.name} has no active {classroom.arm} arm."
                 )
         counts["invalid_class_progression_targets"] = invalid_targets
 

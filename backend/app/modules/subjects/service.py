@@ -52,7 +52,7 @@ class SubjectService:
 
     @staticmethod
     def _live_dependency_message(counts: dict[str, int]) -> str | None:
-        if counts.get("active_class_subjects", 0) > 0:
+        if counts.get("active_level_subjects", 0) > 0:
             return (
                 "This subject is still actively offered by one or more classes. "
                 "Deactivate or archive those mappings first."

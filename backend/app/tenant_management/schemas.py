@@ -163,11 +163,10 @@ class TenantRegisterRequest(InputBase):
         max_length=64,
         description="Initial tenant administrator password",
     )
-    selected_plan_code: SubscriptionPlan = Field(
-        default=SubscriptionPlan.FREE_TRIAL,
-        description="Plan selected on the public pricing page before registration.",
+    initial_plan_intent: SubscriptionPlan = Field(
+        default=SubscriptionPlan.FREE,
+        description="Preferred first-term plan; this never grants access or starts payment.",
     )
-    billing_interval: Literal["monthly"] = "monthly"
 
     @field_validator("school_name")
     @classmethod

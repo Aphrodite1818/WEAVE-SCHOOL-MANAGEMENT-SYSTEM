@@ -13,9 +13,10 @@ import {
 export const academicWorkflowOrder = [
   "sessions",
   "terms",
+  "levels",
   "classes",
   "subjects",
-  "class-subjects",
+  "level-subjects",
   "assignments",
   "grading",
   "results",
@@ -24,6 +25,15 @@ export const academicWorkflowOrder = [
 ];
 
 export const academicWorkflowConfig = {
+  levels: {
+    title: "Academic Levels",
+    shortTitle: "Levels",
+    description: "Create curriculum levels and configure the progression path between them.",
+    icon: Layers3,
+    tone: "primary",
+    defaultTab: "overview",
+    tabs: [{ id: "overview", label: "Levels & Progression" }],
+  },
   classes: {
     title: "Classes",
     shortTitle: "Classes",
@@ -38,7 +48,6 @@ export const academicWorkflowConfig = {
       { id: "active", label: "Active Classes" },
       { id: "inactive", label: "Inactive Classes" },
       { id: "archived", label: "Archived Classes" },
-      { id: "progression", label: "Progression" },
     ],
   },
   subjects: {
@@ -57,21 +66,16 @@ export const academicWorkflowConfig = {
       { id: "archived", label: "Archived Subjects" },
     ],
   },
-  "class-subjects": {
-    title: "Subjects in Classes",
-    shortTitle: "Class Subjects",
+  "level-subjects": {
+    title: "Subjects by Level",
+    shortTitle: "Level Subjects",
     description:
-      "Choose which subjects are taught in each class and keep old class offerings out of new work.",
+      "Configure the curriculum once for an academic level instead of duplicating it for every arm.",
     icon: Layers3,
     tone: "accent",
     defaultTab: "overview",
     tabs: [
-      { id: "overview", label: "Overview" },
-      { id: "create", label: "Assign Subject" },
-      { id: "current", label: "Current Subjects" },
-      { id: "inactive", label: "Inactive Subjects" },
-      { id: "archived", label: "Archived Subjects" },
-      { id: "review", label: "Class Details" },
+      { id: "overview", label: "Subjects by Level" },
     ],
   },
   assignments: {
@@ -205,6 +209,12 @@ export const academicToneStyles = {
 
 export const academicWorkflowSummaryCards = [
   {
+    label: "Levels",
+    description: "Curriculum and progression",
+    to: "/admin/academic/levels",
+    icon: Layers3,
+  },
+  {
     label: "Classes",
     description: "Class arms and lifecycle",
     to: "/admin/academic/classes",
@@ -217,9 +227,9 @@ export const academicWorkflowSummaryCards = [
     icon: BookOpen,
   },
   {
-    label: "Class Subjects",
-    description: "Subjects taught in each class",
-    to: "/admin/academic/class-subjects",
+    label: "Level Subjects",
+    description: "Subjects taught at each level",
+    to: "/admin/academic/level-subjects",
     icon: Layers3,
   },
   {

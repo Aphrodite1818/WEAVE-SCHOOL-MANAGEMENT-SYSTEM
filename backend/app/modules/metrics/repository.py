@@ -17,7 +17,7 @@ from app.modules.communications.models import (
     Announcement,
     NotificationDelivery,
 )
-from app.modules.classes.models import ClassRoom
+from app.modules.classes.models import AcademicLevel, ClassRoom
 from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus
 from app.modules.students.models import Student, StudentProfileStatus
 from app.modules.subjects.models import Subject
@@ -273,8 +273,9 @@ class MetricsRepository:
     ) -> list[ClassPopulation]:
         rows = (
             await db.execute(
-                select(ClassRoom.name, ClassRoom.arm, func.count(Student.id))
+                select(AcademicLevel.name, ClassRoom.arm, func.count(Student.id))
                 .select_from(ClassRoom)
+                .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
                 .outerjoin(
                     Student,
                     and_(
@@ -283,8 +284,8 @@ class MetricsRepository:
                     ),
                 )
                 .where(ClassRoom.tenant_id == tenant_id)
-                .group_by(ClassRoom.id, ClassRoom.name, ClassRoom.arm)
-                .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+                .group_by(ClassRoom.id, AcademicLevel.name, ClassRoom.arm)
+                .order_by(AcademicLevel.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
         return [ClassPopulation(name=row.name, arm=row.arm, value=int(row[2])) for row in rows]
@@ -344,8 +345,9 @@ class MetricsRepository:
     ) -> list[ClassPopulation]:
         rows = (
             await db.execute(
-                select(ClassRoom.id, ClassRoom.name, ClassRoom.arm, func.count(Student.id))
+                select(ClassRoom.id, AcademicLevel.name, ClassRoom.arm, func.count(Student.id))
                 .select_from(ClassRoom)
+                .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
                 .outerjoin(
                     Student,
                     and_(
@@ -357,8 +359,8 @@ class MetricsRepository:
                     ClassRoom.tenant_id == tenant_id,
                     ClassRoom.teacher_membership_id == teacher_id,
                 )
-                .group_by(ClassRoom.id, ClassRoom.name, ClassRoom.arm)
-                .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+                .group_by(ClassRoom.id, AcademicLevel.name, ClassRoom.arm)
+                .order_by(AcademicLevel.name.asc(), ClassRoom.arm.asc())
             )
         ).all()
         return [ClassPopulation(name=row.name, arm=row.arm, value=int(row[3])) for row in rows]

@@ -29,7 +29,7 @@ const enumOptions = (values) =>
 const fullName = (item) => actorFullName(item) || item?.id || "Unknown";
 
 const className = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || item?.id || "Unknown class";
+  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || item?.id || "Unknown class";
 
 const subjectName = (item) =>
   [item?.name, item?.code ? `(${item.code})` : ""].filter(Boolean).join(" ");

@@ -8,10 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from app.core.dependencies.db import DbSession
-from app.core.dependencies.route_guards import (
-    get_current_teacher,
-    get_current_tenant_admin,
-)
+from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.report_cards.service import ReportCardService
 from app.modules.student_academics.models import (
@@ -25,25 +22,16 @@ from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
-from app.modules.teachers.models import TeacherMembership
 from app.modules.tenant_admins.models import TenantAdmin
 
 admin_router = APIRouter(
     prefix="/tenant-admin/academics/results/bulk",
     tags=["Tenant Admin Result Bulk Actions"],
 )
-teacher_router = APIRouter(
-    prefix="/teachers/academics/results/bulk",
-    tags=["Teacher Result Bulk Actions"],
-)
 
 CurrentTenantAdmin: TypeAlias = Annotated[
     TenantAdmin,
     Depends(get_current_tenant_admin),
-]
-CurrentTeacher: TypeAlias = Annotated[
-    TeacherMembership,
-    Depends(get_current_teacher),
 ]
 
 
@@ -72,10 +60,6 @@ class AdminBulkTransitionRequest(ResultBulkScope):
 class AdminBulkReopenRequest(ResultBulkScope):
     confirmation: Literal["BULK_REOPEN_RESULTS"]
     reason: str = Field(min_length=3, max_length=1000)
-
-
-class TeacherBulkSubmitRequest(ResultBulkScope):
-    confirmation: Literal["BULK_SUBMIT_RESULTS"]
 
 
 class BulkSkippedItem(BaseModel):
@@ -254,59 +238,6 @@ class BulkResultLifecycleService:
             skipped=skipped,
         )
 
-    @staticmethod
-    async def teacher_submit(
-        db: DbSession,
-        actor: TeacherMembership,
-        payload: TeacherBulkSubmitRequest,
-    ) -> BulkResultActionResponse:
-        await BulkResultLifecycleService._validate_period(
-            db,
-            actor.tenant_id,
-            payload,
-        )
-        results = await BulkResultLifecycleService._load_scope(
-            db,
-            tenant_id=actor.tenant_id,
-            payload=payload,
-            result_status=AcademicResultStatus.DRAFT,
-            teacher_id=actor.id,
-        )
-        processed = 0
-        skipped: list[BulkSkippedItem] = []
-
-        for result in results:
-            try:
-                async with db.begin_nested():
-                    await StudentAcademicService._ensure_result_complete(db, result)
-                    previous = result.status
-                    result.status = AcademicResultStatus.SUBMITTED
-                    StudentAcademicService._apply_result_lifecycle_metadata(
-                        result,
-                        actor=actor,
-                        next_status=AcademicResultStatus.SUBMITTED,
-                    )
-                    await StudentAcademicRepository.upsert_result(db, result)
-                    await BulkResultLifecycleService._audit(
-                        db,
-                        result=result,
-                        action="bulk_submit",
-                        previous_status=previous,
-                        new_status=AcademicResultStatus.SUBMITTED,
-                        acting_admin_id=None,
-                    )
-                processed += 1
-            except Exception as exc:
-                skipped.append(BulkSkippedItem(id=result.id, reason=str(exc)))
-
-        await db.commit()
-        return BulkResultActionResponse(
-            matched=len(results),
-            processed=processed,
-            skipped=skipped,
-        )
-
-    @staticmethod
     async def admin_reopen(
         db: DbSession,
         actor: TenantAdmin,
@@ -391,19 +322,5 @@ async def bulk_reopen_results(
     return await BulkResultLifecycleService.admin_reopen(
         db,
         current_admin,
-        payload,
-    )
-
-
-@teacher_router.post("/submit", response_model=BulkResultActionResponse)
-async def bulk_submit_teacher_results(
-    payload: TeacherBulkSubmitRequest,
-    db: DbSession,
-    current_teacher: CurrentTeacher,
-) -> BulkResultActionResponse:
-    await _ensure_paid_bulk_academics(db, current_teacher.tenant_id)
-    return await BulkResultLifecycleService.teacher_submit(
-        db,
-        current_teacher,
         payload,
     )

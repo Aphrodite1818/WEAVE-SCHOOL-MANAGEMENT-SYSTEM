@@ -65,7 +65,7 @@ const formatDate = (value) => {
 };
 
 const classLabel = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || item?.id || "Class";
+  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || item?.id || "Class";
 
 const studentClassLabel = (student) =>
   [student?.class_name, student?.class_arm].filter(Boolean).join(" ") || "Not assigned";

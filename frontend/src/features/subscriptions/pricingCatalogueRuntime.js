@@ -40,7 +40,7 @@ const unavailableLimits = () => ({
 
 export const resetPublicPricingPlans = () => {
   LANDING_PRICING_PLANS.forEach((plan) => {
-    plan.priceMonthly = null;
+    plan.pricePerTerm = null;
     plan.priceLabel = "Pricing unavailable";
     plan.features = [];
     plan.limits = unavailableLimits();
@@ -60,8 +60,8 @@ export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) 
 
     const amount = Number(backendPlan.amount || 0);
     const prefix = presentation.planCode === "enterprise" ? "From " : "";
-    const suffix = presentation.planCode === "free_trial" ? "" : "/mo";
-    presentation.priceMonthly = amount;
+    const suffix = presentation.planCode === "free" ? "" : " per academic term";
+    presentation.pricePerTerm = amount;
     presentation.priceLabel = `${prefix}${formatCurrency(
       amount,
       backendPlan.currency || catalogue.currency || "NGN",

@@ -26,7 +26,7 @@ from app.modules.auth.models import (
 from app.modules.auth.otp_service import OTPService
 from app.modules.auth.schemas import VerifyOTP
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
-from app.modules.classes.models import ClassRoom
+from app.modules.classes.models import AcademicLevel, ClassRoom
 from app.modules.parents.models import (
     Parent,
     ParentAccount,
@@ -502,9 +502,12 @@ async def test_student_default_password_first_login_flow(
 ) -> None:
     tenant = await create_tenant(db_session, suffix="student")
     admin = await create_tenant_admin(db_session, tenant=tenant, email="admin-student@example.com")
+    level = AcademicLevel(tenant_id=tenant.id, name="JSS1", is_active=True)
+    db_session.add(level)
+    await db_session.flush()
     classroom = ClassRoom(
         tenant_id=tenant.id,
-        name="JSS1",
+        academic_level_id=level.id,
         arm="A",
         is_active=True,
     )
@@ -792,10 +795,13 @@ async def test_analytics_endpoints_return_real_counts(
     student.profile_status = StudentProfileStatus.INCOMPLETE
     student.password_reset_required = True
 
+    level = AcademicLevel(tenant_id=active_tenant.id, name="JSS1")
+    db_session.add(level)
+    await db_session.flush()
     db_session.add(
         ClassRoom(
             tenant_id=active_tenant.id,
-            name="JSS1",
+            academic_level_id=level.id,
             arm="A",
         )
     )

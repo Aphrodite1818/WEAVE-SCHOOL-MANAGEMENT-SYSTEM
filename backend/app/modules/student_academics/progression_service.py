@@ -17,7 +17,7 @@ from app.core.exceptions import (
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.models import ClassRoom
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.parents.repository import ParentMembershipRepository
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
@@ -192,21 +192,27 @@ class AcademicProgressionService:
             if classroom is None:
                 raise ConflictException(f"Enrollment references missing class {class_id}.")
 
-            if classroom.is_terminal:
-                if classroom.next_class_id is not None:
+            level = await AcademicLevelRepository.get_by_id(
+                db, tenant_id, classroom.academic_level_id, lock=True
+            )
+            if level is None:
+                raise ConflictException(f"Class {classroom.id} has no academic level.")
+
+            if level.is_terminal:
+                if level.next_level_id is not None:
                     raise ConflictException(
-                        f"Terminal class {classroom.name} cannot have a next class."
+                        f"Terminal academic level {level.name} cannot have a next level."
                     )
             else:
-                if classroom.next_class_id is None:
+                if level.next_level_id is None:
                     raise ConflictException(
-                        f"Configure the next class for {classroom.name} before closure."
+                        f"Configure the next academic level for {level.name} before closure."
                     )
-                next_class = await ClassRoomRepository.get_by_id(
+                next_class = await ClassRoomRepository.get_by_level_and_arm(
                     db,
                     tenant_id,
-                    classroom.next_class_id,
-                    lock=True,
+                    level.next_level_id,
+                    classroom.arm,
                 )
                 if (
                     next_class is None
@@ -214,11 +220,9 @@ class AcademicProgressionService:
                     or next_class.archived_at is not None
                 ):
                     raise ConflictException(
-                        f"The next class configured for {classroom.name} is unavailable."
+                        f"The next level has no active {classroom.arm} arm for {level.name}."
                     )
-                graph[next_class.id] = next_class
-
-            graph[classroom.id] = classroom
+                graph[classroom.id] = next_class
 
         return graph
 
@@ -303,7 +307,13 @@ class AcademicProgressionService:
         enrollment.ended_on = effective_date
         enrollment.changed_by_admin_id = actor.id
 
-        if classroom.is_terminal:
+        level = await AcademicLevelRepository.get_by_id(
+            db, actor.tenant_id, classroom.academic_level_id
+        )
+        if level is None:
+            raise ConflictException("Classroom academic level is missing.")
+
+        if level.is_terminal:
             enrollment.outcome = StudentEnrollmentOutcome.GRADUATED
             enrollment.reason = "Automatic terminal-class graduation"
             await StudentEnrollmentRepository.save(db, enrollment)
@@ -311,7 +321,6 @@ class AcademicProgressionService:
             student.status = AcademicStatus.GRADUATED
             student.graduation_date = effective_date
             student.class_id = None
-            student.arm = None
             student.promotion_hold = True
             student.is_active = False
             student.account_status = StudentAccountStatus.INACTIVE
@@ -348,7 +357,7 @@ class AcademicProgressionService:
                 ),
             )
 
-        target_class = graph[classroom.next_class_id]
+        target_class = graph[classroom.id]
         enrollment.outcome = StudentEnrollmentOutcome.PROMOTED
         enrollment.reason = "Automatic academic-session progression"
         await StudentEnrollmentRepository.save(db, enrollment)
@@ -368,7 +377,6 @@ class AcademicProgressionService:
             ),
         )
         student.class_id = target_class.id
-        student.arm = target_class.arm
         await StudentRepository.save(db, student)
 
         return await StudentProgressionRepository.add_item(

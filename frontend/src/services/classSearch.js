@@ -18,7 +18,7 @@ const isSubsequence = (query, value) => {
 };
 
 const classSearchHaystacks = (item) => {
-  const label = [item?.name, item?.arm].filter(Boolean).join(" ");
+  const label = [item?.academic_level_name, item?.arm].filter(Boolean).join(" ");
   return [item?.name, item?.arm, label]
     .filter(Boolean)
     .map((value) => ({

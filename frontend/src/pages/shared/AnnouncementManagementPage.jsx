@@ -52,7 +52,7 @@ function buildPayload(form) {
 
 const normalizeItems = (response) => (Array.isArray(response) ? response : response?.items || []);
 
-const classLabel = (item) => [item?.name, item?.arm].filter(Boolean).join(" ").trim() || "Class";
+const classLabel = (item) => [item?.academic_level_name, item?.arm].filter(Boolean).join(" ").trim() || "Class";
 
 const flattenRecipientGroups = (groups) =>
   (groups || []).flatMap((group) =>

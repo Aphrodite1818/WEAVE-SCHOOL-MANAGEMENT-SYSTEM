@@ -294,18 +294,18 @@ class SubjectRepository:
     ) -> dict[str, int]:
         from app.modules.report_cards.models import ReportCardSubjectLine
         from app.modules.student_academics.models import (
-            ClassSubject,
+            LevelSubject,
             StudentSubjectResult,
             TeacherAssignment,
         )
 
-        class_subject_count = (
+        level_subject_count = (
             await db.execute(
                 select(func.count())
-                .select_from(ClassSubject)
+                .select_from(LevelSubject)
                 .where(
-                    ClassSubject.tenant_id == tenant_id,
-                    ClassSubject.subject_id == subject_id,
+                    LevelSubject.tenant_id == tenant_id,
+                    LevelSubject.subject_id == subject_id,
                 )
             )
         ).scalar_one()
@@ -323,11 +323,11 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
-                    ClassSubject.tenant_id == tenant_id,
-                    ClassSubject.subject_id == subject_id,
+                    LevelSubject.tenant_id == tenant_id,
+                    LevelSubject.subject_id == subject_id,
                 )
             )
         ).scalar_one()
@@ -352,7 +352,7 @@ class SubjectRepository:
             )
         ).scalar_one()
         return {
-            "class_subjects": int(class_subject_count),
+            "level_subjects": int(level_subject_count),
             "teacher_links": int(teacher_link_count),
             "teacher_assignments": int(teacher_assignment_count),
             "results": int(result_count),
@@ -365,17 +365,17 @@ class SubjectRepository:
         tenant_id: UUID,
         subject_id: UUID,
     ) -> dict[str, int]:
-        from app.modules.student_academics.models import ClassSubject, TeacherAssignment
+        from app.modules.student_academics.models import LevelSubject, TeacherAssignment
 
-        active_class_subject_count = (
+        active_level_subject_count = (
             await db.execute(
                 select(func.count())
-                .select_from(ClassSubject)
+                .select_from(LevelSubject)
                 .where(
-                    ClassSubject.tenant_id == tenant_id,
-                    ClassSubject.subject_id == subject_id,
-                    ClassSubject.is_active.is_(True),
-                    ClassSubject.archived_at.is_(None),
+                    LevelSubject.tenant_id == tenant_id,
+                    LevelSubject.subject_id == subject_id,
+                    LevelSubject.is_active.is_(True),
+                    LevelSubject.archived_at.is_(None),
                 )
             )
         ).scalar_one()
@@ -394,18 +394,18 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
                     TeacherAssignment.is_active.is_(True),
                     TeacherAssignment.effective_to.is_(None),
-                    ClassSubject.tenant_id == tenant_id,
-                    ClassSubject.subject_id == subject_id,
+                    LevelSubject.tenant_id == tenant_id,
+                    LevelSubject.subject_id == subject_id,
                 )
             )
         ).scalar_one()
         return {
-            "active_class_subjects": int(active_class_subject_count),
+            "active_level_subjects": int(active_level_subject_count),
             "active_teacher_links": int(active_teacher_link_count),
             "active_teacher_assignments": int(active_teacher_assignment_count),
         }

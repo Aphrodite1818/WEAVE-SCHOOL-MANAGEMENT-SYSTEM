@@ -327,12 +327,12 @@ class GradingScaleReadiness(OutputBase):
     messages: list[str] = []
 
 
-class ClassSubjectCreate(InputBase):
+class LevelSubjectCreate(InputBase):
     subject_id: uuid.UUID
     is_core: bool = False
 
 
-class ClassSubjectBulkCreate(InputBase):
+class LevelSubjectBulkCreate(InputBase):
     subject_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
     is_core: bool = False
 
@@ -344,14 +344,15 @@ class ClassSubjectBulkCreate(InputBase):
         return value
 
 
-class ClassSubjectUpdate(InputBase):
+class LevelSubjectUpdate(InputBase):
     is_core: bool
 
 
-class ClassSubjectResponse(OutputBase):
+class LevelSubjectResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    class_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    academic_level_name: str | None = None
     subject_id: uuid.UUID
     subject_name: str | None = None
     subject_code: str | None = None
@@ -360,8 +361,8 @@ class ClassSubjectResponse(OutputBase):
     lifecycle_status: Literal["active", "inactive", "archived"]
     archived_at: datetime | None = None
     archived_by_admin_id: uuid.UUID | None = None
-    class_is_active: bool | None = None
-    class_is_archived: bool | None = None
+    level_is_active: bool | None = None
+    level_is_archived: bool | None = None
     subject_is_active: bool | None = None
     subject_is_archived: bool | None = None
     can_activate: bool
@@ -370,29 +371,30 @@ class ClassSubjectResponse(OutputBase):
     updated_at: datetime
 
 
-class ClassSubjectActivateRequest(InputBase):
-    confirmation: Literal["ACTIVATE_CLASS_SUBJECT"]
+class LevelSubjectActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_LEVEL_SUBJECT"]
 
 
-class ClassSubjectDeactivateRequest(InputBase):
-    confirmation: Literal["DEACTIVATE_CLASS_SUBJECT"]
+class LevelSubjectDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_LEVEL_SUBJECT"]
 
 
-class ClassSubjectArchiveRequest(InputBase):
-    confirmation: Literal["ARCHIVE_CLASS_SUBJECT"]
+class LevelSubjectArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_LEVEL_SUBJECT"]
 
 
-class ClassSubjectRestoreRequest(InputBase):
-    confirmation: Literal["RESTORE_CLASS_SUBJECT"]
+class LevelSubjectRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_LEVEL_SUBJECT"]
 
 
-class ClassSubjectDeleteRequest(InputBase):
-    confirmation: Literal["DELETE_CLASS_SUBJECT"]
+class LevelSubjectDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_LEVEL_SUBJECT"]
 
 
 class TeacherAssignmentCreate(InputBase):
     teacher_membership_id: uuid.UUID
-    class_subject_id: uuid.UUID | None = None
+    class_id: uuid.UUID
+    level_subject_id: uuid.UUID
     effective_from: date | None = None
 
 
@@ -444,9 +446,9 @@ class AcademicTermDependencyPreview(OutputBase):
 class TeacherAssignmentResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    class_subject_id: uuid.UUID
+    level_subject_id: uuid.UUID
     teacher_membership_id: uuid.UUID
-    class_id: uuid.UUID | None = None
+    class_id: uuid.UUID
     class_name: str | None = None
     class_arm: str | None = None
     subject_id: uuid.UUID | None = None
@@ -461,43 +463,9 @@ class TeacherAssignmentResponse(OutputBase):
     updated_at: datetime
 
 
-class ClassSubjectTeacherCreate(InputBase):
-    class_id: uuid.UUID
-    subject_id: uuid.UUID
-    teacher_membership_id: uuid.UUID
-    is_core: bool = True
-    sort_order: int = 0
-    is_active: bool = True
-
-
-class ClassSubjectTeacherUpdate(InputBase):
-    teacher_membership_id: uuid.UUID | None = None
-    is_core: bool | None = None
-    sort_order: int | None = None
-    is_active: bool | None = None
-
-    @model_validator(mode="after")
-    def require_change(self):
-        if not self.model_fields_set:
-            raise ValueError("at least one assignment field is required")
-        return self
-
-
-class ClassSubjectTeacherResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    class_id: uuid.UUID
-    subject_id: uuid.UUID
-    teacher_membership_id: uuid.UUID
-    is_core: bool
-    sort_order: int
-    is_active: bool
-
-
 class StudentSubjectResultUpsert(InputBase):
     student_id: uuid.UUID
-    teacher_assignment_id: uuid.UUID | None = None
-    class_subject_teacher_id: uuid.UUID | None = None
+    teacher_assignment_id: uuid.UUID
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
     component_scores: list["StudentAssessmentScoreUpsert"] = Field(default_factory=list)
@@ -505,8 +473,6 @@ class StudentSubjectResultUpsert(InputBase):
 
     @model_validator(mode="after")
     def validate_result(self):
-        if self.teacher_assignment_id is None and self.class_subject_teacher_id is None:
-            raise ValueError("an assignment reference is required")
         component_ids = [item.assessment_component_id for item in self.component_scores]
         if len(component_ids) != len(set(component_ids)):
             raise ValueError("assessment components must be unique")
@@ -558,7 +524,7 @@ class StudentSubjectResultResponse(OutputBase):
     subject_code: str | None = None
     teacher_membership_id: uuid.UUID
     teacher_name: str | None = None
-    class_subject_teacher_id: uuid.UUID
+    level_subject_id: uuid.UUID
     teacher_assignment_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_session_name: str | None = None
@@ -689,18 +655,13 @@ class GradingScaleListResponse(OutputBase):
     total: int
 
 
-class ClassSubjectListResponse(OutputBase):
-    items: list[ClassSubjectResponse]
+class LevelSubjectListResponse(OutputBase):
+    items: list[LevelSubjectResponse]
     total: int
 
 
 class TeacherAssignmentListResponse(OutputBase):
     items: list[TeacherAssignmentResponse]
-    total: int
-
-
-class ClassSubjectTeacherListResponse(OutputBase):
-    items: list[ClassSubjectTeacherResponse]
     total: int
 
 

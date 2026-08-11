@@ -11,10 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.modules.classes.models import ClassRoom
-from app.modules.student_academics.models import (
-    ClassSubjectTeacher,
-    TeacherAssignment,
-)
+from app.modules.student_academics.models import TeacherAssignment
 from app.modules.teachers.models import TeacherMembershipStatus
 from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.teachers.schemas import (
@@ -43,7 +40,6 @@ class TeacherOffboardingImpactResponse(BaseModel):
     membership_id: UUID
     class_teacher_assignments: int = Field(ge=0)
     teacher_assignments: int = Field(ge=0)
-    legacy_class_subject_assignments: int = Field(ge=0)
 
 
 class TeacherOffboardingService:
@@ -90,25 +86,10 @@ class TeacherOffboardingService:
             ).scalar_one()
             or 0
         )
-        legacy_assignment_count = int(
-            (
-                await db.execute(
-                    select(func.count())
-                    .select_from(ClassSubjectTeacher)
-                    .where(
-                        ClassSubjectTeacher.tenant_id == tenant_id,
-                        ClassSubjectTeacher.teacher_membership_id == membership_id,
-                        ClassSubjectTeacher.is_active.is_(True),
-                    )
-                )
-            ).scalar_one()
-            or 0
-        )
         return TeacherOffboardingImpactResponse(
             membership_id=membership_id,
             class_teacher_assignments=class_teacher_count,
             teacher_assignments=assignment_count,
-            legacy_class_subject_assignments=legacy_assignment_count,
         )
 
     @staticmethod
@@ -170,22 +151,6 @@ class TeacherOffboardingService:
             await db.execute(
                 update(TeacherAssignment)
                 .where(*assignment_filter)
-                .values(teacher_membership_id=replacement_id)
-            )
-
-        legacy_filter = (
-            ClassSubjectTeacher.tenant_id == actor.tenant_id,
-            ClassSubjectTeacher.teacher_membership_id == membership_id,
-            ClassSubjectTeacher.is_active.is_(True),
-        )
-        if replacement_id is None:
-            await db.execute(
-                update(ClassSubjectTeacher).where(*legacy_filter).values(is_active=False)
-            )
-        else:
-            await db.execute(
-                update(ClassSubjectTeacher)
-                .where(*legacy_filter)
                 .values(teacher_membership_id=replacement_id)
             )
 

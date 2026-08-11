@@ -132,13 +132,12 @@ jobs:
           expected = {
               "/api/v1/subscriptions/actor-entitlements",
               "/api/v1/subscriptions/payments",
-              "/api/v1/subscriptions/plan-change/preview",
-              "/api/v1/subscriptions/plan-change/current",
-              "/api/v1/subscriptions/plan-change",
-              "/api/v1/subscriptions/cancel",
+              "/api/v1/subscriptions/terms/activate-free",
+              "/api/v1/subscriptions/terms/checkout",
+              "/api/v1/subscriptions/terms/verify/{reference}",
+              "/api/v1/subscriptions/terms/history",
               "/api/v1/tenant-admin/academic/report-cards/bulk/publish",
               "/api/v1/tenant-admin/academics/results/bulk/transition",
-              "/api/v1/teachers/academics/results/bulk/submit",
           }
           missing = expected - paths
           assert not missing, f"Missing routes: {sorted(missing)}"
@@ -150,9 +149,8 @@ jobs:
       - name: Run focused regression tests
         run: |
           uv run pytest \
-            tests/unit/subscriptions/test_subscription_cancellation.py \
-            tests/unit/subscriptions/test_subscription_cancellation_recovery.py \
-            tests/unit/subscriptions/test_subscription_plan_changes.py \
+            tests/unit/subscriptions/test_term_entitlements.py \
+            tests/unit/subscriptions/test_public_catalogue.py \
             tests/unit/report_cards/test_report_card_print_security.py \
             tests/unit/test_worker_settings.py \
             -q

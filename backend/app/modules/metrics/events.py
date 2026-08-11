@@ -20,7 +20,7 @@ from app.modules.communications.models import (
     AnnouncementAudience,
     NotificationDelivery,
 )
-from app.modules.classes.models import ClassRoom
+from app.modules.classes.models import AcademicLevel, ClassRoom
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
     student_dashboard_cache_key,
@@ -33,8 +33,7 @@ from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicTerm,
-    ClassSubject,
-    ClassSubjectTeacher,
+    LevelSubject,
     StudentSubjectResult,
     TeacherAssignment,
 )
@@ -55,8 +54,8 @@ TENANT_ADMIN_METRIC_MODELS = (
     AnnouncementAudience,
     NotificationDelivery,
     ClassRoom,
-    ClassSubject,
-    ClassSubjectTeacher,
+    AcademicLevel,
+    LevelSubject,
     ParentAccount,
     ParentMembership,
     ReportCard,
@@ -176,7 +175,7 @@ def _queue_metric_invalidations_for_object(session: Session, obj: object) -> Non
     if isinstance(obj, TeacherMembership):
         _queue_teacher_dashboard(session, tenant_id, _coerce_uuid(obj.id))
 
-    if isinstance(obj, (TeacherAssignment, ClassSubjectTeacher)):
+    if isinstance(obj, TeacherAssignment):
         _queue_teacher_dashboard(
             session,
             tenant_id,

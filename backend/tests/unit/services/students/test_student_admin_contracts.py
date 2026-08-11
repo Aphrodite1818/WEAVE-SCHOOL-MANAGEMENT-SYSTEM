@@ -71,7 +71,7 @@ async def test_enrollment_history_adds_display_labels_once() -> None:
         created_at=now,
         updated_at=now,
     )
-    classroom = type("Classroom", (), {"name": "JSS 1", "arm": "Blue"})()
+    classroom = type("Classroom", (), {"academic_level_name": "JSS 1", "arm": "Blue"})()
     session = AcademicSession(
         id=session_id,
         tenant_id=tenant_id,

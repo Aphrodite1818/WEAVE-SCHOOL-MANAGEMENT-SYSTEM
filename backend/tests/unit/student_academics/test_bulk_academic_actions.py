@@ -9,11 +9,6 @@ import pytest
 from app.modules.report_cards.bulk_schemas import ReportCardBulkReopenRequest
 from app.modules.report_cards.bulk_service import BulkReportCardService
 from app.modules.report_cards.models import ReportCardStatus
-from app.modules.student_academics.bulk_results_router import (
-    BulkResultLifecycleService,
-    TeacherBulkSubmitRequest,
-)
-from app.modules.student_academics.models import AcademicResultStatus
 
 
 class _Savepoint:
@@ -30,82 +25,6 @@ class _FakeDb:
 
     def begin_nested(self) -> _Savepoint:
         return _Savepoint()
-
-
-@pytest.mark.asyncio
-async def test_teacher_bulk_submit_processes_complete_drafts_and_skips_incomplete() -> None:
-    tenant_id = uuid.uuid4()
-    teacher_id = uuid.uuid4()
-    complete = SimpleNamespace(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        status=AcademicResultStatus.DRAFT,
-    )
-    incomplete = SimpleNamespace(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        status=AcademicResultStatus.DRAFT,
-    )
-    actor = SimpleNamespace(id=teacher_id, tenant_id=tenant_id)
-    payload = TeacherBulkSubmitRequest(
-        class_id=uuid.uuid4(),
-        teacher_assignment_id=uuid.uuid4(),
-        academic_session_id=uuid.uuid4(),
-        academic_term_id=uuid.uuid4(),
-        confirmation="BULK_SUBMIT_RESULTS",
-    )
-    db = _FakeDb()
-
-    with (
-        patch.object(
-            BulkResultLifecycleService,
-            "_validate_period",
-            new=AsyncMock(),
-        ),
-        patch.object(
-            BulkResultLifecycleService,
-            "_load_scope",
-            new=AsyncMock(return_value=[complete, incomplete]),
-        ) as load_scope,
-        patch(
-            "app.modules.student_academics.bulk_results_router.StudentAcademicService._apply_result_lifecycle_metadata"
-        ),
-        patch(
-            "app.modules.student_academics.bulk_results_router.StudentAcademicRepository.upsert_result",
-            new=AsyncMock(),
-        ) as upsert_result,
-        patch(
-            "app.modules.student_academics.bulk_results_router.StudentAcademicService._ensure_result_complete",
-            new=AsyncMock(side_effect=[None, ValueError("Missing component")]),
-        ),
-        patch.object(
-            BulkResultLifecycleService,
-            "_audit",
-            new=AsyncMock(),
-        ) as audit,
-    ):
-        response = await BulkResultLifecycleService.teacher_submit(
-            db,
-            actor,
-            payload,
-        )
-
-    assert response.matched == 2
-    assert response.processed == 1
-    assert len(response.skipped) == 1
-    assert response.skipped[0].id == incomplete.id
-    assert complete.status == AcademicResultStatus.SUBMITTED
-    assert incomplete.status == AcademicResultStatus.DRAFT
-    load_scope.assert_awaited_once_with(
-        db,
-        tenant_id=tenant_id,
-        payload=payload,
-        result_status=AcademicResultStatus.DRAFT,
-        teacher_id=teacher_id,
-    )
-    upsert_result.assert_awaited_once_with(db, complete)
-    audit.assert_awaited_once()
-    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

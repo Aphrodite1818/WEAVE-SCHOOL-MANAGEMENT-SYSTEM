@@ -79,6 +79,15 @@ def _limits(
 
 
 PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
+    SubscriptionPlan.FREE.value: PlanEntitlements(
+        features=_features(
+            advanced_analytics=False,
+            ai_assistant=False,
+            bulk_import=False,
+            bulk_academic_operations=False,
+        ),
+        limits=_limits(students=50, teachers=10, parents=50, classes=10, subjects=20),
+    ),
     SubscriptionPlan.FREE_TRIAL.value: PlanEntitlements(
         features=_features(),
         limits=_limits(
@@ -132,9 +141,9 @@ def coerce_subscription_plan(plan: Any) -> SubscriptionPlan:
     normalized = str(raw_value or "").strip().lower()
 
     if not normalized:
-        return SubscriptionPlan.FREE_TRIAL
+        return SubscriptionPlan.FREE
 
-    return PLAN_ALIASES.get(normalized, SubscriptionPlan.FREE_TRIAL)
+    return PLAN_ALIASES.get(normalized, SubscriptionPlan.FREE)
 
 
 def normalize_plan_code(plan: Any) -> str:
@@ -145,4 +154,4 @@ def normalize_plan_code(plan: Any) -> str:
 
 def get_plan_entitlements(plan: Any) -> PlanEntitlements:
     plan_code = normalize_plan_code(plan)
-    return PLAN_ENTITLEMENTS.get(plan_code, PLAN_ENTITLEMENTS[SubscriptionPlan.FREE_TRIAL.value])
+    return PLAN_ENTITLEMENTS.get(plan_code, PLAN_ENTITLEMENTS[SubscriptionPlan.FREE.value])

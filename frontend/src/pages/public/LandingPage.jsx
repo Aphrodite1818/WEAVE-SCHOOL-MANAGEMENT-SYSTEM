@@ -62,9 +62,9 @@ function PlanLimit({ label, value }) {
 }
 
 function formatLandingPrice(plan) {
-  if (plan.planCode === "enterprise") return "From \u20a680,000/mo";
-  if (!plan.priceMonthly) return "\u20a60";
-  return `\u20a6${Number(plan.priceMonthly).toLocaleString()}/mo`;
+  if (plan.planCode === "enterprise") return "From \u20a680,000 per academic term";
+  if (!plan.pricePerTerm) return "\u20a60";
+  return `\u20a6${Number(plan.pricePerTerm).toLocaleString()} per academic term`;
 }
 
 function LandingPricingCard({ plan, activePlanCode, onSelect }) {
@@ -98,7 +98,7 @@ function LandingPricingCard({ plan, activePlanCode, onSelect }) {
 
       <div className="mt-5">
         <p className="text-2xl font-bold text-text">{formatLandingPrice(plan)}</p>
-        <p className="mt-1 text-xs font-medium text-text-muted">Monthly subscription</p>
+        <p className="mt-1 text-xs font-medium text-text-muted">Per academic term</p>
       </div>
 
       <ul className="mt-5 space-y-3 text-sm text-text-soft">
@@ -145,7 +145,7 @@ function LandingPage() {
   const location = useLocation();
   const [activePricingPlan, setActivePricingPlan] = useState("plus");
 
-  const handlePlanSelection = (planCode, billingInterval = "monthly") => {
+  const handlePlanSelection = (planCode, billingInterval = "term") => {
     saveSelectedSubscriptionPlan({ planCode, billingInterval });
   };
   const handlePricingTabClick = (planCode) => {
@@ -219,7 +219,7 @@ function LandingPage() {
                     ["Role-focused", "Purpose-built admin, teacher, student, and parent workspaces"],
                     ["School-secure", "Tenant-aware boundaries and controlled account access"],
                     ["Academically structured", "Sessions, terms, classes, subjects, results, and progression"],
-                    ["Subscription-ready", "Straightforward monthly plan selection and verification"],
+                    ["Term-plan ready", "Choose a preferred first-term plan without paying during signup"],
                     ["School-branded", "Your colours and logo across eligible workspaces"],
                   ].map(([title, copy]) => (
                     <div

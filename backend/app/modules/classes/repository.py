@@ -7,15 +7,80 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.utils.normalization import (
     normalized_class_arm_key,
     normalized_class_name_key,
 )
-from app.modules.classes.models import ClassRoom
+from app.modules.classes.models import AcademicLevel, ClassRoom
 
 if TYPE_CHECKING:
     from app.modules.students.models import AcademicStatus
+
+
+class AcademicLevelRepository:
+    @staticmethod
+    async def add(db: AsyncSession, level: AcademicLevel) -> AcademicLevel:
+        db.add(level)
+        await db.flush()
+        return level
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        academic_level_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> AcademicLevel | None:
+        query = select(AcademicLevel).where(
+            AcademicLevel.tenant_id == tenant_id,
+            AcademicLevel.id == academic_level_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_normalized_name(
+        db: AsyncSession, tenant_id: uuid.UUID, name: str
+    ) -> AcademicLevel | None:
+        normalized_name = normalized_class_name_key(name)
+        if normalized_name is None:
+            return None
+        return (
+            await db.execute(
+                select(AcademicLevel).where(
+                    AcademicLevel.tenant_id == tenant_id,
+                    AcademicLevel.normalized_name == normalized_name,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_tenant(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        active_only: bool = False,
+        include_archived: bool = False,
+    ) -> list[AcademicLevel]:
+        query = select(AcademicLevel).where(AcademicLevel.tenant_id == tenant_id)
+        if active_only:
+            query = query.where(
+                AcademicLevel.is_active.is_(True), AcademicLevel.archived_at.is_(None)
+            )
+        elif not include_archived:
+            query = query.where(AcademicLevel.archived_at.is_(None))
+        result = await db.execute(query.order_by(AcademicLevel.normalized_name.asc()))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def save(db: AsyncSession, level: AcademicLevel) -> AcademicLevel:
+        db.add(level)
+        await db.flush()
+        return level
 
 
 class ClassRoomRepository:
@@ -33,9 +98,10 @@ class ClassRoomRepository:
         *,
         lock: bool = False,
     ) -> ClassRoom | None:
-        query = select(ClassRoom).where(
-            ClassRoom.tenant_id == tenant_id,
-            ClassRoom.id == class_id,
+        query = (
+            select(ClassRoom)
+            .options(selectinload(ClassRoom.academic_level))
+            .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id == class_id)
         )
         if lock:
             query = query.with_for_update()
@@ -43,19 +109,18 @@ class ClassRoomRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_normalized_name_and_arm(
+    async def get_by_level_and_arm(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_name: str,
-        class_arm: str | None = None,
+        academic_level_id: uuid.UUID,
+        class_arm: str,
     ) -> ClassRoom | None:
-        normalized_name = normalized_class_name_key(class_name)
-        if normalized_name is None:
-            return None
         result = await db.execute(
-            select(ClassRoom).where(
+            select(ClassRoom)
+            .options(selectinload(ClassRoom.academic_level))
+            .where(
                 ClassRoom.tenant_id == tenant_id,
-                ClassRoom.normalized_name == normalized_name,
+                ClassRoom.academic_level_id == academic_level_id,
                 ClassRoom.normalized_arm == normalized_class_arm_key(class_arm),
             )
         )
@@ -71,7 +136,11 @@ class ClassRoomRepository:
         limit: int = 100,
         include_archived: bool = False,
     ) -> list[ClassRoom]:
-        query = select(ClassRoom).where(ClassRoom.tenant_id == tenant_id)
+        query = (
+            select(ClassRoom)
+            .options(selectinload(ClassRoom.academic_level))
+            .where(ClassRoom.tenant_id == tenant_id)
+        )
         if active_only:
             query = query.where(
                 ClassRoom.is_active.is_(True),
@@ -81,7 +150,8 @@ class ClassRoomRepository:
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
         result = await db.execute(
-            query.order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+            query.join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
+            .order_by(AcademicLevel.normalized_name.asc(), ClassRoom.normalized_arm.asc())
             .offset(offset)
             .limit(limit)
         )
@@ -98,11 +168,13 @@ class ClassRoomRepository:
     ) -> list[ClassRoom]:
         query = (
             select(ClassRoom)
+            .options(selectinload(ClassRoom.academic_level))
+            .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
             .where(
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.teacher_membership_id == teacher_membership_id,
             )
-            .order_by(ClassRoom.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+            .order_by(AcademicLevel.normalized_name.asc(), ClassRoom.normalized_arm.asc())
         )
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
@@ -122,33 +194,13 @@ class ClassRoomRepository:
     ) -> list[ClassRoom]:
         if not class_ids:
             return []
-        query = select(ClassRoom).where(
-            ClassRoom.tenant_id == tenant_id,
-            ClassRoom.id.in_(class_ids),
+        query = (
+            select(ClassRoom)
+            .options(selectinload(ClassRoom.academic_level))
+            .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id.in_(class_ids))
         )
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
-        if lock:
-            query = query.with_for_update()
-        result = await db.execute(query)
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def list_progression_chain_rows(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        *,
-        lock: bool = False,
-    ) -> list[ClassRoom]:
-        query = (
-            select(ClassRoom)
-            .where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.is_active.is_(True),
-                ClassRoom.archived_at.is_(None),
-            )
-            .order_by(ClassRoom.id)
-        )
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)
@@ -213,32 +265,12 @@ class ClassRoomRepository:
         return int(result.scalar_one() or 0)
 
     @staticmethod
-    async def count_active_class_subjects(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-    ) -> int:
-        from app.modules.student_academics.models import ClassSubject
-
-        result = await db.execute(
-            select(func.count())
-            .select_from(ClassSubject)
-            .where(
-                ClassSubject.tenant_id == tenant_id,
-                ClassSubject.class_id == class_id,
-                ClassSubject.is_active.is_(True),
-                ClassSubject.archived_at.is_(None),
-            )
-        )
-        return int(result.scalar_one() or 0)
-
-    @staticmethod
     async def count_active_teacher_assignments(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         class_id: uuid.UUID,
     ) -> int:
-        from app.modules.student_academics.models import ClassSubject, TeacherAssignment
+        from app.modules.student_academics.models import TeacherAssignment
 
         result = await db.execute(
             select(func.count())
@@ -247,12 +279,7 @@ class ClassRoomRepository:
                 TeacherAssignment.tenant_id == tenant_id,
                 TeacherAssignment.is_active.is_(True),
                 TeacherAssignment.effective_to.is_(None),
-                TeacherAssignment.class_subject_id.in_(
-                    select(ClassSubject.id).where(
-                        ClassSubject.tenant_id == tenant_id,
-                        ClassSubject.class_id == class_id,
-                    )
-                ),
+                TeacherAssignment.class_id == class_id,
             )
         )
         return int(result.scalar_one() or 0)
@@ -270,7 +297,6 @@ class ClassRoomRepository:
         from app.modules.communications.models import AnnouncementAudience
         from app.modules.report_cards.models import ReportCard
         from app.modules.student_academics.models import (
-            ClassSubject,
             StudentProgressionItem,
             StudentSubjectResult,
             TeacherAssignment,
@@ -301,11 +327,9 @@ class ClassRoomRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
-                    ClassSubject.tenant_id == tenant_id,
-                    ClassSubject.class_id == class_id,
+                    TeacherAssignment.class_id == class_id,
                 )
             )
         ).scalar_one()
@@ -383,22 +407,6 @@ class ClassRoomRepository:
             "temporary_attendance_assignments": int(temporary_assignment_count),
             "announcement_audiences": int(announcement_audience_count),
         }
-
-    @staticmethod
-    async def clear_next_class_references(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-    ) -> None:
-        await db.execute(
-            update(ClassRoom)
-            .where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.next_class_id == class_id,
-            )
-            .values(next_class_id=None, is_terminal=False)
-        )
-        await db.flush()
 
     @staticmethod
     async def save(db: AsyncSession, classroom: ClassRoom) -> ClassRoom:

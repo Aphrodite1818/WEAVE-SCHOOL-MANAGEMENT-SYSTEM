@@ -66,7 +66,7 @@ class StudentEnrollmentService(StudentEnrollmentMutationService):
             output.append(
                 base.model_copy(
                     update={
-                        "class_name": classroom.name if classroom else None,
+                        "class_name": classroom.academic_level_name if classroom else None,
                         "class_arm": classroom.arm if classroom else None,
                         "academic_session_name": (session.name if session else None),
                     }

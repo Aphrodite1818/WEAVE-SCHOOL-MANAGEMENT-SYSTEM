@@ -28,7 +28,7 @@ const asItems = (response) =>
       : [];
 
 const classLabel = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
+  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Unnamed class";
 
 const studentLabel = (item) =>
   `${[item?.first_name, item?.last_name].filter(Boolean).join(" ") || "Student"} · ${item?.admission_number || "No admission number"}`;

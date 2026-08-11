@@ -2,7 +2,6 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useLocation } from "react-router-dom";
 import { authSession, getErrorMessage } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
-import SubscriptionLifecyclePrompt from "./SubscriptionLifecyclePrompt";
 import {
   getSubscriptionStatusMeta,
   isAttentionStatus,
@@ -310,14 +309,6 @@ export function SubscriptionProvider({ children }) {
   return (
     <SubscriptionContext.Provider value={value}>
       {children}
-      <SubscriptionLifecyclePrompt
-        isTenantAdmin={isTenantAdmin}
-        currentSubscription={visibleCurrentSubscription}
-        entitlements={visibleEntitlements}
-        statusCode={statusCode}
-        isLoading={isTenantAdmin ? isLoading : false}
-        isRefreshing={isTenantAdmin ? isRefreshing : false}
-      />
     </SubscriptionContext.Provider>
   );
 }

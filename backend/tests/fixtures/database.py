@@ -111,9 +111,9 @@ async def _ensure_test_schema_compatibility(test_engine: AsyncEngine) -> None:
     )
     await _ensure_archive_columns(
         test_engine,
-        table_name="class_subjects",
-        check_constraint_name="ck_class_subjects_archived_requires_inactive",
-        index_name="ix_class_subjects_tenant_archived",
+        table_name="level_subjects",
+        check_constraint_name="ck_level_subjects_archived_requires_inactive",
+        index_name="ix_level_subjects_tenant_archived",
     )
     async with test_engine.begin() as connection:
         await connection.execute(

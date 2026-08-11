@@ -559,12 +559,11 @@ async def preview_grading_scale_readiness(
 
 
 @tenant_admin_router.post(
-    "/class-subjects/{class_subject_id}/teacher-assignments",
+    "/teacher-assignments",
     response_model=TeacherAssignmentResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_teacher_assignment(
-    class_subject_id: UUID,
     payload: TeacherAssignmentCreate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
@@ -574,7 +573,6 @@ async def create_teacher_assignment(
         db,
         current_admin.tenant_id,
         payload,
-        class_subject_id=class_subject_id,
         acting_admin_id=current_admin.id,
     )
 
@@ -588,7 +586,7 @@ async def list_teacher_assignments(
     current_admin: CurrentTenantAdmin,
     teacher_membership_id: UUID | None = Query(default=None),
     class_id: UUID | None = Query(default=None),
-    class_subject_id: UUID | None = Query(default=None),
+    level_subject_id: UUID | None = Query(default=None),
     subject_id: UUID | None = Query(default=None),
     status: str | None = Query(default=None, pattern="^(active|ended)$"),
     effective_from_from: date | None = Query(default=None),
@@ -604,7 +602,7 @@ async def list_teacher_assignments(
         current_admin.tenant_id,
         teacher_id=teacher_membership_id,
         class_id=class_id,
-        class_subject_id=class_subject_id,
+        level_subject_id=level_subject_id,
         subject_id=subject_id,
         status=resolved_status,
         effective_from_from=effective_from_from,
@@ -652,26 +650,19 @@ async def end_teacher_assignment(
 
 
 @tenant_admin_router.post(
-    "/class-subjects/{class_subject_id}/reassign-teacher",
+    "/teacher-assignments/{assignment_id}/reassign",
     response_model=TeacherAssignmentResponse,
 )
 async def reassign_teacher_assignment(
-    class_subject_id: UUID,
+    assignment_id: UUID,
     payload: TeacherAssignmentReassign,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherAssignmentResponse:
-    active = await StudentAcademicRepository.get_active_teacher_assignment_for_class_subject(
-        db,
-        current_admin.tenant_id,
-        class_subject_id,
-    )
-    if active is None:
-        raise NotFoundException("Active teacher assignment not found.")
     return await StudentAcademicService.reassign_teacher_assignment(
         db,
         current_admin.tenant_id,
-        active.id,
+        assignment_id,
         payload,
         acting_admin_id=current_admin.id,
     )
@@ -828,19 +819,19 @@ async def list_my_assignment_students(
         or not assignment.is_active
     ):
         raise ForbiddenException("You may view students only for your active assignments.")
-    class_subject = await StudentAcademicRepository.get_class_subject_by_id(
+    level_subject = await StudentAcademicRepository.get_level_subject_by_id(
         db,
         current_teacher.tenant_id,
-        assignment.class_subject_id,
+        assignment.level_subject_id,
     )
-    if class_subject is None:
-        raise NotFoundException("Class subject not found.")
+    if level_subject is None:
+        raise NotFoundException("Level subject not found.")
     students, total = await StudentService.list_students(
         db,
         current_teacher,
         skip=skip,
         limit=limit,
-        class_id=class_subject.class_id,
+        class_id=assignment.class_id,
     )
     return StudentListResponse(items=students, total=total)
 
@@ -883,22 +874,6 @@ async def list_teacher_terms(
         academic_session_id=academic_session_id,
     )
     return AcademicTermListResponse(items=items, total=total)
-
-
-@teacher_router.post(
-    "/results",
-    response_model=StudentSubjectResultResponse,
-)
-async def upsert_teacher_result(
-    payload: StudentSubjectResultUpsert,
-    db: DbSession,
-    current_teacher: CurrentTeacher,
-) -> StudentSubjectResultResponse:
-    return await StudentAcademicService.upsert_student_result(
-        db,
-        current_teacher,
-        payload,
-    )
 
 
 @teacher_router.get(

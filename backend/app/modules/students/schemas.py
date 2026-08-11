@@ -140,14 +140,13 @@ class StudentCreate(InputBase):
     date_of_birth: date
     class_id: uuid.UUID
     gender: Gender | None = None
-    arm: str | None = Field(default=None, max_length=20)
     state_of_origin: str | None = Field(default=None, max_length=100)
     parents: list[StudentParentInvitationInput] = Field(
         default_factory=list,
         max_length=2,
     )
 
-    @field_validator("arm", "state_of_origin", mode="before")
+    @field_validator("state_of_origin", mode="before")
     @classmethod
     def clean_optional_fields(cls, value: str | None) -> str | None:
         """Clean optional student fields."""
@@ -195,13 +194,11 @@ class StudentAdminProfileUpdate(InputBase):
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
     date_of_birth: date | None = None
     gender: Gender | None = None
-    arm: str | None = Field(default=None, max_length=20)
     state_of_origin: str | None = Field(default=None, max_length=100)
 
     @field_validator(
         "first_name",
         "last_name",
-        "arm",
         "state_of_origin",
         mode="before",
     )
@@ -690,7 +687,6 @@ class StudentOutputBase(OutputBase):
     admission_date: date
     graduation_date: date | None = None
     class_id: uuid.UUID | None = None
-    arm: str | None = None
     status: AcademicStatus
     promotion_hold: bool
     profile_status: StudentProfileStatus

@@ -23,7 +23,7 @@ const teacherClassConfig = {
     active_only: true,
   }),
   mapItemToForm: () => ({}),
-  getItemLabel: (item) => [item?.name, item?.arm].filter(Boolean).join(" ") || "Class",
+  getItemLabel: (item) => [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Class",
 };
 
 function MyClassesPage() {

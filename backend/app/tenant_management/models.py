@@ -35,6 +35,7 @@ class SubscriptionPlan(str, PyEnum):
     """Represents the subscription plan options for a tenant (school)."""
 
     FREE_TRIAL = "free_trial"
+    FREE = "free"
     PLUS = "plus"
     PROFESSIONAL = "professional"
     ENTERPRISE = "enterprise"
@@ -107,6 +108,15 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
         ),
         default=SubscriptionPlan.FREE_TRIAL,
         nullable=False,
+    )
+    initial_plan_intent: Mapped[SubscriptionPlan | None] = mapped_column(
+        SQLEnum(
+            SubscriptionPlan,
+            name="subscriptionplan",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=True,
     )
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     subscription_ends_at: Mapped[datetime | None] = mapped_column(

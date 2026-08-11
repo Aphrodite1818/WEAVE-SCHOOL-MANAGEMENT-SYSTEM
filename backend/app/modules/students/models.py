@@ -185,7 +185,6 @@ class Student(BaseModel):
         ForeignKey("classes.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    arm: Mapped[str | None] = mapped_column(String(20), nullable=True)
     status: Mapped[AcademicStatus] = mapped_column(
         SQLEnum(
             AcademicStatus,

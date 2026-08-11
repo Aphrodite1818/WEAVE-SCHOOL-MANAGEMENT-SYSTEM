@@ -24,7 +24,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v4",
+    ImportResourceType.STUDENTS: "students_v5",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -33,8 +33,8 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "last_name",
         "date_of_birth",
         "gender",
-        "class_name",
-        "class_arm",
+        "level",
+        "arm",
         "state_of_origin",
         "parent_email_1",
         "parent_relationship_1",
@@ -115,18 +115,18 @@ def create_student_template() -> ImportTemplateDefinition:
                 accepted_values=["male", "female"],
             ),
             create_template_column(
-                name="class_name",
-                label="Class Name",
+                name="level",
+                label="Academic Level",
                 required=True,
                 example="JSS1",
-                description="Required. Use the class name visible to admins, for example JSS1 or Primary 4.",
+                description="Required. Enter an existing academic level such as JSS1. Do not combine it with the arm.",
             ),
             create_template_column(
-                name="class_arm",
+                name="arm",
                 label="Class Arm",
-                required=False,
+                required=True,
                 example="A",
-                description="Optional. Leave blank for classes without arms, or enter an existing arm such as A or Science.",
+                description="Required. Enter the existing concrete arm within the selected level, such as A or Science.",
             ),
             create_template_column(
                 name="state_of_origin",
@@ -167,9 +167,9 @@ def create_student_template() -> ImportTemplateDefinition:
             "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
-            "Class name is required. Class arm is optional for classes without an arm.",
-            "Use class_name and optional class_arm for student class placement. Do not enter internal class UUIDs.",
-            "The backend resolves class_name + class_arm to the real active class during dry-run.",
+            "Academic level and arm are both required and must be provided in separate columns.",
+            "Do not enter or parse a combined value such as JSS1 A.",
+            "The backend resolves level, then resolves arm within that level during dry-run.",
             "Parent or guardian emails are optional in the current student-creation workflow. If an email is supplied, its matching relationship column is required.",
             "A maximum of two parents or guardians is supported per imported student.",
             "Accepted date formats include YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY, MM-DD-YYYY, and YYYY/MM/DD.",

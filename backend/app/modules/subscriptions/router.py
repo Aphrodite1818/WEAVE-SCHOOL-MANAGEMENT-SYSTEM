@@ -14,33 +14,21 @@ from app.core.dependencies.route_guards import (
 )
 from app.core.exceptions import ForbiddenException
 from app.modules.simulation.router import router as simulation_router
-from app.modules.subscriptions.cancellation_service import (
-    SubscriptionCancellationService,
-)
 from app.modules.subscriptions.catalogue import (
     PublicSubscriptionCatalogue,
     PublicSubscriptionCatalogueService,
 )
 from app.modules.subscriptions.payment_integrity import (
     process_paystack_webhook_secure,
-    verify_subscription_checkout_secure,
-)
-from app.modules.subscriptions.plan_change_service import (
-    SubscriptionPlanChangeService,
-)
-from app.modules.subscriptions.plan_configuration import (
-    SubscriptionPlanConfigurationService,
 )
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
     PaymentTransactionListResponse,
     PaymentTransactionResponse,
-    SubscriptionCancellationRequest,
-    SubscriptionCheckoutCreate,
+    FreeTermActivationRequest,
+    PaidTermCheckoutCreate,
+    TermEntitlementResponse,
     SubscriptionCheckoutResponse,
-    SubscriptionPlanChangePreviewResponse,
-    SubscriptionPlanChangeRequest,
-    SubscriptionPlanChangeResponse,
     SubscriptionStatusResponse,
     TenantEntitlementsResponse,
     TenantSubscriptionResponse,
@@ -49,8 +37,11 @@ from app.modules.subscriptions.schemas import (
 from app.modules.subscriptions.service import (
     SubscriptionFeatureService,
     SubscriptionLifecycleService,
-    SubscriptionPaymentService,
 )
+from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
+from app.modules.subscriptions.providers.paystack import PaystackClient
+from app.modules.subscriptions.models import TermPlanEntitlement
+from sqlalchemy import select
 from app.modules.subscriptions.subscription_enums import PaymentStatus
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.tenant_admins.models import TenantAdmin
@@ -69,6 +60,65 @@ CurrentSubscriptionActor: TypeAlias = Annotated[
     CurrentActor,
     Depends(get_current_actor),
 ]
+
+
+@router.post(
+    "/terms/activate-free",
+    response_model=TermEntitlementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def activate_free_term_plan(
+    payload: FreeTermActivationRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TermEntitlementResponse:
+    _ = payload.confirmation
+    return TermEntitlementResponse.model_validate(
+        await TermPlanEntitlementService.activate_free(
+            db, current_admin.tenant_id, payload.academic_term_id, current_admin.id
+        )
+    )
+
+
+@router.post(
+    "/terms/checkout",
+    response_model=SubscriptionCheckoutResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_term_plan_checkout(
+    payload: PaidTermCheckoutCreate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> SubscriptionCheckoutResponse:
+    return await TermPlanEntitlementService.initialize_paid_checkout(
+        db,
+        current_admin.tenant_id,
+        payload.academic_term_id,
+        payload.plan_code,
+        current_admin.email,
+    )
+
+
+@router.get("/terms/verify/{reference}", response_model=TermEntitlementResponse)
+async def verify_term_plan_checkout(
+    reference: str,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TermEntitlementResponse:
+    transaction = await SubscriptionRepository.get_transaction_by_reference(
+        db=db, reference=reference
+    )
+    if transaction is None:
+        from app.core.exceptions import NotFoundException
+
+        raise NotFoundException("Payment transaction not found.")
+    if transaction.tenant_id != current_admin.tenant_id:
+        raise ForbiddenException("You do not have access to this term payment.")
+    provider_response = await PaystackClient().verify_transaction(reference=reference)
+    entitlement = await TermPlanEntitlementService.activate_verified_transaction(
+        db, transaction, provider_response
+    )
+    return TermEntitlementResponse.model_validate(entitlement)
 
 
 @router.get("/plans", response_model=PublicSubscriptionCatalogue)
@@ -156,118 +206,23 @@ async def list_subscription_payments(
     )
 
 
-@router.get(
-    "/plan-change/preview",
-    response_model=SubscriptionPlanChangePreviewResponse,
-)
-async def preview_subscription_plan_change(
+@router.get("/terms/history", response_model=list[TermEntitlementResponse])
+async def list_term_plan_history(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
-    target_plan_code: str = Query(min_length=2, max_length=40),
-) -> SubscriptionPlanChangePreviewResponse:
-    return await SubscriptionPlanChangeService.preview(
-        db,
-        tenant_id=current_admin.tenant_id,
-        target_plan_code=target_plan_code,
+) -> list[TermEntitlementResponse]:
+    rows = (
+        (
+            await db.execute(
+                select(TermPlanEntitlement)
+                .where(TermPlanEntitlement.tenant_id == current_admin.tenant_id)
+                .order_by(TermPlanEntitlement.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
     )
-
-
-@router.get(
-    "/plan-change/current",
-    response_model=SubscriptionPlanChangeResponse | None,
-)
-async def get_current_subscription_plan_change(
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> SubscriptionPlanChangeResponse | None:
-    change = await SubscriptionPlanChangeService.get_open_change(
-        db,
-        tenant_id=current_admin.tenant_id,
-    )
-    if change is None:
-        return None
-    return SubscriptionPlanChangeResponse.model_validate(change)
-
-
-@router.post(
-    "/plan-change",
-    response_model=SubscriptionPlanChangeResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def schedule_subscription_plan_change(
-    payload: SubscriptionPlanChangeRequest,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> SubscriptionPlanChangeResponse:
-    _ = payload.confirmation
-    change = await SubscriptionPlanChangeService.schedule_downgrade(
-        db,
-        tenant_id=current_admin.tenant_id,
-        requested_by_admin_id=current_admin.id,
-        target_plan_code=payload.target_plan_code,
-    )
-    return SubscriptionPlanChangeResponse.model_validate(change)
-
-
-@router.post("/cancel", response_model=TenantSubscriptionResponse)
-async def cancel_current_subscription(
-    payload: SubscriptionCancellationRequest,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> TenantSubscriptionResponse:
-    _ = payload.confirmation
-    subscription = await SubscriptionCancellationService.request_cancellation(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        notes=payload.reason,
-    )
-    return TenantSubscriptionResponse.model_validate(subscription)
-
-
-@router.post(
-    "/checkout",
-    response_model=SubscriptionCheckoutResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_subscription_checkout(
-    payload: SubscriptionCheckoutCreate,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> SubscriptionCheckoutResponse:
-    await SubscriptionPlanConfigurationService.validate_checkout_target(
-        plan_code=payload.plan_code,
-        billing_interval=payload.billing_interval,
-    )
-    return await SubscriptionPaymentService.initialize_subscription_checkout(
-        db=db,
-        tenant_id=current_admin.tenant_id,
-        payload=payload,
-    )
-
-
-@router.get("/verify/{reference}", response_model=SubscriptionStatusResponse)
-async def verify_subscription_checkout(
-    reference: str,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> SubscriptionStatusResponse:
-    transaction = await SubscriptionRepository.get_transaction_by_reference(
-        db=db,
-        reference=reference,
-    )
-    if transaction is None:
-        from app.core.exceptions import NotFoundException
-
-        raise NotFoundException("Payment transaction not found.")
-    if transaction.tenant_id != current_admin.tenant_id:
-        from app.core.exceptions import ForbiddenException as AccessForbidden
-
-        raise AccessForbidden("You do not have access to this subscription verification result.")
-
-    return await verify_subscription_checkout_secure(
-        db=db,
-        reference=reference,
-    )
+    return [TermEntitlementResponse.model_validate(row) for row in rows]
 
 
 @router.post("/paystack/webhook", response_model=WebhookProcessingResponse)
@@ -291,12 +246,7 @@ async def sync_expired_subscriptions(
 ) -> dict[str, int]:
     _ = current_superadmin
     lifecycle = await SubscriptionLifecycleService.sync_expired_subscriptions(db=db)
-    plan_changes = await SubscriptionPlanChangeService.sync_due_changes(db=db)
-    return {
-        **lifecycle,
-        "plan_changes_awaiting_payment": plan_changes["awaiting_payment"],
-        "plan_changes_blocked": plan_changes["blocked"],
-    }
+    return lifecycle
 
 
 router.include_router(simulation_router)

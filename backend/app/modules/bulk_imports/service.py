@@ -72,7 +72,7 @@ from app.modules.bulk_imports.validators import (
     ImportRowValidationResult,
     ImportValidationErrorItem,
 )
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.parents.repository import ParentAccountRepository
 from app.modules.students.models import (
     ParentRelationship,
@@ -462,40 +462,41 @@ class BulkImportService:
         tenant_id: UUID,
         validation_results: list[ImportRowValidationResult],
     ) -> None:
-        """Resolve class_name/class_arm values to the real class UUID for student imports."""
+        """Resolve explicit level and arm values to a concrete tenant classroom."""
 
         for validation_result in validation_results:
             normalized_row = validation_result.normalized_row
-            class_name = normalized_row.get("class_name")
-            class_arm = normalized_row.get("class_arm")
+            level_name = normalized_row.get("level")
+            class_arm = normalized_row.get("arm")
 
-            if _is_blank(class_name) and _is_blank(class_arm):
-                normalized_row["class_id"] = None
-                normalized_row["arm"] = None
+            if _is_blank(level_name) or _is_blank(class_arm):
                 continue
 
-            if _is_blank(class_name):
+            level = await AcademicLevelRepository.get_by_normalized_name(
+                db, tenant_id, str(level_name)
+            )
+            if level is None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="class_name",
-                    error_code="required_with_class_arm",
-                    error_message="class_name is required when class_arm is supplied.",
+                    field_name="level",
+                    error_code="level_not_found",
+                    error_message=f"Academic level {level_name} does not exist.",
                 )
                 continue
 
-            classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
+            classroom = await ClassRoomRepository.get_by_level_and_arm(
                 db=db,
                 tenant_id=tenant_id,
-                class_name=str(class_name),
-                class_arm=None if _is_blank(class_arm) else str(class_arm),
+                academic_level_id=level.id,
+                class_arm=str(class_arm),
             )
-            class_reference = _format_class_reference(class_name, class_arm)
+            class_reference = _format_class_reference(level_name, class_arm)
 
             if classroom is None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="class_name",
-                    error_code="class_not_found",
+                    field_name="arm",
+                    error_code="arm_not_found",
                     error_message=(
                         f"Class {class_reference} does not exist. "
                         "Create the class first before importing students."
@@ -505,7 +506,7 @@ class BulkImportService:
             if not classroom.is_active or classroom.archived_at is not None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="class_name",
+                    field_name="arm",
                     error_code="class_inactive",
                     error_message=(
                         f"Class {class_reference} is inactive or archived. "
@@ -515,8 +516,7 @@ class BulkImportService:
                 continue
 
             normalized_row["class_id"] = str(classroom.id)
-            normalized_row["class_name"] = classroom.name
-            normalized_row["class_arm"] = classroom.arm
+            normalized_row["level"] = level.name
             normalized_row["arm"] = classroom.arm
 
     @staticmethod
@@ -626,7 +626,6 @@ class BulkImportService:
             date_of_birth=date_of_birth,
             gender=normalized_row.get("gender"),
             class_id=class_id,
-            arm=normalized_row.get("arm") or normalized_row.get("class_arm"),
             state_of_origin=normalized_row.get("state_of_origin"),
             parents=build_parent_invitations_from_row(normalized_row),
         )
@@ -662,8 +661,8 @@ class BulkImportService:
                 "first_name": student.first_name,
                 "last_name": student.last_name,
                 "admission_number": student.admission_number,
-                "class_name": validation_result.normalized_row.get("class_name"),
-                "class_arm": validation_result.normalized_row.get("class_arm"),
+                "level": validation_result.normalized_row.get("level"),
+                "arm": validation_result.normalized_row.get("arm"),
                 "setup_code": created.setup_code,
                 "access_code_expires_at": created.access_code_expires_at.isoformat(),
                 "parent_invitations_queued": created.parent_invitation_count,

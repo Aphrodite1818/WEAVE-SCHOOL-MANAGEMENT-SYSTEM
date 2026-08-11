@@ -30,7 +30,7 @@ const rosterTabs = [
     label: "Subject roster",
     shortLabel: "Subject",
     icon: BookOpen,
-    description: "Students you teach for a selected class-subject.",
+    description: "Students you teach for a selected class and subject.",
   },
   {
     id: "class",
@@ -228,7 +228,7 @@ function StudentsPage() {
               <EmptyState
                 icon={ClipboardList}
                 title="No subject-teacher assignment"
-                description="When an admin assigns you to a class-subject, the student roster for that class-subject will appear here."
+                description="When an admin assigns you to a concrete class and subject, that class roster will appear here."
               />
             ) : (
               <>
@@ -244,7 +244,7 @@ function StudentsPage() {
                   title={selectedAssignment ? assignmentLabel(selectedAssignment) : "Subject roster"}
                   students={subjectStudents}
                   isLoading={isRosterLoading}
-                  empty="No students found for this assigned class-subject."
+                  empty="No students found for this teaching assignment."
                 />
               </>
             )}

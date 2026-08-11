@@ -1,14 +1,15 @@
 export const PLAN_DISPLAY_NAMES = {
+  free: "Free",
   free_trial: "Free Trial",
   plus: "Plus",
   professional: "Professional",
   enterprise: "Enterprise",
 };
 
-export const PLAN_ORDER = ["free_trial", "plus", "professional", "enterprise"];
+export const PLAN_ORDER = ["free", "plus", "professional", "enterprise"];
 
 export const BILLING_INTERVAL_LABELS = {
-  monthly: "Monthly",
+  term: "Per academic term",
 };
 
 export const FEATURE_CODES = {
@@ -40,59 +41,37 @@ export const SUBSCRIPTION_STATUS_META = {
   },
   active: {
     label: "Active",
-    message: "Your monthly subscription is active.",
+    message: "Your current academic term plan is active.",
     badgeVariant: "success",
-  },
-  non_renewing: {
-    label: "Cancels at Period End",
-    message: "Your subscription remains active until the end of the current billing period.",
-    badgeVariant: "warning",
-  },
-  past_due: {
-    label: "Payment Issue",
-    message: "We could not process your latest payment.",
-    badgeVariant: "error",
-  },
-  grace_period: {
-    label: "Grace Period",
-    message: "Your subscription is in grace period. Update billing before read-only restrictions begin.",
-    badgeVariant: "warning",
   },
   expired: {
     label: "Read-only",
     message: "Your subscription has expired. Billing remains available, but write actions are restricted.",
     badgeVariant: "error",
   },
-  cancelled: {
-    label: "Cancelled",
-    message: "Your subscription has been cancelled.",
-    badgeVariant: "default",
-  },
 };
 
-export const BILLING_INTERVAL_OPTIONS = [
-  { value: "monthly", label: "Monthly" },
-];
+export const BILLING_INTERVAL_OPTIONS = [{ value: "term", label: "Per academic term" }];
 
 export const LANDING_PRICING_PLANS = [
   {
-    planCode: "free_trial",
-    name: "Free Trial",
-    bestFor: "Best for exploring Weave",
-    description: "Experience the core Weave workflow and see how a connected school workspace fits your operations before subscribing.",
-    priceMonthly: null,
-    priceLabel: "Pricing unavailable",
+    planCode: "free",
+    name: "Free",
+    bestFor: "Best for smaller school operations",
+    description: "Use Weave term after term within the permanent Free plan limits.",
+    pricePerTerm: 0,
+    priceLabel: "₦0 per academic term",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Start Free Trial",
+    ctaLabel: "Choose Free",
   },
   {
     planCode: "plus",
     name: "Plus",
     bestFor: "Best for smaller schools",
     description: "A complete starting point for schools ready to organise students, staff, academic records, portals, and everyday administration in one place.",
-    priceMonthly: null,
+    pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
@@ -104,7 +83,7 @@ export const LANDING_PRICING_PLANS = [
     name: "Professional",
     bestFor: "Best for growing schools",
     description: "Greater capacity for established schools managing more students, teachers, classes, records, and operational complexity.",
-    priceMonthly: null,
+    pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
@@ -117,7 +96,7 @@ export const LANDING_PRICING_PLANS = [
     name: "Enterprise",
     bestFor: "Best for larger schools",
     description: "Designed for large school operations that need maximum capacity, flexible resource limits, and priority support readiness.",
-    priceMonthly: null,
+    pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
@@ -127,28 +106,21 @@ export const LANDING_PRICING_PLANS = [
 ];
 
 const SUBSCRIPTION_SELECTION_STORAGE_KEY = "weave_subscription_selection";
-const REGISTRATION_CHECKOUT_STORAGE_KEY = "weave_registration_checkout_intent";
-const REGISTRATION_CHECKOUT_REDIRECT_KEY = "weave_registration_checkout_redirect";
 
-const ATTENTION_STATUSES = new Set([
-  "past_due",
-  "grace_period",
-  "expired",
-  "cancelled",
-]);
+const ATTENTION_STATUSES = new Set(["expired"]);
 
 const canonicalPlanCode = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
   return PLAN_DISPLAY_NAMES[normalized] ? normalized : "free_trial";
 };
 
-const canonicalBillingInterval = () => "monthly";
+const canonicalBillingInterval = () => "term";
 
 export const formatPlanName = (planCode) =>
   PLAN_DISPLAY_NAMES[canonicalPlanCode(planCode)] || "Free Trial";
 
 export const formatBillingInterval = () =>
-  BILLING_INTERVAL_LABELS.monthly || "Monthly";
+  BILLING_INTERVAL_LABELS.term || "Per academic term";
 
 export const getSubscriptionStatusMeta = (status) =>
   SUBSCRIPTION_STATUS_META[String(status || "").toLowerCase()] || {
@@ -188,7 +160,7 @@ export const buildRegistrationHref = (planCode) => {
   const params = new URLSearchParams({ plan: nextPlanCode });
 
   if (nextPlanCode !== "free_trial") {
-    params.set("billing", "monthly");
+    params.set("billing", "term");
   }
 
   return `/register?${params.toString()}`;
@@ -196,7 +168,7 @@ export const buildRegistrationHref = (planCode) => {
 
 export const saveSelectedSubscriptionPlan = ({
   planCode,
-  billingInterval = "monthly",
+  billingInterval = "term",
 } = {}) => {
   if (typeof window === "undefined") return;
 
@@ -225,7 +197,7 @@ export const getSelectedSubscriptionPlan = () => {
 
     return {
       planCode: canonicalPlanCode(parsed?.planCode),
-      billingInterval: "monthly",
+      billingInterval: "term",
     };
   } catch {
     return null;
@@ -235,93 +207,4 @@ export const getSelectedSubscriptionPlan = () => {
 export const clearSelectedSubscriptionPlan = () => {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(SUBSCRIPTION_SELECTION_STORAGE_KEY);
-};
-
-export const saveRegistrationCheckoutIntent = ({
-  planCode,
-  billingInterval = "monthly",
-} = {}) => {
-  if (typeof window === "undefined") return;
-
-  const nextPlanCode = canonicalPlanCode(planCode);
-  if (nextPlanCode === "free_trial") {
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
-    return;
-  }
-
-  window.sessionStorage.setItem(
-    REGISTRATION_CHECKOUT_STORAGE_KEY,
-    JSON.stringify({
-      planCode: nextPlanCode,
-      billingInterval: canonicalBillingInterval(billingInterval),
-    }),
-  );
-};
-
-export const getRegistrationCheckoutIntent = (user = {}) => {
-  const tenantFlags = user?.tenant?.feature_flags || user?.feature_flags || {};
-  const tenantPlanCode = canonicalPlanCode(
-    tenantFlags.registration_selected_plan_code ||
-      tenantFlags.selected_plan_code ||
-      tenantFlags.registration_plan_code,
-  );
-  const tenantBillingInterval =
-    tenantFlags.registration_billing_interval || "monthly";
-
-  if (tenantPlanCode !== "free_trial") {
-    return {
-      planCode: tenantPlanCode,
-      billingInterval: canonicalBillingInterval(tenantBillingInterval),
-      source: "tenant",
-    };
-  }
-
-  if (typeof window === "undefined") return null;
-
-  try {
-    const parsed = JSON.parse(
-      window.sessionStorage.getItem(REGISTRATION_CHECKOUT_STORAGE_KEY) || "null",
-    );
-    const planCode = canonicalPlanCode(parsed?.planCode);
-    if (planCode === "free_trial") return null;
-    return {
-      planCode,
-      billingInterval: canonicalBillingInterval(parsed?.billingInterval),
-      source: "session",
-    };
-  } catch {
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
-    return null;
-  }
-};
-
-export const clearRegistrationCheckoutIntent = () => {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
-};
-
-export const markRegistrationCheckoutRedirect = (intent) => {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(
-    REGISTRATION_CHECKOUT_REDIRECT_KEY,
-    JSON.stringify({
-      planCode: canonicalPlanCode(intent?.planCode),
-      createdAt: new Date().toISOString(),
-    }),
-  );
-};
-
-export const consumeRegistrationCheckoutRedirect = () => {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const parsed = JSON.parse(
-      window.sessionStorage.getItem(REGISTRATION_CHECKOUT_REDIRECT_KEY) || "null",
-    );
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_REDIRECT_KEY);
-    return parsed;
-  } catch {
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_REDIRECT_KEY);
-    return null;
-  }
 };

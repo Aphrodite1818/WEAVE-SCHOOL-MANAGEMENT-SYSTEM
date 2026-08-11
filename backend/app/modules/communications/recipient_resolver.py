@@ -25,7 +25,7 @@ from app.modules.parents.models import (
     ParentAccountStatus,
     ParentMembershipStatus,
 )
-from app.modules.student_academics.models import ClassSubject, TeacherAssignment
+from app.modules.student_academics.models import LevelSubject, TeacherAssignment
 from app.modules.students.models import (
     AcademicStatus,
     Student,
@@ -445,15 +445,15 @@ class RecipientResolver:
         subject_classes = (
             (
                 await db.execute(
-                    select(ClassSubject.class_id)
+                    select(TeacherAssignment.class_id)
                     .join(
                         TeacherAssignment,
-                        TeacherAssignment.class_subject_id == ClassSubject.id,
+                        TeacherAssignment.level_subject_id == LevelSubject.id,
                     )
                     .where(
-                        ClassSubject.tenant_id == teacher.tenant_id,
-                        ClassSubject.is_active.is_(True),
-                        ClassSubject.archived_at.is_(None),
+                        LevelSubject.tenant_id == teacher.tenant_id,
+                        LevelSubject.is_active.is_(True),
+                        LevelSubject.archived_at.is_(None),
                         TeacherAssignment.teacher_membership_id == teacher.id,
                         TeacherAssignment.is_active.is_(True),
                         TeacherAssignment.effective_to.is_(None),
@@ -614,13 +614,13 @@ class RecipientResolver:
                     TeacherAssignment,
                     TeacherAssignment.teacher_membership_id == Teacher.id,
                 )
-                .join(ClassSubject, ClassSubject.id == TeacherAssignment.class_subject_id)
+                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
                 .join(TeacherAccount, TeacherAccount.id == Teacher.teacher_account_id)
                 .where(
-                    ClassSubject.tenant_id == tenant_id,
-                    ClassSubject.class_id == class_id,
-                    ClassSubject.is_active.is_(True),
-                    ClassSubject.archived_at.is_(None),
+                    LevelSubject.tenant_id == tenant_id,
+                    TeacherAssignment.class_id == class_id,
+                    LevelSubject.is_active.is_(True),
+                    LevelSubject.archived_at.is_(None),
                     TeacherAssignment.is_active.is_(True),
                     TeacherAssignment.effective_to.is_(None),
                     Teacher.status == TeacherMembershipStatus.ACTIVE,

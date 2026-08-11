@@ -53,7 +53,7 @@ const bottomNavConfig = {
   ],
   teacher: [
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
-    { label: "Scores", to: "/teacher/score-entry", icon: FileText },
+    { label: "Classes", to: "/teacher/classes", icon: Users },
     { label: "Home", to: "/teacher/dashboard", icon: Home, isHome: true },
     {
       label: "Schools",

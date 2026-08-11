@@ -32,8 +32,8 @@ test("assisted class-limit warning routes admins to a working checkout page", ()
   assert.match(setupRoute, /label === "upgrade plan"/);
   assert.match(setupRoute, /leaveAdminSetup\("\/admin\/billing\/plans"\)/);
   assert.match(guideNavigation, /window\.location\.replace\(destination\)/);
-  assert.match(plansPage, /initializeSubscriptionCheckout/);
-  assert.match(plansPage, /window\.location\.assign\(response\.authorization_url\)/);
+  assert.match(plansPage, /initializePaidCurrentTermCheckout/);
+  assert.match(plansPage, /window\.location\.assign\(checkout\.authorization_url\)/);
 });
 
 test("new tenant admins enter assisted setup immediately after onboarding", () => {

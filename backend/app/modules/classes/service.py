@@ -10,16 +10,15 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-from app.core.utils.normalization import (
-    normalized_class_arm_key,
-    normalized_class_name_key,
-)
-from app.modules.classes.models import ClassRoom
-from app.modules.classes.repository import ClassRoomRepository
+from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
+from app.modules.classes.models import AcademicLevel, ClassRoom
+from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.classes.schemas import (
-    ClassProgressionClearRequest,
-    ClassProgressionConfigureRequest,
-    ClassProgressionResponse,
+    AcademicLevelCreate,
+    AcademicLevelProgressionConfigureRequest,
+    AcademicLevelProgressionResponse,
+    AcademicLevelResponse,
+    AcademicLevelUpdate,
     ClassRoomCreate,
     ClassRoomResponse,
     ClassRoomUpdate,
@@ -34,6 +33,126 @@ from app.modules.teachers.models import (
 )
 from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.tenant_admins.models import TenantAdmin
+
+
+class AcademicLevelService:
+    @staticmethod
+    def _ensure_admin(actor: TenantAdmin) -> None:
+        if not actor.tenant_id:
+            raise ForbiddenException(detail="Tenant admin is not attached to a tenant")
+
+    @staticmethod
+    async def create(
+        db: AsyncSession, actor: TenantAdmin, payload: AcademicLevelCreate
+    ) -> AcademicLevelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        if await AcademicLevelRepository.get_by_normalized_name(db, actor.tenant_id, payload.name):
+            raise ConflictException("Academic level with this name already exists")
+        level = AcademicLevel(
+            tenant_id=actor.tenant_id,
+            name=payload.name,
+            normalized_name=normalized_class_name_key(payload.name),
+            is_active=True,
+        )
+        try:
+            await AcademicLevelRepository.add(db, level)
+            await db.commit()
+            await db.refresh(level)
+            return AcademicLevelResponse.model_validate(level)
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException("Academic level with this name already exists") from exc
+
+    @staticmethod
+    async def list(
+        db: AsyncSession,
+        actor: TenantAdmin | Teacher | Student | Parent,
+        *,
+        active_only: bool = False,
+        include_archived: bool = False,
+    ) -> list[AcademicLevelResponse]:
+        if not actor.tenant_id:
+            raise ForbiddenException(detail="Actor is not attached to a tenant")
+        levels = await AcademicLevelRepository.list_for_tenant(
+            db,
+            actor.tenant_id,
+            active_only=active_only,
+            include_archived=include_archived and isinstance(actor, TenantAdmin),
+        )
+        return [AcademicLevelResponse.model_validate(level) for level in levels]
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        academic_level_id: uuid.UUID,
+        payload: AcademicLevelUpdate,
+    ) -> AcademicLevelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        if level.archived_at is not None:
+            raise ConflictException("Archived academic levels cannot be updated")
+        if payload.name is not None:
+            existing = await AcademicLevelRepository.get_by_normalized_name(
+                db, actor.tenant_id, payload.name
+            )
+            if existing is not None and existing.id != level.id:
+                raise ConflictException("Academic level with this name already exists")
+            level.name = payload.name
+            level.normalized_name = normalized_class_name_key(payload.name)
+        await AcademicLevelRepository.save(db, level)
+        await db.commit()
+        await db.refresh(level)
+        return AcademicLevelResponse.model_validate(level)
+
+    @staticmethod
+    async def configure_progression(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        academic_level_id: uuid.UUID,
+        payload: AcademicLevelProgressionConfigureRequest,
+    ) -> AcademicLevelProgressionResponse:
+        AcademicLevelService._ensure_admin(actor)
+        level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        next_level = None
+        if payload.next_level_id is not None:
+            if payload.next_level_id == level.id:
+                raise BadRequestException("An academic level cannot progress to itself")
+            next_level = await AcademicLevelRepository.get_by_id(
+                db, actor.tenant_id, payload.next_level_id
+            )
+            if next_level is None:
+                raise NotFoundException("Next academic level not found")
+            visited = {level.id}
+            cursor = next_level
+            while cursor is not None:
+                if cursor.id in visited:
+                    raise BadRequestException("Academic level progression cannot be circular")
+                visited.add(cursor.id)
+                cursor = (
+                    await AcademicLevelRepository.get_by_id(
+                        db, actor.tenant_id, cursor.next_level_id
+                    )
+                    if cursor.next_level_id
+                    else None
+                )
+        level.next_level_id = None if payload.is_terminal else payload.next_level_id
+        level.is_terminal = payload.is_terminal
+        await AcademicLevelRepository.save(db, level)
+        await db.commit()
+        await db.refresh(level)
+        return AcademicLevelProgressionResponse(
+            academic_level_id=level.id,
+            academic_level_name=level.name,
+            next_level_id=level.next_level_id,
+            next_level_name=next_level.name if next_level else None,
+            is_terminal=level.is_terminal,
+            is_active=level.is_active,
+        )
 
 
 class ClassRoomService:
@@ -88,14 +207,9 @@ class ClassRoomService:
     ) -> ClassRoom:
         """Build a normalized classroom model from a validated payload."""
 
-        normalized_name = normalized_class_name_key(payload.name)
-        if normalized_name is None:
-            raise BadRequestException("Class name cannot be empty")
-
         return ClassRoom(
             tenant_id=tenant_id,
-            name=payload.name,
-            normalized_name=normalized_name,
+            academic_level_id=payload.academic_level_id,
             arm=payload.arm,
             normalized_arm=normalized_class_arm_key(payload.arm),
             teacher_membership_id=payload.teacher_membership_id,
@@ -114,10 +228,16 @@ class ClassRoomService:
 
         ClassRoomService._ensure_tenant_admin(actor)
 
-        existing_classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
+        level = await AcademicLevelRepository.get_by_id(
+            db, actor.tenant_id, payload.academic_level_id
+        )
+        if level is None or level.archived_at is not None or not level.is_active:
+            raise BadRequestException("Academic level must be active and belong to this tenant")
+
+        existing_classroom = await ClassRoomRepository.get_by_level_and_arm(
             db=db,
             tenant_id=actor.tenant_id,
-            class_name=payload.name,
+            academic_level_id=payload.academic_level_id,
             class_arm=payload.arm,
         )
         if existing_classroom is not None:
@@ -290,21 +410,22 @@ class ClassRoomService:
 
         update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
-        new_name = update_data.get("name", classroom.name)
+        new_level_id = update_data.get("academic_level_id", classroom.academic_level_id)
         new_arm = update_data.get("arm", classroom.arm)
-        new_normalized_name = normalized_class_name_key(new_name)
-        if new_normalized_name is None:
-            raise BadRequestException("Class name cannot be empty")
         new_normalized_arm = normalized_class_arm_key(new_arm)
 
+        level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, new_level_id)
+        if level is None or level.archived_at is not None or not level.is_active:
+            raise BadRequestException("Academic level must be active and belong to this tenant")
+
         if (
-            new_normalized_name != classroom.normalized_name
+            new_level_id != classroom.academic_level_id
             or new_normalized_arm != classroom.normalized_arm
         ):
-            existing_classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
+            existing_classroom = await ClassRoomRepository.get_by_level_and_arm(
                 db=db,
                 tenant_id=actor.tenant_id,
-                class_name=new_name,
+                academic_level_id=new_level_id,
                 class_arm=new_arm,
             )
             if existing_classroom is not None and existing_classroom.id != classroom.id:
@@ -320,7 +441,6 @@ class ClassRoomService:
         for field, value in update_data.items():
             setattr(classroom, field, value)
 
-        classroom.normalized_name = new_normalized_name
         classroom.normalized_arm = new_normalized_arm
 
         try:
@@ -336,138 +456,6 @@ class ClassRoomService:
             raise BadRequestException(
                 "Classroom update failed because of a duplicate or invalid value."
             ) from exc
-
-    @staticmethod
-    def _build_progression_response(
-        classroom: ClassRoom,
-        next_classroom: ClassRoom | None = None,
-    ) -> ClassProgressionResponse:
-        return ClassProgressionResponse(
-            class_id=classroom.id,
-            class_name=classroom.name,
-            class_arm=classroom.arm,
-            next_class_id=classroom.next_class_id,
-            next_class_name=next_classroom.name if next_classroom is not None else None,
-            next_class_arm=next_classroom.arm if next_classroom is not None else None,
-            is_terminal=classroom.is_terminal,
-            is_active=classroom.is_active,
-        )
-
-    @staticmethod
-    async def _ensure_no_progression_cycle(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-        next_class_id: uuid.UUID,
-    ) -> None:
-        current_id: uuid.UUID | None = next_class_id
-        visited: set[uuid.UUID] = set()
-
-        while current_id is not None:
-            if current_id == class_id:
-                raise BadRequestException("Class progression cannot create a circular chain")
-            if current_id in visited:
-                raise BadRequestException("Existing class progression contains a circular chain")
-            visited.add(current_id)
-
-            current = await ClassRoomRepository.get_by_id(
-                db=db,
-                tenant_id=tenant_id,
-                class_id=current_id,
-            )
-            if current is None:
-                return
-            current_id = current.next_class_id
-
-    @staticmethod
-    async def configure_class_progression(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        class_id: uuid.UUID,
-        payload: ClassProgressionConfigureRequest,
-    ) -> ClassProgressionResponse:
-        """Configure the next class or terminal state used by student progression."""
-
-        ClassRoomService._ensure_tenant_admin(actor)
-
-        classroom = await ClassRoomRepository.get_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            class_id=class_id,
-        )
-        if classroom is None:
-            raise NotFoundException("Classroom not found")
-        if classroom.archived_at is not None:
-            raise ConflictException("Archived classrooms cannot be configured. Restore them first.")
-
-        next_classroom: ClassRoom | None = None
-        if payload.next_class_id is not None:
-            if payload.next_class_id == classroom.id:
-                raise BadRequestException("A class cannot progress to itself")
-            next_classroom = await ClassRoomRepository.get_by_id(
-                db=db,
-                tenant_id=actor.tenant_id,
-                class_id=payload.next_class_id,
-            )
-            if next_classroom is None:
-                raise NotFoundException("Next class not found")
-            if not next_classroom.is_active or next_classroom.archived_at is not None:
-                raise BadRequestException("Next class must be active")
-            await ClassRoomService._ensure_no_progression_cycle(
-                db=db,
-                tenant_id=actor.tenant_id,
-                class_id=classroom.id,
-                next_class_id=next_classroom.id,
-            )
-
-        classroom.next_class_id = None if payload.is_terminal else payload.next_class_id
-        classroom.is_terminal = payload.is_terminal
-
-        try:
-            updated_classroom = await ClassRoomRepository.save(
-                db=db,
-                classroom=classroom,
-            )
-            await db.commit()
-            await db.refresh(updated_classroom)
-            return ClassRoomService._build_progression_response(
-                updated_classroom,
-                None if updated_classroom.is_terminal else next_classroom,
-            )
-        except IntegrityError as exc:
-            await db.rollback()
-            raise BadRequestException("Class progression configuration is invalid.") from exc
-
-    @staticmethod
-    async def clear_class_progression(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        class_id: uuid.UUID,
-        payload: ClassProgressionClearRequest,
-    ) -> ClassProgressionResponse:
-        """Clear the next class and terminal state for a classroom."""
-
-        ClassRoomService._ensure_tenant_admin(actor)
-        _ = payload.confirmation
-
-        classroom = await ClassRoomRepository.get_by_id(
-            db=db,
-            tenant_id=actor.tenant_id,
-            class_id=class_id,
-        )
-        if classroom is None:
-            raise NotFoundException("Classroom not found")
-        if classroom.archived_at is not None:
-            raise ConflictException("Archived classrooms cannot be configured. Restore them first.")
-
-        classroom.next_class_id = None
-        classroom.is_terminal = False
-
-        updated_classroom = await ClassRoomRepository.save(db=db, classroom=classroom)
-        await db.commit()
-        await db.refresh(updated_classroom)
-        return ClassRoomService._build_progression_response(updated_classroom)
 
     @staticmethod
     async def _ensure_no_live_dependencies(
@@ -506,16 +494,6 @@ class ClassRoomService:
         if current_enrollments > 0:
             raise ConflictException(
                 "This class still has current student enrollments. End or move all current enrollments before deactivating the class."
-            )
-
-        active_mappings = await ClassRoomRepository.count_active_class_subjects(
-            db,
-            tenant_id,
-            class_id,
-        )
-        if active_mappings > 0:
-            raise ConflictException(
-                "This class still has active subject mappings. Deactivate or archive all class-subject mappings before deactivating the class."
             )
 
         active_assignments = await ClassRoomRepository.count_active_teacher_assignments(
@@ -592,11 +570,6 @@ class ClassRoomService:
             )
 
         response = ClassRoomResponse.model_validate(classroom)
-        await ClassRoomRepository.clear_next_class_references(
-            db=db,
-            tenant_id=actor.tenant_id,
-            class_id=classroom.id,
-        )
         await ClassRoomRepository.delete_classroom(db=db, classroom=classroom)
         await db.commit()
         return response

@@ -4,60 +4,45 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
+
+from app.tenant_management.models import SubscriptionPlan
 
 
 class SubscriptionSimulationScenario(str, Enum):
-    EXPIRES_IN_DAYS = "expires_in_days"
-    PERIOD_ENDED = "period_ended"
-    GRACE_EXPIRES_IN_DAYS = "grace_expires_in_days"
-    GRACE_EXPIRED = "grace_expired"
-    DOWNGRADE_EFFECTIVE_IN_DAYS = "downgrade_effective_in_days"
-    DOWNGRADE_DUE_NOW = "downgrade_due_now"
+    ACTIVATE_FREE = "activate_free"
+    INITIALIZE_PAID = "initialize_paid"
+    PAYMENT_SUCCESS = "payment_success"
+    PAYMENT_FAILURE = "payment_failure"
+    DUPLICATE_WEBHOOK = "duplicate_webhook"
+    WRONG_AMOUNT = "wrong_amount"
+    WRONG_TERM = "wrong_term"
+    UPGRADE_TO_PROFESSIONAL = "upgrade_to_professional"
+    CLOSE_TERM = "close_term"
+    TRIAL_EXPIRED = "trial_expired"
+    CLOSED_ACTIVE_RECONCILIATION = "closed_active_reconciliation"
+    SAFETY_CAP_EXPIRED = "safety_cap_expired"
 
 
 class SubscriptionSimulationRequest(BaseModel):
     scenario: SubscriptionSimulationScenario
-    days: int | None = Field(default=None, ge=1, le=90)
-
-    @model_validator(mode="after")
-    def validate_adjustments(self) -> "SubscriptionSimulationRequest":
-        if (
-            self.scenario
-            in {
-                SubscriptionSimulationScenario.EXPIRES_IN_DAYS,
-                SubscriptionSimulationScenario.GRACE_EXPIRES_IN_DAYS,
-                SubscriptionSimulationScenario.DOWNGRADE_EFFECTIVE_IN_DAYS,
-            }
-            and self.days is None
-        ):
-            raise ValueError("days is required for this simulation scenario")
-        return self
-
-
-class SubscriptionPlanChangeSimulationState(BaseModel):
-    plan_change_id: uuid.UUID
-    current_plan_code: str
-    target_plan_code: str
-    change_type: str
-    status: str
-    effective_at: datetime | None = None
-    failure_reason: str | None = None
+    academic_term_id: uuid.UUID | None = None
+    plan_code: SubscriptionPlan = SubscriptionPlan.PLUS
 
 
 class SubscriptionSimulationState(BaseModel):
     tenant_id: uuid.UUID
-    subscription_id: uuid.UUID
+    academic_term_id: uuid.UUID | None = None
+    term_status: str | None = None
+    entitlement_id: uuid.UUID | None = None
     plan_code: str
     status: str
-    current_period_start: datetime | None = None
-    current_period_end: datetime | None = None
-    trial_ends_at: datetime | None = None
-    grace_ends_at: datetime | None = None
-    cancel_at_period_end: bool
-    next_payment_at: datetime | None = None
-    plan_change: SubscriptionPlanChangeSimulationState | None = None
-    snapshot_available: bool = False
+    activated_at: datetime | None = None
+    closed_at: datetime | None = None
+    expired_at: datetime | None = None
+    safety_expires_at: datetime | None = None
+    payment_reference: str | None = None
+    payment_status: str | None = None
 
 
 class SubscriptionSimulationResponse(BaseModel):

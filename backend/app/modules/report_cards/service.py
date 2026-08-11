@@ -30,7 +30,7 @@ from app.modules.report_cards.schemas import (
     ReportCardSubjectLineResponse,
     ReportCardSubjectComponentResponse,
 )
-from app.modules.student_academics.models import AcademicResultStatus, ClassSubject
+from app.modules.student_academics.models import AcademicResultStatus, LevelSubject
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import Student
 from app.modules.students.repository import (
@@ -61,15 +61,18 @@ class ReportCardService:
         )
 
     @staticmethod
-    async def _expected_class_subjects(
+    async def _expected_level_subjects(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         class_id: uuid.UUID,
-    ) -> list[ClassSubject]:
-        items, _ = await StudentAcademicRepository.list_class_subjects(
+    ) -> list[LevelSubject]:
+        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
+        if classroom is None:
+            return []
+        items, _ = await StudentAcademicRepository.list_level_subjects(
             db=db,
             tenant_id=tenant_id,
-            class_id=class_id,
+            academic_level_id=classroom.academic_level_id,
             active_only=True,
             limit=500,
         )
@@ -103,18 +106,18 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[str]:
-        expected = await ReportCardService._expected_class_subjects(db, tenant_id, class_id)
+        expected = await ReportCardService._expected_level_subjects(db, tenant_id, class_id)
         submitted = await ReportCardService._finalized_results_for_student(
             db, tenant_id, student_id, academic_session_id, academic_term_id
         )
         submitted_subject_ids = {result.subject_id for result in submitted}
         missing: list[str] = []
-        for class_subject in expected:
-            if class_subject.subject_id not in submitted_subject_ids:
+        for level_subject in expected:
+            if level_subject.subject_id not in submitted_subject_ids:
                 subject = await SubjectRepository.get_subject_by_id(
-                    db, tenant_id, class_subject.subject_id
+                    db, tenant_id, level_subject.subject_id
                 )
-                missing.append(subject.name if subject else str(class_subject.subject_id))
+                missing.append(subject.name if subject else str(level_subject.subject_id))
         return missing
 
     @staticmethod
@@ -480,7 +483,7 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> ReportCardClassOverviewResponse:
-        expected = await ReportCardService._expected_class_subjects(db, actor.tenant_id, class_id)
+        expected = await ReportCardService._expected_level_subjects(db, actor.tenant_id, class_id)
         students, _ = await StudentRepository.list_students(
             db=db,
             tenant_id=actor.tenant_id,
@@ -556,10 +559,10 @@ class ReportCardService:
                 "Outdated report cards must be regenerated before publication."
             )
         lines = await ReportCardRepository.list_lines(db, actor.tenant_id, card.id)
-        expected = await ReportCardService._expected_class_subjects(
+        expected = await ReportCardService._expected_level_subjects(
             db, actor.tenant_id, card.class_id
         )
-        expected_subject_ids = {class_subject.subject_id for class_subject in expected}
+        expected_subject_ids = {level_subject.subject_id for level_subject in expected}
         line_subject_ids = {line.subject_id for line in lines}
         if line_subject_ids != expected_subject_ids:
             raise BadRequestException("Report card is missing expected subject lines.")
@@ -639,7 +642,7 @@ class ReportCardService:
             admission_number=student.admission_number if student else None,
             student_passport_photo_url=student.passport_photo_url if student else None,
             class_id=card.class_id,
-            class_name=classroom.name if classroom else None,
+            class_name=classroom.academic_level_name if classroom else None,
             class_arm=classroom.arm if classroom else None,
             academic_session_id=card.academic_session_id,
             academic_session_name=session.name if session else None,

@@ -24,18 +24,73 @@ class OutputBase(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
 
 
-class ClassRoomBase(InputBase):
+class AcademicLevelBase(InputBase):
     name: str = Field(min_length=1, max_length=100)
-    arm: str | None = Field(default=None, max_length=20)
-    teacher_membership_id: uuid.UUID | None = None
 
     @field_validator("name", mode="before")
     @classmethod
     def normalize_name(cls, value: str) -> str:
         normalized = normalize_class_name(value)
         if normalized is None:
-            raise ValueError("class name cannot be empty")
+            raise ValueError("academic level name cannot be empty")
         return normalized
+
+
+class AcademicLevelCreate(AcademicLevelBase):
+    pass
+
+
+class AcademicLevelUpdate(InputBase):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_class_name(value)
+        if normalized is None:
+            raise ValueError("academic level name cannot be empty")
+        return normalized
+
+
+class AcademicLevelResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    next_level_id: uuid.UUID | None
+    is_terminal: bool
+    is_active: bool
+    archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AcademicLevelProgressionConfigureRequest(InputBase):
+    next_level_id: uuid.UUID | None = None
+    is_terminal: bool = False
+
+    @model_validator(mode="after")
+    def validate_terminal_configuration(self):
+        if self.is_terminal and self.next_level_id is not None:
+            raise ValueError("a terminal academic level cannot have next_level_id")
+        return self
+
+
+class AcademicLevelProgressionResponse(OutputBase):
+    academic_level_id: uuid.UUID
+    academic_level_name: str
+    next_level_id: uuid.UUID | None = None
+    next_level_name: str | None = None
+    is_terminal: bool
+    is_active: bool
+
+
+class ClassRoomBase(InputBase):
+    academic_level_id: uuid.UUID
+    arm: str = Field(min_length=1, max_length=20)
+    teacher_membership_id: uuid.UUID | None = None
 
     @field_validator("arm", mode="before")
     @classmethod
@@ -48,19 +103,9 @@ class ClassRoomCreate(ClassRoomBase):
 
 
 class ClassRoomUpdate(InputBase):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    arm: str | None = Field(default=None, max_length=20)
+    academic_level_id: uuid.UUID | None = None
+    arm: str | None = Field(default=None, min_length=1, max_length=20)
     teacher_membership_id: uuid.UUID | None = None
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def normalize_name(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = normalize_class_name(value)
-        if normalized is None:
-            raise ValueError("class name cannot be empty")
-        return normalized
 
     @field_validator("arm", mode="before")
     @classmethod
@@ -88,11 +133,9 @@ class ClassRoomResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
 
-    name: str
-    arm: str | None
-
-    next_class_id: uuid.UUID | None
-    is_terminal: bool
+    academic_level_id: uuid.UUID
+    academic_level_name: str
+    arm: str
 
     teacher_membership_id: uuid.UUID | None
     is_active: bool
@@ -100,66 +143,3 @@ class ClassRoomResponse(OutputBase):
     archived_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def normalize_response_name(cls, value: str) -> str:
-        return normalize_class_name(value) or value
-
-
-class ClassProgressionConfigureRequest(InputBase):
-    next_class_id: uuid.UUID | None = None
-    is_terminal: bool = False
-
-    @model_validator(mode="after")
-    def validate_terminal_configuration(self):
-        if self.is_terminal and self.next_class_id is not None:
-            raise ValueError("a terminal class cannot have next_class_id")
-        return self
-
-
-class ClassProgressionClearRequest(InputBase):
-    confirmation: Literal["CLEAR_CLASS_PROGRESSION"]
-
-
-class ClassProgressionResponse(OutputBase):
-    class_id: uuid.UUID
-    class_name: str
-    class_arm: str | None = None
-    next_class_id: uuid.UUID | None = None
-    next_class_name: str | None = None
-    next_class_arm: str | None = None
-    is_terminal: bool
-    is_active: bool
-
-    @field_validator("class_name", "next_class_name", mode="before")
-    @classmethod
-    def normalize_response_class_names(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return normalize_class_name(value) or value
-
-
-class ClassProgressionValidationIssue(OutputBase):
-    class_id: uuid.UUID
-    class_name: str
-    code: Literal[
-        "missing_next_class",
-        "next_class_not_found",
-        "next_class_inactive",
-        "cross_tenant_target",
-        "self_reference",
-        "circular_chain",
-        "terminal_has_next_class",
-    ]
-    message: str
-
-    @field_validator("class_name", mode="before")
-    @classmethod
-    def normalize_response_class_name(cls, value: str) -> str:
-        return normalize_class_name(value) or value
-
-
-class ClassProgressionValidationResponse(OutputBase):
-    valid: bool
-    issues: list[ClassProgressionValidationIssue]

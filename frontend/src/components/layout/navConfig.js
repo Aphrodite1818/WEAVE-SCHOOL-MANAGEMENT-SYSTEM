@@ -122,7 +122,6 @@ export const navGroups = {
         { label: "Analytics", to: "/teacher/analytics", icon: BarChart3 },
         { label: "Teaching Rosters", to: "/teacher/students", icon: GraduationCap },
         { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen },
-        { label: "Score Entry", to: "/teacher/score-entry", icon: BarChart3 },
         { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
         { label: "Inbox", to: "/teacher/inbox", icon: Inbox },
         { label: "Messages", to: "/teacher/messages", icon: Mail, runtimeFeature: "messaging" },

@@ -4,13 +4,13 @@ from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.classes.models import ClassRoom
+from app.modules.classes.models import AcademicLevel, ClassRoom
 from app.modules.parents.models import Parent, ParentAccount
 from app.modules.search.schemas import TenantSearchResult
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicTerm,
-    ClassSubject,
+    LevelSubject,
     StudentSubjectResult,
     TeacherAssignment,
 )
@@ -87,13 +87,14 @@ class TenantSearchService:
             await db.execute(
                 select(Student, ClassRoom)
                 .outerjoin(ClassRoom, ClassRoom.id == Student.class_id)
+                .outerjoin(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
                 .where(
                     Student.tenant_id == tenant_id,
                     or_(
                         Student.first_name.ilike(term),
                         Student.last_name.ilike(term),
                         Student.admission_number.ilike(term),
-                        ClassRoom.name.ilike(term),
+                        AcademicLevel.name.ilike(term),
                         ClassRoom.arm.ilike(term),
                     ),
                 )
@@ -102,7 +103,9 @@ class TenantSearchService:
         ).all()
         for student, classroom in students:
             class_label = (
-                " ".join(part for part in [classroom.name, classroom.arm] if part).strip()
+                " ".join(
+                    part for part in [classroom.academic_level_name, classroom.arm] if part
+                ).strip()
                 if classroom
                 else None
             )
@@ -185,9 +188,10 @@ class TenantSearchService:
             (
                 await db.execute(
                     select(ClassRoom)
+                    .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
                     .where(
                         ClassRoom.tenant_id == tenant_id,
-                        or_(ClassRoom.name.ilike(term), ClassRoom.arm.ilike(term)),
+                        or_(AcademicLevel.name.ilike(term), ClassRoom.arm.ilike(term)),
                     )
                     .limit(per_type_limit)
                 )
@@ -196,14 +200,14 @@ class TenantSearchService:
             .all()
         )
         for classroom in classes:
-            label = TenantSearchService._name(classroom.name, classroom.arm)
+            label = TenantSearchService._name(classroom.academic_level_name, classroom.arm)
             items.append(
                 TenantSearchResult(
                     label=label,
                     role="class",
                     metadata=classroom.arm,
                     class_name=label,
-                    href=f"/admin/classes?class={classroom.name}&arm={classroom.arm}",
+                    href=f"/admin/classes?level={classroom.academic_level_name}&arm={classroom.arm}",
                 )
             )
 
@@ -248,19 +252,20 @@ class TenantSearchService:
         assignment_rows = (
             await db.execute(
                 select(ClassRoom, Subject)
-                .join(ClassSubject, ClassSubject.class_id == ClassRoom.id)
                 .join(
                     TeacherAssignment,
-                    TeacherAssignment.class_subject_id == ClassSubject.id,
+                    TeacherAssignment.class_id == ClassRoom.id,
                 )
-                .join(Subject, Subject.id == ClassSubject.subject_id)
+                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
+                .join(Subject, Subject.id == LevelSubject.subject_id)
+                .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
                 .where(
                     ClassRoom.tenant_id == tenant_id,
                     TeacherAssignment.teacher_membership_id == teacher_id,
                     TeacherAssignment.is_active.is_(True),
-                    ClassSubject.is_active.is_(True),
+                    LevelSubject.is_active.is_(True),
                 )
-                .order_by(ClassRoom.name, ClassRoom.arm, Subject.name)
+                .order_by(AcademicLevel.name, ClassRoom.arm, Subject.name)
             )
         ).all()
 
@@ -278,7 +283,7 @@ class TenantSearchService:
                 seen_subjects.add(subject.id)
 
         for classroom in class_rows:
-            label = TenantSearchService._name(classroom.name, classroom.arm)
+            label = TenantSearchService._name(classroom.academic_level_name, classroom.arm)
             if TenantSearchService._matches(query, label):
                 items.append(
                     TenantSearchService._result(
@@ -317,7 +322,9 @@ class TenantSearchService:
             ).all()
             for student, classroom in student_rows:
                 class_label = (
-                    TenantSearchService._name(classroom.name, classroom.arm) if classroom else None
+                    TenantSearchService._name(classroom.academic_level_name, classroom.arm)
+                    if classroom
+                    else None
                 )
                 if TenantSearchService._matches(
                     query,
@@ -366,7 +373,7 @@ class TenantSearchService:
             )
         ).all()
         for result, student, classroom, subject, session, term in result_rows:
-            class_label = TenantSearchService._name(classroom.name, classroom.arm)
+            class_label = TenantSearchService._name(classroom.academic_level_name, classroom.arm)
             session_label = session.name if session else None
             term_label = term.name.value if term else None
             if TenantSearchService._matches(

@@ -50,7 +50,7 @@ async def test_resource_quota_lock_uses_stable_transaction_advisory_key() -> Non
 
 @pytest.mark.asyncio
 async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> None:
-    payload = {"event": "invoice.create", "data": {"id": 123}}
+    payload = {"event": "charge.success", "data": {"id": 123, "reference": "unknown"}}
     provider = SimpleNamespace(
         verify_webhook_signature=lambda **_: True,
         parse_webhook_body=lambda _body: payload,
@@ -61,12 +61,12 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
 
     with (
         patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionPaymentService.provider",
-            provider,
+            "app.modules.subscriptions.payment_integrity.PaystackClient",
+            return_value=provider,
         ),
         patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionPaymentService._extract_event_key",
-            return_value="invoice.create:123",
+            "app.modules.subscriptions.payment_integrity._event_key",
+            return_value="charge.success:123",
         ),
         patch(
             "app.modules.subscriptions.payment_integrity._acquire_webhook_lock",
@@ -81,8 +81,8 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
             new=AsyncMock(side_effect=[first_event, failure_event]),
         ) as create_event,
         patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionPaymentService.dispatch_paystack_event",
-            new=AsyncMock(side_effect=RuntimeError("downstream failure")),
+            "app.modules.subscriptions.payment_integrity._transaction_for_update",
+            new=AsyncMock(return_value=None),
         ),
         patch(
             "app.modules.subscriptions.payment_integrity.SubscriptionRepository.mark_webhook_failed",
@@ -93,7 +93,7 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
             new=AsyncMock(),
         ),
     ):
-        with pytest.raises(RuntimeError, match="downstream failure"):
+        with pytest.raises(Exception, match="Unknown term payment reference"):
             await process_paystack_webhook_secure(
                 db,
                 body=b"{}",
@@ -106,7 +106,7 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
     mark_failed.assert_awaited_once_with(
         db=db,
         webhook_event=failure_event,
-        error_message="downstream failure",
+        error_message="Unknown term payment reference.",
     )
 
 

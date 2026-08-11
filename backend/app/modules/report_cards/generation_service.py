@@ -249,7 +249,7 @@ class EnrollmentReportCardService:
             academic_session_id,
             academic_term_id,
         )
-        expected = await ReportCardService._expected_class_subjects(db, actor.tenant_id, class_id)
+        expected = await ReportCardService._expected_level_subjects(db, actor.tenant_id, class_id)
         enrollments = await EnrollmentReportCardService._enrollments_for_class_session(
             db,
             actor.tenant_id,

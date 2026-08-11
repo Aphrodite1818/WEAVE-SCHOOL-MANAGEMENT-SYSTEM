@@ -8,9 +8,7 @@ import LoadingState from "../../components/shared/LoadingState";
 import { parseApiError } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
 import {
-  clearRegistrationCheckoutIntent,
   clearSelectedSubscriptionPlan,
-  consumeRegistrationCheckoutRedirect,
 } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 
@@ -37,7 +35,7 @@ function SubscriptionVerifyPage() {
       }
 
       try {
-        await subscriptionService.verifySubscriptionPayment(reference);
+        await subscriptionService.verifyTermPayment(reference);
         try {
           await refreshSubscriptionState({ silent: true });
         } catch {
@@ -47,10 +45,8 @@ function SubscriptionVerifyPage() {
         if (!mounted) return;
 
         clearSelectedSubscriptionPlan();
-        const registrationCheckout = consumeRegistrationCheckoutRedirect();
-        const nextSuccessRoute = registrationCheckout ? "/admin/dashboard" : "/admin/billing";
+        const nextSuccessRoute = "/admin/billing";
         setSuccessRoute(nextSuccessRoute);
-        clearRegistrationCheckoutIntent();
         setStatus("success");
         setMessage("Payment verified. Your subscription is now active.");
         redirectTimer = window.setTimeout(() => {

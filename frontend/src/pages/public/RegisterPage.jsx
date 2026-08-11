@@ -9,7 +9,6 @@ import { authService } from "../../services/auth.service";
 import { parseApiError, remapFieldErrors } from "../../services/api";
 import {
   getSelectedSubscriptionPlan,
-  saveRegistrationCheckoutIntent,
   saveSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
 
@@ -36,11 +35,11 @@ function RegisterPage() {
     return (
       (queryPlan && {
         planCode: queryPlan,
-        billingInterval: queryBilling || "monthly",
+        billingInterval: queryBilling || "term",
       }) ||
       getSelectedSubscriptionPlan() || {
-        planCode: "free_trial",
-        billingInterval: "monthly",
+        planCode: "free",
+        billingInterval: "term",
       }
     );
   }, [searchParams]);
@@ -98,12 +97,10 @@ function RegisterPage() {
         school_name: formData.schoolName,
         email: formData.email,
         password: formData.password,
-        selected_plan_code: selectedPlan.planCode,
-        billing_interval: selectedPlan.billingInterval,
+        initial_plan_intent: selectedPlan.planCode,
       });
 
       if (result?.verification_required) {
-        saveRegistrationCheckoutIntent(selectedPlan);
         redirectToVerification(
           result.email || formData.email,
           result.message || "Please check your email for the verification code.",

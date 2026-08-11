@@ -542,7 +542,6 @@ function MembershipDirectoryPage({ role }) {
                 <p className="font-semibold">Current responsibilities</p>
                 <p className="mt-1">Class head: {lifecycleState.impact.class_teacher_assignments}</p>
                 <p>Teacher assignments: {lifecycleState.impact.teacher_assignments}</p>
-                <p>Legacy assignments: {lifecycleState.impact.legacy_class_subject_assignments}</p>
               </div>
             ) : null}
             {role === "teacher" && lifecycleState.action === "end" ? (

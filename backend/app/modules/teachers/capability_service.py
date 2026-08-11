@@ -10,8 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.student_academics.models import (
-    ClassSubject,
-    ClassSubjectTeacher,
+    LevelSubject,
     TeacherAssignment,
 )
 from app.modules.subjects.repository import SubjectRepository
@@ -114,37 +113,23 @@ class TeacherSubjectCapabilityService:
             current_assignment_subjects = set(
                 (
                     await db.execute(
-                        select(ClassSubject.subject_id)
+                        select(LevelSubject.subject_id)
                         .join(
                             TeacherAssignment,
-                            TeacherAssignment.class_subject_id == ClassSubject.id,
+                            TeacherAssignment.level_subject_id == LevelSubject.id,
                         )
                         .where(
                             TeacherAssignment.tenant_id == actor.tenant_id,
                             TeacherAssignment.teacher_membership_id == membership_id,
                             TeacherAssignment.is_active.is_(True),
-                            ClassSubject.subject_id.in_(removed),
+                            LevelSubject.subject_id.in_(removed),
                         )
                     )
                 )
                 .scalars()
                 .all()
             )
-            legacy_assignment_subjects = set(
-                (
-                    await db.execute(
-                        select(ClassSubjectTeacher.subject_id).where(
-                            ClassSubjectTeacher.tenant_id == actor.tenant_id,
-                            ClassSubjectTeacher.teacher_membership_id == membership_id,
-                            ClassSubjectTeacher.is_active.is_(True),
-                            ClassSubjectTeacher.subject_id.in_(removed),
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            blocked = current_assignment_subjects | legacy_assignment_subjects
+            blocked = current_assignment_subjects
             if blocked:
                 raise ConflictException(
                     "An approved subject cannot be removed while an active "

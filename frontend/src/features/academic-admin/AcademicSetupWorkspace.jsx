@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Dropdown from "../../components/ui/Dropdown";
+import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
 import { getErrorMessage, parseApiError } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { subjectService } from "../../services/subject.service";
+import { subscriptionService } from "../../services/subscriptionService";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 import {
   CheckboxControl,
@@ -69,12 +71,12 @@ const subjectStatus = (item) =>
   item.archived_at ? "archived" : item.is_active === false ? "inactive" : "active";
 
 const dependencyLabels = {
-  class_subjects: "Subjects attached to classes",
+  level_subjects: "Subjects attached to academic levels",
   teacher_links: "Teacher capability links",
   teacher_assignments: "Teacher assignments",
   results: "Student result rows",
   report_card_lines: "Report-card subject lines",
-  active_class_subjects: "Active subjects attached to classes",
+  active_level_subjects: "Active subjects attached to academic levels",
   active_teacher_links: "Active teacher capability links",
   active_teacher_assignments: "Active teacher assignments",
   open_terms: "Open terms",
@@ -224,6 +226,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const [closingSessionId, setClosingSessionId] = useState("");
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [cancelClosureReason, setCancelClosureReason] = useState("");
+  const [termPlanPrompt, setTermPlanPrompt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { showSuccess, showError } = useToast();
@@ -477,11 +480,50 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       }
       await loadWorkspace();
     } catch (err) {
-      showError(getErrorMessage(err, "Could not update academic term lifecycle."));
+      const parsed = parseApiError(err, "Could not update academic term lifecycle.");
+      const activation = parsed.data?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
+        ? parsed.data
+        : parsed.data?.detail?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
+          ? parsed.data.detail
+          : null;
+      if (transition === "open" && activation) {
+        setTermPlanPrompt({ ...activation, term: item });
+      } else {
+        showError(parsed.message);
+      }
     } finally {
       setSaving("");
       setPendingConfirmation(null);
       setCancelClosureReason("");
+    }
+  };
+
+  const activateFreeAndOpen = async () => {
+    if (!termPlanPrompt?.term?.id) return;
+    setSaving(termPlanPrompt.term.id);
+    try {
+      await subscriptionService.activateFreeTerm(termPlanPrompt.term.id);
+      await academicService.openTerm(termPlanPrompt.term.id);
+      showSuccess("Free plan activated and academic term opened.");
+      setTermPlanPrompt(null);
+      await loadWorkspace();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not activate the Free plan."));
+    } finally { setSaving(""); }
+  };
+
+  const payForSelectedPlan = async () => {
+    if (!termPlanPrompt?.term?.id) return;
+    setSaving(termPlanPrompt.term.id);
+    try {
+      const checkout = await subscriptionService.initializeTermCheckout({
+        academic_term_id: termPlanPrompt.term.id,
+        plan_code: termPlanPrompt.suggested_plan,
+      });
+      window.location.assign(checkout.authorization_url);
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not start term payment."));
+      setSaving("");
     }
   };
 
@@ -1167,6 +1209,25 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
           />
         ) : null}
       </TypedConfirmationDialog>
+      <Modal
+        open={Boolean(termPlanPrompt)}
+        onClose={() => setTermPlanPrompt(null)}
+        title="Open Academic Term"
+        description="Every open term needs its own plan entitlement. Payment activates the plan; it does not open the term automatically."
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
+            <p className="text-sm text-text-muted">Selected plan</p>
+            <p className="mt-1 text-lg font-semibold capitalize text-text">{String(termPlanPrompt?.suggested_plan || "free").replaceAll("_", " ")}</p>
+            <p className="mt-1 text-sm text-text-muted">{termPlanPrompt?.payment_required ? `₦${Number(termPlanPrompt?.amount_kobo || 0) / 100} for this academic term` : "₦0 for this academic term"}</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {termPlanPrompt?.payment_required ? <Button onClick={payForSelectedPlan} disabled={saving === termPlanPrompt?.term?.id}>Pay & activate</Button> : null}
+            <Button variant={termPlanPrompt?.payment_required ? "outline" : "primary"} onClick={activateFreeAndOpen} disabled={saving === termPlanPrompt?.term?.id}>{termPlanPrompt?.payment_required ? "Continue with Free" : "Activate Free & open term"}</Button>
+            <Button variant="ghost" onClick={() => { window.location.assign("/admin/billing/plans"); }}>View paid plans</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 

@@ -41,7 +41,8 @@ from app.modules.attendance.router import (
 )
 from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
-from app.modules.classes.class_subjects_router import router as class_subjects_router
+from app.modules.classes.level_subjects_router import router as level_subjects_router
+from app.modules.classes.academic_levels_router import router as academic_levels_router
 from app.modules.classes.router import router as class_router
 from app.modules.email_outbox.router import router as email_outbox_router
 from app.modules.legal_compliance.router import router as legal_compliance_router
@@ -71,7 +72,6 @@ from app.modules.student_academics.assessment_config_router import (
 )
 from app.modules.student_academics.bulk_results_router import (
     admin_router as bulk_results_admin_router,
-    teacher_router as bulk_results_teacher_router,
 )
 from app.modules.student_academics.grading_readiness_router import (
     router as grading_readiness_router,
@@ -93,7 +93,6 @@ from app.modules.student_academics.session_closure_router import (
 )
 from app.modules.student_academics.write_guard import (
     ensure_admin_academic_write_window,
-    ensure_teacher_academic_write_window,
 )
 from app.modules.students.router import router as student_router
 from app.modules.subjects.router import router as subject_router
@@ -237,7 +236,8 @@ def create_app() -> FastAPI:
     app.include_router(parent_router, prefix="/api/v1")
     app.include_router(subject_router, prefix="/api/v1/subjects", tags=["Subjects"])
     app.include_router(class_router, prefix="/api/v1", tags=["Classes"])
-    app.include_router(class_subjects_router, prefix="/api/v1", tags=["Class Subjects"])
+    app.include_router(academic_levels_router, prefix="/api/v1")
+    app.include_router(level_subjects_router, prefix="/api/v1")
     app.include_router(communication_router, prefix="/api/v1")
     app.include_router(messages_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
@@ -258,7 +258,6 @@ def create_app() -> FastAPI:
     app.include_router(parent_attendance_router, prefix="/api/v1")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
-    teacher_write_guard = [Depends(ensure_teacher_academic_write_window)]
 
     app.include_router(
         tenant_admin_academic_router,
@@ -279,12 +278,6 @@ def create_app() -> FastAPI:
     app.include_router(
         teacher_academic_router,
         prefix="/api/v1",
-        dependencies=teacher_write_guard,
-    )
-    app.include_router(
-        bulk_results_teacher_router,
-        prefix="/api/v1",
-        dependencies=teacher_write_guard,
     )
     app.include_router(student_academic_router, prefix="/api/v1")
     app.include_router(parent_academic_router, prefix="/api/v1")

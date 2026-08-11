@@ -74,60 +74,34 @@ export const subscriptionService = {
   getPaymentHistory: (params = {}) =>
     api.get(`/subscriptions/payments${queryString(params)}`, backgroundAuthOptions),
 
-  getCurrentPlanChange: () =>
-    api.get("/subscriptions/plan-change/current", backgroundAuthOptions),
+  getTermPlanHistory: () =>
+    api.get("/subscriptions/terms/history", backgroundAuthOptions),
 
-  previewPlanChange: (targetPlanCode) =>
-    api.get(
-      `/subscriptions/plan-change/preview${queryString({
-        target_plan_code: targetPlanCode,
-      })}`,
-      backgroundAuthOptions,
-    ),
-
-  schedulePlanChange: (targetPlanCode) =>
-    api.post("/subscriptions/plan-change", {
-      target_plan_code: targetPlanCode,
-      confirmation: "CHANGE_SUBSCRIPTION_PLAN",
+  activateFreeTerm: (academicTermId) =>
+    api.post("/subscriptions/terms/activate-free", {
+      academic_term_id: academicTermId,
+      confirmation: "ACTIVATE_FREE_TERM",
     }),
 
-  cancelCurrentSubscription: (payload) =>
-    api.post("/subscriptions/cancel", payload),
-
-  initializeSubscriptionCheckout: async (payload) => {
+  initializeTermCheckout: async (payload) => {
     await getPublicPlans({ force: true });
-    return api.post("/subscriptions/checkout", payload);
+    return api.post("/subscriptions/terms/checkout", payload);
   },
 
-  verifySubscriptionPayment: (reference) =>
-    api.get(`/subscriptions/verify/${encodeURIComponent(reference)}`),
-};
+  initializePaidCurrentTermCheckout: async (payload) => {
+    const terms = await api.get("/tenant-admin/academics/terms?limit=100");
+    const currentTerm = (terms?.items || terms || []).find((item) => item.is_current && item.status === "open");
+    if (!currentTerm?.id) {
+      throw new Error("Open an academic term before upgrading its plan.");
+    }
+    return subscriptionService.initializeTermCheckout({
+      academic_term_id: currentTerm.id,
+      plan_code: payload.plan_code,
+    });
+  },
 
-export const getSubscriptionCheckoutErrorMessage = (message) => {
-  const normalizedMessage = String(message || "").toLowerCase();
-
-  if (normalizedMessage.includes("selected plan billing is not configured")) {
-    return "Checkout for this plan is temporarily unavailable. Please try again later.";
-  }
-  if (normalizedMessage.includes("provider plan configuration")) {
-    return "We couldn't start checkout right now. Please try again in a moment.";
-  }
-  if (normalizedMessage.includes("payment verification failed")) {
-    return "We couldn't confirm this payment. Please try again or contact support if the problem continues.";
-  }
-  if (normalizedMessage.includes("school exceeds the selected plan limits")) {
-    return "Your current school usage is above this plan's limits. Reduce usage before switching to this plan.";
-  }
-  if (normalizedMessage.includes("schedule this downgrade first")) {
-    return "This plan change is not ready for payment yet. Please wait until your current billing period ends.";
-  }
-  if (
-    normalizedMessage.includes("unable to initialize subscription checkout") ||
-    normalizedMessage.includes("paystack")
-  ) {
-    return "We couldn't start checkout right now. Please try again in a moment.";
-  }
-  return null;
+  verifyTermPayment: (reference) =>
+    api.get(`/subscriptions/terms/verify/${encodeURIComponent(reference)}`),
 };
 
 export default subscriptionService;
