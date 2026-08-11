@@ -103,8 +103,37 @@ class SubscriptionFeatureService:
     async def _resolve_subscription_state(
         db: AsyncSession, tenant_id: uuid.UUID
     ) -> ResolvedSubscriptionState:
-        current = await SubscriptionRepository.get_current_subscription(db, tenant_id)
         now = _utc_now()
+
+        from app.modules.student_academics.models import AcademicTermStatus
+        from app.modules.student_academics.repository import StudentAcademicRepository
+        from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
+
+        current_terms, _ = await StudentAcademicRepository.list_terms(
+            db,
+            tenant_id,
+            statuses={AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING},
+            is_current=True,
+            limit=1,
+        )
+        active_term = current_terms[0] if current_terms else None
+        if active_term is not None:
+            entitlement = await TermPlanEntitlementService.get_active(
+                db, tenant_id, active_term.id
+            )
+            if entitlement is not None and (
+                entitlement.safety_expires_at is None
+                or entitlement.safety_expires_at > now
+            ):
+                return ResolvedSubscriptionState(
+                    tenant_id=tenant_id,
+                    plan_code=entitlement.plan_code.value,
+                    status=SubscriptionStatus.ACTIVE,
+                    billing_interval=BillingInterval.TERM,
+                    provider=entitlement.provider,
+                )
+
+        current = await SubscriptionRepository.get_current_subscription(db, tenant_id)
         if (
             current is not None
             and current.plan_code == SubscriptionPlan.FREE_TRIAL
@@ -121,23 +150,6 @@ class SubscriptionFeatureService:
                 trial_ends_at=current.trial_ends_at,
                 subscription=current,
             )
-
-        from app.modules.student_academics.repository import StudentAcademicRepository
-        from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
-
-        active_term = await StudentAcademicRepository.get_current_term(db, tenant_id)
-        if active_term is not None:
-            entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, active_term.id)
-            if entitlement is not None and (
-                entitlement.safety_expires_at is None or entitlement.safety_expires_at > now
-            ):
-                return ResolvedSubscriptionState(
-                    tenant_id=tenant_id,
-                    plan_code=entitlement.plan_code.value,
-                    status=SubscriptionStatus.ACTIVE,
-                    billing_interval=BillingInterval.TERM,
-                    provider=entitlement.provider,
-                )
 
         if await SubscriptionRepository.get_tenant(db, tenant_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")

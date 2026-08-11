@@ -63,6 +63,38 @@ async def test_archived_class_arm_cannot_be_updated() -> None:
 
 
 @pytest.mark.asyncio
+async def test_class_teacher_can_be_explicitly_unassigned() -> None:
+    tenant_id = uuid.uuid4()
+    classroom = _classroom(tenant_id)
+    classroom.teacher_membership_id = uuid.uuid4()
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.classes.service.ClassRoomRepository.get_by_id",
+            new=AsyncMock(return_value=classroom),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=classroom.academic_level),
+        ),
+        patch(
+            "app.modules.classes.service.ClassRoomRepository.save",
+            new=AsyncMock(return_value=classroom),
+        ),
+    ):
+        response = await ClassRoomService.update_classroom(
+            db=db,
+            actor=_admin(tenant_id),
+            class_id=classroom.id,
+            payload=ClassRoomUpdate(teacher_membership_id=None),
+        )
+
+    assert classroom.teacher_membership_id is None
+    assert response.teacher_membership_id is None
+
+
+@pytest.mark.asyncio
 async def test_class_arm_with_live_enrollment_cannot_be_deactivated() -> None:
     tenant_id = uuid.uuid4()
     classroom = _classroom(tenant_id)

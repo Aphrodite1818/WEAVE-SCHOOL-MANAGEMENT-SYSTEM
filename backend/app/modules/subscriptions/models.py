@@ -77,7 +77,11 @@ class TenantSubscription(BaseModel):
     current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    is_current: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
+    is_current: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -146,7 +150,10 @@ class PaymentTransaction(BaseModel):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     amount_kobo: Mapped[int] = mapped_column(nullable=False)
     currency: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="NGN", server_default="NGN"
+        String(10),
+        nullable=False,
+        default="NGN",
+        server_default="NGN",
     )
     authorization_url: Mapped[str | None] = mapped_column(Text)
     access_code: Mapped[str | None] = mapped_column(String(120))
@@ -157,6 +164,13 @@ class PaymentTransaction(BaseModel):
     __table_args__ = (
         Index("ix_payment_transactions_tenant_status", "tenant_id", "status"),
         Index("ix_payment_transactions_tenant_term", "tenant_id", "academic_term_id"),
+        Index(
+            "uq_payment_transactions_pending_term",
+            "tenant_id",
+            "academic_term_id",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND provider = 'paystack'"),
+        ),
     )
 
 
@@ -192,7 +206,10 @@ class TermPlanEntitlement(BaseModel):
     )
     payment_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.payment_transactions.id", ondelete="SET NULL"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.payment_transactions.id",
+            ondelete="SET NULL",
+        ),
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="NGN")
@@ -212,7 +229,11 @@ class TermPlanEntitlement(BaseModel):
     safety_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_reason: Mapped[str | None] = mapped_column(String(120))
     activated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL")
+        UUID(as_uuid=True),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.tenant_admins.id",
+            ondelete="SET NULL",
+        ),
     )
 
     __table_args__ = (
@@ -223,6 +244,12 @@ class TermPlanEntitlement(BaseModel):
             "academic_term_id",
             unique=True,
             postgresql_where=text("status = 'active'"),
+        ),
+        Index(
+            "uq_term_entitlements_payment_transaction",
+            "payment_transaction_id",
+            unique=True,
+            postgresql_where=text("payment_transaction_id IS NOT NULL"),
         ),
     )
 
@@ -254,5 +281,9 @@ class PaymentWebhookEvent(UUIDMixin, TimestampMixin, Base):
             "event_key",
             name="uq_payment_webhook_events_provider_type_key",
         ),
-        Index("ix_payment_webhook_events_provider_type", "provider", "event_type"),
+        Index(
+            "ix_payment_webhook_events_provider_type",
+            "provider",
+            "event_type",
+        ),
     )

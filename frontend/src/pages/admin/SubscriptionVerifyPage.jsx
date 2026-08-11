@@ -18,7 +18,7 @@ function SubscriptionVerifyPage() {
   const { refreshSubscriptionState } = useSubscription();
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Verifying your payment...");
-  const [successRoute, setSuccessRoute] = useState("/admin/billing");
+  const [successRoute, setSuccessRoute] = useState("/admin/academic/terms");
   const reference = searchParams.get("reference");
 
   useEffect(() => {
@@ -45,10 +45,12 @@ function SubscriptionVerifyPage() {
         if (!mounted) return;
 
         clearSelectedSubscriptionPlan();
-        const nextSuccessRoute = "/admin/billing";
+        const nextSuccessRoute = "/admin/academic/terms";
         setSuccessRoute(nextSuccessRoute);
         setStatus("success");
-        setMessage("Payment verified. Your subscription is now active.");
+        setMessage(
+          "Payment verified. The plan is funded for this academic term. If the term is still a draft, open it from Academic Terms when setup is ready."
+        );
         redirectTimer = window.setTimeout(() => {
           navigate(nextSuccessRoute, { replace: true });
         }, 1800);
@@ -75,8 +77,8 @@ function SubscriptionVerifyPage() {
   return (
     <DashboardLayout
       role="admin"
-      title="Subscription Verification"
-      description="We are confirming your Paystack payment and refreshing your tenant billing state."
+      title="Term Plan Verification"
+      description="We are confirming your Paystack payment and attaching the plan to its academic term."
     >
       <Card className="mx-auto max-w-2xl p-6 sm:p-8">
         {status === "loading" ? (
@@ -120,7 +122,7 @@ function SubscriptionVerifyPage() {
                 }
               >
                 {status === "success"
-                  ? "Return to billing"
+                  ? "Go to academic terms"
                   : "Back to dashboard"}
               </Button>
             </div>
