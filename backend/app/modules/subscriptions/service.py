@@ -105,10 +105,18 @@ class SubscriptionFeatureService:
     ) -> ResolvedSubscriptionState:
         now = _utc_now()
 
+        from app.modules.student_academics.models import AcademicTermStatus
         from app.modules.student_academics.repository import StudentAcademicRepository
         from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
 
-        active_term = await StudentAcademicRepository.get_current_term(db, tenant_id)
+        current_terms, _ = await StudentAcademicRepository.list_terms(
+            db,
+            tenant_id,
+            statuses={AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING},
+            is_current=True,
+            limit=1,
+        )
+        active_term = current_terms[0] if current_terms else None
         if active_term is not None:
             entitlement = await TermPlanEntitlementService.get_active(
                 db, tenant_id, active_term.id
