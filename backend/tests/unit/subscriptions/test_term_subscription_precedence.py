@@ -17,7 +17,10 @@ from app.tenant_management.models import SubscriptionPlan
 
 
 @pytest.mark.asyncio
-async def test_open_term_entitlement_takes_precedence_over_live_trial() -> None:
+@pytest.mark.parametrize("term_status", ["open", "closing"])
+async def test_current_term_entitlement_takes_precedence_over_live_trial(
+    term_status: str,
+) -> None:
     tenant_id = uuid4()
     term_id = uuid4()
     trial = SimpleNamespace(
@@ -32,11 +35,12 @@ async def test_open_term_entitlement_takes_precedence_over_live_trial() -> None:
         provider=PaymentProvider.PAYSTACK,
         safety_expires_at=datetime.now(timezone.utc) + timedelta(days=100),
     )
+    current_term = SimpleNamespace(id=term_id, status=term_status, is_current=True)
 
     with (
         patch(
-            "app.modules.student_academics.repository.StudentAcademicRepository.get_current_term",
-            new=AsyncMock(return_value=SimpleNamespace(id=term_id)),
+            "app.modules.student_academics.repository.StudentAcademicRepository.list_terms",
+            new=AsyncMock(return_value=([current_term], 1)),
         ),
         patch(
             "app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.get_active",
@@ -58,7 +62,7 @@ async def test_open_term_entitlement_takes_precedence_over_live_trial() -> None:
 
 
 @pytest.mark.asyncio
-async def test_trial_remains_effective_until_paid_term_is_open() -> None:
+async def test_trial_remains_effective_until_paid_term_is_current() -> None:
     tenant_id = uuid4()
     trial = SimpleNamespace(
         id=uuid4(),
@@ -71,8 +75,8 @@ async def test_trial_remains_effective_until_paid_term_is_open() -> None:
 
     with (
         patch(
-            "app.modules.student_academics.repository.StudentAcademicRepository.get_current_term",
-            new=AsyncMock(return_value=None),
+            "app.modules.student_academics.repository.StudentAcademicRepository.list_terms",
+            new=AsyncMock(return_value=([], 0)),
         ),
         patch(
             "app.modules.subscriptions.service.SubscriptionRepository.get_current_subscription",
