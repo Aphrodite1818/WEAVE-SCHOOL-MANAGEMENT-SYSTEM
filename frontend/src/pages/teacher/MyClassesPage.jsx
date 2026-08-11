@@ -1,4 +1,5 @@
 import ResourceModulePage from "../shared/ResourceModulePage";
+import { displayClass } from "../../components/academic/academicDisplay";
 import { classService } from "../../services/academicsService";
 
 const teacherClassConfig = {
@@ -9,7 +10,7 @@ const teacherClassConfig = {
   canDelete: false,
   filters: [{ name: "search", label: "Search", placeholder: "Class name or arm" }],
   columns: [
-    { key: "name", label: "Class" },
+    { key: "academic_level_name", label: "Class", render: (item) => displayClass(item) },
     { key: "arm", label: "Arm", render: (item) => item.arm || "-" },
     {
       key: "teacher",
@@ -23,7 +24,7 @@ const teacherClassConfig = {
     active_only: true,
   }),
   mapItemToForm: () => ({}),
-  getItemLabel: (item) => [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Class",
+  getItemLabel: (item) => displayClass(item),
 };
 
 function MyClassesPage() {

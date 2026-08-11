@@ -1,4 +1,3 @@
-
 import { API_BASE_URL, api } from "./api";
 
 const PUBLIC_CATALOGUE_ETAG_KEY = "weave:public-pricing-etag";
@@ -59,6 +58,26 @@ const getPublicPlans = async ({ force = false } = {}) => {
   return data;
 };
 
+const resolveCheckoutTermId = async (explicitTermId) => {
+  if (explicitTermId) return explicitTermId;
+
+  const terms = await api.get("/tenant-admin/academics/terms?limit=100");
+  const items = terms?.items || terms || [];
+  const currentTerm = items.find(
+    (item) => item.is_current && item.status === "open",
+  );
+  if (currentTerm?.id) return currentTerm.id;
+
+  const draftTerms = items.filter((item) => item.status === "draft");
+  if (draftTerms.length === 1) return draftTerms[0].id;
+  if (draftTerms.length > 1) {
+    throw new Error(
+      "Choose the exact draft term from Academic Setup before starting checkout.",
+    );
+  }
+  throw new Error("Create a draft academic term before purchasing a term plan.");
+};
+
 export const subscriptionService = {
   getPublicPlans,
 
@@ -89,13 +108,11 @@ export const subscriptionService = {
   },
 
   initializePaidCurrentTermCheckout: async (payload) => {
-    const terms = await api.get("/tenant-admin/academics/terms?limit=100");
-    const currentTerm = (terms?.items || terms || []).find((item) => item.is_current && item.status === "open");
-    if (!currentTerm?.id) {
-      throw new Error("Open an academic term before upgrading its plan.");
-    }
+    const academicTermId = await resolveCheckoutTermId(
+      payload.academic_term_id || payload.academicTermId,
+    );
     return subscriptionService.initializeTermCheckout({
-      academic_term_id: currentTerm.id,
+      academic_term_id: academicTermId,
       plan_code: payload.plan_code,
     });
   },

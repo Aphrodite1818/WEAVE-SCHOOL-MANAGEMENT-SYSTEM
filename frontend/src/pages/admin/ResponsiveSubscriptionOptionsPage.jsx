@@ -1,6 +1,6 @@
 import { CheckCircle2, ChevronLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import PublicLayout from "../../components/layout/PublicLayout";
 import Badge from "../../components/ui/Badge";
@@ -17,10 +17,17 @@ import { subscriptionService } from "../../services/subscriptionService";
 import SubscriptionOptionsPage from "./SubscriptionOptionsPage";
 
 const PAID_PLAN_CODES = new Set(["plus", "professional", "enterprise"]);
+const PLAN_RANK = {
+  free: 0,
+  free_trial: 0,
+  plus: 1,
+  professional: 2,
+  enterprise: 3,
+};
 
 const isMobileViewport = () =>
-  typeof window !== "undefined"
-  && window.matchMedia("(max-width: 767px)").matches;
+  typeof window !== "undefined" &&
+  window.matchMedia("(max-width: 767px)").matches;
 
 function ResponsiveSubscriptionOptionsPage() {
   const [mobile, setMobile] = useState(isMobileViewport);
@@ -44,6 +51,8 @@ function ResponsiveSubscriptionOptionsPage() {
 
 function MobileSubscriptionOptionsPage() {
   const { planCode } = useSubscription();
+  const [searchParams] = useSearchParams();
+  const checkoutTermId = searchParams.get("term");
   const paidPlans = useMemo(
     () => LANDING_PRICING_PLANS.filter((plan) => PAID_PLAN_CODES.has(plan.planCode)),
     [],
@@ -58,24 +67,31 @@ function MobileSubscriptionOptionsPage() {
     if (PAID_PLAN_CODES.has(planCode)) setActivePlanCode(planCode);
   }, [planCode]);
 
-  const activePlan = paidPlans.find((plan) => plan.planCode === activePlanCode)
-    || paidPlans[0];
+  const activePlan =
+    paidPlans.find((plan) => plan.planCode === activePlanCode) || paidPlans[0];
   const isCurrent = activePlan?.planCode === planCode;
+  const hasCurrentPaidPlan = PAID_PLAN_CODES.has(planCode);
+  const lowerOrEqualMidTerm =
+    hasCurrentPaidPlan &&
+    (PLAN_RANK[activePlan?.planCode] ?? 0) <= (PLAN_RANK[planCode] ?? 0);
 
   const upgrade = async () => {
-    if (!activePlan || isCurrent) return;
+    if (!activePlan || isCurrent || lowerOrEqualMidTerm) return;
     setBusyPlan(activePlan.planCode);
     setError("");
     try {
       const checkout = await subscriptionService.initializePaidCurrentTermCheckout({
         plan_code: activePlan.planCode,
+        academic_term_id: checkoutTermId || undefined,
       });
       window.location.assign(checkout.authorization_url);
     } catch (checkoutError) {
-      setError(parseApiError(
-        checkoutError,
-        "Could not start term-plan checkout.",
-      ).message);
+      setError(
+        parseApiError(
+          checkoutError,
+          "Could not start term-plan checkout.",
+        ).message,
+      );
       setBusyPlan("");
     }
   };
@@ -102,8 +118,9 @@ function MobileSubscriptionOptionsPage() {
             Choose the capacity your school needs
           </h1>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            Paid access applies to the current academic term. Free remains available when
-            opening a new term.
+            Paid access applies to one academic term. During an active paid term
+            you can only move upward; lower plans become selectable for the next
+            term.
           </p>
         </section>
 
@@ -167,7 +184,9 @@ function MobileSubscriptionOptionsPage() {
                     <span className="capitalize text-text-muted">
                       {resource.replaceAll("_", " ")}
                     </span>
-                    <span className="font-semibold text-text">{formatLimitValue(limit)}</span>
+                    <span className="font-semibold text-text">
+                      {formatLimitValue(limit)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -177,13 +196,19 @@ function MobileSubscriptionOptionsPage() {
               data-mobile-billing-action="true"
               className="mt-6 w-full"
               onClick={upgrade}
-              disabled={isCurrent || busyPlan === activePlan.planCode}
+              disabled={
+                isCurrent ||
+                lowerOrEqualMidTerm ||
+                busyPlan === activePlan.planCode
+              }
             >
               {busyPlan === activePlan.planCode
                 ? "Starting checkout..."
                 : isCurrent
                   ? "Current term plan"
-                  : `Upgrade to ${formatPlanName(activePlan.planCode)}`}
+                  : lowerOrEqualMidTerm
+                    ? "Available next term"
+                    : `Upgrade to ${formatPlanName(activePlan.planCode)}`}
             </Button>
           </Card>
         ) : null}
