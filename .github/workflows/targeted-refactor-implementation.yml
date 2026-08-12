@@ -19,6 +19,17 @@ jobs:
           ref: academic-level-class-subscription-refactor
           fetch-depth: 0
 
+      - name: Repair staged script quoting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/targeted_refactor.py')
+          lines = path.read_text().splitlines()
+          index = next(i for i, line in enumerate(lines) if 'Create or update the one logical progression item' in line)
+          lines[index:index + 2] = ["        '''Create or update the one logical progression item for a student/run.'''"]
+          path.write_text('\n'.join(lines) + '\n')
+          PY
+
       - name: Trace student placement and progression UI
         run: |
           grep -R -n -E "Academic progression|Your next class has been assigned|Next class assigned|placement" frontend/src backend/app | head -n 200 || true
