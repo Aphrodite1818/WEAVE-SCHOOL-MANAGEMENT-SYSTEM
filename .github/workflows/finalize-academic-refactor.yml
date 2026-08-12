@@ -96,6 +96,25 @@ jobs:
           uv run --with alembic alembic revision --autogenerate --rev-id 20260812_fresh_schema -m "fresh immutable schema baseline"
           migration="$(find alembic/versions -maxdepth 1 -name '*fresh_immutable_schema_baseline.py' -print -quit)"
           test -n "$migration"
+          MIGRATION="$migration" python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          migration = Path(os.environ["MIGRATION"])
+          text = migration.read_text()
+          # PostgreSQL named ENUMs outlive DROP TABLE. The baseline is a full
+          # disposable-schema migration, so its downgrade must also remove all
+          # named types before a clean re-upgrade can succeed.
+          names = sorted(set(re.findall(r'name=["\x27]([a-zA-Z0-9_]+)["\x27]', text)))
+          cleanup = "\n".join(
+              f'    op.execute(\x27DROP TYPE IF EXISTS "{name}" CASCADE\x27)'
+              for name in names
+          )
+          if cleanup:
+              text = text.rstrip() + "\n\n    # Remove named PostgreSQL types left behind by table drops.\n" + cleanup + "\n"
+          migration.write_text(text)
+          PY
           ! grep -q 'Base.metadata' "$migration"
           ! grep -q 'create_all' "$migration"
           ! grep -q 'drop_all' "$migration"
