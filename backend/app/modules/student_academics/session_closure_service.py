@@ -67,7 +67,7 @@ class SessionClosureService:
         "No result remains draft, submitted, or approved-but-unlocked.",
         "No draft report card remains unpublished.",
         "No assessment-record import is pending or processing.",
-        "Every enrolled non-terminal level has a matching active arm in its next level.",
+        "Every non-terminal level has a valid progression destination; missing matching arms are routed to administrator placement.",
         "Terminal academic levels do not point to another level.",
         "The next session has at least one configured term.",
         "No progression run is already processing.",
@@ -159,6 +159,7 @@ class SessionClosureService:
         counts = dict(preview.dependency_counts)
         blockers = list(preview.blocker_messages)
         counts.setdefault("invalid_class_progression_targets", 0)
+        counts.setdefault("manual_class_placement_routes", 0)
         counts.setdefault("next_session_terms", 0)
 
         next_session = None
@@ -197,6 +198,7 @@ class SessionClosureService:
             session_id=session_id,
         )
         invalid_targets = 0
+        manual_placement_routes = 0
         checked_classes: set[uuid.UUID] = set()
         for enrollment in enrollments:
             if enrollment.class_id in checked_classes:
@@ -225,28 +227,72 @@ class SessionClosureService:
                 if not options:
                     invalid_targets += 1
                     blockers.append(f"Configure student-selection destinations for {level.name}.")
-                elif level.selection_target_type == ProgressionSelectionTargetType.LEVEL:
+                    continue
+                if level.selection_target_type == ProgressionSelectionTargetType.LEVEL:
                     if any(option.target_level_id is None for option in options):
                         invalid_targets += 1
                         blockers.append(f"{level.name} has mixed progression destinations.")
+                        continue
+                    for option in options:
+                        target_level = await AcademicLevelRepository.get_by_id(
+                            db, tenant_id, option.target_level_id
+                        )
+                        if (
+                            target_level is None
+                            or not target_level.is_active
+                            or target_level.archived_at is not None
+                        ):
+                            invalid_targets += 1
+                            blockers.append(
+                                f"{level.name} has an inactive or missing academic-level destination."
+                            )
                 elif level.selection_target_type == ProgressionSelectionTargetType.CLASSROOM:
                     if any(option.target_classroom_id is None for option in options):
                         invalid_targets += 1
                         blockers.append(f"{level.name} has mixed progression destinations.")
+                        continue
+                    for option in options:
+                        target_class = await ClassRoomRepository.get_by_id(
+                            db, tenant_id, option.target_classroom_id
+                        )
+                        if (
+                            target_class is None
+                            or not target_class.is_active
+                            or target_class.archived_at is not None
+                        ):
+                            invalid_targets += 1
+                            blockers.append(
+                                f"{level.name} has an inactive or missing classroom destination."
+                            )
+                else:
+                    invalid_targets += 1
+                    blockers.append(
+                        f"Configure whether {level.name} students choose a level or a classroom."
+                    )
                 continue
             if level.next_level_id is None:
                 invalid_targets += 1
                 blockers.append(f"Configure a next-level target for {level.name}.")
                 continue
+            target_level = await AcademicLevelRepository.get_by_id(
+                db, tenant_id, level.next_level_id
+            )
+            if (
+                target_level is None
+                or not target_level.is_active
+                or target_level.archived_at is not None
+            ):
+                invalid_targets += 1
+                blockers.append(f"The next level for {level.name} is missing or inactive.")
+                continue
             target = await ClassRoomRepository.get_by_level_and_arm(
                 db, tenant_id, level.next_level_id, classroom.arm
             )
             if target is None or not target.is_active or target.archived_at is not None:
-                invalid_targets += 1
-                blockers.append(
-                    f"The next level for {level.name} has no active {classroom.arm} arm."
-                )
+                manual_placement_routes += 1
+
         counts["invalid_class_progression_targets"] = invalid_targets
+        counts["manual_class_placement_routes"] = manual_placement_routes
 
         # De-duplicate while preserving the exact audit order.
         blockers = list(dict.fromkeys(blockers))
@@ -469,7 +515,7 @@ class SessionClosureService:
             try:
                 async with db.begin_nested():
                     source_class, target_class = graph[enrollment.class_id]
-                    item = await AcademicProgressionService._progress_student(
+                    await AcademicProgressionService._progress_student(
                         db,
                         actor=actor,
                         run=run,
