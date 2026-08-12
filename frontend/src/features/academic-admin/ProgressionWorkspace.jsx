@@ -55,7 +55,7 @@ function ProgressionWorkspace({ activeTab }) {
   }, [loadSessions]);
 
   useEffect(() => {
-    if (!["completed", "failed", "outcomes"].includes(activeTab) || !sessionId) return;
+    if (!["completed", "failed", "outcomes", "student-choices"].includes(activeTab) || !sessionId) return;
     let mounted = true;
     const loadOutcomes = async () => {
       setLoading(true);
