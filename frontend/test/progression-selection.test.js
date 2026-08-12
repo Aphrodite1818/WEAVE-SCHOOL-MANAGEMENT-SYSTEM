@@ -72,6 +72,8 @@ test("Academic Hub supports level updates and guarded deletion of levels without
   assert.match(source, /w-full sm:w-auto/);
   assert.match(source, /armCount.*arm/);
   assert.match(source, /showSuccess\("Level progression updated\."\);\s*setSelectedLevelId\(""\)/);
+  assert.match(source, /title="Configure level progression"/);
+  assert.match(source, /placement="center"/);
   for (const tab of ["overview", "create", "manage", "progression"]) {
     assert.match(config, new RegExp(`id: ["']${tab}["']`));
   }

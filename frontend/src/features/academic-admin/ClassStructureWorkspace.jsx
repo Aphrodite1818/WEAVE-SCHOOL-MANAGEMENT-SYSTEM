@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import MultiSelect from "../../components/ui/MultiSelect";
+import Modal from "../../components/ui/Modal";
 import { displayClass } from "../../components/academic/academicDisplay";
 import { useToast } from "../../hooks/useToast";
 import { academicLevelService, classService } from "../../services/academicsService";
@@ -378,9 +379,16 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                 </div>
               ) : null}
             </div>
-            {activeTab === "progression" && selectedLevelId ? (
+            <Modal
+              open={activeTab === "progression" && Boolean(selectedLevelId)}
+              title="Configure level progression"
+              description={levels.find((level) => level.id === selectedLevelId)?.name || "Selected academic level"}
+              onClose={() => setSelectedLevelId("")}
+              className="sm:max-w-xl"
+              placement="center"
+            >
               <form
-                className="mt-4 space-y-3 rounded-2xl border border-border bg-surface-muted/20 p-4 sm:p-5"
+                className="space-y-3"
                 onSubmit={saveProgression}
               >
                 <SelectControl
@@ -468,7 +476,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                   onCancel={() => setSelectedLevelId("")}
                 />
               </form>
-            ) : null}
+            </Modal>
             </WorkspacePanel>
           )}
         />
