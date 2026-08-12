@@ -1,0 +1,153 @@
+name: Finalize academic refactor
+
+on:
+  push:
+    branches:
+      - academic-level-class-subscription-refactor
+    paths:
+      - .github/workflows/finalize-academic-refactor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d weave_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      TWILIO_ACCOUNT_SID: ci-test-account
+      TWILIO_AUTH_TOKEN: ci-test-token
+      TWILIO_WHATSAPP_FROM: "whatsapp:+14155238886"
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: academic-level-class-subscription-refactor
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Apply remaining fixes
+        run: |
+          python .github/scripts/finish_academic_refactor.py
+          mkdir -p backend/tests/unit
+          if [ -f backend/tests/test_academic_refactor_regressions.py ]; then
+            mv backend/tests/test_academic_refactor_regressions.py backend/tests/unit/test_academic_refactor_regressions.py
+          fi
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked
+
+      - name: Generate immutable Alembic baseline
+        working-directory: backend
+        run: |
+          rm alembic/versions/20260811_fresh_schema_baseline.py
+          uv run --with alembic alembic revision --autogenerate --rev-id 20260812_fresh_schema -m "fresh immutable schema baseline"
+          migration="$(find alembic/versions -maxdepth 1 -name '*fresh_immutable_schema_baseline.py' -print -quit)"
+          test -n "$migration"
+          ! grep -q 'Base.metadata' "$migration"
+          ! grep -q 'create_all' "$migration"
+          ! grep -q 'drop_all' "$migration"
+          uv run ruff format "$migration" app/modules/subscriptions/term_entitlement_service.py app/modules/subscriptions/service.py tests/unit/test_academic_refactor_regressions.py
+
+      - name: Backend lint
+        working-directory: backend
+        run: uv run ruff check app/modules/subscriptions/term_entitlement_service.py app/modules/subscriptions/service.py app/modules/student_academics app/modules/classes/service.py app/modules/report_cards/service.py app/modules/teachers/offboarding_service.py tests/unit/test_academic_refactor_regressions.py
+
+      - name: Migration fresh upgrade and drift check
+        working-directory: backend
+        run: |
+          uv run --with alembic alembic heads
+          uv run --with alembic alembic upgrade head
+          uv run --with alembic alembic check
+          uv run --with alembic alembic downgrade base
+          uv run --with alembic alembic upgrade head
+
+      - name: Backend regression tests
+        working-directory: backend
+        run: uv run pytest -q tests/unit/test_academic_refactor_regressions.py
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: uv run pytest -q tests/unit
+
+      - name: Backend integration tests
+        working-directory: backend
+        run: uv run pytest -q tests/integration
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm run test:unit
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Commit validated branch-only changes
+        run: |
+          rm .github/workflows/finalize-academic-refactor.yml
+          rm .github/scripts/finish_academic_refactor.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: complete academic refactor safeguards and tests"
+          git push origin HEAD:academic-level-class-subscription-refactor
