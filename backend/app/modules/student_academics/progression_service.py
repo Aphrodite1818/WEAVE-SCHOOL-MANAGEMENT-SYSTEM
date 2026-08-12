@@ -523,6 +523,16 @@ class AcademicProgressionService:
         )
         if item is None or item.action != StudentProgressionItemAction.STUDENT_SELECTION:
             return None
+        run = await StudentProgressionRepository.get_run_by_id(
+            db, student.tenant_id, item.progression_run_id
+        )
+        if run is None:
+            return None
+        next_session = await AcademicSessionLifecycleRepository.get_by_id(
+            db, student.tenant_id, run.next_academic_session_id
+        )
+        if next_session is None or next_session.status != AcademicSessionStatus.OPEN:
+            return None
         return await AcademicProgressionService._selection_response(
             db, tenant_id=student.tenant_id, item=item
         )
@@ -677,6 +687,10 @@ class AcademicProgressionService:
         )
         if next_session is None:
             raise ConflictException("Target academic session is missing.")
+        if changed_by_admin_id is None and next_session.status != AcademicSessionStatus.OPEN:
+            raise ConflictException(
+                "Progression selection becomes available when the next academic session opens."
+            )
 
         item.selected_level_id = option.target_level_id
         item.selected_classroom_id = option.target_classroom_id
