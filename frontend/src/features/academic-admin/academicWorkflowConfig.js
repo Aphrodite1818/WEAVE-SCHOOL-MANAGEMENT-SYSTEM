@@ -117,6 +117,7 @@ export const academicWorkflowConfig = {
       { id: "draft", label: "Draft Sessions" },
       { id: "open", label: "Open Session" },
       { id: "closing", label: "Closing" },
+      { id: "student-choices", label: "Student Choices" },
       { id: "closed", label: "Closed Sessions" },
     ],
   },

@@ -59,7 +59,8 @@ function MobileSubscriptionOptionsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const checkoutTermId = searchParams.get("term");
-  const shouldOpenTermAfterPayment = checkoutTermId && searchParams.get("intent") === "open-term";
+  const shouldOpenTermAfterPayment =
+    checkoutTermId && searchParams.get("intent") === "open-term";
   const requestedPlanCode = searchParams.get("plan");
   const availablePlans = useMemo(
     () => LANDING_PRICING_PLANS.filter(

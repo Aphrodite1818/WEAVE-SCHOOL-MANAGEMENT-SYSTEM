@@ -19,7 +19,7 @@ function SubscriptionVerifyPage() {
   const { refreshSubscriptionState } = useSubscription();
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Verifying your payment...");
-  const [successRoute, setSuccessRoute] = useState("/admin/billing");
+  const [successRoute, setSuccessRoute] = useState("/admin/academic/terms");
   const reference = searchParams.get("reference");
 
   useEffect(() => {
@@ -70,13 +70,14 @@ function SubscriptionVerifyPage() {
           ? "/admin/dashboard"
           : shouldOpenTerm
             ? "/admin/academic/terms"
-            : "/admin/billing";
+            : "/admin/academic/terms";
         setSuccessRoute(nextSuccessRoute);
         setStatus("success");
         setMessage(
           openedTerm
             ? "Payment verified. Your academic term is now open."
-            : openTermError || "Payment verified. Your subscription is now active."
+            : openTermError ||
+                "Payment verified. The plan is funded for this academic term. If the term is still a draft, open it from Academic Terms when setup is ready."
         );
         redirectTimer = window.setTimeout(() => {
           navigate(nextSuccessRoute, { replace: true });
@@ -104,8 +105,8 @@ function SubscriptionVerifyPage() {
   return (
     <DashboardLayout
       role="admin"
-      title="Subscription Verification"
-      description="We are confirming your Paystack payment and refreshing your tenant billing state."
+      title="Term Plan Verification"
+      description="We are confirming your Paystack payment and attaching the plan to its academic term."
     >
       <Card className="mx-auto max-w-2xl p-6 sm:p-8">
         {status === "loading" ? (
@@ -151,9 +152,7 @@ function SubscriptionVerifyPage() {
                 {status === "success"
                   ? successRoute === "/admin/dashboard"
                     ? "Go to dashboard"
-                    : successRoute === "/admin/billing"
-                      ? "Return to billing"
-                      : "Go to academic terms"
+                    : "Go to academic terms"
                   : "Back to dashboard"}
               </Button>
             </div>

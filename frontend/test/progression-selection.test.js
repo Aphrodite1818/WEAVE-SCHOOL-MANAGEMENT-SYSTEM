@@ -25,10 +25,18 @@ test("student progression UI supports immediate selection without approval langu
 
 test("admin outcomes provide class placement and no selection approval action", async () => {
   const source = await read("src/features/academic-admin/ProgressionWorkspace.jsx");
+  const page = await read("src/pages/admin/AcademicWorkflowPage.jsx");
+  const config = await read("src/features/academic-admin/academicWorkflowConfig.js");
+  assert.match(source, /title="Student Choices"/);
+  assert.match(source, /selection-based classes/);
+  assert.match(source, /item\.action === "student_selection"/);
   assert.match(source, /awaiting_class_placement/);
   assert.match(source, /placeProgressionStudent/);
   assert.match(source, /Assign class/);
   assert.doesNotMatch(source, /Approve selection|Reject selection/i);
+  assert.match(config, /id: "student-choices", label: "Student Choices"/);
+  assert.match(page, /activeTab === "student-choices"/);
+  assert.match(page, /<ProgressionWorkspace/);
 });
 
 test("frontend services use the canonical progression and staged closure contracts", async () => {

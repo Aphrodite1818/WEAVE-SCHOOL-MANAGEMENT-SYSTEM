@@ -817,6 +817,7 @@ function AdminGettingStartedPage() {
     try {
       await academicService.openTerm(selectedTerm.id);
       showSuccess("Academic term opened.");
+      await loadSetup({ quiet: true });
       await guide.finish();
       navigate("/admin/dashboard", { replace: true });
     } catch (requestError) {

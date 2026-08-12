@@ -138,6 +138,10 @@ function ProgressionWorkspace({ activeTab }) {
   );
 
   const selectedSession = sessions.find((item) => item.id === sessionId);
+  const selectionItems = useMemo(
+    () => (runDetail?.items || []).filter((item) => item.action === "student_selection"),
+    [runDetail],
+  );
 
   const closeAndProgress = async (event) => {
     event.preventDefault();
@@ -168,11 +172,11 @@ function ProgressionWorkspace({ activeTab }) {
     }
   };
 
-  if (["completed", "failed", "outcomes"].includes(activeTab)) {
+  if (["completed", "failed", "outcomes", "student-choices"].includes(activeTab)) {
     return (
       <WorkspacePanel
-        title="Progression outcomes"
-        description="Review student selections and supply a concrete classroom only when level selection cannot resolve safely."
+        title="Student Choices"
+        description="Review only students from selection-based classes, correct their chosen destination when needed, and supply a concrete classroom when level selection cannot resolve safely. General progression outcomes are not shown here."
       >
         <SelectControl
           label="Academic session"
@@ -182,7 +186,7 @@ function ProgressionWorkspace({ activeTab }) {
           required
         />
         <div className="mt-4 grid gap-3">
-          {(runDetail?.items || []).map((item) => {
+          {selectionItems.map((item) => {
             const progression = studentProgressions[item.student_id];
             const selectedLevelId = progression?.item?.selected_level_id;
             const availableClasses = classes.filter(
@@ -257,8 +261,10 @@ function ProgressionWorkspace({ activeTab }) {
               </div>
             );
           })}
-          {!loading && !(runDetail?.items || []).length ? (
-            <p className="text-sm text-text-muted">No progression outcomes for this session.</p>
+          {!loading && !selectionItems.length ? (
+            <p className="text-sm text-text-muted">
+              No student choices from selection-based classes for this session.
+            </p>
           ) : null}
         </div>
       </WorkspacePanel>

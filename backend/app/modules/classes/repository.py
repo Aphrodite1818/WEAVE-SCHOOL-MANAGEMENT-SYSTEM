@@ -204,7 +204,6 @@ class AcademicLevelRepository:
         await db.delete(level)
         await db.flush()
 
-
 class ClassRoomRepository:
     @staticmethod
     async def add(db: AsyncSession, classroom: ClassRoom) -> ClassRoom:

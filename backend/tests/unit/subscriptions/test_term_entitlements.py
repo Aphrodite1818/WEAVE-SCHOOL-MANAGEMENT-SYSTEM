@@ -214,7 +214,7 @@ async def test_duplicate_payment_activation_is_idempotent_even_after_term_close(
 
 
 @pytest.mark.asyncio
-async def test_paid_activation_revalidates_term_state_at_settlement() -> None:
+async def test_paid_activation_rejects_closed_term_at_settlement() -> None:
     transaction = _paid_transaction()
     with (
         patch.object(
@@ -228,13 +228,45 @@ async def test_paid_activation_revalidates_term_state_at_settlement() -> None:
             new=AsyncMock(return_value=SimpleNamespace(status=AcademicTermStatus.CLOSED)),
         ),
     ):
-        with pytest.raises(
-            ConflictException,
-            match="cannot be activated after the academic term is closed",
-        ):
+        with pytest.raises(ConflictException, match="after the academic term is closed"):
             await TermPlanEntitlementService.activate_verified_transaction(
                 MagicMock(), transaction, _successful_payment_payload(transaction)
             )
+
+
+@pytest.mark.asyncio
+async def test_paid_activation_can_finish_checkout_while_term_is_closing() -> None:
+    transaction = _paid_transaction()
+    tenant = SimpleNamespace(plan=SubscriptionPlan.FREE, initial_plan_intent=None)
+    db = MagicMock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+    with (
+        patch.object(
+            TermPlanEntitlementService,
+            "_get_entitlement_for_transaction",
+            new=AsyncMock(return_value=None),
+        ),
+        patch.object(
+            TermPlanEntitlementService,
+            "_term",
+            new=AsyncMock(return_value=SimpleNamespace(status=AcademicTermStatus.CLOSING)),
+        ),
+        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=None)),
+        patch(
+            "app.modules.subscriptions.term_entitlement_service.SubscriptionRepository.get_tenant",
+            new=AsyncMock(return_value=tenant),
+        ),
+        patch(
+            "app.modules.subscriptions.term_entitlement_service.invalidate_tenant_subscription_cache",
+            new=AsyncMock(),
+        ),
+    ):
+        entitlement = await TermPlanEntitlementService.activate_verified_transaction(
+            db, transaction, _successful_payment_payload(transaction)
+        )
+    assert entitlement.status == TermEntitlementStatus.ACTIVE
+    assert transaction.status == PaymentStatus.SUCCESS
 
 
 @pytest.mark.asyncio
@@ -384,6 +416,20 @@ async def test_checkout_rejects_switching_plan_while_payment_is_pending() -> Non
                 term_id,
                 SubscriptionPlan.PROFESSIONAL,
                 "admin@example.com",
+            )
+
+
+@pytest.mark.asyncio
+async def test_term_closure_blocks_while_paystack_checkout_is_pending() -> None:
+    pending = _paid_transaction()
+    with patch.object(
+        TermPlanEntitlementService,
+        "_get_pending_checkout",
+        new=AsyncMock(return_value=pending),
+    ):
+        with pytest.raises(ConflictException, match="pending Paystack checkout"):
+            await TermPlanEntitlementService.close_for_term(
+                MagicMock(), pending.tenant_id, pending.academic_term_id
             )
 
 
