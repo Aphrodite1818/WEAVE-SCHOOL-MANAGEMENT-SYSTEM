@@ -835,7 +835,9 @@ function AdminGettingStartedPage() {
 
       try {
         if (!activation.suggested_plan) {
-          navigate(`/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}`);
+          navigate(
+            `/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}&intent=open-term`,
+          );
           return;
         }
 
@@ -843,6 +845,10 @@ function AdminGettingStartedPage() {
           const checkout = await subscriptionService.initializeTermCheckout({
             academic_term_id: selectedTerm.id,
             plan_code: activation.suggested_plan,
+          });
+          subscriptionService.saveTermPaymentOpenIntent({
+            academicTermId: selectedTerm.id,
+            reference: checkout.reference,
           });
           window.location.assign(checkout.authorization_url);
           return;
@@ -857,7 +863,9 @@ function AdminGettingStartedPage() {
           return;
         }
 
-        navigate(`/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}`);
+        navigate(
+          `/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}&intent=open-term`,
+        );
       } catch (activationError) {
         const message = getErrorMessage(
           activationError,

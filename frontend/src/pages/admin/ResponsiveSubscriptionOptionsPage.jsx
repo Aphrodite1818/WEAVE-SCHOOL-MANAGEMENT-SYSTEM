@@ -59,6 +59,7 @@ function MobileSubscriptionOptionsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const checkoutTermId = searchParams.get("term");
+  const shouldOpenTermAfterPayment = checkoutTermId && searchParams.get("intent") === "open-term";
   const requestedPlanCode = searchParams.get("plan");
   const availablePlans = useMemo(
     () => LANDING_PRICING_PLANS.filter(
@@ -103,6 +104,12 @@ function MobileSubscriptionOptionsPage() {
         plan_code: activePlan.planCode,
         academic_term_id: checkoutTermId || undefined,
       });
+      if (shouldOpenTermAfterPayment) {
+        subscriptionService.saveTermPaymentOpenIntent({
+          academicTermId: checkoutTermId,
+          reference: checkout.reference,
+        });
+      }
       window.location.assign(checkout.authorization_url);
     } catch (checkoutError) {
       setError(

@@ -520,6 +520,10 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         academic_term_id: termPlanPrompt.term.id,
         plan_code: termPlanPrompt.suggested_plan,
       });
+      subscriptionService.saveTermPaymentOpenIntent({
+        academicTermId: termPlanPrompt.term.id,
+        reference: checkout.reference,
+      });
       window.location.assign(checkout.authorization_url);
     } catch (error) {
       showError(getErrorMessage(error, "Could not start term payment."));
@@ -1212,8 +1216,8 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       <Modal
         open={Boolean(termPlanPrompt)}
         onClose={() => setTermPlanPrompt(null)}
-        title="Open Academic Term"
-        description="Every open term needs its own plan entitlement. Payment activates the plan; it does not open the term automatically."
+        title="Pay for term"
+        description="This term needs a plan entitlement before it can open. After the payment is verified, Weave will open the term automatically."
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
@@ -1222,9 +1226,9 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
             <p className="mt-1 text-sm text-text-muted">{termPlanPrompt?.payment_required ? `₦${Number(termPlanPrompt?.amount_kobo || 0) / 100} for this academic term` : "₦0 for this academic term"}</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            {termPlanPrompt?.payment_required ? <Button onClick={payForSelectedPlan} disabled={saving === termPlanPrompt?.term?.id}>Pay & activate</Button> : null}
+            {termPlanPrompt?.payment_required ? <Button onClick={payForSelectedPlan} disabled={saving === termPlanPrompt?.term?.id}>Pay for term</Button> : null}
             <Button variant={termPlanPrompt?.payment_required ? "outline" : "primary"} onClick={activateFreeAndOpen} disabled={saving === termPlanPrompt?.term?.id}>{termPlanPrompt?.payment_required ? "Continue with Free" : "Activate Free & open term"}</Button>
-            <Button variant="ghost" onClick={() => { window.location.assign("/admin/billing/plans"); }}>View paid plans</Button>
+            <Button variant="ghost" onClick={() => { window.location.assign(`/admin/billing/plans?term=${encodeURIComponent(termPlanPrompt?.term?.id || "")}&intent=open-term`); }}>View paid plans</Button>
           </div>
         </div>
       </Modal>

@@ -2,6 +2,7 @@ import { API_BASE_URL, api } from "./api";
 
 const PUBLIC_CATALOGUE_ETAG_KEY = "weave:public-pricing-etag";
 const PUBLIC_CATALOGUE_VALUE_KEY = "weave:public-pricing-catalogue";
+const TERM_PAYMENT_OPEN_INTENT_KEY = "weave:term-payment-open-intent";
 const TERM_ORDER = {
   first_term: 1,
   second_term: 2,
@@ -98,6 +99,37 @@ const resolveCheckoutTermId = async (explicitTermId) => {
   throw new Error("Create a draft academic term before purchasing a term plan.");
 };
 
+const saveTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
+  if (typeof window === "undefined" || !academicTermId || !reference) return;
+  window.sessionStorage.setItem(
+    TERM_PAYMENT_OPEN_INTENT_KEY,
+    JSON.stringify({
+      academicTermId: String(academicTermId),
+      reference: String(reference),
+    }),
+  );
+};
+
+const consumeTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const rawValue = window.sessionStorage.getItem(TERM_PAYMENT_OPEN_INTENT_KEY);
+    if (!rawValue) return null;
+
+    const intent = JSON.parse(rawValue);
+    const sameTerm = String(intent?.academicTermId || "") === String(academicTermId || "");
+    const sameReference = String(intent?.reference || "") === String(reference || "");
+    if (!sameTerm || !sameReference) return null;
+
+    window.sessionStorage.removeItem(TERM_PAYMENT_OPEN_INTENT_KEY);
+    return intent;
+  } catch {
+    window.sessionStorage.removeItem(TERM_PAYMENT_OPEN_INTENT_KEY);
+    return null;
+  }
+};
+
 export const subscriptionService = {
   getPublicPlans,
 
@@ -139,6 +171,10 @@ export const subscriptionService = {
 
   verifyTermPayment: (reference) =>
     api.get(`/subscriptions/terms/verify/${encodeURIComponent(reference)}`),
+
+  saveTermPaymentOpenIntent,
+
+  consumeTermPaymentOpenIntent,
 };
 
 export default subscriptionService;
