@@ -1,4 +1,4 @@
-"""Route dependencies that pause academic writes while a session is closing."""
+"""Academic write guards shared by routes, services, workers, and scripts."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
@@ -25,16 +26,17 @@ _LIFECYCLE_WRITE_SUFFIXES = {
 }
 
 
-async def _ensure_write_window(
-    request: Request,
-    db: DbSession,
+async def ensure_academic_write_window(
+    db: AsyncSession,
     *,
     tenant_id,
 ) -> None:
-    if request.method.upper() in _SAFE_METHODS:
-        return
-    if any(request.url.path.endswith(suffix) for suffix in _LIFECYCLE_WRITE_SUFFIXES):
-        return
+    """Reject academic writes while the tenant's current session is closing.
+
+    This is the canonical domain guard. Route dependencies call it for HTTP
+    requests, while services/workers can invoke it directly so the invariant
+    cannot be bypassed by a script, background job, or newly added endpoint.
+    """
 
     closing_session = (
         await db.execute(
@@ -57,6 +59,20 @@ async def _ensure_write_window(
                 "writes_paused": True,
             },
         )
+
+
+async def _ensure_write_window(
+    request: Request,
+    db: DbSession,
+    *,
+    tenant_id,
+) -> None:
+    if request.method.upper() in _SAFE_METHODS:
+        return
+    if any(request.url.path.endswith(suffix) for suffix in _LIFECYCLE_WRITE_SUFFIXES):
+        return
+
+    await ensure_academic_write_window(db, tenant_id=tenant_id)
 
 
 async def ensure_admin_academic_write_window(
