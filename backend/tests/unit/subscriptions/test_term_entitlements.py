@@ -22,6 +22,16 @@ from app.tenant_management.models import SubscriptionPlan
 from app.tenant_management.schemas import TenantRegisterRequest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_periodic_pending_checkout_cleanup():
+    with patch.object(
+        TermPlanEntitlementService,
+        "expire_stale_pending_checkouts",
+        new=AsyncMock(return_value=0),
+    ):
+        yield
+
+
 def test_free_is_distinct_from_trial_and_does_not_inherit_paid_features() -> None:
     assert SubscriptionPlan.FREE is not SubscriptionPlan.FREE_TRIAL
     assert (
@@ -127,9 +137,7 @@ async def test_free_activation_rejects_open_term() -> None:
         new=AsyncMock(return_value=SimpleNamespace(status=AcademicTermStatus.OPEN)),
     ):
         with pytest.raises(ConflictException, match="still a draft"):
-            await TermPlanEntitlementService.activate_free(
-                MagicMock(), uuid4(), uuid4(), uuid4()
-            )
+            await TermPlanEntitlementService.activate_free(MagicMock(), uuid4(), uuid4(), uuid4())
 
 
 @pytest.mark.asyncio
@@ -294,7 +302,9 @@ async def test_paid_upgrade_closes_free_entitlement_without_opening_term() -> No
             "_term",
             new=AsyncMock(return_value=SimpleNamespace(status=AcademicTermStatus.DRAFT)),
         ),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
         patch(
             "app.modules.subscriptions.term_entitlement_service.SubscriptionRepository.get_tenant",
             new=AsyncMock(return_value=tenant),

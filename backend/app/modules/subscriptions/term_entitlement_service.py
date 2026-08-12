@@ -113,6 +113,45 @@ class TermPlanEntitlementService:
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
+    def _pending_checkout_is_stale(
+        transaction: PaymentTransaction,
+        *,
+        as_of: datetime | None = None,
+    ) -> bool:
+        now = as_of or datetime.now(timezone.utc)
+        return (
+            transaction.status == PaymentStatus.PENDING
+            and transaction.created_at is not None
+            and transaction.created_at < now - PENDING_CHECKOUT_TTL
+        )
+
+    @staticmethod
+    async def expire_stale_pending_checkouts(
+        db: AsyncSession,
+        *,
+        as_of: datetime | None = None,
+        tenant_id: uuid.UUID | None = None,
+        term_id: uuid.UUID | None = None,
+    ) -> int:
+        now = as_of or datetime.now(timezone.utc)
+        query = select(PaymentTransaction).where(
+            PaymentTransaction.provider == PaymentProvider.PAYSTACK,
+            PaymentTransaction.status == PaymentStatus.PENDING,
+            PaymentTransaction.created_at < now - PENDING_CHECKOUT_TTL,
+        )
+        if tenant_id is not None:
+            query = query.where(PaymentTransaction.tenant_id == tenant_id)
+        if term_id is not None:
+            query = query.where(PaymentTransaction.academic_term_id == term_id)
+        rows = list((await db.execute(query.with_for_update())).scalars().all())
+        for transaction in rows:
+            transaction.status = PaymentStatus.ABANDONED
+            transaction.failure_reason = "Pending checkout expired before payment completion."
+        if rows:
+            await db.flush()
+        return len(rows)
+
+    @staticmethod
     def amount_kobo(plan: SubscriptionPlan) -> int:
         fields = {
             SubscriptionPlan.PLUS: "PAYSTACK_PLUS_TERM_AMOUNT_KOBO",
@@ -173,9 +212,7 @@ class TermPlanEntitlementService:
     async def ensure_open_eligible(
         db: AsyncSession, tenant_id: uuid.UUID, term_id: uuid.UUID
     ) -> TermPlanEntitlement:
-        entitlement = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         now = datetime.now(timezone.utc)
         if entitlement is None or (
             entitlement.safety_expires_at and entitlement.safety_expires_at <= now
@@ -210,9 +247,7 @@ class TermPlanEntitlementService:
             raise ConflictException(
                 "The Free plan can only be activated while the academic term is still a draft."
             )
-        existing = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        existing = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         if existing:
             if existing.plan_code == SubscriptionPlan.FREE:
                 return existing
@@ -263,9 +298,7 @@ class TermPlanEntitlementService:
         email: str,
     ) -> SubscriptionCheckoutResponse:
         if plan not in PAID_TERM_PLANS:
-            raise ConflictException(
-                "Select Plus, Professional, or Enterprise for paid activation."
-            )
+            raise ConflictException("Select Plus, Professional, or Enterprise for paid activation.")
 
         term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
         TermPlanEntitlementService._ensure_paid_checkout_term_state(term)
@@ -281,8 +314,7 @@ class TermPlanEntitlementService:
         if pending is not None:
             now = datetime.now(timezone.utc)
             reusable = bool(pending.authorization_url) and (
-                pending.created_at is None
-                or pending.created_at >= now - PENDING_CHECKOUT_TTL
+                pending.created_at is None or pending.created_at >= now - PENDING_CHECKOUT_TTL
             )
             if reusable:
                 if pending.plan_code != plan:
@@ -303,9 +335,7 @@ class TermPlanEntitlementService:
 
         callback_url = str(settings.PAYSTACK_CALLBACK_URL or "").strip()
         if settings.is_production_like and not callback_url:
-            raise ConflictException(
-                "Paystack callback URL is not configured for this environment."
-            )
+            raise ConflictException("Paystack callback URL is not configured for this environment.")
 
         reference = f"term-{term_id.hex[:12]}-{uuid.uuid4().hex[:16]}"
         transaction = PaymentTransaction(
@@ -445,6 +475,11 @@ class TermPlanEntitlementService:
         *,
         reason: str = "term_closed",
     ) -> None:
+        await TermPlanEntitlementService.expire_stale_pending_checkouts(
+            db,
+            tenant_id=tenant_id,
+            term_id=term_id,
+        )
         pending = await TermPlanEntitlementService._get_pending_checkout(
             db, tenant_id, term_id, lock=True
         )
@@ -454,20 +489,20 @@ class TermPlanEntitlementService:
                 "Complete the payment or wait for the checkout to expire before finalizing closure."
             )
 
-        entitlement = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         if entitlement:
             entitlement.status = TermEntitlementStatus.CLOSED
             entitlement.closed_at = datetime.now(timezone.utc)
             entitlement.closed_reason = reason
 
     @staticmethod
-    async def reconcile(
-        db: AsyncSession, *, as_of: datetime | None = None
-    ) -> dict[str, int]:
+    async def reconcile(db: AsyncSession, *, as_of: datetime | None = None) -> dict[str, int]:
         """Safety repair only; normal entitlement closure is synchronous with term closure."""
         now = as_of or datetime.now(timezone.utc)
+        await TermPlanEntitlementService.expire_stale_pending_checkouts(
+            db,
+            as_of=now,
+        )
         result = await db.execute(
             select(TermPlanEntitlement, AcademicTerm.status)
             .join(AcademicTerm, AcademicTerm.id == TermPlanEntitlement.academic_term_id)

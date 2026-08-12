@@ -94,7 +94,9 @@ class StudentAcademicRepository:
                 select(AcademicSession).where(
                     AcademicSession.tenant_id == tenant_id,
                     AcademicSession.is_current.is_(True),
-                    AcademicSession.status == AcademicSessionStatus.OPEN,
+                    AcademicSession.status.in_(
+                        {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
+                    ),
                 )
             )
         ).scalar_one_or_none()
@@ -199,7 +201,9 @@ class StudentAcademicRepository:
                 select(AcademicTerm).where(
                     AcademicTerm.tenant_id == tenant_id,
                     AcademicTerm.is_current.is_(True),
-                    AcademicTerm.status == AcademicTermStatus.OPEN,
+                    AcademicTerm.status.in_(
+                        {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
+                    ),
                 )
             )
         ).scalar_one_or_none()

@@ -30,6 +30,7 @@ from app.modules.classes.schemas import (
     ClassRoomUpdate,
 )
 from app.modules.parents.models import Parent
+from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.students.models import AcademicStatus, Student
 from app.modules.students.repository import StudentParentLinkRepository
 from app.modules.teachers.models import (
@@ -84,6 +85,7 @@ class AcademicLevelService:
         db: AsyncSession, actor: TenantAdmin, payload: AcademicLevelCreate
     ) -> AcademicLevelResponse:
         AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         if await AcademicLevelRepository.get_by_normalized_name(db, actor.tenant_id, payload.name):
             raise ConflictException("Academic level with this name already exists")
         level = AcademicLevel(
@@ -127,6 +129,7 @@ class AcademicLevelService:
         payload: AcademicLevelUpdate,
     ) -> AcademicLevelResponse:
         AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
         if level is None:
             raise NotFoundException("Academic level not found")
@@ -153,6 +156,7 @@ class AcademicLevelService:
         payload: AcademicLevelProgressionConfigureRequest,
     ) -> AcademicLevelProgressionResponse:
         AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
         if level is None:
             raise NotFoundException("Academic level not found")
@@ -418,6 +422,7 @@ class ClassRoomService:
         """Create a tenant-scoped classroom."""
 
         ClassRoomService._ensure_tenant_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         level = await AcademicLevelRepository.get_by_id(
             db, actor.tenant_id, payload.academic_level_id
@@ -512,7 +517,7 @@ class ClassRoomService:
         """Get classrooms visible to the current actor."""
 
         ClassRoomService._ensure_tenant_actor(actor)
-        limit = min(limit, 100)
+        limit = min(limit, 500)
 
         if isinstance(actor, TenantAdmin):
             classrooms = await ClassRoomRepository.list_for_tenant(
@@ -588,6 +593,7 @@ class ClassRoomService:
         """Update classroom details."""
 
         ClassRoomService._ensure_tenant_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,
@@ -606,6 +612,18 @@ class ClassRoomService:
         new_level_id = update_data.get("academic_level_id", classroom.academic_level_id)
         new_arm = update_data.get("arm", classroom.arm)
         new_normalized_arm = normalized_class_arm_key(new_arm)
+
+        if new_level_id != classroom.academic_level_id:
+            dependency_counts = await ClassRoomRepository.count_class_dependencies(
+                db=db,
+                tenant_id=actor.tenant_id,
+                class_id=classroom.id,
+            )
+            if any(dependency_counts.values()):
+                raise ConflictException(
+                    "Academic level cannot be changed after this class has academic history.",
+                    payload={"dependency_counts": dependency_counts},
+                )
 
         level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, new_level_id)
         if level is None or level.archived_at is not None or not level.is_active:
@@ -708,6 +726,7 @@ class ClassRoomService:
         """Deactivate a classroom without archiving or deleting it."""
 
         ClassRoomService._ensure_tenant_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,
@@ -742,6 +761,7 @@ class ClassRoomService:
         """Permanently remove an unused classroom created during assisted setup."""
 
         ClassRoomService._ensure_tenant_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,
@@ -774,6 +794,7 @@ class ClassRoomService:
         class_id: uuid.UUID,
     ) -> ClassRoomResponse:
         ClassRoomService._ensure_tenant_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,
@@ -809,6 +830,7 @@ class ClassRoomService:
         class_id: uuid.UUID,
     ) -> ClassRoomResponse:
         ClassRoomService._ensure_tenant_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,
@@ -851,6 +873,7 @@ class ClassRoomService:
         class_id: uuid.UUID,
     ) -> ClassRoomResponse:
         ClassRoomService._ensure_tenant_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         classroom = await ClassRoomRepository.get_by_id(
             db=db,

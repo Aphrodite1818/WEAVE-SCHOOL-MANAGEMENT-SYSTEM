@@ -84,7 +84,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     setError(null);
     try {
       const [classResponse, teacherResponse] = await Promise.all([
-        classService.getClasses({ limit: 100, activeOnly: true }),
+        classService.getClasses({ limit: 500, activeOnly: true }),
         teacherService.listMemberships({ limit: 100 }),
       ]);
       const nextClasses = asItems(classResponse);

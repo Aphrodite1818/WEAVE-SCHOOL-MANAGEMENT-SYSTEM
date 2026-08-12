@@ -12,6 +12,15 @@ from app.modules.student_academics.schemas import TeacherAssignmentEnd
 from app.modules.student_academics.service import StudentAcademicService
 
 
+@pytest.fixture(autouse=True)
+def _allow_academic_writes_for_assignment_unit_tests():
+    with patch(
+        "app.modules.student_academics.service.ensure_academic_write_window",
+        new=AsyncMock(),
+    ):
+        yield
+
+
 def _assignment() -> TeacherAssignment:
     now = datetime.now(timezone.utc)
     return TeacherAssignment(

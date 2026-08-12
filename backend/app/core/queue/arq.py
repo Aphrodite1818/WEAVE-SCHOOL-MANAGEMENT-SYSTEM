@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import uuid
 from urllib.parse import urlparse
 
 from arq import create_pool
@@ -102,7 +103,7 @@ async def enqueue_session_progression_job(
     )
     job_id = f"session-progression:{run_id}"
     if retry:
-        job_id = f"{job_id}:retry"
+        job_id = f"{job_id}:retry:{uuid.uuid4().hex}"
 
     try:
         job = await redis.enqueue_job(

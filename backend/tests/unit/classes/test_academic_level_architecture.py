@@ -16,6 +16,15 @@ from app.modules.student_academics.schemas import TeacherAssignmentCreate
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 
 
+@pytest.fixture(autouse=True)
+def _allow_academic_writes_for_class_unit_tests():
+    with patch(
+        "app.modules.classes.service.ensure_academic_write_window",
+        new=AsyncMock(),
+    ):
+        yield
+
+
 def test_classroom_contract_requires_explicit_level_and_arm() -> None:
     payload = ClassRoomCreate(academic_level_id=uuid.uuid4(), arm=" A ")
     assert payload.arm == "A"

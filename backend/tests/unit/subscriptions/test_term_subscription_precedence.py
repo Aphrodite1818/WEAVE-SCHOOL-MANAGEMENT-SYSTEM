@@ -31,6 +31,7 @@ async def test_current_term_entitlement_takes_precedence_over_live_trial(
         provider=PaymentProvider.MANUAL,
     )
     entitlement = SimpleNamespace(
+        id=uuid4(),
         plan_code=SubscriptionPlan.PROFESSIONAL,
         provider=PaymentProvider.PAYSTACK,
         safety_expires_at=datetime.now(timezone.utc) + timedelta(days=100),
@@ -51,9 +52,7 @@ async def test_current_term_entitlement_takes_precedence_over_live_trial(
             new=AsyncMock(return_value=trial),
         ) as get_trial,
     ):
-        state = await SubscriptionFeatureService._resolve_subscription_state(
-            MagicMock(), tenant_id
-        )
+        state = await SubscriptionFeatureService._resolve_subscription_state(MagicMock(), tenant_id)
 
     assert state.plan_code == SubscriptionPlan.PROFESSIONAL.value
     assert state.status == SubscriptionStatus.ACTIVE
@@ -83,9 +82,7 @@ async def test_trial_remains_effective_until_paid_term_is_current() -> None:
             new=AsyncMock(return_value=trial),
         ),
     ):
-        state = await SubscriptionFeatureService._resolve_subscription_state(
-            MagicMock(), tenant_id
-        )
+        state = await SubscriptionFeatureService._resolve_subscription_state(MagicMock(), tenant_id)
 
     assert state.plan_code == SubscriptionPlan.FREE_TRIAL.value
     assert state.status == SubscriptionStatus.TRIALING

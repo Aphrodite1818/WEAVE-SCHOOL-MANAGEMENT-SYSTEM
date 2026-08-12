@@ -156,7 +156,7 @@ class AcademicSession(BaseModel):
             "uq_academic_sessions_current_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text("is_current = true AND status = 'open'"),
+            postgresql_where=text("is_current = true AND status IN ('open', 'closing')"),
         ),
         Index("ix_academic_sessions_tenant_status", "tenant_id", "status"),
         Index("ix_academic_sessions_tenant_next", "tenant_id", "next_academic_session_id"),
@@ -243,7 +243,7 @@ class AcademicTerm(BaseModel):
             "uq_academic_terms_current_per_tenant",
             "tenant_id",
             unique=True,
-            postgresql_where=text("is_current = true AND status = 'open'"),
+            postgresql_where=text("is_current = true AND status IN ('open', 'closing')"),
         ),
         CheckConstraint(
             """

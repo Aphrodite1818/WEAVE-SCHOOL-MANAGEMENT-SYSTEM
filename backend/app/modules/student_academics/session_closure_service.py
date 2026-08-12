@@ -74,6 +74,38 @@ class SessionClosureService:
     ]
 
     @staticmethod
+    def _summarize_progression_items(
+        items: list[StudentProgressionItem],
+    ) -> dict[str, int]:
+        summary = {
+            "promoted": 0,
+            "graduated": 0,
+            "skipped": 0,
+            "pending": 0,
+            "failed": 0,
+        }
+        pending_statuses = {
+            StudentProgressionItemStatus.AWAITING_SELECTION,
+            StudentProgressionItemStatus.SELECTION_SUBMITTED,
+            StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT,
+        }
+        for item in items:
+            if (
+                item.status == StudentProgressionItemStatus.COMPLETED
+                and item.action == StudentProgressionItemAction.TERMINAL
+            ):
+                summary["graduated"] += 1
+            elif item.status == StudentProgressionItemStatus.COMPLETED:
+                summary["promoted"] += 1
+            elif item.status in pending_statuses:
+                summary["pending"] += 1
+            elif item.status == StudentProgressionItemStatus.CANCELLED:
+                summary["skipped"] += 1
+            else:
+                summary["failed"] += 1
+        return summary
+
+    @staticmethod
     async def _run_detail(
         db: AsyncSession,
         *,
@@ -192,9 +224,7 @@ class SessionClosureService:
                 )
                 if not options:
                     invalid_targets += 1
-                    blockers.append(
-                        f"Configure student-selection destinations for {level.name}."
-                    )
+                    blockers.append(f"Configure student-selection destinations for {level.name}.")
                 elif level.selection_target_type == ProgressionSelectionTargetType.LEVEL:
                     if any(option.target_level_id is None for option in options):
                         invalid_targets += 1
@@ -334,12 +364,8 @@ class SessionClosureService:
         else:
             run = existing
             run.status = StudentProgressionRunStatus.PENDING
-            run.total_students = len(enrollments)
-            run.promoted_students = 0
-            run.graduated_students = 0
-            run.skipped_students = 0
-            run.pending_students = 0
-            run.failed_students = 0
+            if run.total_students == 0:
+                run.total_students = len(enrollments)
             run.started_at = None
             run.completed_at = None
             run.failure_reason = None
@@ -435,12 +461,8 @@ class SessionClosureService:
         graph = await AcademicProgressionService._validate_class_graph(
             db, tenant_id=tenant_id, enrollments=enrollments
         )
-        run.total_students = len(enrollments)
-        run.promoted_students = 0
-        run.graduated_students = 0
-        run.skipped_students = 0
-        run.pending_students = 0
-        run.failed_students = 0
+        if run.total_students == 0:
+            run.total_students = len(enrollments)
         effective_date = session.end_date or date.today()
 
         for enrollment in enrollments:
@@ -457,26 +479,9 @@ class SessionClosureService:
                         next_session=next_session,
                         effective_date=effective_date,
                     )
-                if (
-                    item.status == StudentProgressionItemStatus.COMPLETED
-                    and item.action == StudentProgressionItemAction.TERMINAL
-                ):
-                    run.graduated_students += 1
-                elif item.status == StudentProgressionItemStatus.COMPLETED:
-                    run.promoted_students += 1
-                elif item.status in {
-                    StudentProgressionItemStatus.AWAITING_SELECTION,
-                    StudentProgressionItemStatus.SELECTION_SUBMITTED,
-                    StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT,
-                }:
-                    run.pending_students += 1
-                elif item.status == StudentProgressionItemStatus.CANCELLED:
-                    run.skipped_students += 1
-                elif item.status == StudentProgressionItemStatus.BLOCKED:
-                    run.failed_students += 1
             except Exception as exc:  # one student must not corrupt the full batch
-                run.failed_students += 1
-                db.add(
+                await StudentProgressionRepository.add_item(
+                    db,
                     StudentProgressionItem(
                         tenant_id=tenant_id,
                         progression_run_id=run.id,
@@ -488,19 +493,29 @@ class SessionClosureService:
                         status=StudentProgressionItemStatus.BLOCKED,
                         reason=str(exc)[:1000],
                         processed_at=_utc_now(),
-                    )
+                    ),
                 )
-                await db.flush()
 
+        persisted_items = await StudentProgressionRepository.list_items_for_run(
+            db, tenant_id, run.id
+        )
+        summary = SessionClosureService._summarize_progression_items(persisted_items)
+        run.promoted_students = summary["promoted"]
+        run.graduated_students = summary["graduated"]
+        run.skipped_students = summary["skipped"]
+        run.pending_students = summary["pending"]
+        run.failed_students = summary["failed"]
+        incomplete_students = max(run.total_students - len(persisted_items), 0)
+        progression_failed = run.failed_students > 0 or incomplete_students > 0
         run.status = (
             StudentProgressionRunStatus.FAILED
-            if run.failed_students > 0
+            if progression_failed
             else StudentProgressionRunStatus.COMPLETED
         )
         run.completed_at = _utc_now()
         run.failure_reason = (
-            f"{run.failed_students} student progression item(s) failed."
-            if run.failed_students
+            f"{run.failed_students} failed and {incomplete_students} incomplete student progression item(s)."
+            if run.status == StudentProgressionRunStatus.FAILED
             else None
         )
         await StudentProgressionRepository.save_run(db, run)
@@ -509,7 +524,7 @@ class SessionClosureService:
             tenant_id=tenant_id,
             entity_type="session",
             entity_id=session.id,
-            action=("progression_failed" if run.failed_students else "progression_completed"),
+            action=("progression_failed" if progression_failed else "progression_completed"),
             previous_status=session.status.value,
             new_status=session.status.value,
             acting_admin_id=actor.id,
@@ -529,13 +544,14 @@ class SessionClosureService:
             actor_id=actor.id,
             title=(
                 "Academic session closing requires attention"
-                if run.failed_students
+                if progression_failed
                 else "Academic session is closing"
             ),
             body=(
-                f"Student progression finished with {run.failed_students} failure(s). "
+                f"Student progression finished with {run.failed_students} failed and "
+                f"{incomplete_students} incomplete item(s). "
                 "The session remains in closing while the administrator reviews the audit."
-                if run.failed_students
+                if progression_failed
                 else (
                     f"Student progression is complete: {run.promoted_students} promoted, "
                     f"{run.graduated_students} graduated, {run.pending_students} pending "
@@ -544,7 +560,7 @@ class SessionClosureService:
                 )
             ),
             priority=(
-                AnnouncementPriority.URGENT if run.failed_students else AnnouncementPriority.HIGH
+                AnnouncementPriority.URGENT if progression_failed else AnnouncementPriority.HIGH
             ),
         )
         await db.commit()
