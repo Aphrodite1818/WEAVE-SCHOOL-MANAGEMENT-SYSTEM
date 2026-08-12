@@ -32,7 +32,12 @@ export const academicWorkflowConfig = {
     icon: Layers3,
     tone: "primary",
     defaultTab: "overview",
-    tabs: [{ id: "overview", label: "Levels & Progression" }],
+    tabs: [
+      { id: "overview", label: "Overview" },
+      { id: "create", label: "Create Level" },
+      { id: "manage", label: "Manage Levels" },
+      { id: "progression", label: "Progression" },
+    ],
   },
   classes: {
     title: "Classes",

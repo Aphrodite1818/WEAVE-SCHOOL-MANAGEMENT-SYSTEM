@@ -67,6 +67,7 @@ const emptyDashboardBundle = (studentProfile) => ({
   reportCards: [],
   subjectCards: [],
   subjectContext: null,
+  progression: null,
 });
 
 const studentClassLabel = (student, fallback = null) => {
@@ -96,6 +97,10 @@ function StudentDashboardPage() {
   const [reportCards, setReportCards] = useState([]);
   const [subjectCards, setSubjectCards] = useState([]);
   const [subjectContext, setSubjectContext] = useState(null);
+  const [progression, setProgression] = useState(null);
+  const [selectedDestinationId, setSelectedDestinationId] = useState("");
+  const [submittingProgression, setSubmittingProgression] = useState(false);
+  const [progressionError, setProgressionError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const user = authSession.getUser();
@@ -127,6 +132,7 @@ function StudentDashboardPage() {
           setReportCards(incompleteBundle.reportCards);
           setSubjectCards(incompleteBundle.subjectCards);
           setSubjectContext(incompleteBundle.subjectContext);
+          setProgression(incompleteBundle.progression);
           return;
         }
 
@@ -139,8 +145,8 @@ function StudentDashboardPage() {
             resultResponse,
             reportCardResponse,
             subjectCardsResponse,
+            progressionResponse,
           ] = await Promise.all([
-            studentService.getMyStudent({ signal: controller.signal }),
             studentService.getMyParentLinks({ signal: controller.signal }),
             studentService.getMyParentLinkRequests({
               signal: controller.signal,
@@ -149,6 +155,7 @@ function StudentDashboardPage() {
             academicService.listMyResults({ signal: controller.signal }),
             reportCardService.listMyReportCards({ signal: controller.signal }),
             academicService.listMySubjectCards({ signal: controller.signal }),
+            studentService.getMyProgression({ signal: controller.signal }),
           ]);
 
           return {
@@ -160,6 +167,7 @@ function StudentDashboardPage() {
             reportCards: reportCardResponse?.items || [],
             subjectCards: subjectCardsResponse?.items || [],
             subjectContext: subjectCardsResponse?.context || null,
+            progression: progressionResponse || null,
           };
         });
 
@@ -172,6 +180,7 @@ function StudentDashboardPage() {
         setReportCards(bundle.reportCards);
         setSubjectCards(bundle.subjectCards);
         setSubjectContext(bundle.subjectContext);
+        setProgression(bundle.progression);
       } catch (error) {
         if (mounted && !isAbortError(error)) {
           setLoadError(
@@ -193,6 +202,25 @@ function StudentDashboardPage() {
       controller.abort();
     };
   }, []);
+
+  const submitProgression = async (event) => {
+    event.preventDefault();
+    if (!selectedDestinationId || submittingProgression) return;
+    setSubmittingProgression(true);
+    setProgressionError(null);
+    try {
+      const updated = await studentService.submitProgressionSelection(
+        selectedDestinationId,
+      );
+      setProgression(updated);
+    } catch (error) {
+      setProgressionError(
+        getErrorMessage(error, "Could not submit your progression selection."),
+      );
+    } finally {
+      setSubmittingProgression(false);
+    }
+  };
 
   const dashboardData = useMemo(() => {
     const stats = metrics?.stats || {};
@@ -373,6 +401,62 @@ function StudentDashboardPage() {
               },
             ]}
           />
+
+          {progression ? (
+            <Card className="border border-primary/20 p-4 sm:p-6">
+              {progression.item?.status === "awaiting_selection" ? (
+                <form className="space-y-4" onSubmit={submitProgression}>
+                  <div>
+                    <p className="text-sm font-semibold text-primary">Academic progression</p>
+                    <h2 className="mt-1 text-lg font-semibold text-text">
+                      {progression.selection_target_type === "classroom"
+                        ? "Choose your next class."
+                        : "Choose your next academic level."}
+                    </h2>
+                    <p className="mt-1 text-sm text-text-muted">
+                      Only destinations configured by your school are available.
+                    </p>
+                  </div>
+                  <select
+                    className="input-base"
+                    aria-label="Progression destination"
+                    value={selectedDestinationId}
+                    onChange={(event) => setSelectedDestinationId(event.target.value)}
+                    required
+                  >
+                    <option value="">Select a destination</option>
+                    {(progression.destinations || []).map((destination) => (
+                      <option key={destination.id} value={destination.id}>
+                        {destination.label}
+                      </option>
+                    ))}
+                  </select>
+                  {progressionError ? (
+                    <p className="text-sm text-error" role="alert">{progressionError}</p>
+                  ) : null}
+                  <Button type="submit" disabled={submittingProgression || !selectedDestinationId}>
+                    {submittingProgression ? "Submitting..." : "Confirm selection"}
+                  </Button>
+                </form>
+              ) : (
+                <div>
+                  <p className="text-sm font-semibold text-primary">Academic progression</p>
+                  <h2 className="mt-1 text-lg font-semibold text-text">
+                    {progression.item?.status === "completed"
+                      ? "Your next class has been assigned."
+                      : progression.item?.status === "awaiting_class_placement"
+                        ? `${progression.selected_destination_label || "Your destination"} selected. Your class placement is being finalized.`
+                        : progression.item?.status === "blocked"
+                          ? "Your progression needs attention."
+                          : "Your progression selection has been received."}
+                  </h2>
+                  {progression.item?.reason ? (
+                    <p className="mt-1 text-sm text-text-muted">{progression.item.reason}</p>
+                  ) : null}
+                </div>
+              )}
+            </Card>
+          ) : null}
 
           <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard

@@ -30,6 +30,7 @@ function TeacherDashboardPage() {
   const [assignments, setAssignments] = useState([]);
   const [classTeacherClasses, setClassTeacherClasses] = useState([]);
   const [metrics, setMetrics] = useState(null);
+  const [progressions, setProgressions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const user = authSession.getUser();
@@ -46,17 +47,19 @@ function TeacherDashboardPage() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const [profile, assignmentResponse, classResponse, metricsResponse] = await Promise.all([
+        const [profile, assignmentResponse, classResponse, metricsResponse, progressionResponse] = await Promise.all([
           teacherService.getMyTeacher({ signal: controller.signal }),
           academicService.listMyTeacherAssignments({ signal: controller.signal }),
           classService.getClasses({ limit: 100, active_only: true, signal: controller.signal }),
           dashboardService.getTeacherAnalytics({ signal: controller.signal }),
+          teacherService.getMyProgressions({ signal: controller.signal }),
         ]);
         if (!mounted || controller.signal.aborted) return;
         setTeacher(profile);
         setAssignments(assignmentResponse?.items || []);
         setClassTeacherClasses(classResponse?.items || []);
         setMetrics(metricsResponse);
+        setProgressions(progressionResponse || []);
       } catch (error) {
         if (mounted && !isAbortError(error)) {
           setLoadError(getErrorMessage(error, "Failed to load teacher dashboard."));
@@ -100,7 +103,16 @@ function TeacherDashboardPage() {
     );
   }
 
-  const attentionItems = [];
+  const attentionItems = progressions.length
+    ? [{
+        key: "student-progressions",
+        title: "Student progression updates",
+        description: `${progressions.length} student${progressions.length === 1 ? "" : "s"} in your class-teacher scope ${progressions.length === 1 ? "has" : "have"} a pending progression step. School admins manage placement.`,
+        icon: Users,
+        tone: "warning",
+        value: progressions.length,
+      }]
+    : [];
 
   return (
     <DashboardLayout role="teacher" title={`${firstName}'s Workspace`}>

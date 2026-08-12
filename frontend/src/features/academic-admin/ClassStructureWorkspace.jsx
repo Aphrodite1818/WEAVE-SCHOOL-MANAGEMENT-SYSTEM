@@ -19,6 +19,7 @@ import {
   WorkspaceGrid,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
+import TypedConfirmationDialog from "./TypedConfirmationDialog";
 import { isAssignableClassTeacher } from "./classTeacherEligibility";
 
 const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
@@ -38,8 +39,17 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const [levelName, setLevelName] = useState("");
   const [classForm, setClassForm] = useState({ academic_level_id: "", arm: "", teacher_membership_id: "" });
   const [subjectForm, setSubjectForm] = useState({ subject_ids: [], is_core: true });
-  const [progression, setProgression] = useState({ next_level_id: "", is_terminal: false });
+  const [progression, setProgression] = useState({
+    progression_mode: "direct",
+    next_level_id: "",
+    selection_target_type: "level",
+    target_level_ids: [],
+    target_classroom_ids: [],
+  });
   const [editingClassId, setEditingClassId] = useState("");
+  const [editingLevelId, setEditingLevelId] = useState("");
+  const [editingLevelName, setEditingLevelName] = useState("");
+  const [levelPendingDeletion, setLevelPendingDeletion] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -54,11 +64,13 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       setClasses(asItems(classRows));
       setSubjects(asItems(subjectRows));
       setTeachers(asItems(teacherRows).filter(isAssignableClassTeacher));
-      setSelectedLevelId((current) => current || asItems(levelRows)[0]?.id || "");
+      if (domain === "level-subjects") {
+        setSelectedLevelId((current) => current || asItems(levelRows)[0]?.id || "");
+      }
     } catch (error) {
       showError(getErrorMessage(error, "Could not load academic structure."));
     }
-  }, [showError]);
+  }, [domain, showError]);
 
   const loadLevelSubjects = useCallback(async () => {
     if (!selectedLevelId) return setLevelSubjects([]);
@@ -88,6 +100,46 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       await load();
     } catch (error) { showError(getErrorMessage(error, "Could not create academic level.")); }
     finally { setSaving(false); }
+  };
+
+  const updateLevel = async (event) => {
+    event.preventDefault();
+    if (!editingLevelId || !editingLevelName.trim()) return;
+    setSaving(editingLevelId);
+    try {
+      await academicLevelService.updateLevel(editingLevelId, {
+        name: editingLevelName.trim(),
+      });
+      setEditingLevelId("");
+      setEditingLevelName("");
+      showSuccess("Academic level updated.");
+      await load();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not update this academic level."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteEmptyLevel = async () => {
+    if (!levelPendingDeletion) return;
+    const level = levelPendingDeletion;
+    setSaving(level.id);
+    try {
+      await academicLevelService.removeLevelFromSetup(level.id);
+      if (selectedLevelId === level.id) setSelectedLevelId("");
+      if (editingLevelId === level.id) {
+        setEditingLevelId("");
+        setEditingLevelName("");
+      }
+      setLevelPendingDeletion(null);
+      showSuccess("Empty academic level deleted.");
+      await load();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not delete this academic level."));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const createClass = async (event) => {
@@ -150,9 +202,33 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     try {
       await academicLevelService.configureProgression(selectedLevelId, progression);
       showSuccess("Level progression updated.");
+      setSelectedLevelId("");
+      setProgression({
+        progression_mode: "direct",
+        next_level_id: "",
+        selection_target_type: "level",
+        target_level_ids: [],
+        target_classroom_ids: [],
+      });
       await load();
     } catch (error) { showError(getErrorMessage(error, "Could not update level progression.")); }
     finally { setSaving(false); }
+  };
+
+  const editProgression = async (item) => {
+    setSelectedLevelId(item.id);
+    try {
+      const configuration = await academicLevelService.getProgression(item.id);
+      setProgression({
+        progression_mode: configuration.progression_mode,
+        next_level_id: configuration.next_level_id || "",
+        selection_target_type: configuration.selection_target_type || "level",
+        target_level_ids: configuration.target_level_ids || [],
+        target_classroom_ids: configuration.target_classroom_ids || [],
+      });
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not load level progression."));
+    }
   };
 
   const addSubjects = async (event) => {
@@ -171,96 +247,242 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   };
 
   if (domain === "levels") {
+    const levelWorkspaceTitle = activeTab === "manage"
+      ? "Manage academic levels"
+      : activeTab === "progression"
+        ? "Choose a level"
+        : "Academic levels";
+    const levelWorkspaceDescription = activeTab === "manage"
+      ? "Update level names or remove genuinely empty levels."
+      : activeTab === "progression"
+        ? "Select one level, then configure its progression separately."
+        : "Review the level structure and arm distribution at a glance.";
+
     return (
-      <WorkspaceGrid
-        editor={(
-          <WorkspacePanel
-            title="Create academic level"
-            description="Levels own curriculum and progression; class arms are created separately."
-          >
-            <form className="space-y-3" onSubmit={createLevel}>
-              <Input
-                label="Level name"
-                value={levelName}
-                onChange={(event) => setLevelName(event.target.value)}
-                placeholder="JSS1"
-                required
-              />
-              <FormActions submitting={saving} submitLabel="Create level" />
-            </form>
-          </WorkspacePanel>
-        )}
-        content={(
-          <WorkspacePanel
-            title="Academic levels"
-            description="Configure one progression path per level."
-          >
-            <div className="grid gap-3">
-              {levels.map((item) => (
+      <>
+        <WorkspaceGrid
+          editor={activeTab === "create" ? (
+            <WorkspacePanel
+              title="Create academic level"
+              description="Levels own curriculum and progression; class arms are created separately."
+            >
+              <form className="space-y-3" onSubmit={createLevel}>
+                <Input
+                  label="Level name"
+                  value={levelName}
+                  onChange={(event) => setLevelName(event.target.value)}
+                  placeholder="JSS1"
+                  required
+                />
+                <FormActions submitting={saving} submitLabel="Create level" />
+              </form>
+            </WorkspacePanel>
+          ) : null}
+          content={(
+            <WorkspacePanel
+              title={levelWorkspaceTitle}
+              description={levelWorkspaceDescription}
+            >
+            <div className="grid max-h-[34rem] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+              {levels.map((item) => {
+                const armCount = classes.filter(
+                  (classroom) => classroom.academic_level_id === item.id,
+                ).length;
+                return (
                 <div
                   key={item.id}
                   className="rounded-2xl border border-border/70 bg-surface p-4"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="font-semibold text-text">{item.name}</p>
-                    <Badge variant={item.is_terminal ? "success" : "default"}>
-                      {item.is_terminal ? "terminal" : "active"}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={armCount > 0 ? "default" : "warning"}>
+                        {armCount} arm{armCount === 1 ? "" : "s"}
+                      </Badge>
+                      <Badge variant={item.progression_mode === "terminal" ? "success" : "default"}>
+                        {String(item.progression_mode || "direct").replace("_", " ")}
+                      </Badge>
+                    </div>
                   </div>
                   <p className="mt-2 text-sm text-text-muted">
                     {item.next_level_id
                       ? `Progresses to ${levels.find((level) => level.id === item.next_level_id)?.name || "next level"}`
-                      : item.is_terminal
+                      : item.progression_mode === "terminal"
                         ? "Final academic level"
-                        : "Progression not configured"}
+                        : item.progression_mode === "student_selection"
+                          ? `Students choose an academic ${item.selection_target_type || "destination"}`
+                          : "Direct progression requires a next level"}
                   </p>
-                  <Button
-                    className="mt-3"
-                    size="small"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedLevelId(item.id);
-                      setProgression({
-                        next_level_id: item.next_level_id || "",
-                        is_terminal: item.is_terminal,
-                      });
-                    }}
-                  >
-                    Configure progression
-                  </Button>
+                  {activeTab === "manage" && editingLevelId === item.id ? (
+                    <form className="mt-3 space-y-3 border-t border-border/70 pt-3" onSubmit={updateLevel}>
+                      <Input
+                        label="Level name"
+                        value={editingLevelName}
+                        onChange={(event) => setEditingLevelName(event.target.value)}
+                        required
+                      />
+                      <FormActions
+                        submitting={saving === item.id}
+                        submitLabel="Save level"
+                        editing
+                        onCancel={() => {
+                          setEditingLevelId("");
+                          setEditingLevelName("");
+                        }}
+                      />
+                    </form>
+                  ) : activeTab === "manage" ? (
+                    <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
+                      <Button
+                        size="small"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        onClick={() => {
+                          setEditingLevelId(item.id);
+                          setEditingLevelName(item.name);
+                        }}
+                      >
+                        Update level
+                      </Button>
+                      {armCount === 0 ? (
+                        <Button
+                          size="small"
+                          variant="danger"
+                          className="w-full sm:w-auto"
+                          disabled={saving === item.id}
+                          onClick={() => setLevelPendingDeletion(item)}
+                        >
+                          Delete empty level
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : activeTab === "progression" ? (
+                    <Button
+                      className="mt-3 w-full sm:w-auto"
+                      size="small"
+                      variant="outline"
+                      onClick={() => editProgression(item)}
+                    >
+                      Configure progression
+                    </Button>
+                  ) : null}
                 </div>
-              ))}
+                );
+              })}
+              {!levels.length ? (
+                <div className="rounded-2xl border border-dashed border-border p-6 text-center">
+                  <Library className="mx-auto h-7 w-7 text-text-muted" />
+                  <p className="mt-2 text-sm text-text-muted">
+                    No academic levels yet. Use Create Level to add the first one.
+                  </p>
+                </div>
+              ) : null}
             </div>
-            {selectedLevelId ? (
+            {activeTab === "progression" && selectedLevelId ? (
               <form
-                className="mt-4 space-y-3 border-t border-border pt-4"
+                className="mt-4 space-y-3 rounded-2xl border border-border bg-surface-muted/20 p-4 sm:p-5"
                 onSubmit={saveProgression}
               >
                 <SelectControl
-                  label="Next level"
-                  value={progression.next_level_id}
+                  label="Progression mode"
+                  value={progression.progression_mode}
                   onChange={(value) => setProgression((current) => ({
                     ...current,
-                    next_level_id: value,
+                    progression_mode: value,
+                    next_level_id: value === "direct" ? current.next_level_id : "",
+                    target_level_ids: value === "student_selection" ? current.target_level_ids : [],
+                    target_classroom_ids: value === "student_selection" ? current.target_classroom_ids : [],
                   }))}
-                  options={levelOptions.filter((item) => item.value !== selectedLevelId)}
-                  disabled={progression.is_terminal}
-                  clearable
+                  options={[
+                    { value: "direct", label: "Direct" },
+                    { value: "student_selection", label: "Student Selection" },
+                    { value: "terminal", label: "Terminal" },
+                  ]}
+                  required
                 />
-                <CheckboxControl
-                  label="This is the terminal level"
-                  checked={progression.is_terminal}
-                  onChange={(value) => setProgression({
-                    is_terminal: value,
-                    next_level_id: value ? "" : progression.next_level_id,
-                  })}
+                {progression.progression_mode === "direct" ? (
+                  <SelectControl
+                    label="Next academic level"
+                    value={progression.next_level_id}
+                    onChange={(value) => setProgression((current) => ({
+                      ...current,
+                      next_level_id: value,
+                    }))}
+                    options={levelOptions.filter((option) => option.value !== selectedLevelId)}
+                    required
+                  />
+                ) : null}
+                {progression.progression_mode === "student_selection" ? (
+                  <>
+                    <SelectControl
+                      label="Students choose"
+                      value={progression.selection_target_type}
+                      onChange={(value) => setProgression((current) => ({
+                        ...current,
+                        selection_target_type: value,
+                        target_level_ids: [],
+                        target_classroom_ids: [],
+                      }))}
+                      options={[
+                        { value: "level", label: "Academic Level" },
+                        { value: "classroom", label: "ClassRoom" },
+                      ]}
+                      required
+                    />
+                    <MultiSelect
+                      label="Allowed destinations"
+                      name="progression_destinations"
+                      value={
+                        progression.selection_target_type === "level"
+                          ? progression.target_level_ids
+                          : progression.target_classroom_ids
+                      }
+                      onChange={(event) => {
+                        const key = progression.selection_target_type === "level"
+                          ? "target_level_ids"
+                          : "target_classroom_ids";
+                        setProgression((current) => ({
+                          ...current,
+                          [key]: event.target.value,
+                        }));
+                      }}
+                      options={
+                        progression.selection_target_type === "level"
+                          ? levelOptions.filter((option) => option.value !== selectedLevelId)
+                          : classes
+                              .filter((item) => item.is_active && !item.archived_at && item.academic_level_id !== selectedLevelId)
+                              .map((item) => ({ value: item.id, label: displayClass(item) }))
+                      }
+                    />
+                  </>
+                ) : null}
+                {progression.progression_mode === "terminal" ? (
+                  <p className="text-sm text-text-muted">
+                    Terminal is only for genuine final-school completion and has no destination.
+                  </p>
+                ) : null}
+                <FormActions
+                  submitting={saving}
+                  submitLabel="Save progression"
+                  editing
+                  onCancel={() => setSelectedLevelId("")}
                 />
-                <FormActions submitting={saving} submitLabel="Save progression" />
               </form>
             ) : null}
-          </WorkspacePanel>
-        )}
-      />
+            </WorkspacePanel>
+          )}
+        />
+        <TypedConfirmationDialog
+          open={Boolean(levelPendingDeletion)}
+          title="Delete empty academic level"
+          description={`${levelPendingDeletion?.name || "This level"} has no class arms. The backend will still reject deletion if another academic record depends on it.`}
+          confirmationText="DELETE_EMPTY_LEVEL"
+          confirmLabel="Delete level"
+          isLoading={saving === levelPendingDeletion?.id}
+          onConfirm={deleteEmptyLevel}
+          onCancel={() => setLevelPendingDeletion(null)}
+        />
+      </>
     );
   }
 

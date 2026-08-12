@@ -67,3 +67,14 @@ async def configure_academic_level_progression(
     return await AcademicLevelService.configure_progression(
         db, current_user, academic_level_id, payload
     )
+
+
+@router.get("/{academic_level_id}/progression", response_model=AcademicLevelProgressionResponse)
+async def get_academic_level_progression(
+    academic_level_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> AcademicLevelProgressionResponse:
+    return await AcademicLevelService.get_progression(
+        db, current_user, academic_level_id
+    )

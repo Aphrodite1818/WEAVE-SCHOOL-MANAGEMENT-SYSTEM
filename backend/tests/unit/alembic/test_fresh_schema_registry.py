@@ -22,6 +22,7 @@ CRITICAL_TABLES = {
     "email_outbox",
     "import_jobs",
     "academic_levels",
+    "progression_selection_options",
     "classes",
     "level_subjects",
     "teacher_assignments",

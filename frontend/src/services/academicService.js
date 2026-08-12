@@ -62,9 +62,9 @@ export const academicService = {
     }),
   getSessionDependencies: (sessionId) =>
     api.get(`/tenant-admin/academics/sessions/${sessionId}/dependencies`),
-  closeSessionAndProgress: (sessionId, payload) =>
-    api.post(`/tenant-admin/academics/sessions/${sessionId}/close-and-progress`, {
-      confirmation: "CLOSE_AND_PROGRESS",
+  startSessionClosing: (sessionId, payload) =>
+    api.post(`/tenant-admin/academics/sessions/${sessionId}/start-closing`, {
+      confirmation: "START_SESSION_CLOSING",
       ...payload,
     }),
   deleteSession: (sessionId) =>

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,7 +13,7 @@ from app.core.utils.normalization import (
     normalized_class_arm_key,
     normalized_class_name_key,
 )
-from app.modules.classes.models import AcademicLevel, ClassRoom
+from app.modules.classes.models import AcademicLevel, ClassRoom, ProgressionSelectionOption
 
 if TYPE_CHECKING:
     from app.modules.students.models import AcademicStatus
@@ -83,6 +83,68 @@ class AcademicLevelRepository:
         return level
 
     @staticmethod
+    async def list_progression_options(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        source_level_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> list[ProgressionSelectionOption]:
+        query = select(ProgressionSelectionOption).where(
+            ProgressionSelectionOption.tenant_id == tenant_id,
+            ProgressionSelectionOption.source_level_id == source_level_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        result = await db.execute(query.order_by(ProgressionSelectionOption.created_at.asc()))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_progression_edges(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        """Return source-to-level edges for both level and classroom destinations."""
+
+        result = await db.execute(
+            select(
+                ProgressionSelectionOption.source_level_id,
+                ProgressionSelectionOption.target_level_id,
+                ClassRoom.academic_level_id,
+            )
+            .outerjoin(
+                ClassRoom,
+                (
+                    ProgressionSelectionOption.target_classroom_id == ClassRoom.id
+                )
+                & (ClassRoom.tenant_id == tenant_id),
+            )
+            .where(ProgressionSelectionOption.tenant_id == tenant_id)
+        )
+        return [
+            (source_id, target_level_id or classroom_level_id)
+            for source_id, target_level_id, classroom_level_id in result.all()
+            if target_level_id or classroom_level_id
+        ]
+
+    @staticmethod
+    async def replace_progression_options(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        source_level_id: uuid.UUID,
+        options: list[ProgressionSelectionOption],
+    ) -> list[ProgressionSelectionOption]:
+        await db.execute(
+            delete(ProgressionSelectionOption).where(
+                ProgressionSelectionOption.tenant_id == tenant_id,
+                ProgressionSelectionOption.source_level_id == source_level_id,
+            )
+        )
+        db.add_all(options)
+        await db.flush()
+        return options
+
+    @staticmethod
     async def count_setup_dependencies(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -120,10 +182,21 @@ class AcademicLevelRepository:
                 )
             )
         ).scalar_one()
+        selection_option_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(ProgressionSelectionOption)
+                .where(
+                    ProgressionSelectionOption.tenant_id == tenant_id,
+                    ProgressionSelectionOption.target_level_id == academic_level_id,
+                )
+            )
+        ).scalar_one()
         return {
             "classrooms": int(classroom_count),
             "previous_levels": int(previous_level_count),
             "level_subjects": int(level_subject_count),
+            "progression_selection_options": int(selection_option_count),
         }
 
     @staticmethod
@@ -174,6 +247,29 @@ class ClassRoomRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_active_for_level(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        academic_level_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> list[ClassRoom]:
+        query = (
+            select(ClassRoom)
+            .options(selectinload(ClassRoom.academic_level))
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.academic_level_id == academic_level_id,
+                ClassRoom.is_active.is_(True),
+                ClassRoom.archived_at.is_(None),
+            )
+            .order_by(ClassRoom.normalized_arm.asc())
+        )
+        if lock:
+            query = query.with_for_update()
+        return list((await db.execute(query)).scalars().all())
 
     @staticmethod
     async def list_for_tenant(
@@ -411,7 +507,18 @@ class ClassRoomRepository:
                     or_(
                         StudentProgressionItem.from_class_id == class_id,
                         StudentProgressionItem.to_class_id == class_id,
+                        StudentProgressionItem.selected_classroom_id == class_id,
                     ),
+                )
+            )
+        ).scalar_one()
+        progression_option_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(ProgressionSelectionOption)
+                .where(
+                    ProgressionSelectionOption.tenant_id == tenant_id,
+                    ProgressionSelectionOption.target_classroom_id == class_id,
                 )
             )
         ).scalar_one()
@@ -452,6 +559,7 @@ class ClassRoomRepository:
             "results": int(result_count),
             "report_cards": int(report_card_count),
             "progression_items": int(progression_item_count),
+            "progression_selection_options": int(progression_option_count),
             "attendance_sheets": int(attendance_sheet_count),
             "temporary_attendance_assignments": int(temporary_assignment_count),
             "announcement_audiences": int(announcement_audience_count),

@@ -41,10 +41,12 @@ from app.modules.parents.repository import (
 )
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
+    StudentProgressionRepository,
 )
 from app.modules.student_academics.models import (
     AcademicSessionStatus,
     AcademicTermStatus,
+    StudentProgressionItemStatus,
     StudentSubjectResult,
 )
 from app.modules.student_academics.repository import StudentAcademicRepository
@@ -1077,6 +1079,20 @@ class StudentLifecycleService:
             raise BadRequestException("Unsupported student lifecycle transition.")
 
         await StudentRepository.save(db, student)
+        if target_status != AcademicStatus.ACTIVE:
+            progression = await StudentProgressionRepository.get_latest_item_for_student(
+                db, tenant_id, student.id, lock=True
+            )
+            if progression is not None and progression.status in {
+                StudentProgressionItemStatus.AWAITING_SELECTION,
+                StudentProgressionItemStatus.SELECTION_SUBMITTED,
+                StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT,
+                StudentProgressionItemStatus.BLOCKED,
+            }:
+                progression.status = StudentProgressionItemStatus.CANCELLED
+                progression.reason = f"Student lifecycle changed to {target_status.value}."
+                progression.processed_at = now
+                await StudentProgressionRepository.save_item(db, progression)
         if target_status == AcademicStatus.ACTIVE:
             session_revoked = False
             codes_revoked = 0

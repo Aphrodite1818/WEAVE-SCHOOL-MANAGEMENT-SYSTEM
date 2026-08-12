@@ -38,6 +38,27 @@ export const studentService = {
   getMyStudent: (requestOptions) =>
     api.get("/students/me", requestOptions),
 
+  getMyProgression: (requestOptions) =>
+    api.get("/students/academics/progression", requestOptions),
+
+  submitProgressionSelection: (destinationId) =>
+    api.post("/students/academics/progression/selection", {
+      destination_id: destinationId,
+    }),
+
+  getStudentProgression: (studentId) =>
+    api.get(`/tenant-admin/academics/students/${studentId}/progression`),
+
+  overrideProgressionSelection: (studentId, destinationId) =>
+    api.put(`/tenant-admin/academics/students/${studentId}/progression/selection`, {
+      destination_id: destinationId,
+    }),
+
+  placeProgressionStudent: (studentId, classroomId) =>
+    api.post(`/tenant-admin/academics/students/${studentId}/progression/placement`, {
+      classroom_id: classroomId,
+    }),
+
   updateMyStudentProfile: (payload) =>
     api.patch("/students/me/profile", payload),
 

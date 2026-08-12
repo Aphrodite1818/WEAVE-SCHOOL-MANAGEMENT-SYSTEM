@@ -31,6 +31,7 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
+import MultiSelect from "../../components/ui/MultiSelect";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import { schoolCalendarService } from "../../features/schoolCalendar/api/schoolCalendarService";
@@ -332,7 +333,11 @@ function AdminGettingStartedPage() {
   );
   const progressionComplete = Boolean(
     activeLevels.length > 0 &&
-      activeLevels.every((item) => item.is_terminal || item.next_level_id),
+      activeLevels.every((item) =>
+        item.progression_mode === "terminal" ||
+        item.next_level_id ||
+        (item.progression_mode === "student_selection" && item.selection_target_type)
+      ),
   );
 
   useEffect(() => {
@@ -340,13 +345,47 @@ function AdminGettingStartedPage() {
       const next = {};
       for (const level of activeLevels) {
         next[level.id] = current[level.id] || {
-          is_terminal: Boolean(level.is_terminal),
+          progression_mode: level.progression_mode || "direct",
           next_level_id: level.next_level_id || "",
+          selection_target_type: level.selection_target_type || "level",
+          target_level_ids: [],
+          target_classroom_ids: [],
         };
       }
       return next;
     });
   }, [activeLevels]);
+
+  useEffect(() => {
+    if (!activeLevels.length) return undefined;
+    let mounted = true;
+    Promise.all(
+      activeLevels.map(async (level) => [
+        level.id,
+        await academicLevelService.getProgression(level.id),
+      ]),
+    )
+      .then((entries) => {
+        if (!mounted) return;
+        setProgressionDrafts((current) => ({
+          ...current,
+          ...Object.fromEntries(entries.map(([levelId, configuration]) => [
+            levelId,
+            {
+              progression_mode: configuration.progression_mode,
+              next_level_id: configuration.next_level_id || "",
+              selection_target_type: configuration.selection_target_type || "level",
+              target_level_ids: configuration.target_level_ids || [],
+              target_classroom_ids: configuration.target_classroom_ids || [],
+            },
+          ])),
+        }));
+      })
+      .catch((error) => {
+        if (mounted) showError(getErrorMessage(error, "Could not load progression settings."));
+      });
+    return () => { mounted = false; };
+  }, [activeLevels, showError]);
 
   useEffect(() => {
     setClassForm((current) => {
@@ -729,16 +768,23 @@ function AdminGettingStartedPage() {
 
   const saveLevelProgression = async (level) => {
     const draft = progressionDrafts[level.id] || {};
-    if (!draft.is_terminal && !draft.next_level_id) {
-      showWarning(`Choose a next level or mark ${level.name} as terminal.`);
+    if (draft.progression_mode === "direct" && !draft.next_level_id) {
+      showWarning(`Choose the direct next level for ${level.name}.`);
+      return;
+    }
+    const selectionIds = draft.selection_target_type === "level"
+      ? draft.target_level_ids
+      : draft.target_classroom_ids;
+    if (draft.progression_mode === "student_selection" && !selectionIds?.length) {
+      showWarning(`Choose at least one allowed destination for ${level.name}.`);
       return;
     }
     await runAction(
       `progression-${level.id}`,
       () =>
         academicLevelService.configureProgression(level.id, {
-          is_terminal: Boolean(draft.is_terminal),
-          next_level_id: draft.is_terminal ? null : draft.next_level_id,
+          ...draft,
+          next_level_id: draft.progression_mode === "direct" ? draft.next_level_id : null,
         }),
       `${level.name} progression saved.`,
     );
@@ -1484,16 +1530,22 @@ function AdminGettingStartedPage() {
         <div className="grid gap-3">
           {activeLevels.map((level) => {
             const draft = progressionDrafts[level.id] || {
-              is_terminal: Boolean(level.is_terminal),
+              progression_mode: level.progression_mode || "direct",
               next_level_id: level.next_level_id || "",
+              selection_target_type: level.selection_target_type || "level",
+              target_level_ids: [],
+              target_classroom_ids: [],
             };
-            const configured = Boolean(level.is_terminal || level.next_level_id);
+            const configured = Boolean(
+              level.progression_mode === "terminal" || level.next_level_id ||
+              (level.progression_mode === "student_selection" && level.selection_target_type),
+            );
             const nextOptions = activeLevels
               .filter((candidate) => candidate.id !== level.id)
               .map((candidate) => ({
                 value: candidate.id,
                 label: candidate.name,
-                description: candidate.is_terminal ? "Terminal level" : "Active level",
+                description: candidate.progression_mode === "terminal" ? "Terminal level" : "Active level",
               }));
 
             return (
@@ -1504,24 +1556,70 @@ function AdminGettingStartedPage() {
                       <p className="font-semibold text-text">{level.name}</p>
                       {configured ? <Badge variant="success">Configured</Badge> : <Badge variant="warning">Required</Badge>}
                     </div>
-                    <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface-muted/25 px-3 text-sm font-medium text-text-soft">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-primary"
-                        checked={Boolean(draft.is_terminal)}
-                        onChange={(event) =>
+                    <div className="mt-3 grid gap-3">
+                      <SearchableSelect
+                        label="Progression mode"
+                        value={draft.progression_mode}
+                        onChange={(value) =>
                           setProgressionDrafts((current) => ({
                             ...current,
                             [level.id]: {
                               ...draft,
-                              is_terminal: event.target.checked,
-                              next_level_id: event.target.checked ? "" : draft.next_level_id,
+                              progression_mode: value,
+                              next_level_id: value === "direct" ? draft.next_level_id : "",
+                              target_level_ids: value === "student_selection" ? draft.target_level_ids : [],
+                              target_classroom_ids: value === "student_selection" ? draft.target_classroom_ids : [],
                             },
                           }))
                         }
+                        options={[
+                          { value: "direct", label: "Direct", description: "Move students automatically." },
+                          { value: "student_selection", label: "Student Selection", description: "Students choose an allowed destination." },
+                          { value: "terminal", label: "Terminal", description: "Graduate genuine final-school completers." },
+                        ]}
                       />
-                      Terminal level — students graduate after this level
-                    </label>
+                      {draft.progression_mode === "student_selection" ? (
+                        <>
+                          <SearchableSelect
+                            label="Students choose"
+                            value={draft.selection_target_type}
+                            onChange={(value) =>
+                              setProgressionDrafts((current) => ({
+                                ...current,
+                                [level.id]: {
+                                  ...draft,
+                                  selection_target_type: value,
+                                  target_level_ids: [],
+                                  target_classroom_ids: [],
+                                },
+                              }))
+                            }
+                            options={[
+                              { value: "level", label: "Academic Level" },
+                              { value: "classroom", label: "ClassRoom" },
+                            ]}
+                          />
+                          <MultiSelect
+                            label="Allowed destinations"
+                            name={`progression-${level.id}-destinations`}
+                            value={draft.selection_target_type === "level" ? draft.target_level_ids : draft.target_classroom_ids}
+                            onChange={(event) => {
+                              const key = draft.selection_target_type === "level" ? "target_level_ids" : "target_classroom_ids";
+                              setProgressionDrafts((current) => ({
+                                ...current,
+                                [level.id]: { ...draft, [key]: event.target.value },
+                              }));
+                            }}
+                            options={draft.selection_target_type === "level"
+                              ? nextOptions
+                              : activeClasses
+                                  .filter((item) => item.academic_level_id !== level.id)
+                                  .map((item) => ({ value: item.id, label: classLabel(item) }))}
+                            required
+                          />
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="grid min-w-0 flex-[1.2] gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                     <SearchableSelect
@@ -1532,23 +1630,25 @@ function AdminGettingStartedPage() {
                           ...current,
                           [level.id]: {
                             ...draft,
-                            is_terminal: false,
+                            progression_mode: "direct",
                             next_level_id: value,
                           },
                         }))
                       }
                       options={nextOptions}
-                      placeholder={draft.is_terminal ? "Terminal level" : "Select next level"}
+                      placeholder={draft.progression_mode === "terminal" ? "Terminal level" : "Select next level"}
                       searchable={nextOptions.length > 5}
                       clearable
-                      disabled={draft.is_terminal}
+                      disabled={draft.progression_mode !== "direct"}
                     />
                     <Button
                       type="button"
                       onClick={() => saveLevelProgression(level)}
                       disabled={
                         saving === `progression-${level.id}` ||
-                        (!draft.is_terminal && !draft.next_level_id)
+                        (draft.progression_mode === "direct" && !draft.next_level_id) ||
+                        (draft.progression_mode === "student_selection" &&
+                          !(draft.selection_target_type === "level" ? draft.target_level_ids : draft.target_classroom_ids)?.length)
                       }
                       className="w-full sm:w-auto"
                     >

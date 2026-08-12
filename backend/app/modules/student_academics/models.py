@@ -73,15 +73,18 @@ class StudentProgressionRunStatus(str, PyEnum):
 
 
 class StudentProgressionItemStatus(str, PyEnum):
-    PROMOTED = "promoted"
-    GRADUATED = "graduated"
-    SKIPPED = "skipped"
-    FAILED = "failed"
+    AWAITING_SELECTION = "awaiting_selection"
+    SELECTION_SUBMITTED = "selection_submitted"
+    AWAITING_CLASS_PLACEMENT = "awaiting_class_placement"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
 
 
 class StudentProgressionItemAction(str, PyEnum):
-    PROMOTE = "promote"
-    GRADUATE = "graduate"
+    DIRECT = "direct"
+    STUDENT_SELECTION = "student_selection"
+    TERMINAL = "terminal"
     SKIP = "skip"
 
 
@@ -550,6 +553,9 @@ class StudentProgressionRun(BaseModel):
     skipped_students: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    pending_students: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     failed_students: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -580,11 +586,11 @@ class StudentProgressionRun(BaseModel):
             "academic_session_id",
         ),
         CheckConstraint(
-            "total_students >= 0 AND promoted_students >= 0 AND graduated_students >= 0 AND skipped_students >= 0 AND failed_students >= 0",
+            "total_students >= 0 AND promoted_students >= 0 AND graduated_students >= 0 AND skipped_students >= 0 AND pending_students >= 0 AND failed_students >= 0",
             name="ck_progression_run_nonnegative_counts",
         ),
         CheckConstraint(
-            "promoted_students + graduated_students + skipped_students + failed_students <= total_students",
+            "promoted_students + graduated_students + skipped_students + pending_students + failed_students <= total_students",
             name="ck_progression_run_count_total",
         ),
         CheckConstraint(
@@ -627,6 +633,16 @@ class StudentProgressionItem(BaseModel):
         ForeignKey("classes.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    selected_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    selected_classroom_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("classes.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     action: Mapped[StudentProgressionItemAction] = mapped_column(
         SQLEnum(
             StudentProgressionItemAction,
@@ -658,12 +674,12 @@ class StudentProgressionItem(BaseModel):
         Index("ix_progression_items_tenant_student", "tenant_id", "student_id"),
         Index("ix_progression_items_tenant_status", "tenant_id", "status"),
         CheckConstraint(
-            "action <> 'promote' OR to_class_id IS NOT NULL",
-            name="ck_progression_item_promotion_has_target",
+            "selected_classroom_id IS NULL OR selected_level_id IS NULL",
+            name="ck_progression_item_one_selected_target",
         ),
         CheckConstraint(
-            "action <> 'graduate' OR to_class_id IS NULL",
-            name="ck_progression_item_graduation_no_target",
+            "status <> 'completed' OR action IN ('direct', 'student_selection', 'terminal')",
+            name="ck_progression_item_completed_action",
         ),
     )
 

@@ -166,7 +166,6 @@ def _classroom(tenant_id: uuid.UUID, *, active: bool = True) -> ClassRoom:
         name="JSS1",
         normalized_name="JSS1",
         is_active=True,
-        is_terminal=False,
         created_at=now,
         updated_at=now,
     )
