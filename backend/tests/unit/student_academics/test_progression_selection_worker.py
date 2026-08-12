@@ -7,6 +7,7 @@ import pytest
 
 from app.modules.classes.models import AcademicLevelProgressionMode, ClassRoom
 from app.modules.student_academics.models import (
+    AcademicSessionStatus,
     StudentProgressionItem,
     StudentProgressionItemAction,
     StudentProgressionItemStatus,
@@ -216,10 +217,9 @@ async def test_direct_progression_without_matching_arm_awaits_admin_placement(
         "app.modules.student_academics.progression_service.StudentEnrollmentRepository.save",
         AsyncMock(side_effect=lambda _db, value: value),
     )
-    save_student = AsyncMock(side_effect=lambda _db, value: value)
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.StudentRepository.save",
-        save_student,
+        AsyncMock(side_effect=lambda _db, value: value),
     )
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.StudentProgressionRepository.add_item",
@@ -279,7 +279,10 @@ async def test_level_selection_preserves_source_arm_when_target_arm_exists(
         target_classroom_id=None,
     )
     run = SimpleNamespace(next_academic_session_id=uuid4())
-    next_session = SimpleNamespace(id=run.next_academic_session_id)
+    next_session = SimpleNamespace(
+        id=run.next_academic_session_id,
+        status=AcademicSessionStatus.OPEN,
+    )
 
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.StudentProgressionRepository.get_latest_item_for_student",
@@ -293,23 +296,22 @@ async def test_level_selection_preserves_source_arm_when_target_arm_exists(
         "app.modules.student_academics.progression_service.ClassRoomRepository.get_by_id",
         AsyncMock(return_value=source_class),
     )
-    get_level = AsyncMock(
-        side_effect=[
-            SimpleNamespace(
-                id=source_level_id,
-                progression_mode=AcademicLevelProgressionMode.STUDENT_SELECTION,
-            ),
-            SimpleNamespace(
-                id=target_level_id,
-                name="SS1 Science",
-                is_active=True,
-                archived_at=None,
-            ),
-        ]
-    )
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.AcademicLevelRepository.get_by_id",
-        get_level,
+        AsyncMock(
+            side_effect=[
+                SimpleNamespace(
+                    id=source_level_id,
+                    progression_mode=AcademicLevelProgressionMode.STUDENT_SELECTION,
+                ),
+                SimpleNamespace(
+                    id=target_level_id,
+                    name="SS1 Science",
+                    is_active=True,
+                    archived_at=None,
+                ),
+            ]
+        ),
     )
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.AcademicLevelRepository.list_progression_options",
@@ -379,6 +381,10 @@ async def test_level_selection_without_matching_arm_awaits_admin_placement(
         target_classroom_id=None,
     )
     run = SimpleNamespace(next_academic_session_id=uuid4())
+    next_session = SimpleNamespace(
+        id=run.next_academic_session_id,
+        status=AcademicSessionStatus.OPEN,
+    )
 
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.StudentProgressionRepository.get_latest_item_for_student",
@@ -419,7 +425,7 @@ async def test_level_selection_without_matching_arm_awaits_admin_placement(
     )
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.AcademicSessionLifecycleRepository.get_by_id",
-        AsyncMock(return_value=SimpleNamespace(id=run.next_academic_session_id)),
+        AsyncMock(return_value=next_session),
     )
     same_arm_lookup = AsyncMock(return_value=None)
     monkeypatch.setattr(
@@ -456,6 +462,40 @@ async def test_level_selection_without_matching_arm_awaits_admin_placement(
     same_arm_lookup.assert_awaited_once_with(db, tenant_id, target_level_id, "C")
     save_item.assert_awaited()
     create_next.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_student_selection_is_hidden_until_next_session_opens(monkeypatch) -> None:
+    tenant_id = uuid4()
+    student = _student(tenant_id)
+    item = SimpleNamespace(
+        action=StudentProgressionItemAction.STUDENT_SELECTION,
+        progression_run_id=uuid4(),
+    )
+    run = SimpleNamespace(next_academic_session_id=uuid4())
+    monkeypatch.setattr(
+        "app.modules.student_academics.progression_service.StudentProgressionRepository.get_latest_item_for_student",
+        AsyncMock(return_value=item),
+    )
+    monkeypatch.setattr(
+        "app.modules.student_academics.progression_service.StudentProgressionRepository.get_run_by_id",
+        AsyncMock(return_value=run),
+    )
+    monkeypatch.setattr(
+        "app.modules.student_academics.progression_service.AcademicSessionLifecycleRepository.get_by_id",
+        AsyncMock(
+            return_value=SimpleNamespace(status=AcademicSessionStatus.DRAFT)
+        ),
+    )
+    response = AsyncMock()
+    monkeypatch.setattr(AcademicProgressionService, "_selection_response", response)
+
+    result = await AcademicProgressionService.get_student_selection(
+        AsyncMock(), student=student
+    )
+
+    assert result is None
+    response.assert_not_awaited()
 
 
 @pytest.mark.asyncio
