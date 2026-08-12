@@ -78,3 +78,18 @@ test("Academic Hub supports level updates and guarded deletion of levels without
     assert.match(config, new RegExp(`id: ["']${tab}["']`));
   }
 });
+
+test("Subjects by Level uses separate assignment and lifecycle pages", async () => {
+  const source = await read("src/features/academic-admin/ClassStructureWorkspace.jsx");
+  const config = await read("src/features/academic-admin/academicWorkflowConfig.js");
+  const start = config.indexOf('"level-subjects": {');
+  const end = config.indexOf("  assignments:", start);
+  const levelSubjectConfig = config.slice(start, end);
+  for (const tab of ["overview", "assign", "active", "inactive", "archived"]) {
+    assert.match(levelSubjectConfig, new RegExp(`id: ["']${tab}["']`));
+  }
+  assert.match(source, /activeTab === "assign"/);
+  assert.match(source, /filteredLevelSubjects/);
+  assert.match(source, /activeTab !== "overview"/);
+  assert.match(source, /max-h-\[34rem\].*overflow-y-auto.*sm:grid-cols-2/);
+});

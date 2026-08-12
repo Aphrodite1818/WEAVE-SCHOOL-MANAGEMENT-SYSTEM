@@ -660,9 +660,10 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     );
   }
 
-  return (
-    <WorkspaceGrid
-      editor={(
+  if (activeTab === "assign") {
+    return (
+      <WorkspaceGrid
+        editor={(
         <WorkspacePanel
           title="Assign subjects by level"
           description="Configure curriculum once; every arm in the level inherits these subjects."
@@ -696,15 +697,42 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
             <FormActions submitting={saving} submitLabel="Add subjects" />
           </form>
         </WorkspacePanel>
+        )}
+        content={null}
+      />
+    );
+  }
+
+  const filteredLevelSubjects = levelSubjects.filter((item) => {
+    if (activeTab === "active") return item.is_active && !item.archived_at;
+    if (activeTab === "inactive") return !item.is_active && !item.archived_at;
+    if (activeTab === "archived") return Boolean(item.archived_at);
+    return true;
+  });
+  const levelSubjectTitle = activeTab === "overview"
+    ? "Subjects by academic level"
+    : `${activeTab[0].toUpperCase()}${activeTab.slice(1)} level subjects`;
+  const levelSubjectDescription = activeTab === "overview"
+    ? "Select a level to review its inherited curriculum."
+    : "Only mappings in this lifecycle state are shown.";
+
+  return (
+    <WorkspacePanel
+      title={levelSubjectTitle}
+      description={levelSubjectDescription}
+      actions={(
+        <SelectControl
+          label="Academic level"
+          value={selectedLevelId}
+          onChange={setSelectedLevelId}
+          options={levelOptions}
+          required
+        />
       )}
-      content={(
-        <WorkspacePanel
-          title="Subjects for selected level"
-          description="Teacher assignment later chooses a concrete class arm."
-        >
-          {levelSubjects.length ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {levelSubjects.map((item) => (
+    >
+      {filteredLevelSubjects.length ? (
+        <div className="grid max-h-[34rem] gap-3 overflow-y-auto overscroll-contain pr-1 sm:grid-cols-2">
+          {filteredLevelSubjects.map((item) => (
                 <div
                   key={item.id}
                   className="rounded-2xl border border-border/70 bg-surface p-4"
@@ -730,11 +758,13 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                           : "inactive"}
                     </Badge>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  {activeTab !== "overview" ? (
+                  <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
                     {!item.archived_at && item.is_active ? (
                       <Button
                         size="small"
                         variant="outline"
+                        className="w-full sm:w-auto"
                         disabled={saving === item.id}
                         onClick={() => updateLevelSubjectLifecycle(item, "deactivate")}
                       >
@@ -746,6 +776,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                         <Button
                           size="small"
                           variant="outline"
+                          className="w-full sm:w-auto"
                           disabled={saving === item.id}
                           onClick={() => updateLevelSubjectLifecycle(item, "activate")}
                         >
@@ -754,6 +785,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                         <Button
                           size="small"
                           variant="outline"
+                          className="w-full sm:w-auto"
                           disabled={saving === item.id}
                           onClick={() => updateLevelSubjectLifecycle(item, "archive")}
                         >
@@ -765,6 +797,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                       <Button
                         size="small"
                         variant="outline"
+                        className="w-full sm:w-auto"
                         disabled={saving === item.id}
                         onClick={() => updateLevelSubjectLifecycle(item, "restore")}
                       >
@@ -772,20 +805,19 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                       </Button>
                     ) : null}
                   </div>
+                  ) : null}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border p-6 text-center">
-              <Library className="mx-auto h-7 w-7 text-text-muted" />
-              <p className="mt-2 text-sm text-text-muted">
-                No subjects configured for this level.
-              </p>
-            </div>
-          )}
-        </WorkspacePanel>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-border p-6 text-center">
+          <Library className="mx-auto h-7 w-7 text-text-muted" />
+          <p className="mt-2 text-sm text-text-muted">
+            No {activeTab === "overview" ? "subjects are configured" : activeTab} mappings for this level.
+          </p>
+        </div>
       )}
-    />
+    </WorkspacePanel>
   );
 }
 

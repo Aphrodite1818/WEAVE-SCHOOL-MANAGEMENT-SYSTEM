@@ -80,7 +80,11 @@ export const academicWorkflowConfig = {
     tone: "accent",
     defaultTab: "overview",
     tabs: [
-      { id: "overview", label: "Subjects by Level" },
+      { id: "overview", label: "Overview" },
+      { id: "assign", label: "Assign Subjects" },
+      { id: "active", label: "Active" },
+      { id: "inactive", label: "Inactive" },
+      { id: "archived", label: "Archived" },
     ],
   },
   assignments: {
