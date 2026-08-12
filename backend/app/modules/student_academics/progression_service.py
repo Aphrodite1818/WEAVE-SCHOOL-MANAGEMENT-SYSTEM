@@ -191,10 +191,10 @@ class AcademicProgressionService:
                 target_class = await ClassRoomRepository.get_by_level_and_arm(
                     db, tenant_id, level.next_level_id, classroom.arm
                 )
-                if target_class is None or not target_class.is_active or target_class.archived_at:
-                    raise ConflictException(
-                        f"The next level has no active {classroom.arm} arm for {level.name}."
-                    )
+                if target_class is not None and (
+                    not target_class.is_active or target_class.archived_at is not None
+                ):
+                    target_class = None
             elif level.progression_mode == AcademicLevelProgressionMode.STUDENT_SELECTION:
                 options = await AcademicLevelRepository.list_progression_options(
                     db, tenant_id, level.id, lock=True
@@ -376,6 +376,8 @@ class AcademicProgressionService:
         enrollment.outcome = StudentEnrollmentOutcome.PROMOTED
         enrollment.reason = "Academic session completed"
         await StudentEnrollmentRepository.save(db, enrollment)
+        is_direct = level.progression_mode == AcademicLevelProgressionMode.DIRECT
+        direct_needs_placement = is_direct and target_class is None
         item = await StudentProgressionRepository.add_item(
             db,
             StudentProgressionItem(
@@ -386,18 +388,30 @@ class AcademicProgressionService:
                 from_class_id=classroom.id,
                 action=(
                     StudentProgressionItemAction.DIRECT
-                    if level.progression_mode == AcademicLevelProgressionMode.DIRECT
+                    if is_direct
                     else StudentProgressionItemAction.STUDENT_SELECTION
                 ),
                 status=(
-                    StudentProgressionItemStatus.COMPLETED
-                    if level.progression_mode == AcademicLevelProgressionMode.DIRECT
-                    else StudentProgressionItemStatus.AWAITING_SELECTION
+                    StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT
+                    if direct_needs_placement
+                    else (
+                        StudentProgressionItemStatus.COMPLETED
+                        if is_direct
+                        else StudentProgressionItemStatus.AWAITING_SELECTION
+                    )
                 ),
+                selected_level_id=(level.next_level_id if direct_needs_placement else None),
                 reason=(
-                    "Promoted to configured next class."
-                    if level.progression_mode == AcademicLevelProgressionMode.DIRECT
-                    else "Choose a configured progression destination."
+                    (
+                        f"No active {classroom.arm} arm exists in the next level; "
+                        "administrator classroom placement is required."
+                    )
+                    if direct_needs_placement
+                    else (
+                        "Promoted to configured next class."
+                        if is_direct
+                        else "Choose a configured progression destination."
+                    )
                 ),
             ),
         )
@@ -406,9 +420,9 @@ class AcademicProgressionService:
             await StudentRepository.save(db, student)
             return item
         if target_class is None:
-            item.status = StudentProgressionItemStatus.BLOCKED
-            item.reason = "Direct progression classroom could not be resolved safely."
-            return await StudentProgressionRepository.save_item(db, item)
+            student.class_id = None
+            await StudentRepository.save(db, student)
+            return item
         return await AcademicProgressionService._create_next_enrollment(
             db,
             tenant_id=actor.tenant_id,
@@ -469,18 +483,24 @@ class AcademicProgressionService:
                         )
                     )
         selected_label = next(
-            (destination.label for destination in destinations if destination.id in {
-                item.selected_level_id, item.selected_classroom_id
-            }),
+            (
+                destination.label
+                for destination in destinations
+                if destination.id in {item.selected_level_id, item.selected_classroom_id}
+            ),
             None,
         )
+        if selected_label is None and item.selected_level_id is not None:
+            selected_level = await AcademicLevelRepository.get_by_id(
+                db, tenant_id, item.selected_level_id
+            )
+            if selected_level is not None:
+                selected_label = selected_level.name
         return StudentProgressionSelectionResponse(
             item=StudentProgressionItemResponse.model_validate(item),
             student_name=(
                 " ".join(
-                    part
-                    for part in [student.first_name, student.last_name]
-                    if part
+                    part for part in [student.first_name, student.last_name] if part
                 )
                 if student
                 else None
@@ -516,7 +536,19 @@ class AcademicProgressionService:
         )
         if student is None:
             raise NotFoundException("Student not found.")
-        return await AcademicProgressionService.get_student_selection(db, student=student)
+        item = await StudentProgressionRepository.get_latest_item_for_student(
+            db, actor.tenant_id, student.id
+        )
+        if item is None:
+            return None
+        if (
+            item.action != StudentProgressionItemAction.STUDENT_SELECTION
+            and item.status != StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT
+        ):
+            return None
+        return await AcademicProgressionService._selection_response(
+            db, tenant_id=actor.tenant_id, item=item
+        )
 
     @staticmethod
     async def get_parent_child_selection(
@@ -628,10 +660,8 @@ class AcademicProgressionService:
             (
                 candidate
                 for candidate in options
-                if destination_id in {
-                    candidate.target_level_id,
-                    candidate.target_classroom_id,
-                }
+                if destination_id
+                in {candidate.target_level_id, candidate.target_classroom_id}
             ),
             None,
         )
@@ -673,25 +703,29 @@ class AcademicProgressionService:
             )
             if target_level is None or not target_level.is_active or target_level.archived_at:
                 raise ConflictException("Selected academic level is inactive.")
-            classrooms = await ClassRoomRepository.list_active_for_level(
-                db, tenant_id, target_level.id, lock=True
+            target_class = await ClassRoomRepository.get_by_level_and_arm(
+                db, tenant_id, target_level.id, source_class.arm
             )
-            if not classrooms:
-                item.status = StudentProgressionItemStatus.BLOCKED
-                item.reason = "Selected level has no active classroom available for placement."
-            elif len(classrooms) == 1:
+            if (
+                target_class is not None
+                and target_class.is_active
+                and target_class.archived_at is None
+            ):
                 await AcademicProgressionService._create_next_enrollment(
                     db,
                     tenant_id=tenant_id,
                     student=student,
                     item=item,
-                    target_class=classrooms[0],
+                    target_class=target_class,
                     next_session=next_session,
                     changed_by_admin_id=changed_by_admin_id,
                 )
             else:
                 item.status = StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT
-                item.reason = "Selected level requires an administrator to choose a classroom."
+                item.reason = (
+                    f"{target_level.name} selected, but no active {source_class.arm} arm exists; "
+                    "administrator classroom placement is required."
+                )
                 await StudentProgressionRepository.save_item(db, item)
         await db.commit()
         await db.refresh(item)
