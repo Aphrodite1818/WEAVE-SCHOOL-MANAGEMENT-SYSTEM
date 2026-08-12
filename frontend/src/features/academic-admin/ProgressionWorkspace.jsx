@@ -19,6 +19,8 @@ const asItems = (response) =>
       ? response.items
       : [];
 const CONFIRM_CLOSE_AND_PROGRESS = "START_SESSION_CLOSING";
+const needsAdminAttention = (item) =>
+  item.action === "student_selection" || item.status === "awaiting_class_placement";
 
 function ProgressionWorkspace({ activeTab }) {
   const [sessions, setSessions] = useState([]);
@@ -66,11 +68,9 @@ function ProgressionWorkspace({ activeTab }) {
         const detail = statusResponse?.progression_run || null;
         setRunDetail(detail);
         setClasses(asItems(classResponse));
-        const selectionItems = (detail?.items || []).filter(
-          (item) => item.action === "student_selection",
-        );
+        const actionableItems = (detail?.items || []).filter(needsAdminAttention);
         const rows = await Promise.all(
-          selectionItems.map(async (item) => [
+          actionableItems.map(async (item) => [
             item.student_id,
             await studentService.getStudentProgression(item.student_id),
           ]),
@@ -138,8 +138,8 @@ function ProgressionWorkspace({ activeTab }) {
   );
 
   const selectedSession = sessions.find((item) => item.id === sessionId);
-  const selectionItems = useMemo(
-    () => (runDetail?.items || []).filter((item) => item.action === "student_selection"),
+  const actionableItems = useMemo(
+    () => (runDetail?.items || []).filter(needsAdminAttention),
     [runDetail],
   );
 
@@ -175,8 +175,8 @@ function ProgressionWorkspace({ activeTab }) {
   if (["completed", "failed", "outcomes", "student-choices"].includes(activeTab)) {
     return (
       <WorkspacePanel
-        title="Student Choices"
-        description="Review only students from selection-based classes, correct their chosen destination when needed, and supply a concrete classroom when level selection cannot resolve safely. General progression outcomes are not shown here."
+        title="Selections & placements"
+        description="Review students who must choose a progression destination and students whose matching arm could not be resolved automatically. Pending selection or placement does not block session closure."
       >
         <SelectControl
           label="Academic session"
@@ -186,12 +186,13 @@ function ProgressionWorkspace({ activeTab }) {
           required
         />
         <div className="mt-4 grid gap-3">
-          {selectionItems.map((item) => {
+          {actionableItems.map((item) => {
             const progression = studentProgressions[item.student_id];
-            const selectedLevelId = progression?.item?.selected_level_id;
+            const selectedLevelId = progression?.item?.selected_level_id || item.selected_level_id;
             const availableClasses = classes.filter(
               (classroom) => classroom.academic_level_id === selectedLevelId,
             );
+            const isStudentSelection = item.action === "student_selection";
             return (
               <div key={item.id} className="rounded-2xl border border-border/70 bg-surface p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -208,7 +209,7 @@ function ProgressionWorkspace({ activeTab }) {
                     {String(item.status).replaceAll("_", " ")}
                   </Badge>
                 </div>
-                {progression?.destinations?.length && item.status !== "completed" && item.status !== "cancelled" ? (
+                {isStudentSelection && progression?.destinations?.length && item.status !== "completed" && item.status !== "cancelled" ? (
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
                     <div className="min-w-0 flex-1">
                       <SelectControl
@@ -233,37 +234,44 @@ function ProgressionWorkspace({ activeTab }) {
                   </div>
                 ) : null}
                 {item.status === "awaiting_class_placement" ? (
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <div className="min-w-0 flex-1">
-                      <SelectControl
-                        label="Final classroom"
-                        value={placementByStudent[item.student_id] || ""}
-                        onChange={(value) => setPlacementByStudent((current) => ({
-                          ...current,
-                          [item.student_id]: value,
-                        }))}
-                        options={availableClasses.map((classroom) => ({
-                          value: classroom.id,
-                          label: `${classroom.academic_level_name} ${classroom.arm}`,
-                        }))}
-                        required
-                      />
+                  <div className="mt-3">
+                    <p className="mb-3 text-sm text-text-muted">
+                      {isStudentSelection
+                        ? "The selected level has no active class with the student's previous arm. Choose the final class manually."
+                        : "Direct progression could not find the student's previous arm in the next level. Choose the final class manually."}
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <div className="min-w-0 flex-1">
+                        <SelectControl
+                          label="Final classroom"
+                          value={placementByStudent[item.student_id] || ""}
+                          onChange={(value) => setPlacementByStudent((current) => ({
+                            ...current,
+                            [item.student_id]: value,
+                          }))}
+                          options={availableClasses.map((classroom) => ({
+                            value: classroom.id,
+                            label: `${classroom.academic_level_name} ${classroom.arm}`,
+                          }))}
+                          required
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        disabled={saving === item.student_id || !placementByStudent[item.student_id]}
+                        onClick={() => placeStudent(item.student_id)}
+                      >
+                        Assign class
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      disabled={saving === item.student_id || !placementByStudent[item.student_id]}
-                      onClick={() => placeStudent(item.student_id)}
-                    >
-                      Assign class
-                    </Button>
                   </div>
                 ) : null}
               </div>
             );
           })}
-          {!loading && !selectionItems.length ? (
+          {!loading && !actionableItems.length ? (
             <p className="text-sm text-text-muted">
-              No student choices from selection-based classes for this session.
+              No student selections or manual classroom placements need attention for this session.
             </p>
           ) : null}
         </div>
@@ -275,7 +283,7 @@ function ProgressionWorkspace({ activeTab }) {
     <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
       <WorkspacePanel
         title="Plan progression"
-        description="The worker applies direct progression, creates student-selection tasks, and graduates terminal levels."
+        description="Direct progression keeps the student's arm when the same arm exists in the next level. Selection-based levels create student choice tasks, and missing matching arms are routed to administrator placement."
       >
         <form className="space-y-3" onSubmit={closeAndProgress}>
           <SelectControl
@@ -315,10 +323,10 @@ function ProgressionWorkspace({ activeTab }) {
       >
         <div className="grid gap-3 sm:grid-cols-2">
           {[
-            ["Route", "POST /tenant-admin/academics/sessions/{session_id}/start-closing"],
-            ["Payload", "confirmation: START_SESSION_CLOSING, idempotency_key"],
-            ["Run statuses", "pending, processing, completed, failed"],
-            ["Item states", "awaiting selection, awaiting class placement, completed, blocked, cancelled"],
+            ["Direct", "Preserve the current arm in the configured next level; otherwise await admin placement"],
+            ["Choose level", "Student chooses the next level, then Weave preserves the current arm where possible"],
+            ["Choose class", "Student chooses the exact configured class destination"],
+            ["Pending states", "Selection and admin placement may remain pending after the old session closes"],
           ].map(([label, value]) => (
             <div key={label} className="rounded-2xl border border-border/70 bg-surface px-4 py-3">
               <p className="text-[11px] font-semibold uppercase text-text-muted">{label}</p>
