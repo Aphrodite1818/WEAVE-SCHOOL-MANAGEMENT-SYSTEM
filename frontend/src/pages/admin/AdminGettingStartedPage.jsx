@@ -31,6 +31,7 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
+import MultiSelect from "../../components/ui/MultiSelect";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import { schoolCalendarService } from "../../features/schoolCalendar/api/schoolCalendarService";
@@ -161,7 +162,8 @@ function AdminGettingStartedPage() {
   const [sessionForm, setSessionForm] = useState(DEFAULT_SESSION);
   const [termForm, setTermForm] = useState(DEFAULT_TERM);
   const [calendarForm, setCalendarForm] = useState(DEFAULT_CALENDAR);
-  const [classForm, setClassForm] = useState({ level_name: "", arm: "" });
+  const [levelForm, setLevelForm] = useState({ name: "" });
+  const [classForm, setClassForm] = useState({ academic_level_id: "", arm: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
   const [progressionDrafts, setProgressionDrafts] = useState({});
   const [schoolLogoUrl, setSchoolLogoUrl] = useState(() =>
@@ -331,7 +333,11 @@ function AdminGettingStartedPage() {
   );
   const progressionComplete = Boolean(
     activeLevels.length > 0 &&
-      activeLevels.every((item) => item.is_terminal || item.next_level_id),
+      activeLevels.every((item) =>
+        item.progression_mode === "terminal" ||
+        item.next_level_id ||
+        (item.progression_mode === "student_selection" && item.selection_target_type)
+      ),
   );
 
   useEffect(() => {
@@ -339,11 +345,54 @@ function AdminGettingStartedPage() {
       const next = {};
       for (const level of activeLevels) {
         next[level.id] = current[level.id] || {
-          is_terminal: Boolean(level.is_terminal),
+          progression_mode: level.progression_mode || "direct",
           next_level_id: level.next_level_id || "",
+          selection_target_type: level.selection_target_type || "level",
+          target_level_ids: [],
+          target_classroom_ids: [],
         };
       }
       return next;
+    });
+  }, [activeLevels]);
+
+  useEffect(() => {
+    if (!activeLevels.length) return undefined;
+    let mounted = true;
+    Promise.all(
+      activeLevels.map(async (level) => [
+        level.id,
+        await academicLevelService.getProgression(level.id),
+      ]),
+    )
+      .then((entries) => {
+        if (!mounted) return;
+        setProgressionDrafts((current) => ({
+          ...current,
+          ...Object.fromEntries(entries.map(([levelId, configuration]) => [
+            levelId,
+            {
+              progression_mode: configuration.progression_mode,
+              next_level_id: configuration.next_level_id || "",
+              selection_target_type: configuration.selection_target_type || "level",
+              target_level_ids: configuration.target_level_ids || [],
+              target_classroom_ids: configuration.target_classroom_ids || [],
+            },
+          ])),
+        }));
+      })
+      .catch((error) => {
+        if (mounted) showError(getErrorMessage(error, "Could not load progression settings."));
+      });
+    return () => { mounted = false; };
+  }, [activeLevels, showError]);
+
+  useEffect(() => {
+    setClassForm((current) => {
+      if (activeLevels.some((level) => level.id === current.academic_level_id)) {
+        return current;
+      }
+      return { ...current, academic_level_id: activeLevels[0]?.id || "" };
     });
   }, [activeLevels]);
   const sessionDraft = statusValue(selectedSession) === "draft";
@@ -632,27 +681,31 @@ function AdminGettingStartedPage() {
     if (result) await guide.moveTo("structure");
   };
 
-  const createClass = async (event) => {
+  const createLevel = async (event) => {
     event.preventDefault();
     const created = await runAction(
+      "level",
+      () => academicLevelService.createLevel({ name: levelForm.name }),
+      "Academic level created. Now add its class arm.",
+    );
+    if (!created?.id) return;
+    setLevelForm({ name: "" });
+    setClassForm((current) => ({ ...current, academic_level_id: created.id }));
+  };
+
+  const createClass = async (event) => {
+    event.preventDefault();
+    if (!classForm.academic_level_id) {
+      showWarning("Create or select an academic level before adding an arm.");
+      return;
+    }
+    const created = await runAction(
       "class",
-      async () => {
-        const normalizedLevelName = classForm.level_name.trim();
-        let level = activeLevels.find(
-          (item) => item.name.trim().toLowerCase() === normalizedLevelName.toLowerCase(),
-        );
-        if (!level) {
-          level = await academicLevelService.createLevel({ name: normalizedLevelName });
-        }
-        return classService.createClass({
-          academic_level_id: level.id,
-          arm: classForm.arm,
-        });
-      },
+      () => classService.createClass(classForm),
       "Class created.",
     );
     if (!created) return;
-    setClassForm({ level_name: "", arm: "" });
+    setClassForm((current) => ({ ...current, arm: "" }));
   };
 
   const createSubject = async (event) => {
@@ -675,6 +728,14 @@ function AdminGettingStartedPage() {
     if (removed) await refreshSubscriptionState({ silent: true });
   };
 
+  const removeLevel = async (level, label = level?.name || "Academic level") => {
+    await runAction(
+      `level-delete-${level.id}`,
+      () => academicLevelService.removeLevelFromSetup(level.id),
+      `${label} removed from setup.`,
+    );
+  };
+
   const removeSubject = async (subject, label = subject?.name || "Subject") => {
     const removed = await runAction(
       `subject-delete-${subject.id}`,
@@ -685,7 +746,9 @@ function AdminGettingStartedPage() {
   };
 
   const requestSetupRemoval = (type, item) => {
-    const label = type === "class" ? classLabel(item) : item?.name || "Subject";
+    const label = type === "class"
+      ? classLabel(item)
+      : item?.name || (type === "level" ? "Academic level" : "Subject");
     setDeleteConfirmation({ type, item, label });
   };
 
@@ -695,6 +758,8 @@ function AdminGettingStartedPage() {
     const { type, item, label } = deleteConfirmation;
     if (type === "class") {
       await removeClass(item, label);
+    } else if (type === "level") {
+      await removeLevel(item, label);
     } else {
       await removeSubject(item, label);
     }
@@ -703,16 +768,23 @@ function AdminGettingStartedPage() {
 
   const saveLevelProgression = async (level) => {
     const draft = progressionDrafts[level.id] || {};
-    if (!draft.is_terminal && !draft.next_level_id) {
-      showWarning(`Choose a next level or mark ${level.name} as terminal.`);
+    if (draft.progression_mode === "direct" && !draft.next_level_id) {
+      showWarning(`Choose the direct next level for ${level.name}.`);
+      return;
+    }
+    const selectionIds = draft.selection_target_type === "level"
+      ? draft.target_level_ids
+      : draft.target_classroom_ids;
+    if (draft.progression_mode === "student_selection" && !selectionIds?.length) {
+      showWarning(`Choose at least one allowed destination for ${level.name}.`);
       return;
     }
     await runAction(
       `progression-${level.id}`,
       () =>
         academicLevelService.configureProgression(level.id, {
-          is_terminal: Boolean(draft.is_terminal),
-          next_level_id: draft.is_terminal ? null : draft.next_level_id,
+          ...draft,
+          next_level_id: draft.progression_mode === "direct" ? draft.next_level_id : null,
         }),
       `${level.name} progression saved.`,
     );
@@ -833,6 +905,17 @@ function AdminGettingStartedPage() {
     label: termLabel(item),
     description: `${titleCase(item.status)}${item.is_current ? " · Current" : ""}`,
   }));
+
+  const levelOptions = activeLevels.map((item) => {
+    const armCount = activeClasses.filter(
+      (classroom) => classroom.academic_level_id === item.id,
+    ).length;
+    return {
+      value: item.id,
+      label: item.name,
+      description: `${armCount} class arm${armCount === 1 ? "" : "s"}`,
+    };
+  });
 
   const goPrevious = () => {
     if (!firstStep) guide.moveTo(guide.steps[guide.currentIndex - 1].id);
@@ -1225,7 +1308,7 @@ function AdminGettingStartedPage() {
   const renderStructureStep = () => (
     <div className="space-y-5">
       <div className="rounded-2xl border border-border bg-surface-muted/25 p-4 text-sm leading-6 text-text-muted">
-        Add as many classes and subjects as the school needs. The forms remain available after each creation. Continue when the minimum structure is ready, or skip the stage and return later.
+        Build the school structure in order: create an academic level first, then add one or more class arms under that level. Subjects are created separately. Continue when the minimum structure is ready, or skip the stage and return later.
       </div>
       {structureLimitNotice ? (
         <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 sm:p-5">
@@ -1256,15 +1339,48 @@ function AdminGettingStartedPage() {
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-semibold text-text">Classes</p>
+              <p className="font-semibold text-text">Academic levels and class arms</p>
               <p className="mt-1 text-sm text-text-muted">
-                {activeClasses.length} active class{activeClasses.length === 1 ? "" : "es"}
+                {activeLevels.length} level{activeLevels.length === 1 ? "" : "s"} · {activeClasses.length} class{activeClasses.length === 1 ? "" : "es"}
               </p>
             </div>
             {activeClasses.length ? <Badge variant="success">Ready</Badge> : null}
           </div>
+          {activeLevels.length ? (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-text-faint">Saved levels</p>
+              <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+                {activeLevels.map((level) => {
+                  const armCount = activeClasses.filter(
+                    (classroom) => classroom.academic_level_id === level.id,
+                  ).length;
+                  return (
+                    <span key={level.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/40 py-1 pl-3 pr-1 text-xs font-semibold text-text-soft">
+                      <span>{level.name} · {armCount} arm{armCount === 1 ? "" : "s"}</span>
+                      {armCount === 0 ? (
+                        <button
+                          type="button"
+                          className="grid h-6 w-6 place-items-center rounded-full text-text-faint transition hover:bg-error-soft hover:text-error disabled:cursor-not-allowed disabled:opacity-50"
+                          title={`Remove unused level ${level.name}`}
+                          aria-label={`Remove unused level ${level.name}`}
+                          disabled={saving === `level-delete-${level.id}`}
+                          onClick={() => requestSetupRemoval("level", level)}
+                        >
+                          {saving === `level-delete-${level.id}` ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      ) : null}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           {activeClasses.length ? (
-            <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+            <div className="mt-4 flex max-h-32 flex-wrap gap-2 overflow-y-auto border-t border-border/70 pt-4">
               {activeClasses.map((item) => (
                 <span key={item.id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/40 py-1 pl-3 pr-1 text-xs font-semibold text-text-soft">
                   <span>{classLabel(item)}</span>
@@ -1286,26 +1402,62 @@ function AdminGettingStartedPage() {
               ))}
             </div>
           ) : null}
-          <form onSubmit={createClass} className="mt-4 space-y-3 border-t border-border pt-4">
-            <Input
-              label="Academic level"
-              value={classForm.level_name}
-              placeholder="JSS 1"
-              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, level_name: event.target.value }))}
-              required
-            />
-            <Input
-              label="Arm"
-              value={classForm.arm}
-              placeholder="A"
-              onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, arm: event.target.value }))}
-              required
-            />
-            <Button type="submit" disabled={saving === "class"} className="w-full">
-              {saving === "class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <School className="h-4 w-4" />}
-              {saving === "class" ? "Adding class..." : "Add another class"}
-            </Button>
-          </form>
+          <div className="mt-4 space-y-4 border-t border-border pt-4">
+            <form onSubmit={createLevel} className="rounded-xl border border-border/70 bg-surface-muted/25 p-3">
+              <div className="mb-3 flex items-start gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground">1</span>
+                <div>
+                  <p className="text-sm font-semibold text-text">Create the academic level</p>
+                  <p className="mt-0.5 text-xs leading-5 text-text-muted">Use the year or stage name only, for example JSS 1. Do not include the arm here.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <Input
+                  label="Level name"
+                  value={levelForm.name}
+                  placeholder="JSS 1"
+                  onChange={(event) => setLevelForm({ name: event.target.value })}
+                  required
+                />
+                <Button type="submit" variant="outline" disabled={saving === "level"} className="w-full">
+                  {saving === "level" ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
+                  {saving === "level" ? "Creating level..." : "Create level"}
+                </Button>
+              </div>
+            </form>
+
+            <form onSubmit={createClass} className="rounded-xl border border-border/70 bg-surface-muted/25 p-3">
+              <div className="mb-3 flex items-start gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
+                <div>
+                  <p className="text-sm font-semibold text-text">Add an arm to the level</p>
+                  <p className="mt-0.5 text-xs leading-5 text-text-muted">Select a saved level, then add one arm at a time, for example A, B, or Gold.</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <SearchableSelect
+                  label="Academic level"
+                  value={classForm.academic_level_id}
+                  onChange={(value) => setClassForm((currentForm) => ({ ...currentForm, academic_level_id: value }))}
+                  options={levelOptions}
+                  placeholder={activeLevels.length ? "Select a level" : "Create a level first"}
+                  searchable={activeLevels.length > 5}
+                  required
+                />
+                <Input
+                  label="Class arm"
+                  value={classForm.arm}
+                  placeholder="A"
+                  onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, arm: event.target.value }))}
+                  required
+                />
+                <Button type="submit" disabled={!activeLevels.length || saving === "class"} className="w-full">
+                  {saving === "class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <School className="h-4 w-4" />}
+                  {saving === "class" ? "Adding arm..." : "Add class arm"}
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
@@ -1387,16 +1539,22 @@ function AdminGettingStartedPage() {
         <div className="grid gap-3">
           {activeLevels.map((level) => {
             const draft = progressionDrafts[level.id] || {
-              is_terminal: Boolean(level.is_terminal),
+              progression_mode: level.progression_mode || "direct",
               next_level_id: level.next_level_id || "",
+              selection_target_type: level.selection_target_type || "level",
+              target_level_ids: [],
+              target_classroom_ids: [],
             };
-            const configured = Boolean(level.is_terminal || level.next_level_id);
+            const configured = Boolean(
+              level.progression_mode === "terminal" || level.next_level_id ||
+              (level.progression_mode === "student_selection" && level.selection_target_type),
+            );
             const nextOptions = activeLevels
               .filter((candidate) => candidate.id !== level.id)
               .map((candidate) => ({
                 value: candidate.id,
                 label: candidate.name,
-                description: candidate.is_terminal ? "Terminal level" : "Active level",
+                description: candidate.progression_mode === "terminal" ? "Terminal level" : "Active level",
               }));
 
             return (
@@ -1407,24 +1565,70 @@ function AdminGettingStartedPage() {
                       <p className="font-semibold text-text">{level.name}</p>
                       {configured ? <Badge variant="success">Configured</Badge> : <Badge variant="warning">Required</Badge>}
                     </div>
-                    <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface-muted/25 px-3 text-sm font-medium text-text-soft">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-primary"
-                        checked={Boolean(draft.is_terminal)}
-                        onChange={(event) =>
+                    <div className="mt-3 grid gap-3">
+                      <SearchableSelect
+                        label="Progression mode"
+                        value={draft.progression_mode}
+                        onChange={(value) =>
                           setProgressionDrafts((current) => ({
                             ...current,
                             [level.id]: {
                               ...draft,
-                              is_terminal: event.target.checked,
-                              next_level_id: event.target.checked ? "" : draft.next_level_id,
+                              progression_mode: value,
+                              next_level_id: value === "direct" ? draft.next_level_id : "",
+                              target_level_ids: value === "student_selection" ? draft.target_level_ids : [],
+                              target_classroom_ids: value === "student_selection" ? draft.target_classroom_ids : [],
                             },
                           }))
                         }
+                        options={[
+                          { value: "direct", label: "Direct", description: "Move students automatically." },
+                          { value: "student_selection", label: "Student Selection", description: "Students choose an allowed destination." },
+                          { value: "terminal", label: "Terminal", description: "Graduate genuine final-school completers." },
+                        ]}
                       />
-                      Terminal level — students graduate after this level
-                    </label>
+                      {draft.progression_mode === "student_selection" ? (
+                        <>
+                          <SearchableSelect
+                            label="Students choose"
+                            value={draft.selection_target_type}
+                            onChange={(value) =>
+                              setProgressionDrafts((current) => ({
+                                ...current,
+                                [level.id]: {
+                                  ...draft,
+                                  selection_target_type: value,
+                                  target_level_ids: [],
+                                  target_classroom_ids: [],
+                                },
+                              }))
+                            }
+                            options={[
+                              { value: "level", label: "Academic Level" },
+                              { value: "classroom", label: "ClassRoom" },
+                            ]}
+                          />
+                          <MultiSelect
+                            label="Allowed destinations"
+                            name={`progression-${level.id}-destinations`}
+                            value={draft.selection_target_type === "level" ? draft.target_level_ids : draft.target_classroom_ids}
+                            onChange={(event) => {
+                              const key = draft.selection_target_type === "level" ? "target_level_ids" : "target_classroom_ids";
+                              setProgressionDrafts((current) => ({
+                                ...current,
+                                [level.id]: { ...draft, [key]: event.target.value },
+                              }));
+                            }}
+                            options={draft.selection_target_type === "level"
+                              ? nextOptions
+                              : activeClasses
+                                  .filter((item) => item.academic_level_id !== level.id)
+                                  .map((item) => ({ value: item.id, label: classLabel(item) }))}
+                            required
+                          />
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="grid min-w-0 flex-[1.2] gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                     <SearchableSelect
@@ -1435,23 +1639,25 @@ function AdminGettingStartedPage() {
                           ...current,
                           [level.id]: {
                             ...draft,
-                            is_terminal: false,
+                            progression_mode: "direct",
                             next_level_id: value,
                           },
                         }))
                       }
                       options={nextOptions}
-                      placeholder={draft.is_terminal ? "Terminal level" : "Select next level"}
+                      placeholder={draft.progression_mode === "terminal" ? "Terminal level" : "Select next level"}
                       searchable={nextOptions.length > 5}
                       clearable
-                      disabled={draft.is_terminal}
+                      disabled={draft.progression_mode !== "direct"}
                     />
                     <Button
                       type="button"
                       onClick={() => saveLevelProgression(level)}
                       disabled={
                         saving === `progression-${level.id}` ||
-                        (!draft.is_terminal && !draft.next_level_id)
+                        (draft.progression_mode === "direct" && !draft.next_level_id) ||
+                        (draft.progression_mode === "student_selection" &&
+                          !(draft.selection_target_type === "level" ? draft.target_level_ids : draft.target_classroom_ids)?.length)
                       }
                       className="w-full sm:w-auto"
                     >
@@ -1871,11 +2077,15 @@ function AdminGettingStartedPage() {
           title={
             deleteConfirmation?.type === "class"
               ? "Remove class from setup?"
-              : "Remove subject from setup?"
+              : deleteConfirmation?.type === "level"
+                ? "Remove academic level from setup?"
+                : "Remove subject from setup?"
           }
           description={
             deleteConfirmation
-              ? `${deleteConfirmation.label} will be deactivated for the assisted setup and your plan usage will be refreshed.`
+              ? deleteConfirmation.type === "level"
+                ? `${deleteConfirmation.label} has no class arms and will be permanently removed from assisted setup.`
+                : `${deleteConfirmation.label} is unused and will be permanently removed from assisted setup. Your plan usage will be refreshed.`
               : ""
           }
           confirmLabel="Remove"

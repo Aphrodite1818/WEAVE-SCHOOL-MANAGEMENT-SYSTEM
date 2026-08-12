@@ -8,17 +8,20 @@ if TYPE_CHECKING:
     from app.modules.teachers.models import TeacherMembership
 
 from datetime import datetime
+from enum import Enum as PyEnum
 import uuid
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Enum as SQLEnum,
     ForeignKey,
     Index,
     String,
     UniqueConstraint,
     event,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,7 +32,22 @@ from app.core.utils.normalization import (
     normalized_class_arm_key,
     normalized_class_name_key,
 )
-from app.shared.base_model import BaseModel
+from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
+
+
+def enum_values(enum_cls):
+    return [item.value for item in enum_cls]
+
+
+class AcademicLevelProgressionMode(str, PyEnum):
+    DIRECT = "direct"
+    STUDENT_SELECTION = "student_selection"
+    TERMINAL = "terminal"
+
+
+class ProgressionSelectionTargetType(str, PyEnum):
+    LEVEL = "level"
+    CLASSROOM = "classroom"
 
 
 class AcademicLevel(BaseModel):
@@ -53,8 +71,25 @@ class AcademicLevel(BaseModel):
         ForeignKey("academic_levels.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    is_terminal: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
+    progression_mode: Mapped[AcademicLevelProgressionMode] = mapped_column(
+        SQLEnum(
+            AcademicLevelProgressionMode,
+            name="academic_level_progression_mode",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=False,
+        default=AcademicLevelProgressionMode.DIRECT,
+        server_default=AcademicLevelProgressionMode.DIRECT.value,
+    )
+    selection_target_type: Mapped[ProgressionSelectionTargetType | None] = mapped_column(
+        SQLEnum(
+            ProgressionSelectionTargetType,
+            name="progression_selection_target_type",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=True,
     )
 
     next_level: Mapped["AcademicLevel | None"] = relationship(
@@ -71,6 +106,12 @@ class AcademicLevel(BaseModel):
     classrooms: Mapped[list["ClassRoom"]] = relationship(
         "ClassRoom", back_populates="academic_level"
     )
+    progression_selection_options: Mapped[list["ProgressionSelectionOption"]] = relationship(
+        "ProgressionSelectionOption",
+        foreign_keys="ProgressionSelectionOption.source_level_id",
+        back_populates="source_level",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -81,8 +122,10 @@ class AcademicLevel(BaseModel):
             name="ck_academic_levels_next_not_self",
         ),
         CheckConstraint(
-            "(is_terminal = true AND next_level_id IS NULL) OR is_terminal = false",
-            name="ck_academic_levels_terminal_has_no_next",
+            "(progression_mode = 'direct' AND selection_target_type IS NULL) "
+            "OR (progression_mode = 'student_selection' AND next_level_id IS NULL AND selection_target_type IS NOT NULL) "
+            "OR (progression_mode = 'terminal' AND next_level_id IS NULL AND selection_target_type IS NULL)",
+            name="ck_academic_levels_progression_configuration",
         ),
         CheckConstraint(
             "archived_at IS NULL OR is_active = false",
@@ -91,6 +134,72 @@ class AcademicLevel(BaseModel):
         Index("ix_academic_levels_tenant_active", "tenant_id", "is_active"),
         Index("ix_academic_levels_tenant_next", "tenant_id", "next_level_id"),
         Index("ix_academic_levels_tenant_archived", "tenant_id", "archived_at"),
+    )
+
+
+class ProgressionSelectionOption(BaseModel):
+    """Explicit tenant-owned destination offered for student selection."""
+
+    __tablename__ = "progression_selection_options"
+
+    source_level_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_levels.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    target_classroom_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("classes.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+    source_level: Mapped[AcademicLevel] = relationship(
+        "AcademicLevel",
+        foreign_keys=[source_level_id],
+        back_populates="progression_selection_options",
+    )
+    target_level: Mapped[AcademicLevel | None] = relationship(
+        "AcademicLevel", foreign_keys=[target_level_id]
+    )
+    target_classroom: Mapped["ClassRoom | None"] = relationship(
+        "ClassRoom", foreign_keys=[target_classroom_id]
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "(target_level_id IS NOT NULL) <> (target_classroom_id IS NOT NULL)",
+            name="ck_progression_selection_option_exactly_one_target",
+        ),
+        CheckConstraint(
+            "target_level_id IS NULL OR target_level_id <> source_level_id",
+            name="ck_progression_selection_option_level_not_self",
+        ),
+        Index(
+            "uq_progression_selection_option_level",
+            "tenant_id",
+            "source_level_id",
+            "target_level_id",
+            unique=True,
+            postgresql_where=text("target_level_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_progression_selection_option_classroom",
+            "tenant_id",
+            "source_level_id",
+            "target_classroom_id",
+            unique=True,
+            postgresql_where=text("target_classroom_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_progression_selection_options_tenant_source",
+            "tenant_id",
+            "source_level_id",
+        ),
     )
 
 

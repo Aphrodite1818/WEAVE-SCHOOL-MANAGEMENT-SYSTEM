@@ -1,11 +1,14 @@
-import { GitBranch, TriangleAlert } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
+import { classService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
+import { sessionClosureService } from "../../services/sessionClosureService";
+import { studentService } from "../../services/studentService";
 import { Input, SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
@@ -15,7 +18,7 @@ const asItems = (response) =>
     : Array.isArray(response?.items)
       ? response.items
       : [];
-const CONFIRM_CLOSE_AND_PROGRESS = "CLOSE_AND_PROGRESS";
+const CONFIRM_CLOSE_AND_PROGRESS = "START_SESSION_CLOSING";
 
 function ProgressionWorkspace({ activeTab }) {
   const [sessions, setSessions] = useState([]);
@@ -24,6 +27,11 @@ function ProgressionWorkspace({ activeTab }) {
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [runDetail, setRunDetail] = useState(null);
+  const [studentProgressions, setStudentProgressions] = useState({});
+  const [classes, setClasses] = useState([]);
+  const [placementByStudent, setPlacementByStudent] = useState({});
+  const [destinationByStudent, setDestinationByStudent] = useState({});
   const { showSuccess, showError, showWarning } = useToast();
 
   const loadSessions = useCallback(async () => {
@@ -44,6 +52,82 @@ function ProgressionWorkspace({ activeTab }) {
     loadSessions();
   }, [loadSessions]);
 
+  useEffect(() => {
+    if (!["completed", "failed", "outcomes"].includes(activeTab) || !sessionId) return;
+    let mounted = true;
+    const loadOutcomes = async () => {
+      setLoading(true);
+      try {
+        const [statusResponse, classResponse] = await Promise.all([
+          sessionClosureService.getStatus(sessionId),
+          classService.getClasses({ activeOnly: true, limit: 500 }),
+        ]);
+        if (!mounted) return;
+        const detail = statusResponse?.progression_run || null;
+        setRunDetail(detail);
+        setClasses(asItems(classResponse));
+        const selectionItems = (detail?.items || []).filter(
+          (item) => item.action === "student_selection",
+        );
+        const rows = await Promise.all(
+          selectionItems.map(async (item) => [
+            item.student_id,
+            await studentService.getStudentProgression(item.student_id),
+          ]),
+        );
+        if (mounted) setStudentProgressions(Object.fromEntries(rows));
+      } catch (error) {
+        if (mounted) showError(getErrorMessage(error, "Could not load progression outcomes."));
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    loadOutcomes();
+    return () => { mounted = false; };
+  }, [activeTab, sessionId, showError]);
+
+  const placeStudent = async (studentId) => {
+    const classroomId = placementByStudent[studentId];
+    if (!classroomId) return;
+    setSaving(studentId);
+    try {
+      const updated = await studentService.placeProgressionStudent(studentId, classroomId);
+      setStudentProgressions((current) => ({ ...current, [studentId]: updated }));
+      setRunDetail((current) => ({
+        ...current,
+        items: (current?.items || []).map((item) =>
+          item.student_id === studentId ? updated.item : item
+        ),
+      }));
+      showSuccess("Student classroom placement completed.");
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not place this student."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateDestination = async (studentId) => {
+    const destinationId = destinationByStudent[studentId];
+    if (!destinationId) return;
+    setSaving(studentId);
+    try {
+      const updated = await studentService.overrideProgressionSelection(studentId, destinationId);
+      setStudentProgressions((current) => ({ ...current, [studentId]: updated }));
+      setRunDetail((current) => ({
+        ...current,
+        items: (current?.items || []).map((item) =>
+          item.student_id === studentId ? updated.item : item
+        ),
+      }));
+      showSuccess("Student progression destination updated.");
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not update this destination."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const sessionOptions = useMemo(
     () =>
       sessions.map((item) => ({
@@ -54,6 +138,10 @@ function ProgressionWorkspace({ activeTab }) {
   );
 
   const selectedSession = sessions.find((item) => item.id === sessionId);
+  const selectionItems = useMemo(
+    () => (runDetail?.items || []).filter((item) => item.action === "student_selection"),
+    [runDetail],
+  );
 
   const closeAndProgress = async (event) => {
     event.preventDefault();
@@ -71,7 +159,7 @@ function ProgressionWorkspace({ activeTab }) {
   const runCloseAndProgress = async () => {
     setSaving(true);
     try {
-      await academicService.closeSessionAndProgress(sessionId, {
+      await academicService.startSessionClosing(sessionId, {
         idempotency_key: idempotencyKey.trim(),
       });
       showSuccess("Academic session closure and progression started.");
@@ -84,18 +172,100 @@ function ProgressionWorkspace({ activeTab }) {
     }
   };
 
-  if (["completed", "failed", "outcomes"].includes(activeTab)) {
+  if (["completed", "failed", "outcomes", "student-choices"].includes(activeTab)) {
     return (
       <WorkspacePanel
-        title="Progression run history is not exposed"
-        description="The local backend has progression run models and repositories, but no tenant-admin route for listing run history or per-student outcomes."
+        title="Student Choices"
+        description="Review only students from selection-based classes, correct their chosen destination when needed, and supply a concrete classroom when level selection cannot resolve safely. General progression outcomes are not shown here."
       >
-        <div className="flex gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-4 text-sm leading-6 text-amber-900">
-          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
-          <p>
-            I omitted fake history tables here. The supported frontend action is
-            closing an open session through the dedicated close-and-progress endpoint.
-          </p>
+        <SelectControl
+          label="Academic session"
+          value={sessionId}
+          onChange={setSessionId}
+          options={sessionOptions}
+          required
+        />
+        <div className="mt-4 grid gap-3">
+          {selectionItems.map((item) => {
+            const progression = studentProgressions[item.student_id];
+            const selectedLevelId = progression?.item?.selected_level_id;
+            const availableClasses = classes.filter(
+              (classroom) => classroom.academic_level_id === selectedLevelId,
+            );
+            return (
+              <div key={item.id} className="rounded-2xl border border-border/70 bg-surface p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-text">
+                      {progression?.student_name || `Student ${item.student_id}`}
+                    </p>
+                    <p className="mt-1 text-sm text-text-muted">
+                      {[progression?.admission_number, progression?.source_class_label, progression?.selected_destination_label]
+                        .filter(Boolean).join(" · ") || item.reason || "No destination selected"}
+                    </p>
+                  </div>
+                  <Badge variant={item.status === "completed" ? "success" : "warning"}>
+                    {String(item.status).replaceAll("_", " ")}
+                  </Badge>
+                </div>
+                {progression?.destinations?.length && item.status !== "completed" && item.status !== "cancelled" ? (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div className="min-w-0 flex-1">
+                      <SelectControl
+                        label="Progression destination"
+                        value={destinationByStudent[item.student_id] || progression.item.selected_level_id || progression.item.selected_classroom_id || ""}
+                        onChange={(value) => setDestinationByStudent((current) => ({ ...current, [item.student_id]: value }))}
+                        options={progression.destinations.map((destination) => ({
+                          value: destination.id,
+                          label: destination.label,
+                        }))}
+                        required
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={saving === item.student_id || !destinationByStudent[item.student_id]}
+                      onClick={() => updateDestination(item.student_id)}
+                    >
+                      Update destination
+                    </Button>
+                  </div>
+                ) : null}
+                {item.status === "awaiting_class_placement" ? (
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div className="min-w-0 flex-1">
+                      <SelectControl
+                        label="Final classroom"
+                        value={placementByStudent[item.student_id] || ""}
+                        onChange={(value) => setPlacementByStudent((current) => ({
+                          ...current,
+                          [item.student_id]: value,
+                        }))}
+                        options={availableClasses.map((classroom) => ({
+                          value: classroom.id,
+                          label: `${classroom.academic_level_name} ${classroom.arm}`,
+                        }))}
+                        required
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={saving === item.student_id || !placementByStudent[item.student_id]}
+                      onClick={() => placeStudent(item.student_id)}
+                    >
+                      Assign class
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          {!loading && !selectionItems.length ? (
+            <p className="text-sm text-text-muted">
+              No student choices from selection-based classes for this session.
+            </p>
+          ) : null}
         </div>
       </WorkspacePanel>
     );
@@ -105,7 +275,7 @@ function ProgressionWorkspace({ activeTab }) {
     <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
       <WorkspacePanel
         title="Plan progression"
-        description="The backend computes PROMOTE, GRADUATE, and SKIP outcomes from class progression settings. REPEAT is not currently exposed as a manual frontend action."
+        description="The worker applies direct progression, creates student-selection tasks, and graduates terminal levels."
       >
         <form className="space-y-3" onSubmit={closeAndProgress}>
           <SelectControl
@@ -145,10 +315,10 @@ function ProgressionWorkspace({ activeTab }) {
       >
         <div className="grid gap-3 sm:grid-cols-2">
           {[
-            ["Route", "POST /tenant-admin/academics/sessions/{session_id}/close-and-progress"],
-            ["Payload", "confirmation: CLOSE_AND_PROGRESS, idempotency_key"],
+            ["Route", "POST /tenant-admin/academics/sessions/{session_id}/start-closing"],
+            ["Payload", "confirmation: START_SESSION_CLOSING, idempotency_key"],
             ["Run statuses", "pending, processing, completed, failed"],
-            ["Item outcomes", "promote, graduate, skip"],
+            ["Item states", "awaiting selection, awaiting class placement, completed, blocked, cancelled"],
           ].map(([label, value]) => (
             <div key={label} className="rounded-2xl border border-border/70 bg-surface px-4 py-3">
               <p className="text-[11px] font-semibold uppercase text-text-muted">{label}</p>

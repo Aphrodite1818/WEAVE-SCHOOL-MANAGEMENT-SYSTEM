@@ -11,7 +11,13 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
-from app.modules.classes.models import AcademicLevel, ClassRoom
+from app.modules.classes.models import (
+    AcademicLevel,
+    AcademicLevelProgressionMode,
+    ClassRoom,
+    ProgressionSelectionOption,
+    ProgressionSelectionTargetType,
+)
 from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.classes.schemas import (
     AcademicLevelCreate,
@@ -40,6 +46,38 @@ class AcademicLevelService:
     def _ensure_admin(actor: TenantAdmin) -> None:
         if not actor.tenant_id:
             raise ForbiddenException(detail="Tenant admin is not attached to a tenant")
+
+    @staticmethod
+    async def _ensure_progression_remains_acyclic(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        source_level_id: uuid.UUID,
+        proposed_target_level_ids: set[uuid.UUID],
+    ) -> None:
+        levels = await AcademicLevelRepository.list_for_tenant(
+            db, tenant_id, include_archived=True
+        )
+        adjacency: dict[uuid.UUID, set[uuid.UUID]] = {
+            level.id: ({level.next_level_id} if level.next_level_id else set())
+            for level in levels
+        }
+        for source_id, target_id in await AcademicLevelRepository.list_progression_edges(
+            db, tenant_id
+        ):
+            adjacency.setdefault(source_id, set()).add(target_id)
+        adjacency[source_level_id] = proposed_target_level_ids
+
+        pending = list(proposed_target_level_ids)
+        visited: set[uuid.UUID] = set()
+        while pending:
+            current = pending.pop()
+            if current == source_level_id:
+                raise BadRequestException("Academic level progression cannot be circular")
+            if current in visited:
+                continue
+            visited.add(current)
+            pending.extend(adjacency.get(current, set()))
 
     @staticmethod
     async def create(
@@ -140,9 +178,86 @@ class AcademicLevelService:
                     if cursor.next_level_id
                     else None
                 )
-        level.next_level_id = None if payload.is_terminal else payload.next_level_id
-        level.is_terminal = payload.is_terminal
+        options: list[ProgressionSelectionOption] = []
+        proposed_target_level_ids: set[uuid.UUID] = (
+            {payload.next_level_id} if payload.next_level_id else set()
+        )
+        if payload.progression_mode == AcademicLevelProgressionMode.STUDENT_SELECTION:
+            if payload.selection_target_type == ProgressionSelectionTargetType.LEVEL:
+                for target_id in payload.target_level_ids:
+                    if target_id == level.id:
+                        raise BadRequestException("An academic level cannot select itself")
+                    target = await AcademicLevelRepository.get_by_id(
+                        db, actor.tenant_id, target_id
+                    )
+                    if target is None:
+                        raise NotFoundException("Selection target academic level not found")
+                    if not target.is_active or target.archived_at is not None:
+                        raise ConflictException("Selection target academic level is inactive")
+                    visited = {level.id}
+                    cursor = target
+                    while cursor is not None:
+                        if cursor.id in visited:
+                            raise BadRequestException(
+                                "Academic level progression cannot be circular"
+                            )
+                        visited.add(cursor.id)
+                        cursor = (
+                            await AcademicLevelRepository.get_by_id(
+                                db, actor.tenant_id, cursor.next_level_id
+                            )
+                            if cursor.next_level_id
+                            else None
+                        )
+                    options.append(
+                        ProgressionSelectionOption(
+                            tenant_id=actor.tenant_id,
+                            source_level_id=level.id,
+                            target_level_id=target.id,
+                        )
+                    )
+                    proposed_target_level_ids.add(target.id)
+            else:
+                for target_id in payload.target_classroom_ids:
+                    target_class = await ClassRoomRepository.get_by_id(
+                        db, actor.tenant_id, target_id
+                    )
+                    if target_class is None:
+                        raise NotFoundException("Selection target classroom not found")
+                    if not target_class.is_active or target_class.archived_at is not None:
+                        raise ConflictException("Selection target classroom is inactive")
+                    if target_class.academic_level_id == level.id:
+                        raise BadRequestException(
+                            "A progression destination cannot belong to its source level"
+                        )
+                    target_level = await AcademicLevelRepository.get_by_id(
+                        db, actor.tenant_id, target_class.academic_level_id
+                    )
+                    if target_level is None or not target_level.is_active or target_level.archived_at:
+                        raise ConflictException("Selection target classroom has no active level")
+                    options.append(
+                        ProgressionSelectionOption(
+                            tenant_id=actor.tenant_id,
+                            source_level_id=level.id,
+                            target_classroom_id=target_class.id,
+                        )
+                    )
+                    proposed_target_level_ids.add(target_class.academic_level_id)
+
+        await AcademicLevelService._ensure_progression_remains_acyclic(
+            db,
+            tenant_id=actor.tenant_id,
+            source_level_id=level.id,
+            proposed_target_level_ids=proposed_target_level_ids,
+        )
+
+        level.progression_mode = payload.progression_mode
+        level.next_level_id = payload.next_level_id
+        level.selection_target_type = payload.selection_target_type
         await AcademicLevelRepository.save(db, level)
+        await AcademicLevelRepository.replace_progression_options(
+            db, actor.tenant_id, level.id, options
+        )
         await db.commit()
         await db.refresh(level)
         return AcademicLevelProgressionResponse(
@@ -150,9 +265,85 @@ class AcademicLevelService:
             academic_level_name=level.name,
             next_level_id=level.next_level_id,
             next_level_name=next_level.name if next_level else None,
-            is_terminal=level.is_terminal,
+            progression_mode=level.progression_mode,
+            selection_target_type=level.selection_target_type,
+            target_level_ids=[option.target_level_id for option in options if option.target_level_id],
+            target_classroom_ids=[
+                option.target_classroom_id for option in options if option.target_classroom_id
+            ],
             is_active=level.is_active,
         )
+
+    @staticmethod
+    async def get_progression(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        academic_level_id: uuid.UUID,
+    ) -> AcademicLevelProgressionResponse:
+        AcademicLevelService._ensure_admin(actor)
+        level = await AcademicLevelRepository.get_by_id(
+            db, actor.tenant_id, academic_level_id
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        options = await AcademicLevelRepository.list_progression_options(
+            db, actor.tenant_id, level.id
+        )
+        next_level = (
+            await AcademicLevelRepository.get_by_id(db, actor.tenant_id, level.next_level_id)
+            if level.next_level_id
+            else None
+        )
+        return AcademicLevelProgressionResponse(
+            academic_level_id=level.id,
+            academic_level_name=level.name,
+            next_level_id=level.next_level_id,
+            next_level_name=next_level.name if next_level else None,
+            progression_mode=level.progression_mode,
+            selection_target_type=level.selection_target_type,
+            target_level_ids=[option.target_level_id for option in options if option.target_level_id],
+            target_classroom_ids=[
+                option.target_classroom_id for option in options if option.target_classroom_id
+            ],
+            is_active=level.is_active,
+        )
+
+    @staticmethod
+    async def purge_setup_level(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        academic_level_id: uuid.UUID,
+    ) -> AcademicLevelResponse:
+        """Permanently remove an unused academic level during assisted setup."""
+
+        AcademicLevelService._ensure_admin(actor)
+        level = await AcademicLevelRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            academic_level_id,
+            lock=True,
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found")
+
+        dependency_counts = await AcademicLevelRepository.count_setup_dependencies(
+            db,
+            actor.tenant_id,
+            academic_level_id,
+        )
+        if any(count > 0 for count in dependency_counts.values()):
+            raise ConflictException(
+                detail=(
+                    "This academic level has class arms or other references and cannot "
+                    "be removed from setup."
+                ),
+                payload={"dependency_counts": dependency_counts},
+            )
+
+        response = AcademicLevelResponse.model_validate(level)
+        await AcademicLevelRepository.delete(db, level)
+        await db.commit()
+        return response
 
 
 class ClassRoomService:

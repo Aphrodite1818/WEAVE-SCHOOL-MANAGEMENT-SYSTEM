@@ -32,7 +32,12 @@ export const academicWorkflowConfig = {
     icon: Layers3,
     tone: "primary",
     defaultTab: "overview",
-    tabs: [{ id: "overview", label: "Levels & Progression" }],
+    tabs: [
+      { id: "overview", label: "Overview" },
+      { id: "create", label: "Create Level" },
+      { id: "manage", label: "Manage Levels" },
+      { id: "progression", label: "Progression" },
+    ],
   },
   classes: {
     title: "Classes",
@@ -75,7 +80,11 @@ export const academicWorkflowConfig = {
     tone: "accent",
     defaultTab: "overview",
     tabs: [
-      { id: "overview", label: "Subjects by Level" },
+      { id: "overview", label: "Overview" },
+      { id: "assign", label: "Assign Subjects" },
+      { id: "active", label: "Active" },
+      { id: "inactive", label: "Inactive" },
+      { id: "archived", label: "Archived" },
     ],
   },
   assignments: {
@@ -108,6 +117,7 @@ export const academicWorkflowConfig = {
       { id: "draft", label: "Draft Sessions" },
       { id: "open", label: "Open Session" },
       { id: "closing", label: "Closing" },
+      { id: "student-choices", label: "Student Choices" },
       { id: "closed", label: "Closed Sessions" },
     ],
   },

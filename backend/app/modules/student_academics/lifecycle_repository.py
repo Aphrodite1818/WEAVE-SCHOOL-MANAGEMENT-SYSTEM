@@ -208,6 +208,27 @@ class StudentProgressionItemRepository:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_latest_for_student(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> StudentProgressionItem | None:
+        query = (
+            select(StudentProgressionItem)
+            .where(
+                StudentProgressionItem.tenant_id == tenant_id,
+                StudentProgressionItem.student_id == student_id,
+            )
+            .order_by(StudentProgressionItem.created_at.desc())
+            .limit(1)
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
     async def save(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
         db.add(item)
         await db.flush()
@@ -231,5 +252,6 @@ class StudentProgressionRepository:
     add_item = StudentProgressionItemRepository.add
     add_items = StudentProgressionItemRepository.add_many
     get_item_by_run_and_student = StudentProgressionItemRepository.get_by_run_and_student
+    get_latest_item_for_student = StudentProgressionItemRepository.get_latest_for_student
     list_items_for_run = StudentProgressionItemRepository.list_for_run
     save_item = StudentProgressionItemRepository.save

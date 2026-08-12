@@ -106,6 +106,9 @@ export const parentService = {
   getMyStudents: (requestOptions) =>
     api.get("/parents/me/students", requestOptions),
 
+  getChildProgression: (studentId, requestOptions) =>
+    api.get(`/parents/academics/students/${studentId}/progression`, requestOptions),
+
   getMyStudentLinkRequests: (requestOptions) =>
     api.get("/parents/me/student-link-requests", requestOptions),
 

@@ -7,6 +7,7 @@ import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentC
 import BulkAcademicActionsWorkspace from "../../features/academic-admin/BulkAcademicActionsWorkspace";
 import ClassStructureWorkspace from "../../features/academic-admin/ClassStructureWorkspace";
 import GradingScalesWorkspace from "../../features/academic-admin/GradingScalesWorkspace";
+import ProgressionWorkspace from "../../features/academic-admin/ProgressionWorkspace";
 import ReportCardsWorkspace from "../../features/academic-admin/ReportCardsWorkspace";
 import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
@@ -103,6 +104,9 @@ function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
+    }
+    if (workflow === "sessions" && activeTab === "student-choices") {
+      return <ProgressionWorkspace key={pageKey} activeTab={activeTab} />;
     }
     if (["sessions", "terms", "subjects"].includes(workflow)) {
       return (

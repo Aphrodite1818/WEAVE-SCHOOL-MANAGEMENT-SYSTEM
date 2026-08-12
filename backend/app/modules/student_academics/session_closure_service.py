@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.classes.models import (
+    AcademicLevelProgressionMode,
+    ProgressionSelectionTargetType,
+)
 from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.communications.enums import (
     AnnouncementPriority,
@@ -180,12 +184,25 @@ class SessionClosureService:
                 invalid_targets += 1
                 blockers.append(f"Class {classroom.id} has no academic level.")
                 continue
-            if level.is_terminal:
-                if level.next_level_id is not None:
+            if level.progression_mode == AcademicLevelProgressionMode.TERMINAL:
+                continue
+            if level.progression_mode == AcademicLevelProgressionMode.STUDENT_SELECTION:
+                options = await AcademicLevelRepository.list_progression_options(
+                    db, tenant_id, level.id
+                )
+                if not options:
                     invalid_targets += 1
                     blockers.append(
-                        f"Terminal academic level {level.name} must not have a next-level target."
+                        f"Configure student-selection destinations for {level.name}."
                     )
+                elif level.selection_target_type == ProgressionSelectionTargetType.LEVEL:
+                    if any(option.target_level_id is None for option in options):
+                        invalid_targets += 1
+                        blockers.append(f"{level.name} has mixed progression destinations.")
+                elif level.selection_target_type == ProgressionSelectionTargetType.CLASSROOM:
+                    if any(option.target_classroom_id is None for option in options):
+                        invalid_targets += 1
+                        blockers.append(f"{level.name} has mixed progression destinations.")
                 continue
             if level.next_level_id is None:
                 invalid_targets += 1
@@ -321,6 +338,7 @@ class SessionClosureService:
             run.promoted_students = 0
             run.graduated_students = 0
             run.skipped_students = 0
+            run.pending_students = 0
             run.failed_students = 0
             run.started_at = None
             run.completed_at = None
@@ -381,7 +399,6 @@ class SessionClosureService:
             raise NotFoundException("Progression run not found.")
         if run.status == StudentProgressionRunStatus.COMPLETED:
             return {"status": "completed", "processed": run.total_students}
-
         session = await AcademicSessionLifecycleRepository.get_by_id(
             db, tenant_id, run.academic_session_id, lock=True
         )
@@ -422,28 +439,41 @@ class SessionClosureService:
         run.promoted_students = 0
         run.graduated_students = 0
         run.skipped_students = 0
+        run.pending_students = 0
         run.failed_students = 0
         effective_date = session.end_date or date.today()
 
         for enrollment in enrollments:
             try:
                 async with db.begin_nested():
+                    source_class, target_class = graph[enrollment.class_id]
                     item = await AcademicProgressionService._progress_student(
                         db,
                         actor=actor,
                         run=run,
                         enrollment=enrollment,
-                        classroom=graph[enrollment.class_id],
-                        graph=graph,
+                        classroom=source_class,
+                        target_class=target_class,
                         next_session=next_session,
                         effective_date=effective_date,
                     )
-                if item.status == StudentProgressionItemStatus.PROMOTED:
-                    run.promoted_students += 1
-                elif item.status == StudentProgressionItemStatus.GRADUATED:
+                if (
+                    item.status == StudentProgressionItemStatus.COMPLETED
+                    and item.action == StudentProgressionItemAction.TERMINAL
+                ):
                     run.graduated_students += 1
-                elif item.status == StudentProgressionItemStatus.SKIPPED:
+                elif item.status == StudentProgressionItemStatus.COMPLETED:
+                    run.promoted_students += 1
+                elif item.status in {
+                    StudentProgressionItemStatus.AWAITING_SELECTION,
+                    StudentProgressionItemStatus.SELECTION_SUBMITTED,
+                    StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT,
+                }:
+                    run.pending_students += 1
+                elif item.status == StudentProgressionItemStatus.CANCELLED:
                     run.skipped_students += 1
+                elif item.status == StudentProgressionItemStatus.BLOCKED:
+                    run.failed_students += 1
             except Exception as exc:  # one student must not corrupt the full batch
                 run.failed_students += 1
                 db.add(
@@ -455,7 +485,7 @@ class SessionClosureService:
                         from_class_id=enrollment.class_id,
                         to_class_id=None,
                         action=StudentProgressionItemAction.SKIP,
-                        status=StudentProgressionItemStatus.FAILED,
+                        status=StudentProgressionItemStatus.BLOCKED,
                         reason=str(exc)[:1000],
                         processed_at=_utc_now(),
                     )
@@ -489,6 +519,7 @@ class SessionClosureService:
                 "promoted": run.promoted_students,
                 "graduated": run.graduated_students,
                 "skipped": run.skipped_students,
+                "pending": run.pending_students,
                 "failed": run.failed_students,
             },
         )
@@ -507,7 +538,8 @@ class SessionClosureService:
                 if run.failed_students
                 else (
                     f"Student progression is complete: {run.promoted_students} promoted, "
-                    f"{run.graduated_students} graduated and {run.skipped_students} skipped. "
+                    f"{run.graduated_students} graduated, {run.pending_students} pending "
+                    f"selection or placement and {run.skipped_students} skipped. "
                     "Academic write activities remain paused until the administrator finalizes closure."
                 )
             ),
@@ -523,6 +555,7 @@ class SessionClosureService:
             "promoted": run.promoted_students,
             "graduated": run.graduated_students,
             "skipped": run.skipped_students,
+            "pending": run.pending_students,
             "failed": run.failed_students,
         }
 

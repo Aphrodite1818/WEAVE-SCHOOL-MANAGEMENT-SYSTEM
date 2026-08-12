@@ -1,6 +1,6 @@
 import { CheckCircle2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import PublicLayout from "../../components/layout/PublicLayout";
 import Badge from "../../components/ui/Badge";
@@ -28,20 +28,29 @@ const isPaidPlan = (planCode) =>
 function SubscriptionOptionsPage() {
   const { planCode } = useSubscription();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [busyPlan, setBusyPlan] = useState("");
   const [error, setError] = useState("");
   const checkoutTermId = searchParams.get("term");
   const shouldOpenTermAfterPayment =
     checkoutTermId && searchParams.get("intent") === "open-term";
-  const paidPlans = useMemo(
-    () => LANDING_PRICING_PLANS.filter((plan) => isPaidPlan(plan.planCode)),
-    [],
+  const requestedPlanCode = searchParams.get("plan");
+  const availablePlans = useMemo(
+    () => LANDING_PRICING_PLANS.filter(
+      (plan) => isPaidPlan(plan.planCode) || (checkoutTermId && plan.planCode === "free"),
+    ),
+    [checkoutTermId],
   );
 
   const upgrade = async (targetPlan) => {
     setBusyPlan(targetPlan);
     setError("");
     try {
+      if (targetPlan === "free" && checkoutTermId) {
+        await subscriptionService.activateFreeTerm(checkoutTermId);
+        navigate("/admin/getting-started", { replace: true });
+        return;
+      }
       const checkout = await subscriptionService.initializePaidCurrentTermCheckout({
         plan_code: targetPlan,
         academic_term_id: checkoutTermId || undefined,
@@ -101,7 +110,7 @@ function SubscriptionOptionsPage() {
         ) : null}
 
         <section className="mt-7 grid gap-5 lg:grid-cols-3">
-          {paidPlans.map((plan) => {
+          {availablePlans.map((plan) => {
             const current = !checkoutTermId && plan.planCode === planCode;
             const lowerOrEqualMidTerm =
               !checkoutTermId &&
@@ -120,7 +129,11 @@ function SubscriptionOptionsPage() {
                     <p className="text-xl font-semibold text-text">{plan.name}</p>
                     <p className="mt-1 text-sm text-text-muted">{plan.bestFor}</p>
                   </div>
-                  {current ? <Badge variant="success">Current</Badge> : null}
+                  {requestedPlanCode === plan.planCode ? (
+                    <Badge variant="info">Chosen at registration</Badge>
+                  ) : current ? (
+                    <Badge variant="success">Current</Badge>
+                  ) : null}
                 </div>
                 <p className="mt-5 text-2xl font-semibold text-text">
                   {plan.priceLabel}
@@ -147,8 +160,10 @@ function SubscriptionOptionsPage() {
                       ? "Current term plan"
                       : lowerOrEqualMidTerm
                         ? "Available next term"
-                        : checkoutTermId
-                          ? `Choose ${formatPlanName(plan.planCode)}`
+                    : checkoutTermId && plan.planCode === "free"
+                      ? "Activate Free for this term"
+                      : checkoutTermId
+                      ? `Choose ${formatPlanName(plan.planCode)}`
                           : `Upgrade to ${formatPlanName(plan.planCode)}`}
                 </Button>
               </Card>

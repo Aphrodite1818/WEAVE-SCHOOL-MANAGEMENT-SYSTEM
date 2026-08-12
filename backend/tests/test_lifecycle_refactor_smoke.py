@@ -136,6 +136,7 @@ def test_progression_detail_defaults_to_empty_items() -> None:
         promoted_students=0,
         graduated_students=0,
         skipped_students=0,
+        pending_students=0,
         failed_students=0,
         started_at=now,
         completed_at=now,

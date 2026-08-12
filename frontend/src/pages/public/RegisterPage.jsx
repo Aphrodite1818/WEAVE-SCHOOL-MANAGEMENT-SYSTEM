@@ -37,15 +37,12 @@ function RegisterPage() {
         planCode: queryPlan,
         billingInterval: queryBilling || "term",
       }) ||
-      getSelectedSubscriptionPlan() || {
-        planCode: "free",
-        billingInterval: "term",
-      }
+      getSelectedSubscriptionPlan()
     );
   }, [searchParams]);
 
   useEffect(() => {
-    saveSelectedSubscriptionPlan(selectedPlan);
+    if (selectedPlan) saveSelectedSubscriptionPlan(selectedPlan);
   }, [selectedPlan]);
 
   const getPasswordStrength = (password) => {
@@ -97,7 +94,9 @@ function RegisterPage() {
         school_name: formData.schoolName,
         email: formData.email,
         password: formData.password,
-        initial_plan_intent: selectedPlan.planCode,
+        ...(selectedPlan?.planCode
+          ? { initial_plan_intent: selectedPlan.planCode }
+          : {}),
       });
 
       if (result?.verification_required) {

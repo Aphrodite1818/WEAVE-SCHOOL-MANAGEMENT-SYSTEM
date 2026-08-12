@@ -163,8 +163,8 @@ class TenantRegisterRequest(InputBase):
         max_length=64,
         description="Initial tenant administrator password",
     )
-    initial_plan_intent: SubscriptionPlan = Field(
-        default=SubscriptionPlan.FREE,
+    initial_plan_intent: SubscriptionPlan | None = Field(
+        default=None,
         description="Preferred first-term plan; this never grants access or starts payment.",
     )
 

@@ -95,11 +95,6 @@ class AcademicSessionOpenRequest(InputBase):
     confirmation: Literal["OPEN_ACADEMIC_SESSION"]
 
 
-class AcademicSessionCloseRequest(InputBase):
-    idempotency_key: str = Field(min_length=8, max_length=150)
-    confirmation: Literal["CLOSE_AND_PROGRESS"]
-
-
 class AcademicSessionDeleteRequest(InputBase):
     confirmation: Literal["DELETE_ACADEMIC_SESSION"]
 
@@ -602,12 +597,39 @@ class StudentProgressionItemResponse(OutputBase):
     to_enrollment_id: uuid.UUID | None = None
     from_class_id: uuid.UUID
     to_class_id: uuid.UUID | None = None
+    selected_level_id: uuid.UUID | None = None
+    selected_classroom_id: uuid.UUID | None = None
     action: StudentProgressionItemAction
     status: StudentProgressionItemStatus
     reason: str | None = None
     processed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class ProgressionDestinationResponse(OutputBase):
+    id: uuid.UUID
+    target_type: str
+    label: str
+    academic_level_id: uuid.UUID
+
+
+class StudentProgressionSelectionResponse(OutputBase):
+    item: StudentProgressionItemResponse
+    student_name: str | None = None
+    admission_number: str | None = None
+    source_class_label: str | None = None
+    selection_target_type: str | None = None
+    selected_destination_label: str | None = None
+    destinations: list[ProgressionDestinationResponse] = Field(default_factory=list)
+
+
+class StudentProgressionSelectionRequest(InputBase):
+    destination_id: uuid.UUID
+
+
+class AdminProgressionPlacementRequest(InputBase):
+    classroom_id: uuid.UUID
 
 
 class StudentProgressionRunResponse(OutputBase):
@@ -621,6 +643,7 @@ class StudentProgressionRunResponse(OutputBase):
     promoted_students: int = Field(ge=0)
     graduated_students: int = Field(ge=0)
     skipped_students: int = Field(ge=0)
+    pending_students: int = Field(ge=0)
     failed_students: int = Field(ge=0)
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -632,12 +655,6 @@ class StudentProgressionRunResponse(OutputBase):
 
 class StudentProgressionRunDetailResponse(StudentProgressionRunResponse):
     items: list[StudentProgressionItemResponse]
-
-
-class AcademicSessionCloseResponse(OutputBase):
-    closed_session: AcademicSessionResponse
-    opened_session: AcademicSessionResponse
-    progression_run: StudentProgressionRunDetailResponse
 
 
 class AcademicSessionListResponse(OutputBase):

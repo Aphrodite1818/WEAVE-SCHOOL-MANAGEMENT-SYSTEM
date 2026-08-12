@@ -404,7 +404,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     }
   };
 
-  const closeSessionAndProgress = async (item) => {
+  const startSessionClosing = async (item) => {
     setClosingSessionId(item.id);
     try {
       const preview = await academicService.getSessionDependencies(item.id);
@@ -412,7 +412,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         showError(formatDependencyMessage(preview) || "This session cannot be closed yet.");
         return;
       }
-      await academicService.closeSessionAndProgress(item.id, {
+      await academicService.startSessionClosing(item.id, {
         idempotency_key: `session-close-${item.id}-${Date.now()}`,
       });
       showSuccess("Academic session closed and next session opened.");
@@ -560,7 +560,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       return;
     }
     if (pendingConfirmation.type === "close-session") {
-      closeSessionAndProgress(pendingConfirmation.item);
+      startSessionClosing(pendingConfirmation.item);
       return;
     }
     if (pendingConfirmation.type === "delete-session") {

@@ -17,6 +17,7 @@ import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import { getCachedDashboardBundle, getDashboardSessionCacheKey } from "../../services/dashboardSessionCache";
 import { reportCardService } from "../../services/reportCardService";
+import { parentService } from "../../services/parentService";
 import {
   averageScore,
   bestAndWeakestSubject,
@@ -42,6 +43,7 @@ function ParentDashboardPage() {
   const [parentMetrics, setParentMetrics] = useState(null);
   const [childResults, setChildResults] = useState([]);
   const [childReportCards, setChildReportCards] = useState([]);
+  const [childProgression, setChildProgression] = useState(null);
   const [childAcademicsLoading, setChildAcademicsLoading] = useState(false);
 
   const childAverage = averageScore(childResults);
@@ -87,6 +89,7 @@ function ParentDashboardPage() {
         setChildAcademicsLoading(false);
         setChildResults([]);
         setChildReportCards([]);
+        setChildProgression(null);
         return;
       }
 
@@ -95,24 +98,28 @@ function ParentDashboardPage() {
       try {
         const cacheKey = getDashboardSessionCacheKey(`parent:child:${selectedChildId}:academics`);
         const bundle = await getCachedDashboardBundle(cacheKey, async () => {
-          const [resultResponse, reportCardResponse] = await Promise.all([
+          const [resultResponse, reportCardResponse, progressionResponse] = await Promise.all([
             academicService.listChildResults(selectedChildId, { signal: controller.signal }),
             reportCardService.listChildReportCards(selectedChildId, { signal: controller.signal }),
+            parentService.getChildProgression(selectedChildId, { signal: controller.signal }),
           ]);
 
           return {
             results: resultResponse?.items || [],
             reportCards: reportCardResponse?.items || [],
+            progression: progressionResponse || null,
           };
         });
 
         if (!mounted || controller.signal.aborted) return;
         setChildResults(bundle.results);
         setChildReportCards(bundle.reportCards);
+        setChildProgression(bundle.progression);
       } catch (error) {
         if (!mounted || isAbortError(error)) return;
         setChildResults([]);
         setChildReportCards([]);
+        setChildProgression(null);
         setLoadError(getErrorMessage(error, "Failed to load child academic summary."));
       } finally {
         if (mounted && !controller.signal.aborted) setChildAcademicsLoading(false);
@@ -157,6 +164,31 @@ function ParentDashboardPage() {
       : "-";
 
   const attentionItems = [
+    childProgression?.item?.status === "awaiting_selection"
+      ? {
+          key: "progression-selection",
+          title: "Progression choice needed",
+          description: `${selectedChildName} needs to choose an allowed destination from the student dashboard.`,
+          icon: GraduationCap,
+          tone: "warning",
+        }
+      : childProgression?.item?.status === "awaiting_class_placement"
+        ? {
+            key: "progression-placement",
+            title: "Class placement in progress",
+            description: `${selectedChildName}'s destination is selected; the school is finalizing the class placement.`,
+            icon: GraduationCap,
+            tone: "primary",
+          }
+        : childProgression?.item?.status === "blocked"
+          ? {
+              key: "progression-blocked",
+              title: "Progression needs school attention",
+              description: childProgression.item.reason || "The school is resolving this progression record.",
+              icon: GraduationCap,
+              tone: "warning",
+            }
+          : null,
     unreadNotices > 0
       ? {
           key: "unread-notices",

@@ -114,7 +114,6 @@ RouteKey = tuple[str, str]
 _TENANT_ADMIN_ACADEMIC_OVERRIDES: set[RouteKey] = {
     ("GET", "/tenant-admin/academics/grading-scales/readiness-preview"),
     ("PATCH", "/tenant-admin/academics/sessions/{session_id}"),
-    ("POST", "/tenant-admin/academics/sessions/{session_id}/close-and-progress"),
 }
 _TEACHER_ACADEMIC_OVERRIDES: set[RouteKey] = set()
 _STUDENT_ACADEMIC_OVERRIDES: set[RouteKey] = set()
