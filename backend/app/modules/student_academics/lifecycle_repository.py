@@ -43,7 +43,9 @@ class AcademicSessionLifecycleRepository:
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.is_current.is_(True),
-            AcademicSession.status == AcademicSessionStatus.OPEN,
+            AcademicSession.status.in_(
+                {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
+            ),
         )
         if lock:
             query = query.with_for_update()
@@ -159,6 +161,30 @@ class StudentProgressionRunRepository:
 class StudentProgressionItemRepository:
     @staticmethod
     async def add(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
+        '''Create or update the one logical progression item for a student/run.'''
+        existing = await StudentProgressionItemRepository.get_by_run_and_student(
+            db,
+            item.progression_run_id,
+            item.student_id,
+            lock=True,
+        )
+        if existing is not None:
+            for field in (
+                "tenant_id",
+                "from_enrollment_id",
+                "to_enrollment_id",
+                "from_class_id",
+                "to_class_id",
+                "action",
+                "status",
+                "reason",
+                "processed_at",
+            ):
+                setattr(existing, field, getattr(item, field))
+            db.add(existing)
+            await db.flush()
+            return existing
+
         db.add(item)
         await db.flush()
         return item

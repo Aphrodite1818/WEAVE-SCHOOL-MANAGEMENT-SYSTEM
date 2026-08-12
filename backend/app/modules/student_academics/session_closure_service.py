@@ -317,11 +317,8 @@ class SessionClosureService:
         else:
             run = existing
             run.status = StudentProgressionRunStatus.PENDING
-            run.total_students = len(enrollments)
-            run.promoted_students = 0
-            run.graduated_students = 0
-            run.skipped_students = 0
-            run.failed_students = 0
+            if run.total_students == 0:
+                run.total_students = len(enrollments)
             run.started_at = None
             run.completed_at = None
             run.failure_reason = None
@@ -418,11 +415,8 @@ class SessionClosureService:
         graph = await AcademicProgressionService._validate_class_graph(
             db, tenant_id=tenant_id, enrollments=enrollments
         )
-        run.total_students = len(enrollments)
-        run.promoted_students = 0
-        run.graduated_students = 0
-        run.skipped_students = 0
-        run.failed_students = 0
+        if run.total_students == 0:
+            run.total_students = len(enrollments)
         effective_date = session.end_date or date.today()
 
         for enrollment in enrollments:
@@ -446,7 +440,8 @@ class SessionClosureService:
                     run.skipped_students += 1
             except Exception as exc:  # one student must not corrupt the full batch
                 run.failed_students += 1
-                db.add(
+                await StudentProgressionRepository.add_item(
+                    db,
                     StudentProgressionItem(
                         tenant_id=tenant_id,
                         progression_run_id=run.id,
@@ -458,19 +453,34 @@ class SessionClosureService:
                         status=StudentProgressionItemStatus.FAILED,
                         reason=str(exc)[:1000],
                         processed_at=_utc_now(),
-                    )
+                    ),
                 )
-                await db.flush()
 
+        persisted_items = await StudentProgressionRepository.list_items_for_run(
+            db, tenant_id, run.id
+        )
+        run.promoted_students = sum(
+            item.status == StudentProgressionItemStatus.PROMOTED for item in persisted_items
+        )
+        run.graduated_students = sum(
+            item.status == StudentProgressionItemStatus.GRADUATED for item in persisted_items
+        )
+        run.skipped_students = sum(
+            item.status == StudentProgressionItemStatus.SKIPPED for item in persisted_items
+        )
+        run.failed_students = sum(
+            item.status == StudentProgressionItemStatus.FAILED for item in persisted_items
+        )
+        incomplete_students = max(run.total_students - len(persisted_items), 0)
         run.status = (
             StudentProgressionRunStatus.FAILED
-            if run.failed_students > 0
+            if run.failed_students > 0 or incomplete_students > 0
             else StudentProgressionRunStatus.COMPLETED
         )
         run.completed_at = _utc_now()
         run.failure_reason = (
-            f"{run.failed_students} student progression item(s) failed."
-            if run.failed_students
+            f"{run.failed_students} failed and {incomplete_students} incomplete student progression item(s)."
+            if run.status == StudentProgressionRunStatus.FAILED
             else None
         )
         await StudentProgressionRepository.save_run(db, run)

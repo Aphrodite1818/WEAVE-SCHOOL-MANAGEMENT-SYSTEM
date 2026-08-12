@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -32,7 +33,7 @@ from app.modules.report_cards.schemas import (
 )
 from app.modules.student_academics.models import AcademicResultStatus, LevelSubject
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.students.models import Student
+from app.modules.students.models import Student, StudentEnrollment
 from app.modules.students.repository import (
     StudentParentLinkRepository,
     StudentRepository,
@@ -177,15 +178,27 @@ class ReportCardService:
         version: int = 1,
         replace_existing: ReportCard | None = None,
     ) -> ReportCard:
-        if student.class_id is None:
-            raise BadRequestException("Student class is required for report card generation.")
+        enrollment = (
+            await db.execute(
+                select(StudentEnrollment).where(
+                    StudentEnrollment.tenant_id == actor.tenant_id,
+                    StudentEnrollment.student_id == student.id,
+                    StudentEnrollment.academic_session_id == academic_session_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if enrollment is None:
+            raise BadRequestException(
+                "Student enrollment for this academic session is required for report card generation."
+            )
+        class_id = enrollment.class_id
         if not results:
             raise BadRequestException("No locked scores are available for this student.")
 
         missing = await ReportCardService._missing_subjects(
             db,
             actor.tenant_id,
-            student.class_id,
+            class_id,
             student.id,
             academic_session_id,
             academic_term_id,
@@ -210,7 +223,7 @@ class ReportCardService:
         card = ReportCard(
             tenant_id=actor.tenant_id,
             student_id=student.id,
-            class_id=student.class_id,
+            class_id=class_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
             total_score=total_score,
@@ -366,8 +379,8 @@ class ReportCardService:
             tenant_id=actor.tenant_id,
             student_id=student_id,
         )
-        if student is None or student.class_id is None:
-            raise NotFoundException("Student or student class not found.")
+        if student is None:
+            raise NotFoundException("Student not found.")
 
         existing = await ReportCardRepository.get_by_student_period(
             db,
@@ -398,7 +411,7 @@ class ReportCardService:
         await ReportCardService._apply_class_positions(
             db,
             actor.tenant_id,
-            student.class_id,
+            card.class_id,
             academic_session_id,
             academic_term_id,
         )

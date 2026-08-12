@@ -65,6 +65,7 @@ from app.modules.student_academics.schemas import (
     TeacherAssignmentResponse,
     LevelSubjectUpdate,
 )
+from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.students.models import Student, StudentParentLinkStatus
 from app.modules.students.repository import (
     StudentParentLinkRepository,
@@ -682,6 +683,7 @@ class StudentAcademicService:
         academic_level_id: uuid.UUID,
         payload: LevelSubjectCreate,
     ) -> LevelSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         level = await AcademicLevelRepository.get_by_id(db, tenant_id, academic_level_id)
         if level is None or not level.is_active or level.archived_at is not None:
             raise NotFoundException("Academic level not found or inactive.")
@@ -730,6 +732,7 @@ class StudentAcademicService:
         academic_level_id: uuid.UUID,
         payload: LevelSubjectBulkCreate,
     ) -> list[LevelSubjectResponse]:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         level = await AcademicLevelRepository.get_by_id(db, tenant_id, academic_level_id)
         if level is None or not level.is_active or level.archived_at is not None:
             raise NotFoundException("Academic level not found or inactive.")
@@ -970,6 +973,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         level_subject_id: uuid.UUID,
     ) -> LevelSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
@@ -1002,6 +1006,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         level_subject_id: uuid.UUID,
     ) -> LevelSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
@@ -1033,6 +1038,7 @@ class StudentAcademicService:
         level_subject_id: uuid.UUID,
         payload: LevelSubjectUpdate,
     ) -> LevelSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
@@ -1054,6 +1060,7 @@ class StudentAcademicService:
         level_subject_id: uuid.UUID,
         admin_id: uuid.UUID,
     ) -> LevelSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
@@ -1090,6 +1097,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         level_subject_id: uuid.UUID,
     ) -> LevelSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
@@ -1112,6 +1120,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         level_subject_id: uuid.UUID,
     ) -> LevelSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         row = await StudentAcademicRepository.get_level_subject_by_id(
             db,
             tenant_id,
@@ -1155,6 +1164,7 @@ class StudentAcademicService:
         level_subject_id: uuid.UUID | None = None,
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         resolved_level_subject_id = level_subject_id or payload.level_subject_id
         if resolved_level_subject_id is None:
             raise BadRequestException("level_subject_id is required.")
@@ -1265,6 +1275,7 @@ class StudentAcademicService:
         payload: TeacherAssignmentEnd,
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db,
             tenant_id,
@@ -1326,6 +1337,7 @@ class StudentAcademicService:
         payload: TeacherAssignmentReassign,
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         current = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db,
             tenant_id,
@@ -1381,9 +1393,9 @@ class StudentAcademicService:
         if current.teacher_membership_id == payload.teacher_membership_id:
             raise ConflictException("This teacher is already assigned.")
         effective_from = payload.effective_from or date.today()
-        if effective_from < current.effective_from:
+        if effective_from <= current.effective_from:
             raise ConflictException(
-                "Replacement effective date cannot be before the current assignment start date."
+                "Replacement effective date must be after the current assignment start date to avoid overlapping assignment history."
             )
         later_assignments = await StudentAcademicRepository.get_later_teacher_assignments(
             db,
@@ -1400,11 +1412,7 @@ class StudentAcademicService:
             )
 
         current.is_active = False
-        current.effective_to = (
-            effective_from
-            if effective_from == current.effective_from
-            else effective_from - timedelta(days=1)
-        )
+        current.effective_to = effective_from - timedelta(days=1)
         if current.effective_to < current.effective_from:
             raise ConflictException(
                 "Replacement effective date creates an invalid assignment range."
