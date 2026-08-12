@@ -140,7 +140,6 @@ function StudentDashboardPage() {
             reportCardResponse,
             subjectCardsResponse,
           ] = await Promise.all([
-            studentService.getMyStudent({ signal: controller.signal }),
             studentService.getMyParentLinks({ signal: controller.signal }),
             studentService.getMyParentLinkRequests({
               signal: controller.signal,

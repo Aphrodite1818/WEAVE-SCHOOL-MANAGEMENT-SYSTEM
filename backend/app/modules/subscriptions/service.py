@@ -55,6 +55,7 @@ class ResolvedSubscriptionState:
     provider: PaymentProvider | None = None
     trial_ends_at: datetime | None = None
     subscription: TenantSubscription | None = None
+    effective_entitlement_id: uuid.UUID | None = None
 
 
 class SubscriptionLifecycleService:
@@ -118,12 +119,9 @@ class SubscriptionFeatureService:
         )
         active_term = current_terms[0] if current_terms else None
         if active_term is not None:
-            entitlement = await TermPlanEntitlementService.get_active(
-                db, tenant_id, active_term.id
-            )
+            entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, active_term.id)
             if entitlement is not None and (
-                entitlement.safety_expires_at is None
-                or entitlement.safety_expires_at > now
+                entitlement.safety_expires_at is None or entitlement.safety_expires_at > now
             ):
                 return ResolvedSubscriptionState(
                     tenant_id=tenant_id,
@@ -131,6 +129,7 @@ class SubscriptionFeatureService:
                     status=SubscriptionStatus.ACTIVE,
                     billing_interval=BillingInterval.TERM,
                     provider=entitlement.provider,
+                    effective_entitlement_id=entitlement.id,
                 )
 
         current = await SubscriptionRepository.get_current_subscription(db, tenant_id)
@@ -164,13 +163,23 @@ class SubscriptionFeatureService:
     def _state_to_subscription_response(
         state: ResolvedSubscriptionState,
     ) -> TenantSubscriptionResponse | None:
-        if state.subscription is None:
+        effective_id = (
+            state.subscription.id
+            if state.subscription is not None
+            else state.effective_entitlement_id
+        )
+        if effective_id is None:
             return None
+        plan_code = (
+            normalize_plan_code(state.subscription.plan_code)
+            if state.subscription is not None
+            else state.plan_code
+        )
         return TenantSubscriptionResponse.model_validate(
             {
-                "id": state.subscription.id,
+                "id": effective_id,
                 "tenant_id": state.tenant_id,
-                "plan_code": normalize_plan_code(state.subscription.plan_code),
+                "plan_code": plan_code,
                 "status": state.status,
                 "billing_interval": state.billing_interval,
                 "trial_ends_at": state.trial_ends_at,

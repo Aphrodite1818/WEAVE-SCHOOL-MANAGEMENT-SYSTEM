@@ -1,7 +1,7 @@
 import inspect
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -164,8 +164,13 @@ async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_ve
         AsyncMock(return_value="Teacher Example"),
     )
 
+    enrollment_result = MagicMock()
+    enrollment_result.scalar_one_or_none.return_value = SimpleNamespace(class_id=existing.class_id)
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=enrollment_result)
+
     new_card = await ReportCardService._create_card_from_results(
-        SimpleNamespace(),
+        db,
         actor,
         student,
         existing.academic_session_id,
