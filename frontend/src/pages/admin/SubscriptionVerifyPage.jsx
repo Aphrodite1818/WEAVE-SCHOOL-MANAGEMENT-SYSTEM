@@ -10,6 +10,7 @@ import { subscriptionService } from "../../services/subscriptionService";
 import {
   clearSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
+import { academicService } from "../../services/academicService";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 
 function SubscriptionVerifyPage() {
@@ -35,7 +36,27 @@ function SubscriptionVerifyPage() {
       }
 
       try {
-        await subscriptionService.verifyTermPayment(reference);
+        const entitlement = await subscriptionService.verifyTermPayment(reference);
+        const openIntent = subscriptionService.consumeTermPaymentOpenIntent({
+          academicTermId: entitlement?.academic_term_id,
+          reference,
+        });
+        const shouldOpenTerm = Boolean(openIntent);
+        let openedTerm = false;
+        let openTermError = "";
+
+        if (shouldOpenTerm) {
+          try {
+            await academicService.openTerm(entitlement.academic_term_id);
+            openedTerm = true;
+          } catch (error) {
+            openTermError = parseApiError(
+              error,
+              "Payment verified, but we could not open the academic term automatically."
+            ).message;
+          }
+        }
+
         try {
           await refreshSubscriptionState({ silent: true });
         } catch {
@@ -45,11 +66,18 @@ function SubscriptionVerifyPage() {
         if (!mounted) return;
 
         clearSelectedSubscriptionPlan();
-        const nextSuccessRoute = "/admin/academic/terms";
+        const nextSuccessRoute = openedTerm
+          ? "/admin/dashboard"
+          : shouldOpenTerm
+            ? "/admin/academic/terms"
+            : "/admin/academic/terms";
         setSuccessRoute(nextSuccessRoute);
         setStatus("success");
         setMessage(
-          "Payment verified. The plan is funded for this academic term. If the term is still a draft, open it from Academic Terms when setup is ready."
+          openedTerm
+            ? "Payment verified. Your academic term is now open."
+            : openTermError ||
+                "Payment verified. The plan is funded for this academic term. If the term is still a draft, open it from Academic Terms when setup is ready."
         );
         redirectTimer = window.setTimeout(() => {
           navigate(nextSuccessRoute, { replace: true });
@@ -122,7 +150,9 @@ function SubscriptionVerifyPage() {
                 }
               >
                 {status === "success"
-                  ? "Go to academic terms"
+                  ? successRoute === "/admin/dashboard"
+                    ? "Go to dashboard"
+                    : "Go to academic terms"
                   : "Back to dashboard"}
               </Button>
             </div>

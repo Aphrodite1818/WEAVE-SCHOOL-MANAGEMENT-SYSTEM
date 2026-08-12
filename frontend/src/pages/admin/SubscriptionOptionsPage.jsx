@@ -31,6 +31,8 @@ function SubscriptionOptionsPage() {
   const [busyPlan, setBusyPlan] = useState("");
   const [error, setError] = useState("");
   const checkoutTermId = searchParams.get("term");
+  const shouldOpenTermAfterPayment =
+    checkoutTermId && searchParams.get("intent") === "open-term";
   const paidPlans = useMemo(
     () => LANDING_PRICING_PLANS.filter((plan) => isPaidPlan(plan.planCode)),
     [],
@@ -44,6 +46,12 @@ function SubscriptionOptionsPage() {
         plan_code: targetPlan,
         academic_term_id: checkoutTermId || undefined,
       });
+      if (shouldOpenTermAfterPayment) {
+        subscriptionService.saveTermPaymentOpenIntent({
+          academicTermId: checkoutTermId,
+          reference: checkout.reference,
+        });
+      }
       window.location.assign(checkout.authorization_url);
     } catch (checkoutError) {
       setError(

@@ -43,6 +43,7 @@ import { authSession, getErrorMessage, parseApiError } from "../../services/api"
 import { mediaService } from "../../services/mediaService";
 import { tenantBrandingService } from "../../services/tenantBrandingService";
 import { subjectService } from "../../services/subject.service";
+import { subscriptionService } from "../../services/subscriptionService";
 
 const ACCEPTED_LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
@@ -739,14 +740,71 @@ function AdminGettingStartedPage() {
 
   const openTerm = async () => {
     if (!selectedTerm?.id) return;
-    const result = await runAction(
-      "open-term",
-      () => academicService.openTerm(selectedTerm.id),
-      "Academic term opened.",
-    );
-    if (result) {
+    setSaving("open-term");
+    setError("");
+    try {
+      await academicService.openTerm(selectedTerm.id);
+      showSuccess("Academic term opened.");
+      await loadSetup({ quiet: true });
       await guide.finish();
       navigate("/admin/dashboard", { replace: true });
+    } catch (requestError) {
+      const parsed = parseApiError(requestError, "Could not open the academic term.");
+      const activation = parsed.data?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
+        ? parsed.data
+        : parsed.data?.detail?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
+          ? parsed.data.detail
+          : null;
+
+      if (!activation) {
+        setError(parsed.message);
+        showError(parsed.message);
+        return;
+      }
+
+      try {
+        if (!activation.suggested_plan) {
+          navigate(
+            `/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}&intent=open-term`,
+          );
+          return;
+        }
+
+        if (activation.payment_required) {
+          const checkout = await subscriptionService.initializeTermCheckout({
+            academic_term_id: selectedTerm.id,
+            plan_code: activation.suggested_plan,
+          });
+          subscriptionService.saveTermPaymentOpenIntent({
+            academicTermId: selectedTerm.id,
+            reference: checkout.reference,
+          });
+          window.location.assign(checkout.authorization_url);
+          return;
+        }
+
+        if (activation.suggested_plan === "free") {
+          await subscriptionService.activateFreeTerm(selectedTerm.id);
+          await academicService.openTerm(selectedTerm.id);
+          showSuccess("Free plan activated and academic term opened.");
+          await guide.finish();
+          navigate("/admin/dashboard", { replace: true });
+          return;
+        }
+
+        navigate(
+          `/admin/billing/plans?term=${encodeURIComponent(selectedTerm.id)}&intent=open-term`,
+        );
+      } catch (activationError) {
+        const message = getErrorMessage(
+          activationError,
+          "Could not prepare the selected plan for this academic term.",
+        );
+        setError(message);
+        showError(message);
+      }
+    } finally {
+      setSaving("");
     }
   };
 
