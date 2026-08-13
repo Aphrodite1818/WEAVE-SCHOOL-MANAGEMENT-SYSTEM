@@ -28,22 +28,11 @@ from app.shared.mixins import TimestampMixin, UUIDMixin
 
 
 class CBTServer(BaseModel):
-    """
-    Represent one local Weave CBT server paired to a tenant.
-
-    A tenant may have multiple CBT servers.
-
-    The server's ID identifies the installation, but it is not itself a
-    credential. Authentication is performed using CBTServerCredential.
-    """
+    """Represent one local Weave CBT server paired to a tenant."""
 
     __tablename__ = "cbt_servers"
 
-    name: Mapped[str] = mapped_column(
-        String(150),
-        nullable=False,
-    )
-
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
     status: Mapped[CBTServerStatus] = mapped_column(
         SQLEnum(
             CBTServerStatus,
@@ -55,71 +44,27 @@ class CBTServer(BaseModel):
         default=CBTServerStatus.ACTIVE,
         server_default=CBTServerStatus.ACTIVE.value,
     )
-
-    paired_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
+    paired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     paired_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            f"{PUBLIC_SCHEMA}.tenant_admins.id",
-            ondelete="SET NULL",
-        ),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-
-    client_version: Mapped[str | None] = mapped_column(
-        String(50),
-        nullable=True,
-    )
-
-    last_seen_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    last_ip_address: Mapped[str | None] = mapped_column(
-        String(45),
-        nullable=True,
-    )
-
-    suspended_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
+    client_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            f"{PUBLIC_SCHEMA}.tenant_admins.id",
-            ondelete="SET NULL",
-        ),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-
-    revocation_reason: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
+    revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
-        Index(
-            "ix_cbt_servers_tenant_status",
-            "tenant_id",
-            "status",
-        ),
-        Index(
-            "ix_cbt_servers_tenant_last_seen",
-            "tenant_id",
-            "last_seen_at",
-        ),
+        Index("ix_cbt_servers_tenant_status", "tenant_id", "status"),
+        Index("ix_cbt_servers_tenant_last_seen", "tenant_id", "last_seen_at"),
         Index(
             "uq_cbt_servers_tenant_normalized_name",
             "tenant_id",
@@ -132,64 +77,30 @@ class CBTServer(BaseModel):
                 )
             ),
             unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
         ),
     )
 
 
 class CBTServerCredential(UUIDMixin, TimestampMixin, Base):
-    """
-    Store authentication credentials issued to a paired CBT server.
-
-    The raw server credential must never be stored in Weave. Only its digest
-    is persisted here.
-
-    Tenant ownership is derived through ``server_id -> CBTServer.tenant_id``.
-    """
+    """Store authentication material issued to one paired CBT server."""
 
     __tablename__ = "cbt_server_credentials"
 
     server_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            f"{PUBLIC_SCHEMA}.cbt_servers.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey(f"{PUBLIC_SCHEMA}.cbt_servers.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-
-    credential_hash: Mapped[str] = mapped_column(
-        String(64),
-        nullable=False,
-        unique=True,
-    )
-
-    last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    revocation_reason: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-    )
+    credential_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revocation_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     __table_args__ = (
-        Index(
-            "ix_cbt_server_credentials_server_revoked",
-            "server_id",
-            "revoked_at",
-        ),
+        Index("ix_cbt_server_credentials_server_revoked", "server_id", "revoked_at"),
         Index(
             "uq_cbt_server_credentials_active_server",
             "server_id",
@@ -200,60 +111,27 @@ class CBTServerCredential(UUIDMixin, TimestampMixin, Base):
 
 
 class CBTPairingCode(BaseModel):
-    """
-    Store a short-lived, one-time CBT server pairing challenge.
-
-    The raw pairing code is returned to the tenant admin once and must not be
-    stored. Only a keyed digest of the pairing code should be persisted.
-    """
+    """Store a short-lived, one-time CBT server pairing challenge."""
 
     __tablename__ = "cbt_pairing_codes"
 
-    code_hash: Mapped[str] = mapped_column(
-        String(64),
-        nullable=False,
-        unique=True,
-    )
-
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            f"{PUBLIC_SCHEMA}.tenant_admins.id",
-            ondelete="SET NULL",
-        ),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
     )
-
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     used_by_server_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            f"{PUBLIC_SCHEMA}.cbt_servers.id",
-            ondelete="SET NULL",
-        ),
+        ForeignKey(f"{PUBLIC_SCHEMA}.cbt_servers.id", ondelete="SET NULL"),
         nullable=True,
     )
-
-    invalidated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        Index(
-            "ix_cbt_pairing_codes_tenant_expiry",
-            "tenant_id",
-            "expires_at",
-        ),
+        Index("ix_cbt_pairing_codes_tenant_expiry", "tenant_id", "expires_at"),
         Index(
             "ix_cbt_pairing_codes_tenant_active",
             "tenant_id",
