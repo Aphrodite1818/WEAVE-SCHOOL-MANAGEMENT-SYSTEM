@@ -9,6 +9,7 @@ import {
 import { SubscriptionContext } from "./subscriptionContext";
 
 const normalizeRole = (value) => String(value || "").trim().toLowerCase();
+const MANAGEMENT_VISIBLE_FEATURES = new Set(["cbt_pairing"]);
 
 const scheduleDeferredWork = (callback, { timeout = 1500, fallbackDelay = 750 } = {}) => {
   if (typeof window === "undefined") return () => {};
@@ -209,6 +210,13 @@ export function SubscriptionProvider({ children }) {
       }
 
       if (features[featureCode] === false) {
+        if (MANAGEMENT_VISIBLE_FEATURES.has(featureCode)) {
+          return {
+            allowed: true,
+            pending: false,
+            reason: "Management remains available, but new use requires an eligible plan.",
+          };
+        }
         return {
           allowed: false,
           pending: false,
