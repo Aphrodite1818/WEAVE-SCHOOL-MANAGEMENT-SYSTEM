@@ -2,6 +2,8 @@ import { api } from "./api";
 
 export const cbtService = {
   createPairingCode: () => api.post("/cbt/pairing/codes"),
+  getPairingStatus: (pairingCode) =>
+    api.post("/cbt/pairing/status", { pairing_code: pairingCode }),
   verifyPairingCode: (payload) => api.post("/cbt/pairing/verify", payload, { auth: false }),
   listServers: () => api.get("/cbt/servers"),
   getServer: (serverId) => api.get(`/cbt/servers/${encodeURIComponent(serverId)}`),
