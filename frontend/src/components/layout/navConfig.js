@@ -110,7 +110,7 @@ export const navGroups = {
       items: [
         { label: "Reports", to: "/admin/academic/report-cards", icon: BarChart3 },
         { label: "Billing", to: "/admin/billing", icon: CreditCard },
-        { label: "CBT Servers", to: "/admin/cbt", icon: Cpu, featureCode: FEATURE_CODES.CBT_PAIRING },
+        { label: "CBT Servers", to: "/admin/cbt", icon: Cpu },
         { label: "Usage", to: "/admin/usage", icon: Activity },
         { label: "Settings", to: "/admin/settings", icon: Settings },
       ],
