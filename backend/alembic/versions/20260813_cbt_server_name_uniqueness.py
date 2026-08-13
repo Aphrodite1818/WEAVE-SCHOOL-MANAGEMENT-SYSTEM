@@ -46,12 +46,13 @@ def upgrade() -> None:
                             lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) AS normalized_name,
                             COUNT(*) AS match_count
                         FROM {PUBLIC_SCHEMA}.cbt_servers
+                        WHERE revoked_at IS NULL
                         GROUP BY tenant_id, lower(regexp_replace(btrim(name), '\\s+', ' ', 'g'))
                         HAVING COUNT(*) > 1
                     ) duplicates
                 ) THEN
                     RAISE EXCEPTION
-                        'Cannot enforce unique normalized CBT server names: duplicate names already exist within the same tenant.';
+                        'Cannot enforce unique normalized CBT server names: duplicate active names already exist within the same tenant.';
                 END IF;
             END $$;
             """
@@ -66,6 +67,7 @@ def upgrade() -> None:
         ],
         unique=True,
         schema=PUBLIC_SCHEMA,
+        postgresql_where=sa.text("revoked_at IS NULL"),
     )
 
 
