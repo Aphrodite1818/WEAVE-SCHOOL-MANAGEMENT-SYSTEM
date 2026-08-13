@@ -166,9 +166,7 @@ class AcademicProgressionService:
     ) -> dict[uuid.UUID, tuple[ClassRoom, ClassRoom | None]]:
         graph: dict[uuid.UUID, tuple[ClassRoom, ClassRoom | None]] = {}
         for class_id in {row.class_id for row in enrollments}:
-            classroom = await ClassRoomRepository.get_by_id(
-                db, tenant_id, class_id, lock=True
-            )
+            classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id, lock=True)
             if classroom is None:
                 raise ConflictException(f"Enrollment references missing class {class_id}.")
             level = await AcademicLevelRepository.get_by_id(
@@ -452,9 +450,7 @@ class AcademicProgressionService:
             db, tenant_id, item.student_id, include_archived=True
         )
         destinations: list[ProgressionDestinationResponse] = []
-        options = await AcademicLevelRepository.list_progression_options(
-            db, tenant_id, level.id
-        )
+        options = await AcademicLevelRepository.list_progression_options(db, tenant_id, level.id)
         for option in options:
             if option.target_level_id:
                 target_level = await AcademicLevelRepository.get_by_id(
@@ -499,9 +495,7 @@ class AcademicProgressionService:
         return StudentProgressionSelectionResponse(
             item=StudentProgressionItemResponse.model_validate(item),
             student_name=(
-                " ".join(
-                    part for part in [student.first_name, student.last_name] if part
-                )
+                " ".join(part for part in [student.first_name, student.last_name] if part)
                 if student
                 else None
             ),
@@ -617,8 +611,7 @@ class AcademicProgressionService:
             .order_by(StudentProgressionItem.updated_at.desc())
         )
         return [
-            StudentProgressionItemResponse.model_validate(item)
-            for item in result.scalars().all()
+            StudentProgressionItemResponse.model_validate(item) for item in result.scalars().all()
         ]
 
     @staticmethod
@@ -661,7 +654,10 @@ class AcademicProgressionService:
         level = await AcademicLevelRepository.get_by_id(
             db, tenant_id, source_class.academic_level_id, lock=True
         )
-        if level is None or level.progression_mode != AcademicLevelProgressionMode.STUDENT_SELECTION:
+        if (
+            level is None
+            or level.progression_mode != AcademicLevelProgressionMode.STUDENT_SELECTION
+        ):
             raise ConflictException("Student-selection configuration is no longer valid.")
         options = await AcademicLevelRepository.list_progression_options(
             db, tenant_id, level.id, lock=True
@@ -670,8 +666,7 @@ class AcademicProgressionService:
             (
                 candidate
                 for candidate in options
-                if destination_id
-                in {candidate.target_level_id, candidate.target_classroom_id}
+                if destination_id in {candidate.target_level_id, candidate.target_classroom_id}
             ),
             None,
         )

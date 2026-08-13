@@ -192,6 +192,59 @@
 }
 
 @layer components {
+  .pairing-success-orbit {
+    position: relative;
+    height: 11rem;
+    width: 11rem;
+  }
+
+  .pairing-success-orbit__ring,
+  .pairing-success-orbit__check {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    width: 100%;
+  }
+
+  .pairing-success-orbit__circle,
+  .pairing-success-orbit__check path {
+    fill: none;
+    stroke: #059669;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3;
+  }
+
+  .pairing-success-orbit__circle {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transform: rotate(180deg);
+    transform-origin: center;
+    animation: pairing-success-circle-draw 900ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .pairing-success-orbit__check path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: pairing-success-check-draw 340ms ease-out 920ms forwards;
+  }
+
+  @keyframes pairing-success-circle-draw {
+    to { stroke-dashoffset: 0; }
+  }
+
+  @keyframes pairing-success-check-draw {
+    to { stroke-dashoffset: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pairing-success-orbit__circle,
+    .pairing-success-orbit__check path {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+  }
+
   .card-base {
     @apply w-full min-w-0 rounded-[1.25rem] border border-border/70 bg-surface shadow-sm sm:rounded-[1.35rem] sm:shadow-premium;
   }

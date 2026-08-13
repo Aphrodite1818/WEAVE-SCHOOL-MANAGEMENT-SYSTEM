@@ -27,6 +27,7 @@ const USAGE_FIELDS = [
   { key: "parents", label: "Parents" },
   { key: "classes", label: "Classes" },
   { key: "subjects", label: "Subjects" },
+  { key: "cbt_servers", label: "CBT Servers" },
 ];
 
 function getUsagePercent(usage) {

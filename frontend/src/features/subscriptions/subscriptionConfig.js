@@ -23,6 +23,7 @@ export const FEATURE_CODES = {
   AI_ASSISTANT: "ai_assistant",
   BULK_IMPORT: "bulk_import",
   TENANT_BRANDING: "tenant_branding",
+  CBT_PAIRING: "cbt_pairing",
 };
 
 export const RESOURCE_CODES = {
@@ -31,6 +32,7 @@ export const RESOURCE_CODES = {
   PARENTS: "parents",
   CLASSES: "classes",
   SUBJECTS: "subjects",
+  CBT_SERVERS: "cbt_servers",
 };
 
 export const SUBSCRIPTION_STATUS_META = {

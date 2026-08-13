@@ -483,16 +483,12 @@ async def test_student_selection_is_hidden_until_next_session_opens(monkeypatch)
     )
     monkeypatch.setattr(
         "app.modules.student_academics.progression_service.AcademicSessionLifecycleRepository.get_by_id",
-        AsyncMock(
-            return_value=SimpleNamespace(status=AcademicSessionStatus.DRAFT)
-        ),
+        AsyncMock(return_value=SimpleNamespace(status=AcademicSessionStatus.DRAFT)),
     )
     response = AsyncMock()
     monkeypatch.setattr(AcademicProgressionService, "_selection_response", response)
 
-    result = await AcademicProgressionService.get_student_selection(
-        AsyncMock(), student=student
-    )
+    result = await AcademicProgressionService.get_student_selection(AsyncMock(), student=student)
 
     assert result is None
     response.assert_not_awaited()

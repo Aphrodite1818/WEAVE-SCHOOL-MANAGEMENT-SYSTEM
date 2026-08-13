@@ -201,9 +201,7 @@ class StudentAcademicRepository:
                 select(AcademicTerm).where(
                     AcademicTerm.tenant_id == tenant_id,
                     AcademicTerm.is_current.is_(True),
-                    AcademicTerm.status.in_(
-                        {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
-                    ),
+                    AcademicTerm.status.in_({AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}),
                 )
             )
         ).scalar_one_or_none()
@@ -1032,9 +1030,7 @@ class StudentAcademicRepository:
         if exclude_id is not None:
             filters.append(TeacherAssignment.id != exclude_id)
         query = (
-            select(TeacherAssignment)
-            .where(*filters)
-            .order_by(TeacherAssignment.created_at.desc())
+            select(TeacherAssignment).where(*filters).order_by(TeacherAssignment.created_at.desc())
         )
         if lock:
             query = query.with_for_update()
@@ -1292,9 +1288,7 @@ class StudentAcademicRepository:
         audit: TeacherAssignmentLifecycleAudit,
     ) -> TeacherAssignmentLifecycleAudit:
         audit_table = (
-            await db.execute(
-                select(func.to_regclass("public.teacher_assignment_lifecycle_audits"))
-            )
+            await db.execute(select(func.to_regclass("public.teacher_assignment_lifecycle_audits")))
         ).scalar_one()
         if audit_table is None:
             return audit

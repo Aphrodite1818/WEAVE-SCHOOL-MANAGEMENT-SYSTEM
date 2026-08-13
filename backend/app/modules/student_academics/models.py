@@ -287,9 +287,7 @@ class GradingScale(BaseModel):
         Boolean, default=True, server_default="true", nullable=False
     )
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),)
 
 
 class AssessmentScheme(BaseModel):

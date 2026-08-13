@@ -56,12 +56,9 @@ class AcademicLevelService:
         source_level_id: uuid.UUID,
         proposed_target_level_ids: set[uuid.UUID],
     ) -> None:
-        levels = await AcademicLevelRepository.list_for_tenant(
-            db, tenant_id, include_archived=True
-        )
+        levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, include_archived=True)
         adjacency: dict[uuid.UUID, set[uuid.UUID]] = {
-            level.id: ({level.next_level_id} if level.next_level_id else set())
-            for level in levels
+            level.id: ({level.next_level_id} if level.next_level_id else set()) for level in levels
         }
         for source_id, target_id in await AcademicLevelRepository.list_progression_edges(
             db, tenant_id
@@ -191,9 +188,7 @@ class AcademicLevelService:
                 for target_id in payload.target_level_ids:
                     if target_id == level.id:
                         raise BadRequestException("An academic level cannot select itself")
-                    target = await AcademicLevelRepository.get_by_id(
-                        db, actor.tenant_id, target_id
-                    )
+                    target = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, target_id)
                     if target is None:
                         raise NotFoundException("Selection target academic level not found")
                     if not target.is_active or target.archived_at is not None:
@@ -237,7 +232,11 @@ class AcademicLevelService:
                     target_level = await AcademicLevelRepository.get_by_id(
                         db, actor.tenant_id, target_class.academic_level_id
                     )
-                    if target_level is None or not target_level.is_active or target_level.archived_at:
+                    if (
+                        target_level is None
+                        or not target_level.is_active
+                        or target_level.archived_at
+                    ):
                         raise ConflictException("Selection target classroom has no active level")
                     options.append(
                         ProgressionSelectionOption(
@@ -271,7 +270,9 @@ class AcademicLevelService:
             next_level_name=next_level.name if next_level else None,
             progression_mode=level.progression_mode,
             selection_target_type=level.selection_target_type,
-            target_level_ids=[option.target_level_id for option in options if option.target_level_id],
+            target_level_ids=[
+                option.target_level_id for option in options if option.target_level_id
+            ],
             target_classroom_ids=[
                 option.target_classroom_id for option in options if option.target_classroom_id
             ],
@@ -285,9 +286,7 @@ class AcademicLevelService:
         academic_level_id: uuid.UUID,
     ) -> AcademicLevelProgressionResponse:
         AcademicLevelService._ensure_admin(actor)
-        level = await AcademicLevelRepository.get_by_id(
-            db, actor.tenant_id, academic_level_id
-        )
+        level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
         if level is None:
             raise NotFoundException("Academic level not found")
         options = await AcademicLevelRepository.list_progression_options(
@@ -305,7 +304,9 @@ class AcademicLevelService:
             next_level_name=next_level.name if next_level else None,
             progression_mode=level.progression_mode,
             selection_target_type=level.selection_target_type,
-            target_level_ids=[option.target_level_id for option in options if option.target_level_id],
+            target_level_ids=[
+                option.target_level_id for option in options if option.target_level_id
+            ],
             target_classroom_ids=[
                 option.target_classroom_id for option in options if option.target_classroom_id
             ],

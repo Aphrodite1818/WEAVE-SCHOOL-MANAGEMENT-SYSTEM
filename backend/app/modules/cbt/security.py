@@ -28,10 +28,7 @@ def generate_pairing_code() -> str:
         7RJM-K4TP
     """
 
-    raw_code = "".join(
-        secrets.choice(PAIRING_CODE_ALPHABET)
-        for _ in range(PAIRING_CODE_LENGTH)
-    )
+    raw_code = "".join(secrets.choice(PAIRING_CODE_ALPHABET) for _ in range(PAIRING_CODE_LENGTH))
 
     return f"{raw_code[:4]}-{raw_code[4:]}"
 
@@ -44,20 +41,12 @@ def normalize_pairing_code(code: str) -> str:
         "7rjm-k4tp" -> "7RJMK4TP"
     """
 
-    normalized = (
-        code.strip()
-        .upper()
-        .replace("-", "")
-        .replace(" ", "")
-    )
+    normalized = code.strip().upper().replace("-", "").replace(" ", "")
 
     if len(normalized) != PAIRING_CODE_LENGTH:
         raise ValueError("Invalid CBT pairing code format.")
 
-    if any(
-        character not in PAIRING_CODE_ALPHABET
-        for character in normalized
-    ):
+    if any(character not in PAIRING_CODE_ALPHABET for character in normalized):
         raise ValueError("Invalid CBT pairing code format.")
 
     return normalized
@@ -120,9 +109,7 @@ def hash_server_token(server_token: str) -> str:
     randomness, so SHA-256 is sufficient for storing their digest.
     """
 
-    return hashlib.sha256(
-        server_token.encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(server_token.encode("utf-8")).hexdigest()
 
 
 def verify_server_token(

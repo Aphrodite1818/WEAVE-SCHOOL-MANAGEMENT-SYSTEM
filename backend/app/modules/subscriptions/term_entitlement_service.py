@@ -227,9 +227,7 @@ class TermPlanEntitlementService:
                     "suggested_plan": suggested.value if suggested else None,
                     "payment_required": suggested in PAID_TERM_PLANS,
                     "amount_kobo": (
-                        TermPlanEntitlementService.amount_kobo(suggested)
-                        if suggested
-                        else 0
+                        TermPlanEntitlementService.amount_kobo(suggested) if suggested else 0
                     ),
                 },
             )

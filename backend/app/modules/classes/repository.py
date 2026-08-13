@@ -114,9 +114,7 @@ class AcademicLevelRepository:
             )
             .outerjoin(
                 ClassRoom,
-                (
-                    ProgressionSelectionOption.target_classroom_id == ClassRoom.id
-                )
+                (ProgressionSelectionOption.target_classroom_id == ClassRoom.id)
                 & (ClassRoom.tenant_id == tenant_id),
             )
             .where(ProgressionSelectionOption.tenant_id == tenant_id)
@@ -203,6 +201,7 @@ class AcademicLevelRepository:
     async def delete(db: AsyncSession, level: AcademicLevel) -> None:
         await db.delete(level)
         await db.flush()
+
 
 class ClassRoomRepository:
     @staticmethod

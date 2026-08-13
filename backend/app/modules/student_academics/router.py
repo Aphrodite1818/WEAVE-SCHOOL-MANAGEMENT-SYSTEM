@@ -917,9 +917,7 @@ async def get_my_progression(
     db: DbSession,
     current_student: CurrentStudent,
 ) -> StudentProgressionSelectionResponse | None:
-    return await AcademicProgressionService.get_student_selection(
-        db, student=current_student
-    )
+    return await AcademicProgressionService.get_student_selection(db, student=current_student)
 
 
 @student_router.post(

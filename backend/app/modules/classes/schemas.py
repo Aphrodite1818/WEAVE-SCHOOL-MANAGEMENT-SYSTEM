@@ -100,7 +100,12 @@ class AcademicLevelProgressionConfigureRequest(InputBase):
                     raise ValueError("level selection requires only target_level_ids")
             elif not classroom_ids or level_ids:
                 raise ValueError("classroom selection requires only target_classroom_ids")
-        elif self.next_level_id is not None or self.selection_target_type is not None or level_ids or classroom_ids:
+        elif (
+            self.next_level_id is not None
+            or self.selection_target_type is not None
+            or level_ids
+            or classroom_ids
+        ):
             raise ValueError("terminal progression cannot contain destinations")
         return self
 

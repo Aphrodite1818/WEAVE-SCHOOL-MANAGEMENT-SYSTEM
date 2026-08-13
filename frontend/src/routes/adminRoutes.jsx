@@ -11,6 +11,8 @@ const AdminInvitationPage = lazy(() => import("../pages/admin/AdminInvitationPag
 const AdminSearchDetailPage = lazy(() => import("../pages/admin/AdminSearchDetailPage"));
 const AttendancePage = lazy(() => import("../pages/admin/AttendancePage"));
 const BillingPage = lazy(() => import("../pages/admin/BillingPage"));
+const CBTPairingCodePage = lazy(() => import("../pages/admin/CBTPairingCodePage"));
+const CBTServersPage = lazy(() => import("../pages/admin/CBTServersPage"));
 const ParentLinkManagementPage = lazy(() => import("../pages/admin/ParentLinkManagementPage"));
 const ParentsPage = lazy(() => import("../pages/admin/ParentsPage"));
 const ResponsiveSubscriptionOptionsPage = lazy(() => import("../pages/admin/ResponsiveSubscriptionOptionsPage"));
@@ -61,6 +63,8 @@ export const adminRoutes = (
       <Route path="/admin/academic" element={<AcademicHubOverviewPage />} />
       <Route path="/admin/academic/:workflow" element={protectedWorkflow(<AcademicWorkflowPage />)} />
       <Route path="/admin/billing" element={<BillingPage />} />
+      <Route path="/admin/cbt" element={protectedWorkflow(<CBTServersPage />)} />
+      <Route path="/admin/cbt/pairing-code" element={protectedWorkflow(<CBTPairingCodePage />)} />
       <Route path="/admin/usage" element={<UsagePage />} />
       <Route path="/admin/inbox" element={<CommunicationInboxPage />} />
       <Route path="/admin/messages" element={<RuntimeFeatureRoute feature="messaging" role="admin"><MessagesPage /></RuntimeFeatureRoute>} />

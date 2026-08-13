@@ -14,6 +14,7 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     Index,
+    func,
     String,
     Text,
     text,
@@ -48,9 +49,7 @@ class CBTServer(BaseModel):
             CBTServerStatus,
             name="cbt_server_status",
             schema=PUBLIC_SCHEMA,
-            values_callable=lambda enum_cls: [
-                item.value for item in enum_cls
-            ],
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
         nullable=False,
         default=CBTServerStatus.ACTIVE,
@@ -120,6 +119,19 @@ class CBTServer(BaseModel):
             "ix_cbt_servers_tenant_last_seen",
             "tenant_id",
             "last_seen_at",
+        ),
+        Index(
+            "uq_cbt_servers_tenant_normalized_name",
+            "tenant_id",
+            func.lower(
+                func.regexp_replace(
+                    func.btrim(name),
+                    r"\s+",
+                    " ",
+                    "g",
+                )
+            ),
+            unique=True,
         ),
     )
 
@@ -246,8 +258,6 @@ class CBTPairingCode(BaseModel):
             "ix_cbt_pairing_codes_tenant_active",
             "tenant_id",
             "expires_at",
-            postgresql_where=text(
-                "used_at IS NULL AND invalidated_at IS NULL"
-            ),
+            postgresql_where=text("used_at IS NULL AND invalidated_at IS NULL"),
         ),
     )

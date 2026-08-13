@@ -75,6 +75,4 @@ async def get_academic_level_progression(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> AcademicLevelProgressionResponse:
-    return await AcademicLevelService.get_progression(
-        db, current_user, academic_level_id
-    )
+    return await AcademicLevelService.get_progression(db, current_user, academic_level_id)

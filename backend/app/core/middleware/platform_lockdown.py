@@ -21,19 +21,20 @@ from app.modules.superadmin.security_response_service import SecurityResponseSer
 
 logger = get_logger(__name__)
 
+API_V1_PREFIX = settings.API_V1_PREFIX
 _ALLOWED_EXACT_PATHS = {
     "/health",
     "/health/live",
     "/health/ready",
-    "/api/v1/auth/login",
-    "/api/v1/auth/refresh",
-    "/api/v1/auth/logout",
-    "/api/v1/auth/me",
-    "/api/v1/auth/me/session",
+    f"{API_V1_PREFIX}/auth/login",
+    f"{API_V1_PREFIX}/auth/refresh",
+    f"{API_V1_PREFIX}/auth/logout",
+    f"{API_V1_PREFIX}/auth/me",
+    f"{API_V1_PREFIX}/auth/me/session",
 }
 _ALLOWED_PREFIXES = (
-    "/api/v1/superadmin",
-    "/api/v1/metrics/superadmin",
+    f"{API_V1_PREFIX}/superadmin",
+    f"{API_V1_PREFIX}/metrics/superadmin",
     "/docs",
     "/redoc",
     "/openapi.json",

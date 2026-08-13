@@ -15,6 +15,7 @@ import app.modules.attendance.models
 import app.modules.auth.models
 import app.modules.auth_identity.models
 import app.modules.bulk_imports.models
+import app.modules.cbt.models
 import app.modules.classes.models
 import app.modules.email_outbox.models
 import app.modules.finance.models

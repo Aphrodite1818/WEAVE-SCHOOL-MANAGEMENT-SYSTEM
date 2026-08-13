@@ -17,6 +17,7 @@ class FeatureCode(StrEnum):
     BULK_IMPORT = "bulk_import"
     BULK_ACADEMIC_OPERATIONS = "bulk_academic_operations"
     TENANT_BRANDING = "tenant_branding"
+    CBT_PAIRING = "cbt_pairing"
 
 
 class ResourceLimitCode(StrEnum):
@@ -27,6 +28,7 @@ class ResourceLimitCode(StrEnum):
     PARENTS = "parents"
     CLASSES = "classes"
     SUBJECTS = "subjects"
+    CBT_SERVERS = "cbt_servers"
 
 
 class SubscriptionStatus(StrEnum):

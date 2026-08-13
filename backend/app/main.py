@@ -107,10 +107,12 @@ from app.modules.tenant_branding.router import (
     workspace_router as workspace_branding_router,
 )
 from app.tenant_management.router import router as tenant_router
+from app.modules.cbt.pairing.router import router as cbt_pairing_router
 
 logger = get_logger(__name__)
 
 RouteKey = tuple[str, str]
+API_V1_PREFIX = settings.API_V1_PREFIX
 _TENANT_ADMIN_ACADEMIC_OVERRIDES: set[RouteKey] = {
     ("GET", "/tenant-admin/academics/grading-scales/readiness-preview"),
     ("PATCH", "/tenant-admin/academics/sessions/{session_id}"),
@@ -218,84 +220,91 @@ def create_app() -> FastAPI:
     app.add_middleware(TrustedProxyHeadersMiddleware)
     register_exception_handlers(app)
 
-    app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
-    app.include_router(runtime_config_router, prefix="/api/v1")
-    app.include_router(superadmin_router, prefix="/api/v1")
-    app.include_router(tenant_admin_router, prefix="/api/v1/tenant-admin", tags=["Tenant Admin"])
-    app.include_router(media_router, prefix="/api/v1/tenant-admin")
-    app.include_router(tenant_branding_router, prefix="/api/v1/tenant-admin")
-    app.include_router(workspace_branding_router, prefix="/api/v1")
-    app.include_router(bulk_import_router, prefix="/api/v1/tenant-admin")
-    app.include_router(email_outbox_router, prefix="/api/v1/tenant-admin")
-    app.include_router(setup_assistant_router, prefix="/api/v1")
-    app.include_router(legal_compliance_router, prefix="/api/v1")
-    app.include_router(tenant_router, prefix="/api/v1/tenants", tags=["Tenants"])
-    app.include_router(teacher_router, prefix="/api/v1/teachers", tags=["Teachers"])
-    app.include_router(student_router, prefix="/api/v1/students", tags=["Students"])
-    app.include_router(parent_router, prefix="/api/v1")
-    app.include_router(subject_router, prefix="/api/v1/subjects", tags=["Subjects"])
-    app.include_router(class_router, prefix="/api/v1", tags=["Classes"])
-    app.include_router(academic_levels_router, prefix="/api/v1")
-    app.include_router(level_subjects_router, prefix="/api/v1")
-    app.include_router(communication_router, prefix="/api/v1")
-    app.include_router(messages_router, prefix="/api/v1")
-    app.include_router(notifications_router, prefix="/api/v1")
-    app.include_router(superadmin_announcement_router, prefix="/api/v1")
-    app.include_router(tenant_admin_announcement_router, prefix="/api/v1")
-    app.include_router(metrics_router, prefix="/api/v1")
+    app.include_router(auth_router, prefix=f"{API_V1_PREFIX}/auth", tags=["Auth"])
+    app.include_router(runtime_config_router, prefix=API_V1_PREFIX)
+    app.include_router(superadmin_router, prefix=API_V1_PREFIX)
+    app.include_router(
+        tenant_admin_router,
+        prefix=f"{API_V1_PREFIX}/tenant-admin",
+        tags=["Tenant Admin"],
+    )
+    app.include_router(media_router, prefix=f"{API_V1_PREFIX}/tenant-admin")
+    app.include_router(tenant_branding_router, prefix=f"{API_V1_PREFIX}/tenant-admin")
+    app.include_router(workspace_branding_router, prefix=API_V1_PREFIX)
+    app.include_router(bulk_import_router, prefix=f"{API_V1_PREFIX}/tenant-admin")
+    app.include_router(email_outbox_router, prefix=f"{API_V1_PREFIX}/tenant-admin")
+    app.include_router(setup_assistant_router, prefix=API_V1_PREFIX)
+    app.include_router(legal_compliance_router, prefix=API_V1_PREFIX)
+    app.include_router(tenant_router, prefix=f"{API_V1_PREFIX}/tenants", tags=["Tenants"])
+    app.include_router(teacher_router, prefix=f"{API_V1_PREFIX}/teachers", tags=["Teachers"])
+    app.include_router(student_router, prefix=f"{API_V1_PREFIX}/students", tags=["Students"])
+    app.include_router(parent_router, prefix=API_V1_PREFIX)
+    app.include_router(subject_router, prefix=f"{API_V1_PREFIX}/subjects", tags=["Subjects"])
+    app.include_router(class_router, prefix=API_V1_PREFIX, tags=["Classes"])
+    app.include_router(academic_levels_router, prefix=API_V1_PREFIX)
+    app.include_router(level_subjects_router, prefix=API_V1_PREFIX)
+    app.include_router(communication_router, prefix=API_V1_PREFIX)
+    app.include_router(messages_router, prefix=API_V1_PREFIX)
+    app.include_router(notifications_router, prefix=API_V1_PREFIX)
+    app.include_router(superadmin_announcement_router, prefix=API_V1_PREFIX)
+    app.include_router(tenant_admin_announcement_router, prefix=API_V1_PREFIX)
+    app.include_router(metrics_router, prefix=API_V1_PREFIX)
 
-    app.include_router(assessment_teacher_router, prefix="/api/v1")
-    app.include_router(assessment_student_router, prefix="/api/v1")
-    app.include_router(grading_readiness_router, prefix="/api/v1")
-    app.include_router(open_session_config_router, prefix="/api/v1")
-    app.include_router(session_closure_router, prefix="/api/v1")
-    app.include_router(school_calendar_admin_router, prefix="/api/v1")
-    app.include_router(school_calendar_shared_router, prefix="/api/v1")
-    app.include_router(tenant_admin_attendance_router, prefix="/api/v1")
-    app.include_router(teacher_attendance_router, prefix="/api/v1")
-    app.include_router(student_attendance_router, prefix="/api/v1")
-    app.include_router(parent_attendance_router, prefix="/api/v1")
+    app.include_router(assessment_teacher_router, prefix=API_V1_PREFIX)
+    app.include_router(assessment_student_router, prefix=API_V1_PREFIX)
+    app.include_router(grading_readiness_router, prefix=API_V1_PREFIX)
+    app.include_router(open_session_config_router, prefix=API_V1_PREFIX)
+    app.include_router(session_closure_router, prefix=API_V1_PREFIX)
+    app.include_router(school_calendar_admin_router, prefix=API_V1_PREFIX)
+    app.include_router(school_calendar_shared_router, prefix=API_V1_PREFIX)
+    app.include_router(tenant_admin_attendance_router, prefix=API_V1_PREFIX)
+    app.include_router(teacher_attendance_router, prefix=API_V1_PREFIX)
+    app.include_router(student_attendance_router, prefix=API_V1_PREFIX)
+    app.include_router(parent_attendance_router, prefix=API_V1_PREFIX)
+    app.include_router(cbt_pairing_router, prefix=f"{API_V1_PREFIX}/cbt")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
 
     app.include_router(
         tenant_admin_academic_router,
-        prefix="/api/v1",
+        prefix=API_V1_PREFIX,
         dependencies=admin_write_guard,
     )
     app.include_router(
         bulk_results_admin_router,
-        prefix="/api/v1",
+        prefix=API_V1_PREFIX,
         dependencies=admin_write_guard,
     )
-    app.include_router(assessment_config_router, prefix="/api/v1", dependencies=admin_write_guard)
+    app.include_router(
+        assessment_config_router, prefix=API_V1_PREFIX, dependencies=admin_write_guard
+    )
     app.include_router(
         grading_scale_lifecycle_router,
-        prefix="/api/v1",
+        prefix=API_V1_PREFIX,
         dependencies=admin_write_guard,
     )
     app.include_router(
         teacher_academic_router,
-        prefix="/api/v1",
+        prefix=API_V1_PREFIX,
     )
-    app.include_router(student_academic_router, prefix="/api/v1")
-    app.include_router(parent_academic_router, prefix="/api/v1")
-    app.include_router(fixed_report_card_router, prefix="/api/v1")
+    app.include_router(student_academic_router, prefix=API_V1_PREFIX)
+    app.include_router(parent_academic_router, prefix=API_V1_PREFIX)
+    app.include_router(fixed_report_card_router, prefix=API_V1_PREFIX)
     app.include_router(
         bulk_report_card_router,
-        prefix="/api/v1",
+        prefix=API_V1_PREFIX,
         dependencies=admin_write_guard,
     )
     app.include_router(
         tenant_admin_report_card_router,
-        prefix="/api/v1",
+        prefix=API_V1_PREFIX,
         dependencies=admin_write_guard,
     )
-    app.include_router(student_report_card_router, prefix="/api/v1")
-    app.include_router(parent_report_card_router, prefix="/api/v1")
-    app.include_router(tenant_search_router, prefix="/api/v1")
-    app.include_router(subscriptions_router, prefix="/api/v1")
-    app.include_router(user_guides_router, prefix="/api/v1")
+    app.include_router(student_report_card_router, prefix=API_V1_PREFIX)
+    app.include_router(parent_report_card_router, prefix=API_V1_PREFIX)
+    app.include_router(tenant_search_router, prefix=API_V1_PREFIX)
+    app.include_router(subscriptions_router, prefix=API_V1_PREFIX)
+    app.include_router(user_guides_router, prefix=API_V1_PREFIX)
 
     @app.post(
         "/internal/diagnostics/sentry-error",

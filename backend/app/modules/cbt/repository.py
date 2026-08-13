@@ -6,10 +6,11 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.cbt.enums import CBTServerStatus
@@ -35,25 +36,6 @@ class CBTServerRepository:
         return server
 
     @staticmethod
-    async def get_by_id(
-        db: AsyncSession,
-        server_id: uuid.UUID,
-        *,
-        lock: bool = False,
-    ) -> CBTServer | None:
-        """Fetch a CBT server by its ID."""
-
-        query = select(CBTServer).where(
-            CBTServer.id == server_id,
-        )
-
-        if lock:
-            query = query.with_for_update()
-
-        result = await db.execute(query)
-        return result.scalar_one_or_none()
-
-    @staticmethod
     async def get_by_tenant_and_id(
         db: AsyncSession,
         *,
@@ -66,6 +48,37 @@ class CBTServerRepository:
         query = select(CBTServer).where(
             CBTServer.id == server_id,
             CBTServer.tenant_id == tenant_id,
+        )
+
+        if lock:
+            query = query.with_for_update()
+
+        result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_tenant_and_normalized_name(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        normalized_name: str,
+        lock: bool = False,
+    ) -> CBTServer | None:
+        """Fetch one CBT server by its normalized name within a tenant."""
+
+        normalized_name = re.sub(r"\s+", " ", normalized_name.strip()).lower()
+
+        query = select(CBTServer).where(
+            CBTServer.tenant_id == tenant_id,
+            func.lower(
+                func.regexp_replace(
+                    func.btrim(CBTServer.name),
+                    r"\s+",
+                    " ",
+                    "g",
+                )
+            )
+            == normalized_name,
         )
 
         if lock:
@@ -178,15 +191,24 @@ class CBTServerCredentialRepository:
     @staticmethod
     async def get_active_for_server(
         db: AsyncSession,
-        server_id: uuid.UUID,
         *,
+        tenant_id: uuid.UUID,
+        server_id: uuid.UUID,
         lock: bool = False,
     ) -> CBTServerCredential | None:
-        """Fetch the currently active credential for a server."""
+        """Fetch the currently active credential for one tenant-owned server."""
 
-        query = select(CBTServerCredential).where(
-            CBTServerCredential.server_id == server_id,
-            CBTServerCredential.revoked_at.is_(None),
+        query = (
+            select(CBTServerCredential)
+            .join(
+                CBTServer,
+                CBTServer.id == CBTServerCredential.server_id,
+            )
+            .where(
+                CBTServerCredential.server_id == server_id,
+                CBTServer.tenant_id == tenant_id,
+                CBTServerCredential.revoked_at.is_(None),
+            )
         )
 
         if lock:
@@ -213,17 +235,24 @@ class CBTServerCredentialRepository:
     async def revoke_active_for_server(
         db: AsyncSession,
         *,
+        tenant_id: uuid.UUID,
         server_id: uuid.UUID,
         revoked_at: datetime,
         reason: str | None = None,
     ) -> int:
-        """Revoke all currently active credentials belonging to a server."""
+        """Revoke all active credentials for one tenant-owned server."""
 
         result = await db.execute(
             update(CBTServerCredential)
             .where(
                 CBTServerCredential.server_id == server_id,
                 CBTServerCredential.revoked_at.is_(None),
+                CBTServerCredential.server_id.in_(
+                    select(CBTServer.id).where(
+                        CBTServer.id == server_id,
+                        CBTServer.tenant_id == tenant_id,
+                    )
+                ),
             )
             .values(
                 revoked_at=revoked_at,
@@ -262,7 +291,7 @@ class CBTPairingCodeRepository:
         )
 
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update().execution_options(populate_existing=True)
 
         result = await db.execute(query)
         return result.scalar_one_or_none()

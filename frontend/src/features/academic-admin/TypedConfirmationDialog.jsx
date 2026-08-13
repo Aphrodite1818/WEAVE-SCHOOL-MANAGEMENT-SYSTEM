@@ -41,7 +41,7 @@ function TypedConfirmationDialog({
             type="button"
             variant={variant}
             disabled={isLoading || !matches || confirmDisabled}
-            onClick={onConfirm}
+            onClick={() => onConfirm(value)}
           >
             {isLoading ? "Working..." : confirmLabel}
           </Button>
