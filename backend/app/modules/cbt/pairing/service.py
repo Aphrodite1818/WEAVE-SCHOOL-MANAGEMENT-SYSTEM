@@ -32,10 +32,11 @@ from app.modules.cbt.pairing.schemas import (
     PairingCode,
     PairingRequest,
     PairingResult,
+    PairingStatusResponse,
     TenantInfo,
 )
 
-from app.modules.cbt.repository import (
+from app.modules.cbt.pairing.repository import (
     CBTPairingCodeRepository,
     CBTServerRepository,
     CBTServerCredentialRepository,
@@ -481,4 +482,43 @@ class CBTPairingService:
             server_id=server.id,
             server_credential=raw_server_credential,
             rotated_at=now,
+        )
+
+
+class CBTPairingStatusService:
+    """Resolve the status of the exact pairing code displayed to an admin."""
+
+    @staticmethod
+    async def get_status(
+        db: AsyncSession,
+        *,
+        admin: TenantAdmin,
+        pairing_code: str,
+    ) -> PairingStatusResponse:
+        tenant_id = admin.tenant_id
+        if tenant_id is None:
+            raise NotFoundException(detail="Pairing code not found.")
+
+        try:
+            code_hash = hash_pairing_code(pairing_code)
+        except ValueError as exc:
+            raise NotFoundException(detail="Pairing code not found.") from exc
+
+        record = await CBTPairingCodeRepository.get_by_hash(db, code_hash)
+        if record is None or record.tenant_id != tenant_id:
+            raise NotFoundException(detail="Pairing code not found.")
+
+        if record.used_at is not None:
+            status = "paired"
+        elif record.invalidated_at is not None:
+            status = "invalidated"
+        elif record.expires_at <= datetime.now(timezone.utc):
+            status = "expired"
+        else:
+            status = "pending"
+
+        return PairingStatusResponse(
+            status=status,
+            expires_at=record.expires_at,
+            server_id=record.used_by_server_id if status == "paired" else None,
         )

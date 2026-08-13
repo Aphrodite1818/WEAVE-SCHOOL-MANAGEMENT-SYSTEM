@@ -8,17 +8,17 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import NotFoundException
-from app.modules.cbt.pairing.status_service import CBTPairingStatusService
+from app.modules.cbt.pairing.service import CBTPairingStatusService
 
 
 @pytest.mark.asyncio
 async def test_status_lookup_is_tenant_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "app.modules.cbt.pairing.status_service.hash_pairing_code",
+        "app.modules.cbt.pairing.service.hash_pairing_code",
         lambda value: "digest",
     )
     monkeypatch.setattr(
-        "app.modules.cbt.pairing.status_service.CBTPairingCodeRepository.get_by_hash",
+        "app.modules.cbt.pairing.service.CBTPairingCodeRepository.get_by_hash",
         AsyncMock(return_value=SimpleNamespace(tenant_id=uuid4())),
     )
 
@@ -56,11 +56,11 @@ async def test_status_lookup_reports_current_state(
     values.update(overrides)
 
     monkeypatch.setattr(
-        "app.modules.cbt.pairing.status_service.hash_pairing_code",
+        "app.modules.cbt.pairing.service.hash_pairing_code",
         lambda value: "digest",
     )
     monkeypatch.setattr(
-        "app.modules.cbt.pairing.status_service.CBTPairingCodeRepository.get_by_hash",
+        "app.modules.cbt.pairing.service.CBTPairingCodeRepository.get_by_hash",
         AsyncMock(return_value=SimpleNamespace(**values)),
     )
 
