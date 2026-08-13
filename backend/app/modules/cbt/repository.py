@@ -14,23 +14,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.cbt.enums import CBTServerStatus
-from app.modules.cbt.models import (
-    CBTPairingCode,
-    CBTServer,
-    CBTServerCredential,
-)
+from app.modules.cbt.models import CBTPairingCode, CBTServer, CBTServerCredential
 
 
 class CBTServerRepository:
     """Database operations for paired CBT servers."""
 
     @staticmethod
-    async def create(
-        db: AsyncSession,
-        server: CBTServer,
-    ) -> CBTServer:
-        """Create a paired CBT server."""
-
+    async def create(db: AsyncSession, server: CBTServer) -> CBTServer:
         db.add(server)
         await db.flush()
         return server
@@ -43,16 +34,12 @@ class CBTServerRepository:
         server_id: uuid.UUID,
         lock: bool = False,
     ) -> CBTServer | None:
-        """Fetch one CBT server belonging to a specific tenant."""
-
         query = select(CBTServer).where(
             CBTServer.id == server_id,
             CBTServer.tenant_id == tenant_id,
         )
-
         if lock:
             query = query.with_for_update()
-
         result = await db.execute(query)
         return result.scalar_one_or_none()
 
@@ -64,12 +51,12 @@ class CBTServerRepository:
         normalized_name: str,
         lock: bool = False,
     ) -> CBTServer | None:
-        """Fetch one CBT server by its normalized name within a tenant."""
+        """Fetch a non-revoked CBT server by normalized tenant-scoped name."""
 
         normalized_name = re.sub(r"\s+", " ", normalized_name.strip()).lower()
-
         query = select(CBTServer).where(
             CBTServer.tenant_id == tenant_id,
+            CBTServer.revoked_at.is_(None),
             func.lower(
                 func.regexp_replace(
                     func.btrim(CBTServer.name),
@@ -80,28 +67,18 @@ class CBTServerRepository:
             )
             == normalized_name,
         )
-
         if lock:
             query = query.with_for_update()
-
         result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def list_for_tenant(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-    ) -> list[CBTServer]:
-        """List all CBT servers belonging to a tenant."""
-
+    async def list_for_tenant(db: AsyncSession, tenant_id: uuid.UUID) -> list[CBTServer]:
         result = await db.execute(
             select(CBTServer)
-            .where(
-                CBTServer.tenant_id == tenant_id,
-            )
+            .where(CBTServer.tenant_id == tenant_id)
             .order_by(CBTServer.created_at.desc())
         )
-
         return list(result.scalars().all())
 
     @staticmethod
@@ -113,16 +90,11 @@ class CBTServerRepository:
         ip_address: str | None = None,
         client_version: str | None = None,
     ) -> CBTServer:
-        """Update diagnostic information after server activity."""
-
         server.last_seen_at = seen_at
-
         if ip_address is not None:
             server.last_ip_address = ip_address
-
         if client_version is not None:
             server.client_version = client_version
-
         await db.flush()
         return server
 
@@ -133,24 +105,15 @@ class CBTServerRepository:
         *,
         suspended_at: datetime,
     ) -> CBTServer:
-        """Persist a server suspension."""
-
         server.status = CBTServerStatus.SUSPENDED
         server.suspended_at = suspended_at
-
         await db.flush()
         return server
 
     @staticmethod
-    async def reactivate(
-        db: AsyncSession,
-        server: CBTServer,
-    ) -> CBTServer:
-        """Persist server reactivation."""
-
+    async def reactivate(db: AsyncSession, server: CBTServer) -> CBTServer:
         server.status = CBTServerStatus.ACTIVE
         server.suspended_at = None
-
         await db.flush()
         return server
 
@@ -163,13 +126,10 @@ class CBTServerRepository:
         revoked_by_admin_id: uuid.UUID,
         reason: str | None = None,
     ) -> CBTServer:
-        """Persist permanent server revocation."""
-
         server.status = CBTServerStatus.REVOKED
         server.revoked_at = revoked_at
         server.revoked_by_admin_id = revoked_by_admin_id
         server.revocation_reason = reason
-
         await db.flush()
         return server
 
@@ -182,8 +142,6 @@ class CBTServerCredentialRepository:
         db: AsyncSession,
         credential: CBTServerCredential,
     ) -> CBTServerCredential:
-        """Create a server credential."""
-
         db.add(credential)
         await db.flush()
         return credential
@@ -196,24 +154,17 @@ class CBTServerCredentialRepository:
         server_id: uuid.UUID,
         lock: bool = False,
     ) -> CBTServerCredential | None:
-        """Fetch the currently active credential for one tenant-owned server."""
-
         query = (
             select(CBTServerCredential)
-            .join(
-                CBTServer,
-                CBTServer.id == CBTServerCredential.server_id,
-            )
+            .join(CBTServer, CBTServer.id == CBTServerCredential.server_id)
             .where(
                 CBTServerCredential.server_id == server_id,
                 CBTServer.tenant_id == tenant_id,
                 CBTServerCredential.revoked_at.is_(None),
             )
         )
-
         if lock:
             query = query.with_for_update()
-
         result = await db.execute(query)
         return result.scalar_one_or_none()
 
@@ -224,10 +175,7 @@ class CBTServerCredentialRepository:
         *,
         used_at: datetime,
     ) -> CBTServerCredential:
-        """Update when a server credential was last used."""
-
         credential.last_used_at = used_at
-
         await db.flush()
         return credential
 
@@ -240,8 +188,6 @@ class CBTServerCredentialRepository:
         revoked_at: datetime,
         reason: str | None = None,
     ) -> int:
-        """Revoke all active credentials for one tenant-owned server."""
-
         result = await db.execute(
             update(CBTServerCredential)
             .where(
@@ -254,12 +200,8 @@ class CBTServerCredentialRepository:
                     )
                 ),
             )
-            .values(
-                revoked_at=revoked_at,
-                revocation_reason=reason,
-            )
+            .values(revoked_at=revoked_at, revocation_reason=reason)
         )
-
         return result.rowcount or 0
 
 
@@ -271,8 +213,6 @@ class CBTPairingCodeRepository:
         db: AsyncSession,
         pairing_code: CBTPairingCode,
     ) -> CBTPairingCode:
-        """Create a CBT pairing-code record."""
-
         db.add(pairing_code)
         await db.flush()
         return pairing_code
@@ -284,16 +224,27 @@ class CBTPairingCodeRepository:
         *,
         lock: bool = False,
     ) -> CBTPairingCode | None:
-        """Fetch a pairing-code record by its stored digest."""
-
-        query = select(CBTPairingCode).where(
-            CBTPairingCode.code_hash == code_hash,
-        )
-
+        query = select(CBTPairingCode).where(CBTPairingCode.code_hash == code_hash)
         if lock:
             query = query.with_for_update().execution_options(populate_existing=True)
-
         result = await db.execute(query)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_tenant_and_id(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        pairing_id: uuid.UUID,
+    ) -> CBTPairingCode | None:
+        """Fetch one pairing challenge without exposing cross-tenant records."""
+
+        result = await db.execute(
+            select(CBTPairingCode).where(
+                CBTPairingCode.id == pairing_id,
+                CBTPairingCode.tenant_id == tenant_id,
+            )
+        )
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -303,8 +254,6 @@ class CBTPairingCodeRepository:
         tenant_id: uuid.UUID,
         invalidated_at: datetime,
     ) -> int:
-        """Invalidate every unused pairing code for a tenant."""
-
         result = await db.execute(
             update(CBTPairingCode)
             .where(
@@ -312,11 +261,8 @@ class CBTPairingCodeRepository:
                 CBTPairingCode.used_at.is_(None),
                 CBTPairingCode.invalidated_at.is_(None),
             )
-            .values(
-                invalidated_at=invalidated_at,
-            )
+            .values(invalidated_at=invalidated_at)
         )
-
         return result.rowcount or 0
 
     @staticmethod
@@ -327,10 +273,7 @@ class CBTPairingCodeRepository:
         used_at: datetime,
         server_id: uuid.UUID,
     ) -> CBTPairingCode:
-        """Mark a pairing code as consumed by a CBT server."""
-
         pairing_code.used_at = used_at
         pairing_code.used_by_server_id = server_id
-
         await db.flush()
         return pairing_code
