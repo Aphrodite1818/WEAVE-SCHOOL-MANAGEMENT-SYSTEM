@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[5]
+BACKEND_ROOT = Path(__file__).resolve().parents[4]
 
 
 def _source(relative_path: str) -> str:
