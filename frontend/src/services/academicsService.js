@@ -34,33 +34,16 @@ const normalizeClassPayload = (payload = {}) => ({
   ...(payload.academic_level_id !== undefined
     ? { academic_level_id: payload.academic_level_id }
     : {}),
-  ...(payload.arm !== undefined ? { arm: payload.arm } : {}),
+  ...(payload.arm !== undefined ? { arm: payload.arm || null } : {}),
+  ...(payload.department_id !== undefined
+    ? { department_id: payload.department_id || null }
+    : {}),
   ...(payload.teacher_membership_id !== undefined || payload.teacher_id !== undefined
     ? {
         teacher_membership_id:
           payload.teacher_membership_id || payload.teacher_id || null,
       }
     : {}),
-});
-
-const normalizeLevelProgressionPayload = (payload = {}) => ({
-  progression_mode: payload.progression_mode,
-  next_level_id:
-    payload.progression_mode === "direct" ? payload.next_level_id || null : null,
-  selection_target_type:
-    payload.progression_mode === "student_selection"
-      ? payload.selection_target_type || null
-      : null,
-  target_level_ids:
-    payload.progression_mode === "student_selection" &&
-    payload.selection_target_type === "level"
-      ? payload.target_level_ids || []
-      : [],
-  target_classroom_ids:
-    payload.progression_mode === "student_selection" &&
-    payload.selection_target_type === "classroom"
-      ? payload.target_classroom_ids || []
-      : [],
 });
 
 export const academicLevelService = {
@@ -71,10 +54,6 @@ export const academicLevelService = {
     })}`),
   createLevel: (payload) => api.post("/academic-levels", payload),
   updateLevel: (levelId, payload) => api.patch(`/academic-levels/${levelId}`, payload),
-  configureProgression: (levelId, payload) =>
-    api.put(`/academic-levels/${levelId}/progression`, normalizeLevelProgressionPayload(payload)),
-  getProgression: (levelId) =>
-    api.get(`/academic-levels/${levelId}/progression`),
   removeLevelFromSetup: (levelId) =>
     api.post(`/tenant-admin/setup-assistant/levels/${levelId}/remove`, {}),
 };
@@ -136,5 +115,11 @@ export const classService = {
 
   removeClassFromSetup: (classId) =>
     api.post(`/tenant-admin/setup-assistant/classes/${classId}/remove`, {}),
+};
+
+export const departmentService = {
+  getDepartments: (options = {}) =>
+    api.get(`/departments?${buildQuery(options, { activeOnly: "active_only" })}`),
+  createDepartment: (payload) => api.post("/departments", payload),
 };
 

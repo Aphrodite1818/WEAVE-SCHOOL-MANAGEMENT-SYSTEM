@@ -101,6 +101,7 @@ async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_ve
         id=uuid4(),
         status=AcademicResultStatus.LOCKED,
         subject_id=subject_id,
+        level_subject_id=uuid4(),
         teacher_assignment_id=None,
         teacher_membership_id=uuid4(),
         total_score=Decimal("90"),
@@ -119,6 +120,11 @@ async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_ve
         ReportCardService,
         "_missing_subjects",
         AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        ReportCardService,
+        "_expected_subject_offerings",
+        AsyncMock(return_value=[SimpleNamespace(level_subject_id=result.level_subject_id)]),
     )
     monkeypatch.setattr(
         ReportCardRepository,

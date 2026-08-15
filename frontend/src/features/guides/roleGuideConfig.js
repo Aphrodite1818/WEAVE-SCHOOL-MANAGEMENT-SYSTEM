@@ -64,9 +64,9 @@ export const ROLE_GUIDES = {
       {
         id: "progression",
         shortLabel: "Progression",
-        label: "Configure level progression",
+        label: "Review automatic progression",
         description:
-          "Choose the next academic level for every non-terminal level and mark final levels as terminal.",
+          "Confirm that each academic level has the correct category and position. Weave derives progression automatically and graduates the final configured level.",
         icon: Route,
       },
       {

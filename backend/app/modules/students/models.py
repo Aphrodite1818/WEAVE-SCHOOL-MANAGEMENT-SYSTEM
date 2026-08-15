@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
 
 if TYPE_CHECKING:
-    from app.modules.classes.models import ClassRoom
+    from app.modules.classes.models import AcademicLevel, ClassRoom
     from app.modules.parents.models import ParentInvitation, ParentMembership
     from app.modules.student_academics.models import AcademicSession
 
@@ -324,10 +324,15 @@ class StudentEnrollment(BaseModel):
         ForeignKey("students.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    class_id: Mapped[uuid.UUID] = mapped_column(
+    academic_level_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    class_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("classes.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     academic_session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -361,7 +366,10 @@ class StudentEnrollment(BaseModel):
     )
 
     student: Mapped["Student"] = relationship("Student", back_populates="enrollments")
-    classroom: Mapped["ClassRoom"] = relationship("ClassRoom", foreign_keys=[class_id])
+    academic_level: Mapped["AcademicLevel"] = relationship(
+        "AcademicLevel", foreign_keys=[academic_level_id]
+    )
+    classroom: Mapped["ClassRoom | None"] = relationship("ClassRoom", foreign_keys=[class_id])
     academic_session: Mapped["AcademicSession"] = relationship(
         "AcademicSession",
         foreign_keys=[academic_session_id],
@@ -395,6 +403,7 @@ class StudentEnrollment(BaseModel):
         ),
         Index("ix_student_enrollments_tenant_student", "tenant_id", "student_id"),
         Index("ix_student_enrollments_tenant_class", "tenant_id", "class_id"),
+        Index("ix_student_enrollments_tenant_level", "tenant_id", "academic_level_id"),
         Index(
             "ix_student_enrollments_tenant_session",
             "tenant_id",

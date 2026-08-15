@@ -34,8 +34,6 @@ const unavailableLimits = () => ({
   students: null,
   teachers: null,
   parents: null,
-  classes: null,
-  subjects: null,
 });
 
 export const resetPublicPricingPlans = () => {

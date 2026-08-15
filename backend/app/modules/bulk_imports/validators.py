@@ -133,7 +133,6 @@ class BulkImportValidator:
             "last_name",
             "date_of_birth",
             "level",
-            "arm",
         ),
     }
 

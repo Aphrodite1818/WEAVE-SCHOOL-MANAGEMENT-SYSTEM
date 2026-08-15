@@ -7,8 +7,6 @@ from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin, get_current_tenant_member
 from app.modules.classes.schemas import (
     AcademicLevelCreate,
-    AcademicLevelProgressionConfigureRequest,
-    AcademicLevelProgressionResponse,
     AcademicLevelResponse,
     AcademicLevelUpdate,
 )
@@ -55,24 +53,3 @@ async def update_academic_level(
     current_user: CurrentTenantAdmin,
 ) -> AcademicLevelResponse:
     return await AcademicLevelService.update(db, current_user, academic_level_id, payload)
-
-
-@router.put("/{academic_level_id}/progression", response_model=AcademicLevelProgressionResponse)
-async def configure_academic_level_progression(
-    academic_level_id: uuid.UUID,
-    payload: AcademicLevelProgressionConfigureRequest,
-    db: DbSession,
-    current_user: CurrentTenantAdmin,
-) -> AcademicLevelProgressionResponse:
-    return await AcademicLevelService.configure_progression(
-        db, current_user, academic_level_id, payload
-    )
-
-
-@router.get("/{academic_level_id}/progression", response_model=AcademicLevelProgressionResponse)
-async def get_academic_level_progression(
-    academic_level_id: uuid.UUID,
-    db: DbSession,
-    current_user: CurrentTenantAdmin,
-) -> AcademicLevelProgressionResponse:
-    return await AcademicLevelService.get_progression(db, current_user, academic_level_id)

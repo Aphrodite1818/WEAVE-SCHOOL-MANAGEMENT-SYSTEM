@@ -24,7 +24,6 @@ const workflowAliases = {
   manage: "classes",
   setup: "sessions",
   "class-structure": "classes",
-  progression: "sessions",
 };
 
 const asItems = (response) =>
@@ -105,9 +104,6 @@ function AcademicWorkflowPage() {
         />
       );
     }
-    if (workflow === "sessions" && activeTab === "student-choices") {
-      return <ProgressionWorkspace key={pageKey} activeTab={activeTab} />;
-    }
     if (["sessions", "terms", "subjects"].includes(workflow)) {
       return (
         <AcademicSetupWorkspace
@@ -131,6 +127,9 @@ function AcademicWorkflowPage() {
       return (
         <TeacherAssignmentsWorkspace key={pageKey} activeTab={activeTab} />
       );
+    }
+    if (workflow === "progression") {
+      return <ProgressionWorkspace key="automatic-progression-workflow" />;
     }
     if (
       ["results", "report-cards"].includes(workflow) &&

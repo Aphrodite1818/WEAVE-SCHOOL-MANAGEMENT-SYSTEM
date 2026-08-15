@@ -160,8 +160,6 @@ export const teacherService = {
   getMyTeacher: async (requestOptions) =>
     normalizeTeacherMembership(await api.get("/teachers/me", requestOptions)),
 
-  getMyProgressions: (requestOptions) =>
-    api.get("/teachers/academics/progression", requestOptions),
 
   getMySubjects: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;

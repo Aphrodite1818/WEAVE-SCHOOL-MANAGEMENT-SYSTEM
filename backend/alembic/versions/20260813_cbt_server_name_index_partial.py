@@ -1,14 +1,14 @@
 """make the CBT server name index partial
 
 Revision ID: 20260813_cbt_name_partial
-Revises: 20260813_cbt_server_name_uniqueness
+Revises: 20260813_cbt_name_unique
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "20260813_cbt_name_partial"
-down_revision = "20260813_cbt_server_name_uniqueness"
+down_revision = "20260813_cbt_name_unique"
 branch_labels = None
 depends_on = None
 

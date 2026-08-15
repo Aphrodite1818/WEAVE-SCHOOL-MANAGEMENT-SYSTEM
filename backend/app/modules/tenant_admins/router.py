@@ -21,6 +21,8 @@ from app.modules.students.schemas import (
     StudentAdminAccessCodeResponse,
     StudentAdminProfileUpdate,
     StudentArchiveRequest,
+    StudentBatchClassAssignmentRequest,
+    StudentBatchClassAssignmentResponse,
     StudentClassChangeRequest,
     StudentCreate,
     StudentDetailResponse,
@@ -149,6 +151,8 @@ async def list_students(
     limit: int = Query(default=50, ge=1, le=100),
     search: str | None = Query(default=None, max_length=200),
     class_id: UUID | None = Query(default=None),
+    academic_level_id: UUID | None = Query(default=None),
+    unassigned_class: bool = Query(default=False),
     status_filter: AcademicStatus | None = Query(
         default=None,
         alias="status",
@@ -162,10 +166,28 @@ async def list_students(
         limit=limit,
         search=search,
         class_id=class_id,
+        academic_level_id=academic_level_id,
+        unassigned_class=unassigned_class,
         status=status_filter,
         include_archived=include_archived,
     )
     return StudentListResponse(items=students, total=total)
+
+
+@router.post(
+    "/students/batch-class-assignment",
+    response_model=StudentBatchClassAssignmentResponse,
+)
+async def assign_student_class_batch(
+    payload: StudentBatchClassAssignmentRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentBatchClassAssignmentResponse:
+    return await StudentEnrollmentService.assign_class_batch(
+        db,
+        actor=current_admin,
+        payload=payload,
+    )
 
 
 @router.get(

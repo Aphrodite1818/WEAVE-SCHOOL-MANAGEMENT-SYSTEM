@@ -57,12 +57,14 @@ async def test_enrollment_history_adds_display_labels_once() -> None:
     tenant_id = uuid.uuid4()
     student_id = uuid.uuid4()
     class_id = uuid.uuid4()
+    level_id = uuid.uuid4()
     session_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
     enrollment = StudentEnrollment(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         student_id=student_id,
+        academic_level_id=level_id,
         class_id=class_id,
         academic_session_id=session_id,
         started_on=date(2026, 9, 1),
@@ -72,6 +74,7 @@ async def test_enrollment_history_adds_display_labels_once() -> None:
         updated_at=now,
     )
     classroom = type("Classroom", (), {"academic_level_name": "JSS 1", "arm": "Blue"})()
+    level = type("Level", (), {"name": "JSS 1"})()
     session = AcademicSession(
         id=session_id,
         tenant_id=tenant_id,
@@ -94,6 +97,10 @@ async def test_enrollment_history_adds_display_labels_once() -> None:
             new=AsyncMock(return_value=classroom),
         ),
         patch(
+            "app.modules.students.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=level),
+        ),
+        patch(
             "app.modules.students.service.AcademicSessionLifecycleRepository.get_by_id",
             new=AsyncMock(return_value=session),
         ),
@@ -107,10 +114,11 @@ async def test_enrollment_history_adds_display_labels_once() -> None:
     assert rows == [
         StudentEnrollmentDetailResponse(
             **StudentEnrollmentDetailResponse.model_validate(enrollment).model_dump(
-                exclude={"class_name", "class_arm", "academic_session_name"}
+                exclude={"class_name", "class_arm", "academic_level_name", "academic_session_name"}
             ),
             class_name="JSS 1",
             class_arm="Blue",
+            academic_level_name="JSS 1",
             academic_session_name="2026/2027",
         )
     ]

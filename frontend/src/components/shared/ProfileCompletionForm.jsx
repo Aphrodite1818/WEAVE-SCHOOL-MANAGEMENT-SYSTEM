@@ -12,6 +12,23 @@ import { useToast } from "../../hooks/useToast";
 const ROLE_FORM_CONFIG = {
   admin: [
     {
+      key: "institution_type",
+      title: "Academic structure",
+      description: "Choose the institution family that determines the academic categories you can configure.",
+      fields: [
+        {
+          name: "institution_type",
+          label: "What type of institution are you setting up?",
+          type: "select",
+          required: true,
+          options: [
+            { value: "PRIMARY_SCHOOL", label: "Primary School" },
+            { value: "SECONDARY_SCHOOL", label: "Secondary School" },
+          ],
+        },
+      ],
+    },
+    {
       key: "school_identity",
       title: "School identity",
       description: "These values come from registration and stay read-only here.",

@@ -21,19 +21,13 @@ test("installed mobile navigation stays close to the device bottom edge", () => 
   );
 });
 
-test("assisted class-limit warning routes admins to a working checkout page", () => {
+test("academic structure is not coupled to class or subject subscription quotas", () => {
   const setupPage = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
-  const plansPage = readSource("pages", "admin", "SubscriptionOptionsPage.jsx");
-  const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
-  const guideNavigation = readSource("features", "guides", "guideNavigation.js");
+  const pricing = readSource("features", "subscriptions", "subscriptionConfig.js");
 
-  assert.match(setupPage, /detail\?\.reason === "resource_limit_reached"/);
-  assert.match(setupPage, /actionLabel:\s*"Upgrade plan"/);
-  assert.match(setupRoute, /label === "upgrade plan"/);
-  assert.match(setupRoute, /leaveAdminSetup\("\/admin\/billing\/plans"\)/);
-  assert.match(guideNavigation, /window\.location\.replace\(destination\)/);
-  assert.match(plansPage, /initializePaidCurrentTermCheckout/);
-  assert.match(plansPage, /window\.location\.assign\(checkout\.authorization_url\)/);
+  assert.doesNotMatch(setupPage, /resource_limit_reached/);
+  assert.doesNotMatch(setupPage, /Plan limit reached/);
+  assert.doesNotMatch(pricing, /resource:\s*["'](?:classes|subjects)["']/);
 });
 
 test("assisted structure creates a level before adding its class arm", () => {
@@ -41,7 +35,7 @@ test("assisted structure creates a level before adding its class arm", () => {
   const academicsService = readSource("services", "academicsService.js");
 
   assert.match(setupPage, /Create the academic level/);
-  assert.match(setupPage, /academicLevelService\.createLevel\(\{ name: levelForm\.name \}\)/);
+  assert.match(setupPage, /academicLevelService\.createLevel\(\{[\s\S]*name: levelForm\.name,[\s\S]*category: levelForm\.category,[\s\S]*position:/);
   assert.match(setupPage, /Add an arm to the level/);
   assert.match(setupPage, /academic_level_id: created\.id/);
   assert.match(setupPage, /armCount === 0/);

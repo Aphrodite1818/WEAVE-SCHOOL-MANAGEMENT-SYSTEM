@@ -324,12 +324,10 @@ class GradingScaleReadiness(OutputBase):
 
 class LevelSubjectCreate(InputBase):
     subject_id: uuid.UUID
-    is_core: bool = False
 
 
 class LevelSubjectBulkCreate(InputBase):
     subject_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
-    is_core: bool = False
 
     @field_validator("subject_ids")
     @classmethod
@@ -337,10 +335,6 @@ class LevelSubjectBulkCreate(InputBase):
         if len(set(value)) != len(value):
             raise ValueError("subject_ids must not contain duplicates")
         return value
-
-
-class LevelSubjectUpdate(InputBase):
-    is_core: bool
 
 
 class LevelSubjectResponse(OutputBase):
@@ -351,7 +345,6 @@ class LevelSubjectResponse(OutputBase):
     subject_id: uuid.UUID
     subject_name: str | None = None
     subject_code: str | None = None
-    is_core: bool
     is_active: bool
     lifecycle_status: Literal["active", "inactive", "archived"]
     archived_at: datetime | None = None
@@ -362,6 +355,40 @@ class LevelSubjectResponse(OutputBase):
     subject_is_archived: bool | None = None
     can_activate: bool
     activation_blocker: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubjectOfferingCreate(InputBase):
+    academic_term_id: uuid.UUID
+    department_id: uuid.UUID | None = None
+    is_elective: bool = False
+
+
+class SubjectOfferingResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    level_subject_id: uuid.UUID
+    academic_term_id: uuid.UUID
+    department_id: uuid.UUID | None = None
+    is_elective: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class StudentDepartmentAssignmentCreate(InputBase):
+    student_enrollment_id: uuid.UUID
+    department_id: uuid.UUID
+    effective_from_term_id: uuid.UUID
+
+
+class StudentDepartmentAssignmentResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    student_enrollment_id: uuid.UUID
+    department_id: uuid.UUID
+    effective_from_term_id: uuid.UUID
+    assigned_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -595,41 +622,16 @@ class StudentProgressionItemResponse(OutputBase):
     student_id: uuid.UUID
     from_enrollment_id: uuid.UUID | None = None
     to_enrollment_id: uuid.UUID | None = None
-    from_class_id: uuid.UUID
+    from_level_id: uuid.UUID
+    to_level_id: uuid.UUID | None = None
+    from_class_id: uuid.UUID | None = None
     to_class_id: uuid.UUID | None = None
-    selected_level_id: uuid.UUID | None = None
-    selected_classroom_id: uuid.UUID | None = None
     action: StudentProgressionItemAction
     status: StudentProgressionItemStatus
     reason: str | None = None
     processed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-
-
-class ProgressionDestinationResponse(OutputBase):
-    id: uuid.UUID
-    target_type: str
-    label: str
-    academic_level_id: uuid.UUID
-
-
-class StudentProgressionSelectionResponse(OutputBase):
-    item: StudentProgressionItemResponse
-    student_name: str | None = None
-    admission_number: str | None = None
-    source_class_label: str | None = None
-    selection_target_type: str | None = None
-    selected_destination_label: str | None = None
-    destinations: list[ProgressionDestinationResponse] = Field(default_factory=list)
-
-
-class StudentProgressionSelectionRequest(InputBase):
-    destination_id: uuid.UUID
-
-
-class AdminProgressionPlacementRequest(InputBase):
-    classroom_id: uuid.UUID
 
 
 class StudentProgressionRunResponse(OutputBase):

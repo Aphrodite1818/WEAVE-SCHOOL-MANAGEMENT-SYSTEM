@@ -1,6 +1,6 @@
 """enforce tenant-scoped cbt server name uniqueness
 
-Revision ID: 20260813_cbt_server_name_uniqueness
+Revision ID: 20260813_cbt_name_unique
 Revises: 20260813_cbt_tables
 Create Date: 2026-08-13 18:15:00.000000
 
@@ -12,7 +12,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "20260813_cbt_server_name_uniqueness"
+revision: str = "20260813_cbt_name_unique"
 down_revision: Union[str, Sequence[str], None] = "20260813_cbt_tables"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

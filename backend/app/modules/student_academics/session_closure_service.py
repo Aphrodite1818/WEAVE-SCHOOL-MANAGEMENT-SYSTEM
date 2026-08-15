@@ -10,11 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.classes.models import (
-    AcademicLevelProgressionMode,
-    ProgressionSelectionTargetType,
-)
-from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
+from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.communications.enums import (
     AnnouncementPriority,
     CommunicationActorType,
@@ -67,8 +63,8 @@ class SessionClosureService:
         "No result remains draft, submitted, or approved-but-unlocked.",
         "No draft report card remains unpublished.",
         "No assessment-record import is pending or processing.",
-        "Every non-terminal level has a valid progression destination; missing matching arms are routed to administrator placement.",
-        "Terminal academic levels do not point to another level.",
+        "Every current enrollment references an active academic level.",
+        "Level category and position determine progression automatically.",
         "The next session has at least one configured term.",
         "No progression run is already processing.",
     ]
@@ -84,21 +80,14 @@ class SessionClosureService:
             "pending": 0,
             "failed": 0,
         }
-        pending_statuses = {
-            StudentProgressionItemStatus.AWAITING_SELECTION,
-            StudentProgressionItemStatus.SELECTION_SUBMITTED,
-            StudentProgressionItemStatus.AWAITING_CLASS_PLACEMENT,
-        }
         for item in items:
             if (
                 item.status == StudentProgressionItemStatus.COMPLETED
-                and item.action == StudentProgressionItemAction.TERMINAL
+                and item.action == StudentProgressionItemAction.COMPLETE
             ):
                 summary["graduated"] += 1
             elif item.status == StudentProgressionItemStatus.COMPLETED:
                 summary["promoted"] += 1
-            elif item.status in pending_statuses:
-                summary["pending"] += 1
             elif item.status == StudentProgressionItemStatus.CANCELLED:
                 summary["skipped"] += 1
             else:
@@ -197,102 +186,22 @@ class SessionClosureService:
             tenant_id=tenant_id,
             session_id=session_id,
         )
-        invalid_targets = 0
-        manual_placement_routes = 0
-        checked_classes: set[uuid.UUID] = set()
+        invalid_levels = 0
+        checked_levels: set[uuid.UUID] = set()
         for enrollment in enrollments:
-            if enrollment.class_id in checked_classes:
+            if enrollment.academic_level_id in checked_levels:
                 continue
-            checked_classes.add(enrollment.class_id)
-            classroom = await ClassRoomRepository.get_by_id(db, tenant_id, enrollment.class_id)
-            if classroom is None:
-                invalid_targets += 1
-                blockers.append(
-                    f"An active enrollment references missing class {enrollment.class_id}."
-                )
-                continue
+            checked_levels.add(enrollment.academic_level_id)
             level = await AcademicLevelRepository.get_by_id(
-                db, tenant_id, classroom.academic_level_id
+                db, tenant_id, enrollment.academic_level_id
             )
-            if level is None:
-                invalid_targets += 1
-                blockers.append(f"Class {classroom.id} has no academic level.")
-                continue
-            if level.progression_mode == AcademicLevelProgressionMode.TERMINAL:
-                continue
-            if level.progression_mode == AcademicLevelProgressionMode.STUDENT_SELECTION:
-                options = await AcademicLevelRepository.list_progression_options(
-                    db, tenant_id, level.id
+            if level is None or not level.is_active or level.archived_at is not None:
+                invalid_levels += 1
+                blockers.append(
+                    f"An active enrollment references invalid level {enrollment.academic_level_id}."
                 )
-                if not options:
-                    invalid_targets += 1
-                    blockers.append(f"Configure student-selection destinations for {level.name}.")
-                    continue
-                if level.selection_target_type == ProgressionSelectionTargetType.LEVEL:
-                    if any(option.target_level_id is None for option in options):
-                        invalid_targets += 1
-                        blockers.append(f"{level.name} has mixed progression destinations.")
-                        continue
-                    for option in options:
-                        target_level = await AcademicLevelRepository.get_by_id(
-                            db, tenant_id, option.target_level_id
-                        )
-                        if (
-                            target_level is None
-                            or not target_level.is_active
-                            or target_level.archived_at is not None
-                        ):
-                            invalid_targets += 1
-                            blockers.append(
-                                f"{level.name} has an inactive or missing academic-level destination."
-                            )
-                elif level.selection_target_type == ProgressionSelectionTargetType.CLASSROOM:
-                    if any(option.target_classroom_id is None for option in options):
-                        invalid_targets += 1
-                        blockers.append(f"{level.name} has mixed progression destinations.")
-                        continue
-                    for option in options:
-                        target_class = await ClassRoomRepository.get_by_id(
-                            db, tenant_id, option.target_classroom_id
-                        )
-                        if (
-                            target_class is None
-                            or not target_class.is_active
-                            or target_class.archived_at is not None
-                        ):
-                            invalid_targets += 1
-                            blockers.append(
-                                f"{level.name} has an inactive or missing classroom destination."
-                            )
-                else:
-                    invalid_targets += 1
-                    blockers.append(
-                        f"Configure whether {level.name} students choose a level or a classroom."
-                    )
-                continue
-            if level.next_level_id is None:
-                invalid_targets += 1
-                blockers.append(f"Configure a next-level target for {level.name}.")
-                continue
-            target_level = await AcademicLevelRepository.get_by_id(
-                db, tenant_id, level.next_level_id
-            )
-            if (
-                target_level is None
-                or not target_level.is_active
-                or target_level.archived_at is not None
-            ):
-                invalid_targets += 1
-                blockers.append(f"The next level for {level.name} is missing or inactive.")
-                continue
-            target = await ClassRoomRepository.get_by_level_and_arm(
-                db, tenant_id, level.next_level_id, classroom.arm
-            )
-            if target is None or not target.is_active or target.archived_at is not None:
-                manual_placement_routes += 1
 
-        counts["invalid_class_progression_targets"] = invalid_targets
-        counts["manual_class_placement_routes"] = manual_placement_routes
+        counts["invalid_enrollment_levels"] = invalid_levels
 
         # De-duplicate while preserving the exact audit order.
         blockers = list(dict.fromkeys(blockers))
@@ -504,9 +413,6 @@ class SessionClosureService:
             tenant_id=tenant_id,
             academic_session_id=session.id,
         )
-        graph = await AcademicProgressionService._validate_class_graph(
-            db, tenant_id=tenant_id, enrollments=enrollments
-        )
         if run.total_students == 0:
             run.total_students = len(enrollments)
         effective_date = session.end_date or date.today()
@@ -514,14 +420,11 @@ class SessionClosureService:
         for enrollment in enrollments:
             try:
                 async with db.begin_nested():
-                    source_class, target_class = graph[enrollment.class_id]
                     await AcademicProgressionService._progress_student(
                         db,
                         actor=actor,
                         run=run,
                         enrollment=enrollment,
-                        classroom=source_class,
-                        target_class=target_class,
                         next_session=next_session,
                         effective_date=effective_date,
                     )
@@ -533,6 +436,7 @@ class SessionClosureService:
                         progression_run_id=run.id,
                         student_id=enrollment.student_id,
                         from_enrollment_id=enrollment.id,
+                        from_level_id=enrollment.academic_level_id,
                         from_class_id=enrollment.class_id,
                         to_class_id=None,
                         action=StudentProgressionItemAction.SKIP,
@@ -600,8 +504,8 @@ class SessionClosureService:
                 if progression_failed
                 else (
                     f"Student progression is complete: {run.promoted_students} promoted, "
-                    f"{run.graduated_students} graduated, {run.pending_students} pending "
-                    f"selection or placement and {run.skipped_students} skipped. "
+                    f"{run.graduated_students} graduated, {run.pending_students} pending, "
+                    f"and {run.skipped_students} skipped. "
                     "Academic write activities remain paused until the administrator finalizes closure."
                 )
             ),

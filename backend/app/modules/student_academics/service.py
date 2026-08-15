@@ -6,6 +6,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRep
 from app.modules.report_cards.models import ReportCardStatus
 from app.modules.parents.models import ParentMembership
 from app.modules.student_academics.assessment_repository import AssessmentRepository
+from app.modules.student_academics.curriculum_service import CurriculumResolutionService
 from app.modules.student_academics.models import (
     AcademicLifecycleAudit,
     AcademicResultStatus,
@@ -31,6 +33,7 @@ from app.modules.student_academics.models import (
     LevelSubject,
     GradingScale,
     StudentProgressionRunStatus,
+    StudentDepartmentAssignment,
     StudentSubjectResult,
     TeacherAssignment,
     TeacherAssignmentLifecycleAudit,
@@ -63,10 +66,14 @@ from app.modules.student_academics.schemas import (
     TeacherAssignmentEnd,
     TeacherAssignmentReassign,
     TeacherAssignmentResponse,
-    LevelSubjectUpdate,
 )
 from app.modules.student_academics.write_guard import ensure_academic_write_window
-from app.modules.students.models import Student, StudentParentLinkStatus
+from app.modules.students.models import (
+    AcademicStatus,
+    Student,
+    StudentEnrollment,
+    StudentParentLinkStatus,
+)
 from app.modules.students.repository import (
     StudentParentLinkRepository,
     StudentRepository,
@@ -103,6 +110,105 @@ class StudentAcademicService:
         AcademicTermName.SECOND_TERM: 2,
         AcademicTermName.THIRD_TERM: 3,
     }
+
+    @staticmethod
+    async def _specialization_blockers_for_next_term(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        term: AcademicTerm,
+    ) -> tuple[dict[str, int], list[str]]:
+        terms = list(
+            (
+                await db.execute(
+                    select(AcademicTerm).where(
+                        AcademicTerm.tenant_id == tenant_id,
+                        AcademicTerm.academic_session_id == term.academic_session_id,
+                    )
+                )
+            ).scalars()
+        )
+        current_position = StudentAcademicService._TERM_ORDER[term.name]
+        later_terms = [
+            row
+            for row in terms
+            if StudentAcademicService._TERM_ORDER[row.name] > current_position
+        ]
+        if not later_terms:
+            return {"students_missing_department": 0}, []
+        next_term = min(
+            later_terms,
+            key=lambda row: StudentAcademicService._TERM_ORDER[row.name],
+        )
+        next_position = StudentAcademicService._TERM_ORDER[next_term.name]
+        levels = await AcademicLevelRepository.list_for_tenant(
+            db, tenant_id, active_only=True
+        )
+        required_levels = {
+            level.id: level
+            for level in levels
+            if level.specialization_required_from_term_position is not None
+            and level.specialization_required_from_term_position <= next_position
+        }
+        if not required_levels:
+            return {"students_missing_department": 0}, []
+
+        enrollments = list(
+            (
+                await db.execute(
+                    select(StudentEnrollment)
+                    .join(Student, Student.id == StudentEnrollment.student_id)
+                    .where(
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.academic_session_id == term.academic_session_id,
+                        StudentEnrollment.is_current.is_(True),
+                        StudentEnrollment.academic_level_id.in_(required_levels),
+                        Student.status == AcademicStatus.ACTIVE,
+                        Student.is_archived.is_(False),
+                    )
+                )
+            ).scalars()
+        )
+        enrollment_ids = {row.id for row in enrollments}
+        assigned_ids: set[uuid.UUID] = set()
+        if enrollment_ids:
+            assignments = (
+                await db.execute(
+                    select(StudentDepartmentAssignment, AcademicTerm)
+                    .join(
+                        AcademicTerm,
+                        AcademicTerm.id
+                        == StudentDepartmentAssignment.effective_from_term_id,
+                    )
+                    .where(
+                        StudentDepartmentAssignment.tenant_id == tenant_id,
+                        StudentDepartmentAssignment.student_enrollment_id.in_(enrollment_ids),
+                        AcademicTerm.academic_session_id == term.academic_session_id,
+                    )
+                )
+            ).all()
+            assigned_ids = {
+                assignment.student_enrollment_id
+                for assignment, effective_term in assignments
+                if StudentAcademicService._TERM_ORDER[effective_term.name] <= next_position
+            }
+
+        missing_by_level: dict[uuid.UUID, int] = {}
+        for enrollment in enrollments:
+            if enrollment.id not in assigned_ids:
+                missing_by_level[enrollment.academic_level_id] = (
+                    missing_by_level.get(enrollment.academic_level_id, 0) + 1
+                )
+        blockers = [
+            (
+                f"{missing_count} {required_levels[level_id].name} students require "
+                f"department assignment before {next_term.name.value.replace('_', ' ').title()}."
+            )
+            for level_id, missing_count in missing_by_level.items()
+        ]
+        return {
+            "students_missing_department": sum(missing_by_level.values())
+        }, blockers
 
     @staticmethod
     async def _record_academic_lifecycle(
@@ -472,6 +578,15 @@ class StudentAcademicService:
             )
             counts.update(contribution.get("counts", {}))
             blockers.extend(contribution.get("blockers", []))
+            specialization_counts, specialization_blockers = (
+                await StudentAcademicService._specialization_blockers_for_next_term(
+                    db,
+                    tenant_id=tenant_id,
+                    term=term,
+                )
+            )
+            counts.update(specialization_counts)
+            blockers.extend(specialization_blockers)
         can_delete = (
             term.status == AcademicTermStatus.DRAFT
             and not term.is_current
@@ -542,7 +657,6 @@ class StudentAcademicService:
             subject_id=level_subject.subject_id,
             subject_name=subject.name if subject else None,
             subject_code=subject.code if subject else None,
-            is_core=level_subject.is_core,
             is_active=level_subject.is_active,
             lifecycle_status=lifecycle_status,
             archived_at=level_subject.archived_at,
@@ -716,7 +830,6 @@ class StudentAcademicService:
                 tenant_id=tenant_id,
                 academic_level_id=academic_level_id,
                 subject_id=payload.subject_id,
-                is_core=payload.is_core,
                 is_active=True,
                 archived_at=None,
                 archived_by_admin_id=None,
@@ -807,7 +920,6 @@ class StudentAcademicService:
                     tenant_id=tenant_id,
                     academic_level_id=academic_level_id,
                     subject_id=subject_id,
-                    is_core=payload.is_core,
                     is_active=True,
                     archived_at=None,
                     archived_by_admin_id=None,
@@ -1027,28 +1139,6 @@ class StudentAcademicService:
         if row.is_active:
             return await StudentAcademicService._build_level_subject_response(db, row)
         row.is_active = True
-        row = await StudentAcademicRepository.save_level_subject(db, row)
-        await db.commit()
-        return await StudentAcademicService._build_level_subject_response(db, row)
-
-    @staticmethod
-    async def update_level_subject(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
-        payload: LevelSubjectUpdate,
-    ) -> LevelSubjectResponse:
-        await ensure_academic_write_window(db, tenant_id=tenant_id)
-        row = await StudentAcademicRepository.get_level_subject_by_id(
-            db,
-            tenant_id,
-            level_subject_id,
-        )
-        if row is None:
-            raise NotFoundException("Level subject not found.")
-        if row.archived_at is not None:
-            raise ConflictException("Archived level-subject mappings cannot be updated.")
-        row.is_core = payload.is_core
         row = await StudentAcademicRepository.save_level_subject(db, row)
         await db.commit()
         return await StudentAcademicService._build_level_subject_response(db, row)
@@ -2701,6 +2791,19 @@ class StudentAcademicService:
         ):
             raise ForbiddenException(
                 "Student is not enrolled in the assigned class for this session."
+            )
+
+        eligible_offerings = await CurriculumResolutionService.resolve_student_offerings(
+            db,
+            tenant_id=tenant_id,
+            student_id=student.id,
+            academic_term_id=term.id,
+        )
+        if level_subject.id not in {
+            offering.level_subject_id for offering in eligible_offerings
+        }:
+            raise ForbiddenException(
+                "This subject is not offered to the student's level and department for this term."
             )
 
         if (

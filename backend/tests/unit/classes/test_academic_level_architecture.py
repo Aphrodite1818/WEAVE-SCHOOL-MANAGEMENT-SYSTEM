@@ -5,9 +5,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from pydantic import ValidationError
 
-from app.modules.classes.models import AcademicLevel, ClassRoom
+from app.modules.classes.models import AcademicCategory, AcademicLevel, ClassRoom
 from app.core.exceptions import ConflictException
 from app.modules.classes.schemas import ClassRoomCreate, ClassRoomUpdate
 from app.modules.classes.service import ClassRoomService
@@ -25,12 +24,11 @@ def _allow_academic_writes_for_class_unit_tests():
         yield
 
 
-def test_classroom_contract_requires_explicit_level_and_arm() -> None:
+def test_classroom_contract_requires_level_but_allows_no_class_arm() -> None:
     payload = ClassRoomCreate(academic_level_id=uuid.uuid4(), arm=" A ")
     assert payload.arm == "A"
 
-    with pytest.raises(ValidationError):
-        ClassRoomCreate(academic_level_id=uuid.uuid4(), arm="")
+    assert ClassRoomCreate(academic_level_id=uuid.uuid4()).arm is None
 
 
 def test_teacher_assignment_contract_is_concrete_class_and_level_subject() -> None:
@@ -174,6 +172,8 @@ def _classroom(tenant_id: uuid.UUID, *, active: bool = True) -> ClassRoom:
         tenant_id=tenant_id,
         name="JSS1",
         normalized_name="JSS1",
+        category=AcademicCategory.JUNIOR_SECONDARY,
+        position=1,
         is_active=True,
         created_at=now,
         updated_at=now,

@@ -80,6 +80,7 @@ def _is_tenant_onboarding_complete(
     school_name: str | None,
     email: str | None,
     admission_number_prefix: str | None,
+    institution_type: object | None,
     address: str | None,
     city: str | None,
     state: str | None,
@@ -93,6 +94,7 @@ def _is_tenant_onboarding_complete(
         and email.strip()
         and admission_number_prefix
         and admission_number_prefix.strip()
+        and institution_type is not None
         and address
         and address.strip()
         and city
@@ -107,6 +109,7 @@ class TenantService:
 
     ONBOARDING_REQUIRED_FIELDS = [
         "admission_number_prefix",
+        "institution_type",
         "address",
         "city",
         "state",
@@ -609,6 +612,22 @@ class TenantService:
                 if existing and existing.id != tenant_id:
                     raise ConflictException("Prefix not available")
 
+        institution_type = update_data.get("institution_type")
+        if (
+            institution_type is not None
+            and tenant.institution_type is not None
+            and institution_type != tenant.institution_type
+        ):
+            from app.modules.classes.repository import AcademicLevelRepository
+
+            levels = await AcademicLevelRepository.list_for_tenant(
+                db, tenant_id, include_archived=True
+            )
+            if levels:
+                raise ConflictException(
+                    "Clear the existing academic structure before changing institution type."
+                )
+
         update_data["onboarding_completed"] = _is_tenant_onboarding_complete(
             school_name=update_data.get("school_name", tenant.school_name),
             email=update_data.get("email", tenant.email),
@@ -616,6 +635,7 @@ class TenantService:
                 "admission_number_prefix",
                 tenant.admission_number_prefix,
             ),
+            institution_type=update_data.get("institution_type", tenant.institution_type),
             address=update_data.get("address", tenant.address),
             city=update_data.get("city", tenant.city),
             state=update_data.get("state", tenant.state),
@@ -668,6 +688,7 @@ class TenantService:
                 "school_name": tenant.school_name,
                 "email": tenant.email,
                 "admission_number_prefix": tenant.admission_number_prefix,
+                "institution_type": tenant.institution_type,
                 "phone": tenant.phone,
                 "address": tenant.address,
                 "city": tenant.city,

@@ -8,7 +8,6 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
     get_current_tenant_member,
 )
-from app.modules.classes.repository import ClassRoomRepository
 from app.modules.classes.schemas import (
     ClassRoomActivateRequest,
     ClassRoomArchiveRequest,
@@ -21,9 +20,6 @@ from app.modules.classes.schemas import (
 from app.modules.classes.service import ClassRoomService
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
-from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
-from app.modules.subscriptions.service import SubscriptionFeatureService
-from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -50,23 +46,11 @@ async def create_classroom(
 ) -> ClassRoomResponse:
     """Create a new classroom."""
 
-    await acquire_resource_quota_lock(
-        db,
-        tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.CLASSES,
-    )
-    await SubscriptionFeatureService.ensure_resource_limit_available(
-        db=db,
-        tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.CLASSES,
-    )
-    classroom = await ClassRoomService.create_classroom(
+    return await ClassRoomService.create_classroom(
         db=db,
         actor=current_user,
         payload=payload,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
-    return classroom
 
 
 @router.get(
@@ -150,29 +134,11 @@ async def activate_classroom(
     current_user: CurrentTenantAdmin,
 ) -> ClassRoomResponse:
     _ = payload.confirmation
-    existing = await ClassRoomRepository.get_by_id(
-        db=db,
-        tenant_id=current_user.tenant_id,
-        class_id=class_id,
-    )
-    if existing is not None and not existing.is_active and existing.archived_at is None:
-        await acquire_resource_quota_lock(
-            db,
-            tenant_id=current_user.tenant_id,
-            resource=ResourceLimitCode.CLASSES,
-        )
-        await SubscriptionFeatureService.ensure_resource_limit_available(
-            db=db,
-            tenant_id=current_user.tenant_id,
-            resource=ResourceLimitCode.CLASSES,
-        )
-    classroom = await ClassRoomService.activate_classroom(
+    return await ClassRoomService.activate_classroom(
         db=db,
         actor=current_user,
         class_id=class_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
-    return classroom
 
 
 @router.post(

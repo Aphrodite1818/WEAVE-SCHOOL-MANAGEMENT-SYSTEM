@@ -462,14 +462,14 @@ class BulkImportService:
         tenant_id: UUID,
         validation_results: list[ImportRowValidationResult],
     ) -> None:
-        """Resolve explicit level and arm values to a concrete tenant classroom."""
+        """Resolve the required level and an optional organizational class."""
 
         for validation_result in validation_results:
             normalized_row = validation_result.normalized_row
             level_name = normalized_row.get("level")
-            class_arm = normalized_row.get("arm")
+            class_name = normalized_row.get("class")
 
-            if _is_blank(level_name) or _is_blank(class_arm):
+            if _is_blank(level_name):
                 continue
 
             level = await AcademicLevelRepository.get_by_normalized_name(
@@ -484,19 +484,25 @@ class BulkImportService:
                 )
                 continue
 
+            normalized_row["academic_level_id"] = str(level.id)
+            normalized_row["level"] = level.name
+            if _is_blank(class_name):
+                normalized_row["class_id"] = None
+                continue
+
             classroom = await ClassRoomRepository.get_by_level_and_arm(
                 db=db,
                 tenant_id=tenant_id,
                 academic_level_id=level.id,
-                class_arm=str(class_arm),
+                class_arm=str(class_name),
             )
-            class_reference = _format_class_reference(level_name, class_arm)
+            class_reference = _format_class_reference(level_name, class_name)
 
             if classroom is None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="arm",
-                    error_code="arm_not_found",
+                    field_name="class",
+                    error_code="class_not_found",
                     error_message=(
                         f"Class {class_reference} does not exist. "
                         "Create the class first before importing students."
@@ -506,7 +512,7 @@ class BulkImportService:
             if not classroom.is_active or classroom.archived_at is not None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="arm",
+                    field_name="class",
                     error_code="class_inactive",
                     error_message=(
                         f"Class {class_reference} is inactive or archived. "
@@ -516,8 +522,7 @@ class BulkImportService:
                 continue
 
             normalized_row["class_id"] = str(classroom.id)
-            normalized_row["level"] = level.name
-            normalized_row["arm"] = classroom.arm
+            normalized_row["class"] = classroom.arm
 
     @staticmethod
     async def preflight_student_parent_invitations(
@@ -611,12 +616,15 @@ class BulkImportService:
         first_name = normalized_row.get("first_name")
         last_name = normalized_row.get("last_name")
         date_of_birth = BulkImportValidator.parse_date(normalized_row.get("date_of_birth"))
+        academic_level_id = BulkImportValidator.parse_uuid(
+            normalized_row.get("academic_level_id")
+        )
         class_id = BulkImportValidator.parse_uuid(normalized_row.get("class_id"))
         if (
             _is_blank(first_name)
             or _is_blank(last_name)
             or date_of_birth is None
-            or class_id is None
+            or academic_level_id is None
         ):
             raise BadRequestException(detail="Validated student row is missing required fields.")
 
@@ -625,6 +633,7 @@ class BulkImportService:
             last_name=str(last_name),
             date_of_birth=date_of_birth,
             gender=normalized_row.get("gender"),
+            academic_level_id=academic_level_id,
             class_id=class_id,
             state_of_origin=normalized_row.get("state_of_origin"),
             parents=build_parent_invitations_from_row(normalized_row),
@@ -662,7 +671,7 @@ class BulkImportService:
                 "last_name": student.last_name,
                 "admission_number": student.admission_number,
                 "level": validation_result.normalized_row.get("level"),
-                "arm": validation_result.normalized_row.get("arm"),
+                "arm": validation_result.normalized_row.get("class"),
                 "setup_code": created.setup_code,
                 "access_code_expires_at": created.access_code_expires_at.isoformat(),
                 "parent_invitations_queued": created.parent_invitation_count,

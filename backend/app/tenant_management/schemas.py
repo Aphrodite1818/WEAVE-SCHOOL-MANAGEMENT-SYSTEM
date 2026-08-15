@@ -20,6 +20,7 @@ from pydantic import (
 
 from app.core.utils.validators import generate_slug
 from app.tenant_management.models import (
+    InstitutionType,
     SubscriptionPlan,
     TenantStatus,
     TenantVerificationStatus,
@@ -217,6 +218,7 @@ class TenantUpdate(InputBase):
     country: str | None = Field(default=None, max_length=100)
     timezone: str | None = Field(default=None, max_length=50)
     language: str | None = Field(default=None, max_length=10)
+    institution_type: InstitutionType | None = None
     admission_number_prefix: str | None = Field(
         default=None,
         min_length=2,
@@ -268,6 +270,7 @@ class TenantOnboardingUpdate(InputBase):
         min_length=2,
         max_length=20,
     )
+    institution_type: InstitutionType
     phone: str | None = Field(default=None, pattern=PHONE_PATTERN)
     address: str = Field(..., min_length=3, max_length=500)
     city: str = Field(..., min_length=2, max_length=100)
@@ -353,6 +356,7 @@ class TenantPublicResponse(OutputBase):
     timezone: str
     language: str
     onboarding_completed: bool
+    institution_type: InstitutionType | None = None
     verification_status: TenantVerificationStatus
     created_at: datetime
     updated_at: datetime
@@ -386,6 +390,7 @@ class TenantContext(OutputBase):
     max_teachers: int
     feature_flags: dict[str, Any] | None
     onboarding_completed: bool
+    institution_type: InstitutionType | None = None
 
     @property
     def is_active(self) -> bool:

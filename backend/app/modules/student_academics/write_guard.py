@@ -23,8 +23,6 @@ _LIFECYCLE_WRITE_SUFFIXES = {
     "/start-closing",
     "/retry-progression",
     "/finalize-close",
-    "/progression/selection",
-    "/progression/placement",
 }
 
 

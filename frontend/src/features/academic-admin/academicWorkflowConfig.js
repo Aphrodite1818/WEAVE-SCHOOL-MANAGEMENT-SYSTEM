@@ -14,6 +14,7 @@ export const academicWorkflowOrder = [
   "sessions",
   "terms",
   "levels",
+  "progression",
   "classes",
   "subjects",
   "level-subjects",
@@ -28,7 +29,7 @@ export const academicWorkflowConfig = {
   levels: {
     title: "Academic Levels",
     shortTitle: "Levels",
-    description: "Create curriculum levels and configure the progression path between them.",
+    description: "Create curriculum levels with explicit categories and ordered positions.",
     icon: Layers3,
     tone: "primary",
     defaultTab: "overview",
@@ -36,8 +37,17 @@ export const academicWorkflowConfig = {
       { id: "overview", label: "Overview" },
       { id: "create", label: "Create Level" },
       { id: "manage", label: "Manage Levels" },
-      { id: "progression", label: "Progression" },
     ],
+  },
+  progression: {
+    title: "Automatic Progression",
+    shortTitle: "Progression",
+    description:
+      "Review the level-only transitions derived from category and position.",
+    icon: Layers3,
+    tone: "success",
+    defaultTab: "transitions",
+    tabs: [{ id: "transitions", label: "Level Transitions" }],
   },
   classes: {
     title: "Classes",
@@ -82,6 +92,7 @@ export const academicWorkflowConfig = {
     tabs: [
       { id: "overview", label: "Overview" },
       { id: "assign", label: "Assign Subjects" },
+      { id: "offerings", label: "Term Offerings" },
       { id: "active", label: "Active" },
       { id: "inactive", label: "Inactive" },
       { id: "archived", label: "Archived" },
@@ -117,7 +128,6 @@ export const academicWorkflowConfig = {
       { id: "draft", label: "Draft Sessions" },
       { id: "open", label: "Open Session" },
       { id: "closing", label: "Closing" },
-      { id: "student-choices", label: "Student Choices" },
       { id: "closed", label: "Closed Sessions" },
     ],
   },
@@ -220,7 +230,7 @@ export const academicToneStyles = {
 export const academicWorkflowSummaryCards = [
   {
     label: "Levels",
-    description: "Curriculum and progression",
+    description: "Curriculum category and position",
     to: "/admin/academic/levels",
     icon: Layers3,
   },

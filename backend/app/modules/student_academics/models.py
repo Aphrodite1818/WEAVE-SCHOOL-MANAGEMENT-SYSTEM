@@ -73,18 +73,14 @@ class StudentProgressionRunStatus(str, PyEnum):
 
 
 class StudentProgressionItemStatus(str, PyEnum):
-    AWAITING_SELECTION = "awaiting_selection"
-    SELECTION_SUBMITTED = "selection_submitted"
-    AWAITING_CLASS_PLACEMENT = "awaiting_class_placement"
     COMPLETED = "completed"
     BLOCKED = "blocked"
     CANCELLED = "cancelled"
 
 
 class StudentProgressionItemAction(str, PyEnum):
-    DIRECT = "direct"
-    STUDENT_SELECTION = "student_selection"
-    TERMINAL = "terminal"
+    PROGRESS = "progress"
+    COMPLETE = "complete"
     SKIP = "skip"
 
 
@@ -377,9 +373,6 @@ class LevelSubject(BaseModel):
         nullable=False,
         index=True,
     )
-    is_core: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="false", nullable=False
-    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )
@@ -402,6 +395,93 @@ class LevelSubject(BaseModel):
             name="ck_level_subjects_archived_requires_inactive",
         ),
         Index("ix_level_subjects_tenant_archived", "tenant_id", "archived_at"),
+    )
+
+
+class StudentDepartmentAssignment(BaseModel):
+    """Historical department assignment effective from a specific academic term."""
+
+    __tablename__ = "student_department_assignments"
+
+    student_enrollment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("student_enrollments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    department_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("departments.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    effective_from_term_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("academic_terms.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    assigned_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "student_enrollment_id",
+            "effective_from_term_id",
+            name="uq_student_department_assignment_effective_term",
+        ),
+        Index(
+            "ix_student_department_assignments_tenant_enrollment",
+            "tenant_id",
+            "student_enrollment_id",
+        ),
+    )
+
+
+class SubjectOffering(BaseModel):
+    """Term-specific curriculum applicability for a level subject."""
+
+    __tablename__ = "subject_offerings"
+
+    level_subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("level_subjects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    academic_term_id: Mapped[uuid.UUID] = mapped_column(
+        UUID,
+        ForeignKey("academic_terms.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("departments.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    is_elective: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_subject_offering_scope",
+            "tenant_id",
+            "level_subject_id",
+            "academic_term_id",
+            text("COALESCE(department_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
+            unique=True,
+        ),
+        Index(
+            "ix_subject_offerings_tenant_term",
+            "tenant_id",
+            "academic_term_id",
+        ),
+        Index(
+            "ix_subject_offerings_tenant_department",
+            "tenant_id",
+            "department_id",
+        ),
     )
 
 
@@ -621,22 +701,22 @@ class StudentProgressionItem(BaseModel):
         ForeignKey("student_enrollments.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    from_class_id: Mapped[uuid.UUID] = mapped_column(
+    from_level_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
-        ForeignKey("classes.id", ondelete="RESTRICT"),
+        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    to_class_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("classes.id", ondelete="RESTRICT"),
-        nullable=True,
-    )
-    selected_level_id: Mapped[uuid.UUID | None] = mapped_column(
+    to_level_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
         ForeignKey("academic_levels.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    selected_classroom_id: Mapped[uuid.UUID | None] = mapped_column(
+    from_class_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("classes.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    to_class_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
         ForeignKey("classes.id", ondelete="RESTRICT"),
         nullable=True,
@@ -672,11 +752,7 @@ class StudentProgressionItem(BaseModel):
         Index("ix_progression_items_tenant_student", "tenant_id", "student_id"),
         Index("ix_progression_items_tenant_status", "tenant_id", "status"),
         CheckConstraint(
-            "selected_classroom_id IS NULL OR selected_level_id IS NULL",
-            name="ck_progression_item_one_selected_target",
-        ),
-        CheckConstraint(
-            "status <> 'completed' OR action IN ('direct', 'student_selection', 'terminal')",
+            "status <> 'completed' OR action IN ('progress', 'complete')",
             name="ck_progression_item_completed_action",
         ),
     )

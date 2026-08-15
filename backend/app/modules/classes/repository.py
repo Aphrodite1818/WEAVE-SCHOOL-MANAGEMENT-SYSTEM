@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,7 +13,7 @@ from app.core.utils.normalization import (
     normalized_class_arm_key,
     normalized_class_name_key,
 )
-from app.modules.classes.models import AcademicLevel, ClassRoom, ProgressionSelectionOption
+from app.modules.classes.models import AcademicCategory, AcademicLevel, ClassRoom, Department
 
 if TYPE_CHECKING:
     from app.modules.students.models import AcademicStatus
@@ -73,74 +73,34 @@ class AcademicLevelRepository:
             )
         elif not include_archived:
             query = query.where(AcademicLevel.archived_at.is_(None))
-        result = await db.execute(query.order_by(AcademicLevel.normalized_name.asc()))
+        result = await db.execute(
+            query.order_by(AcademicLevel.category.asc(), AcademicLevel.position.asc())
+        )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_by_category_position(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        category: AcademicCategory,
+        position: int,
+        *,
+        exclude_id: uuid.UUID | None = None,
+    ) -> AcademicLevel | None:
+        query = select(AcademicLevel).where(
+            AcademicLevel.tenant_id == tenant_id,
+            AcademicLevel.category == category,
+            AcademicLevel.position == position,
+        )
+        if exclude_id is not None:
+            query = query.where(AcademicLevel.id != exclude_id)
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def save(db: AsyncSession, level: AcademicLevel) -> AcademicLevel:
         db.add(level)
         await db.flush()
         return level
-
-    @staticmethod
-    async def list_progression_options(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        source_level_id: uuid.UUID,
-        *,
-        lock: bool = False,
-    ) -> list[ProgressionSelectionOption]:
-        query = select(ProgressionSelectionOption).where(
-            ProgressionSelectionOption.tenant_id == tenant_id,
-            ProgressionSelectionOption.source_level_id == source_level_id,
-        )
-        if lock:
-            query = query.with_for_update()
-        result = await db.execute(query.order_by(ProgressionSelectionOption.created_at.asc()))
-        return list(result.scalars().all())
-
-    @staticmethod
-    async def list_progression_edges(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
-        """Return source-to-level edges for both level and classroom destinations."""
-
-        result = await db.execute(
-            select(
-                ProgressionSelectionOption.source_level_id,
-                ProgressionSelectionOption.target_level_id,
-                ClassRoom.academic_level_id,
-            )
-            .outerjoin(
-                ClassRoom,
-                (ProgressionSelectionOption.target_classroom_id == ClassRoom.id)
-                & (ClassRoom.tenant_id == tenant_id),
-            )
-            .where(ProgressionSelectionOption.tenant_id == tenant_id)
-        )
-        return [
-            (source_id, target_level_id or classroom_level_id)
-            for source_id, target_level_id, classroom_level_id in result.all()
-            if target_level_id or classroom_level_id
-        ]
-
-    @staticmethod
-    async def replace_progression_options(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        source_level_id: uuid.UUID,
-        options: list[ProgressionSelectionOption],
-    ) -> list[ProgressionSelectionOption]:
-        await db.execute(
-            delete(ProgressionSelectionOption).where(
-                ProgressionSelectionOption.tenant_id == tenant_id,
-                ProgressionSelectionOption.source_level_id == source_level_id,
-            )
-        )
-        db.add_all(options)
-        await db.flush()
-        return options
 
     @staticmethod
     async def count_setup_dependencies(
@@ -160,16 +120,6 @@ class AcademicLevelRepository:
                 )
             )
         ).scalar_one()
-        previous_level_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(AcademicLevel)
-                .where(
-                    AcademicLevel.tenant_id == tenant_id,
-                    AcademicLevel.next_level_id == academic_level_id,
-                )
-            )
-        ).scalar_one()
         level_subject_count = (
             await db.execute(
                 select(func.count())
@@ -180,27 +130,69 @@ class AcademicLevelRepository:
                 )
             )
         ).scalar_one()
-        selection_option_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(ProgressionSelectionOption)
-                .where(
-                    ProgressionSelectionOption.tenant_id == tenant_id,
-                    ProgressionSelectionOption.target_level_id == academic_level_id,
-                )
-            )
-        ).scalar_one()
         return {
             "classrooms": int(classroom_count),
-            "previous_levels": int(previous_level_count),
             "level_subjects": int(level_subject_count),
-            "progression_selection_options": int(selection_option_count),
         }
 
     @staticmethod
     async def delete(db: AsyncSession, level: AcademicLevel) -> None:
         await db.delete(level)
         await db.flush()
+
+
+class DepartmentRepository:
+    @staticmethod
+    async def add(db: AsyncSession, department: Department) -> Department:
+        db.add(department)
+        await db.flush()
+        return department
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        department_id: uuid.UUID,
+    ) -> Department | None:
+        return (
+            await db.execute(
+                select(Department).where(
+                    Department.tenant_id == tenant_id,
+                    Department.id == department_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_normalized_name(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        normalized_name: str,
+    ) -> Department | None:
+        return (
+            await db.execute(
+                select(Department).where(
+                    Department.tenant_id == tenant_id,
+                    Department.normalized_name == normalized_name,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_tenant(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        active_only: bool = False,
+    ) -> list[Department]:
+        query = select(Department).where(Department.tenant_id == tenant_id)
+        if active_only:
+            query = query.where(
+                Department.is_active.is_(True), Department.archived_at.is_(None)
+            )
+        return list(
+            (await db.execute(query.order_by(Department.normalized_name.asc()))).scalars()
+        )
 
 
 class ClassRoomRepository:
@@ -233,15 +225,20 @@ class ClassRoomRepository:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         academic_level_id: uuid.UUID,
-        class_arm: str,
+        class_arm: str | None,
+        department_id: uuid.UUID | None = None,
     ) -> ClassRoom | None:
+        normalized_arm = (
+            normalized_class_arm_key(class_arm) if class_arm is not None else None
+        )
         result = await db.execute(
             select(ClassRoom)
             .options(selectinload(ClassRoom.academic_level))
             .where(
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.academic_level_id == academic_level_id,
-                ClassRoom.normalized_arm == normalized_class_arm_key(class_arm),
+                ClassRoom.normalized_arm == normalized_arm,
+                ClassRoom.department_id == department_id,
             )
         )
         return result.scalar_one_or_none()
@@ -505,18 +502,7 @@ class ClassRoomRepository:
                     or_(
                         StudentProgressionItem.from_class_id == class_id,
                         StudentProgressionItem.to_class_id == class_id,
-                        StudentProgressionItem.selected_classroom_id == class_id,
                     ),
-                )
-            )
-        ).scalar_one()
-        progression_option_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(ProgressionSelectionOption)
-                .where(
-                    ProgressionSelectionOption.tenant_id == tenant_id,
-                    ProgressionSelectionOption.target_classroom_id == class_id,
                 )
             )
         ).scalar_one()
@@ -557,7 +543,6 @@ class ClassRoomRepository:
             "results": int(result_count),
             "report_cards": int(report_card_count),
             "progression_items": int(progression_item_count),
-            "progression_selection_options": int(progression_option_count),
             "attendance_sheets": int(attendance_sheet_count),
             "temporary_attendance_assignments": int(temporary_assignment_count),
             "announcement_audiences": int(announcement_audience_count),

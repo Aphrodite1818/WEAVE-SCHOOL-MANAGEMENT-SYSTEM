@@ -30,7 +30,7 @@ import Modal from "../../components/ui/Modal";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useToast } from "../../hooks/useToast";
 import academicService from "../../services/academicService";
-import { classService } from "../../services/academicsService";
+import { academicLevelService, classService, departmentService } from "../../services/academicsService";
 import { parseApiError } from "../../services/api";
 import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
@@ -42,6 +42,8 @@ const GENDER_OPTIONS = ["male", "female"];
 const EMPTY_FILTERS = {
   search: "",
   classId: "",
+  academicLevelId: "",
+  unassignedClass: false,
   status: "active",
   includeArchived: false,
 };
@@ -70,7 +72,8 @@ const classLabel = (item) =>
 const studentClassLabel = (student) =>
   [student?.class_name, student?.class_arm].filter(Boolean).join(" ") || "Not assigned";
 
-const asItems = (response) => (Array.isArray(response?.items) ? response.items : []);
+const asItems = (response) =>
+  Array.isArray(response) ? response : Array.isArray(response?.items) ? response.items : [];
 
 const lifecycleConfig = {
   suspend: {
@@ -299,7 +302,10 @@ function StudentDirectoryPage() {
   const { showSuccess, showError, showWarning } = useToast();
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [levels, setLevels] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [terms, setTerms] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
@@ -314,10 +320,20 @@ function StudentDirectoryPage() {
   const [historyState, setHistoryState] = useState(null);
   const [hardDeleteState, setHardDeleteState] = useState(null);
   const [accessCodeConfirmation, setAccessCodeConfirmation] = useState(null);
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [batchClassId, setBatchClassId] = useState("");
+  const [departmentAssignment, setDepartmentAssignment] = useState({
+    departmentId: "",
+    effectiveTermId: "",
+  });
 
   const classOptions = useMemo(
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes],
+  );
+  const levelOptions = useMemo(
+    () => levels.map((item) => ({ value: item.id, label: item.name })),
+    [levels],
   );
   const sessionOptions = useMemo(
     () => sessions.map((item) => ({ value: item.id, label: item.name || item.id })),
@@ -326,12 +342,18 @@ function StudentDirectoryPage() {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const loadReferenceData = useCallback(async () => {
-    const [classResult, sessionResult] = await Promise.all([
+    const [levelResult, classResult, sessionResult, termResult, departmentResult] = await Promise.all([
+      academicLevelService.getLevels({ activeOnly: true }),
       classService.getClasses({ limit: 100 }),
       academicService.listSessions({ limit: 100 }),
+      academicService.listTerms({ limit: 100 }),
+      departmentService.getDepartments(),
     ]);
     setClasses(asItems(classResult));
+    setLevels(asItems(levelResult));
     setSessions(asItems(sessionResult));
+    setTerms(asItems(termResult));
+    setDepartments(asItems(departmentResult));
   }, []);
 
   const loadStudents = useCallback(async () => {
@@ -343,10 +365,13 @@ function StudentDirectoryPage() {
         limit: PAGE_SIZE,
         search: appliedFilters.search.trim() || undefined,
         classId: appliedFilters.classId || undefined,
+        academicLevelId: appliedFilters.academicLevelId || undefined,
+        unassignedClass: appliedFilters.unassignedClass,
         status: appliedFilters.status || undefined,
         includeArchived: appliedFilters.includeArchived,
       });
       setStudents(asItems(response));
+      setSelectedStudentIds([]);
       setTotal(Number(response?.total || 0));
     } catch (requestError) {
       setError(parseApiError(requestError, "Failed to load students.").message);
@@ -376,6 +401,50 @@ function StudentDirectoryPage() {
 
   const refresh = async () => {
     await loadStudents();
+  };
+
+  const assignSelectedClass = async () => {
+    if (!batchClassId || selectedStudentIds.length === 0) return;
+    setBusyId("batch");
+    try {
+      const result = await studentService.assignClassBatch({
+        student_ids: selectedStudentIds,
+        target_class_id: batchClassId,
+        reason: "Batch organizational class placement",
+      });
+      showSuccess(`${result.updated_count} students assigned to class.`);
+      setSelectedStudentIds([]);
+      setBatchClassId("");
+      await refresh();
+    } catch (requestError) {
+      showError(parseApiError(requestError, "Failed to assign the selected students.").message);
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const assignSelectedDepartment = async () => {
+    const student = students.find((item) => item.id === selectedStudentIds[0]);
+    if (
+      selectedStudentIds.length !== 1 ||
+      !student?.current_enrollment_id ||
+      !departmentAssignment.departmentId ||
+      !departmentAssignment.effectiveTermId
+    ) return;
+    setBusyId("department");
+    try {
+      await academicService.assignStudentDepartment({
+        student_enrollment_id: student.current_enrollment_id,
+        department_id: departmentAssignment.departmentId,
+        effective_from_term_id: departmentAssignment.effectiveTermId,
+      });
+      showSuccess("Student department assignment saved.");
+      setDepartmentAssignment({ departmentId: "", effectiveTermId: "" });
+    } catch (requestError) {
+      showError(parseApiError(requestError, "Failed to assign the student's department.").message);
+    } finally {
+      setBusyId("");
+    }
   };
 
   const openEdit = (student) => {
@@ -627,12 +696,19 @@ function StudentDirectoryPage() {
       </div>
 
       <Card className="p-4 sm:p-5">
-        <form onSubmit={(event) => event.preventDefault()} className="grid gap-3 md:grid-cols-4 xl:grid-cols-5">
+        <form onSubmit={(event) => event.preventDefault()} className="grid gap-3 md:grid-cols-4 xl:grid-cols-6">
           <Input
             label="Search"
             value={draftFilters.search}
             placeholder="Name or admission number"
             onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+          />
+          <SelectField
+            label="Academic level"
+            value={draftFilters.academicLevelId}
+            onChange={(event) => setDraftFilters((current) => ({ ...current, academicLevelId: event.target.value, classId: "" }))}
+            options={levelOptions}
+            placeholder="All levels"
           />
           <SelectField
             label="Class"
@@ -656,6 +732,14 @@ function StudentDirectoryPage() {
             />
             Include archived
           </label>
+          <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-border px-3 text-sm font-semibold text-text-soft">
+            <input
+              type="checkbox"
+              checked={draftFilters.unassignedClass}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, unassignedClass: event.target.checked, classId: "" }))}
+            />
+            Unassigned only
+          </label>
           <div className="grid gap-2 self-end">
             <Button type="button" size="small" variant="outline" onClick={clearFilters}>Clear</Button>
           </div>
@@ -669,6 +753,61 @@ function StudentDirectoryPage() {
         <p className="text-sm text-text-muted">Page {page} of {pageCount}</p>
       </div>
 
+      {selectedStudentIds.length > 0 ? (
+        <Card className="space-y-4 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <SelectField
+                label={`Assign ${selectedStudentIds.length} selected students to class`}
+                value={batchClassId}
+                onChange={(event) => setBatchClassId(event.target.value)}
+                options={classOptions}
+                placeholder="Choose target class"
+              />
+            </div>
+            <Button type="button" disabled={!batchClassId || busyId === "batch"} onClick={assignSelectedClass}>
+              {busyId === "batch" ? "Assigning..." : "Assign class"}
+            </Button>
+          </div>
+          {selectedStudentIds.length === 1 ? (() => {
+            const student = students.find((item) => item.id === selectedStudentIds[0]);
+            const eligibleTerms = terms.filter(
+              (term) => term.academic_session_id === student?.current_academic_session_id,
+            );
+            return (
+              <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-3 sm:items-end">
+                <SelectField
+                  label="Department specialization"
+                  value={departmentAssignment.departmentId}
+                  onChange={(event) => setDepartmentAssignment((current) => ({ ...current, departmentId: event.target.value }))}
+                  options={departments.map((item) => ({ value: item.id, label: item.name }))}
+                  placeholder="Choose department"
+                />
+                <SelectField
+                  label="Effective from term"
+                  value={departmentAssignment.effectiveTermId}
+                  onChange={(event) => setDepartmentAssignment((current) => ({ ...current, effectiveTermId: event.target.value }))}
+                  options={eligibleTerms.map((item) => ({ value: item.id, label: titleCase(item.name) }))}
+                  placeholder="Choose term"
+                />
+                <Button
+                  type="button"
+                  disabled={
+                    !student?.current_enrollment_id ||
+                    !departmentAssignment.departmentId ||
+                    !departmentAssignment.effectiveTermId ||
+                    busyId === "department"
+                  }
+                  onClick={assignSelectedDepartment}
+                >
+                  {busyId === "department" ? "Saving..." : "Assign department"}
+                </Button>
+              </div>
+            );
+          })() : null}
+        </Card>
+      ) : null}
+
       {students.length === 0 ? (
         <Card className="p-6">
           <EmptyState 
@@ -681,16 +820,27 @@ function StudentDirectoryPage() {
       ) : (
         <section className="directory-card-grid mobile-scroll-list grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {students.map((student) => (
-            <StudentCard
-              key={student.id}
-              student={student}
-              busy={busyId === student.id}
-              onEdit={openEdit}
-              onReset={setAccessCodeConfirmation}
-              onHistory={openHistory}
-              onLifecycle={openLifecycle}
-              onHardDelete={inspectHardDelete}
-            />
+            <div key={student.id} className="space-y-2">
+              <label className="flex items-center gap-2 px-1 text-xs font-semibold text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={selectedStudentIds.includes(student.id)}
+                  onChange={(event) => setSelectedStudentIds((current) => event.target.checked
+                    ? [...current, student.id]
+                    : current.filter((id) => id !== student.id))}
+                />
+                Select for batch class placement
+              </label>
+              <StudentCard
+                student={student}
+                busy={busyId === student.id}
+                onEdit={openEdit}
+                onReset={setAccessCodeConfirmation}
+                onHistory={openHistory}
+                onLifecycle={openLifecycle}
+                onHardDelete={inspectHardDelete}
+              />
+            </div>
           ))}
         </section>
       )}

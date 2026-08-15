@@ -4,16 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import MultiSelect from "../../components/ui/MultiSelect";
-import Modal from "../../components/ui/Modal";
 import { displayClass } from "../../components/academic/academicDisplay";
 import { useToast } from "../../hooks/useToast";
-import { academicLevelService, classService } from "../../services/academicsService";
+import { academicLevelService, classService, departmentService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
 import {
-  CheckboxControl,
   FormActions,
   Input,
   SelectControl,
@@ -33,38 +31,50 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const { showError, showSuccess, showWarning } = useToast();
   const [levels, setLevels] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [selectedLevelId, setSelectedLevelId] = useState("");
   const [levelSubjects, setLevelSubjects] = useState([]);
-  const [levelName, setLevelName] = useState("");
-  const [classForm, setClassForm] = useState({ academic_level_id: "", arm: "", teacher_membership_id: "" });
-  const [subjectForm, setSubjectForm] = useState({ subject_ids: [], is_core: true });
-  const [progression, setProgression] = useState({
-    progression_mode: "direct",
-    next_level_id: "",
-    selection_target_type: "level",
-    target_level_ids: [],
-    target_classroom_ids: [],
+  const [terms, setTerms] = useState([]);
+  const [offerings, setOfferings] = useState([]);
+  const [selectedOfferingSubjectId, setSelectedOfferingSubjectId] = useState("");
+  const [offeringForm, setOfferingForm] = useState({
+    academic_term_id: "",
+    department_id: "",
+    is_elective: false,
   });
+  const [levelForm, setLevelForm] = useState({
+    name: "",
+    category: "",
+    position: "",
+    specialization_required_from_term_position: "",
+  });
+  const [classForm, setClassForm] = useState({ academic_level_id: "", department_id: "", arm: "", teacher_membership_id: "" });
+  const [departmentName, setDepartmentName] = useState("");
+  const [subjectForm, setSubjectForm] = useState({ subject_ids: [] });
   const [editingClassId, setEditingClassId] = useState("");
   const [editingLevelId, setEditingLevelId] = useState("");
-  const [editingLevelName, setEditingLevelName] = useState("");
+  const [editingLevelForm, setEditingLevelForm] = useState(null);
   const [levelPendingDeletion, setLevelPendingDeletion] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [levelRows, classRows, subjectRows, teacherRows] = await Promise.all([
+      const [levelRows, classRows, departmentRows, subjectRows, teacherRows, termRows] = await Promise.all([
         academicLevelService.getLevels({ includeArchived: true }),
         classService.getClasses({ includeArchived: true }),
+        departmentService.getDepartments(),
         subjectService.getSubjects({ limit: 100 }),
         teacherService.getTeachers({ limit: 100 }),
+        academicService.listTerms({ limit: 100 }),
       ]);
       setLevels(asItems(levelRows));
       setClasses(asItems(classRows));
+      setDepartments(asItems(departmentRows));
       setSubjects(asItems(subjectRows));
       setTeachers(asItems(teacherRows).filter(isAssignableClassTeacher));
+      setTerms(asItems(termRows));
       if (domain === "level-subjects") {
         setSelectedLevelId((current) => current || asItems(levelRows)[0]?.id || "");
       }
@@ -86,17 +96,57 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadLevelSubjects(); }, [loadLevelSubjects]);
 
+  useEffect(() => {
+    if (activeTab !== "offerings" || !selectedOfferingSubjectId) {
+      setOfferings([]);
+      return;
+    }
+    let active = true;
+    academicService
+      .listSubjectOfferings(selectedOfferingSubjectId)
+      .then((response) => {
+        if (active) setOfferings(asItems(response));
+      })
+      .catch((error) => {
+        if (active) showError(getErrorMessage(error, "Could not load subject offerings."));
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab, selectedOfferingSubjectId, showError]);
+
   const levelOptions = useMemo(() => levels.map((item) => ({ value: item.id, label: item.name })), [levels]);
   const teacherOptions = useMemo(() => teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })), [teachers]);
+  const departmentOptions = useMemo(() => departments.map((item) => ({ value: item.id, label: item.name })), [departments]);
   const attached = useMemo(() => new Set(levelSubjects.map((item) => item.subject_id)), [levelSubjects]);
   const subjectOptions = useMemo(() => subjects.filter((item) => !attached.has(item.id)).map((item) => ({ value: item.id, label: item.name })), [subjects, attached]);
+  const levelSubjectOptions = useMemo(
+    () => levelSubjects
+      .filter((item) => item.is_active && !item.archived_at)
+      .map((item) => ({ value: item.id, label: item.subject_name })),
+    [levelSubjects],
+  );
+  const termOptions = useMemo(
+    () => terms.map((item) => ({
+      value: item.id,
+      label: `${String(item.name || "").replaceAll("_", " ")} · ${item.academic_session_name || "Academic term"}`,
+    })),
+    [terms],
+  );
 
   const createLevel = async (event) => {
     event.preventDefault();
     setSaving(true);
     try {
-      await academicLevelService.createLevel({ name: levelName });
-      setLevelName("");
+      await academicLevelService.createLevel({
+        ...levelForm,
+        position: Number(levelForm.position),
+        specialization_required_from_term_position:
+          levelForm.specialization_required_from_term_position === ""
+            ? null
+            : Number(levelForm.specialization_required_from_term_position),
+      });
+      setLevelForm({ name: "", category: "", position: "", specialization_required_from_term_position: "" });
       showSuccess("Academic level created.");
       await load();
     } catch (error) { showError(getErrorMessage(error, "Could not create academic level.")); }
@@ -105,14 +155,20 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
 
   const updateLevel = async (event) => {
     event.preventDefault();
-    if (!editingLevelId || !editingLevelName.trim()) return;
+    if (!editingLevelId || !editingLevelForm?.name.trim()) return;
     setSaving(editingLevelId);
     try {
       await academicLevelService.updateLevel(editingLevelId, {
-        name: editingLevelName.trim(),
+        ...editingLevelForm,
+        name: editingLevelForm.name.trim(),
+        position: Number(editingLevelForm.position),
+        specialization_required_from_term_position:
+          editingLevelForm.specialization_required_from_term_position === ""
+            ? null
+            : Number(editingLevelForm.specialization_required_from_term_position),
       });
       setEditingLevelId("");
-      setEditingLevelName("");
+      setEditingLevelForm(null);
       showSuccess("Academic level updated.");
       await load();
     } catch (error) {
@@ -131,7 +187,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       if (selectedLevelId === level.id) setSelectedLevelId("");
       if (editingLevelId === level.id) {
         setEditingLevelId("");
-        setEditingLevelName("");
+        setEditingLevelForm(null);
       }
       setLevelPendingDeletion(null);
       showSuccess("Empty academic level deleted.");
@@ -156,12 +212,27 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       } else {
         await classService.createClass(payload);
       }
-      setClassForm({ academic_level_id: "", arm: "", teacher_membership_id: "" });
+      setClassForm({ academic_level_id: "", department_id: "", arm: "", teacher_membership_id: "" });
       setEditingClassId("");
       showSuccess(editingClassId ? "Class arm updated." : "Class arm created.");
       await load();
     } catch (error) { showError(getErrorMessage(error, "Could not create class arm.")); }
     finally { setSaving(false); }
+  };
+
+  const createDepartment = async () => {
+    if (!departmentName.trim()) return;
+    setSaving("department");
+    try {
+      await departmentService.createDepartment({ name: departmentName.trim() });
+      setDepartmentName("");
+      showSuccess("Department created.");
+      await load();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not create department."));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateClassLifecycle = async (item, action) => {
@@ -196,39 +267,23 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     }
   };
 
-  const saveProgression = async (event) => {
+  const createSubjectOffering = async (event) => {
     event.preventDefault();
-    if (!selectedLevelId) return;
+    if (!selectedOfferingSubjectId || !offeringForm.academic_term_id) return;
     setSaving(true);
     try {
-      await academicLevelService.configureProgression(selectedLevelId, progression);
-      showSuccess("Level progression updated.");
-      setSelectedLevelId("");
-      setProgression({
-        progression_mode: "direct",
-        next_level_id: "",
-        selection_target_type: "level",
-        target_level_ids: [],
-        target_classroom_ids: [],
+      await academicService.createSubjectOffering(selectedOfferingSubjectId, {
+        academic_term_id: offeringForm.academic_term_id,
+        department_id: offeringForm.department_id || null,
+        is_elective: offeringForm.is_elective,
       });
-      await load();
-    } catch (error) { showError(getErrorMessage(error, "Could not update level progression.")); }
-    finally { setSaving(false); }
-  };
-
-  const editProgression = async (item) => {
-    setSelectedLevelId(item.id);
-    try {
-      const configuration = await academicLevelService.getProgression(item.id);
-      setProgression({
-        progression_mode: configuration.progression_mode,
-        next_level_id: configuration.next_level_id || "",
-        selection_target_type: configuration.selection_target_type || "level",
-        target_level_ids: configuration.target_level_ids || [],
-        target_classroom_ids: configuration.target_classroom_ids || [],
-      });
+      setOfferings(asItems(await academicService.listSubjectOfferings(selectedOfferingSubjectId)));
+      setOfferingForm((current) => ({ ...current, department_id: "", is_elective: false }));
+      showSuccess("Subject offering created.");
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load level progression."));
+      showError(getErrorMessage(error, "Could not create subject offering."));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -250,14 +305,10 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   if (domain === "levels") {
     const levelWorkspaceTitle = activeTab === "manage"
       ? "Manage academic levels"
-      : activeTab === "progression"
-        ? "Choose a level"
-        : "Academic levels";
+      : "Academic levels";
     const levelWorkspaceDescription = activeTab === "manage"
       ? "Update level names or remove genuinely empty levels."
-      : activeTab === "progression"
-        ? "Select one level, then configure its progression separately."
-        : "Review the level structure and arm distribution at a glance.";
+      : "Review the category, position, and organizational class distribution.";
 
     return (
       <>
@@ -265,15 +316,42 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
           editor={activeTab === "create" ? (
             <WorkspacePanel
               title="Create academic level"
-              description="Levels own curriculum and progression; class arms are created separately."
+              description="Levels own curriculum and ordered progression; classes remain optional organization."
             >
               <form className="space-y-3" onSubmit={createLevel}>
                 <Input
                   label="Level name"
-                  value={levelName}
-                  onChange={(event) => setLevelName(event.target.value)}
+                  value={levelForm.name}
+                  onChange={(event) => setLevelForm((current) => ({ ...current, name: event.target.value }))}
                   placeholder="JSS1"
                   required
+                />
+                <SelectControl
+                  label="Category"
+                  value={levelForm.category}
+                  onChange={(value) => setLevelForm((current) => ({ ...current, category: value }))}
+                  options={[
+                    { value: "KINDERGARTEN", label: "Kindergarten" },
+                    { value: "PRIMARY", label: "Primary" },
+                    { value: "JUNIOR_SECONDARY", label: "Junior Secondary" },
+                    { value: "SENIOR_SECONDARY", label: "Senior Secondary" },
+                  ]}
+                  required
+                />
+                <Input
+                  label="Position"
+                  type="number"
+                  min="1"
+                  value={levelForm.position}
+                  onChange={(event) => setLevelForm((current) => ({ ...current, position: event.target.value }))}
+                  required
+                />
+                <Input
+                  label="Specialization required from term position (optional)"
+                  type="number"
+                  min="1"
+                  value={levelForm.specialization_required_from_term_position}
+                  onChange={(event) => setLevelForm((current) => ({ ...current, specialization_required_from_term_position: event.target.value }))}
                 />
                 <FormActions submitting={saving} submitLabel="Create level" />
               </form>
@@ -300,26 +378,40 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                       <Badge variant={armCount > 0 ? "default" : "warning"}>
                         {armCount} arm{armCount === 1 ? "" : "s"}
                       </Badge>
-                      <Badge variant={item.progression_mode === "terminal" ? "success" : "default"}>
-                        {String(item.progression_mode || "direct").replace("_", " ")}
+                      <Badge variant="default">
+                        {String(item.category || "").replaceAll("_", " ")} · {item.position}
                       </Badge>
                     </div>
                   </div>
                   <p className="mt-2 text-sm text-text-muted">
-                    {item.next_level_id
-                      ? `Progresses to ${levels.find((level) => level.id === item.next_level_id)?.name || "next level"}`
-                      : item.progression_mode === "terminal"
-                        ? "Final academic level"
-                        : item.progression_mode === "student_selection"
-                          ? `Students choose an academic ${item.selection_target_type || "destination"}`
-                          : "Direct progression requires a next level"}
+                    Automatic progression follows the next configured position. Class and arm are assigned separately.
                   </p>
                   {activeTab === "manage" && editingLevelId === item.id ? (
                     <form className="mt-3 space-y-3 border-t border-border/70 pt-3" onSubmit={updateLevel}>
                       <Input
                         label="Level name"
-                        value={editingLevelName}
-                        onChange={(event) => setEditingLevelName(event.target.value)}
+                        value={editingLevelForm?.name || ""}
+                        onChange={(event) => setEditingLevelForm((current) => ({ ...current, name: event.target.value }))}
+                        required
+                      />
+                      <SelectControl
+                        label="Category"
+                        value={editingLevelForm?.category || ""}
+                        onChange={(value) => setEditingLevelForm((current) => ({ ...current, category: value }))}
+                        options={[
+                          { value: "KINDERGARTEN", label: "Kindergarten" },
+                          { value: "PRIMARY", label: "Primary" },
+                          { value: "JUNIOR_SECONDARY", label: "Junior Secondary" },
+                          { value: "SENIOR_SECONDARY", label: "Senior Secondary" },
+                        ]}
+                        required
+                      />
+                      <Input
+                        label="Position"
+                        type="number"
+                        min="1"
+                        value={editingLevelForm?.position || ""}
+                        onChange={(event) => setEditingLevelForm((current) => ({ ...current, position: event.target.value }))}
                         required
                       />
                       <FormActions
@@ -328,7 +420,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                         editing
                         onCancel={() => {
                           setEditingLevelId("");
-                          setEditingLevelName("");
+                          setEditingLevelForm(null);
                         }}
                       />
                     </form>
@@ -340,7 +432,15 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                         className="w-full sm:w-auto"
                         onClick={() => {
                           setEditingLevelId(item.id);
-                          setEditingLevelName(item.name);
+                          setEditingLevelForm({
+                            name: item.name,
+                            category: item.category,
+                            position: String(item.position),
+                            specialization_required_from_term_position:
+                              item.specialization_required_from_term_position == null
+                                ? ""
+                                : String(item.specialization_required_from_term_position),
+                          });
                         }}
                       >
                         Update level
@@ -357,15 +457,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                         </Button>
                       ) : null}
                     </div>
-                  ) : activeTab === "progression" ? (
-                    <Button
-                      className="mt-3 w-full sm:w-auto"
-                      size="small"
-                      variant="outline"
-                      onClick={() => editProgression(item)}
-                    >
-                      Configure progression
-                    </Button>
                   ) : null}
                 </div>
                 );
@@ -379,104 +470,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                 </div>
               ) : null}
             </div>
-            <Modal
-              open={activeTab === "progression" && Boolean(selectedLevelId)}
-              title="Configure level progression"
-              description={levels.find((level) => level.id === selectedLevelId)?.name || "Selected academic level"}
-              onClose={() => setSelectedLevelId("")}
-              className="sm:max-w-xl"
-              placement="center"
-            >
-              <form
-                className="space-y-3"
-                onSubmit={saveProgression}
-              >
-                <SelectControl
-                  label="Progression mode"
-                  value={progression.progression_mode}
-                  onChange={(value) => setProgression((current) => ({
-                    ...current,
-                    progression_mode: value,
-                    next_level_id: value === "direct" ? current.next_level_id : "",
-                    target_level_ids: value === "student_selection" ? current.target_level_ids : [],
-                    target_classroom_ids: value === "student_selection" ? current.target_classroom_ids : [],
-                  }))}
-                  options={[
-                    { value: "direct", label: "Direct" },
-                    { value: "student_selection", label: "Student Selection" },
-                    { value: "terminal", label: "Terminal" },
-                  ]}
-                  required
-                />
-                {progression.progression_mode === "direct" ? (
-                  <SelectControl
-                    label="Next academic level"
-                    value={progression.next_level_id}
-                    onChange={(value) => setProgression((current) => ({
-                      ...current,
-                      next_level_id: value,
-                    }))}
-                    options={levelOptions.filter((option) => option.value !== selectedLevelId)}
-                    required
-                  />
-                ) : null}
-                {progression.progression_mode === "student_selection" ? (
-                  <>
-                    <SelectControl
-                      label="Students choose"
-                      value={progression.selection_target_type}
-                      onChange={(value) => setProgression((current) => ({
-                        ...current,
-                        selection_target_type: value,
-                        target_level_ids: [],
-                        target_classroom_ids: [],
-                      }))}
-                      options={[
-                        { value: "level", label: "Academic Level" },
-                        { value: "classroom", label: "ClassRoom" },
-                      ]}
-                      required
-                    />
-                    <MultiSelect
-                      label="Allowed destinations"
-                      name="progression_destinations"
-                      value={
-                        progression.selection_target_type === "level"
-                          ? progression.target_level_ids
-                          : progression.target_classroom_ids
-                      }
-                      onChange={(event) => {
-                        const key = progression.selection_target_type === "level"
-                          ? "target_level_ids"
-                          : "target_classroom_ids";
-                        setProgression((current) => ({
-                          ...current,
-                          [key]: event.target.value,
-                        }));
-                      }}
-                      options={
-                        progression.selection_target_type === "level"
-                          ? levelOptions.filter((option) => option.value !== selectedLevelId)
-                          : classes
-                              .filter((item) => item.is_active && !item.archived_at && item.academic_level_id !== selectedLevelId)
-                              .map((item) => ({ value: item.id, label: displayClass(item) }))
-                      }
-                    />
-                  </>
-                ) : null}
-                {progression.progression_mode === "terminal" ? (
-                  <p className="text-sm text-text-muted">
-                    Terminal is only for genuine final-school completion and has no destination.
-                  </p>
-                ) : null}
-                <FormActions
-                  submitting={saving}
-                  submitLabel="Save progression"
-                  editing
-                  onCancel={() => setSelectedLevelId("")}
-                />
-              </form>
-            </Modal>
             </WorkspacePanel>
           )}
         />
@@ -508,7 +501,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
         editor={showEditor ? (
           <WorkspacePanel
             title={editingClassId ? "Edit class arm" : "Create class arm"}
-            description="Choose the authoritative level, then enter only the concrete arm."
+            description="Choose the authoritative level. Arm is optional organizational placement."
           >
             <form className="space-y-3" onSubmit={createClass}>
               <SelectControl
@@ -529,8 +522,25 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                   arm: event.target.value,
                 }))}
                 placeholder="A"
-                required
               />
+              <SelectControl
+                label="Department (optional)"
+                value={classForm.department_id}
+                onChange={(value) => setClassForm((current) => ({ ...current, department_id: value }))}
+                options={departmentOptions}
+                clearable
+              />
+              <div className="rounded-xl border border-border/70 p-3">
+                <Input
+                  label="New department"
+                  value={departmentName}
+                  onChange={(event) => setDepartmentName(event.target.value)}
+                  placeholder="Science"
+                />
+                <Button className="mt-2" type="button" size="small" variant="outline" disabled={!departmentName.trim() || saving === "department"} onClick={createDepartment}>
+                  {saving === "department" ? "Creating..." : "Create department"}
+                </Button>
+              </div>
               <SelectControl
                 label="Class teacher"
                 value={classForm.teacher_membership_id}
@@ -549,6 +559,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                   setEditingClassId("");
                   setClassForm({
                     academic_level_id: "",
+                    department_id: "",
                     arm: "",
                     teacher_membership_id: "",
                   });
@@ -597,6 +608,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                             setEditingClassId(item.id);
                             setClassForm({
                               academic_level_id: item.academic_level_id,
+                              department_id: item.department_id || "",
                               arm: item.arm,
                               teacher_membership_id: item.teacher_membership_id || "",
                             });
@@ -686,19 +698,101 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
               }))}
               options={subjectOptions}
             />
-            <CheckboxControl
-              label="Core subjects"
-              checked={subjectForm.is_core}
-              onChange={(value) => setSubjectForm((current) => ({
-                ...current,
-                is_core: value,
-              }))}
-            />
             <FormActions submitting={saving} submitLabel="Add subjects" />
           </form>
         </WorkspacePanel>
         )}
         content={null}
+      />
+    );
+  }
+
+  if (activeTab === "offerings") {
+    return (
+      <WorkspaceGrid
+        editor={(
+          <WorkspacePanel
+            title="Create term offering"
+            description="Apply a level subject to a term for every student or only one department. Electives appear after meaningful score participation."
+          >
+            <form className="space-y-3" onSubmit={createSubjectOffering}>
+              <SelectControl
+                label="Academic level"
+                value={selectedLevelId}
+                onChange={(value) => {
+                  setSelectedLevelId(value);
+                  setSelectedOfferingSubjectId("");
+                }}
+                options={levelOptions}
+                required
+              />
+              <SelectControl
+                label="Level subject"
+                value={selectedOfferingSubjectId}
+                onChange={setSelectedOfferingSubjectId}
+                options={levelSubjectOptions}
+                required
+              />
+              <SelectControl
+                label="Academic term"
+                value={offeringForm.academic_term_id}
+                onChange={(value) => setOfferingForm((current) => ({ ...current, academic_term_id: value }))}
+                options={termOptions}
+                required
+              />
+              <SelectControl
+                label="Department (optional)"
+                value={offeringForm.department_id}
+                onChange={(value) => setOfferingForm((current) => ({ ...current, department_id: value }))}
+                options={departmentOptions}
+                placeholder="All departments"
+              />
+              <label className="flex items-start gap-3 rounded-xl border border-border/70 p-3 text-sm text-text">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4"
+                  checked={offeringForm.is_elective}
+                  onChange={(event) => setOfferingForm((current) => ({ ...current, is_elective: event.target.checked }))}
+                />
+                <span>
+                  <span className="font-semibold">Elective subject</span>
+                  <span className="mt-1 block text-text-muted">Participation begins with the first meaningful recorded score.</span>
+                </span>
+              </label>
+              <FormActions submitting={saving} submitLabel="Create offering" />
+            </form>
+          </WorkspacePanel>
+        )}
+        content={(
+          <WorkspacePanel
+            title="Configured offerings"
+            description="Term and department applicability are backend-enforced during results and report generation."
+          >
+            {offerings.length ? (
+              <div className="space-y-3">
+                {offerings.map((item) => {
+                  const term = terms.find((row) => row.id === item.academic_term_id);
+                  const department = departments.find((row) => row.id === item.department_id);
+                  return (
+                    <div key={item.id} className="rounded-2xl border border-border/70 bg-surface p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-text">{String(term?.name || "Academic term").replaceAll("_", " ")}</p>
+                          <p className="mt-1 text-sm text-text-muted">{department?.name || "All departments"}</p>
+                        </div>
+                        <Badge variant={item.is_elective ? "warning" : "success"}>
+                          {item.is_elective ? "elective" : "expected"}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-text-muted">Select a level subject to review its term offerings.</p>
+            )}
+          </WorkspacePanel>
+        )}
       />
     );
   }
@@ -754,7 +848,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                       {item.archived_at
                         ? "archived"
                         : item.is_active
-                          ? item.is_core ? "core" : "elective"
+                          ? "active"
                           : "inactive"}
                     </Badge>
                   </div>

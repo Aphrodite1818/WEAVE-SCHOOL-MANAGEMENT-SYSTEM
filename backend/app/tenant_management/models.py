@@ -49,6 +49,13 @@ class TenantVerificationStatus(str, PyEnum):
     REJECTED = "rejected"
 
 
+class InstitutionType(str, PyEnum):
+    """Academic structure family selected during tenant-admin onboarding."""
+
+    PRIMARY_SCHOOL = "PRIMARY_SCHOOL"
+    SECONDARY_SCHOOL = "SECONDARY_SCHOOL"
+
+
 # ── 4. Tenant Model ──────────────────────────────────────────────────────────
 class Tenant(UUIDMixin, TimestampMixin, Base):
     """Store tenant onboarding, subscription, and feature configuration data."""
@@ -144,6 +151,15 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
 
     # ── Onboarding ───────────────────────────────────────────────────────────
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    institution_type: Mapped[InstitutionType | None] = mapped_column(
+        SQLEnum(
+            InstitutionType,
+            name="institution_type",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=True,
+    )
 
     branches: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=None)
 

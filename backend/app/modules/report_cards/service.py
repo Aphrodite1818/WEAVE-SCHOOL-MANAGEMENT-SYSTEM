@@ -31,7 +31,8 @@ from app.modules.report_cards.schemas import (
     ReportCardSubjectLineResponse,
     ReportCardSubjectComponentResponse,
 )
-from app.modules.student_academics.models import AcademicResultStatus, LevelSubject
+from app.modules.student_academics.curriculum_service import CurriculumResolutionService
+from app.modules.student_academics.models import AcademicResultStatus
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import Student, StudentEnrollment
 from app.modules.students.repository import (
@@ -62,22 +63,18 @@ class ReportCardService:
         )
 
     @staticmethod
-    async def _expected_level_subjects(
+    async def _expected_subject_offerings(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-    ) -> list[LevelSubject]:
-        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
-        if classroom is None:
-            return []
-        items, _ = await StudentAcademicRepository.list_level_subjects(
-            db=db,
+        student_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> list:
+        return await CurriculumResolutionService.resolve_student_curriculum(
+            db,
             tenant_id=tenant_id,
-            academic_level_id=classroom.academic_level_id,
-            active_only=True,
-            limit=500,
+            student_id=student_id,
+            academic_term_id=academic_term_id,
         )
-        return items
 
     @staticmethod
     async def _finalized_results_for_student(
@@ -107,18 +104,20 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[str]:
-        expected = await ReportCardService._expected_level_subjects(db, tenant_id, class_id)
+        expected = await ReportCardService._expected_subject_offerings(
+            db, tenant_id, student_id, academic_term_id
+        )
         submitted = await ReportCardService._finalized_results_for_student(
             db, tenant_id, student_id, academic_session_id, academic_term_id
         )
         submitted_subject_ids = {result.subject_id for result in submitted}
         missing: list[str] = []
-        for level_subject in expected:
-            if level_subject.subject_id not in submitted_subject_ids:
+        for offering in expected:
+            if offering.subject_id not in submitted_subject_ids:
                 subject = await SubjectRepository.get_subject_by_id(
-                    db, tenant_id, level_subject.subject_id
+                    db, tenant_id, offering.subject_id
                 )
-                missing.append(subject.name if subject else str(level_subject.subject_id))
+                missing.append(subject.name if subject else str(offering.subject_id))
         return missing
 
     @staticmethod
@@ -192,6 +191,17 @@ class ReportCardService:
                 "Student enrollment for this academic session is required for report card generation."
             )
         class_id = enrollment.class_id
+        expected_offerings = await ReportCardService._expected_subject_offerings(
+            db, actor.tenant_id, student.id, academic_term_id
+        )
+        eligible_level_subject_ids = {
+            offering.level_subject_id for offering in expected_offerings
+        }
+        results = [
+            result
+            for result in results
+            if result.level_subject_id in eligible_level_subject_ids
+        ]
         if not results:
             raise BadRequestException("No locked scores are available for this student.")
 
@@ -408,13 +418,14 @@ class ReportCardService:
             academic_term_id,
             results,
         )
-        await ReportCardService._apply_class_positions(
-            db,
-            actor.tenant_id,
-            card.class_id,
-            academic_session_id,
-            academic_term_id,
-        )
+        if card.class_id is not None:
+            await ReportCardService._apply_class_positions(
+                db,
+                actor.tenant_id,
+                card.class_id,
+                academic_session_id,
+                academic_term_id,
+            )
         await db.commit()
         return await ReportCardService.get(db, actor, card.id)
 
@@ -496,7 +507,6 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> ReportCardClassOverviewResponse:
-        expected = await ReportCardService._expected_level_subjects(db, actor.tenant_id, class_id)
         students, _ = await StudentRepository.list_students(
             db=db,
             tenant_id=actor.tenant_id,
@@ -509,7 +519,12 @@ class ReportCardService:
         cards_by_student = {card.student_id: card for card in cards}
 
         rows: list[ReportCardClassOverviewRow] = []
+        expected_counts: list[int] = []
         for student in students:
+            expected = await ReportCardService._expected_subject_offerings(
+                db, actor.tenant_id, student.id, academic_term_id
+            )
+            expected_counts.append(len(expected))
             submitted = await ReportCardService._finalized_results_for_student(
                 db,
                 actor.tenant_id,
@@ -550,7 +565,7 @@ class ReportCardService:
             class_id=class_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
-            expected_subject_count=len(expected),
+            expected_subject_count=max(expected_counts, default=0),
             items=rows,
         )
 
@@ -572,10 +587,10 @@ class ReportCardService:
                 "Outdated report cards must be regenerated before publication."
             )
         lines = await ReportCardRepository.list_lines(db, actor.tenant_id, card.id)
-        expected = await ReportCardService._expected_level_subjects(
-            db, actor.tenant_id, card.class_id
+        expected = await ReportCardService._expected_subject_offerings(
+            db, actor.tenant_id, card.student_id, card.academic_term_id
         )
-        expected_subject_ids = {level_subject.subject_id for level_subject in expected}
+        expected_subject_ids = {offering.subject_id for offering in expected}
         line_subject_ids = {line.subject_id for line in lines}
         if line_subject_ids != expected_subject_ids:
             raise BadRequestException("Report card is missing expected subject lines.")
@@ -614,7 +629,11 @@ class ReportCardService:
     @staticmethod
     async def _response(db: AsyncSession, card: ReportCard) -> ReportCardResponse:
         student = await StudentRepository.get_student_by_id(db, card.tenant_id, card.student_id)
-        classroom = await ClassRoomRepository.get_by_id(db, card.tenant_id, card.class_id)
+        classroom = (
+            await ClassRoomRepository.get_by_id(db, card.tenant_id, card.class_id)
+            if card.class_id is not None
+            else None
+        )
         session = await StudentAcademicRepository.get_academic_session_by_id(
             db, card.tenant_id, card.academic_session_id
         )

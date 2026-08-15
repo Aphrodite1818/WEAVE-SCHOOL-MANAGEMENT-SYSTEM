@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.tenant_management.service import TenantService
 from app.tenant_management.schemas import TenantUpdate
+from app.tenant_management.models import InstitutionType
 
 
 def test_tenant_update_rejects_client_owned_onboarding_completed():
@@ -22,6 +23,7 @@ async def test_update_tenant_profile_marks_onboarding_complete_when_prefix_exist
         email="admin@wvs.example",
         admission_number_prefix=None,
         onboarding_completed=False,
+        institution_type=InstitutionType.SECONDARY_SCHOOL,
         phone=None,
         address="1 School Road",
         city="Lagos",
@@ -73,6 +75,7 @@ async def test_update_tenant_profile_marks_onboarding_incomplete_when_prefix_rem
         email="admin@wvs.example",
         admission_number_prefix="WVS",
         onboarding_completed=True,
+        institution_type=InstitutionType.SECONDARY_SCHOOL,
         phone=None,
         address="1 School Road",
         city="Lagos",
@@ -113,6 +116,7 @@ async def test_general_tenant_update_recomputes_onboarding_from_real_fields():
         email="admin@wvs.example",
         admission_number_prefix="WVS",
         onboarding_completed=False,
+        institution_type=InstitutionType.SECONDARY_SCHOOL,
         phone=None,
         address=None,
         city="Lagos",

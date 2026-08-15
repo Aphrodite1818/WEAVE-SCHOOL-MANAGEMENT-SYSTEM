@@ -10,24 +10,31 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
-from app.modules.classes.models import (
-    AcademicLevel,
-    AcademicLevelProgressionMode,
-    ClassRoom,
-    ProgressionSelectionOption,
-    ProgressionSelectionTargetType,
+from app.core.utils.normalization import (
+    normalize_display_text,
+    normalized_class_arm_key,
+    normalized_class_name_key,
 )
-from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
+from app.modules.classes.models import (
+    AcademicCategory,
+    AcademicLevel,
+    ClassRoom,
+    Department,
+)
+from app.modules.classes.repository import (
+    AcademicLevelRepository,
+    ClassRoomRepository,
+    DepartmentRepository,
+)
 from app.modules.classes.schemas import (
     AcademicLevelCreate,
-    AcademicLevelProgressionConfigureRequest,
-    AcademicLevelProgressionResponse,
     AcademicLevelResponse,
     AcademicLevelUpdate,
     ClassRoomCreate,
     ClassRoomResponse,
     ClassRoomUpdate,
+    DepartmentCreate,
+    DepartmentResponse,
 )
 from app.modules.parents.models import Parent
 from app.modules.student_academics.write_guard import ensure_academic_write_window
@@ -40,6 +47,20 @@ from app.modules.teachers.models import (
 )
 from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.tenant_admins.models import TenantAdmin
+from app.tenant_management.models import InstitutionType
+from app.tenant_management.repository import TenantRepository
+
+
+ALLOWED_CATEGORIES: dict[InstitutionType, tuple[AcademicCategory, ...]] = {
+    InstitutionType.PRIMARY_SCHOOL: (
+        AcademicCategory.KINDERGARTEN,
+        AcademicCategory.PRIMARY,
+    ),
+    InstitutionType.SECONDARY_SCHOOL: (
+        AcademicCategory.JUNIOR_SECONDARY,
+        AcademicCategory.SENIOR_SECONDARY,
+    ),
+}
 
 
 class AcademicLevelService:
@@ -49,33 +70,23 @@ class AcademicLevelService:
             raise ForbiddenException(detail="Tenant admin is not attached to a tenant")
 
     @staticmethod
-    async def _ensure_progression_remains_acyclic(
+    async def _validate_category(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        source_level_id: uuid.UUID,
-        proposed_target_level_ids: set[uuid.UUID],
+        category: AcademicCategory,
     ) -> None:
-        levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, include_archived=True)
-        adjacency: dict[uuid.UUID, set[uuid.UUID]] = {
-            level.id: ({level.next_level_id} if level.next_level_id else set()) for level in levels
-        }
-        for source_id, target_id in await AcademicLevelRepository.list_progression_edges(
-            db, tenant_id
-        ):
-            adjacency.setdefault(source_id, set()).add(target_id)
-        adjacency[source_level_id] = proposed_target_level_ids
-
-        pending = list(proposed_target_level_ids)
-        visited: set[uuid.UUID] = set()
-        while pending:
-            current = pending.pop()
-            if current == source_level_id:
-                raise BadRequestException("Academic level progression cannot be circular")
-            if current in visited:
-                continue
-            visited.add(current)
-            pending.extend(adjacency.get(current, set()))
+        tenant = await TenantRepository.get_by_id(db, tenant_id)
+        if tenant is None:
+            raise NotFoundException("Tenant not found")
+        if tenant.institution_type is None:
+            raise ConflictException(
+                "Choose the institution type during onboarding before creating academic levels."
+            )
+        if category not in ALLOWED_CATEGORIES[tenant.institution_type]:
+            raise BadRequestException(
+                f"{category.value} is not valid for {tenant.institution_type.value}."
+            )
 
     @staticmethod
     async def create(
@@ -83,12 +94,24 @@ class AcademicLevelService:
     ) -> AcademicLevelResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        await AcademicLevelService._validate_category(
+            db, tenant_id=actor.tenant_id, category=payload.category
+        )
         if await AcademicLevelRepository.get_by_normalized_name(db, actor.tenant_id, payload.name):
             raise ConflictException("Academic level with this name already exists")
+        if await AcademicLevelRepository.get_by_category_position(
+            db, actor.tenant_id, payload.category, payload.position
+        ):
+            raise ConflictException("Another academic level already uses this category position")
         level = AcademicLevel(
             tenant_id=actor.tenant_id,
             name=payload.name,
             normalized_name=normalized_class_name_key(payload.name),
+            category=payload.category,
+            position=payload.position,
+            specialization_required_from_term_position=(
+                payload.specialization_required_from_term_position
+            ),
             is_active=True,
         )
         try:
@@ -98,7 +121,9 @@ class AcademicLevelService:
             return AcademicLevelResponse.model_validate(level)
         except IntegrityError as exc:
             await db.rollback()
-            raise ConflictException("Academic level with this name already exists") from exc
+            raise ConflictException(
+                "Academic level name and category position must be unique"
+            ) from exc
 
     @staticmethod
     async def list(
@@ -140,178 +165,31 @@ class AcademicLevelService:
                 raise ConflictException("Academic level with this name already exists")
             level.name = payload.name
             level.normalized_name = normalized_class_name_key(payload.name)
+        target_category = payload.category or level.category
+        target_position = payload.position or level.position
+        if payload.category is not None:
+            await AcademicLevelService._validate_category(
+                db, tenant_id=actor.tenant_id, category=payload.category
+            )
+        position_owner = await AcademicLevelRepository.get_by_category_position(
+            db,
+            actor.tenant_id,
+            target_category,
+            target_position,
+            exclude_id=level.id,
+        )
+        if position_owner is not None:
+            raise ConflictException("Another academic level already uses this category position")
+        level.category = target_category
+        level.position = target_position
+        if "specialization_required_from_term_position" in payload.model_fields_set:
+            level.specialization_required_from_term_position = (
+                payload.specialization_required_from_term_position
+            )
         await AcademicLevelRepository.save(db, level)
         await db.commit()
         await db.refresh(level)
         return AcademicLevelResponse.model_validate(level)
-
-    @staticmethod
-    async def configure_progression(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        academic_level_id: uuid.UUID,
-        payload: AcademicLevelProgressionConfigureRequest,
-    ) -> AcademicLevelProgressionResponse:
-        AcademicLevelService._ensure_admin(actor)
-        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-        level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
-        if level is None:
-            raise NotFoundException("Academic level not found")
-        next_level = None
-        if payload.next_level_id is not None:
-            if payload.next_level_id == level.id:
-                raise BadRequestException("An academic level cannot progress to itself")
-            next_level = await AcademicLevelRepository.get_by_id(
-                db, actor.tenant_id, payload.next_level_id
-            )
-            if next_level is None:
-                raise NotFoundException("Next academic level not found")
-            visited = {level.id}
-            cursor = next_level
-            while cursor is not None:
-                if cursor.id in visited:
-                    raise BadRequestException("Academic level progression cannot be circular")
-                visited.add(cursor.id)
-                cursor = (
-                    await AcademicLevelRepository.get_by_id(
-                        db, actor.tenant_id, cursor.next_level_id
-                    )
-                    if cursor.next_level_id
-                    else None
-                )
-        options: list[ProgressionSelectionOption] = []
-        proposed_target_level_ids: set[uuid.UUID] = (
-            {payload.next_level_id} if payload.next_level_id else set()
-        )
-        if payload.progression_mode == AcademicLevelProgressionMode.STUDENT_SELECTION:
-            if payload.selection_target_type == ProgressionSelectionTargetType.LEVEL:
-                for target_id in payload.target_level_ids:
-                    if target_id == level.id:
-                        raise BadRequestException("An academic level cannot select itself")
-                    target = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, target_id)
-                    if target is None:
-                        raise NotFoundException("Selection target academic level not found")
-                    if not target.is_active or target.archived_at is not None:
-                        raise ConflictException("Selection target academic level is inactive")
-                    visited = {level.id}
-                    cursor = target
-                    while cursor is not None:
-                        if cursor.id in visited:
-                            raise BadRequestException(
-                                "Academic level progression cannot be circular"
-                            )
-                        visited.add(cursor.id)
-                        cursor = (
-                            await AcademicLevelRepository.get_by_id(
-                                db, actor.tenant_id, cursor.next_level_id
-                            )
-                            if cursor.next_level_id
-                            else None
-                        )
-                    options.append(
-                        ProgressionSelectionOption(
-                            tenant_id=actor.tenant_id,
-                            source_level_id=level.id,
-                            target_level_id=target.id,
-                        )
-                    )
-                    proposed_target_level_ids.add(target.id)
-            else:
-                for target_id in payload.target_classroom_ids:
-                    target_class = await ClassRoomRepository.get_by_id(
-                        db, actor.tenant_id, target_id
-                    )
-                    if target_class is None:
-                        raise NotFoundException("Selection target classroom not found")
-                    if not target_class.is_active or target_class.archived_at is not None:
-                        raise ConflictException("Selection target classroom is inactive")
-                    if target_class.academic_level_id == level.id:
-                        raise BadRequestException(
-                            "A progression destination cannot belong to its source level"
-                        )
-                    target_level = await AcademicLevelRepository.get_by_id(
-                        db, actor.tenant_id, target_class.academic_level_id
-                    )
-                    if (
-                        target_level is None
-                        or not target_level.is_active
-                        or target_level.archived_at
-                    ):
-                        raise ConflictException("Selection target classroom has no active level")
-                    options.append(
-                        ProgressionSelectionOption(
-                            tenant_id=actor.tenant_id,
-                            source_level_id=level.id,
-                            target_classroom_id=target_class.id,
-                        )
-                    )
-                    proposed_target_level_ids.add(target_class.academic_level_id)
-
-        await AcademicLevelService._ensure_progression_remains_acyclic(
-            db,
-            tenant_id=actor.tenant_id,
-            source_level_id=level.id,
-            proposed_target_level_ids=proposed_target_level_ids,
-        )
-
-        level.progression_mode = payload.progression_mode
-        level.next_level_id = payload.next_level_id
-        level.selection_target_type = payload.selection_target_type
-        await AcademicLevelRepository.save(db, level)
-        await AcademicLevelRepository.replace_progression_options(
-            db, actor.tenant_id, level.id, options
-        )
-        await db.commit()
-        await db.refresh(level)
-        return AcademicLevelProgressionResponse(
-            academic_level_id=level.id,
-            academic_level_name=level.name,
-            next_level_id=level.next_level_id,
-            next_level_name=next_level.name if next_level else None,
-            progression_mode=level.progression_mode,
-            selection_target_type=level.selection_target_type,
-            target_level_ids=[
-                option.target_level_id for option in options if option.target_level_id
-            ],
-            target_classroom_ids=[
-                option.target_classroom_id for option in options if option.target_classroom_id
-            ],
-            is_active=level.is_active,
-        )
-
-    @staticmethod
-    async def get_progression(
-        db: AsyncSession,
-        actor: TenantAdmin,
-        academic_level_id: uuid.UUID,
-    ) -> AcademicLevelProgressionResponse:
-        AcademicLevelService._ensure_admin(actor)
-        level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
-        if level is None:
-            raise NotFoundException("Academic level not found")
-        options = await AcademicLevelRepository.list_progression_options(
-            db, actor.tenant_id, level.id
-        )
-        next_level = (
-            await AcademicLevelRepository.get_by_id(db, actor.tenant_id, level.next_level_id)
-            if level.next_level_id
-            else None
-        )
-        return AcademicLevelProgressionResponse(
-            academic_level_id=level.id,
-            academic_level_name=level.name,
-            next_level_id=level.next_level_id,
-            next_level_name=next_level.name if next_level else None,
-            progression_mode=level.progression_mode,
-            selection_target_type=level.selection_target_type,
-            target_level_ids=[
-                option.target_level_id for option in options if option.target_level_id
-            ],
-            target_classroom_ids=[
-                option.target_classroom_id for option in options if option.target_classroom_id
-            ],
-            is_active=level.is_active,
-        )
 
     @staticmethod
     async def purge_setup_level(
@@ -349,6 +227,53 @@ class AcademicLevelService:
         await AcademicLevelRepository.delete(db, level)
         await db.commit()
         return response
+
+
+class DepartmentService:
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        payload: DepartmentCreate,
+    ) -> DepartmentResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        name = normalize_display_text(payload.name)
+        if name is None:
+            raise BadRequestException("Department name is required")
+        normalized_name = name.casefold()
+        if await DepartmentRepository.get_by_normalized_name(
+            db, actor.tenant_id, normalized_name
+        ):
+            raise ConflictException("Department with this name already exists")
+        department = Department(
+            tenant_id=actor.tenant_id,
+            name=name,
+            normalized_name=normalized_name,
+            is_active=True,
+        )
+        try:
+            await DepartmentRepository.add(db, department)
+            await db.commit()
+            await db.refresh(department)
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException("Department with this name already exists") from exc
+        return DepartmentResponse.model_validate(department)
+
+    @staticmethod
+    async def list(
+        db: AsyncSession,
+        actor: TenantAdmin | Teacher | Student | Parent,
+        *,
+        active_only: bool = False,
+    ) -> list[DepartmentResponse]:
+        if not actor.tenant_id:
+            raise ForbiddenException("Actor is not attached to a tenant")
+        rows = await DepartmentRepository.list_for_tenant(
+            db, actor.tenant_id, active_only=active_only
+        )
+        return [DepartmentResponse.model_validate(row) for row in rows]
 
 
 class ClassRoomService:
@@ -406,8 +331,11 @@ class ClassRoomService:
         return ClassRoom(
             tenant_id=tenant_id,
             academic_level_id=payload.academic_level_id,
+            department_id=payload.department_id,
             arm=payload.arm,
-            normalized_arm=normalized_class_arm_key(payload.arm),
+            normalized_arm=(
+                normalized_class_arm_key(payload.arm) if payload.arm is not None else None
+            ),
             teacher_membership_id=payload.teacher_membership_id,
             is_active=True,
             archived_at=None,
@@ -430,12 +358,19 @@ class ClassRoomService:
         )
         if level is None or level.archived_at is not None or not level.is_active:
             raise BadRequestException("Academic level must be active and belong to this tenant")
+        if payload.department_id is not None:
+            department = await DepartmentRepository.get_by_id(
+                db, actor.tenant_id, payload.department_id
+            )
+            if department is None or not department.is_active or department.archived_at is not None:
+                raise BadRequestException("Department must be active and belong to this tenant")
 
         existing_classroom = await ClassRoomRepository.get_by_level_and_arm(
             db=db,
             tenant_id=actor.tenant_id,
             academic_level_id=payload.academic_level_id,
             class_arm=payload.arm,
+            department_id=payload.department_id,
         )
         if existing_classroom is not None:
             raise BadRequestException("Classroom with this name and arm already exists")
@@ -609,10 +544,17 @@ class ClassRoomService:
         update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
         if "teacher_membership_id" in payload.model_fields_set:
             update_data["teacher_membership_id"] = payload.teacher_membership_id
+        if "department_id" in payload.model_fields_set:
+            update_data["department_id"] = payload.department_id
+        if "arm" in payload.model_fields_set:
+            update_data["arm"] = payload.arm
 
         new_level_id = update_data.get("academic_level_id", classroom.academic_level_id)
         new_arm = update_data.get("arm", classroom.arm)
-        new_normalized_arm = normalized_class_arm_key(new_arm)
+        new_department_id = update_data.get("department_id", classroom.department_id)
+        new_normalized_arm = (
+            normalized_class_arm_key(new_arm) if new_arm is not None else None
+        )
 
         if new_level_id != classroom.academic_level_id:
             dependency_counts = await ClassRoomRepository.count_class_dependencies(
@@ -629,6 +571,12 @@ class ClassRoomService:
         level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, new_level_id)
         if level is None or level.archived_at is not None or not level.is_active:
             raise BadRequestException("Academic level must be active and belong to this tenant")
+        if new_department_id is not None:
+            department = await DepartmentRepository.get_by_id(
+                db, actor.tenant_id, new_department_id
+            )
+            if department is None or not department.is_active or department.archived_at is not None:
+                raise BadRequestException("Department must be active and belong to this tenant")
 
         if (
             new_level_id != classroom.academic_level_id
@@ -639,6 +587,7 @@ class ClassRoomService:
                 tenant_id=actor.tenant_id,
                 academic_level_id=new_level_id,
                 class_arm=new_arm,
+                department_id=new_department_id,
             )
             if existing_classroom is not None and existing_classroom.id != classroom.id:
                 raise BadRequestException("Classroom with this name and arm already exists")

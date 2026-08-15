@@ -34,7 +34,7 @@ class BulkImportNormalizer:
             "sex": "gender",
             "level": "level",
             "academic_level": "level",
-            "arm": "arm",
+            "class": "class",
             "state": "state_of_origin",
             "state_of_origin": "state_of_origin",
             "parent_email_1": "parent_email_1",
@@ -59,7 +59,7 @@ class BulkImportNormalizer:
             "date_of_birth",
             "gender",
             "level",
-            "arm",
+            "class",
             "state_of_origin",
             "parent_email_1",
             "parent_relationship_1",
@@ -159,7 +159,7 @@ class BulkImportNormalizer:
         if field_name == "level":
             return normalize_class_name(value)
 
-        if field_name == "arm":
+        if field_name == "class":
             return normalize_class_arm(value)
 
         return BulkImportNormalizer.normalize_text(value)

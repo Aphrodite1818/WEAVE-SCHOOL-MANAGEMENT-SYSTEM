@@ -78,6 +78,8 @@ const buildSessionUserFromStatus = (role, status, currentUser = authSession.getU
       id: status.tenant_id,
       school_name: status.current_values?.school_name || nextUser.tenant?.school_name,
       email: status.current_values?.email || nextUser.tenant?.email,
+      institution_type:
+        status.current_values?.institution_type || nextUser.tenant?.institution_type,
       onboarding_completed: status.onboarding_completed,
     };
     nextUser.email = status.current_values?.email || nextUser.email;

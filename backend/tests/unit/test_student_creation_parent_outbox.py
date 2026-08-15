@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.email_outbox.models import EmailOutbox
 from app.modules.email_outbox.repository import EmailOutboxRepository
 from app.modules.email_outbox.service import (
@@ -186,6 +186,7 @@ async def test_student_creation_queues_one_parent_email_per_parent(
     tenant_id = uuid4()
     admin_id = uuid4()
     class_id = uuid4()
+    level_id = uuid4()
     session_id = uuid4()
     student_id = uuid4()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -194,6 +195,7 @@ async def test_student_creation_queues_one_parent_email_per_parent(
     tenant = SimpleNamespace(school_name="Weave Test School")
     classroom = SimpleNamespace(
         id=class_id,
+        academic_level_id=level_id,
         name="JSS 1",
         arm="A",
         is_active=True,
@@ -205,6 +207,7 @@ async def test_student_creation_queues_one_parent_email_per_parent(
         first_name="Ada",
         last_name="Student",
         date_of_birth=date(2012, 1, 1),
+        academic_level_id=level_id,
         class_id=class_id,
         gender=Gender.FEMALE,
         parents=[
@@ -228,6 +231,11 @@ async def test_student_creation_queues_one_parent_email_per_parent(
         TenantIdentifierService,
         "require_completed_onboarding",
         AsyncMock(return_value=tenant),
+    )
+    monkeypatch.setattr(
+        AcademicLevelRepository,
+        "get_by_id",
+        AsyncMock(return_value=SimpleNamespace(id=level_id, is_active=True, archived_at=None)),
     )
     monkeypatch.setattr(
         ClassRoomRepository,

@@ -249,7 +249,6 @@ class EnrollmentReportCardService:
             academic_session_id,
             academic_term_id,
         )
-        expected = await ReportCardService._expected_level_subjects(db, actor.tenant_id, class_id)
         enrollments = await EnrollmentReportCardService._enrollments_for_class_session(
             db,
             actor.tenant_id,
@@ -266,6 +265,7 @@ class EnrollmentReportCardService:
         cards_by_student = {card.student_id: card for card in cards}
 
         rows: list[ReportCardClassOverviewRow] = []
+        expected_counts: list[int] = []
         for enrollment in enrollments:
             student = await StudentRepository.get_student_by_id(
                 db,
@@ -274,6 +274,10 @@ class EnrollmentReportCardService:
             )
             if student is None:
                 continue
+            expected = await ReportCardService._expected_subject_offerings(
+                db, actor.tenant_id, student.id, academic_term_id
+            )
+            expected_counts.append(len(expected))
             locked = await ReportCardService._finalized_results_for_student(
                 db,
                 actor.tenant_id,
@@ -314,6 +318,6 @@ class EnrollmentReportCardService:
             class_id=class_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
-            expected_subject_count=len(expected),
+            expected_subject_count=max(expected_counts, default=0),
             items=rows,
         )

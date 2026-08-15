@@ -36,7 +36,7 @@ async def test_resource_quota_lock_uses_stable_transaction_advisory_key() -> Non
     await acquire_resource_quota_lock(
         other_resource_db,
         tenant_id=tenant_id,
-        resource=ResourceLimitCode.CLASSES,
+        resource=ResourceLimitCode.TEACHERS,
     )
 
     first_params = first_db.execute.await_args.args[1]
@@ -140,35 +140,18 @@ async def test_tenant_status_change_invalidates_active_tenant_authorization_cach
 
 
 @pytest.mark.asyncio
-async def test_class_reactivation_checks_quota_only_when_it_increases_usage() -> None:
+async def test_class_reactivation_has_no_commercial_quota() -> None:
     tenant_id = uuid.uuid4()
     class_id = uuid.uuid4()
     actor = SimpleNamespace(tenant_id=tenant_id)
     payload = SimpleNamespace(confirmation=True)
-    inactive = SimpleNamespace(is_active=False, archived_at=None)
     activated = SimpleNamespace(id=class_id, is_active=True)
 
     with (
         patch(
-            "app.modules.classes.router.ClassRoomRepository.get_by_id",
-            new=AsyncMock(return_value=inactive),
-        ),
-        patch(
-            "app.modules.classes.router.acquire_resource_quota_lock",
-            new=AsyncMock(),
-        ) as quota_lock,
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.ensure_resource_limit_available",
-            new=AsyncMock(),
-        ) as quota_check,
-        patch(
             "app.modules.classes.router.ClassRoomService.activate_classroom",
             new=AsyncMock(return_value=activated),
-        ),
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.invalidate_tenant_subscription_state",
-            new=AsyncMock(),
-        ),
+        ) as activate,
     ):
         result = await activate_classroom(
             class_id=class_id,
@@ -178,44 +161,11 @@ async def test_class_reactivation_checks_quota_only_when_it_increases_usage() ->
         )
 
     assert result is activated
-    quota_lock.assert_awaited_once()
-    quota_check.assert_awaited_once()
-
-    with (
-        patch(
-            "app.modules.classes.router.ClassRoomRepository.get_by_id",
-            new=AsyncMock(return_value=SimpleNamespace(is_active=True, archived_at=None)),
-        ),
-        patch(
-            "app.modules.classes.router.acquire_resource_quota_lock",
-            new=AsyncMock(),
-        ) as quota_lock,
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.ensure_resource_limit_available",
-            new=AsyncMock(),
-        ) as quota_check,
-        patch(
-            "app.modules.classes.router.ClassRoomService.activate_classroom",
-            new=AsyncMock(return_value=activated),
-        ),
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.invalidate_tenant_subscription_state",
-            new=AsyncMock(),
-        ),
-    ):
-        await activate_classroom(
-            class_id=class_id,
-            payload=payload,
-            db=AsyncMock(),
-            current_user=actor,
-        )
-
-    quota_lock.assert_not_awaited()
-    quota_check.assert_not_awaited()
+    activate.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_subject_reactivation_checks_quota_before_transition() -> None:
+async def test_subject_reactivation_has_no_commercial_quota() -> None:
     tenant_id = uuid.uuid4()
     subject_id = uuid.uuid4()
     actor = SimpleNamespace(tenant_id=tenant_id)
@@ -223,25 +173,9 @@ async def test_subject_reactivation_checks_quota_before_transition() -> None:
 
     with (
         patch(
-            "app.modules.subjects.router.SubjectRepository.get_subject_by_id",
-            new=AsyncMock(return_value=SimpleNamespace(is_active=False, archived_at=None)),
-        ),
-        patch(
-            "app.modules.subjects.router.acquire_resource_quota_lock",
-            new=AsyncMock(),
-        ) as quota_lock,
-        patch(
-            "app.modules.subjects.router.SubscriptionFeatureService.ensure_resource_limit_available",
-            new=AsyncMock(),
-        ) as quota_check,
-        patch(
             "app.modules.subjects.router.SubjectService.activate_subject",
             new=AsyncMock(return_value=SimpleNamespace(id=subject_id)),
-        ),
-        patch(
-            "app.modules.subjects.router.SubscriptionFeatureService.invalidate_tenant_subscription_state",
-            new=AsyncMock(),
-        ),
+        ) as activate,
     ):
         await activate_subject(
             subject_id=subject_id,
@@ -250,8 +184,7 @@ async def test_subject_reactivation_checks_quota_before_transition() -> None:
             current_user=actor,
         )
 
-    quota_lock.assert_awaited_once()
-    quota_check.assert_awaited_once()
+    activate.assert_awaited_once()
 
 
 @pytest.mark.asyncio

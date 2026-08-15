@@ -28,6 +28,8 @@ async def test_progression_item_retry_updates_existing_logical_item(monkeypatch)
         to_enrollment_id=None,
         from_class_id=None,
         to_class_id=None,
+        from_level_id=uuid.uuid4(),
+        to_level_id=None,
         action=StudentProgressionItemAction.SKIP,
         status=StudentProgressionItemStatus.BLOCKED,
         reason="first failure",
@@ -43,8 +45,9 @@ async def test_progression_item_retry_updates_existing_logical_item(monkeypatch)
         tenant_id=existing.tenant_id,
         progression_run_id=run_id,
         student_id=student_id,
-        action=StudentProgressionItemAction.DIRECT,
+        action=StudentProgressionItemAction.PROGRESS,
         status=StudentProgressionItemStatus.COMPLETED,
+        from_level_id=uuid.uuid4(),
         reason="retry succeeded",
     )
 
@@ -57,28 +60,24 @@ async def test_progression_item_retry_updates_existing_logical_item(monkeypatch)
     db.flush.assert_awaited_once()
 
 
-def test_progression_summary_uses_selection_aware_states():
+def test_progression_summary_uses_level_only_states():
     from app.modules.student_academics.session_closure_service import SessionClosureService
 
     items = [
         SimpleNamespace(
-            action=StudentProgressionItemAction.DIRECT,
+            action=StudentProgressionItemAction.PROGRESS,
             status=StudentProgressionItemStatus.COMPLETED,
         ),
         SimpleNamespace(
-            action=StudentProgressionItemAction.TERMINAL,
+            action=StudentProgressionItemAction.COMPLETE,
             status=StudentProgressionItemStatus.COMPLETED,
-        ),
-        SimpleNamespace(
-            action=StudentProgressionItemAction.STUDENT_SELECTION,
-            status=StudentProgressionItemStatus.AWAITING_SELECTION,
         ),
         SimpleNamespace(
             action=StudentProgressionItemAction.SKIP,
             status=StudentProgressionItemStatus.CANCELLED,
         ),
         SimpleNamespace(
-            action=StudentProgressionItemAction.DIRECT,
+            action=StudentProgressionItemAction.PROGRESS,
             status=StudentProgressionItemStatus.BLOCKED,
         ),
     ]
@@ -87,7 +86,7 @@ def test_progression_summary_uses_selection_aware_states():
         "promoted": 1,
         "graduated": 1,
         "skipped": 1,
-        "pending": 1,
+        "pending": 0,
         "failed": 1,
     }
 

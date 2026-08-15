@@ -43,6 +43,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
 from app.modules.classes.level_subjects_router import router as level_subjects_router
 from app.modules.classes.academic_levels_router import router as academic_levels_router
+from app.modules.classes.departments_router import router as departments_router
 from app.modules.classes.router import router as class_router
 from app.modules.email_outbox.router import router as email_outbox_router
 from app.modules.legal_compliance.router import router as legal_compliance_router
@@ -70,6 +71,7 @@ from app.modules.student_academics.assessment_config_router import (
     student_router as assessment_student_router,
     teacher_router as assessment_teacher_router,
 )
+from app.modules.student_academics.curriculum_router import router as curriculum_router
 from app.modules.student_academics.bulk_results_router import (
     admin_router as bulk_results_admin_router,
 )
@@ -242,6 +244,7 @@ def create_app() -> FastAPI:
     app.include_router(subject_router, prefix=f"{API_V1_PREFIX}/subjects", tags=["Subjects"])
     app.include_router(class_router, prefix=API_V1_PREFIX, tags=["Classes"])
     app.include_router(academic_levels_router, prefix=API_V1_PREFIX)
+    app.include_router(departments_router, prefix=API_V1_PREFIX)
     app.include_router(level_subjects_router, prefix=API_V1_PREFIX)
     app.include_router(communication_router, prefix=API_V1_PREFIX)
     app.include_router(messages_router, prefix=API_V1_PREFIX)
@@ -251,6 +254,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router, prefix=API_V1_PREFIX)
 
     app.include_router(assessment_teacher_router, prefix=API_V1_PREFIX)
+    app.include_router(curriculum_router, prefix=API_V1_PREFIX)
     app.include_router(assessment_student_router, prefix=API_V1_PREFIX)
     app.include_router(grading_readiness_router, prefix=API_V1_PREFIX)
     app.include_router(open_session_config_router, prefix=API_V1_PREFIX)

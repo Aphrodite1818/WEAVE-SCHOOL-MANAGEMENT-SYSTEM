@@ -85,7 +85,7 @@ class ReportCardResponse(OutputBase):
     student_name: str | None = None
     admission_number: str | None = None
     student_passport_photo_url: str | None = None
-    class_id: uuid.UUID
+    class_id: uuid.UUID | None = None
     class_name: str | None = None
     class_arm: str | None = None
     academic_session_id: uuid.UUID

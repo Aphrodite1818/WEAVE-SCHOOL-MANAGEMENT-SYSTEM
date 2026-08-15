@@ -35,7 +35,7 @@ const runCounts = (run) => [
   ["Promoted", run?.promoted_students || 0],
   ["Graduated", run?.graduated_students || 0],
   ["Skipped", run?.skipped_students || 0],
-  ["Pending selection", run?.pending_students || 0],
+  ["Pending", run?.pending_students || 0],
   ["Failed", run?.failed_students || 0],
 ];
 

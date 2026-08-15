@@ -24,7 +24,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v5",
+    ImportResourceType.STUDENTS: "students_v6",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -34,7 +34,7 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "date_of_birth",
         "gender",
         "level",
-        "arm",
+        "class",
         "state_of_origin",
         "parent_email_1",
         "parent_relationship_1",
@@ -122,11 +122,11 @@ def create_student_template() -> ImportTemplateDefinition:
                 description="Required. Enter an existing academic level such as JSS1. Do not combine it with the arm.",
             ),
             create_template_column(
-                name="arm",
-                label="Class Arm",
-                required=True,
+                name="class",
+                label="Class",
+                required=False,
                 example="A",
-                description="Required. Enter the existing concrete arm within the selected level, such as A or Science.",
+                description="Optional. Enter an existing organizational class within the selected level, such as A. Leave blank for level-only enrollment.",
             ),
             create_template_column(
                 name="state_of_origin",
@@ -167,9 +167,9 @@ def create_student_template() -> ImportTemplateDefinition:
             "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
-            "Academic level and arm are both required and must be provided in separate columns.",
-            "Do not enter or parse a combined value such as JSS1 A.",
-            "The backend resolves level, then resolves arm within that level during dry-run.",
+            "Academic level is required. Class placement is optional and remains independent of progression.",
+            "Do not enter or parse a combined value such as JSS1 A in the level column.",
+            "When class is supplied, the backend resolves it only within the explicit level during dry-run.",
             "Parent or guardian emails are optional in the current student-creation workflow. If an email is supplied, its matching relationship column is required.",
             "A maximum of two parents or guardians is supported per imported student.",
             "Accepted date formats include YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY, MM-DD-YYYY, and YYYY/MM/DD.",

@@ -24,9 +24,6 @@ from app.modules.subjects.schemas import (
     SubjectUpdate,
 )
 from app.modules.subjects.service import SubjectService
-from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
-from app.modules.subscriptions.service import SubscriptionFeatureService
-from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -80,23 +77,11 @@ async def create_subject(
 ) -> Subject:
     """Create subject."""
 
-    await acquire_resource_quota_lock(
-        db,
-        tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.SUBJECTS,
-    )
-    await SubscriptionFeatureService.ensure_resource_limit_available(
-        db=db,
-        tenant_id=current_user.tenant_id,
-        resource=ResourceLimitCode.SUBJECTS,
-    )
-    subject = await SubjectService.create_subject(
+    return await SubjectService.create_subject(
         db=db,
         actor=current_user,
         subject_data=payload,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
-    return subject
 
 
 @router.get(
@@ -194,29 +179,11 @@ async def activate_subject(
     """Activate subject."""
 
     _ = payload.confirmation
-    existing = await SubjectRepository.get_subject_by_id(
-        db=db,
-        tenant_id=current_user.tenant_id,
-        subject_id=subject_id,
-    )
-    if existing is not None and not existing.is_active and existing.archived_at is None:
-        await acquire_resource_quota_lock(
-            db,
-            tenant_id=current_user.tenant_id,
-            resource=ResourceLimitCode.SUBJECTS,
-        )
-        await SubscriptionFeatureService.ensure_resource_limit_available(
-            db=db,
-            tenant_id=current_user.tenant_id,
-            resource=ResourceLimitCode.SUBJECTS,
-        )
-    subject = await SubjectService.activate_subject(
+    return await SubjectService.activate_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
     )
-    await SubscriptionFeatureService.invalidate_tenant_subscription_state(current_user.tenant_id)
-    return subject
 
 
 @router.post(

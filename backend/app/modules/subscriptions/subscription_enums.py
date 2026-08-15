@@ -26,8 +26,6 @@ class ResourceLimitCode(StrEnum):
     STUDENTS = "students"
     TEACHERS = "teachers"
     PARENTS = "parents"
-    CLASSES = "classes"
-    SUBJECTS = "subjects"
     CBT_SERVERS = "cbt_servers"
 
 

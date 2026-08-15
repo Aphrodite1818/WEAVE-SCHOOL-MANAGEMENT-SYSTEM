@@ -16,7 +16,6 @@ from app.modules.student_academics.schemas import (
     LevelSubjectListResponse,
     LevelSubjectResponse,
     LevelSubjectRestoreRequest,
-    LevelSubjectUpdate,
 )
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.students.models import Student
@@ -129,18 +128,6 @@ async def restore_level_subject(
     _ = payload.confirmation
     return await StudentAcademicService.restore_level_subject(
         db, current_admin.tenant_id, level_subject_id
-    )
-
-
-@router.patch("/subjects/{level_subject_id}", response_model=LevelSubjectResponse)
-async def update_level_subject(
-    level_subject_id: uuid.UUID,
-    payload: LevelSubjectUpdate,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> LevelSubjectResponse:
-    return await StudentAcademicService.update_level_subject(
-        db, current_admin.tenant_id, level_subject_id, payload
     )
 
 

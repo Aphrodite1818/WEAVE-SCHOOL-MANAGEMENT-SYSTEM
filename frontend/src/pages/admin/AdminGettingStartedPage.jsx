@@ -14,7 +14,6 @@ import {
   ImageIcon,
   Loader2,
   RefreshCw,
-  Route,
   School,
   Trash2,
   UploadCloud,
@@ -31,7 +30,6 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
-import MultiSelect from "../../components/ui/MultiSelect";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import { schoolCalendarService } from "../../features/schoolCalendar/api/schoolCalendarService";
@@ -162,17 +160,15 @@ function AdminGettingStartedPage() {
   const [sessionForm, setSessionForm] = useState(DEFAULT_SESSION);
   const [termForm, setTermForm] = useState(DEFAULT_TERM);
   const [calendarForm, setCalendarForm] = useState(DEFAULT_CALENDAR);
-  const [levelForm, setLevelForm] = useState({ name: "" });
+  const [levelForm, setLevelForm] = useState({ name: "", category: "", position: "" });
   const [classForm, setClassForm] = useState({ academic_level_id: "", arm: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
-  const [progressionDrafts, setProgressionDrafts] = useState({});
   const [schoolLogoUrl, setSchoolLogoUrl] = useState(() =>
     schoolLogoFromUser(authSession.getUser()),
   );
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState("");
   const [logoError, setLogoError] = useState("");
-  const [structureLimitNotice, setStructureLimitNotice] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(null);
   const [warningDialog, setWarningDialog] = useState(null);
 
@@ -331,61 +327,7 @@ function AdminGettingStartedPage() {
     () => subjects.filter((item) => item?.is_active !== false && !item?.archived_at),
     [subjects],
   );
-  const progressionComplete = Boolean(
-    activeLevels.length > 0 &&
-      activeLevels.every((item) =>
-        item.progression_mode === "terminal" ||
-        item.next_level_id ||
-        (item.progression_mode === "student_selection" && item.selection_target_type)
-      ),
-  );
-
-  useEffect(() => {
-    setProgressionDrafts((current) => {
-      const next = {};
-      for (const level of activeLevels) {
-        next[level.id] = current[level.id] || {
-          progression_mode: level.progression_mode || "direct",
-          next_level_id: level.next_level_id || "",
-          selection_target_type: level.selection_target_type || "level",
-          target_level_ids: [],
-          target_classroom_ids: [],
-        };
-      }
-      return next;
-    });
-  }, [activeLevels]);
-
-  useEffect(() => {
-    if (!activeLevels.length) return undefined;
-    let mounted = true;
-    Promise.all(
-      activeLevels.map(async (level) => [
-        level.id,
-        await academicLevelService.getProgression(level.id),
-      ]),
-    )
-      .then((entries) => {
-        if (!mounted) return;
-        setProgressionDrafts((current) => ({
-          ...current,
-          ...Object.fromEntries(entries.map(([levelId, configuration]) => [
-            levelId,
-            {
-              progression_mode: configuration.progression_mode,
-              next_level_id: configuration.next_level_id || "",
-              selection_target_type: configuration.selection_target_type || "level",
-              target_level_ids: configuration.target_level_ids || [],
-              target_classroom_ids: configuration.target_classroom_ids || [],
-            },
-          ])),
-        }));
-      })
-      .catch((error) => {
-        if (mounted) showError(getErrorMessage(error, "Could not load progression settings."));
-      });
-    return () => { mounted = false; };
-  }, [activeLevels, showError]);
+  const progressionComplete = activeLevels.length > 0;
 
   useEffect(() => {
     setClassForm((current) => {
@@ -579,39 +521,12 @@ function AdminGettingStartedPage() {
   const runAction = async (key, action, successMessage) => {
     setSaving(key);
     setError("");
-    setStructureLimitNotice(null);
     try {
       const result = await action();
       if (successMessage) showSuccess(successMessage);
       await loadSetup({ quiet: true });
       return result;
     } catch (requestError) {
-      const parsed = parseApiError(requestError, "Setup action failed.");
-      const detail = parsed.data?.detail || {};
-      if (detail?.reason === "resource_limit_reached") {
-        const resourceLabel = String(detail.resource || "resource").replaceAll("_", " ");
-        const notice = {
-          resource: resourceLabel,
-          used: detail.used,
-          limit: detail.limit,
-          message:
-            parsed.message ||
-            `Your current plan has reached its ${resourceLabel} limit.`,
-        };
-        setStructureLimitNotice(notice);
-        setWarningDialog({
-          title: "Plan limit reached",
-          message: notice.message,
-          detail:
-            notice.limit !== null && notice.limit !== undefined
-              ? `${notice.used} of ${notice.limit} ${notice.resource}`
-              : "",
-          actionLabel: "Upgrade plan",
-          onAction: goToPlanUpgrade,
-        });
-        return null;
-      }
-
       const message = getErrorMessage(requestError, "Setup action failed.");
       setError(message);
       showError(message);
@@ -685,11 +600,15 @@ function AdminGettingStartedPage() {
     event.preventDefault();
     const created = await runAction(
       "level",
-      () => academicLevelService.createLevel({ name: levelForm.name }),
+      () => academicLevelService.createLevel({
+        name: levelForm.name,
+        category: levelForm.category,
+        position: Number(levelForm.position),
+      }),
       "Academic level created. Now add its class arm.",
     );
     if (!created?.id) return;
-    setLevelForm({ name: "" });
+    setLevelForm({ name: "", category: "", position: "" });
     setClassForm((current) => ({ ...current, academic_level_id: created.id }));
   };
 
@@ -764,30 +683,6 @@ function AdminGettingStartedPage() {
       await removeSubject(item, label);
     }
     setDeleteConfirmation(null);
-  };
-
-  const saveLevelProgression = async (level) => {
-    const draft = progressionDrafts[level.id] || {};
-    if (draft.progression_mode === "direct" && !draft.next_level_id) {
-      showWarning(`Choose the direct next level for ${level.name}.`);
-      return;
-    }
-    const selectionIds = draft.selection_target_type === "level"
-      ? draft.target_level_ids
-      : draft.target_classroom_ids;
-    if (draft.progression_mode === "student_selection" && !selectionIds?.length) {
-      showWarning(`Choose at least one allowed destination for ${level.name}.`);
-      return;
-    }
-    await runAction(
-      `progression-${level.id}`,
-      () =>
-        academicLevelService.configureProgression(level.id, {
-          ...draft,
-          next_level_id: draft.progression_mode === "direct" ? draft.next_level_id : null,
-        }),
-      `${level.name} progression saved.`,
-    );
   };
 
   const openSession = async () => {
@@ -919,10 +814,6 @@ function AdminGettingStartedPage() {
 
   const goPrevious = () => {
     if (!firstStep) guide.moveTo(guide.steps[guide.currentIndex - 1].id);
-  };
-  const goToPlanUpgrade = () => {
-    setWarningDialog(null);
-    navigate("/admin/billing/plans");
   };
   const continueStep = async () => {
     if (guide.guideState?.status === "completed") {
@@ -1310,31 +1201,6 @@ function AdminGettingStartedPage() {
       <div className="rounded-2xl border border-border bg-surface-muted/25 p-4 text-sm leading-6 text-text-muted">
         Build the school structure in order: create an academic level first, then add one or more class arms under that level. Subjects are created separately. Continue when the minimum structure is ready, or skip the stage and return later.
       </div>
-      {structureLimitNotice ? (
-        <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 sm:p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold text-text">Plan limit reached</p>
-              <p className="mt-1 text-sm leading-6 text-text-muted">
-                {structureLimitNotice.message}
-              </p>
-              {structureLimitNotice.limit !== null && structureLimitNotice.limit !== undefined ? (
-                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
-                  {structureLimitNotice.used} of {structureLimitNotice.limit} {structureLimitNotice.resource}
-                </p>
-              ) : null}
-            </div>
-            <Button
-              type="button"
-              className="w-full sm:w-auto"
-              onClick={goToPlanUpgrade}
-            >
-              <CreditCard className="h-4 w-4" />
-              Upgrade plan
-            </Button>
-          </div>
-        </div>
-      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
@@ -1416,7 +1282,28 @@ function AdminGettingStartedPage() {
                   label="Level name"
                   value={levelForm.name}
                   placeholder="JSS 1"
-                  onChange={(event) => setLevelForm({ name: event.target.value })}
+                  onChange={(event) => setLevelForm((current) => ({ ...current, name: event.target.value }))}
+                  required
+                />
+                <SearchableSelect
+                  label="Category"
+                  value={levelForm.category}
+                  onChange={(value) => setLevelForm((current) => ({ ...current, category: value }))}
+                  options={[
+                    { value: "KINDERGARTEN", label: "Kindergarten" },
+                    { value: "PRIMARY", label: "Primary" },
+                    { value: "JUNIOR_SECONDARY", label: "Junior Secondary" },
+                    { value: "SENIOR_SECONDARY", label: "Senior Secondary" },
+                  ]}
+                  required
+                />
+                <Input
+                  label="Position within category"
+                  type="number"
+                  min="1"
+                  value={levelForm.position}
+                  placeholder="1"
+                  onChange={(event) => setLevelForm((current) => ({ ...current, position: event.target.value }))}
                   required
                 />
                 <Button type="submit" variant="outline" disabled={saving === "level"} className="w-full">
@@ -1521,11 +1408,11 @@ function AdminGettingStartedPage() {
     <div className="space-y-4">
       <div className="rounded-2xl border border-primary/20 bg-primary-subtle/45 p-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <Route className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <GraduationCap className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div>
-            <p className="font-semibold text-text">Define what happens at session closure</p>
+            <p className="font-semibold text-text">Automatic level progression</p>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              Progression belongs to academic levels, so every arm at the same level follows one consistent destination.
+              Category and position define progression. Students move to the next configured position, then the next allowed category; the last configured level graduates automatically.
             </p>
           </div>
         </div>
@@ -1533,142 +1420,23 @@ function AdminGettingStartedPage() {
 
       {!activeLevels.length ? (
         <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm text-text-soft">
-          Create at least one academic level before configuring progression. You may skip this stage and return later.
+          Create at least one academic level with an explicit category and position.
         </div>
       ) : (
         <div className="grid gap-3">
-          {activeLevels.map((level) => {
-            const draft = progressionDrafts[level.id] || {
-              progression_mode: level.progression_mode || "direct",
-              next_level_id: level.next_level_id || "",
-              selection_target_type: level.selection_target_type || "level",
-              target_level_ids: [],
-              target_classroom_ids: [],
-            };
-            const configured = Boolean(
-              level.progression_mode === "terminal" || level.next_level_id ||
-              (level.progression_mode === "student_selection" && level.selection_target_type),
-            );
-            const nextOptions = activeLevels
-              .filter((candidate) => candidate.id !== level.id)
-              .map((candidate) => ({
-                value: candidate.id,
-                label: candidate.name,
-                description: candidate.progression_mode === "terminal" ? "Terminal level" : "Active level",
-              }));
-
-            return (
-              <div key={level.id} className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-text">{level.name}</p>
-                      {configured ? <Badge variant="success">Configured</Badge> : <Badge variant="warning">Required</Badge>}
-                    </div>
-                    <div className="mt-3 grid gap-3">
-                      <SearchableSelect
-                        label="Progression mode"
-                        value={draft.progression_mode}
-                        onChange={(value) =>
-                          setProgressionDrafts((current) => ({
-                            ...current,
-                            [level.id]: {
-                              ...draft,
-                              progression_mode: value,
-                              next_level_id: value === "direct" ? draft.next_level_id : "",
-                              target_level_ids: value === "student_selection" ? draft.target_level_ids : [],
-                              target_classroom_ids: value === "student_selection" ? draft.target_classroom_ids : [],
-                            },
-                          }))
-                        }
-                        options={[
-                          { value: "direct", label: "Direct", description: "Move students automatically." },
-                          { value: "student_selection", label: "Student Selection", description: "Students choose an allowed destination." },
-                          { value: "terminal", label: "Terminal", description: "Graduate genuine final-school completers." },
-                        ]}
-                      />
-                      {draft.progression_mode === "student_selection" ? (
-                        <>
-                          <SearchableSelect
-                            label="Students choose"
-                            value={draft.selection_target_type}
-                            onChange={(value) =>
-                              setProgressionDrafts((current) => ({
-                                ...current,
-                                [level.id]: {
-                                  ...draft,
-                                  selection_target_type: value,
-                                  target_level_ids: [],
-                                  target_classroom_ids: [],
-                                },
-                              }))
-                            }
-                            options={[
-                              { value: "level", label: "Academic Level" },
-                              { value: "classroom", label: "ClassRoom" },
-                            ]}
-                          />
-                          <MultiSelect
-                            label="Allowed destinations"
-                            name={`progression-${level.id}-destinations`}
-                            value={draft.selection_target_type === "level" ? draft.target_level_ids : draft.target_classroom_ids}
-                            onChange={(event) => {
-                              const key = draft.selection_target_type === "level" ? "target_level_ids" : "target_classroom_ids";
-                              setProgressionDrafts((current) => ({
-                                ...current,
-                                [level.id]: { ...draft, [key]: event.target.value },
-                              }));
-                            }}
-                            options={draft.selection_target_type === "level"
-                              ? nextOptions
-                              : activeClasses
-                                  .filter((item) => item.academic_level_id !== level.id)
-                                  .map((item) => ({ value: item.id, label: classLabel(item) }))}
-                            required
-                          />
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="grid min-w-0 flex-[1.2] gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                    <SearchableSelect
-                      label="Next level"
-                      value={draft.next_level_id || ""}
-                      onChange={(value) =>
-                        setProgressionDrafts((current) => ({
-                          ...current,
-                          [level.id]: {
-                            ...draft,
-                            progression_mode: "direct",
-                            next_level_id: value,
-                          },
-                        }))
-                      }
-                      options={nextOptions}
-                      placeholder={draft.progression_mode === "terminal" ? "Terminal level" : "Select next level"}
-                      searchable={nextOptions.length > 5}
-                      clearable
-                      disabled={draft.progression_mode !== "direct"}
-                    />
-                    <Button
-                      type="button"
-                      onClick={() => saveLevelProgression(level)}
-                      disabled={
-                        saving === `progression-${level.id}` ||
-                        (draft.progression_mode === "direct" && !draft.next_level_id) ||
-                        (draft.progression_mode === "student_selection" &&
-                          !(draft.selection_target_type === "level" ? draft.target_level_ids : draft.target_classroom_ids)?.length)
-                      }
-                      className="w-full sm:w-auto"
-                    >
-                      {saving === `progression-${level.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Route className="h-4 w-4" />}
-                      Save
-                    </Button>
-                  </div>
+          {[...activeLevels]
+            .sort((left, right) => left.category.localeCompare(right.category) || left.position - right.position)
+            .map((level, index, ordered) => (
+              <div key={level.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4">
+                <div>
+                  <p className="font-semibold text-text">{level.name}</p>
+                  <p className="text-sm text-text-muted">{titleCase(level.category)} · Position {level.position}</p>
                 </div>
+                <Badge variant={index === ordered.length - 1 ? "warning" : "success"}>
+                  {index === ordered.length - 1 ? "Graduates" : `Next: ${ordered[index + 1].name}`}
+                </Badge>
               </div>
-            );
-          })}
+            ))}
         </div>
       )}
     </div>
@@ -2043,9 +1811,9 @@ function AdminGettingStartedPage() {
                   detail={`${activeClasses.length} classes · ${activeSubjects.length} subjects`}
                 />
                 <SetupCheck
-                  label="Level progression"
+                  label="Automatic progression"
                   complete={completionMap.progression}
-                  detail={progressionComplete ? "Every active level has a destination" : "Choose next levels or terminal levels"}
+                  detail={progressionComplete ? "Derived from category and position" : "Create an academic level first"}
                 />
                 <SetupCheck
                   label="Session open"

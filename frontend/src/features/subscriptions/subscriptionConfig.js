@@ -30,8 +30,6 @@ export const RESOURCE_CODES = {
   STUDENTS: "students",
   TEACHERS: "teachers",
   PARENTS: "parents",
-  CLASSES: "classes",
-  SUBJECTS: "subjects",
   CBT_SERVERS: "cbt_servers",
 };
 

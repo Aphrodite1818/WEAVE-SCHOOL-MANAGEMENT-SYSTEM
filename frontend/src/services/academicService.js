@@ -172,8 +172,12 @@ export const academicService = {
     api.post(`/academic-levels/subjects/${levelSubjectId}/deactivate`, {
       confirmation: "DEACTIVATE_LEVEL_SUBJECT",
     }),
-  updateLevelSubject: (levelSubjectId, payload) =>
-    api.patch(`/academic-levels/subjects/${levelSubjectId}`, payload),
+  listSubjectOfferings: (levelSubjectId) =>
+    api.get(`/tenant-admin/academics/level-subjects/${levelSubjectId}/offerings`),
+  createSubjectOffering: (levelSubjectId, payload) =>
+    api.post(`/tenant-admin/academics/level-subjects/${levelSubjectId}/offerings`, payload),
+  assignStudentDepartment: (payload) =>
+    api.post("/tenant-admin/academics/department-assignments", payload),
   archiveLevelSubject: (levelSubjectId) =>
     api.post(`/academic-levels/subjects/${levelSubjectId}/archive`, {
       confirmation: "ARCHIVE_LEVEL_SUBJECT",

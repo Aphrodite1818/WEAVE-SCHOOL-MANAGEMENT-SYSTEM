@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -121,6 +121,8 @@ class StudentRepository:
         *,
         search: str | None = None,
         class_id: UUID | None = None,
+        academic_level_id: UUID | None = None,
+        unassigned_class: bool = False,
         status: AcademicStatus | None = None,
         include_archived: bool = False,
         offset: int = 0,
@@ -131,6 +133,19 @@ class StudentRepository:
             filters.append(Student.is_archived.is_(False))
         if class_id is not None:
             filters.append(Student.class_id == class_id)
+        if unassigned_class:
+            filters.append(Student.class_id.is_(None))
+        if academic_level_id is not None:
+            filters.append(
+                exists(
+                    select(StudentEnrollment.id).where(
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.student_id == Student.id,
+                        StudentEnrollment.academic_level_id == academic_level_id,
+                        StudentEnrollment.is_current.is_(True),
+                    )
+                )
+            )
         if status is not None:
             filters.append(Student.status == status)
         if search:

@@ -44,7 +44,6 @@ from app.modules.student_academics.schemas import (
     AcademicTermResponse,
     AcademicTermStartClosingRequest,
     AcademicTermUpdate,
-    AdminProgressionPlacementRequest,
     GradingScaleCreate,
     GradingScaleListResponse,
     GradingScaleReadiness,
@@ -56,9 +55,6 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultResponse,
     StudentSubjectResultStatusUpdate,
     StudentSubjectResultUpsert,
-    StudentProgressionSelectionRequest,
-    StudentProgressionSelectionResponse,
-    StudentProgressionItemResponse,
     TeacherAssignmentCreate,
     TeacherAssignmentDelete,
     TeacherAssignmentDependencyPreview,
@@ -906,111 +902,6 @@ async def list_my_subject_cards(
     return await StudentAcademicService.list_student_subject_cards(
         db,
         actor=current_student,
-    )
-
-
-@student_router.get(
-    "/progression",
-    response_model=StudentProgressionSelectionResponse | None,
-)
-async def get_my_progression(
-    db: DbSession,
-    current_student: CurrentStudent,
-) -> StudentProgressionSelectionResponse | None:
-    return await AcademicProgressionService.get_student_selection(db, student=current_student)
-
-
-@student_router.post(
-    "/progression/selection",
-    response_model=StudentProgressionSelectionResponse,
-)
-async def submit_my_progression_selection(
-    payload: StudentProgressionSelectionRequest,
-    db: DbSession,
-    current_student: CurrentStudent,
-) -> StudentProgressionSelectionResponse:
-    return await AcademicProgressionService.submit_student_selection(
-        db, student=current_student, destination_id=payload.destination_id
-    )
-
-
-@tenant_admin_router.get(
-    "/students/{student_id}/progression",
-    response_model=StudentProgressionSelectionResponse | None,
-)
-async def get_student_progression(
-    student_id: UUID,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> StudentProgressionSelectionResponse | None:
-    return await AcademicProgressionService.get_admin_student_selection(
-        db, actor=current_admin, student_id=student_id
-    )
-
-
-@tenant_admin_router.put(
-    "/students/{student_id}/progression/selection",
-    response_model=StudentProgressionSelectionResponse,
-)
-async def override_student_progression_selection(
-    student_id: UUID,
-    payload: StudentProgressionSelectionRequest,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> StudentProgressionSelectionResponse:
-    return await AcademicProgressionService.admin_override_selection(
-        db,
-        actor=current_admin,
-        student_id=student_id,
-        destination_id=payload.destination_id,
-    )
-
-
-@tenant_admin_router.post(
-    "/students/{student_id}/progression/placement",
-    response_model=StudentProgressionSelectionResponse,
-)
-async def place_student_progression(
-    student_id: UUID,
-    payload: AdminProgressionPlacementRequest,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> StudentProgressionSelectionResponse:
-    return await AcademicProgressionService.place_student(
-        db,
-        actor=current_admin,
-        student_id=student_id,
-        classroom_id=payload.classroom_id,
-    )
-
-
-@parent_router.get(
-    "/students/{student_id}/progression",
-    response_model=StudentProgressionSelectionResponse | None,
-)
-async def get_child_progression(
-    student_id: UUID,
-    db: DbSession,
-    current_parent: CurrentParent,
-) -> StudentProgressionSelectionResponse | None:
-    return await AcademicProgressionService.get_parent_child_selection(
-        db,
-        parent=current_parent,
-        student_id=student_id,
-    )
-
-
-@teacher_router.get(
-    "/progression",
-    response_model=list[StudentProgressionItemResponse],
-)
-async def list_my_class_progressions(
-    db: DbSession,
-    current_teacher: CurrentTeacher,
-) -> list[StudentProgressionItemResponse]:
-    return await AcademicProgressionService.list_teacher_pending_progressions(
-        db,
-        teacher=current_teacher,
     )
 
 

@@ -131,14 +131,14 @@ class StudentCreate(InputBase):
     Create a student using backend-generated admission credentials.
 
     Admission numbers are generated internally and are never accepted from a
-    client. Creation also requires a class so the service can atomically create
-    the student's current enrolment.
+    client. Academic level is authoritative; class placement is optional.
     """
 
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
     date_of_birth: date
-    class_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    class_id: uuid.UUID | None = None
     gender: Gender | None = None
     state_of_origin: str | None = Field(default=None, max_length=100)
     parents: list[StudentParentInvitationInput] = Field(
@@ -422,13 +422,35 @@ class StudentClassChangeRequest(InputBase):
         return clean_required_string(value)
 
 
+class StudentBatchClassAssignmentRequest(InputBase):
+    """Assign multiple current enrollments to one class in their existing level."""
+
+    student_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+    target_class_id: uuid.UUID
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("student_ids")
+    @classmethod
+    def unique_students(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("student_ids must not contain duplicates")
+        return value
+
+
+class StudentBatchClassAssignmentResponse(OutputBase):
+    updated_student_ids: list[uuid.UUID]
+    target_class_id: uuid.UUID
+    updated_count: int
+
+
 class StudentEnrollmentResponse(OutputBase):
     """Student class-placement history response."""
 
     id: uuid.UUID
     tenant_id: uuid.UUID
     student_id: uuid.UUID
-    class_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    class_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     started_on: date
     ended_on: date | None = None
@@ -687,6 +709,7 @@ class StudentOutputBase(OutputBase):
     admission_date: date
     graduation_date: date | None = None
     class_id: uuid.UUID | None = None
+    academic_level_id: uuid.UUID | None = None
     status: AcademicStatus
     promotion_hold: bool
     profile_status: StudentProfileStatus
@@ -711,6 +734,7 @@ class StudentDetailResponse(StudentResponse):
 
     class_name: str | None = None
     class_arm: str | None = None
+    academic_level_name: str | None = None
     current_enrollment_id: uuid.UUID | None = None
     current_academic_session_id: uuid.UUID | None = None
     current_academic_session_name: str | None = None
@@ -756,3 +780,4 @@ class StudentHardDeleteEligibilityResponse(OutputBase):
     eligible: bool
     blocking_dependencies: list[str]
     recommendation: Literal["hard_delete", "archive"]
+    academic_level_name: str | None = None

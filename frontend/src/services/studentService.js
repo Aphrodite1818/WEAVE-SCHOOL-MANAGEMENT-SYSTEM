@@ -7,6 +7,8 @@ const buildStudentQuery = ({
   limit = 50,
   search,
   classId,
+  academicLevelId,
+  unassignedClass = false,
   status,
   includeArchived = false,
 } = {}) => {
@@ -15,6 +17,8 @@ const buildStudentQuery = ({
   params.set("limit", String(clampLimit(limit)));
   if (search) params.set("search", search);
   if (classId) params.set("class_id", classId);
+  if (academicLevelId) params.set("academic_level_id", academicLevelId);
+  if (unassignedClass) params.set("unassigned_class", "true");
   if (status) params.set("status", status);
   if (includeArchived) params.set("include_archived", "true");
   return params.toString();
@@ -37,27 +41,6 @@ export const studentService = {
 
   getMyStudent: (requestOptions) =>
     api.get("/students/me", requestOptions),
-
-  getMyProgression: (requestOptions) =>
-    api.get("/students/academics/progression", requestOptions),
-
-  submitProgressionSelection: (destinationId) =>
-    api.post("/students/academics/progression/selection", {
-      destination_id: destinationId,
-    }),
-
-  getStudentProgression: (studentId) =>
-    api.get(`/tenant-admin/academics/students/${studentId}/progression`),
-
-  overrideProgressionSelection: (studentId, destinationId) =>
-    api.put(`/tenant-admin/academics/students/${studentId}/progression/selection`, {
-      destination_id: destinationId,
-    }),
-
-  placeProgressionStudent: (studentId, classroomId) =>
-    api.post(`/tenant-admin/academics/students/${studentId}/progression/placement`, {
-      classroom_id: classroomId,
-    }),
 
   updateMyStudentProfile: (payload) =>
     api.patch("/students/me/profile", payload),
@@ -88,6 +71,9 @@ export const studentService = {
 
   changeStudentClass: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/class-change`, payload),
+
+  assignClassBatch: (payload) =>
+    api.post("/tenant-admin/students/batch-class-assignment", payload),
 
   suspendStudent: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/suspend`, payload),

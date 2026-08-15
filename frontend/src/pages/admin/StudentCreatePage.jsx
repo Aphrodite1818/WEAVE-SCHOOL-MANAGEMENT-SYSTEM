@@ -12,7 +12,7 @@ import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { useToast } from "../../hooks/useToast";
 import academicService from "../../services/academicService";
-import { classService } from "../../services/academicsService";
+import { academicLevelService, classService } from "../../services/academicsService";
 import { parseApiError } from "../../services/api";
 import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
@@ -26,6 +26,7 @@ const INITIAL_FORM = {
   gender: "",
   date_of_birth: "",
   state_of_origin: "",
+  academic_level_id: "",
   class_id: "",
   parents: [{ email: "", relationship_type: "guardian" }],
 };
@@ -79,6 +80,7 @@ function buildAccessNotice(student) {
 function StudentCreatePage() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [classes, setClasses] = useState([]);
+  const [levels, setLevels] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
   const [loadingContext, setLoadingContext] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -93,11 +95,17 @@ function StudentCreatePage() {
 
   const classOptions = useMemo(
     () =>
-      classes.map((item) => ({
+      classes
+        .filter((item) => item.academic_level_id === form.academic_level_id)
+        .map((item) => ({
         value: item.id,
         label: [item.academic_level_name, item.arm].filter(Boolean).join(" ") || "Unnamed class",
       })),
-    [classes],
+    [classes, form.academic_level_id],
+  );
+  const levelOptions = useMemo(
+    () => levels.map((item) => ({ value: item.id, label: item.name })),
+    [levels],
   );
 
   useEffect(() => {
@@ -106,7 +114,8 @@ function StudentCreatePage() {
       setLoadingContext(true);
       setError("");
       try {
-        const [classResponse, sessionResponse] = await Promise.all([
+        const [levelResponse, classResponse, sessionResponse] = await Promise.all([
+          academicLevelService.getLevels({ activeOnly: true }),
           classService.getClasses({ limit: 100 }),
           academicService.listSessions({ limit: 100 }),
         ]);
@@ -121,6 +130,7 @@ function StudentCreatePage() {
               String(item.status || "").toLowerCase() === "open",
           ) || null;
         setClasses(activeClasses);
+        setLevels(asItems(levelResponse));
         setCurrentSession(openCurrent);
       } catch (requestError) {
         if (!mounted) return;
@@ -210,7 +220,8 @@ function StudentCreatePage() {
         gender: cleanOptional(form.gender),
         date_of_birth: form.date_of_birth,
         state_of_origin: cleanOptional(form.state_of_origin),
-        class_id: form.class_id,
+        academic_level_id: form.academic_level_id,
+        class_id: cleanOptional(form.class_id),
         parents,
       });
       setForm(INITIAL_FORM);
@@ -239,7 +250,7 @@ function StudentCreatePage() {
   const creationBlocked =
     loadingContext ||
     !currentSession ||
-    classOptions.length === 0 ||
+    levelOptions.length === 0 ||
     !studentGuard.allowed;
 
   return (
@@ -321,8 +332,12 @@ function StudentCreatePage() {
                 <p className="mt-1 text-xs text-text-muted">
                   Session: {currentSession?.name || "Unavailable"}
                 </p>
-                <div className="mt-4">
-                  <SelectField label="Class" value={form.class_id} options={classOptions} placeholder="Select class" required error={fieldErrors.class_id} onChange={(event) => updateField("class_id", event.target.value)} />
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <SelectField label="Academic level" value={form.academic_level_id} options={levelOptions} placeholder="Select level" required error={fieldErrors.academic_level_id} onChange={(event) => {
+                    updateField("academic_level_id", event.target.value);
+                    updateField("class_id", "");
+                  }} />
+                  <SelectField label="Class (optional)" value={form.class_id} options={classOptions} placeholder="Leave unassigned" error={fieldErrors.class_id} onChange={(event) => updateField("class_id", event.target.value)} />
                 </div>
               </section>
 

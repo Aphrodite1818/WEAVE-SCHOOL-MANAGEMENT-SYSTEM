@@ -17,6 +17,7 @@ def test_student_create_does_not_accept_passport_media() -> None:
             first_name="Taiwo",
             last_name="Ayimora",
             date_of_birth=date(2010, 1, 1),
+            academic_level_id=uuid4(),
             class_id=uuid4(),
             passport_photo_url="https://example.com/student.jpg",
         )
@@ -29,6 +30,7 @@ def test_student_create_normalizes_optional_strings() -> None:
         first_name="  Taiwo  ",
         last_name="  Ayimora  ",
         date_of_birth=date(2010, 1, 1),
+        academic_level_id=uuid4(),
         class_id=uuid4(),
         state_of_origin="   ",
     )

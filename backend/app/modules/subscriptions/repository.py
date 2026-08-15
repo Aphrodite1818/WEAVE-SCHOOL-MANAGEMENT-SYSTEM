@@ -6,11 +6,9 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.classes.models import ClassRoom
 from app.modules.cbt.models import CBTServer
 from app.modules.parents.models import ParentMembership, ParentMembershipStatus
 from app.modules.students.models import Student
-from app.modules.subjects.models import Subject
 from app.modules.subscriptions.models import (
     PaymentTransaction,
     PaymentWebhookEvent,
@@ -342,28 +340,6 @@ class SubscriptionRepository:
         return int(result.scalar_one() or 0)
 
     @staticmethod
-    async def count_classes(db: AsyncSession, tenant_id: uuid.UUID) -> int:
-        result = await db.execute(
-            select(func.count(ClassRoom.id)).where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.is_active == True,
-                ClassRoom.archived_at.is_(None),
-            )
-        )
-        return int(result.scalar_one() or 0)
-
-    @staticmethod
-    async def count_subjects(db: AsyncSession, tenant_id: uuid.UUID) -> int:
-        result = await db.execute(
-            select(func.count(Subject.id)).where(
-                Subject.tenant_id == tenant_id,
-                Subject.is_active == True,
-                Subject.archived_at.is_(None),
-            )
-        )
-        return int(result.scalar_one() or 0)
-
-    @staticmethod
     async def count_cbt_servers(db: AsyncSession, tenant_id: uuid.UUID) -> int:
         result = await db.execute(
             select(func.count(CBTServer.id)).where(
@@ -383,8 +359,6 @@ class SubscriptionRepository:
             ResourceLimitCode.STUDENTS: SubscriptionRepository.count_students,
             ResourceLimitCode.TEACHERS: SubscriptionRepository.count_teachers,
             ResourceLimitCode.PARENTS: SubscriptionRepository.count_parents,
-            ResourceLimitCode.CLASSES: SubscriptionRepository.count_classes,
-            ResourceLimitCode.SUBJECTS: SubscriptionRepository.count_subjects,
             ResourceLimitCode.CBT_SERVERS: SubscriptionRepository.count_cbt_servers,
         }
         return await counter_map[resource](db, tenant_id)
@@ -398,7 +372,5 @@ class SubscriptionRepository:
             ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(db, tenant_id),
             ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(db, tenant_id),
             ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(db, tenant_id),
-            ResourceLimitCode.CLASSES: await SubscriptionRepository.count_classes(db, tenant_id),
-            ResourceLimitCode.SUBJECTS: await SubscriptionRepository.count_subjects(db, tenant_id),
             ResourceLimitCode.CBT_SERVERS: await SubscriptionRepository.count_cbt_servers(db, tenant_id),
         }
