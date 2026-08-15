@@ -110,6 +110,7 @@ from app.modules.tenant_branding.router import (
 )
 from app.tenant_management.router import router as tenant_router
 from app.modules.cbt.pairing.router import router as cbt_pairing_router
+from app.modules.cbt.auth.router import router as cbt_auth_router
 
 logger = get_logger(__name__)
 
@@ -266,6 +267,8 @@ def create_app() -> FastAPI:
     app.include_router(student_attendance_router, prefix=API_V1_PREFIX)
     app.include_router(parent_attendance_router, prefix=API_V1_PREFIX)
     app.include_router(cbt_pairing_router, prefix=f"{API_V1_PREFIX}/cbt")
+    app.include_router(cbt_auth_router, prefix=f"{API_V1_PREFIX}/cbt")
+
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
 
