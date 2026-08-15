@@ -576,7 +576,7 @@ class StudentSubjectResultResponse(OutputBase):
 class StudentSubjectCardResponse(OutputBase):
     id: uuid.UUID
     result_id: uuid.UUID | None = None
-    class_id: uuid.UUID
+    class_id: uuid.UUID | None = None
     class_name: str | None = None
     class_arm: str | None = None
     subject_id: uuid.UUID

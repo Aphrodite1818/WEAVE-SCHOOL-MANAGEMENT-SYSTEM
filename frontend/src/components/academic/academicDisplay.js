@@ -7,7 +7,12 @@ export const termLabels = {
 export const displayTerm = (value) => termLabels[value] || String(value || "Term").replaceAll("_", " ");
 
 export const displayClass = (item) =>
-  [item?.academic_level_name || item?.level_name || item?.class_name, item?.arm || item?.class_arm]
+  item?.display_name ||
+  [
+    item?.academic_level_name || item?.level_name || item?.class_name,
+    item?.department_name,
+    item?.arm_label || item?.class_arm,
+  ]
     .filter(Boolean)
     .join(" ") || "Class";
 

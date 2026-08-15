@@ -22,6 +22,7 @@ from app.core.exceptions import (
     ConflictException,
     NotFoundException,
 )
+from app.core.utils.normalization import normalized_class_arm_key
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
@@ -72,7 +73,12 @@ from app.modules.bulk_imports.validators import (
     ImportRowValidationResult,
     ImportValidationErrorItem,
 )
-from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
+from app.modules.classes.repository import (
+    AcademicLevelRepository,
+    ArmLabelRepository,
+    ClassRoomRepository,
+    DepartmentRepository,
+)
 from app.modules.parents.repository import ParentAccountRepository
 from app.modules.students.models import (
     ParentRelationship,
@@ -175,11 +181,11 @@ def append_validation_error(
     )
 
 
-def _format_class_reference(class_name: Any, class_arm: Any) -> str:
+def _format_class_reference(*parts: Any) -> str:
     """Build a concise class label for validation messages."""
 
-    parts = [str(part).strip() for part in (class_name, class_arm) if not _is_blank(part)]
-    return " ".join(parts) or "the supplied class"
+    clean_parts = [str(part).strip() for part in parts if not _is_blank(part)]
+    return " ".join(clean_parts) or "the supplied class"
 
 
 def build_import_source_fingerprint(
@@ -468,6 +474,7 @@ class BulkImportService:
             normalized_row = validation_result.normalized_row
             level_name = normalized_row.get("level")
             class_name = normalized_row.get("class")
+            department_name = normalized_row.get("department")
 
             if _is_blank(level_name):
                 continue
@@ -486,17 +493,76 @@ class BulkImportService:
 
             normalized_row["academic_level_id"] = str(level.id)
             normalized_row["level"] = level.name
+            department_id = None
+            if not _is_blank(department_name):
+                department = await DepartmentRepository.get_by_normalized_name(
+                    db,
+                    tenant_id,
+                    str(department_name).strip().casefold(),
+                )
+                if department is None:
+                    append_validation_error(
+                        validation_result=validation_result,
+                        field_name="department",
+                        error_code="department_not_found",
+                        error_message=f"Department {department_name} does not exist.",
+                    )
+                    continue
+                if not department.is_active or department.archived_at is not None:
+                    append_validation_error(
+                        validation_result=validation_result,
+                        field_name="department",
+                        error_code="department_inactive",
+                        error_message=f"Department {department.name} is inactive or archived.",
+                    )
+                    continue
+                department_id = department.id
+                normalized_row["department"] = department.name
+
+            arm_label_id = None
+            if not _is_blank(class_name):
+                arm_label = await ArmLabelRepository.get_by_normalized_label(
+                    db,
+                    tenant_id,
+                    normalized_class_arm_key(class_name),
+                )
+                if arm_label is None:
+                    append_validation_error(
+                        validation_result=validation_result,
+                        field_name="class",
+                        error_code="arm_label_not_found",
+                        error_message=(
+                            f"Arm label {class_name} does not exist. "
+                            "Create the arm label before importing students."
+                        ),
+                    )
+                    continue
+                if not arm_label.is_active or arm_label.archived_at is not None:
+                    append_validation_error(
+                        validation_result=validation_result,
+                        field_name="class",
+                        error_code="arm_label_inactive",
+                        error_message=f"Arm label {arm_label.label} is inactive or archived.",
+                    )
+                    continue
+                arm_label_id = arm_label.id
+
             if _is_blank(class_name):
                 normalized_row["class_id"] = None
                 continue
 
-            classroom = await ClassRoomRepository.get_by_level_and_arm(
+            classroom = await ClassRoomRepository.get_by_level_department_arm_label(
                 db=db,
                 tenant_id=tenant_id,
                 academic_level_id=level.id,
-                class_arm=str(class_name),
+                department_id=department_id,
+                arm_label_id=arm_label_id,
             )
-            class_reference = _format_class_reference(level_name, class_name)
+            class_reference = _format_class_reference(
+                level_name,
+                department_name,
+                class_name,
+            )
 
             if classroom is None:
                 append_validation_error(
@@ -522,7 +588,7 @@ class BulkImportService:
                 continue
 
             normalized_row["class_id"] = str(classroom.id)
-            normalized_row["class"] = classroom.arm
+            normalized_row["class"] = classroom.arm_label
 
     @staticmethod
     async def preflight_student_parent_invitations(

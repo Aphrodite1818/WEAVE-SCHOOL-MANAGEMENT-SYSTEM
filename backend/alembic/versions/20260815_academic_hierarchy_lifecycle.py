@@ -224,8 +224,73 @@ def upgrade() -> None:
         ["tenant_id", "is_active"],
         schema=SCHEMA,
     )
+    op.create_table(
+        "arm_labels",
+        sa.Column("label", sa.String(20), nullable=False),
+        sa.Column("normalized_label", sa.String(40), nullable=False),
+        sa.Column("position", sa.Integer(), nullable=True),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.CheckConstraint("position IS NULL OR position > 0", name="ck_arm_labels_position_positive"),
+        sa.CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_arm_labels_archived_requires_inactive",
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", "normalized_label", name="uq_arm_labels_tenant_label"),
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_arm_labels_tenant_active",
+        "arm_labels",
+        ["tenant_id", "is_active"],
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_arm_labels_tenant_position",
+        "arm_labels",
+        ["tenant_id", "position"],
+        schema=SCHEMA,
+    )
 
     op.add_column("classes", sa.Column("department_id", sa.UUID()), schema=SCHEMA)
+    op.add_column("classes", sa.Column("arm_label_id", sa.UUID()), schema=SCHEMA)
+    if "arm" in _column_names("classes") and "normalized_arm" in _column_names("classes"):
+        op.execute(
+            """
+            INSERT INTO public.arm_labels (
+                tenant_id, id, label, normalized_label, position, is_active, created_at, updated_at
+            )
+            SELECT
+                tenant_id,
+                md5(tenant_id::text || ':arm:' || normalized_arm)::uuid,
+                MIN(arm),
+                normalized_arm,
+                NULL,
+                TRUE,
+                now(),
+                now()
+            FROM public.classes
+            WHERE normalized_arm IS NOT NULL
+            GROUP BY tenant_id, normalized_arm
+            ON CONFLICT DO NOTHING
+            """
+        )
+        op.execute(
+            """
+            UPDATE public.classes AS class
+            SET arm_label_id = arm_label.id
+            FROM public.arm_labels AS arm_label
+            WHERE arm_label.tenant_id = class.tenant_id
+              AND arm_label.normalized_label = class.normalized_arm
+            """
+        )
     op.create_foreign_key(
         "fk_classes_department_id",
         "classes",
@@ -236,9 +301,18 @@ def upgrade() -> None:
         referent_schema=SCHEMA,
         ondelete="RESTRICT",
     )
+    op.create_foreign_key(
+        "fk_classes_arm_label_id",
+        "classes",
+        "arm_labels",
+        ["arm_label_id"],
+        ["id"],
+        source_schema=SCHEMA,
+        referent_schema=SCHEMA,
+        ondelete="RESTRICT",
+    )
     _drop_constraint_if_exists("classes", "uq_classes_tenant_level_arm", "unique")
-    op.alter_column("classes", "arm", nullable=True, schema=SCHEMA)
-    op.alter_column("classes", "normalized_arm", nullable=True, schema=SCHEMA)
+    _drop_index_if_exists("classes", "uq_classes_tenant_level_department_arm")
     op.execute(
         """
         CREATE UNIQUE INDEX uq_classes_tenant_level_department_arm
@@ -246,7 +320,7 @@ def upgrade() -> None:
             tenant_id,
             academic_level_id,
             COALESCE(department_id, '00000000-0000-0000-0000-000000000000'::uuid),
-            COALESCE(normalized_arm, '')
+            COALESCE(arm_label_id, '00000000-0000-0000-0000-000000000000'::uuid)
         )
         """
     )
@@ -256,6 +330,15 @@ def upgrade() -> None:
         ["tenant_id", "department_id"],
         schema=SCHEMA,
     )
+    op.create_index(
+        "ix_classes_tenant_arm_label",
+        "classes",
+        ["tenant_id", "arm_label_id"],
+        schema=SCHEMA,
+    )
+    for column_name in ("normalized_arm", "arm"):
+        if column_name in _column_names("classes"):
+            op.drop_column("classes", column_name, schema=SCHEMA)
 
     op.add_column(
         "student_enrollments",

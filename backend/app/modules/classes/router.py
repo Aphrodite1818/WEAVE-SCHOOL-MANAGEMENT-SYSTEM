@@ -9,6 +9,9 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_member,
 )
 from app.modules.classes.schemas import (
+    ArmLabelCreate,
+    ArmLabelResponse,
+    ArmLabelUpdate,
     ClassRoomActivateRequest,
     ClassRoomArchiveRequest,
     ClassRoomCreate,
@@ -17,9 +20,10 @@ from app.modules.classes.schemas import (
     ClassRoomRestoreRequest,
     ClassRoomUpdate,
 )
-from app.modules.classes.service import ClassRoomService
+from app.modules.classes.service import ArmLabelService, ClassRoomService
 from app.modules.parents.models import Parent
 from app.modules.students.models import Student
+from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -32,6 +36,53 @@ CurrentTenantMember: TypeAlias = Annotated[
     TenantAdmin | Teacher | Student | Parent,
     Depends(get_current_tenant_member),
 ]
+
+
+@router.post(
+    "/arm-labels",
+    response_model=ArmLabelResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_arm_label(
+    payload: ArmLabelCreate,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ArmLabelResponse:
+    return await ArmLabelService.create(db, current_user, payload)
+
+
+@router.get("/arm-labels", response_model=list[ArmLabelResponse])
+async def list_arm_labels(
+    db: DbSession,
+    current_user: CurrentTenantMember,
+    active_only: bool = Query(default=False),
+    include_archived: bool = Query(default=False),
+) -> list[ArmLabelResponse]:
+    return await ArmLabelService.list(
+        db,
+        current_user,
+        active_only=active_only,
+        include_archived=include_archived,
+    )
+
+
+@router.patch("/arm-labels/{arm_label_id}", response_model=ArmLabelResponse)
+async def update_arm_label(
+    arm_label_id: uuid.UUID,
+    payload: ArmLabelUpdate,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ArmLabelResponse:
+    return await ArmLabelService.update(db, current_user, arm_label_id, payload)
+
+
+@router.post("/arm-labels/{arm_label_id}/archive", response_model=ArmLabelResponse)
+async def archive_arm_label(
+    arm_label_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ArmLabelResponse:
+    return await ArmLabelService.archive(db, current_user, arm_label_id)
 
 
 @router.post(

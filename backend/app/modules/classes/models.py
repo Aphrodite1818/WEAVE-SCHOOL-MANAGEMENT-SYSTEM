@@ -27,9 +27,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.utils.normalization import (
-    normalize_class_arm,
     normalize_class_name,
-    normalized_class_arm_key,
     normalized_class_name_key,
 )
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
@@ -131,6 +129,31 @@ class Department(BaseModel):
     )
 
 
+class ArmLabel(BaseModel):
+    """Tenant-wide reusable class arm label."""
+
+    __tablename__ = "arm_labels"
+
+    label: Mapped[str] = mapped_column(String(20), nullable=False)
+    normalized_label: Mapped[str] = mapped_column(String(40), nullable=False)
+    position: Mapped[int | None] = mapped_column(nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "normalized_label", name="uq_arm_labels_tenant_label"),
+        CheckConstraint("position IS NULL OR position > 0", name="ck_arm_labels_position_positive"),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_arm_labels_archived_requires_inactive",
+        ),
+        Index("ix_arm_labels_tenant_active", "tenant_id", "is_active"),
+        Index("ix_arm_labels_tenant_position", "tenant_id", "position"),
+    )
+
+
 def _populate_academic_level_normalized_fields(
     _: object, __: object, target: AcademicLevel
 ) -> None:
@@ -160,8 +183,11 @@ class ClassRoom(BaseModel):
         ForeignKey("departments.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    arm: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    normalized_arm: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    arm_label_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("arm_labels.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )
@@ -185,6 +211,14 @@ class ClassRoom(BaseModel):
     academic_level: Mapped[AcademicLevel] = relationship(
         "AcademicLevel", back_populates="classrooms", foreign_keys=[academic_level_id]
     )
+    department: Mapped[Department | None] = relationship(
+        "Department",
+        foreign_keys=[department_id],
+    )
+    arm_label_ref: Mapped[ArmLabel | None] = relationship(
+        "ArmLabel",
+        foreign_keys=[arm_label_id],
+    )
     teacher_membership: Mapped[TeacherMembership | None] = relationship(
         "TeacherMembership",
         foreign_keys=[teacher_membership_id],
@@ -194,13 +228,37 @@ class ClassRoom(BaseModel):
     def academic_level_name(self) -> str:
         return self.academic_level.name
 
+    @property
+    def department_name(self) -> str | None:
+        return self.department.name if self.department is not None else None
+
+    @property
+    def arm_label(self) -> str | None:
+        return self.arm_label_ref.label if self.arm_label_ref is not None else None
+
+    @property
+    def arm(self) -> str | None:
+        return self.arm_label
+
+    @property
+    def display_name(self) -> str:
+        return " ".join(
+            part
+            for part in (
+                self.academic_level_name,
+                self.department_name,
+                self.arm_label,
+            )
+            if part
+        )
+
     __table_args__ = (
         Index(
             "uq_classes_tenant_level_department_arm",
             "tenant_id",
             "academic_level_id",
             text("COALESCE(department_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
-            text("COALESCE(normalized_arm, '')"),
+            text("COALESCE(arm_label_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
             unique=True,
         ),
         CheckConstraint(
@@ -211,21 +269,10 @@ class ClassRoom(BaseModel):
         Index("ix_classes_tenant_active", "tenant_id", "is_active"),
         Index("ix_classes_tenant_level", "tenant_id", "academic_level_id"),
         Index("ix_classes_tenant_department", "tenant_id", "department_id"),
+        Index("ix_classes_tenant_arm_label", "tenant_id", "arm_label_id"),
         Index(
             "ix_classes_tenant_archived",
             "tenant_id",
             "archived_at",
         ),
     )
-
-
-def _populate_classroom_normalized_fields(_: object, __: object, target: ClassRoom) -> None:
-    if target.arm is None:
-        target.normalized_arm = None
-        return
-    target.arm = normalize_class_arm(target.arm)
-    target.normalized_arm = normalized_class_arm_key(target.arm)
-
-
-event.listen(ClassRoom, "before_insert", _populate_classroom_normalized_fields)
-event.listen(ClassRoom, "before_update", _populate_classroom_normalized_fields)

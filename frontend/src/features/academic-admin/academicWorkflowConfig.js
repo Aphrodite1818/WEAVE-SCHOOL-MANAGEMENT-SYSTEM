@@ -16,6 +16,7 @@ export const academicWorkflowOrder = [
   "levels",
   "progression",
   "classes",
+  "arm-labels",
   "subjects",
   "level-subjects",
   "assignments",
@@ -63,6 +64,18 @@ export const academicWorkflowConfig = {
       { id: "active", label: "Active Classes" },
       { id: "inactive", label: "Inactive Classes" },
       { id: "archived", label: "Archived Classes" },
+    ],
+  },
+  "arm-labels": {
+    title: "Arm Labels",
+    shortTitle: "Arm Labels",
+    description: "Manage reusable tenant-wide labels such as A, B, and C.",
+    icon: School,
+    tone: "accent",
+    defaultTab: "overview",
+    tabs: [
+      { id: "overview", label: "Overview" },
+      { id: "create", label: "Add Arm Label" },
     ],
   },
   subjects: {
@@ -238,6 +251,12 @@ export const academicWorkflowSummaryCards = [
     label: "Classes",
     description: "Class arms and lifecycle",
     to: "/admin/academic/classes",
+    icon: School,
+  },
+  {
+    label: "Arm Labels",
+    description: "Reusable A, B, C labels",
+    to: "/admin/academic/arm-labels",
     icon: School,
   },
   {

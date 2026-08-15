@@ -33,7 +33,10 @@ const titleCase = (value) =>
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 const asItems = (response) => (Array.isArray(response?.items) ? response.items : []);
 const className = (item) =>
-  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || item?.id || "Class";
+  item?.display_name ||
+  [item?.academic_level_name, item?.department_name, item?.arm_label].filter(Boolean).join(" ") ||
+  item?.id ||
+  "Class";
 const studentLabel = (item) =>
   [item?.first_name, item?.last_name].filter(Boolean).join(" ") ||
   item?.student_name ||

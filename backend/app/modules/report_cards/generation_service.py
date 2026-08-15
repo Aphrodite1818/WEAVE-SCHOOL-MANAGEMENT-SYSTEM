@@ -18,7 +18,7 @@ from app.modules.report_cards.schemas import (
 from app.modules.report_cards.service import ReportCardService
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import StudentEnrollment
-from app.modules.students.repository import StudentRepository
+from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.tenant_admins.models import TenantAdmin
 
 
@@ -48,22 +48,12 @@ class EnrollmentReportCardService:
         student_id: uuid.UUID,
         academic_session_id: uuid.UUID,
     ) -> StudentEnrollment | None:
-        return (
-            await db.execute(
-                select(StudentEnrollment)
-                .where(
-                    StudentEnrollment.tenant_id == tenant_id,
-                    StudentEnrollment.student_id == student_id,
-                    StudentEnrollment.academic_session_id == academic_session_id,
-                )
-                .order_by(
-                    StudentEnrollment.is_current.desc(),
-                    StudentEnrollment.started_on.desc(),
-                    StudentEnrollment.created_at.desc(),
-                )
-                .limit(1)
-            )
-        ).scalar_one_or_none()
+        return await StudentEnrollmentRepository.get_authoritative_for_session(
+            db,
+            tenant_id,
+            student_id,
+            academic_session_id,
+        )
 
     @staticmethod
     async def _enrollments_for_class_session(

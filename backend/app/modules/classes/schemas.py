@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.utils.normalization import normalize_class_arm, normalize_class_name
+from app.core.utils.normalization import normalize_class_name
 from app.modules.classes.models import AcademicCategory
 
 
@@ -89,16 +89,33 @@ class DepartmentResponse(OutputBase):
     updated_at: datetime
 
 
+class ArmLabelCreate(InputBase):
+    label: str = Field(min_length=1, max_length=20)
+    position: int | None = Field(default=None, gt=0)
+
+
+class ArmLabelUpdate(InputBase):
+    label: str | None = Field(default=None, min_length=1, max_length=20)
+    position: int | None = Field(default=None, gt=0)
+    is_active: bool | None = None
+
+
+class ArmLabelResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    label: str
+    position: int | None = None
+    is_active: bool
+    archived_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ClassRoomBase(InputBase):
     academic_level_id: uuid.UUID
     department_id: uuid.UUID | None = None
-    arm: str | None = Field(default=None, min_length=1, max_length=20)
+    arm_label_id: uuid.UUID | None = None
     teacher_membership_id: uuid.UUID | None = None
-
-    @field_validator("arm", mode="before")
-    @classmethod
-    def normalize_arm(cls, value: str | None) -> str | None:
-        return normalize_class_arm(value)
 
 
 class ClassRoomCreate(ClassRoomBase):
@@ -108,13 +125,8 @@ class ClassRoomCreate(ClassRoomBase):
 class ClassRoomUpdate(InputBase):
     academic_level_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
-    arm: str | None = Field(default=None, min_length=1, max_length=20)
+    arm_label_id: uuid.UUID | None = None
     teacher_membership_id: uuid.UUID | None = None
-
-    @field_validator("arm", mode="before")
-    @classmethod
-    def normalize_arm(cls, value: str | None) -> str | None:
-        return normalize_class_arm(value)
 
 
 class ClassRoomArchiveRequest(InputBase):
@@ -140,7 +152,10 @@ class ClassRoomResponse(OutputBase):
     academic_level_id: uuid.UUID
     academic_level_name: str
     department_id: uuid.UUID | None = None
-    arm: str | None
+    department_name: str | None = None
+    arm_label_id: uuid.UUID | None = None
+    arm_label: str | None = None
+    display_name: str
 
     teacher_membership_id: uuid.UUID | None
     is_active: bool

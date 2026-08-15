@@ -11,7 +11,7 @@ const teacherClassConfig = {
   filters: [{ name: "search", label: "Search", placeholder: "Class name or arm" }],
   columns: [
     { key: "academic_level_name", label: "Class", render: (item) => displayClass(item) },
-    { key: "arm", label: "Arm", render: (item) => item.arm || "-" },
+    { key: "arm_label", label: "Arm", render: (item) => item.arm_label || "-" },
     {
       key: "teacher",
       label: "Class teacher",

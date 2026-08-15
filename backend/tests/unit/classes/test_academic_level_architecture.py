@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.modules.classes.models import AcademicCategory, AcademicLevel, ClassRoom
+from app.modules.classes.models import AcademicCategory, AcademicLevel, ArmLabel, ClassRoom
 from app.core.exceptions import ConflictException
-from app.modules.classes.schemas import ClassRoomCreate, ClassRoomUpdate
-from app.modules.classes.service import ClassRoomService
+from app.modules.classes.schemas import ArmLabelCreate, ClassRoomCreate, ClassRoomUpdate
+from app.modules.classes.service import ArmLabelService, ClassRoomService
 from app.modules.student_academics.models import LevelSubject, TeacherAssignment
 from app.modules.student_academics.schemas import TeacherAssignmentCreate
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
@@ -25,10 +25,11 @@ def _allow_academic_writes_for_class_unit_tests():
 
 
 def test_classroom_contract_requires_level_but_allows_no_class_arm() -> None:
-    payload = ClassRoomCreate(academic_level_id=uuid.uuid4(), arm=" A ")
-    assert payload.arm == "A"
+    arm_label_id = uuid.uuid4()
+    payload = ClassRoomCreate(academic_level_id=uuid.uuid4(), arm_label_id=arm_label_id)
+    assert payload.arm_label_id == arm_label_id
 
-    assert ClassRoomCreate(academic_level_id=uuid.uuid4()).arm is None
+    assert ClassRoomCreate(academic_level_id=uuid.uuid4()).arm_label_id is None
 
 
 def test_teacher_assignment_contract_is_concrete_class_and_level_subject() -> None:
@@ -45,7 +46,8 @@ def test_teacher_assignment_contract_is_concrete_class_and_level_subject() -> No
 def test_academic_tables_expose_canonical_foreign_keys() -> None:
     assert "normalized_name" in AcademicLevel.__table__.columns
     assert "academic_level_id" in ClassRoom.__table__.columns
-    assert "normalized_arm" in ClassRoom.__table__.columns
+    assert "arm_label_id" in ClassRoom.__table__.columns
+    assert "normalized_arm" not in ClassRoom.__table__.columns
     assert "academic_level_id" in LevelSubject.__table__.columns
     assert "class_id" in TeacherAssignment.__table__.columns
     assert "level_subject_id" in TeacherAssignment.__table__.columns
@@ -65,7 +67,7 @@ async def test_archived_class_arm_cannot_be_updated() -> None:
                 db=AsyncMock(),
                 actor=_admin(tenant_id),
                 class_id=classroom.id,
-                payload=ClassRoomUpdate(arm="B"),
+                payload=ClassRoomUpdate(arm_label_id=uuid.uuid4()),
             )
 
 
@@ -84,6 +86,10 @@ async def test_class_teacher_can_be_explicitly_unassigned() -> None:
         patch(
             "app.modules.classes.service.AcademicLevelRepository.get_by_id",
             new=AsyncMock(return_value=classroom.academic_level),
+        ),
+        patch(
+            "app.modules.classes.service.ArmLabelRepository.get_by_id",
+            new=AsyncMock(return_value=classroom.arm_label_ref),
         ),
         patch(
             "app.modules.classes.service.ClassRoomRepository.save",
@@ -153,6 +159,39 @@ async def test_restored_class_arm_remains_inactive() -> None:
     assert response.archived_at is None
 
 
+@pytest.mark.asyncio
+async def test_duplicate_arm_labels_are_rejected_per_tenant() -> None:
+    tenant_id = uuid.uuid4()
+    with patch(
+        "app.modules.classes.service.ArmLabelRepository.get_by_normalized_label",
+        new=AsyncMock(return_value=object()),
+    ):
+        with pytest.raises(ConflictException, match="Arm label with this name already exists"):
+            await ArmLabelService.create(
+                db=AsyncMock(),
+                actor=_admin(tenant_id),
+                payload=ArmLabelCreate(label=" a "),
+            )
+
+
+def test_arm_label_can_be_reused_across_levels() -> None:
+    tenant_id = uuid.uuid4()
+    arm_label = ArmLabel(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        label="A",
+        normalized_label="a",
+        is_active=True,
+    )
+    jss1 = _classroom(tenant_id, arm_label=arm_label)
+    jss2 = _classroom(tenant_id, arm_label=arm_label)
+    jss2.academic_level_id = uuid.uuid4()
+
+    assert jss1.arm_label_id == jss2.arm_label_id
+    assert jss1.display_name.endswith(" A")
+    assert jss2.display_name.endswith(" A")
+
+
 def _admin(tenant_id: uuid.UUID) -> TenantAdmin:
     return TenantAdmin(
         id=uuid.uuid4(),
@@ -165,7 +204,12 @@ def _admin(tenant_id: uuid.UUID) -> TenantAdmin:
     )
 
 
-def _classroom(tenant_id: uuid.UUID, *, active: bool = True) -> ClassRoom:
+def _classroom(
+    tenant_id: uuid.UUID,
+    *,
+    active: bool = True,
+    arm_label: ArmLabel | None = None,
+) -> ClassRoom:
     now = datetime.now(timezone.utc)
     level = AcademicLevel(
         id=uuid.uuid4(),
@@ -178,13 +222,22 @@ def _classroom(tenant_id: uuid.UUID, *, active: bool = True) -> ClassRoom:
         created_at=now,
         updated_at=now,
     )
+    arm_label = arm_label or ArmLabel(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        label="A",
+        normalized_label="a",
+        is_active=True,
+        created_at=now,
+        updated_at=now,
+    )
     return ClassRoom(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         academic_level_id=level.id,
         academic_level=level,
-        arm="A",
-        normalized_arm="A",
+        arm_label_id=arm_label.id,
+        arm_label_ref=arm_label,
         is_active=active,
         created_at=now,
         updated_at=now,

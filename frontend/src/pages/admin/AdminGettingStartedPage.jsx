@@ -37,7 +37,7 @@ import { useSubscription } from "../../features/subscriptions/useSubscription";
 import useRoleGuide from "../../features/guides/useRoleGuide";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
-import { academicLevelService, classService } from "../../services/academicsService";
+import { academicLevelService, armLabelService, classService } from "../../services/academicsService";
 import { authSession, getErrorMessage, parseApiError } from "../../services/api";
 import { mediaService } from "../../services/mediaService";
 import { tenantBrandingService } from "../../services/tenantBrandingService";
@@ -67,7 +67,9 @@ const statusValue = (item) => String(item?.status || "").toLowerCase();
 const sessionLabel = (item) => item?.name || "Academic session";
 const termLabel = (item) => titleCase(item?.display_name || item?.name || "Term");
 const classLabel = (item) =>
-  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || "Class";
+  item?.display_name ||
+  [item?.academic_level_name, item?.department_name, item?.arm_label].filter(Boolean).join(" ") ||
+  "Class";
 const schoolLogoFromUser = (user) =>
   user?.tenant_logo_url || user?.tenant?.logo_url || "";
 const uploadedLogoUrl = (response) =>
@@ -149,6 +151,7 @@ function AdminGettingStartedPage() {
   const [calendars, setCalendars] = useState([]);
   const [levels, setLevels] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [armLabels, setArmLabels] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [calendarConfiguration, setCalendarConfiguration] = useState(null);
   const [selectedSessionId, setSelectedSessionId] = useState("");
@@ -161,7 +164,7 @@ function AdminGettingStartedPage() {
   const [termForm, setTermForm] = useState(DEFAULT_TERM);
   const [calendarForm, setCalendarForm] = useState(DEFAULT_CALENDAR);
   const [levelForm, setLevelForm] = useState({ name: "", category: "", position: "" });
-  const [classForm, setClassForm] = useState({ academic_level_id: "", arm: "" });
+  const [classForm, setClassForm] = useState({ academic_level_id: "", arm_label_id: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
   const [schoolLogoUrl, setSchoolLogoUrl] = useState(() =>
     schoolLogoFromUser(authSession.getUser()),
@@ -187,6 +190,7 @@ function AdminGettingStartedPage() {
         calendarResponse,
         levelResponse,
         classResponse,
+        armLabelResponse,
         subjectResponse,
         configurationResponse,
       ] = await Promise.all([
@@ -195,6 +199,7 @@ function AdminGettingStartedPage() {
         schoolCalendarService.listAdminCalendars({ limit: 100 }),
         academicLevelService.getLevels({ limit: 500, activeOnly: false }),
         classService.getClasses({ limit: 500, activeOnly: false }),
+        armLabelService.getArmLabels({ limit: 500, activeOnly: true }),
         subjectService.getSubjects({ limit: 500, includeArchived: false }),
         schoolCalendarService.getConfiguration().catch((requestError) => {
           if (requestError?.response?.status === 404) return null;
@@ -207,6 +212,7 @@ function AdminGettingStartedPage() {
       const calendarItems = asItems(calendarResponse);
       const levelItems = asItems(levelResponse);
       const classItems = asItems(classResponse);
+      const armLabelItems = asItems(armLabelResponse);
       const subjectItems = asItems(subjectResponse);
       const preferredSession =
         sessionItems.find((item) => item.is_current) ||
@@ -229,6 +235,7 @@ function AdminGettingStartedPage() {
       setCalendars(calendarItems);
       setLevels(levelItems);
       setClasses(classItems);
+      setArmLabels(armLabelItems);
       setSubjects(subjectItems);
       setCalendarConfiguration(configurationResponse);
       setSelectedSessionId((current) =>
@@ -624,7 +631,7 @@ function AdminGettingStartedPage() {
       "Class created.",
     );
     if (!created) return;
-    setClassForm((current) => ({ ...current, arm: "" }));
+    setClassForm((current) => ({ ...current, arm_label_id: "" }));
   };
 
   const createSubject = async (event) => {
@@ -811,6 +818,13 @@ function AdminGettingStartedPage() {
       description: `${armCount} class arm${armCount === 1 ? "" : "s"}`,
     };
   });
+  const armLabelOptions = armLabels
+    .filter((item) => item.is_active && !item.archived_at)
+    .map((item) => ({
+      value: item.id,
+      label: item.label,
+      description: item.position ? `Position ${item.position}` : "",
+    }));
 
   const goPrevious = () => {
     if (!firstStep) guide.moveTo(guide.steps[guide.currentIndex - 1].id);
@@ -1318,7 +1332,7 @@ function AdminGettingStartedPage() {
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground">2</span>
                 <div>
                   <p className="text-sm font-semibold text-text">Add an arm to the level</p>
-                  <p className="mt-0.5 text-xs leading-5 text-text-muted">Select a saved level, then add one arm at a time, for example A, B, or Gold.</p>
+                  <p className="mt-0.5 text-xs leading-5 text-text-muted">Select a saved level, then choose an existing arm label when one is needed.</p>
                 </div>
               </div>
               <div className="space-y-3">
@@ -1331,12 +1345,13 @@ function AdminGettingStartedPage() {
                   searchable={activeLevels.length > 5}
                   required
                 />
-                <Input
-                  label="Class arm"
-                  value={classForm.arm}
-                  placeholder="A"
-                  onChange={(event) => setClassForm((currentForm) => ({ ...currentForm, arm: event.target.value }))}
-                  required
+                <SearchableSelect
+                  label="Arm"
+                  value={classForm.arm_label_id}
+                  onChange={(value) => setClassForm((currentForm) => ({ ...currentForm, arm_label_id: value }))}
+                  options={armLabelOptions}
+                  placeholder={armLabelOptions.length ? "No arm" : "No arm labels yet"}
+                  searchable={armLabelOptions.length > 5}
                 />
                 <Button type="submit" disabled={!activeLevels.length || saving === "class"} className="w-full">
                   {saving === "class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <School className="h-4 w-4" />}

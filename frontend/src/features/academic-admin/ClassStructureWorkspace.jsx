@@ -6,7 +6,7 @@ import Button from "../../components/ui/Button";
 import MultiSelect from "../../components/ui/MultiSelect";
 import { displayClass } from "../../components/academic/academicDisplay";
 import { useToast } from "../../hooks/useToast";
-import { academicLevelService, classService, departmentService } from "../../services/academicsService";
+import { academicLevelService, armLabelService, classService, departmentService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { subjectService } from "../../services/subject.service";
@@ -32,6 +32,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const [levels, setLevels] = useState([]);
   const [classes, setClasses] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [armLabels, setArmLabels] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [selectedLevelId, setSelectedLevelId] = useState("");
@@ -50,8 +51,9 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     position: "",
     specialization_required_from_term_position: "",
   });
-  const [classForm, setClassForm] = useState({ academic_level_id: "", department_id: "", arm: "", teacher_membership_id: "" });
+  const [classForm, setClassForm] = useState({ academic_level_id: "", department_id: "", arm_label_id: "", teacher_membership_id: "" });
   const [departmentName, setDepartmentName] = useState("");
+  const [armLabelForm, setArmLabelForm] = useState({ label: "", position: "" });
   const [subjectForm, setSubjectForm] = useState({ subject_ids: [] });
   const [editingClassId, setEditingClassId] = useState("");
   const [editingLevelId, setEditingLevelId] = useState("");
@@ -61,10 +63,11 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
 
   const load = useCallback(async () => {
     try {
-      const [levelRows, classRows, departmentRows, subjectRows, teacherRows, termRows] = await Promise.all([
+      const [levelRows, classRows, departmentRows, armLabelRows, subjectRows, teacherRows, termRows] = await Promise.all([
         academicLevelService.getLevels({ includeArchived: true }),
         classService.getClasses({ includeArchived: true }),
         departmentService.getDepartments(),
+        armLabelService.getArmLabels({ includeArchived: true }),
         subjectService.getSubjects({ limit: 100 }),
         teacherService.getTeachers({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
@@ -72,6 +75,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       setLevels(asItems(levelRows));
       setClasses(asItems(classRows));
       setDepartments(asItems(departmentRows));
+      setArmLabels(asItems(armLabelRows));
       setSubjects(asItems(subjectRows));
       setTeachers(asItems(teacherRows).filter(isAssignableClassTeacher));
       setTerms(asItems(termRows));
@@ -118,6 +122,12 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const levelOptions = useMemo(() => levels.map((item) => ({ value: item.id, label: item.name })), [levels]);
   const teacherOptions = useMemo(() => teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })), [teachers]);
   const departmentOptions = useMemo(() => departments.map((item) => ({ value: item.id, label: item.name })), [departments]);
+  const armLabelOptions = useMemo(
+    () => armLabels
+      .filter((item) => item.is_active && !item.archived_at)
+      .map((item) => ({ value: item.id, label: item.label })),
+    [armLabels],
+  );
   const attached = useMemo(() => new Set(levelSubjects.map((item) => item.subject_id)), [levelSubjects]);
   const subjectOptions = useMemo(() => subjects.filter((item) => !attached.has(item.id)).map((item) => ({ value: item.id, label: item.name })), [subjects, attached]);
   const levelSubjectOptions = useMemo(
@@ -212,7 +222,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       } else {
         await classService.createClass(payload);
       }
-      setClassForm({ academic_level_id: "", department_id: "", arm: "", teacher_membership_id: "" });
+      setClassForm({ academic_level_id: "", department_id: "", arm_label_id: "", teacher_membership_id: "" });
       setEditingClassId("");
       showSuccess(editingClassId ? "Class arm updated." : "Class arm created.");
       await load();
@@ -230,6 +240,25 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       await load();
     } catch (error) {
       showError(getErrorMessage(error, "Could not create department."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createArmLabel = async (event) => {
+    event.preventDefault();
+    if (!armLabelForm.label.trim()) return;
+    setSaving("arm-label");
+    try {
+      await armLabelService.createArmLabel({
+        label: armLabelForm.label.trim(),
+        position: armLabelForm.position ? Number(armLabelForm.position) : null,
+      });
+      setArmLabelForm({ label: "", position: "" });
+      showSuccess("Arm label created.");
+      await load();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not create arm label."));
     } finally {
       setSaving(false);
     }
@@ -487,6 +516,64 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     );
   }
 
+  if (domain === "arm-labels") {
+    return (
+      <WorkspaceGrid
+        editor={activeTab === "create" ? (
+          <WorkspacePanel
+            title="Add arm label"
+            description="Create one reusable label that can be used across many levels."
+          >
+            <form className="space-y-3" onSubmit={createArmLabel}>
+              <Input
+                label="Arm label"
+                value={armLabelForm.label}
+                onChange={(event) => setArmLabelForm((current) => ({ ...current, label: event.target.value }))}
+                placeholder="A"
+                required
+              />
+              <Input
+                label="Display position"
+                type="number"
+                min="1"
+                value={armLabelForm.position}
+                onChange={(event) => setArmLabelForm((current) => ({ ...current, position: event.target.value }))}
+              />
+              <FormActions submitting={saving === "arm-label"} submitLabel="Add arm label" />
+            </form>
+          </WorkspacePanel>
+        ) : null}
+        content={(
+          <WorkspacePanel
+            title="Arm labels"
+            description="Reusable labels available when creating or editing classes."
+          >
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {armLabels.map((item) => (
+                <div key={item.id} className="rounded-2xl border border-border/70 bg-surface p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-lg font-semibold text-text">{item.label}</p>
+                    <Badge variant={item.is_active && !item.archived_at ? "success" : "warning"}>
+                      {item.archived_at ? "Archived" : item.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-text-muted">
+                    {item.position ? `Position ${item.position}` : "No display position"}
+                  </p>
+                </div>
+              ))}
+              {!armLabels.length ? (
+                <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-text-muted">
+                  No arm labels yet.
+                </div>
+              ) : null}
+            </div>
+          </WorkspacePanel>
+        )}
+      />
+    );
+  }
+
   if (domain === "classes") {
     const filteredClasses = classes.filter((item) => {
       if (activeTab === "active") return item.is_active && !item.archived_at;
@@ -514,14 +601,15 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                 options={levelOptions}
                 required
               />
-              <Input
+              <SelectControl
                 label="Arm"
-                value={classForm.arm}
-                onChange={(event) => setClassForm((current) => ({
+                value={classForm.arm_label_id}
+                onChange={(value) => setClassForm((current) => ({
                   ...current,
-                  arm: event.target.value,
+                  arm_label_id: value,
                 }))}
-                placeholder="A"
+                options={armLabelOptions}
+                placeholder="No arm"
               />
               <SelectControl
                 label="Department (optional)"
@@ -560,7 +648,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                   setClassForm({
                     academic_level_id: "",
                     department_id: "",
-                    arm: "",
+                    arm_label_id: "",
                     teacher_membership_id: "",
                   });
                 }}
@@ -609,7 +697,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                             setClassForm({
                               academic_level_id: item.academic_level_id,
                               department_id: item.department_id || "",
-                              arm: item.arm,
+                              arm_label_id: item.arm_label_id || "",
                               teacher_membership_id: item.teacher_membership_id || "",
                             });
                           }}

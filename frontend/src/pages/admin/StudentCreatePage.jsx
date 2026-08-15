@@ -99,7 +99,7 @@ function StudentCreatePage() {
         .filter((item) => item.academic_level_id === form.academic_level_id)
         .map((item) => ({
         value: item.id,
-        label: [item.academic_level_name, item.arm].filter(Boolean).join(" ") || "Unnamed class",
+        label: item.display_name || [item.academic_level_name, item.department_name, item.arm_label].filter(Boolean).join(" ") || "Unnamed class",
       })),
     [classes, form.academic_level_id],
   );

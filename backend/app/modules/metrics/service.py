@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.settings import settings
 from app.core.cache.manager import CacheManager
 from app.modules.communications.enums import CommunicationActorType, NotificationStatus
-from app.modules.classes.models import AcademicLevel, ClassRoom
+from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
     student_dashboard_cache_key,
@@ -142,17 +142,18 @@ class MetricsService:
             await db.execute(
                 select(
                     AcademicLevel.name,
-                    ClassRoom.arm,
+                    ArmLabel.label.label("arm"),
                     func.avg(StudentSubjectResult.total_score).label("average"),
                 )
                 .join(ClassRoom, ClassRoom.id == StudentSubjectResult.class_id)
                 .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
+                .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
                 )
-                .group_by(AcademicLevel.name, ClassRoom.arm)
-                .order_by(AcademicLevel.name.asc(), ClassRoom.arm.asc())
+                .group_by(AcademicLevel.name, ArmLabel.label)
+                .order_by(AcademicLevel.name.asc(), ArmLabel.label.asc())
             )
         ).all()
         return [

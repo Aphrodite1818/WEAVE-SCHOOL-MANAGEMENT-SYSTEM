@@ -14,6 +14,7 @@ from app.modules.classes.repository import DepartmentRepository
 from app.modules.student_academics.models import (
     AcademicTerm,
     AcademicTermName,
+    AcademicTermStatus,
     LevelSubject,
     StudentAssessmentScore,
     StudentDepartmentAssignment,
@@ -27,6 +28,7 @@ from app.modules.student_academics.schemas import (
     SubjectOfferingCreate,
     SubjectOfferingResponse,
 )
+from app.modules.students.repository import StudentEnrollmentRepository
 
 
 TERM_POSITION = {
@@ -47,6 +49,11 @@ class ResolvedCurriculumOffering:
 
 class CurriculumResolutionService:
     """Single source of truth for subject applicability and participation."""
+
+    @staticmethod
+    def _ensure_term_can_change(term: AcademicTerm) -> None:
+        if term.status in {AcademicTermStatus.CLOSED, AcademicTermStatus.CLOSING}:
+            raise ConflictException("Closed academic term curriculum cannot be changed.")
 
     @staticmethod
     async def create_subject_offering(
@@ -78,6 +85,7 @@ class CurriculumResolutionService:
         ).scalar_one_or_none()
         if term is None:
             raise NotFoundException("Academic term not found.")
+        CurriculumResolutionService._ensure_term_can_change(term)
         if payload.department_id is not None:
             department = await DepartmentRepository.get_by_id(
                 db, tenant_id, payload.department_id
@@ -168,6 +176,7 @@ class CurriculumResolutionService:
             raise ConflictException(
                 "Effective term must belong to the enrollment's academic session."
             )
+        CurriculumResolutionService._ensure_term_can_change(term)
         assignment = StudentDepartmentAssignment(
             tenant_id=tenant_id,
             student_enrollment_id=enrollment.id,
@@ -322,15 +331,12 @@ class CurriculumResolutionService:
         ).scalar_one_or_none()
         if term is None:
             raise NotFoundException("Academic term not found.")
-        enrollment = (
-            await db.execute(
-                select(StudentEnrollment).where(
-                    StudentEnrollment.tenant_id == tenant_id,
-                    StudentEnrollment.student_id == student_id,
-                    StudentEnrollment.academic_session_id == term.academic_session_id,
-                )
-            )
-        ).scalar_one_or_none()
+        enrollment = await StudentEnrollmentRepository.get_authoritative_for_session(
+            db,
+            tenant_id,
+            student_id,
+            term.academic_session_id,
+        )
         if enrollment is None:
             raise ConflictException(
                 "Student enrollment for this academic session is required."

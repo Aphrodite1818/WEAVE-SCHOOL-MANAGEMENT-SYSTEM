@@ -34,7 +34,9 @@ const normalizeClassPayload = (payload = {}) => ({
   ...(payload.academic_level_id !== undefined
     ? { academic_level_id: payload.academic_level_id }
     : {}),
-  ...(payload.arm !== undefined ? { arm: payload.arm || null } : {}),
+  ...(payload.arm_label_id !== undefined
+    ? { arm_label_id: payload.arm_label_id || null }
+    : {}),
   ...(payload.department_id !== undefined
     ? { department_id: payload.department_id || null }
     : {}),
@@ -121,5 +123,17 @@ export const departmentService = {
   getDepartments: (options = {}) =>
     api.get(`/departments?${buildQuery(options, { activeOnly: "active_only" })}`),
   createDepartment: (payload) => api.post("/departments", payload),
+};
+
+export const armLabelService = {
+  getArmLabels: (options = {}) =>
+    api.get(`/classes/arm-labels?${buildQuery(options, {
+      activeOnly: "active_only",
+      includeArchived: "include_archived",
+    })}`),
+  createArmLabel: (payload) => api.post("/classes/arm-labels", payload),
+  updateArmLabel: (armLabelId, payload) =>
+    api.patch(`/classes/arm-labels/${armLabelId}`, payload),
+  archiveArmLabel: (armLabelId) => api.post(`/classes/arm-labels/${armLabelId}/archive`, {}),
 };
 

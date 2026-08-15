@@ -9,11 +9,14 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.utils.normalization import (
-    normalized_class_arm_key,
-    normalized_class_name_key,
+from app.core.utils.normalization import normalized_class_name_key
+from app.modules.classes.models import (
+    AcademicCategory,
+    AcademicLevel,
+    ArmLabel,
+    ClassRoom,
+    Department,
 )
-from app.modules.classes.models import AcademicCategory, AcademicLevel, ClassRoom, Department
 
 if TYPE_CHECKING:
     from app.modules.students.models import AcademicStatus
@@ -195,6 +198,91 @@ class DepartmentRepository:
         )
 
 
+class ArmLabelRepository:
+    @staticmethod
+    async def add(db: AsyncSession, arm_label: ArmLabel) -> ArmLabel:
+        db.add(arm_label)
+        await db.flush()
+        return arm_label
+
+    @staticmethod
+    async def get_by_id(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        arm_label_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> ArmLabel | None:
+        query = select(ArmLabel).where(
+            ArmLabel.tenant_id == tenant_id,
+            ArmLabel.id == arm_label_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_normalized_label(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        normalized_label: str,
+    ) -> ArmLabel | None:
+        return (
+            await db.execute(
+                select(ArmLabel).where(
+                    ArmLabel.tenant_id == tenant_id,
+                    ArmLabel.normalized_label == normalized_label,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def list_for_tenant(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        active_only: bool = False,
+        include_archived: bool = False,
+    ) -> list[ArmLabel]:
+        query = select(ArmLabel).where(ArmLabel.tenant_id == tenant_id)
+        if active_only:
+            query = query.where(ArmLabel.is_active.is_(True), ArmLabel.archived_at.is_(None))
+        elif not include_archived:
+            query = query.where(ArmLabel.archived_at.is_(None))
+        return list(
+            (
+                await db.execute(
+                    query.order_by(
+                        ArmLabel.position.asc().nullslast(),
+                        ArmLabel.normalized_label.asc(),
+                    )
+                )
+            ).scalars()
+        )
+
+    @staticmethod
+    async def count_class_dependencies(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        arm_label_id: uuid.UUID,
+    ) -> int:
+        result = await db.execute(
+            select(func.count())
+            .select_from(ClassRoom)
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.arm_label_id == arm_label_id,
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    @staticmethod
+    async def save(db: AsyncSession, arm_label: ArmLabel) -> ArmLabel:
+        db.add(arm_label)
+        await db.flush()
+        return arm_label
+
+
 class ClassRoomRepository:
     @staticmethod
     async def add(db: AsyncSession, classroom: ClassRoom) -> ClassRoom:
@@ -212,7 +300,11 @@ class ClassRoomRepository:
     ) -> ClassRoom | None:
         query = (
             select(ClassRoom)
-            .options(selectinload(ClassRoom.academic_level))
+            .options(
+                selectinload(ClassRoom.academic_level),
+                selectinload(ClassRoom.department),
+                selectinload(ClassRoom.arm_label_ref),
+            )
             .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id == class_id)
         )
         if lock:
@@ -221,24 +313,25 @@ class ClassRoomRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_by_level_and_arm(
+    async def get_by_level_department_arm_label(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         academic_level_id: uuid.UUID,
-        class_arm: str | None,
         department_id: uuid.UUID | None = None,
+        arm_label_id: uuid.UUID | None = None,
     ) -> ClassRoom | None:
-        normalized_arm = (
-            normalized_class_arm_key(class_arm) if class_arm is not None else None
-        )
         result = await db.execute(
             select(ClassRoom)
-            .options(selectinload(ClassRoom.academic_level))
+            .options(
+                selectinload(ClassRoom.academic_level),
+                selectinload(ClassRoom.department),
+                selectinload(ClassRoom.arm_label_ref),
+            )
             .where(
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.academic_level_id == academic_level_id,
-                ClassRoom.normalized_arm == normalized_arm,
                 ClassRoom.department_id == department_id,
+                ClassRoom.arm_label_id == arm_label_id,
             )
         )
         return result.scalar_one_or_none()
@@ -253,14 +346,19 @@ class ClassRoomRepository:
     ) -> list[ClassRoom]:
         query = (
             select(ClassRoom)
-            .options(selectinload(ClassRoom.academic_level))
+            .options(
+                selectinload(ClassRoom.academic_level),
+                selectinload(ClassRoom.department),
+                selectinload(ClassRoom.arm_label_ref),
+            )
             .where(
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.academic_level_id == academic_level_id,
                 ClassRoom.is_active.is_(True),
                 ClassRoom.archived_at.is_(None),
             )
-            .order_by(ClassRoom.normalized_arm.asc())
+            .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
+            .order_by(ArmLabel.position.asc().nullslast(), ArmLabel.normalized_label.asc())
         )
         if lock:
             query = query.with_for_update()
@@ -278,7 +376,11 @@ class ClassRoomRepository:
     ) -> list[ClassRoom]:
         query = (
             select(ClassRoom)
-            .options(selectinload(ClassRoom.academic_level))
+            .options(
+                selectinload(ClassRoom.academic_level),
+                selectinload(ClassRoom.department),
+                selectinload(ClassRoom.arm_label_ref),
+            )
             .where(ClassRoom.tenant_id == tenant_id)
         )
         if active_only:
@@ -291,7 +393,12 @@ class ClassRoomRepository:
             query = query.where(ClassRoom.archived_at.is_(None))
         result = await db.execute(
             query.join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
-            .order_by(AcademicLevel.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+            .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
+            .order_by(
+                AcademicLevel.normalized_name.asc(),
+                ArmLabel.position.asc().nullslast(),
+                ArmLabel.normalized_label.asc(),
+            )
             .offset(offset)
             .limit(limit)
         )
@@ -308,13 +415,22 @@ class ClassRoomRepository:
     ) -> list[ClassRoom]:
         query = (
             select(ClassRoom)
-            .options(selectinload(ClassRoom.academic_level))
+            .options(
+                selectinload(ClassRoom.academic_level),
+                selectinload(ClassRoom.department),
+                selectinload(ClassRoom.arm_label_ref),
+            )
             .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
             .where(
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.teacher_membership_id == teacher_membership_id,
             )
-            .order_by(AcademicLevel.normalized_name.asc(), ClassRoom.normalized_arm.asc())
+            .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
+            .order_by(
+                AcademicLevel.normalized_name.asc(),
+                ArmLabel.position.asc().nullslast(),
+                ArmLabel.normalized_label.asc(),
+            )
         )
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
@@ -336,7 +452,11 @@ class ClassRoomRepository:
             return []
         query = (
             select(ClassRoom)
-            .options(selectinload(ClassRoom.academic_level))
+            .options(
+                selectinload(ClassRoom.academic_level),
+                selectinload(ClassRoom.department),
+                selectinload(ClassRoom.arm_label_ref),
+            )
             .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id.in_(class_ids))
         )
         if not include_archived:

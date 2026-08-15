@@ -139,6 +139,7 @@ async def test_effective_department_assignment_allows_classless_student(monkeypa
     next_term = SimpleNamespace(academic_session_id=session_id, name=AcademicTermName.SECOND_TERM)
     enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=None)
     assignment = SimpleNamespace(student_enrollment_id=enrollment.id)
+    department = SimpleNamespace(is_active=True, archived_at=None)
     level = SimpleNamespace(
         id=level_id,
         name="Stage Alpha",
@@ -154,7 +155,7 @@ async def test_effective_department_assignment_allows_classless_student(monkeypa
             side_effect=[
                 Result(scalars=[current, next_term]),
                 Result(scalars=[enrollment]),
-                Result(rows=[(assignment, next_term)]),
+                Result(rows=[(assignment, next_term, department)]),
             ]
         )
     )
@@ -167,3 +168,45 @@ async def test_effective_department_assignment_allows_classless_student(monkeypa
 
     assert counts == {"students_missing_department": 0}
     assert blockers == []
+
+
+@pytest.mark.asyncio
+async def test_inactive_department_assignment_does_not_satisfy_specialization_blocker(
+    monkeypatch,
+):
+    tenant_id = uuid4()
+    session_id = uuid4()
+    level_id = uuid4()
+    current = SimpleNamespace(academic_session_id=session_id, name=AcademicTermName.FIRST_TERM)
+    next_term = SimpleNamespace(academic_session_id=session_id, name=AcademicTermName.SECOND_TERM)
+    enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=None)
+    level = SimpleNamespace(
+        id=level_id,
+        name="Stage Alpha",
+        specialization_required_from_term_position=2,
+    )
+    monkeypatch.setattr(
+        AcademicLevelRepository,
+        "list_for_tenant",
+        AsyncMock(return_value=[level]),
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                Result(scalars=[current, next_term]),
+                Result(scalars=[enrollment]),
+                Result(rows=[]),
+            ]
+        )
+    )
+
+    counts, blockers = await StudentAcademicService._specialization_blockers_for_next_term(
+        db,
+        tenant_id=tenant_id,
+        term=current,
+    )
+
+    assert counts == {"students_missing_department": 1}
+    assert blockers == [
+        "1 Stage Alpha students require department assignment before Second Term."
+    ]

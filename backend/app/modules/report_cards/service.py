@@ -36,6 +36,7 @@ from app.modules.student_academics.models import AcademicResultStatus
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import Student, StudentEnrollment
 from app.modules.students.repository import (
+    StudentEnrollmentRepository,
     StudentParentLinkRepository,
     StudentRepository,
 )
@@ -177,15 +178,12 @@ class ReportCardService:
         version: int = 1,
         replace_existing: ReportCard | None = None,
     ) -> ReportCard:
-        enrollment = (
-            await db.execute(
-                select(StudentEnrollment).where(
-                    StudentEnrollment.tenant_id == actor.tenant_id,
-                    StudentEnrollment.student_id == student.id,
-                    StudentEnrollment.academic_session_id == academic_session_id,
-                )
-            )
-        ).scalar_one_or_none()
+        enrollment = await StudentEnrollmentRepository.get_authoritative_for_session(
+            db,
+            actor.tenant_id,
+            student.id,
+            academic_session_id,
+        )
         if enrollment is None:
             raise BadRequestException(
                 "Student enrollment for this academic session is required for report card generation."

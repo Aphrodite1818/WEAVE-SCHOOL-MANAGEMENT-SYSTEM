@@ -9,7 +9,7 @@ from decimal import Decimal
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.classes.models import AcademicLevel, ClassRoom
+from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
 from app.modules.report_cards.models import ReportCard, ReportCardStatus
 from app.modules.subjects.models import Subject
 from app.modules.student_academics.models import (
@@ -1143,7 +1143,7 @@ class StudentAcademicRepository:
                     teacher_name.ilike(pattern),
                     TeacherMembership.staff_id.ilike(pattern),
                     AcademicLevel.name.ilike(pattern),
-                    ClassRoom.arm.ilike(pattern),
+                    ArmLabel.label.ilike(pattern),
                     Subject.name.ilike(pattern),
                     Subject.code.ilike(pattern),
                 )
@@ -1153,6 +1153,7 @@ class StudentAcademicRepository:
             .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
             .join(ClassRoom, ClassRoom.id == TeacherAssignment.class_id, isouter=True)
             .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id, isouter=True)
+            .join(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id, isouter=True)
             .join(Subject, Subject.id == LevelSubject.subject_id, isouter=True)
             .join(
                 TeacherMembership,
@@ -1176,7 +1177,7 @@ class StudentAcademicRepository:
                     TeacherAssignment.class_id.label("class_id"),
                     LevelSubject.subject_id.label("subject_id"),
                     AcademicLevel.name.label("class_name"),
-                    ClassRoom.arm.label("class_arm"),
+                    ArmLabel.label.label("class_arm"),
                     Subject.name.label("subject_name"),
                     Subject.code.label("subject_code"),
                     TeacherMembership.staff_id.label("teacher_staff_id"),
@@ -1186,6 +1187,7 @@ class StudentAcademicRepository:
                 .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
                 .join(ClassRoom, ClassRoom.id == TeacherAssignment.class_id, isouter=True)
                 .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id, isouter=True)
+                .join(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id, isouter=True)
                 .join(Subject, Subject.id == LevelSubject.subject_id, isouter=True)
                 .join(
                     TeacherMembership,

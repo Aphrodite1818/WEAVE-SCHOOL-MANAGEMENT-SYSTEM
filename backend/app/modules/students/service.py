@@ -226,11 +226,15 @@ class StudentService:
             is_current=True,
         )
         current_term = terms[0] if terms else None
+        student_data = StudentResponse.model_validate(student).model_dump()
+        student_data["academic_level_id"] = (
+            enrollment.academic_level_id if enrollment else None
+        )
+
         return StudentDetailResponse(
-            **StudentResponse.model_validate(student).model_dump(),
+            **student_data,
             class_name=classroom.academic_level_name if classroom else None,
             class_arm=classroom.arm if classroom else None,
-            academic_level_id=enrollment.academic_level_id if enrollment else None,
             academic_level_name=academic_level.name if academic_level else None,
             current_enrollment_id=enrollment.id if enrollment else None,
             current_academic_session_id=current_session.id if current_session else None,
@@ -931,28 +935,17 @@ class StudentEnrollmentService:
         if current.class_id == target_class.id:
             raise ConflictException("Student is already in the target class.")
 
-        current.is_current = False
-        current.ended_on = payload.effective_date
+        if current.academic_session_id != session.id:
+            raise ConflictException(
+                "Class assignment must update the student's current academic session enrollment."
+            )
+
         current.outcome = StudentEnrollmentOutcome(payload.outcome)
         current.reason = payload.reason
         current.changed_by_admin_id = actor.id
+        current.class_id = target_class.id
         await StudentEnrollmentRepository.save(db, current)
 
-        await StudentEnrollmentRepository.add(
-            db,
-            StudentEnrollment(
-                tenant_id=tenant_id,
-                student_id=student.id,
-                academic_level_id=current.academic_level_id,
-                class_id=target_class.id,
-                academic_session_id=session.id,
-                started_on=payload.effective_date,
-                is_current=True,
-                outcome=StudentEnrollmentOutcome(payload.outcome),
-                reason=payload.reason,
-                changed_by_admin_id=actor.id,
-            ),
-        )
         student.class_id = target_class.id
         await StudentRepository.save(db, student)
         await db.commit()

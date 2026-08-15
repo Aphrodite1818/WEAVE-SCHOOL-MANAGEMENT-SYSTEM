@@ -276,6 +276,28 @@ class StudentEnrollmentRepository:
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
+    async def get_authoritative_for_session(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        academic_session_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> StudentEnrollment | None:
+        """Load the single canonical student enrollment for an academic session."""
+
+        query = select(StudentEnrollment).where(
+            StudentEnrollment.tenant_id == tenant_id,
+            StudentEnrollment.student_id == student_id,
+            StudentEnrollment.academic_session_id == academic_session_id,
+            StudentEnrollment.is_current.is_(True),
+            StudentEnrollment.ended_on.is_(None),
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
     async def list_for_student(
         db: AsyncSession,
         tenant_id: UUID,

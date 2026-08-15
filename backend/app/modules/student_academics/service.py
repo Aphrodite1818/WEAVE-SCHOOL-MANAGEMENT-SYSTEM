@@ -16,6 +16,7 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
+from app.modules.classes.models import Department
 from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.report_cards.models import ReportCardStatus
 from app.modules.parents.models import ParentMembership
@@ -174,22 +175,26 @@ class StudentAcademicService:
         if enrollment_ids:
             assignments = (
                 await db.execute(
-                    select(StudentDepartmentAssignment, AcademicTerm)
+                    select(StudentDepartmentAssignment, AcademicTerm, Department)
                     .join(
                         AcademicTerm,
                         AcademicTerm.id
                         == StudentDepartmentAssignment.effective_from_term_id,
                     )
+                    .join(Department, Department.id == StudentDepartmentAssignment.department_id)
                     .where(
                         StudentDepartmentAssignment.tenant_id == tenant_id,
                         StudentDepartmentAssignment.student_enrollment_id.in_(enrollment_ids),
                         AcademicTerm.academic_session_id == term.academic_session_id,
+                        Department.tenant_id == tenant_id,
+                        Department.is_active.is_(True),
+                        Department.archived_at.is_(None),
                     )
                 )
             ).all()
             assigned_ids = {
                 assignment.student_enrollment_id
-                for assignment, effective_term in assignments
+                for assignment, effective_term, _department in assignments
                 if StudentAcademicService._TERM_ORDER[effective_term.name] <= next_position
             }
 
@@ -3237,15 +3242,6 @@ class StudentAcademicService:
         )
         if student is None:
             raise NotFoundException("Student not found.")
-        classroom = (
-            await ClassRoomRepository.get_by_id(
-                db,
-                actor.tenant_id,
-                student.class_id,
-            )
-            if student.class_id
-            else None
-        )
         session = await StudentAcademicRepository.get_current_academic_session(
             db,
             actor.tenant_id,
@@ -3254,16 +3250,34 @@ class StudentAcademicService:
             db,
             actor.tenant_id,
         )
-        level_subjects, _ = (
-            await StudentAcademicRepository.list_level_subjects(
+        enrollment = (
+            await StudentEnrollmentRepository.get_authoritative_for_session(
                 db,
                 actor.tenant_id,
-                academic_level_id=classroom.academic_level_id,
-                active_only=True,
-                limit=500,
+                student.id,
+                session.id,
             )
-            if classroom
-            else ([], 0)
+            if session is not None
+            else None
+        )
+        classroom = (
+            await ClassRoomRepository.get_by_id(
+                db,
+                actor.tenant_id,
+                enrollment.class_id,
+            )
+            if enrollment is not None and enrollment.class_id
+            else None
+        )
+        curriculum = (
+            await CurriculumResolutionService.resolve_student_curriculum(
+                db,
+                tenant_id=actor.tenant_id,
+                student_id=student.id,
+                academic_term_id=term.id,
+            )
+            if term is not None
+            else []
         )
         active_scheme = await AssessmentRepository.get_active_scheme(db, actor.tenant_id)
         active_components = (
@@ -3273,7 +3287,14 @@ class StudentAcademicService:
         )
 
         cards: list[StudentSubjectCardResponse] = []
-        for level_subject in level_subjects:
+        for offering in curriculum:
+            level_subject = await StudentAcademicRepository.get_level_subject_by_id(
+                db,
+                actor.tenant_id,
+                offering.level_subject_id,
+            )
+            if level_subject is None:
+                continue
             subject = await SubjectRepository.get_subject_by_id(
                 db,
                 actor.tenant_id,
@@ -3286,6 +3307,8 @@ class StudentAcademicService:
                     level_subject.id,
                     classroom.id,
                 )
+                if classroom is not None
+                else None
             )
             result = None
             if assignment is not None and session is not None and term is not None:
@@ -3297,6 +3320,18 @@ class StudentAcademicService:
                     session.id,
                     term.id,
                 )
+            elif session is not None and term is not None:
+                result = (
+                    await db.execute(
+                        select(StudentSubjectResult).where(
+                            StudentSubjectResult.tenant_id == actor.tenant_id,
+                            StudentSubjectResult.student_id == student.id,
+                            StudentSubjectResult.level_subject_id == level_subject.id,
+                            StudentSubjectResult.academic_session_id == session.id,
+                            StudentSubjectResult.academic_term_id == term.id,
+                        )
+                    )
+                ).scalar_one_or_none()
             teacher = None
             if assignment is not None:
                 teacher = await TeacherMembershipRepository.get_by_id(
@@ -3341,8 +3376,8 @@ class StudentAcademicService:
                 StudentSubjectCardResponse(
                     id=level_subject.id,
                     result_id=result.id if submitted else None,
-                    class_id=classroom.id,
-                    class_name=classroom.academic_level_name,
+                    class_id=classroom.id if classroom else None,
+                    class_name=classroom.academic_level_name if classroom else None,
                     class_arm=classroom.arm if classroom else None,
                     subject_id=level_subject.subject_id,
                     subject_name=subject.name if subject else None,
@@ -3384,7 +3419,7 @@ class StudentAcademicService:
             items=cards,
             total=len(cards),
             context=StudentSubjectCardContextResponse(
-                class_id=student.class_id,
+                class_id=enrollment.class_id if enrollment else None,
                 class_name=classroom.academic_level_name if classroom else None,
                 class_arm=classroom.arm if classroom else None,
                 academic_session_id=session.id if session else None,

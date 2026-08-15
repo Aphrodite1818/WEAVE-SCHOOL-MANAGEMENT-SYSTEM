@@ -67,7 +67,10 @@ const formatDate = (value) => {
 };
 
 const classLabel = (item) =>
-  [item?.academic_level_name, item?.arm].filter(Boolean).join(" ") || item?.id || "Class";
+  item?.display_name ||
+  [item?.academic_level_name, item?.department_name, item?.arm_label].filter(Boolean).join(" ") ||
+  item?.id ||
+  "Class";
 
 const studentClassLabel = (student) =>
   [student?.class_name, student?.class_arm].filter(Boolean).join(" ") || "Not assigned";
@@ -457,7 +460,6 @@ function StudentDirectoryPage() {
         gender: student.gender || "",
         date_of_birth: student.date_of_birth || "",
         state_of_origin: student.state_of_origin || "",
-        arm: student.arm || "",
       },
     });
   };
@@ -888,7 +890,6 @@ function StudentDirectoryPage() {
               <SelectField label="Gender" value={editState.form.gender} options={GENDER_OPTIONS.map((value) => ({ value, label: titleCase(value) }))} error={fieldErrors.gender} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, gender: event.target.value } }))} />
               <Input label="Date of birth" type="date" value={editState.form.date_of_birth} required error={fieldErrors.date_of_birth} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, date_of_birth: event.target.value } }))} />
               <Input label="State of origin" value={editState.form.state_of_origin} error={fieldErrors.state_of_origin} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, state_of_origin: event.target.value } }))} />
-              <Input label="Arm" value={editState.form.arm} error={fieldErrors.arm} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, arm: event.target.value } }))} />
             </div>
             <p className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
               To change this student's class, open Class history and use Change class so the placement history is updated.

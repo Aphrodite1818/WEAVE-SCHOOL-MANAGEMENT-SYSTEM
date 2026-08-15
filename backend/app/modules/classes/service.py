@@ -11,6 +11,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.core.utils.normalization import (
+    normalize_class_arm,
     normalize_display_text,
     normalized_class_arm_key,
     normalized_class_name_key,
@@ -18,11 +19,13 @@ from app.core.utils.normalization import (
 from app.modules.classes.models import (
     AcademicCategory,
     AcademicLevel,
+    ArmLabel,
     ClassRoom,
     Department,
 )
 from app.modules.classes.repository import (
     AcademicLevelRepository,
+    ArmLabelRepository,
     ClassRoomRepository,
     DepartmentRepository,
 )
@@ -30,6 +33,9 @@ from app.modules.classes.schemas import (
     AcademicLevelCreate,
     AcademicLevelResponse,
     AcademicLevelUpdate,
+    ArmLabelCreate,
+    ArmLabelResponse,
+    ArmLabelUpdate,
     ClassRoomCreate,
     ClassRoomResponse,
     ClassRoomUpdate,
@@ -276,6 +282,133 @@ class DepartmentService:
         return [DepartmentResponse.model_validate(row) for row in rows]
 
 
+class ArmLabelService:
+    @staticmethod
+    def _clean_label(value: str) -> tuple[str, str]:
+        label = normalize_class_arm(value)
+        if label is None:
+            raise BadRequestException("Arm label is required")
+        return label, normalized_class_arm_key(label)
+
+    @staticmethod
+    async def create(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        payload: ArmLabelCreate,
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        label, normalized_label = ArmLabelService._clean_label(payload.label)
+        if await ArmLabelRepository.get_by_normalized_label(
+            db, actor.tenant_id, normalized_label
+        ):
+            raise ConflictException("Arm label with this name already exists")
+        arm_label = ArmLabel(
+            tenant_id=actor.tenant_id,
+            label=label,
+            normalized_label=normalized_label,
+            position=payload.position,
+            is_active=True,
+        )
+        try:
+            await ArmLabelRepository.add(db, arm_label)
+            await db.commit()
+            await db.refresh(arm_label)
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException("Arm label with this name already exists") from exc
+        return ArmLabelResponse.model_validate(arm_label)
+
+    @staticmethod
+    async def list(
+        db: AsyncSession,
+        actor: TenantAdmin | Teacher | Student | Parent,
+        *,
+        active_only: bool = False,
+        include_archived: bool = False,
+    ) -> list[ArmLabelResponse]:
+        if not actor.tenant_id:
+            raise ForbiddenException("Actor is not attached to a tenant")
+        rows = await ArmLabelRepository.list_for_tenant(
+            db,
+            actor.tenant_id,
+            active_only=active_only,
+            include_archived=include_archived and isinstance(actor, TenantAdmin),
+        )
+        return [ArmLabelResponse.model_validate(row) for row in rows]
+
+    @staticmethod
+    async def update(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        arm_label_id: uuid.UUID,
+        payload: ArmLabelUpdate,
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        arm_label = await ArmLabelRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            arm_label_id,
+            lock=True,
+        )
+        if arm_label is None:
+            raise NotFoundException("Arm label not found")
+        if arm_label.archived_at is not None:
+            raise ConflictException("Archived arm labels cannot be updated")
+        if payload.label is not None:
+            label, normalized_label = ArmLabelService._clean_label(payload.label)
+            existing = await ArmLabelRepository.get_by_normalized_label(
+                db,
+                actor.tenant_id,
+                normalized_label,
+            )
+            if existing is not None and existing.id != arm_label.id:
+                raise ConflictException("Arm label with this name already exists")
+            arm_label.label = label
+            arm_label.normalized_label = normalized_label
+        if "position" in payload.model_fields_set:
+            arm_label.position = payload.position
+        if payload.is_active is not None:
+            arm_label.is_active = payload.is_active
+        await ArmLabelRepository.save(db, arm_label)
+        await db.commit()
+        await db.refresh(arm_label)
+        return ArmLabelResponse.model_validate(arm_label)
+
+    @staticmethod
+    async def archive(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        arm_label_id: uuid.UUID,
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        arm_label = await ArmLabelRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            arm_label_id,
+            lock=True,
+        )
+        if arm_label is None:
+            raise NotFoundException("Arm label not found")
+        dependency_count = await ArmLabelRepository.count_class_dependencies(
+            db,
+            actor.tenant_id,
+            arm_label.id,
+        )
+        if dependency_count:
+            raise ConflictException(
+                "Arm label is used by classes and cannot be archived.",
+                payload={"dependency_counts": {"classes": dependency_count}},
+            )
+        arm_label.is_active = False
+        arm_label.archived_at = datetime.now(timezone.utc)
+        await ArmLabelRepository.save(db, arm_label)
+        await db.commit()
+        await db.refresh(arm_label)
+        return ArmLabelResponse.model_validate(arm_label)
+
+
 class ClassRoomService:
     """Business logic for classroom management."""
 
@@ -321,6 +454,23 @@ class ClassRoomService:
             raise BadRequestException("Cannot assign an inactive teacher")
 
     @staticmethod
+    async def _validate_arm_label(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        arm_label_id: uuid.UUID | None,
+    ) -> None:
+        if arm_label_id is None:
+            return
+        arm_label = await ArmLabelRepository.get_by_id(db, tenant_id, arm_label_id)
+        if (
+            arm_label is None
+            or not arm_label.is_active
+            or arm_label.archived_at is not None
+        ):
+            raise BadRequestException("Arm label must be active and belong to this tenant")
+
+    @staticmethod
     def _build_classroom_model(
         *,
         tenant_id: uuid.UUID,
@@ -332,10 +482,7 @@ class ClassRoomService:
             tenant_id=tenant_id,
             academic_level_id=payload.academic_level_id,
             department_id=payload.department_id,
-            arm=payload.arm,
-            normalized_arm=(
-                normalized_class_arm_key(payload.arm) if payload.arm is not None else None
-            ),
+            arm_label_id=payload.arm_label_id,
             teacher_membership_id=payload.teacher_membership_id,
             is_active=True,
             archived_at=None,
@@ -364,16 +511,21 @@ class ClassRoomService:
             )
             if department is None or not department.is_active or department.archived_at is not None:
                 raise BadRequestException("Department must be active and belong to this tenant")
+        await ClassRoomService._validate_arm_label(
+            db,
+            tenant_id=actor.tenant_id,
+            arm_label_id=payload.arm_label_id,
+        )
 
-        existing_classroom = await ClassRoomRepository.get_by_level_and_arm(
+        existing_classroom = await ClassRoomRepository.get_by_level_department_arm_label(
             db=db,
             tenant_id=actor.tenant_id,
             academic_level_id=payload.academic_level_id,
-            class_arm=payload.arm,
             department_id=payload.department_id,
+            arm_label_id=payload.arm_label_id,
         )
         if existing_classroom is not None:
-            raise BadRequestException("Classroom with this name and arm already exists")
+            raise BadRequestException("Classroom with this level, department, and arm already exists")
 
         await ClassRoomService._validate_teacher_assignment(
             db=db,
@@ -393,7 +545,12 @@ class ClassRoomService:
             )
             await db.commit()
             await db.refresh(created_classroom)
-            return ClassRoomResponse.model_validate(created_classroom)
+            reloaded = await ClassRoomRepository.get_by_id(
+                db,
+                actor.tenant_id,
+                created_classroom.id,
+            )
+            return ClassRoomResponse.model_validate(reloaded or created_classroom)
         except IntegrityError as exc:
             await db.rollback()
             raise BadRequestException(
@@ -546,15 +703,12 @@ class ClassRoomService:
             update_data["teacher_membership_id"] = payload.teacher_membership_id
         if "department_id" in payload.model_fields_set:
             update_data["department_id"] = payload.department_id
-        if "arm" in payload.model_fields_set:
-            update_data["arm"] = payload.arm
+        if "arm_label_id" in payload.model_fields_set:
+            update_data["arm_label_id"] = payload.arm_label_id
 
         new_level_id = update_data.get("academic_level_id", classroom.academic_level_id)
-        new_arm = update_data.get("arm", classroom.arm)
+        new_arm_label_id = update_data.get("arm_label_id", classroom.arm_label_id)
         new_department_id = update_data.get("department_id", classroom.department_id)
-        new_normalized_arm = (
-            normalized_class_arm_key(new_arm) if new_arm is not None else None
-        )
 
         if new_level_id != classroom.academic_level_id:
             dependency_counts = await ClassRoomRepository.count_class_dependencies(
@@ -577,20 +731,28 @@ class ClassRoomService:
             )
             if department is None or not department.is_active or department.archived_at is not None:
                 raise BadRequestException("Department must be active and belong to this tenant")
+        await ClassRoomService._validate_arm_label(
+            db,
+            tenant_id=actor.tenant_id,
+            arm_label_id=new_arm_label_id,
+        )
 
         if (
             new_level_id != classroom.academic_level_id
-            or new_normalized_arm != classroom.normalized_arm
+            or new_department_id != classroom.department_id
+            or new_arm_label_id != classroom.arm_label_id
         ):
-            existing_classroom = await ClassRoomRepository.get_by_level_and_arm(
+            existing_classroom = await ClassRoomRepository.get_by_level_department_arm_label(
                 db=db,
                 tenant_id=actor.tenant_id,
                 academic_level_id=new_level_id,
-                class_arm=new_arm,
                 department_id=new_department_id,
+                arm_label_id=new_arm_label_id,
             )
             if existing_classroom is not None and existing_classroom.id != classroom.id:
-                raise BadRequestException("Classroom with this name and arm already exists")
+                raise BadRequestException(
+                    "Classroom with this level, department, and arm already exists"
+                )
 
         if "teacher_membership_id" in update_data:
             await ClassRoomService._validate_teacher_assignment(
@@ -602,8 +764,6 @@ class ClassRoomService:
         for field, value in update_data.items():
             setattr(classroom, field, value)
 
-        classroom.normalized_arm = new_normalized_arm
-
         try:
             updated_classroom = await ClassRoomRepository.save(
                 db=db,
@@ -611,7 +771,12 @@ class ClassRoomService:
             )
             await db.commit()
             await db.refresh(updated_classroom)
-            return ClassRoomResponse.model_validate(updated_classroom)
+            reloaded = await ClassRoomRepository.get_by_id(
+                db,
+                actor.tenant_id,
+                updated_classroom.id,
+            )
+            return ClassRoomResponse.model_validate(reloaded or updated_classroom)
         except IntegrityError as exc:
             await db.rollback()
             raise BadRequestException(
