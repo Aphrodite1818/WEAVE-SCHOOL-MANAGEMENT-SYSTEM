@@ -62,9 +62,12 @@ async def test_last_configured_level_graduates(monkeypatch) -> None:
     monkeypatch.setattr(
         AcademicLevelRepository, "list_for_tenant", AsyncMock(return_value=[current])
     )
-    assert await AcademicProgressionService.resolve_next_level(
-        AsyncMock(), tenant_id=tenant_id, current_level=current
-    ) is None
+    assert (
+        await AcademicProgressionService.resolve_next_level(
+            AsyncMock(), tenant_id=tenant_id, current_level=current
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -82,6 +85,9 @@ async def test_junior_only_school_completes_after_its_last_configured_level(monk
         AsyncMock(return_value=[final_junior]),
     )
 
-    assert await AcademicProgressionService.resolve_next_level(
-        AsyncMock(), tenant_id=tenant_id, current_level=final_junior
-    ) is None
+    assert (
+        await AcademicProgressionService.resolve_next_level(
+            AsyncMock(), tenant_id=tenant_id, current_level=final_junior
+        )
+        is None
+    )

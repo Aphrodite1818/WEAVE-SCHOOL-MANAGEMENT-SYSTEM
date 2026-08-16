@@ -36,6 +36,17 @@ const REFRESH_BEFORE_EXPIRY_MS = 75 * 1000;
 
 let refreshPromise = null;
 let refreshTimerId = null;
+const authTokenListeners = new Set();
+
+const notifyAuthTokenListeners = (token) => {
+  for (const listener of [...authTokenListeners]) {
+    try {
+      listener(token);
+    } catch (error) {
+      console.error("Auth token listener failed", error);
+    }
+  }
+};
 
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
@@ -386,17 +397,28 @@ export const authSession = {
 
     if (!token) {
       sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+      notifyAuthTokenListeners(null);
       return;
     }
 
     sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
     scheduleAccessTokenRefresh(token);
+    notifyAuthTokenListeners(token);
   },
 
   clearToken: () => {
     clearRefreshTimer();
     sessionStorage.removeItem(ACCESS_TOKEN_KEY);
     removeStoredValue(LEGACY_TOKEN_KEY);
+    notifyAuthTokenListeners(null);
+  },
+
+  subscribeToken: (listener) => {
+    if (typeof listener !== "function") {
+      throw new TypeError("Auth token listener must be a function.");
+    }
+    authTokenListeners.add(listener);
+    return () => authTokenListeners.delete(listener);
   },
 
   getRememberPreference: getStoredRememberPreference,

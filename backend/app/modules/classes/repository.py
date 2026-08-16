@@ -190,12 +190,8 @@ class DepartmentRepository:
     ) -> list[Department]:
         query = select(Department).where(Department.tenant_id == tenant_id)
         if active_only:
-            query = query.where(
-                Department.is_active.is_(True), Department.archived_at.is_(None)
-            )
-        return list(
-            (await db.execute(query.order_by(Department.normalized_name.asc()))).scalars()
-        )
+            query = query.where(Department.is_active.is_(True), Department.archived_at.is_(None))
+        return list((await db.execute(query.order_by(Department.normalized_name.asc()))).scalars())
 
 
 class ArmLabelRepository:

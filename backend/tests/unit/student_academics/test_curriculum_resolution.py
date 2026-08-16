@@ -207,6 +207,4 @@ async def test_inactive_department_assignment_does_not_satisfy_specialization_bl
     )
 
     assert counts == {"students_missing_department": 1}
-    assert blockers == [
-        "1 Stage Alpha students require department assignment before Second Term."
-    ]
+    assert blockers == ["1 Stage Alpha students require department assignment before Second Term."]

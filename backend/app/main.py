@@ -51,6 +51,8 @@ from app.modules.media.router import router as media_router
 from app.modules.metrics.events import register_metrics_cache_invalidation_events
 from app.modules.metrics.router import router as metrics_router
 from app.modules.parents.router import router as parent_router
+from app.modules.realtime.broker import realtime_broker
+from app.modules.realtime.router import router as realtime_router
 from app.modules.report_cards.bulk_router import router as bulk_report_card_router
 from app.modules.report_cards.fixed_router import router as fixed_report_card_router
 from app.modules.report_cards.router import (
@@ -111,6 +113,7 @@ from app.modules.tenant_branding.router import (
 from app.tenant_management.router import router as tenant_router
 from app.modules.cbt.pairing.router import router as cbt_pairing_router
 from app.modules.cbt.auth.router import router as cbt_auth_router
+from app.modules.cbt.academics.router import router as cbt_academics_router
 
 logger = get_logger(__name__)
 
@@ -164,13 +167,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await SuperadminBootstrapService.ensure_bootstrap_superadmin(db)
+    await realtime_broker.start()
     try:
         yield
     finally:
         logger.info("Closing Redis and database resources")
         try:
-            await close_redis()
-            await engine.dispose()
+            await realtime_broker.stop()
+            try:
+                await close_redis()
+            finally:
+                await engine.dispose()
         finally:
             await flush_sentry()
 
@@ -242,6 +249,7 @@ def create_app() -> FastAPI:
     app.include_router(teacher_router, prefix=f"{API_V1_PREFIX}/teachers", tags=["Teachers"])
     app.include_router(student_router, prefix=f"{API_V1_PREFIX}/students", tags=["Students"])
     app.include_router(parent_router, prefix=API_V1_PREFIX)
+    app.include_router(realtime_router, prefix=API_V1_PREFIX)
     app.include_router(subject_router, prefix=f"{API_V1_PREFIX}/subjects", tags=["Subjects"])
     app.include_router(class_router, prefix=API_V1_PREFIX, tags=["Classes"])
     app.include_router(academic_levels_router, prefix=API_V1_PREFIX)
@@ -268,7 +276,7 @@ def create_app() -> FastAPI:
     app.include_router(parent_attendance_router, prefix=API_V1_PREFIX)
     app.include_router(cbt_pairing_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_auth_router, prefix=f"{API_V1_PREFIX}/cbt")
-
+    app.include_router(cbt_academics_router, prefix=f"{API_V1_PREFIX}/cbt")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
 

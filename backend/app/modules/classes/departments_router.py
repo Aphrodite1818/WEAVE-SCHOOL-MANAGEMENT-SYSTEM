@@ -34,6 +34,4 @@ async def list_departments(
     current_member: CurrentTenantMember,
     active_only: bool = Query(default=False),
 ) -> list[DepartmentResponse]:
-    return await DepartmentService.list(
-        db, current_member, active_only=active_only
-    )
+    return await DepartmentService.list(db, current_member, active_only=active_only)

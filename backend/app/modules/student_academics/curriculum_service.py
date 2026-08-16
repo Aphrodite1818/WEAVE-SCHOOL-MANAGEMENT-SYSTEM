@@ -87,9 +87,7 @@ class CurriculumResolutionService:
             raise NotFoundException("Academic term not found.")
         CurriculumResolutionService._ensure_term_can_change(term)
         if payload.department_id is not None:
-            department = await DepartmentRepository.get_by_id(
-                db, tenant_id, payload.department_id
-            )
+            department = await DepartmentRepository.get_by_id(db, tenant_id, payload.department_id)
             if department is None or not department.is_active or department.archived_at:
                 raise NotFoundException("Department not found or inactive.")
         existing = (
@@ -159,9 +157,7 @@ class CurriculumResolutionService:
         ).scalar_one_or_none()
         if enrollment is None:
             raise NotFoundException("Student enrollment not found.")
-        department = await DepartmentRepository.get_by_id(
-            db, tenant_id, payload.department_id
-        )
+        department = await DepartmentRepository.get_by_id(db, tenant_id, payload.department_id)
         if department is None or not department.is_active or department.archived_at:
             raise NotFoundException("Department not found or inactive.")
         term = (
@@ -190,9 +186,7 @@ class CurriculumResolutionService:
             await db.refresh(assignment)
         except IntegrityError as exc:
             await db.rollback()
-            raise ConflictException(
-                "A department assignment already starts in this term."
-            ) from exc
+            raise ConflictException("A department assignment already starts in this term.") from exc
         return StudentDepartmentAssignmentResponse.model_validate(assignment)
 
     @staticmethod
@@ -282,9 +276,7 @@ class CurriculumResolutionService:
             student_id=student_id,
             academic_term_id=academic_term_id,
         )
-        elective_ids = {
-            offering.level_subject_id for offering in offerings if offering.is_elective
-        }
+        elective_ids = {offering.level_subject_id for offering in offerings if offering.is_elective}
         if not elective_ids:
             return offerings
         participating = set(
@@ -293,8 +285,7 @@ class CurriculumResolutionService:
                     select(StudentSubjectResult.level_subject_id)
                     .join(
                         StudentAssessmentScore,
-                        StudentAssessmentScore.student_subject_result_id
-                        == StudentSubjectResult.id,
+                        StudentAssessmentScore.student_subject_result_id == StudentSubjectResult.id,
                     )
                     .where(
                         StudentSubjectResult.tenant_id == tenant_id,
@@ -338,9 +329,7 @@ class CurriculumResolutionService:
             term.academic_session_id,
         )
         if enrollment is None:
-            raise ConflictException(
-                "Student enrollment for this academic session is required."
-            )
+            raise ConflictException("Student enrollment for this academic session is required.")
         department_id = await CurriculumResolutionService.resolve_department_for_student(
             db,
             tenant_id=tenant_id,

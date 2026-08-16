@@ -346,7 +346,12 @@ class MetricsRepository:
     ) -> list[ClassPopulation]:
         rows = (
             await db.execute(
-                select(ClassRoom.id, AcademicLevel.name, ArmLabel.label.label("arm"), func.count(Student.id))
+                select(
+                    ClassRoom.id,
+                    AcademicLevel.name,
+                    ArmLabel.label.label("arm"),
+                    func.count(Student.id),
+                )
                 .select_from(ClassRoom)
                 .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
                 .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)

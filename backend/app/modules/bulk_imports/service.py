@@ -682,9 +682,7 @@ class BulkImportService:
         first_name = normalized_row.get("first_name")
         last_name = normalized_row.get("last_name")
         date_of_birth = BulkImportValidator.parse_date(normalized_row.get("date_of_birth"))
-        academic_level_id = BulkImportValidator.parse_uuid(
-            normalized_row.get("academic_level_id")
-        )
+        academic_level_id = BulkImportValidator.parse_uuid(normalized_row.get("academic_level_id"))
         class_id = BulkImportValidator.parse_uuid(normalized_row.get("class_id"))
         if (
             _is_blank(first_name)

@@ -227,9 +227,7 @@ class StudentService:
         )
         current_term = terms[0] if terms else None
         student_data = StudentResponse.model_validate(student).model_dump()
-        student_data["academic_level_id"] = (
-            enrollment.academic_level_id if enrollment else None
-        )
+        student_data["academic_level_id"] = enrollment.academic_level_id if enrollment else None
 
         return StudentDetailResponse(
             **student_data,
@@ -846,9 +844,7 @@ class StudentEnrollmentService:
                 if row.class_id is not None
                 else None
             )
-            level = await AcademicLevelRepository.get_by_id(
-                db, tenant_id, row.academic_level_id
-            )
+            level = await AcademicLevelRepository.get_by_id(db, tenant_id, row.academic_level_id)
             session = await AcademicSessionLifecycleRepository.get_by_id(
                 db,
                 tenant_id,
@@ -976,9 +972,7 @@ class StudentEnrollmentService:
 
         resolved: list[tuple[Student, StudentEnrollment]] = []
         for student_id in payload.student_ids:
-            student = await StudentRepository.get_by_id(
-                db, tenant_id, student_id, lock=True
-            )
+            student = await StudentRepository.get_by_id(db, tenant_id, student_id, lock=True)
             if student is None or student.is_archived:
                 raise NotFoundException(f"Student {student_id} not found.")
             enrollment = await StudentEnrollmentRepository.get_current(
@@ -1007,6 +1001,7 @@ class StudentEnrollmentService:
             target_class_id=target_class.id,
             updated_count=len(resolved),
         )
+
 
 class StudentLifecycleService:
     @staticmethod
@@ -1163,7 +1158,10 @@ class StudentLifecycleService:
             progression = await StudentProgressionRepository.get_latest_item_for_student(
                 db, tenant_id, student.id, lock=True
             )
-            if progression is not None and progression.status == StudentProgressionItemStatus.BLOCKED:
+            if (
+                progression is not None
+                and progression.status == StudentProgressionItemStatus.BLOCKED
+            ):
                 progression.status = StudentProgressionItemStatus.CANCELLED
                 progression.reason = f"Student lifecycle changed to {target_status.value}."
                 progression.processed_at = now

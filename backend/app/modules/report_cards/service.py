@@ -192,13 +192,9 @@ class ReportCardService:
         expected_offerings = await ReportCardService._expected_subject_offerings(
             db, actor.tenant_id, student.id, academic_term_id
         )
-        eligible_level_subject_ids = {
-            offering.level_subject_id for offering in expected_offerings
-        }
+        eligible_level_subject_ids = {offering.level_subject_id for offering in expected_offerings}
         results = [
-            result
-            for result in results
-            if result.level_subject_id in eligible_level_subject_ids
+            result for result in results if result.level_subject_id in eligible_level_subject_ids
         ]
         if not results:
             raise BadRequestException("No locked scores are available for this student.")

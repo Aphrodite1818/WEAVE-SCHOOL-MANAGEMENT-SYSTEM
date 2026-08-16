@@ -347,6 +347,7 @@ class Settings(BaseSettings):
     PAYSTACK_ENTERPRISE_TERM_AMOUNT_KOBO: int = Field(default=8000000, ge=0)
 
     REDIS_URL: str | None = None
+    REALTIME_REDIS_URL: str | None = None
     CACHE_ENABLED: bool = False
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REDIS_URL: str | None = None

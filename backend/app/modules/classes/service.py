@@ -248,9 +248,7 @@ class DepartmentService:
         if name is None:
             raise BadRequestException("Department name is required")
         normalized_name = name.casefold()
-        if await DepartmentRepository.get_by_normalized_name(
-            db, actor.tenant_id, normalized_name
-        ):
+        if await DepartmentRepository.get_by_normalized_name(db, actor.tenant_id, normalized_name):
             raise ConflictException("Department with this name already exists")
         department = Department(
             tenant_id=actor.tenant_id,
@@ -299,9 +297,7 @@ class ArmLabelService:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         label, normalized_label = ArmLabelService._clean_label(payload.label)
-        if await ArmLabelRepository.get_by_normalized_label(
-            db, actor.tenant_id, normalized_label
-        ):
+        if await ArmLabelRepository.get_by_normalized_label(db, actor.tenant_id, normalized_label):
             raise ConflictException("Arm label with this name already exists")
         arm_label = ArmLabel(
             tenant_id=actor.tenant_id,
@@ -463,11 +459,7 @@ class ClassRoomService:
         if arm_label_id is None:
             return
         arm_label = await ArmLabelRepository.get_by_id(db, tenant_id, arm_label_id)
-        if (
-            arm_label is None
-            or not arm_label.is_active
-            or arm_label.archived_at is not None
-        ):
+        if arm_label is None or not arm_label.is_active or arm_label.archived_at is not None:
             raise BadRequestException("Arm label must be active and belong to this tenant")
 
     @staticmethod
@@ -525,7 +517,9 @@ class ClassRoomService:
             arm_label_id=payload.arm_label_id,
         )
         if existing_classroom is not None:
-            raise BadRequestException("Classroom with this level, department, and arm already exists")
+            raise BadRequestException(
+                "Classroom with this level, department, and arm already exists"
+            )
 
         await ClassRoomService._validate_teacher_assignment(
             db=db,

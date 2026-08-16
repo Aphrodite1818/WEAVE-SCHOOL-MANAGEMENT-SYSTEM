@@ -48,10 +48,13 @@ def test_validate_revocation_request_requires_reason_and_literal() -> None:
 
 
 def test_validate_revocation_request_returns_normalized_reason() -> None:
-    assert CBTPairingService._validate_revocation_request(
-        reason="  Decommissioned lab machine  ",
-        confirmation_literal=CBT_SERVER_REVOKE_CONFIRMATION_LITERAL,
-    ) == "Decommissioned lab machine"
+    assert (
+        CBTPairingService._validate_revocation_request(
+            reason="  Decommissioned lab machine  ",
+            confirmation_literal=CBT_SERVER_REVOKE_CONFIRMATION_LITERAL,
+        )
+        == "Decommissioned lab machine"
+    )
 
 
 @pytest.mark.asyncio

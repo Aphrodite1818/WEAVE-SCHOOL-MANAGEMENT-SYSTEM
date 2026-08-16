@@ -204,32 +204,25 @@ class CBTServerCredentialRepository:
         )
         return result.rowcount or 0
 
-
-
-
     @staticmethod
     async def get_unrevoked_by_hash_with_server(
-        db : AsyncSession,
-        *,
-        credential_hash : str
-    ):# -> tuple | None:
+        db: AsyncSession, *, credential_hash: str
+    ):  # -> tuple | None:
         """
         Resolve an unrevoked CBT server credential together with
         the server that owns it
 
-        Expiration and server lifecycle validation belong to the 
+        Expiration and server lifecycle validation belong to the
         machine-auth service rather than the repository
         """
 
-        query = select(
-            CBTServerCredential,
-            CBTServer
-        ).join(
-            CBTServer,
-            CBTServer.id == CBTServerCredential.server_id
-        ).where(
-            CBTServerCredential.credential_hash == credential_hash,
-            CBTServerCredential.revoked_at.is_(None)
+        query = (
+            select(CBTServerCredential, CBTServer)
+            .join(CBTServer, CBTServer.id == CBTServerCredential.server_id)
+            .where(
+                CBTServerCredential.credential_hash == credential_hash,
+                CBTServerCredential.revoked_at.is_(None),
+            )
         )
 
         result = await db.execute(query)
@@ -239,9 +232,9 @@ class CBTServerCredentialRepository:
         if row is None:
             return None
 
-        credential , server = row
+        credential, server = row
 
-        return credential , server
+        return credential, server
 
 
 class CBTPairingCodeRepository:

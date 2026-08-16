@@ -372,5 +372,7 @@ class SubscriptionRepository:
             ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(db, tenant_id),
             ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(db, tenant_id),
             ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(db, tenant_id),
-            ResourceLimitCode.CBT_SERVERS: await SubscriptionRepository.count_cbt_servers(db, tenant_id),
+            ResourceLimitCode.CBT_SERVERS: await SubscriptionRepository.count_cbt_servers(
+                db, tenant_id
+            ),
         }

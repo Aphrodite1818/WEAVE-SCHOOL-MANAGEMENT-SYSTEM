@@ -22,6 +22,7 @@ import {
   resetPublicPricingPlans,
 } from "./features/subscriptions/pricingCatalogueRuntime";
 import { installCookieCsrfFetchGuard } from "./services/installCookieCsrfFetchGuard";
+import { realtimeClient } from "./services/realtimeClient";
 import { subscriptionService } from "./services/subscriptionService";
 import {
   applyAccessibilityPreferences,
@@ -33,6 +34,7 @@ import { installThemeChromeSync } from "./utils/themeChromeSync";
 
 void initializeSentry();
 installCookieCsrfFetchGuard();
+realtimeClient.start();
 applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 syncSystemThemePreference();
 installMobilePwaStability();

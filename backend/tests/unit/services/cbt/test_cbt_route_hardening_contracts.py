@@ -25,7 +25,9 @@ def test_server_inventory_read_is_not_feature_gated() -> None:
 
 def test_reactivation_is_feature_gated_but_revocation_invalidates_usage() -> None:
     source = _source("app/modules/cbt/pairing/router.py")
-    reactivate_block = source.split("async def reactivate_cbt_server", 1)[1].split("@router.post", 1)[0]
+    reactivate_block = source.split("async def reactivate_cbt_server", 1)[1].split(
+        "@router.post", 1
+    )[0]
     revoke_block = source.split("async def revoke_cbt_server", 1)[1]
 
     assert "ensure_feature_enabled" in reactivate_block

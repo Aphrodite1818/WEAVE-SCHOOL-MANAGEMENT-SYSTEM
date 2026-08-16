@@ -89,7 +89,9 @@ async def test_student_import_resolves_level_then_arm(monkeypatch) -> None:
         ClassRoomRepository,
         "get_by_level_department_arm_label",
         AsyncMock(
-            return_value=SimpleNamespace(id=class_id, arm_label="A", is_active=True, archived_at=None)
+            return_value=SimpleNamespace(
+                id=class_id, arm_label="A", is_active=True, archived_at=None
+            )
         ),
     )
     monkeypatch.setattr(
@@ -181,7 +183,9 @@ async def test_student_import_resolves_department_specific_class(monkeypatch) ->
         ClassRoomRepository,
         "get_by_level_department_arm_label",
         AsyncMock(
-            return_value=SimpleNamespace(id=class_id, arm_label="A", is_active=True, archived_at=None)
+            return_value=SimpleNamespace(
+                id=class_id, arm_label="A", is_active=True, archived_at=None
+            )
         ),
     )
     db = SimpleNamespace()

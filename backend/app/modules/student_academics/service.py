@@ -131,9 +131,7 @@ class StudentAcademicService:
         )
         current_position = StudentAcademicService._TERM_ORDER[term.name]
         later_terms = [
-            row
-            for row in terms
-            if StudentAcademicService._TERM_ORDER[row.name] > current_position
+            row for row in terms if StudentAcademicService._TERM_ORDER[row.name] > current_position
         ]
         if not later_terms:
             return {"students_missing_department": 0}, []
@@ -142,9 +140,7 @@ class StudentAcademicService:
             key=lambda row: StudentAcademicService._TERM_ORDER[row.name],
         )
         next_position = StudentAcademicService._TERM_ORDER[next_term.name]
-        levels = await AcademicLevelRepository.list_for_tenant(
-            db, tenant_id, active_only=True
-        )
+        levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, active_only=True)
         required_levels = {
             level.id: level
             for level in levels
@@ -178,8 +174,7 @@ class StudentAcademicService:
                     select(StudentDepartmentAssignment, AcademicTerm, Department)
                     .join(
                         AcademicTerm,
-                        AcademicTerm.id
-                        == StudentDepartmentAssignment.effective_from_term_id,
+                        AcademicTerm.id == StudentDepartmentAssignment.effective_from_term_id,
                     )
                     .join(Department, Department.id == StudentDepartmentAssignment.department_id)
                     .where(
@@ -211,9 +206,7 @@ class StudentAcademicService:
             )
             for level_id, missing_count in missing_by_level.items()
         ]
-        return {
-            "students_missing_department": sum(missing_by_level.values())
-        }, blockers
+        return {"students_missing_department": sum(missing_by_level.values())}, blockers
 
     @staticmethod
     async def _record_academic_lifecycle(
@@ -583,12 +576,13 @@ class StudentAcademicService:
             )
             counts.update(contribution.get("counts", {}))
             blockers.extend(contribution.get("blockers", []))
-            specialization_counts, specialization_blockers = (
-                await StudentAcademicService._specialization_blockers_for_next_term(
-                    db,
-                    tenant_id=tenant_id,
-                    term=term,
-                )
+            (
+                specialization_counts,
+                specialization_blockers,
+            ) = await StudentAcademicService._specialization_blockers_for_next_term(
+                db,
+                tenant_id=tenant_id,
+                term=term,
             )
             counts.update(specialization_counts)
             blockers.extend(specialization_blockers)
@@ -2804,9 +2798,7 @@ class StudentAcademicService:
             student_id=student.id,
             academic_term_id=term.id,
         )
-        if level_subject.id not in {
-            offering.level_subject_id for offering in eligible_offerings
-        }:
+        if level_subject.id not in {offering.level_subject_id for offering in eligible_offerings}:
             raise ForbiddenException(
                 "This subject is not offered to the student's level and department for this term."
             )
