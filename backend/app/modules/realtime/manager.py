@@ -138,9 +138,7 @@ class RealtimeConnectionManager:
             ]
             if tenant_id is not None:
                 connections = [
-                    connection
-                    for connection in connections
-                    if connection.tenant_id == tenant_id
+                    connection for connection in connections if connection.tenant_id == tenant_id
                 ]
             return connections
 

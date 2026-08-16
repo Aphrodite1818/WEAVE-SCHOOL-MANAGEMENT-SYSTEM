@@ -16,9 +16,7 @@ async def test_bulk_import_event_is_actor_targeted_and_identification_only(monke
     actor_id = uuid4()
     job_id = uuid4()
     publish = AsyncMock(return_value=True)
-    monkeypatch.setattr(
-        "app.modules.bulk_imports.live_service.RealtimePublisher.to_actor", publish
-    )
+    monkeypatch.setattr("app.modules.bulk_imports.live_service.RealtimePublisher.to_actor", publish)
 
     await _publish_job_event(
         event_type="bulk_import.progress",
@@ -76,11 +74,7 @@ async def test_session_progression_event_targets_initiating_admin(monkeypatch):
 
 def test_bulk_progress_is_published_once_per_committed_chunk_not_per_row():
     source = (
-        Path(__file__).resolve().parents[2]
-        / "app"
-        / "modules"
-        / "bulk_imports"
-        / "live_service.py"
+        Path(__file__).resolve().parents[2] / "app" / "modules" / "bulk_imports" / "live_service.py"
     ).read_text(encoding="utf-8")
     assert source.count('event_type="bulk_import.progress"') == 1
     progress_block = source.split('event_type="bulk_import.progress"', 1)[0].rsplit(

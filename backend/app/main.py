@@ -114,6 +114,9 @@ from app.tenant_management.router import router as tenant_router
 from app.modules.cbt.pairing.router import router as cbt_pairing_router
 from app.modules.cbt.auth.router import router as cbt_auth_router
 from app.modules.cbt.academics.router import router as cbt_academics_router
+from app.modules.cbt.sync.listener import cbt_sync_listener
+from app.modules.cbt.sync.router import router as cbt_sync_router
+from app.modules.cbt.sync.websocket_router import router as cbt_sync_websocket_router
 
 logger = get_logger(__name__)
 
@@ -168,11 +171,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         async with db.begin():
             await SuperadminBootstrapService.ensure_bootstrap_superadmin(db)
     await realtime_broker.start()
+    await cbt_sync_listener.start()
     try:
         yield
     finally:
         logger.info("Closing Redis and database resources")
         try:
+            await cbt_sync_listener.stop()
             await realtime_broker.stop()
             try:
                 await close_redis()
@@ -277,6 +282,8 @@ def create_app() -> FastAPI:
     app.include_router(cbt_pairing_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_auth_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_academics_router, prefix=f"{API_V1_PREFIX}/cbt")
+    app.include_router(cbt_sync_router, prefix=f"{API_V1_PREFIX}/cbt")
+    app.include_router(cbt_sync_websocket_router, prefix=f"{API_V1_PREFIX}/cbt")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
 

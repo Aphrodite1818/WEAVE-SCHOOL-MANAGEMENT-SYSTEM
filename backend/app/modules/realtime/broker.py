@@ -119,8 +119,7 @@ class RealtimeRedisBroker:
             except Exception:
                 reconnect_attempt += 1
                 delay = min(
-                    RECONNECT_INITIAL_DELAY_SECONDS
-                    * (2 ** min(reconnect_attempt - 1, 16)),
+                    RECONNECT_INITIAL_DELAY_SECONDS * (2 ** min(reconnect_attempt - 1, 16)),
                     RECONNECT_MAX_DELAY_SECONDS,
                 )
                 logger.exception(

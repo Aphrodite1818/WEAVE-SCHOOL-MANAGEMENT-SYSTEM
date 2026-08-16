@@ -1,0 +1,103 @@
+# =========================================#
+# backend.app.modules.cbt.sync.service.py
+# ========================================#
+
+
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.cbt.sync.models import CBTSyncChange
+from app.modules.cbt.sync.recorder import CBTSyncRecorder
+from app.modules.cbt.sync.repository import CBTSyncRepository
+from app.modules.cbt.sync.schemas import CBTSyncChangeResponse, CBTSyncDeltaResponse
+
+
+class CBTSyncService:
+    """Application logic for CBT incremental synchronization"""
+
+    DEFAULT_PAGE_SIZE = 500
+    MAX_PAGE_SIZE = 1000
+
+    @staticmethod
+    def _serialize_change(change: CBTSyncChange) -> CBTSyncChangeResponse:
+        """Convert a persisted sync change into a clean response"""
+
+        return CBTSyncChangeResponse(
+            event_id=change.id,
+            cursor=change.cursor,
+            entity_type=change.entity_type,
+            entity_id=change.entity_id,
+            operation=change.operation,
+            schema_version=change.schema_version,
+            payload=change.payload,
+            occoured_at=change.created_at,
+        )
+
+    @staticmethod
+    async def get_changes_after(
+        cls,
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        after_cursor: int,
+        limit: int = DEFAULT_PAGE_SIZE,
+    ):
+        """Return one ordered page of CBT changes after a cursor"""
+
+        if after_cursor < 0:
+            raise ValueError("after_cursor cannot be negative")
+
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+
+        limit = min(limit, cls.MAX_PAGE_SIZE)
+
+        rows = await CBTSyncRepository.get_changes_after(
+            db, tenant_id=tenant_id, after_cursor=after_cursor, limit=limit
+        )
+
+
+        has_more = len(rows) > limit
+
+        page_rows = rows[:limit]
+
+
+
+        changes = [
+            cls._serailze_change(change)
+            for change in page_rows
+        ]
+
+
+        if page_rows:
+            next_cursor = page_rows[-1].cursor
+
+        else:
+            next_cursor = after_cursor
+
+
+        return CBTSyncDeltaResponse(
+            from_cursor = after_cursor,
+            next_cursor = next_cursor,
+            has_more = has_more,
+            changes = changes
+        )
+
+
+
+
+    @staticmethod
+    async def get_latest_cursor(
+        db : AsyncSession,
+        *,
+        tenant_id : uuid.UUID
+    ) -> int:
+        """return the tenant's latest CBT synchronization cursor"""
+
+        return await CBTSyncRepository.get_latest_cursor(
+            db,
+            tenant_id = tenant_id
+        )

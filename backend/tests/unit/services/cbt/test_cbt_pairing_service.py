@@ -107,7 +107,9 @@ async def test_pair_server_queues_correlated_event_for_code_creator(monkeypatch)
 
     monkeypatch.setattr("app.modules.cbt.pairing.service.hash_pairing_code", lambda _v: "hash")
     monkeypatch.setattr("app.modules.cbt.pairing.service.generate_server_token", lambda: "token")
-    monkeypatch.setattr("app.modules.cbt.pairing.service.hash_server_token", lambda _v: "token-hash")
+    monkeypatch.setattr(
+        "app.modules.cbt.pairing.service.hash_server_token", lambda _v: "token-hash"
+    )
     monkeypatch.setattr(
         "app.modules.cbt.pairing.service.CBTPairingCodeRepository.get_by_hash",
         AsyncMock(side_effect=[pairing, pairing]),
