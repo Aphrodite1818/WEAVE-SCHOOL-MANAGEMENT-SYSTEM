@@ -151,3 +151,58 @@ async def test_system_event_failure_does_not_escape_source_transaction() -> None
     )
 
     assert deliveries == []
+
+
+@pytest.mark.asyncio
+async def test_notification_creation_queues_exact_actor_realtime_signal(monkeypatch) -> None:
+    recipient_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    queued = []
+
+    class Result:
+        @staticmethod
+        def scalar_one_or_none():
+            return None
+
+    class Database:
+        info = {}
+
+        async def execute(self, _statement):
+            return Result()
+
+        @staticmethod
+        def add(_row):
+            return None
+
+        @staticmethod
+        async def flush():
+            return None
+
+    monkeypatch.setattr(
+        "app.modules.communications.notification_service.RealtimePublisher.defer_to_actor",
+        lambda _db, **kwargs: queued.append(kwargs),
+    )
+
+    deliveries = await NotificationService.deliver(
+        Database(),
+        recipients=[
+            ResolvedRecipient(
+                actor_type=CommunicationActorType.TENANT_ADMIN,
+                actor_id=recipient_id,
+                tenant_id=tenant_id,
+                label="Tenant admin",
+            )
+        ],
+        source_type=NotificationSourceType.SYSTEM_EVENT,
+        source_id=uuid.uuid4(),
+        title="Ready",
+        preview="Persisted state changed.",
+        action_path=None,
+        tenant_id=tenant_id,
+    )
+
+    assert len(deliveries) == 1
+    assert queued[0]["event_type"] == "notification.created"
+    assert queued[0]["actor_type"] == "tenant_admin"
+    assert queued[0]["actor_id"] == recipient_id
+    assert queued[0]["tenant_id"] == tenant_id

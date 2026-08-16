@@ -25,11 +25,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield db
             await db.commit()
+            from app.modules.realtime.publisher import RealtimePublisher
+
+            await RealtimePublisher.publish_deferred_after_commit(db)
             await flush_cache_invalidation_events(db)
         except Exception:
             logger.warning("Database session rollback due to exception", exc_info=True)
             await db.rollback()
             discard_cache_invalidation_events(db)
+            from app.modules.realtime.publisher import RealtimePublisher
+
+            RealtimePublisher.discard_deferred(db)
             raise
         finally:
             await db.close()

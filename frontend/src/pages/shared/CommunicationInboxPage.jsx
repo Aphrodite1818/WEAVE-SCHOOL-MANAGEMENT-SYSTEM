@@ -6,7 +6,8 @@ import Button from "../../components/ui/Button";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import { authSession, getErrorMessage } from "../../services/api";
-import { emitNotificationsChanged, notificationService } from "../../services/communicationService";
+import { NOTIFICATION_REALTIME_EVENTS, emitNotificationsChanged, notificationService } from "../../services/communicationService";
+import { realtimeClient } from "../../services/realtimeClient";
 
 const filters = [
   { label: "All", value: "" },
@@ -56,6 +57,18 @@ export default function CommunicationInboxPage() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    const unsubscribers = NOTIFICATION_REALTIME_EVENTS.map((eventType) =>
+      realtimeClient.subscribe(eventType, load));
+    unsubscribers.push(
+      realtimeClient.subscribeConnection((state) => {
+        if (state.status === "reconnected") load();
+      }),
+    );
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [load]);
 
   const mutate = async (action) => {

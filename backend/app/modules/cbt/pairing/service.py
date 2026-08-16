@@ -47,6 +47,7 @@ from app.modules.cbt.security import (
     hash_server_token,
     generate_server_token,
 )
+from app.modules.realtime.publisher import RealtimePublisher
 
 
 from app.modules.subscriptions.service import SubscriptionFeatureService
@@ -223,7 +224,11 @@ class CBTPairingService:
 
         await CBTPairingCodeRepository.create(db, pairing_record)
 
-        return PairingCode(pairing_code=raw_code, expires_at=expires_at)
+        return PairingCode(
+            pairing_request_id=pairing_record.id,
+            pairing_code=raw_code,
+            expires_at=expires_at,
+        )
 
     @staticmethod
     def _ensure_pairing_code_usable(pairing_code: CBTPairingCode, *, now: datetime):
@@ -313,6 +318,20 @@ class CBTPairingService:
         await CBTServerCredentialRepository.create(db, credential)
 
         await CBTPairingCodeRepository.consume(db, pairing_code, used_at=now, server_id=server.id)
+
+        if pairing_code.created_by_admin_id is not None:
+            RealtimePublisher.defer_to_actor(
+                db,
+                event_type="cbt.pairing.completed",
+                actor_type="tenant_admin",
+                actor_id=pairing_code.created_by_admin_id,
+                tenant_id=pairing_code.tenant_id,
+                data={
+                    "pairing_request_id": str(pairing_code.id),
+                    "server_id": str(server.id),
+                    "server_name": server.name,
+                },
+            )
 
         return PairingResult(
             server_id=server.id,

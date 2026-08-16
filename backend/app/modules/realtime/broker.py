@@ -21,6 +21,8 @@ from app.modules.realtime.schemas import RealtimeBrokerMessage
 logger = get_logger(__name__)
 
 REALTIME_CHANNEL = "weave:realtime:v1"
+RECONNECT_INITIAL_DELAY_SECONDS = 0.5
+RECONNECT_MAX_DELAY_SECONDS = 30.0
 
 
 class RealtimeRedisBroker:
@@ -56,8 +58,10 @@ class RealtimeRedisBroker:
         Start this API process' realtime Redis subscription
         """
 
-        if self._listener_task is not None:
+        if self._listener_task is not None and not self._listener_task.done():
             return True
+
+        self._listener_task = None
 
         redis_url = settings.REALTIME_REDIS_URL or settings.REDIS_URL
 
@@ -65,21 +69,18 @@ class RealtimeRedisBroker:
             logger.warning("Realtime broker not started because Redis is not configured")
             return False
 
-        try:
-            self._subscriber = self._create_redis_client()
-            self._pubsub = self._subscriber.pubsub()
-            await self._pubsub.subscribe(REALTIME_CHANNEL)
-            self._listener_task = asyncio.create_task(
-                self._listen(),
-                name="weave-realtime-listener",
-            )
-        except Exception:
-            logger.exception("Failed to start realtime Redis subscriber.")
-            await self._close_redis_resources()
-            return False
-
-        logger.info("Realtime Redis subscriber started")
+        self._listener_task = asyncio.create_task(
+            self._listen(),
+            name="weave-realtime-listener",
+        )
+        logger.info("Realtime Redis listener task started")
         return True
+
+    async def _connect_subscriber(self) -> None:
+        await self._close_subscriber_resources()
+        self._subscriber = self._create_redis_client()
+        self._pubsub = self._subscriber.pubsub()
+        await self._pubsub.subscribe(REALTIME_CHANNEL)
 
     async def _listen(self) -> None:
         """
@@ -87,30 +88,47 @@ class RealtimeRedisBroker:
         and dispatch them to matching local WebSocket connections.
         """
 
-        if self._pubsub is None:
-            return
+        reconnect_attempt = 0
 
-        try:
-            async for raw_message in self._pubsub.listen():
-                if raw_message.get("type") != "message":
-                    continue
-
-                try:
-                    message = RealtimeBrokerMessage.model_validate_json(raw_message["data"])
-
-                    await realtime_manager.dispatch(
-                        event=message.event,
-                        audience=message.audience,
+        while True:
+            try:
+                await self._connect_subscriber()
+                if reconnect_attempt:
+                    logger.info(
+                        "Realtime Redis subscriber recovered",
+                        extra={"reconnect_attempt": reconnect_attempt},
                     )
 
-                except Exception:
-                    logger.exception("Failed to process realtime Redis message.")
+                async for raw_message in self._pubsub.listen():
+                    reconnect_attempt = 0
+                    if raw_message.get("type") != "message":
+                        continue
 
-        except asyncio.CancelledError:
-            raise
+                    try:
+                        message = RealtimeBrokerMessage.model_validate_json(raw_message["data"])
+                        await realtime_manager.dispatch(
+                            event=message.event,
+                            audience=message.audience,
+                        )
+                    except Exception:
+                        logger.exception("Failed to process realtime Redis message.")
 
-        except Exception:
-            logger.exception("Realtime Redis listener stopped unexpectedly.")
+                raise ConnectionError("Realtime Redis subscription ended unexpectedly.")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                reconnect_attempt += 1
+                delay = min(
+                    RECONNECT_INITIAL_DELAY_SECONDS
+                    * (2 ** min(reconnect_attempt - 1, 16)),
+                    RECONNECT_MAX_DELAY_SECONDS,
+                )
+                logger.exception(
+                    "Realtime Redis subscriber unavailable; retrying.",
+                    extra={"reconnect_attempt": reconnect_attempt, "retry_delay_seconds": delay},
+                )
+                await self._close_subscriber_resources()
+                await asyncio.sleep(delay)
 
     async def publish(
         self,
@@ -170,6 +188,16 @@ class RealtimeRedisBroker:
         logger.info("Realtime Redis broker stopped.")
 
     async def _close_redis_resources(self) -> None:
+        await self._close_subscriber_resources()
+
+        if self._publisher is not None:
+            try:
+                await self._publisher.aclose()
+            except Exception:
+                logger.exception("Failed to close realtime Redis publisher.")
+            self._publisher = None
+
+    async def _close_subscriber_resources(self) -> None:
         if self._pubsub is not None:
             try:
                 await self._pubsub.unsubscribe(REALTIME_CHANNEL)
@@ -188,13 +216,6 @@ class RealtimeRedisBroker:
             except Exception:
                 logger.exception("Failed to close realtime Redis subscriber.")
             self._subscriber = None
-
-        if self._publisher is not None:
-            try:
-                await self._publisher.aclose()
-            except Exception:
-                logger.exception("Failed to close realtime Redis publisher.")
-            self._publisher = None
 
 
 realtime_broker = RealtimeRedisBroker()

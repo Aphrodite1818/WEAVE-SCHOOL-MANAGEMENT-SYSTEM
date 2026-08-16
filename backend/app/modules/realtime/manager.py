@@ -32,6 +32,7 @@ class RealtimeConnection:
     actor_id: UUID
     tenant_id: UUID | None
     token_expires_at: datetime
+    send_lock: asyncio.Lock
 
 
 class RealtimeConnectionManager:
@@ -69,6 +70,7 @@ class RealtimeConnectionManager:
             actor_id=identity.actor_id,
             tenant_id=identity.tenant_id,
             token_expires_at=identity.token_expires_at,
+            send_lock=asyncio.Lock(),
         )
 
         async with self._lock:
@@ -116,7 +118,11 @@ class RealtimeConnectionManager:
                         self._tenant_connections.pop(connection.tenant_id, None)
 
     async def get_actor_connections(
-        self, *, actor_type: str, actor_id: UUID
+        self,
+        *,
+        actor_type: str,
+        actor_id: UUID,
+        tenant_id: UUID | None = None,
     ) -> list[RealtimeConnection]:
         """
         Return all local sockets belonging to one actor
@@ -125,11 +131,18 @@ class RealtimeConnectionManager:
         async with self._lock:
             connection_ids = set(self._actor_connections.get((actor_type, actor_id), set()))
 
-            return [
+            connections = [
                 self._connections[connection_id]
                 for connection_id in connection_ids
                 if connection_id in self._connections
             ]
+            if tenant_id is not None:
+                connections = [
+                    connection
+                    for connection in connections
+                    if connection.tenant_id == tenant_id
+                ]
+            return connections
 
     async def get_tenant_connections(self, *, tenant_id: UUID) -> list[RealtimeConnection]:
         """
@@ -162,7 +175,9 @@ class RealtimeConnectionManager:
 
         if audience.kind == "actor":
             connections = await self.get_actor_connections(
-                actor_type=audience.actor_type, actor_id=audience.actor_id
+                actor_type=audience.actor_type,
+                actor_id=audience.actor_id,
+                tenant_id=audience.tenant_id,
             )
 
         elif audience.kind == "tenant":
@@ -171,6 +186,23 @@ class RealtimeConnectionManager:
         else:
             connections = await self.get_all_connections()
         await self._send_to_connections(connections, event=event)
+
+    async def send_json(self, connection_id: UUID, payload: dict) -> bool:
+        """Serialize one outgoing frame for one registered connection."""
+
+        async with self._lock:
+            connection = self._connections.get(connection_id)
+
+        if connection is None:
+            return False
+
+        try:
+            async with connection.send_lock:
+                await connection.websocket.send_json(payload)
+            return True
+        except Exception:
+            await self.unregister(connection_id)
+            return False
 
     async def _send_to_connections(
         self, connections: list[RealtimeConnection], *, event: RealtimeEvent
@@ -190,18 +222,8 @@ class RealtimeConnectionManager:
             "data": event.data,
         }
 
-        results = await asyncio.gather(
-            *[connection.websocket.send_json(payload) for connection in connections],
-            return_exceptions=True,
-        )
-
-        dead_connection_ids = [
-            connection.connection_id
-            for connection, result in zip(connections, results, strict=True)
-            if isinstance(result, BaseException)
-        ]
         await asyncio.gather(
-            *(self.unregister(connection_id) for connection_id in dead_connection_ids)
+            *(self.send_json(connection.connection_id, payload) for connection in connections)
         )
 
     async def refresh_identity(

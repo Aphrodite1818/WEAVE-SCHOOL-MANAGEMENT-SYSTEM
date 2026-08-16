@@ -1,5 +1,5 @@
 import { ArrowLeft, Copy, LoaderCircle, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -7,6 +7,8 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import { useToast } from "../../hooks/useToast";
 import { cbtService } from "../../services/cbtService";
+import { realtimeClient } from "../../services/realtimeClient";
+import { matchesCbtPairingEvent } from "../../services/realtimeEventMatchers";
 
 function formatDateTime(value) {
   if (!value) return "--";
@@ -21,13 +23,9 @@ export default function CBTPairingCodePage() {
   const { showError, showSuccess } = useToast();
   const [copying, setCopying] = useState(false);
   const [pairedServer, setPairedServer] = useState(null);
-  const [pollError, setPollError] = useState("");
+  const [confirmationError, setConfirmationError] = useState("");
 
   const pairingCode = location.state?.pairingCode || null;
-  const existingServerIds = useMemo(
-    () => new Set((location.state?.existingServerIds || []).map((value) => String(value))),
-    [location.state?.existingServerIds],
-  );
   const hasPairedSuccessfully = Boolean(pairedServer);
 
   const handleCopy = async () => {
@@ -48,33 +46,42 @@ export default function CBTPairingCodePage() {
 
     let cancelled = false;
 
-    const pollForPairedServer = async () => {
+    const reconcilePairing = async () => {
       try {
-        const response = await cbtService.listServers();
+        const status = await cbtService.getPairingStatus(pairingCode.pairing_code);
         if (cancelled) return;
 
-        const items = Array.isArray(response?.items) ? response.items : [];
-        const newestServer = items.find((server) => !existingServerIds.has(String(server.id)));
-
-        if (newestServer) {
-          setPairedServer(newestServer);
-          setPollError("");
+        if (status?.status === "paired" && status.server_id) {
+          const server = await cbtService.getServer(status.server_id);
+          if (cancelled) return;
+          setPairedServer(server);
+          setConfirmationError("");
+        } else if (["expired", "invalidated"].includes(status?.status)) {
+          setConfirmationError("This pairing code is no longer active. Generate a fresh code to continue.");
         }
       } catch {
         if (!cancelled) {
-          setPollError("We could not confirm pairing yet. We'll keep trying automatically.");
+          setConfirmationError("We could not confirm pairing. Use Refresh or wait for a realtime update.");
         }
       }
     };
 
-    pollForPairedServer();
-    const intervalId = window.setInterval(pollForPairedServer, 3000);
+    reconcilePairing();
+    const unsubscribeEvent = realtimeClient.subscribe("cbt.pairing.completed", (message) => {
+      if (matchesCbtPairingEvent(pairingCode.pairing_request_id, message)) {
+        reconcilePairing();
+      }
+    });
+    const unsubscribeConnection = realtimeClient.subscribeConnection((state) => {
+      if (state.status === "reconnected") reconcilePairing();
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      unsubscribeEvent();
+      unsubscribeConnection();
     };
-  }, [existingServerIds, hasPairedSuccessfully, pairingCode?.pairing_code]);
+  }, [hasPairedSuccessfully, pairingCode?.pairing_code, pairingCode?.pairing_request_id]);
 
   useEffect(() => {
     if (!pairedServer) return undefined;
@@ -133,9 +140,9 @@ export default function CBTPairingCodePage() {
                     <LoaderCircle className="h-4 w-4 animate-spin text-primary" />
                     Waiting for backend confirmation of server pairing
                   </div>
-                  {pollError ? (
+                  {confirmationError ? (
                     <p className="mt-4 max-w-xl text-sm leading-6 text-amber-700">
-                      {pollError}
+                      {confirmationError}
                     </p>
                   ) : null}
                   <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

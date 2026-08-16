@@ -4,7 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { formatPlanName } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { NOTIFICATIONS_CHANGED_EVENT, emitNotificationsChanged, notificationService } from "../../services/communicationService";
+import { NOTIFICATIONS_CHANGED_EVENT, NOTIFICATION_REALTIME_EVENTS, emitNotificationsChanged, notificationService } from "../../services/communicationService";
+import { realtimeClient } from "../../services/realtimeClient";
 import { authSession } from "../../services/api";
 import { authService } from "../../services/auth.service";
 import { cn } from "../../utils/cn";
@@ -148,6 +149,21 @@ export default function Topbar({
       window.removeEventListener("focus", refreshNotifications);
       window.removeEventListener("weave:pull-refresh", refreshNotifications);
     };
+  }, [isAccountScope]);
+
+  useEffect(() => {
+    if (isAccountScope) return undefined;
+
+    const refreshNotifications = () => setNotificationRefreshKey((value) => value + 1);
+    const unsubscribers = NOTIFICATION_REALTIME_EVENTS.map((eventType) =>
+      realtimeClient.subscribe(eventType, refreshNotifications));
+    unsubscribers.push(
+      realtimeClient.subscribeConnection((state) => {
+        if (state.status === "reconnected") refreshNotifications();
+      }),
+    );
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [isAccountScope]);
 
   useEffect(() => {

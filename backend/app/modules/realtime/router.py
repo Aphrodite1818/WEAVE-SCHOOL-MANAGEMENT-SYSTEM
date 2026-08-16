@@ -37,14 +37,30 @@ IDENTITY_CHANGE_CLOSE_CODE = 4403
 _control_frame_adapter = TypeAdapter(RealtimeClientControlFrame)
 
 
-async def _send_control(websocket: WebSocket, frame: RealtimeContract) -> None:
-    await websocket.send_json(frame.model_dump(mode="json"))
+async def _send_control(
+    websocket: WebSocket,
+    frame: RealtimeContract,
+    *,
+    connection: RealtimeConnection | None = None,
+) -> None:
+    payload = frame.model_dump(mode="json")
+    if connection is None:
+        await websocket.send_json(payload)
+        return
+    await realtime_manager.send_json(connection.connection_id, payload)
 
 
-async def _send_error(websocket: WebSocket, *, code: str, message: str) -> None:
+async def _send_error(
+    websocket: WebSocket,
+    *,
+    code: str,
+    message: str,
+    connection: RealtimeConnection | None = None,
+) -> None:
     await _send_control(
         websocket,
         RealtimeErrorFrame(code=code, message=message),
+        connection=connection,
     )
 
 
@@ -124,6 +140,7 @@ async def realtime_stream(websocket: WebSocket) -> None:
                 connection_id=connection.connection_id,
                 token_expires_at=identity.token_expires_at,
             ),
+            connection=connection,
         )
 
         while True:
@@ -137,6 +154,7 @@ async def realtime_stream(websocket: WebSocket) -> None:
                     websocket,
                     code="authentication_expired",
                     message="The WebSocket access token expired.",
+                    connection=connection,
                 )
                 await websocket.close(code=AUTHENTICATION_CLOSE_CODE)
                 return
@@ -145,11 +163,12 @@ async def realtime_stream(websocket: WebSocket) -> None:
                     websocket,
                     code="invalid_control_frame",
                     message="The WebSocket control frame is invalid or unsupported.",
+                    connection=connection,
                 )
                 continue
 
             if isinstance(frame, RealtimePingFrame):
-                await _send_control(websocket, RealtimePongFrame())
+                await _send_control(websocket, RealtimePongFrame(), connection=connection)
                 continue
 
             if isinstance(frame, RealtimeAuthRefreshFrame):
@@ -160,6 +179,7 @@ async def realtime_stream(websocket: WebSocket) -> None:
                         websocket,
                         code="authentication_failed",
                         message="WebSocket token refresh failed.",
+                        connection=connection,
                     )
                     await websocket.close(code=AUTHENTICATION_CLOSE_CODE)
                     return
@@ -173,6 +193,7 @@ async def realtime_stream(websocket: WebSocket) -> None:
                         websocket,
                         code="identity_change_rejected",
                         message="A WebSocket token refresh cannot change identity.",
+                        connection=connection,
                     )
                     await websocket.close(code=IDENTITY_CHANGE_CLOSE_CODE)
                     return
@@ -183,6 +204,7 @@ async def realtime_stream(websocket: WebSocket) -> None:
                     RealtimeAuthRefreshedFrame(
                         token_expires_at=identity.token_expires_at,
                     ),
+                    connection=connection,
                 )
                 continue
 
@@ -190,6 +212,7 @@ async def realtime_stream(websocket: WebSocket) -> None:
                 websocket,
                 code="unsupported_control_frame",
                 message="This control frame is not valid after authentication.",
+                connection=connection,
             )
 
     except WebSocketDisconnect:
@@ -201,6 +224,7 @@ async def realtime_stream(websocket: WebSocket) -> None:
                 websocket,
                 code="internal_error",
                 message="The realtime connection closed unexpectedly.",
+                connection=connection,
             )
             await websocket.close(code=1011)
         except Exception:

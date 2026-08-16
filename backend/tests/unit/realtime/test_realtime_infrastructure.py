@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ from app.modules.realtime.authentication import (
 )
 from app.modules.realtime.broker import REALTIME_CHANNEL, RealtimeRedisBroker
 from app.modules.realtime.manager import RealtimeConnectionManager
+from app.modules.realtime.publisher import RealtimePublisher
 from app.modules.realtime.schemas import (
     RealtimeAudience,
     RealtimeBrokerMessage,
@@ -51,6 +53,20 @@ class FakeWebSocket:
 
     async def close(self, code: int = 1000, reason: str | None = None) -> None:
         self.closed.append((code, reason))
+
+
+class ConcurrentWriteDetectingSocket(FakeWebSocket):
+    def __init__(self):
+        super().__init__()
+        self.active_writes = 0
+        self.max_active_writes = 0
+
+    async def send_json(self, payload: dict) -> None:
+        self.active_writes += 1
+        self.max_active_writes = max(self.max_active_writes, self.active_writes)
+        await asyncio.sleep(0.01)
+        self.sent.append(payload)
+        self.active_writes -= 1
 
 
 def identity(
@@ -149,6 +165,34 @@ async def test_manager_dispatches_to_actor_tenant_and_broadcast_targets_only():
     assert "audience" not in sockets[0].sent[0]
 
 
+async def test_actor_event_with_tenant_context_cannot_cross_tenant_boundary():
+    manager = RealtimeConnectionManager()
+    actor_id = uuid4()
+    tenant_one, tenant_two = uuid4(), uuid4()
+    tenant_one_socket, tenant_two_socket = FakeWebSocket(), FakeWebSocket()
+    await manager.register(
+        tenant_one_socket,
+        identity=identity(actor_id=actor_id, tenant_id=tenant_one),
+    )
+    await manager.register(
+        tenant_two_socket,
+        identity=identity(actor_id=actor_id, tenant_id=tenant_two),
+    )
+
+    await manager.dispatch(
+        event=RealtimeEvent(type="notification.created"),
+        audience=RealtimeAudience(
+            kind="actor",
+            actor_type="teacher",
+            actor_id=actor_id,
+            tenant_id=tenant_one,
+        ),
+    )
+
+    assert len(tenant_one_socket.sent) == 1
+    assert tenant_two_socket.sent == []
+
+
 async def test_manager_cleans_up_failed_sockets_without_blocking_healthy_sockets():
     manager = RealtimeConnectionManager()
     tenant_id = uuid4()
@@ -165,6 +209,24 @@ async def test_manager_cleans_up_failed_sockets_without_blocking_healthy_sockets
     assert failed_connection.connection_id not in {
         item.connection_id for item in await manager.get_all_connections()
     }
+
+
+async def test_manager_serializes_application_and_control_frames_per_socket():
+    manager = RealtimeConnectionManager()
+    actor_id = uuid4()
+    socket = ConcurrentWriteDetectingSocket()
+    connection = await manager.register(socket, identity=identity(actor_id=actor_id))
+
+    await asyncio.gather(
+        manager.dispatch(
+            event=RealtimeEvent(type="notification.created"),
+            audience=RealtimeAudience(kind="actor", actor_type="teacher", actor_id=actor_id),
+        ),
+        manager.send_json(connection.connection_id, {"type": "pong"}),
+    )
+
+    assert socket.max_active_writes == 1
+    assert len(socket.sent) == 2
 
 
 async def test_manager_refresh_rejects_identity_switching():
@@ -275,6 +337,41 @@ async def test_broker_publish_failure_is_non_fatal():
     assert await broker.publish(actor_message()) is False
 
 
+async def test_deferred_actor_signal_is_not_published_until_after_commit_boundary():
+    db = SimpleNamespace(info={})
+    actor_id = uuid4()
+    publish = AsyncMock(return_value=True)
+    with patch("app.modules.realtime.publisher.realtime_broker.publish", publish):
+        RealtimePublisher.defer_to_actor(
+            db,
+            event_type="notification.created",
+            actor_type="teacher",
+            actor_id=actor_id,
+            data={"notification_id": str(uuid4())},
+        )
+        publish.assert_not_awaited()
+        await RealtimePublisher.publish_deferred_after_commit(db)
+
+    publish.assert_awaited_once()
+    assert publish.await_args.args[0].audience.actor_id == actor_id
+
+
+async def test_discarded_transaction_never_publishes_deferred_signal():
+    db = SimpleNamespace(info={})
+    RealtimePublisher.defer_to_actor(
+        db,
+        event_type="notification.created",
+        actor_type="teacher",
+        actor_id=uuid4(),
+        data={},
+    )
+    RealtimePublisher.discard_deferred(db)
+    publish = AsyncMock(return_value=True)
+    with patch("app.modules.realtime.publisher.realtime_broker.publish", publish):
+        await RealtimePublisher.publish_deferred_after_commit(db)
+    publish.assert_not_awaited()
+
+
 async def test_broker_listener_dispatches_valid_messages_and_ignores_invalid_ones():
     valid = actor_message()
 
@@ -283,14 +380,80 @@ async def test_broker_listener_dispatches_valid_messages_and_ignores_invalid_one
             yield {"type": "subscribe", "data": 1}
             yield {"type": "message", "data": valid.model_dump_json()}
             yield {"type": "message", "data": "not-json"}
+            raise asyncio.CancelledError
 
     broker = RealtimeRedisBroker()
     broker._pubsub = PubSub()
+    broker._connect_subscriber = AsyncMock()
     dispatch = AsyncMock()
     with patch("app.modules.realtime.broker.realtime_manager.dispatch", dispatch):
-        await broker._listen()
+        with pytest.raises(asyncio.CancelledError):
+            await broker._listen()
 
     dispatch.assert_awaited_once_with(event=valid.event, audience=valid.audience)
+
+
+async def test_broker_reconnects_and_resubscribes_after_listener_failure(monkeypatch):
+    valid = actor_message()
+    recovered = asyncio.Event()
+
+    class BrokenPubSub:
+        async def listen(self):
+            raise OSError("redis connection lost")
+            yield
+
+        async def unsubscribe(self, _channel):
+            return None
+
+        async def aclose(self):
+            return None
+
+    class RecoveredPubSub(BrokenPubSub):
+        async def listen(self):
+            yield {"type": "message", "data": valid.model_dump_json()}
+            await asyncio.Event().wait()
+
+    class Subscriber:
+        async def aclose(self):
+            return None
+
+    broker = RealtimeRedisBroker()
+    attempts = 0
+
+    async def connect():
+        nonlocal attempts
+        attempts += 1
+        broker._subscriber = Subscriber()
+        broker._pubsub = BrokenPubSub() if attempts == 1 else RecoveredPubSub()
+
+    async def dispatch(**_kwargs):
+        recovered.set()
+
+    monkeypatch.setattr(broker, "_connect_subscriber", connect)
+    monkeypatch.setattr("app.modules.realtime.broker.RECONNECT_INITIAL_DELAY_SECONDS", 0.001)
+    monkeypatch.setattr("app.modules.realtime.broker.realtime_manager.dispatch", dispatch)
+    task = asyncio.create_task(broker._listen())
+    await asyncio.wait_for(recovered.wait(), timeout=1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert attempts == 2
+
+
+async def test_broker_shutdown_cancels_reconnect_sleep_cleanly(monkeypatch):
+    attempted = asyncio.Event()
+    broker = RealtimeRedisBroker()
+
+    async def connect():
+        attempted.set()
+        raise OSError("redis unavailable")
+
+    monkeypatch.setattr(settings, "REALTIME_REDIS_URL", "redis://realtime/0")
+    monkeypatch.setattr(broker, "_connect_subscriber", connect)
+    assert await broker.start()
+    await asyncio.wait_for(attempted.wait(), timeout=1)
+    await asyncio.wait_for(broker.stop(), timeout=1)
+    assert broker._listener_task is None
 
 
 async def test_websocket_requires_auth_before_registration(monkeypatch):

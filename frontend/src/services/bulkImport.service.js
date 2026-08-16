@@ -2,8 +2,8 @@ import { api } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
 
 const STUDENT_RESOURCE_TYPE = "students";
-const JOB_POLL_CACHE_MS = 1500;
-const ERROR_POLL_CACHE_MS = 15000;
+const JOB_RESPONSE_CACHE_MS = 1500;
+const ERROR_RESPONSE_CACHE_MS = 15000;
 const inFlightJobRequests = new Map();
 const inFlightErrorRequests = new Map();
 const jobResponseCache = new Map();
@@ -22,7 +22,7 @@ const withRequestDeduplication = ({ key, inFlight, cache, ttlMs, loader }) => {
       return value;
     })
     .finally(() => {
-      inFlight.delete(key);
+      if (inFlight.get(key) === promise) inFlight.delete(key);
     });
 
   inFlight.set(key, promise);
@@ -86,14 +86,22 @@ export const bulkImportService = {
     return result;
   },
 
-  getJob: (jobId, requestOptions = {}) =>
-    withRequestDeduplication({
+  getJob: (jobId, requestOptions = {}) => {
+    const { force = false, ...apiOptions } = requestOptions;
+    if (force) {
+      jobResponseCache.delete(jobId);
+      errorResponseCache.delete(jobId);
+      inFlightJobRequests.delete(jobId);
+      inFlightErrorRequests.delete(jobId);
+    }
+    return withRequestDeduplication({
       key: jobId,
       inFlight: inFlightJobRequests,
       cache: jobResponseCache,
-      ttlMs: JOB_POLL_CACHE_MS,
-      loader: () => api.get(`/tenant-admin/imports/${jobId}`, requestOptions),
-    }),
+      ttlMs: JOB_RESPONSE_CACHE_MS,
+      loader: () => api.get(`/tenant-admin/imports/${jobId}`, apiOptions),
+    });
+  },
 
   listJobs: ({ skip = 0, limit = 20, status, signal } = {}) => {
     const params = new URLSearchParams({
@@ -110,14 +118,20 @@ export const bulkImportService = {
     return result;
   },
 
-  getErrors: (jobId, requestOptions = {}) =>
-    withRequestDeduplication({
+  getErrors: (jobId, requestOptions = {}) => {
+    const { force = false, ...apiOptions } = requestOptions;
+    if (force) {
+      errorResponseCache.delete(jobId);
+      inFlightErrorRequests.delete(jobId);
+    }
+    return withRequestDeduplication({
       key: jobId,
       inFlight: inFlightErrorRequests,
       cache: errorResponseCache,
-      ttlMs: ERROR_POLL_CACHE_MS,
-      loader: () => api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, requestOptions),
-    }),
+      ttlMs: ERROR_RESPONSE_CACHE_MS,
+      loader: () => api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, apiOptions),
+    });
+  },
 
   getSlipSummary: (jobId, requestOptions) =>
     api.get(`/tenant-admin/imports/${jobId}/slips/summary`, requestOptions),

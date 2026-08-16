@@ -1,4 +1,5 @@
 import { API_BASE_URL, authSession } from "./api";
+import { markConnectionReady, resetAuthenticationLifecycle } from "./realtimeClientState";
 
 const READY_STATE_CONNECTING = 0;
 const READY_STATE_OPEN = 1;
@@ -58,6 +59,7 @@ export class RealtimeClient {
     this.clearReconnectTimer();
     this.stopHeartbeat();
     this.ready = false;
+    resetAuthenticationLifecycle(this);
 
     const socket = this.socket;
     this.socket = null;
@@ -138,12 +140,11 @@ export class RealtimeClient {
     }
 
     if (message.type === "connection.ready") {
-      const reconnected = this.authenticatedOnce;
-      this.authenticatedOnce = true;
+      const connectionStatus = markConnectionReady(this);
       this.ready = true;
       this.reconnectAttempt = 0;
       this.startHeartbeat();
-      this.emitConnection({ status: reconnected ? "reconnected" : "ready", message });
+      this.emitConnection({ status: connectionStatus, message });
       const currentToken = this.getToken();
       if (currentToken && currentToken !== this.lastAuthenticatedToken) {
         this.lastAuthenticatedToken = currentToken;
@@ -198,7 +199,7 @@ export class RealtimeClient {
     this.clearReconnectTimer();
     this.stopHeartbeat();
     this.ready = false;
-    this.reconnectAttempt = 0;
+    resetAuthenticationLifecycle(this);
     const socket = this.socket;
     this.socket = null;
     if (

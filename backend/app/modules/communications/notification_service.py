@@ -21,6 +21,7 @@ from app.modules.communications.recipient_resolver import (
     actor_type_for,
 )
 from app.modules.communications.repository import CommunicationRepository
+from app.modules.realtime.publisher import RealtimePublisher
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class NotificationService:
         tenant_id: uuid.UUID | None,
     ) -> list[NotificationDelivery]:
         deliveries: list[NotificationDelivery] = []
+        created_deliveries: list[NotificationDelivery] = []
         for recipient in recipients:
             existing = (
                 await db.execute(
@@ -65,7 +67,20 @@ class NotificationService:
             )
             db.add(delivery)
             deliveries.append(delivery)
+            created_deliveries.append(delivery)
         await db.flush()
+        for delivery in created_deliveries:
+            RealtimePublisher.defer_to_actor(
+                db,
+                event_type="notification.created",
+                actor_type=delivery.recipient_actor_type.value,
+                actor_id=delivery.recipient_actor_id,
+                tenant_id=delivery.tenant_id,
+                data={
+                    "notification_id": str(delivery.id),
+                    "source_type": delivery.source_type.value,
+                },
+            )
         return deliveries
 
     @staticmethod
@@ -88,6 +103,7 @@ class NotificationService:
         caller retains control of the surrounding business transaction.
         """
 
+        realtime_checkpoint = RealtimePublisher.deferred_checkpoint(db)
         try:
             async with db.begin_nested():
                 return await NotificationService.deliver(
@@ -101,6 +117,7 @@ class NotificationService:
                     tenant_id=tenant_id,
                 )
         except Exception:
+            RealtimePublisher.discard_deferred_since(db, realtime_checkpoint)
             logger.exception(
                 "System notification delivery failed",
                 extra={
@@ -157,4 +174,21 @@ class NotificationService:
             delivery.acknowledged_at = delivery.acknowledged_at or now
         elif status == NotificationStatus.DISMISSED:
             delivery.dismissed_at = delivery.dismissed_at or now
-        return await CommunicationRepository.save(db, delivery)
+        saved = await CommunicationRepository.save(db, delivery)
+        if db is not None:
+            RealtimePublisher.defer_to_actor(
+                db,
+                event_type=(
+                    "notification.dismissed"
+                    if status == NotificationStatus.DISMISSED
+                    else "notification.updated"
+                ),
+                actor_type=saved.recipient_actor_type.value,
+                actor_id=saved.recipient_actor_id,
+                tenant_id=saved.tenant_id,
+                data={
+                    "notification_id": str(saved.id),
+                    "source_type": saved.source_type.value,
+                },
+            )
+        return saved

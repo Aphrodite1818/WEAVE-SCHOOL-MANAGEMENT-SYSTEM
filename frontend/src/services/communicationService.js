@@ -1,6 +1,11 @@
 import { api } from "./api";
 
 export const NOTIFICATIONS_CHANGED_EVENT = "weave:notifications-changed";
+export const NOTIFICATION_REALTIME_EVENTS = [
+  "notification.created",
+  "notification.updated",
+  "notification.dismissed",
+];
 
 export function emitNotificationsChanged() {
   if (typeof window !== "undefined") {

@@ -10,13 +10,13 @@ const frontendRoot = path.resolve(__dirname, "../..");
 const readSource = (relativePath) =>
   readFile(path.join(frontendRoot, relativePath), "utf8");
 
-test("bulk import uses the shared authenticated transport and deduplicates polling", async () => {
+test("bulk import uses the shared authenticated transport and deduplicates REST reads", async () => {
   const source = await readSource("src/services/bulkImport.service.js");
 
   assert.match(source, /api\.postForm\(/);
   assert.match(source, /api\.getBlob\(/);
   assert.match(source, /inFlightJobRequests/);
-  assert.match(source, /ERROR_POLL_CACHE_MS/);
+  assert.match(source, /ERROR_RESPONSE_CACHE_MS/);
   assert.doesNotMatch(source, /\bfetch\s*\(/);
 });
 

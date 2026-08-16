@@ -25,6 +25,11 @@ import LoadingState from "../../components/shared/LoadingState";
 import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../services/api";
 import { bulkImportService } from "../../services/bulkImport.service";
+import { realtimeClient } from "../../services/realtimeClient";
+import {
+  BULK_IMPORT_REALTIME_EVENTS,
+  matchesBulkImportEvent,
+} from "../../services/realtimeEventMatchers";
 import {
   HISTORY_NEXT_LABEL,
   getActualParentInvitationsQueued,
@@ -233,12 +238,15 @@ function BulkImportPage() {
     if (nextRoute) navigateSmooth(nextRoute);
   }, [currentJob?.id, navigateSmooth]);
 
-  const loadJob = useCallback(async (id) => {
-    const job = await bulkImportService.getJob(id);
+  const loadJob = useCallback(async (id, { force = false } = {}) => {
+    const job = await bulkImportService.getJob(id, { force });
     setCurrentJob(job);
     if (job?.id) {
       window.sessionStorage.setItem(ACTIVE_IMPORT_JOB_STORAGE_KEY, job.id);
-      const errorResponse = await bulkImportService.getErrors(job.id).catch(() => ({ items: [] }));
+      const errorResponse = await bulkImportService.getErrors(
+        job.id,
+        force ? { force: true } : {},
+      ).catch(() => ({ items: [] }));
       setErrors(Array.isArray(errorResponse?.items) ? errorResponse.items : []);
     }
     return job;
@@ -311,13 +319,25 @@ function BulkImportPage() {
   }, [displayStep, step]);
 
   useEffect(() => {
-    if (!isActiveJob(currentJob)) return undefined;
-    const timer = window.setInterval(() => {
-      loadJob(currentJob.id).catch((error) => {
+    const activeJobId = currentJob?.id;
+    if (!activeJobId) return undefined;
+
+    const reconcile = () => {
+      loadJob(activeJobId, { force: true }).catch((error) => {
         showError(getErrorMessage(error, "Could not refresh import progress."));
       });
-    }, 5000);
-    return () => window.clearInterval(timer);
+    };
+    const unsubscribers = BULK_IMPORT_REALTIME_EVENTS.map((eventType) =>
+      realtimeClient.subscribe(eventType, (message) => {
+        if (matchesBulkImportEvent(activeJobId, message)) reconcile();
+      }));
+    unsubscribers.push(
+      realtimeClient.subscribeConnection((state) => {
+        if (state.status === "reconnected" && isActiveJob(currentJob)) reconcile();
+      }),
+    );
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [currentJob, loadJob, showError]);
 
   useEffect(() => {
@@ -897,7 +917,7 @@ function BulkImportPage() {
         <div className="space-y-3 text-sm text-text-muted">
           <p>Students to create: <strong className="text-text">{currentJob?.successful_rows || 0}</strong></p>
           <p>Parent invitation emails expected: <strong className="text-text">{expectedParentInvitationCount}</strong></p>
-          <p>Processing happens in the bulk-import worker. This page will poll until the job reaches a final status.</p>
+          <p>Processing happens in the bulk-import worker. This page updates when persisted progress changes.</p>
         </div>
       </Modal>
 

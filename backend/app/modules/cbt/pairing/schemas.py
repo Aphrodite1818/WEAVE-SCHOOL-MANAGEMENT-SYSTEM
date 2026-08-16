@@ -38,6 +38,7 @@ class PairingCode(BaseModel):
     is stored together with its expiration and lifecycle metadata.
     """
 
+    pairing_request_id: UUID
     pairing_code: str
     expires_at: datetime
 

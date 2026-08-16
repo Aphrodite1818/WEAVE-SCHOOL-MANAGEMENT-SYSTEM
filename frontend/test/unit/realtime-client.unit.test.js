@@ -52,11 +52,17 @@ class FakeWebSocket {
 const importRealtimeClient = async () => {
   const sourceUrl = new URL("../../src/services/realtimeClient.js", import.meta.url);
   const source = await readFile(sourceUrl, "utf8");
-  const isolatedSource = source.replace(
-    'import { API_BASE_URL, authSession } from "./api";',
-    'const API_BASE_URL = "https://api.weave.test/api/v1";\n' +
-      "const authSession = { getToken: () => null, subscribeToken: () => () => {} };",
-  );
+  const isolatedSource = source
+    .replace(
+      'import { API_BASE_URL, authSession } from "./api";',
+      'const API_BASE_URL = "https://api.weave.test/api/v1";\n' +
+        "const authSession = { getToken: () => null, subscribeToken: () => () => {} };",
+    )
+    .replace(
+      'import { markConnectionReady, resetAuthenticationLifecycle } from "./realtimeClientState";',
+      "const resetAuthenticationLifecycle = (client) => { client.authenticatedOnce = false; client.reconnectAttempt = 0; client.lastAuthenticatedToken = null; };\n" +
+        "const markConnectionReady = (client) => { const status = client.authenticatedOnce ? 'reconnected' : 'ready'; client.authenticatedOnce = true; return status; };",
+    );
   const encoded = Buffer.from(isolatedSource).toString("base64");
   return import(`data:text/javascript;base64,${encoded}#${Date.now()}-${Math.random()}`);
 };
@@ -146,6 +152,24 @@ test("HTTP token rotation propagates through auth.refresh and logout closes the 
   setToken(null);
   assert.deepEqual(socket.closeCalls, [{ code: 1000, reason: "Logged out" }]);
   assert.equal(client.socket, null);
+});
+
+test("a fresh login after logout emits ready instead of reconnected", async () => {
+  const { client, setToken } = await setup();
+  const states = [];
+  client.subscribeConnection((state) => states.push(state.status));
+  client.start();
+  const first = FakeWebSocket.instances[0];
+  first.open();
+  first.receive({ type: "connection.ready" });
+
+  setToken(null);
+  setToken("token-two");
+  const second = FakeWebSocket.instances[1];
+  second.open();
+  second.receive({ type: "connection.ready" });
+
+  assert.deepEqual(states, ["ready", "ready"]);
 });
 
 test("unexpected disconnect uses one bounded reconnect timer", async () => {

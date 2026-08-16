@@ -11,6 +11,11 @@ import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { sessionClosureService } from "../../services/sessionClosureService";
+import { realtimeClient } from "../../services/realtimeClient";
+import {
+  SESSION_PROGRESSION_REALTIME_EVENTS,
+  matchesSessionProgressionEvent,
+} from "../../services/realtimeEventMatchers";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
 const asItems = (response) =>
@@ -144,10 +149,31 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   }, [selectedSession]);
 
   useEffect(() => {
-    if (!isClosingPage || selectedSession?.status !== "closing") return undefined;
-    const timer = window.setInterval(loadClosingWorkflow, 5000);
-    return () => window.clearInterval(timer);
-  }, [isClosingPage, loadClosingWorkflow, selectedSession?.status]);
+    if (!isClosingPage || !selectedSessionId) return undefined;
+
+    const reconcile = () => Promise.all([loadClosingWorkflow(), loadSessions()]);
+    const unsubscribers = SESSION_PROGRESSION_REALTIME_EVENTS.map((eventType) =>
+      realtimeClient.subscribe(eventType, (message) => {
+        if (matchesSessionProgressionEvent(selectedSessionId, message)) {
+          reconcile();
+        }
+      }));
+    unsubscribers.push(
+      realtimeClient.subscribeConnection((state) => {
+        if (state.status === "reconnected" && selectedSession?.status === "closing") {
+          reconcile();
+        }
+      }),
+    );
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [
+    isClosingPage,
+    loadClosingWorkflow,
+    loadSessions,
+    selectedSession?.status,
+    selectedSessionId,
+  ]);
 
   const openConfiguration = (session) => {
     setSelectedSessionId(session.id);

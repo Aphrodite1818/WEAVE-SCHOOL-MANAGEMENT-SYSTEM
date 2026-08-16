@@ -18,6 +18,7 @@ from app.modules.communications.enums import (
 )
 from app.modules.communications.notification_service import NotificationService
 from app.modules.communications.recipient_resolver import ResolvedRecipient
+from app.modules.realtime.publisher import RealtimePublisher
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
     StudentProgressionRepository,
@@ -68,6 +69,26 @@ class SessionClosureService:
         "The next session has at least one configured term.",
         "No progression run is already processing.",
     ]
+
+    @staticmethod
+    async def _publish_progression_event(
+        *,
+        run: StudentProgressionRun,
+        event_type: str,
+    ) -> None:
+        if run.initiated_by_admin_id is None:
+            return
+        await RealtimePublisher.to_actor(
+            event_type=event_type,
+            actor_type="tenant_admin",
+            actor_id=run.initiated_by_admin_id,
+            tenant_id=run.tenant_id,
+            data={
+                "session_id": str(run.academic_session_id),
+                "progression_run_id": str(run.id),
+                "status": run.status.value,
+            },
+        )
 
     @staticmethod
     def _summarize_progression_items(
@@ -407,6 +428,10 @@ class SessionClosureService:
         run.failure_reason = None
         await StudentProgressionRepository.save_run(db, run)
         await db.commit()
+        await SessionClosureService._publish_progression_event(
+            run=run,
+            event_type="academic_session.progression.started",
+        )
 
         enrollments = await AcademicProgressionService._load_progression_enrollments(
             db,
@@ -514,6 +539,15 @@ class SessionClosureService:
             ),
         )
         await db.commit()
+        await RealtimePublisher.publish_deferred_after_commit(db)
+        await SessionClosureService._publish_progression_event(
+            run=run,
+            event_type=(
+                "academic_session.progression.failed"
+                if progression_failed
+                else "academic_session.progression.completed"
+            ),
+        )
         await AuthIdentityService.invalidate_after_commit(db)
         return {
             "status": run.status.value,
