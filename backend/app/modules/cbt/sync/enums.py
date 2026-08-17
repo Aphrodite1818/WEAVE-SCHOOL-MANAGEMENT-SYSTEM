@@ -27,6 +27,7 @@ class CBTSyncEntityType(str, PyEnum):
     ASSESSMENT_SCHEME = "assessment_scheme"
     ASSESSMENT_COMPONENT = "assessment_component"
 
+    ADMIN = "admin"
     TEACHER = "teacher"
     TEACHER_ASSIGNMENT = "teacher_assignment"
 
