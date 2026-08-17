@@ -13,6 +13,18 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      RATE_LIMIT_REDIS_URL: redis://127.0.0.1:6379/1
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,6 +38,66 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Apply targeted frontend lint fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected source fragment not found in {path}")
+              file.write_text(text.replace(old, new, 1))
+
+          path = "frontend/src/features/academic-admin/TeacherAssignmentsWorkspace.jsx"
+          replace(
+              path,
+              "  const { showSuccess, showError, showWarning } = useToast();\n\n  const loadBase",
+              "  const { showSuccess, showError, showWarning } = useToast();\n  const currentTermId = currentTerm?.id || \"\";\n\n  const loadBase",
+          )
+          replace(path, "    if (!form.class_id || !currentTerm?.id) {", "    if (!form.class_id || !currentTermId) {")
+          replace(path, "          curriculumService.getClassDepartment(form.class_id, currentTerm.id),", "          curriculumService.getClassDepartment(form.class_id, currentTermId),")
+          replace(path, "                offering.academic_term_id === currentTerm.id &&", "                offering.academic_term_id === currentTermId &&")
+          replace(path, "    currentTerm?.id,", "    currentTermId,")
+
+          path = "frontend/src/routes/AdminGettingStartedRoute.jsx"
+          replace(
+              path,
+              "  const guide = useRoleGuide({ role: \"admin\" });\n  const { showError } = useToast();",
+              "  const guide = useRoleGuide({ role: \"admin\" });\n  const { finish } = guide;\n  const { showError } = useToast();",
+          )
+          replace(path, "          await guide.finish();", "          await finish();")
+          replace(path, "  }, [guide.finish, showError]);", "  }, [finish, showError]);")
+
+          path = "frontend/src/pages/shared/RoleGettingStartedPage.jsx"
+          replace(
+              path,
+              "  const guide = useRoleGuide({ role });\n\n  useEffect(() => {",
+              "  const guide = useRoleGuide({ role });\n  const { start } = guide;\n\n  useEffect(() => {",
+          )
+          replace(path, "      guide.start();", "      start();")
+          replace(
+              path,
+              "  }, [guide.guideState?.status, guide.loading, guide.start]);",
+              "  }, [guide.guideState?.status, guide.loading, start]);",
+          )
+
+          path = "frontend/src/pages/admin/AcademicHubOverviewPage.jsx"
+          replace(
+              path,
+              "  const stats = analytics?.stats || {};",
+              "  const stats = useMemo(() => analytics?.stats || {}, [analytics?.stats]);",
+          )
+
+          path = "frontend/src/pages/shared/MessagesPage.jsx"
+          replace(
+              path,
+              "  const currentUser = authSession.getUser() || {};",
+              "  const currentUser = useMemo(() => authSession.getUser() || {}, []);",
+          )
+          PY
       - name: Capture frontend lint
         shell: bash
         run: |
@@ -44,11 +116,11 @@ jobs:
           uv run pytest tests/unit/student_academics/test_bulk_academic_actions.py tests/unit/classes/test_academic_level_architecture.py -q --tb=short > ../backend-test-diagnostic.txt 2>&1
           echo "backend_test_status=$?" >> ../backend-test-diagnostic.txt
           exit 0
-      - name: Commit diagnostics
+      - name: Commit fixes and diagnostics
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend-lint-diagnostic.txt backend-test-diagnostic.txt
-          git commit -m "chore: capture CI diagnostics"
+          git add frontend/src frontend-lint-diagnostic.txt backend-test-diagnostic.txt
+          git commit -m "fix: resolve academic frontend lint integration"
           git push origin HEAD:cbt-sync-module-structure
