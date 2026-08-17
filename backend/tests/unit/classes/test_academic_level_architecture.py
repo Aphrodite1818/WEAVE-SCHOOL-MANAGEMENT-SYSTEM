@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import sqlalchemy as sa
+from pydantic import ValidationError
 
-from app.modules.classes.models import AcademicCategory, AcademicLevel, ArmLabel, ClassRoom
 from app.core.exceptions import ConflictException
+from app.modules.classes.models import AcademicCategory, AcademicLevel, ArmLabel, ClassRoom, Department
 from app.modules.classes.schemas import ArmLabelCreate, ClassRoomCreate, ClassRoomUpdate
 from app.modules.classes.service import ArmLabelService, ClassRoomService
 from app.modules.student_academics.curriculum_models import CurriculumSubject
@@ -25,12 +27,13 @@ def _allow_academic_writes_for_class_unit_tests():
         yield
 
 
-def test_classroom_contract_requires_level_but_allows_no_class_arm() -> None:
+def test_classroom_contract_requires_level_and_concrete_arm() -> None:
     arm_label_id = uuid.uuid4()
     payload = ClassRoomCreate(academic_level_id=uuid.uuid4(), arm_label_id=arm_label_id)
     assert payload.arm_label_id == arm_label_id
 
-    assert ClassRoomCreate(academic_level_id=uuid.uuid4()).arm_label_id is None
+    with pytest.raises(ValidationError):
+        ClassRoomCreate(academic_level_id=uuid.uuid4())
 
 
 def test_teacher_assignment_contract_is_concrete_class_and_curriculum_subject() -> None:
@@ -56,6 +59,22 @@ def test_academic_tables_expose_canonical_foreign_keys() -> None:
     assert "class_id" in TeacherAssignment.__table__.columns
     assert "curriculum_subject_id" in TeacherAssignment.__table__.columns
     assert "level_subject_id" not in TeacherAssignment.__table__.columns
+
+
+def test_department_name_uniqueness_is_scoped_to_academic_level() -> None:
+    constraints = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in Department.__table__.constraints
+        if isinstance(constraint, sa.UniqueConstraint)
+    }
+
+    assert constraints["uq_departments_tenant_level_name"] == (
+        "tenant_id",
+        "academic_level_id",
+        "normalized_name",
+    )
+    assert "uq_departments_tenant_name" not in constraints
+    assert Department.__table__.columns.academic_level_id.nullable is False
 
 
 @pytest.mark.asyncio
