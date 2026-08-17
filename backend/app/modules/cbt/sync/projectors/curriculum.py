@@ -14,6 +14,7 @@ from app.modules.cbt.academics.schemas import (
     CBTCurriculumSubjectSnapshot,
     CBTSubjectSnapshot,
 )
+from app.modules.classes.models import AcademicLevel, ClassRoom, Department
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
@@ -52,37 +53,53 @@ def project_subject(
 def project_curriculum(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        select(Curriculum).where(
+    joined = session.execute(
+        select(Curriculum, AcademicLevel)
+        .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
+        .where(
             Curriculum.tenant_id == tenant_id,
             Curriculum.id == entity_id,
+            AcademicLevel.tenant_id == tenant_id,
         )
-    ).scalar_one_or_none()
-    if row is None:
+    ).first()
+    if joined is None:
+        return None
+    curriculum, level = joined
+    if not _visible(level):
         return None
     return CBTCurriculumSnapshot(
-        id=row.id,
-        academic_level_id=row.academic_level_id,
+        id=curriculum.id,
+        academic_level_id=curriculum.academic_level_id,
     ).model_dump(mode="json")
 
 
 def project_curriculum_subject(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        select(CurriculumSubject).where(
+    joined = session.execute(
+        select(CurriculumSubject, Curriculum, AcademicLevel, Subject)
+        .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+        .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
+        .join(Subject, Subject.id == CurriculumSubject.subject_id)
+        .where(
             CurriculumSubject.tenant_id == tenant_id,
             CurriculumSubject.id == entity_id,
+            Curriculum.tenant_id == tenant_id,
+            AcademicLevel.tenant_id == tenant_id,
+            Subject.tenant_id == tenant_id,
         )
-    ).scalar_one_or_none()
-    if not _visible(row):
+    ).first()
+    if joined is None:
+        return None
+    curriculum_subject, _curriculum, level, subject = joined
+    if not _visible(curriculum_subject) or not _visible(level) or not _visible(subject):
         return None
     return CBTCurriculumSubjectSnapshot(
-        id=row.id,
-        curriculum_id=row.curriculum_id,
-        subject_id=row.subject_id,
-        is_elective=row.is_elective,
-        is_active=row.is_active,
+        id=curriculum_subject.id,
+        curriculum_id=curriculum_subject.curriculum_id,
+        subject_id=curriculum_subject.subject_id,
+        is_elective=curriculum_subject.is_elective,
+        is_active=curriculum_subject.is_active,
     ).model_dump(mode="json")
 
 
@@ -107,6 +124,7 @@ def _eligible_enrollment_ids(
         session.execute(
             select(StudentEnrollment.id, StudentEnrollment.class_id)
             .join(Student, Student.id == StudentEnrollment.student_id)
+            .join(ClassRoom, ClassRoom.id == StudentEnrollment.class_id)
             .where(
                 StudentEnrollment.tenant_id == tenant_id,
                 StudentEnrollment.academic_level_id == academic_level_id,
@@ -114,11 +132,24 @@ def _eligible_enrollment_ids(
                 StudentEnrollment.is_current.is_(True),
                 Student.status == AcademicStatus.ACTIVE,
                 Student.is_archived.is_(False),
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.academic_level_id == academic_level_id,
+                ClassRoom.is_active.is_(True),
+                ClassRoom.archived_at.is_(None),
             )
         ).all()
     )
     if department_id is None:
         return [row.id for row in enrollment_rows]
+
+    department = session.execute(
+        select(Department).where(
+            Department.tenant_id == tenant_id,
+            Department.id == department_id,
+        )
+    ).scalar_one_or_none()
+    if not _visible(department) or department.academic_level_id != academic_level_id:
+        return []
 
     class_ids = [row.class_id for row in enrollment_rows if row.class_id is not None]
     if not class_ids:
@@ -144,30 +175,54 @@ def project_subject_offering(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
     joined = session.execute(
-        select(CurriculumOffering, CurriculumSubject, Curriculum, AcademicTerm)
+        select(
+            CurriculumOffering,
+            CurriculumSubject,
+            Curriculum,
+            AcademicLevel,
+            Subject,
+            AcademicTerm,
+        )
         .join(
             CurriculumSubject,
             CurriculumSubject.id == CurriculumOffering.curriculum_subject_id,
         )
         .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+        .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
+        .join(Subject, Subject.id == CurriculumSubject.subject_id)
         .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
         .where(
             CurriculumOffering.tenant_id == tenant_id,
             CurriculumOffering.id == entity_id,
             CurriculumSubject.tenant_id == tenant_id,
             Curriculum.tenant_id == tenant_id,
+            AcademicLevel.tenant_id == tenant_id,
+            Subject.tenant_id == tenant_id,
             AcademicTerm.tenant_id == tenant_id,
         )
     ).first()
     if joined is None:
         return None
-    offering, curriculum_subject, curriculum, term = joined
+    offering, curriculum_subject, curriculum, level, subject, term = joined
     if (
         not _visible(curriculum_subject)
+        or not _visible(level)
+        or not _visible(subject)
         or not term.is_current
         or term.status != AcademicTermStatus.OPEN
     ):
         return None
+
+    if offering.department_id is not None:
+        department = session.execute(
+            select(Department).where(
+                Department.tenant_id == tenant_id,
+                Department.id == offering.department_id,
+            )
+        ).scalar_one_or_none()
+        if not _visible(department) or department.academic_level_id != curriculum.academic_level_id:
+            return None
+
     eligible = _eligible_enrollment_ids(
         session,
         tenant_id=tenant_id,
