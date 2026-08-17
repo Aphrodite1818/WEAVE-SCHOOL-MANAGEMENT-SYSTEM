@@ -91,32 +91,45 @@ class AcademicCurriculumService:
         *,
         tenant_id: uuid.UUID,
         term: AcademicTerm,
+        class_id: uuid.UUID | None = None,
+        curriculum_subject_id: uuid.UUID | None = None,
     ) -> None:
-        """Protect historical specialization once academic evidence exists.
+        """Protect historical specialization once related academic evidence exists.
 
-        Draft terms are freely configurable. An open term may still be corrected
-        before any result exists. Closing and closed terms are immutable.
+        Draft terms are freely configurable. Closing and closed terms are immutable.
+        During an open term, only the affected class or curriculum subject is locked
+        once result rows already depend on that scope; unrelated setup may continue.
         """
 
         if term.status in {AcademicTermStatus.CLOSING, AcademicTermStatus.CLOSED}:
             raise ConflictException(
                 "Curriculum specialization cannot be changed after term closing begins."
             )
-        if term.status == AcademicTermStatus.OPEN:
-            result_id = (
-                await db.execute(
-                    select(StudentSubjectResult.id)
-                    .where(
-                        StudentSubjectResult.tenant_id == tenant_id,
-                        StudentSubjectResult.academic_term_id == term.id,
-                    )
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if result_id is not None:
-                raise ConflictException(
-                    "Curriculum specialization is locked because results already exist for this term."
-                )
+        if term.status != AcademicTermStatus.OPEN:
+            return
+
+        query = select(StudentSubjectResult.id).where(
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.academic_term_id == term.id,
+        )
+        if class_id is not None:
+            query = query.where(StudentSubjectResult.class_id == class_id)
+        if curriculum_subject_id is not None:
+            query = query.where(
+                StudentSubjectResult.curriculum_subject_id == curriculum_subject_id
+            )
+        result_id = (await db.execute(query.limit(1))).scalar_one_or_none()
+        if result_id is not None:
+            scope = (
+                "this class"
+                if class_id is not None
+                else "this curriculum subject"
+                if curriculum_subject_id is not None
+                else "this term"
+            )
+            raise ConflictException(
+                f"Curriculum specialization is locked because results already exist for {scope}."
+            )
 
     @staticmethod
     async def get_curriculum(
@@ -306,6 +319,7 @@ class AcademicCurriculumService:
             db,
             tenant_id=tenant_id,
             term=term,
+            curriculum_subject_id=curriculum_subject.id,
         )
 
         if payload.department_id is not None:
@@ -404,6 +418,7 @@ class AcademicCurriculumService:
             db,
             tenant_id=tenant_id,
             term=term,
+            curriculum_subject_id=row.curriculum_subject_id,
         )
         await db.delete(row)
         await db.commit()
@@ -456,6 +471,7 @@ class AcademicCurriculumService:
             db,
             tenant_id=tenant_id,
             term=term,
+            class_id=class_id,
         )
         row = (
             await db.execute(
@@ -499,6 +515,7 @@ class AcademicCurriculumService:
             db,
             tenant_id=tenant_id,
             term=term,
+            class_id=class_id,
         )
         row = (
             await db.execute(
