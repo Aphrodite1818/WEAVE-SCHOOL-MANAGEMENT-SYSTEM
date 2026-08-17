@@ -80,22 +80,22 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     setLoading(true);
     try {
       const response = await academicService.listSessions({ limit: 100 });
-      const items = asItems(response);
-      setSessions(items);
+      const rows = asItems(response);
+      setSessions(rows);
 
       const preferred = isClosingPage
-        ? items.find((item) => item.status === "closing") ||
-          items.find((item) => item.status === "open" && item.is_current) ||
+        ? rows.find((item) => item.status === "closing") ||
+          rows.find((item) => item.status === "open" && item.is_current) ||
           null
-        : items.find((item) => item.is_current) ||
-          items.find((item) => item.status === "open") ||
+        : rows.find((item) => item.is_current) ||
+          rows.find((item) => item.status === "open") ||
           null;
 
       setSelectedSessionId((current) =>
-        items.some((item) => item.id === current) ? current : preferred?.id || "",
+        rows.some((item) => item.id === current) ? current : preferred?.id || "",
       );
       onContextChange?.({
-        currentSession: items.find((item) => item.is_current) || null,
+        currentSession: rows.find((item) => item.is_current) || null,
       });
     } catch (error) {
       showError(getErrorMessage(error, "Could not load academic sessions."));
@@ -157,7 +157,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
         if (matchesSessionProgressionEvent(selectedSessionId, message)) {
           reconcile();
         }
-      }));
+      }),
+    );
     unsubscribers.push(
       realtimeClient.subscribeConnection((state) => {
         if (state.status === "reconnected" && selectedSession?.status === "closing") {
@@ -209,6 +210,11 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     }
   };
 
+  const terminalStudents = Number(audit?.terminal_students || 0);
+  const requiresTerminalConfirmation = Boolean(
+    audit?.requires_terminal_confirmation && terminalStudents > 0,
+  );
+
   const startClosing = async () => {
     if (!selectedSession) return;
     setBusy("start");
@@ -216,6 +222,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
       const response = await sessionClosureService.startClosing(
         selectedSession.id,
         `session-closing-${selectedSession.id}`,
+        requiresTerminalConfirmation,
       );
       setAudit(response?.audit || null);
       if (!response?.started) {
@@ -254,8 +261,12 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     setBusy("finalize");
     try {
       const response = await sessionClosureService.finalizeClose(selectedSession.id);
+      const closedName = response?.closed_session?.name || "Session";
+      const nextName = response?.next_session?.name;
       showSuccess(
-        `${response?.closed_session?.name || "Session"} closed and ${response?.opened_session?.name || "the next session"} opened.`,
+        nextName
+          ? `${closedName} closed. ${nextName} remains in draft for separate opening.`
+          : `${closedName} closed.`,
       );
       await loadSessions();
       setStatus(null);
@@ -412,7 +423,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
           <div>
             <h2 className="section-title">Close academic session</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
-              Review closure readiness, start background progression, and finalize only after the worker completes successfully.
+              Review closure readiness, start background level progression, and finalize only after the worker completes successfully.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -475,7 +486,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
             <h3 className="font-semibold text-text">Closure readiness audit</h3>
             <p className="mt-1 text-sm text-text-muted">
               {audit?.is_ready
-                ? "Every required closure check currently passes."
+                ? "Every required structural and lifecycle check currently passes."
                 : "Resolve every blocker below before the session can enter closing."}
             </p>
           </div>
@@ -503,6 +514,15 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
             </ul>
           </div>
         ) : null}
+
+        {requiresTerminalConfirmation && selectedSession?.status === "open" ? (
+          <div className="mt-4 rounded-2xl border border-warning/40 bg-warning-soft p-4 text-sm text-amber-950">
+            <p className="font-semibold">Terminal graduation confirmation required</p>
+            <p className="mt-1">
+              {terminalStudents} student{terminalStudents === 1 ? "" : "s"} are in the final configured level of the institution path. Starting closure will graduate them, end their active enrollment, and deactivate student access. This action is never inferred from a missing intermediate category.
+            </p>
+          </div>
+        ) : null}
       </Card>
 
       {run ? (
@@ -511,7 +531,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
             <div>
               <h3 className="font-semibold text-text">Background progression</h3>
               <p className="mt-1 text-sm text-text-muted">
-                The worker promotes eligible students, graduates terminal classes, and preserves enrollment history. It never closes the session automatically.
+                The worker progresses students by academic level only. New enrollments have no class placement, and terminal students graduate only when that outcome was explicitly confirmed at closure start.
               </p>
             </div>
             <Badge
@@ -526,7 +546,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
               {run.status}
             </Badge>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
             {runCounts(run).map(([label, value]) => (
               <div key={label} className="rounded-xl border border-border/70 px-3 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
@@ -554,10 +574,15 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
               onClick={() =>
                 setConfirmation({
                   type: "start",
-                  title: "Start closing this academic session",
-                  description:
-                    "Academic write activities will pause immediately and the progression worker will start.",
-                  confirmationText: "START_SESSION_CLOSING",
+                  title: requiresTerminalConfirmation
+                    ? "Confirm terminal graduation and start closing"
+                    : "Start closing this academic session",
+                  description: requiresTerminalConfirmation
+                    ? `${terminalStudents} terminal student${terminalStudents === 1 ? "" : "s"} will be graduated. Academic writes will pause and the progression worker will then start.`
+                    : "Academic write activities will pause immediately and the progression worker will start.",
+                  confirmationText: requiresTerminalConfirmation
+                    ? "GRADUATE_TERMINAL_STUDENTS"
+                    : "START_SESSION_CLOSING",
                   confirmLabel: "Start closing",
                 })
               }
@@ -575,7 +600,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                   type: "retry",
                   title: "Retry student progression",
                   description:
-                    "Retry the failed background progression after resolving the reported issue.",
+                    "Retry the failed background progression after resolving the reported issue. The original terminal-graduation decision is preserved.",
                   confirmationText: "RETRY_SESSION_PROGRESSION",
                   confirmLabel: "Retry progression",
                 })
@@ -594,7 +619,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                   type: "finalize",
                   title: "Finalize session closure",
                   description:
-                    "This permanently closes the current session, opens the configured next session, and opens its first term.",
+                    "This permanently closes the current session. The configured next session remains in draft for calendar setup and a separate opening step.",
                   confirmationText: "FINALIZE_SESSION_CLOSE",
                   confirmLabel: "Finalize closure",
                 })
@@ -613,7 +638,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
         description={confirmation?.description}
         confirmationText={confirmation?.confirmationText || ""}
         confirmLabel={confirmation?.confirmLabel}
-        variant={confirmation?.type === "finalize" ? "danger" : "primary"}
+        variant={confirmation?.type === "start" || confirmation?.type === "finalize" ? "danger" : "primary"}
         isLoading={Boolean(busy)}
         onCancel={() => setConfirmation(null)}
         onConfirm={() => {
