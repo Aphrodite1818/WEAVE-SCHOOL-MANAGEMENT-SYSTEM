@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
+from app.modules.student_academics.curriculum_models import Curriculum
 from app.modules.student_academics.models import TeacherAssignment
 from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
 
@@ -74,6 +75,8 @@ class AcademicLevelRepository:
         return {
             "classes": await count(ClassRoom, (ClassRoom.tenant_id == tenant_id) & (ClassRoom.academic_level_id == level_id)),
             "departments": await count(Department, (Department.tenant_id == tenant_id) & (Department.academic_level_id == level_id)),
+            "curricula": await count(Curriculum, (Curriculum.tenant_id == tenant_id) & (Curriculum.academic_level_id == level_id)),
+            "enrollments": await count(StudentEnrollment, (StudentEnrollment.tenant_id == tenant_id) & (StudentEnrollment.academic_level_id == level_id)),
         }
 
 
