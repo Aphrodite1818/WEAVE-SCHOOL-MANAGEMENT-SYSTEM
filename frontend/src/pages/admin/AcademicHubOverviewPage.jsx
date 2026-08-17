@@ -98,7 +98,7 @@ function AcademicHubOverviewPage() {
     };
   }, []);
 
-  const stats = analytics?.stats || {};
+  const stats = useMemo(() => analytics?.stats || {}, [analytics?.stats]);
   const hasMetrics = Boolean(analytics?.stats);
   const nextAction = useMemo(
     () => chooseAcademicHubNextAction(stats, hasMetrics),

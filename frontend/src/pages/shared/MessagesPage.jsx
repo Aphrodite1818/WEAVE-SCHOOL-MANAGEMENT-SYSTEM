@@ -193,7 +193,7 @@ export default function MessagesPage() {
   const [sendingReply, setSendingReply] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
 
-  const currentUser = authSession.getUser() || {};
+  const currentUser = useMemo(() => authSession.getUser() || {}, []);
   const tokenPayload = useMemo(() => decodeTokenPayload(authSession.getToken?.()), []);
   const currentActorType = currentUser.actor_type || tokenPayload.actor_type || authRoleToActorType[currentUser.role] || currentUser.role || "";
   const currentActorId = currentUser.membership_id || currentUser.actor_id || tokenPayload.sub || currentUser.id;

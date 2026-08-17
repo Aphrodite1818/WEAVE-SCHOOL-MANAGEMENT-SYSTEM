@@ -13,12 +13,13 @@ import useRoleGuide from "../../features/guides/useRoleGuide";
 function RoleGettingStartedPage({ role }) {
   const navigate = useNavigate();
   const guide = useRoleGuide({ role });
+  const { start } = guide;
 
   useEffect(() => {
     if (!guide.loading && guide.guideState?.status === "not_started") {
-      guide.start();
+      start();
     }
-  }, [guide.guideState?.status, guide.loading, guide.start]);
+  }, [guide.guideState?.status, guide.loading, start]);
 
   if (guide.loading || !guide.config || !guide.currentStep) {
     return (

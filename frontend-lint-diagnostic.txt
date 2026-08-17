@@ -2,41 +2,4 @@
 > frontend@0.0.0 lint
 > eslint .
 
-
-/home/runner/work/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/frontend/src/features/academic-admin/TeacherAssignmentsWorkspace.jsx
-  159:41  error  Compilation Skipped: Existing memoization could not be preserved
-
-React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. The inferred dependencies did not match the manually specified dependencies, which could cause the value to change more or less frequently than expected. The inferred dependency was `currentTerm`, but the source dependencies were [classes, currentTerm?.id, form.class_id, form.curriculum_subject_id, showError]. Inferred less specific property than source.
-
-  157 |   ]);
-  158 |
-> 159 |   const loadClassSubjects = useCallback(async () => {
-      |                                         ^^^^^^^^^^^^^
-> 160 |     if (!form.class_id || !currentTerm?.id) {
-      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-> 161 |       setCurriculumSubjects([]);
-      …
-      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-> 222 |     }
-      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-> 223 |   }, [
-      | ^^^^ Could not preserve existing manual memoization
-  224 |     classes,
-  225 |     currentTerm?.id,
-  226 |     form.class_id,  react-hooks/preserve-manual-memoization
-
-/home/runner/work/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/frontend/src/pages/admin/AcademicHubOverviewPage.jsx
-  101:9  warning  The 'stats' logical expression could make the dependencies of useMemo Hook (at line 105) change on every render. To fix this, wrap the initialization of 'stats' in its own useMemo() Hook  react-hooks/exhaustive-deps
-
-/home/runner/work/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/frontend/src/pages/shared/MessagesPage.jsx
-  196:9  warning  The 'currentUser' logical expression could make the dependencies of useMemo Hook (at line 222) change on every render. To fix this, wrap the initialization of 'currentUser' in its own useMemo() Hook  react-hooks/exhaustive-deps
-
-/home/runner/work/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/frontend/src/pages/shared/RoleGettingStartedPage.jsx
-  21:6  warning  React Hook useEffect has a missing dependency: 'guide'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
-
-/home/runner/work/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/frontend/src/routes/AdminGettingStartedRoute.jsx
-  59:6  warning  React Hook useEffect has a missing dependency: 'guide'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
-
-✖ 5 problems (1 error, 4 warnings)
-
-frontend_lint_status=1
+frontend_lint_status=0

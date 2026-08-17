@@ -91,6 +91,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { showSuccess, showError, showWarning } = useToast();
+  const currentTermId = currentTerm?.id || "";
 
   const loadBase = useCallback(async () => {
     setLoading(true);
@@ -157,7 +158,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   ]);
 
   const loadClassSubjects = useCallback(async () => {
-    if (!form.class_id || !currentTerm?.id) {
+    if (!form.class_id || !currentTermId) {
       setCurriculumSubjects([]);
       return;
     }
@@ -171,7 +172,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       const [curriculum, classDepartment, assignmentsResponse] =
         await Promise.all([
           curriculumService.getCurriculum(classroom.academic_level_id),
-          curriculumService.getClassDepartment(form.class_id, currentTerm.id),
+          curriculumService.getClassDepartment(form.class_id, currentTermId),
           academicService.listTeacherAssignments({
             class_id: form.class_id,
             status: "active",
@@ -200,7 +201,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           .filter(({ subject, offerings }) => {
             const offered = offerings.some(
               (offering) =>
-                offering.academic_term_id === currentTerm.id &&
+                offering.academic_term_id === currentTermId &&
                 (!offering.department_id ||
                   offering.department_id === departmentId),
             );
@@ -222,7 +223,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     }
   }, [
     classes,
-    currentTerm?.id,
+    currentTermId,
     form.class_id,
     form.curriculum_subject_id,
     showError,

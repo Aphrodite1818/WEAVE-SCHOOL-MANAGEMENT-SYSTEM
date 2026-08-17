@@ -18,6 +18,7 @@ const leaveAdminSetup = (destination) =>
 
 function AdminGettingStartedRoute() {
   const guide = useRoleGuide({ role: "admin" });
+  const { finish } = guide;
   const { showError } = useToast();
   const { step } = useParams();
 
@@ -42,7 +43,7 @@ function AdminGettingStartedRoute() {
         event.preventDefault();
         event.stopPropagation();
         try {
-          await guide.finish();
+          await finish();
           leaveAdminSetup("/admin/dashboard");
         } catch (error) {
           showError(
@@ -56,7 +57,7 @@ function AdminGettingStartedRoute() {
     };
     document.addEventListener("click", handleGuideAction, true);
     return () => document.removeEventListener("click", handleGuideAction, true);
-  }, [guide.finish, showError]);
+  }, [finish, showError]);
 
   return step ? <AdminGettingStartedStepPage /> : <AdminGettingStartedPage />;
 }
