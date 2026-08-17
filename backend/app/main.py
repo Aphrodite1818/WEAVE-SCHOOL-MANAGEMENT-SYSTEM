@@ -41,7 +41,6 @@ from app.modules.attendance.router import (
 )
 from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
-from app.modules.classes.level_subjects_router import router as level_subjects_router
 from app.modules.classes.academic_levels_router import router as academic_levels_router
 from app.modules.classes.departments_router import router as departments_router
 from app.modules.classes.router import router as class_router
@@ -131,7 +130,7 @@ _STUDENT_ACADEMIC_OVERRIDES: set[RouteKey] = set()
 
 
 def _exclude_overridden_routes(router: APIRouter, overrides: set[RouteKey]) -> None:
-    """Remove legacy handlers superseded by dedicated canonical routers."""
+    """Remove aggregate handlers superseded by dedicated canonical routers."""
 
     router.routes[:] = [
         route
@@ -259,7 +258,6 @@ def create_app() -> FastAPI:
     app.include_router(class_router, prefix=API_V1_PREFIX, tags=["Classes"])
     app.include_router(academic_levels_router, prefix=API_V1_PREFIX)
     app.include_router(departments_router, prefix=API_V1_PREFIX)
-    app.include_router(level_subjects_router, prefix=API_V1_PREFIX)
     app.include_router(communication_router, prefix=API_V1_PREFIX)
     app.include_router(messages_router, prefix=API_V1_PREFIX)
     app.include_router(notifications_router, prefix=API_V1_PREFIX)
