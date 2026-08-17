@@ -9,8 +9,8 @@ import pytest
 from app.modules.classes.models import AcademicCategory, AcademicLevel, ArmLabel, ClassRoom
 from app.core.exceptions import ConflictException
 from app.modules.classes.schemas import ArmLabelCreate, ClassRoomCreate, ClassRoomUpdate
-from app.modules.classes.service import ArmLabelService, ClassRoomService
-from app.modules.student_academics.models import LevelSubject, TeacherAssignment
+from app.modules.student_academics.curriculum_models import CurriculumSubject
+from app.modules.student_academics.models import TeacherAssignment
 from app.modules.student_academics.schemas import TeacherAssignmentCreate
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 
@@ -32,15 +32,17 @@ def test_classroom_contract_requires_level_but_allows_no_class_arm() -> None:
     assert ClassRoomCreate(academic_level_id=uuid.uuid4()).arm_label_id is None
 
 
-def test_teacher_assignment_contract_is_concrete_class_and_level_subject() -> None:
+def test_teacher_assignment_contract_is_concrete_class_and_curriculum_subject() -> None:
     payload = TeacherAssignmentCreate(
         teacher_membership_id=uuid.uuid4(),
         class_id=uuid.uuid4(),
-        level_subject_id=uuid.uuid4(),
+        curriculum_subject_id=uuid.uuid4(),
+        academic_term_id=uuid.uuid4(),
     )
     assert payload.class_id
-    assert payload.level_subject_id
-    assert "class_subject_id" not in payload.model_dump()
+    assert payload.curriculum_subject_id
+    assert payload.academic_term_id
+    assert "level_subject_id" not in payload.model_dump()
 
 
 def test_academic_tables_expose_canonical_foreign_keys() -> None:
@@ -48,9 +50,11 @@ def test_academic_tables_expose_canonical_foreign_keys() -> None:
     assert "academic_level_id" in ClassRoom.__table__.columns
     assert "arm_label_id" in ClassRoom.__table__.columns
     assert "normalized_arm" not in ClassRoom.__table__.columns
-    assert "academic_level_id" in LevelSubject.__table__.columns
+    assert "curriculum_id" in CurriculumSubject.__table__.columns
+    assert "subject_id" in CurriculumSubject.__table__.columns
     assert "class_id" in TeacherAssignment.__table__.columns
-    assert "level_subject_id" in TeacherAssignment.__table__.columns
+    assert "curriculum_subject_id" in TeacherAssignment.__table__.columns
+    assert "level_subject_id" not in TeacherAssignment.__table__.columns
 
 
 @pytest.mark.asyncio
