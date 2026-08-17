@@ -128,18 +128,37 @@ def project_class_term_department(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
     joined = session.execute(
-        select(ClassTermDepartmentAssignment, AcademicTerm)
+        select(
+            ClassTermDepartmentAssignment,
+            AcademicTerm,
+            ClassRoom,
+            Department,
+            AcademicLevel,
+        )
         .join(AcademicTerm, AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id)
+        .join(ClassRoom, ClassRoom.id == ClassTermDepartmentAssignment.class_id)
+        .join(Department, Department.id == ClassTermDepartmentAssignment.department_id)
+        .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
         .where(
             ClassTermDepartmentAssignment.tenant_id == tenant_id,
             ClassTermDepartmentAssignment.id == entity_id,
             AcademicTerm.tenant_id == tenant_id,
+            ClassRoom.tenant_id == tenant_id,
+            Department.tenant_id == tenant_id,
+            AcademicLevel.tenant_id == tenant_id,
         )
     ).first()
     if joined is None:
         return None
-    row, term = joined
-    if not term.is_current or term.status != AcademicTermStatus.OPEN:
+    row, term, classroom, department, level = joined
+    if (
+        not term.is_current
+        or term.status != AcademicTermStatus.OPEN
+        or not _visible(classroom)
+        or not _visible(department)
+        or not _visible(level)
+        or department.academic_level_id != classroom.academic_level_id
+    ):
         return None
     return CBTClassTermDepartmentSnapshot(
         id=row.id,
@@ -176,21 +195,29 @@ def project_academic_term(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
     row = session.execute(
-        select(AcademicTerm).where(
+        select(AcademicTerm, AcademicSession)
+        .join(AcademicSession, AcademicSession.id == AcademicTerm.academic_session_id)
+        .where(
             AcademicTerm.tenant_id == tenant_id,
             AcademicTerm.id == entity_id,
+            AcademicSession.tenant_id == tenant_id,
         )
-    ).scalar_one_or_none()
+    ).first()
+    if row is None:
+        return None
+    term, academic_session = row
     if (
-        row is None
-        or not row.is_current
-        or row.status not in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
+        not term.is_current
+        or term.status not in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
+        or not academic_session.is_current
+        or academic_session.status
+        not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
     ):
         return None
     return CBTAcademicTermSnapshot(
-        id=row.id,
-        academic_session_id=row.academic_session_id,
-        name=_value(row.name),
-        status=_value(row.status),
-        is_current=row.is_current,
+        id=term.id,
+        academic_session_id=term.academic_session_id,
+        name=_value(term.name),
+        status=_value(term.status),
+        is_current=term.is_current,
     ).model_dump(mode="json")
