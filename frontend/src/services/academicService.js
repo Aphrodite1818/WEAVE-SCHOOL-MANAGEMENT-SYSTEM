@@ -63,11 +63,6 @@ export const academicService = {
     }),
   getSessionDependencies: (sessionId) =>
     api.get(`/tenant-admin/academics/sessions/${sessionId}/dependencies`),
-  startSessionClosing: (sessionId, payload) =>
-    api.post(`/tenant-admin/academics/sessions/${sessionId}/start-closing`, {
-      confirmation: "START_SESSION_CLOSING",
-      ...payload,
-    }),
   deleteSession: (sessionId) =>
     api.delete(`/tenant-admin/academics/sessions/${sessionId}`, {
       body: JSON.stringify({
@@ -92,10 +87,6 @@ export const academicService = {
     }),
   getTermDependencies: (termId) =>
     api.get(`/tenant-admin/academics/terms/${termId}/dependencies`),
-  closeTerm: (termId) =>
-    api.post(`/tenant-admin/academics/terms/${termId}/close`, {
-      confirmation: "CLOSE_ACADEMIC_TERM",
-    }),
   startTermClosing: (termId) =>
     api.post(`/tenant-admin/academics/terms/${termId}/start-closing`, {
       confirmation: "START_TERM_CLOSING",
