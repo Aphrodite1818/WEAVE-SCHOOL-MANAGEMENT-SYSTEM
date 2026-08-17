@@ -1,4 +1,4 @@
-import { BookOpen, CalendarCheck2, CalendarDays, ClipboardCheck, FileText, GraduationCap, ImageIcon, Layers3, Route, School, Users } from "lucide-react";
+import { BookOpen, CalendarCheck2, CalendarDays, ClipboardCheck, FileText, ImageIcon, Layers3, Route, School, Users } from "lucide-react";
 
 export const ROLE_GUIDES = {
   admin: {
