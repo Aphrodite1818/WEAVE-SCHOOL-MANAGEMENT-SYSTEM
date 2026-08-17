@@ -15,7 +15,7 @@ test("every supported dashboard role has a valid page guide", () => {
     assert.equal(guide.route, `/${role}/getting-started`);
     assert.equal(guide.dashboardRoute, `/${role}/dashboard`);
 
-    const expectedStepCount = role === "admin" ? 9 : role === "teacher" ? 3 : 4;
+    const expectedStepCount = role === "admin" ? 12 : role === "teacher" ? 3 : 4;
     assert.equal(guide.steps.length, expectedStepCount);
     assert.equal(new Set(guide.steps.map((step) => step.id)).size, expectedStepCount);
 
@@ -23,10 +23,8 @@ test("every supported dashboard role has a valid page guide", () => {
       assert.ok(step.label);
       assert.ok(step.description);
       assert.ok(step.icon);
-      if (role !== "admin") {
-        assert.ok(step.actionLabel);
-        assert.ok(step.to.startsWith(`/${role}/`));
-      }
+      assert.ok(step.actionLabel);
+      assert.ok(step.to.startsWith(`/${role}/`));
     }
   }
 });
@@ -36,19 +34,22 @@ test("unknown roles do not receive a guide", () => {
   assert.equal(guideForRole(""), null);
 });
 
-test("tenant admin guide follows the backend lifecycle dependency order", () => {
+test("tenant admin guide follows the academic setup v2 dependency order", () => {
   assert.deepEqual(
     ROLE_GUIDES.admin.steps.map((step) => step.id),
     [
       "school_logo",
+      "levels",
+      "arms",
+      "classes",
+      "departments",
+      "subjects",
+      "curriculum",
       "session",
       "term",
       "calendar",
-      "structure",
+      "assignments",
       "progression",
-      "session_open",
-      "calendar_active",
-      "term_open",
     ],
   );
 });
