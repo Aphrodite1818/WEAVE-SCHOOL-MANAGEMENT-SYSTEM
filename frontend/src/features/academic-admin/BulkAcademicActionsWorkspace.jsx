@@ -14,10 +14,7 @@ import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
 import { bulkAcademicService } from "../../services/bulkAcademicService";
-import {
-  SelectControl,
-  WorkspacePanel,
-} from "./AcademicWorkspacePrimitives";
+import { SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -28,7 +25,9 @@ const asItems = (response) =>
 
 const classLabel = (item) =>
   item?.display_name ||
-  [item?.academic_level_name, item?.arm_label || item?.arm].filter(Boolean).join(" ") ||
+  [item?.academic_level_name, item?.arm_label || item?.arm]
+    .filter(Boolean)
+    .join(" ") ||
   "Unnamed class";
 
 const RESULT_ACTIONS = [
@@ -134,16 +133,11 @@ function BulkAcademicActionsWorkspace({
           nextSessions[0]?.id ||
           "",
         academic_term_id:
-          current.academic_term_id ||
-          currentTerm?.id ||
-          nextTerms[0]?.id ||
-          "",
+          current.academic_term_id || currentTerm?.id || nextTerms[0]?.id || "",
       }));
       onContextChange?.({ currentSession, currentTerm });
     } catch (error) {
-      showError(
-        getErrorMessage(error, "Could not load bulk action context."),
-      );
+      showError(getErrorMessage(error, "Could not load bulk action context."));
     } finally {
       setLoading(false);
     }
@@ -153,8 +147,7 @@ function BulkAcademicActionsWorkspace({
     loadContext();
   }, [loadContext]);
 
-  const actions =
-    domain === "results" ? RESULT_ACTIONS : REPORT_CARD_ACTIONS;
+  const actions = domain === "results" ? RESULT_ACTIONS : REPORT_CARD_ACTIONS;
   const sessionOptions = sessions.map((item) => ({
     value: item.id,
     label: item.name,
@@ -173,9 +166,7 @@ function BulkAcademicActionsWorkspace({
     value: item.id,
     label: classLabel(item),
   }));
-  const selectedClass = classes.find(
-    (item) => item.id === filters.class_id,
-  );
+  const selectedClass = classes.find((item) => item.id === filters.class_id);
   const selectedSession = sessions.find(
     (item) => item.id === filters.academic_session_id,
   );
@@ -184,9 +175,7 @@ function BulkAcademicActionsWorkspace({
   );
 
   const contextReady = Boolean(
-    filters.class_id &&
-      filters.academic_session_id &&
-      filters.academic_term_id,
+    filters.class_id && filters.academic_session_id && filters.academic_term_id,
   );
 
   const modalDescription = useMemo(() => {
@@ -212,9 +201,7 @@ function BulkAcademicActionsWorkspace({
     try {
       const base = {
         ...filters,
-        ...(pendingAction.requiresReason
-          ? { reason: reason.trim() }
-          : {}),
+        ...(pendingAction.requiresReason ? { reason: reason.trim() } : {}),
       };
       let response;
       if (domain === "results") {
@@ -260,9 +247,7 @@ function BulkAcademicActionsWorkspace({
       setPendingAction(null);
       setReason("");
     } catch (error) {
-      showError(
-        getErrorMessage(error, "Could not complete the bulk action."),
-      );
+      showError(getErrorMessage(error, "Could not complete the bulk action."));
     } finally {
       setSaving(false);
     }
@@ -272,7 +257,9 @@ function BulkAcademicActionsWorkspace({
     <div className="space-y-4">
       {!paidAccess ? (
         <div className="rounded-2xl border border-info/30 bg-info-soft px-4 py-3 text-sm font-medium text-info">
-          Bulk result and report-card actions are available on paid plans. Individual academic operations remain available according to the current plan.
+          Bulk result and report-card actions are available on paid plans.
+          Individual academic operations remain available according to the
+          current plan.
         </div>
       ) : null}
 
@@ -305,10 +292,7 @@ function BulkAcademicActionsWorkspace({
                 terms.find(
                   (item) =>
                     item.academic_session_id === value && item.is_current,
-                ) ||
-                terms.find(
-                  (item) => item.academic_session_id === value,
-                );
+                ) || terms.find((item) => item.academic_session_id === value);
               setFilters((current) => ({
                 ...current,
                 academic_session_id: value,
@@ -411,7 +395,7 @@ function BulkAcademicActionsWorkspace({
           }
         }}
         closeOnOverlay={!saving}
-        footer={(
+        footer={
           <div className="flex justify-end gap-2">
             <Button
               type="button"
@@ -429,7 +413,7 @@ function BulkAcademicActionsWorkspace({
               {saving ? "Applying..." : "Apply to eligible records"}
             </Button>
           </div>
-        )}
+        }
       >
         {pendingAction?.requiresReason ? (
           <label className="block text-sm font-semibold text-text-soft">

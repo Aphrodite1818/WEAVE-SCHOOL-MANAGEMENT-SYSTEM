@@ -14,7 +14,9 @@ const queryString = (params = {}) => {
 
 const sessionPayload = (payload = {}) => ({
   ...(payload.name !== undefined ? { name: payload.name } : {}),
-  ...(payload.start_date !== undefined ? { start_date: payload.start_date } : {}),
+  ...(payload.start_date !== undefined
+    ? { start_date: payload.start_date }
+    : {}),
   ...(payload.end_date !== undefined ? { end_date: payload.end_date } : {}),
   ...(payload.next_academic_session_id !== undefined
     ? { next_academic_session_id: payload.next_academic_session_id }
@@ -42,7 +44,9 @@ const reassignTeacherAssignment = async (assignmentId, payload) => {
     `/tenant-admin/academics/teacher-assignments/${assignmentId}/reassign`,
     {
       teacher_membership_id: teacherMembershipId,
-      ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
+      ...(payload.effective_from
+        ? { effective_from: payload.effective_from }
+        : {}),
     },
   );
 };
@@ -115,7 +119,10 @@ export const academicService = {
   createAssessmentScheme: (payload) =>
     api.post("/tenant-admin/academics/assessment-schemes", payload),
   updateAssessmentScheme: (schemeId, payload) =>
-    api.patch(`/tenant-admin/academics/assessment-schemes/${schemeId}`, payload),
+    api.patch(
+      `/tenant-admin/academics/assessment-schemes/${schemeId}`,
+      payload,
+    ),
   addAssessmentComponent: (schemeId, payload) =>
     api.post(
       `/tenant-admin/academics/assessment-schemes/${schemeId}/components`,
@@ -154,7 +161,10 @@ export const academicService = {
   activateGradingScale: (scaleId) =>
     api.post(`/tenant-admin/academics/grading-scales/${scaleId}/activate`, {}),
   deactivateGradingScale: (scaleId) =>
-    api.post(`/tenant-admin/academics/grading-scales/${scaleId}/deactivate`, {}),
+    api.post(
+      `/tenant-admin/academics/grading-scales/${scaleId}/deactivate`,
+      {},
+    ),
   getGradingScaleDependencies: (scaleId) =>
     api.get(`/tenant-admin/academics/grading-scales/${scaleId}/dependencies`),
   deleteGradingScale: (scaleId) =>
@@ -227,10 +237,7 @@ export const academicService = {
   listMySubjectCards: (requestOptions) =>
     api.get("/students/academics/subjects", requestOptions),
   listChildResults: (studentId, requestOptions) =>
-    api.get(
-      `/parents/academics/students/${studentId}/results`,
-      requestOptions,
-    ),
+    api.get(`/parents/academics/students/${studentId}/results`, requestOptions),
   listChildSubjectCards: (studentId, requestOptions) =>
     api.get(
       `/parents/academics/students/${studentId}/subjects`,

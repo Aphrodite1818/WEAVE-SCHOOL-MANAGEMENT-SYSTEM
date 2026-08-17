@@ -4,21 +4,39 @@ export const curriculumService = {
   getCurriculum: (levelId) =>
     api.get(`/tenant-admin/academics/levels/${levelId}/curriculum`),
   addSubject: (levelId, payload) =>
-    api.post(`/tenant-admin/academics/levels/${levelId}/curriculum/subjects`, payload),
+    api.post(
+      `/tenant-admin/academics/levels/${levelId}/curriculum/subjects`,
+      payload,
+    ),
   updateSubject: (curriculumSubjectId, payload) =>
-    api.patch(`/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}`, payload),
+    api.patch(
+      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}`,
+      payload,
+    ),
   listOfferings: (curriculumSubjectId) =>
-    api.get(`/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/offerings`),
+    api.get(
+      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/offerings`,
+    ),
   addOffering: (curriculumSubjectId, payload) =>
-    api.post(`/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/offerings`, payload),
+    api.post(
+      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/offerings`,
+      payload,
+    ),
   removeOffering: (offeringId) =>
     api.delete(`/tenant-admin/academics/curriculum-offerings/${offeringId}`),
   getClassDepartment: (classId, termId) =>
-    api.get(`/tenant-admin/academics/classes/${classId}/terms/${termId}/department`),
+    api.get(
+      `/tenant-admin/academics/classes/${classId}/terms/${termId}/department`,
+    ),
   setClassDepartment: (classId, termId, departmentId) =>
-    api.put(`/tenant-admin/academics/classes/${classId}/terms/${termId}/department`, {
-      department_id: departmentId,
-    }),
+    api.put(
+      `/tenant-admin/academics/classes/${classId}/terms/${termId}/department`,
+      {
+        department_id: departmentId,
+      },
+    ),
   clearClassDepartment: (classId, termId) =>
-    api.delete(`/tenant-admin/academics/classes/${classId}/terms/${termId}/department`),
+    api.delete(
+      `/tenant-admin/academics/classes/${classId}/terms/${termId}/department`,
+    ),
 };

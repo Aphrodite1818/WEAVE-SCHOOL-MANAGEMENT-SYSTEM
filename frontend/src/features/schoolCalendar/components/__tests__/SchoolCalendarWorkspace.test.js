@@ -132,7 +132,10 @@ test("selecting Public holiday clears hours, closes operations, and hides incomp
   assert.equal(hasControl(closedTree, "Opens at"), false);
   assert.equal(hasControl(closedTree, "Closes at"), false);
   assert.equal(hasControl(closedTree, "School open"), false);
-  assert.match(textContent(closedTree), /Operating hours do not apply because the school is closed/);
+  assert.match(
+    textContent(closedTree),
+    /Operating hours do not apply because the school is closed/,
+  );
 });
 
 test("Public holiday preset uses the same state transition as the day-type control", () => {

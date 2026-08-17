@@ -23,7 +23,10 @@ import {
   AcademicOverviewCard,
 } from "../../features/academic-admin/AcademicWorkspacePrimitives";
 import { chooseAcademicHubNextAction } from "../../features/academic-admin/academicHubGuidance";
-import { academicWorkflowConfig, academicWorkflowOrder } from "../../features/academic-admin/academicWorkflowConfig";
+import {
+  academicWorkflowConfig,
+  academicWorkflowOrder,
+} from "../../features/academic-admin/academicWorkflowConfig";
 import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import {
@@ -69,14 +72,20 @@ function AcademicHubOverviewPage() {
       setIsMetricsRefreshing(true);
       setMetricsError(null);
       try {
-        const data = await getCachedDashboardBundle(ACADEMIC_HUB_CACHE_KEY, () =>
-          dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
+        const data = await getCachedDashboardBundle(
+          ACADEMIC_HUB_CACHE_KEY,
+          () =>
+            dashboardService.getTenantAdminAnalytics({
+              signal: controller.signal,
+            }),
         );
         if (!mounted || controller.signal.aborted) return;
         setAnalytics(data);
       } catch (err) {
         if (!mounted || isAbortError(err)) return;
-        setMetricsError(getErrorMessage(err, "Academic metrics could not be loaded."));
+        setMetricsError(
+          getErrorMessage(err, "Academic metrics could not be loaded."),
+        );
       } finally {
         if (mounted) setIsMetricsRefreshing(false);
       }
@@ -91,9 +100,18 @@ function AcademicHubOverviewPage() {
 
   const stats = analytics?.stats || {};
   const hasMetrics = Boolean(analytics?.stats);
-  const nextAction = useMemo(() => chooseAcademicHubNextAction(stats, hasMetrics), [hasMetrics, stats]);
-  const currentSession = cleanText(stats.active_academic_session, hasMetrics ? "Not set" : "Loading");
-  const currentTerm = cleanText(stats.active_academic_term, hasMetrics ? "Not set" : "Loading");
+  const nextAction = useMemo(
+    () => chooseAcademicHubNextAction(stats, hasMetrics),
+    [hasMetrics, stats],
+  );
+  const currentSession = cleanText(
+    stats.active_academic_session,
+    hasMetrics ? "Not set" : "Loading",
+  );
+  const currentTerm = cleanText(
+    stats.active_academic_term,
+    hasMetrics ? "Not set" : "Loading",
+  );
   const submittedResults = metricNumber(stats.result_rows_submitted, 0);
   const totalResults = metricNumber(stats.result_rows_total, 0);
   const reportCardsGenerated = metricNumber(stats.report_cards_generated, 0);
@@ -103,35 +121,40 @@ function AcademicHubOverviewPage() {
       ? {
           key: "session",
           label: "No current academic session",
-          description: "Open a session before managing terms, calendars, results, and report cards.",
+          description:
+            "Open a session before managing terms, calendars, results, and report cards.",
         }
       : null,
     !stats.active_academic_term
       ? {
           key: "term",
           label: "No current academic term",
-          description: "Open a term so academic work is attached to the correct period.",
+          description:
+            "Open a term so academic work is attached to the correct period.",
         }
       : null,
     metricNumber(stats.total_classes, 0) === 0
       ? {
           key: "classes",
           label: "No classes have been created",
-          description: "Create level + arm class groups for student and teacher placement. Curriculum subjects attach to levels separately.",
+          description:
+            "Create level + arm class groups for student and teacher placement. Curriculum subjects attach to levels separately.",
         }
       : null,
     metricNumber(stats.total_subjects, 0) === 0
       ? {
           key: "subjects",
           label: "No subjects have been created",
-          description: "Create the school-wide subject pool before attaching subjects to level curricula.",
+          description:
+            "Create the school-wide subject pool before attaching subjects to level curricula.",
         }
       : null,
     submittedResults > 0
       ? {
           key: "results",
           label: `${submittedResults} submitted result${submittedResults === 1 ? "" : "s"} need review`,
-          description: "Approve or return submitted results before locking report cards.",
+          description:
+            "Approve or return submitted results before locking report cards.",
         }
       : null,
   ];
@@ -157,19 +180,30 @@ function AcademicHubOverviewPage() {
                     Academic Hub
                   </h2>
                   <p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted sm:text-sm sm:leading-6">
-                    A guided workspace for sessions, terms, levels, classes, curricula, teachers, results, calendars, and report cards.
+                    A guided workspace for sessions, terms, levels, classes,
+                    curricula, teachers, results, calendars, and report cards.
                   </p>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2 sm:mt-4">
-                <Badge variant={stats.active_academic_session ? "success" : "warning"}>
+                <Badge
+                  variant={
+                    stats.active_academic_session ? "success" : "warning"
+                  }
+                >
                   Session: {currentSession}
                 </Badge>
-                <Badge variant={stats.active_academic_term ? "primary" : "warning"}>
+                <Badge
+                  variant={stats.active_academic_term ? "primary" : "warning"}
+                >
                   Term: {currentTerm}
                 </Badge>
-                {isMetricsRefreshing ? <Badge variant="default">Refreshing</Badge> : null}
-                {metricsError ? <Badge variant="error">Metrics unavailable</Badge> : null}
+                {isMetricsRefreshing ? (
+                  <Badge variant="default">Refreshing</Badge>
+                ) : null}
+                {metricsError ? (
+                  <Badge variant="error">Metrics unavailable</Badge>
+                ) : null}
               </div>
               {metricsError ? (
                 <p className="mt-3 max-w-2xl text-sm font-medium text-error">
@@ -215,21 +249,33 @@ function AcademicHubOverviewPage() {
             icon={School}
             label="Active Classes"
             value={metricNumber(stats.total_classes)}
-            status={metricNumber(stats.total_classes, 0) > 0 ? "ready" : "needs attention"}
+            status={
+              metricNumber(stats.total_classes, 0) > 0
+                ? "ready"
+                : "needs attention"
+            }
             description="Concrete level + arm groups used for student and teacher placement."
           />
           <AcademicOverviewCard
             icon={BookOpen}
             label="Active Subjects"
             value={metricNumber(stats.total_subjects)}
-            status={metricNumber(stats.total_subjects, 0) > 0 ? "ready" : "needs attention"}
+            status={
+              metricNumber(stats.total_subjects, 0) > 0
+                ? "ready"
+                : "needs attention"
+            }
             description="The school-wide subject pool used by level curricula."
           />
           <AcademicOverviewCard
             icon={Users}
             label="Teacher Assignments"
             value={metricNumber(stats.total_teachers)}
-            status={metricNumber(stats.total_teachers, 0) > 0 ? "ready" : "needs attention"}
+            status={
+              metricNumber(stats.total_teachers, 0) > 0
+                ? "ready"
+                : "needs attention"
+            }
             description="Active teachers available for class and subject responsibilities."
           />
           <AcademicOverviewCard
@@ -250,7 +296,11 @@ function AcademicHubOverviewPage() {
             icon={FileText}
             label="Report Cards"
             value={`${reportCardsPublished}/${reportCardsGenerated}`}
-            status={reportCardsGenerated > reportCardsPublished ? "needs attention" : "ready"}
+            status={
+              reportCardsGenerated > reportCardsPublished
+                ? "needs attention"
+                : "ready"
+            }
             description="Published report cards out of generated cards."
           />
         </div>

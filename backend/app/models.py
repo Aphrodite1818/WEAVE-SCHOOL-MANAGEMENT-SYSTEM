@@ -1,4 +1,5 @@
 """Central registry for SQLAlchemy ORM models."""
+
 import app.tenant_management.models
 import app.modules.communications.models
 import app.modules.attendance.models

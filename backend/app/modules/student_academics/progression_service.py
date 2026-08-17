@@ -170,14 +170,11 @@ class AcademicProgressionService:
         if current_level.category not in allowed_categories:
             raise ConflictException("Current academic level category is invalid for this tenant.")
 
-        levels = await AcademicLevelRepository.list_for_tenant(
-            db, tenant_id, active_only=True
-        )
+        levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, active_only=True)
         same_category = [
             level
             for level in levels
-            if level.category == current_level.category
-            and level.position > current_level.position
+            if level.category == current_level.category and level.position > current_level.position
         ]
         if same_category:
             return min(same_category, key=lambda level: level.position)

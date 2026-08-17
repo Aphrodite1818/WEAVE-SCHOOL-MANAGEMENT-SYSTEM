@@ -267,9 +267,7 @@ class GradingScale(BaseModel):
         Boolean, default=True, server_default="true", nullable=False
     )
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),)
 
 
 class AssessmentScheme(BaseModel):
@@ -463,12 +461,24 @@ class StudentProgressionRun(BaseModel):
         default=StudentProgressionRunStatus.PENDING,
         server_default=StudentProgressionRunStatus.PENDING.value,
     )
-    total_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    promoted_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    graduated_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    skipped_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    pending_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    failed_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    total_students: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    promoted_students: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    graduated_students: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    skipped_students: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    pending_students: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    failed_students: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     initiated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -484,9 +494,7 @@ class StudentProgressionRun(BaseModel):
             "tenant_id", "academic_session_id", name="uq_student_progression_run_tenant_session"
         ),
         Index("ix_student_progression_runs_tenant_status", "tenant_id", "status"),
-        Index(
-            "ix_student_progression_runs_tenant_session", "tenant_id", "academic_session_id"
-        ),
+        Index("ix_student_progression_runs_tenant_session", "tenant_id", "academic_session_id"),
         CheckConstraint(
             "total_students >= 0 AND promoted_students >= 0 AND graduated_students >= 0 AND skipped_students >= 0 AND pending_students >= 0 AND failed_students >= 0",
             name="ck_progression_run_nonnegative_counts",

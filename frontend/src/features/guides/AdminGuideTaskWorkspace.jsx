@@ -30,12 +30,20 @@ function AdminGuideTaskWorkspace({ stepId }) {
   if (!config) return null;
 
   if (config.kind === "branding") return <TenantBrandingPage embedded />;
-  if (config.kind === "levels") return <AcademicLevelsWorkspace activeTab={config.activeTab} />;
-  if (config.kind === "arm-labels") return <ArmLabelsWorkspace activeTab={config.activeTab} />;
-  if (config.kind === "classes") return <ClassesWorkspace activeTab={config.activeTab} />;
+  if (config.kind === "levels")
+    return <AcademicLevelsWorkspace activeTab={config.activeTab} />;
+  if (config.kind === "arm-labels")
+    return <ArmLabelsWorkspace activeTab={config.activeTab} />;
+  if (config.kind === "classes")
+    return <ClassesWorkspace activeTab={config.activeTab} />;
   if (config.kind === "departments") return <DepartmentsWorkspace />;
   if (config.kind === "academic") {
-    return <AcademicSetupWorkspace domain={config.domain} activeTab={config.activeTab} />;
+    return (
+      <AcademicSetupWorkspace
+        domain={config.domain}
+        activeTab={config.activeTab}
+      />
+    );
   }
   if (config.kind === "curriculum") return <CurriculumWorkspace />;
   if (config.kind === "assignments") {

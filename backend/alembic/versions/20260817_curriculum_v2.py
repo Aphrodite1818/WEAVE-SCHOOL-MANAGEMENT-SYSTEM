@@ -3,22 +3,149 @@
 Revision ID: 20260817_curriculum_v2
 Revises: 20260817_academic_cbt_sync
 """
+
 from alembic import op
 import sqlalchemy as sa
-revision="20260817_curriculum_v2"
-down_revision="20260817_academic_cbt_sync"
-branch_labels=None
-depends_on=None
-SCHEMA="public"
+
+revision = "20260817_curriculum_v2"
+down_revision = "20260817_academic_cbt_sync"
+branch_labels = None
+depends_on = None
+SCHEMA = "public"
+
 
 def upgrade():
-    op.create_table("curricula", sa.Column("academic_level_id",sa.UUID(),nullable=False), sa.Column("tenant_id",sa.UUID(),nullable=False), sa.Column("id",sa.UUID(),nullable=False), sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.ForeignKeyConstraint(["academic_level_id"],["public.academic_levels.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["tenant_id"],["public.tenants.id"]), sa.PrimaryKeyConstraint("id"), sa.UniqueConstraint("id"), sa.UniqueConstraint("tenant_id","academic_level_id",name="uq_curricula_tenant_level"), schema=SCHEMA)
-    op.create_table("curriculum_subjects", sa.Column("curriculum_id",sa.UUID(),nullable=False), sa.Column("subject_id",sa.UUID(),nullable=False), sa.Column("is_elective",sa.Boolean(),server_default="false",nullable=False), sa.Column("is_active",sa.Boolean(),server_default="true",nullable=False), sa.Column("tenant_id",sa.UUID(),nullable=False), sa.Column("id",sa.UUID(),nullable=False), sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.ForeignKeyConstraint(["curriculum_id"],["public.curricula.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["subject_id"],["public.subjects.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["tenant_id"],["public.tenants.id"]), sa.PrimaryKeyConstraint("id"), sa.UniqueConstraint("id"), sa.UniqueConstraint("tenant_id","curriculum_id","subject_id",name="uq_curriculum_subject_tenant_curriculum_subject"), schema=SCHEMA)
-    op.create_index("ix_curriculum_subjects_tenant_curriculum","curriculum_subjects",["tenant_id","curriculum_id"],schema=SCHEMA)
-    op.create_table("class_term_department_assignments", sa.Column("class_id",sa.UUID(),nullable=False), sa.Column("academic_term_id",sa.UUID(),nullable=False), sa.Column("department_id",sa.UUID(),nullable=False), sa.Column("assigned_by_admin_id",sa.UUID(),nullable=True), sa.Column("tenant_id",sa.UUID(),nullable=False), sa.Column("id",sa.UUID(),nullable=False), sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.ForeignKeyConstraint(["class_id"],["public.classes.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["academic_term_id"],["public.academic_terms.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["department_id"],["public.departments.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["assigned_by_admin_id"],["public.tenant_admins.id"],ondelete="SET NULL"), sa.ForeignKeyConstraint(["tenant_id"],["public.tenants.id"]), sa.PrimaryKeyConstraint("id"), sa.UniqueConstraint("id"), sa.UniqueConstraint("tenant_id","class_id","academic_term_id",name="uq_class_term_department_assignment"), schema=SCHEMA)
-    op.create_index("ix_class_term_department_tenant_term","class_term_department_assignments",["tenant_id","academic_term_id"],schema=SCHEMA)
-    op.create_table("curriculum_offerings", sa.Column("curriculum_subject_id",sa.UUID(),nullable=False), sa.Column("academic_term_id",sa.UUID(),nullable=False), sa.Column("department_id",sa.UUID(),nullable=True), sa.Column("tenant_id",sa.UUID(),nullable=False), sa.Column("id",sa.UUID(),nullable=False), sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.func.now(),nullable=False), sa.ForeignKeyConstraint(["curriculum_subject_id"],["public.curriculum_subjects.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["academic_term_id"],["public.academic_terms.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["department_id"],["public.departments.id"],ondelete="CASCADE"), sa.ForeignKeyConstraint(["tenant_id"],["public.tenants.id"]), sa.PrimaryKeyConstraint("id"), sa.UniqueConstraint("id"), sa.UniqueConstraint("tenant_id","curriculum_subject_id","academic_term_id","department_id",name="uq_curriculum_offering_scope"), schema=SCHEMA)
-    op.create_index("ix_curriculum_offerings_tenant_term","curriculum_offerings",["tenant_id","academic_term_id"],schema=SCHEMA)
+    op.create_table(
+        "curricula",
+        sa.Column("academic_level_id", sa.UUID(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_level_id"], ["public.academic_levels.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", "academic_level_id", name="uq_curricula_tenant_level"),
+        schema=SCHEMA,
+    )
+    op.create_table(
+        "curriculum_subjects",
+        sa.Column("curriculum_id", sa.UUID(), nullable=False),
+        sa.Column("subject_id", sa.UUID(), nullable=False),
+        sa.Column("is_elective", sa.Boolean(), server_default="false", nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.ForeignKeyConstraint(["curriculum_id"], ["public.curricula.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["subject_id"], ["public.subjects.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "curriculum_id",
+            "subject_id",
+            name="uq_curriculum_subject_tenant_curriculum_subject",
+        ),
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_curriculum_subjects_tenant_curriculum",
+        "curriculum_subjects",
+        ["tenant_id", "curriculum_id"],
+        schema=SCHEMA,
+    )
+    op.create_table(
+        "class_term_department_assignments",
+        sa.Column("class_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=False),
+        sa.Column("department_id", sa.UUID(), nullable=False),
+        sa.Column("assigned_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.ForeignKeyConstraint(["class_id"], ["public.classes.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(["department_id"], ["public.departments.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["assigned_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id", "class_id", "academic_term_id", name="uq_class_term_department_assignment"
+        ),
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_class_term_department_tenant_term",
+        "class_term_department_assignments",
+        ["tenant_id", "academic_term_id"],
+        schema=SCHEMA,
+    )
+    op.create_table(
+        "curriculum_offerings",
+        sa.Column("curriculum_subject_id", sa.UUID(), nullable=False),
+        sa.Column("academic_term_id", sa.UUID(), nullable=False),
+        sa.Column("department_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.ForeignKeyConstraint(
+            ["curriculum_subject_id"], ["public.curriculum_subjects.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(["department_id"], ["public.departments.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "curriculum_subject_id",
+            "academic_term_id",
+            "department_id",
+            name="uq_curriculum_offering_scope",
+        ),
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_curriculum_offerings_tenant_term",
+        "curriculum_offerings",
+        ["tenant_id", "academic_term_id"],
+        schema=SCHEMA,
+    )
+
 
 def downgrade():
-    op.drop_table("curriculum_offerings",schema=SCHEMA); op.drop_table("class_term_department_assignments",schema=SCHEMA); op.drop_table("curriculum_subjects",schema=SCHEMA); op.drop_table("curricula",schema=SCHEMA)
+    op.drop_table("curriculum_offerings", schema=SCHEMA)
+    op.drop_table("class_term_department_assignments", schema=SCHEMA)
+    op.drop_table("curriculum_subjects", schema=SCHEMA)
+    op.drop_table("curricula", schema=SCHEMA)

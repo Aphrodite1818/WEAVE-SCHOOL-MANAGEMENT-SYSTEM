@@ -53,16 +53,11 @@ def _constraint_names(table_name: str) -> set[str]:
         return set()
     inspector = sa.inspect(op.get_bind())
     names = {
-        item.get("name")
-        for item in inspector.get_unique_constraints(table_name, schema=SCHEMA)
+        item.get("name") for item in inspector.get_unique_constraints(table_name, schema=SCHEMA)
     }
+    names.update(item.get("name") for item in inspector.get_foreign_keys(table_name, schema=SCHEMA))
     names.update(
-        item.get("name")
-        for item in inspector.get_foreign_keys(table_name, schema=SCHEMA)
-    )
-    names.update(
-        item.get("name")
-        for item in inspector.get_check_constraints(table_name, schema=SCHEMA)
+        item.get("name") for item in inspector.get_check_constraints(table_name, schema=SCHEMA)
     )
     return {name for name in names if name}
 
@@ -73,8 +68,7 @@ def _index_names(table_name: str) -> set[str]:
     if table_name not in _table_names():
         return set()
     return {
-        item["name"]
-        for item in sa.inspect(op.get_bind()).get_indexes(table_name, schema=SCHEMA)
+        item["name"] for item in sa.inspect(op.get_bind()).get_indexes(table_name, schema=SCHEMA)
     }
 
 

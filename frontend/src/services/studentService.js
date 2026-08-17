@@ -31,16 +31,14 @@ export const studentService = {
   getAdminStudents: (options = {}) =>
     api.get(`/tenant-admin/students?${buildStudentQuery(options)}`),
 
-  createStudent: (payload) =>
-    api.post("/tenant-admin/students", payload),
+  createStudent: (payload) => api.post("/tenant-admin/students", payload),
 
   resetStudentAccessCode: (studentId) =>
     api.post(`/tenant-admin/students/${studentId}/access-codes`, {
       purpose: "password_reset",
     }),
 
-  getMyStudent: (requestOptions) =>
-    api.get("/students/me", requestOptions),
+  getMyStudent: (requestOptions) => api.get("/students/me", requestOptions),
 
   updateMyStudentProfile: (payload) =>
     api.patch("/students/me/profile", payload),
@@ -52,13 +50,15 @@ export const studentService = {
     api.get("/students/me/parent-link-requests", requestOptions),
 
   respondToParentLinkRequest: (requestId, payload) =>
-    api.post(`/students/me/parent-link-requests/${requestId}/decision`, payload),
+    api.post(
+      `/students/me/parent-link-requests/${requestId}/decision`,
+      payload,
+    ),
 
   getMyParentLinks: (requestOptions) =>
     api.get("/students/me/parent-links", requestOptions),
 
-  getStudent: (studentId) =>
-    api.get(`/students/${studentId}`),
+  getStudent: (studentId) => api.get(`/students/${studentId}`),
 
   getAdminStudent: (studentId) =>
     api.get(`/tenant-admin/students/${studentId}`),

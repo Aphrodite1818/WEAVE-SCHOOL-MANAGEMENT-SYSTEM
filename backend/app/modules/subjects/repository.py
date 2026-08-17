@@ -259,9 +259,7 @@ class SubjectRepository:
             )
             .where(*filters)
         )
-        total = (
-            await db.execute(select(func.count()).select_from(joined.subquery()))
-        ).scalar_one()
+        total = (await db.execute(select(func.count()).select_from(joined.subquery()))).scalar_one()
         result = await db.execute(
             joined.options(*_subject_teacher_load_options())
             .order_by(Subject.name.asc())

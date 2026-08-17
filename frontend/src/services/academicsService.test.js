@@ -8,7 +8,11 @@ const classes = [
   { id: "1", academic_level_name: "JSS 1", arm_label: "A" },
   { id: "2", academic_level_name: "JSS 1", arm_label: "B" },
   { id: "3", academic_level_name: "Primary 2", arm_label: "A" },
-  { id: "4", academic_level_name: "Senior Secondary School 3", arm_label: "Science" },
+  {
+    id: "4",
+    academic_level_name: "Senior Secondary School 3",
+    arm_label: "Science",
+  },
 ];
 
 test("single-letter arm searches are consistent", () => {

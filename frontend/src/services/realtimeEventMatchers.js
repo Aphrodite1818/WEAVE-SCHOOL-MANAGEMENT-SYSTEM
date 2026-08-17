@@ -17,7 +17,8 @@ export const matchesBulkImportEvent = (jobId, message) =>
   Boolean(jobId) && String(message?.data?.job_id || "") === String(jobId);
 
 export const matchesSessionProgressionEvent = (sessionId, message) =>
-  Boolean(sessionId) && String(message?.data?.session_id || "") === String(sessionId);
+  Boolean(sessionId) &&
+  String(message?.data?.session_id || "") === String(sessionId);
 
 export const matchesCbtPairingEvent = (pairingRequestId, message) =>
   Boolean(pairingRequestId) &&

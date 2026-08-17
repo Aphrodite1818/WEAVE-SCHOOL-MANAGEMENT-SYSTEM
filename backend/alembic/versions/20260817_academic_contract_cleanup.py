@@ -31,8 +31,7 @@ def upgrade() -> None:
     # Arm labels are tenant-wide naming vocabulary only; they do not carry order.
     op.execute("DROP INDEX IF EXISTS public.ix_arm_labels_tenant_position")
     op.execute(
-        "ALTER TABLE public.arm_labels "
-        "DROP CONSTRAINT IF EXISTS ck_arm_labels_position_positive"
+        "ALTER TABLE public.arm_labels DROP CONSTRAINT IF EXISTS ck_arm_labels_position_positive"
     )
     op.execute("ALTER TABLE public.arm_labels DROP COLUMN IF EXISTS position")
 
@@ -40,9 +39,7 @@ def upgrade() -> None:
     # represented only by class_term_department_assignments.
     op.execute("DROP INDEX IF EXISTS public.uq_classes_tenant_level_department_arm")
     op.execute("DROP INDEX IF EXISTS public.ix_classes_tenant_department")
-    op.execute(
-        "ALTER TABLE public.classes DROP CONSTRAINT IF EXISTS fk_classes_department_id"
-    )
+    op.execute("ALTER TABLE public.classes DROP CONSTRAINT IF EXISTS fk_classes_department_id")
     op.execute("ALTER TABLE public.classes DROP COLUMN IF EXISTS department_id")
     op.execute(
         """
@@ -75,7 +72,9 @@ def upgrade() -> None:
 
     # Departments are level-owned. Any pre-cutover tenant-wide department with no
     # level cannot participate in the new contract and is deliberately discarded.
-    op.execute("ALTER TABLE public.departments DROP CONSTRAINT IF EXISTS uq_departments_tenant_name")
+    op.execute(
+        "ALTER TABLE public.departments DROP CONSTRAINT IF EXISTS uq_departments_tenant_name"
+    )
     op.execute("DROP INDEX IF EXISTS public.ix_departments_tenant_active")
     op.execute("DELETE FROM public.departments WHERE academic_level_id IS NULL")
     op.execute("ALTER TABLE public.departments ALTER COLUMN academic_level_id SET NOT NULL")

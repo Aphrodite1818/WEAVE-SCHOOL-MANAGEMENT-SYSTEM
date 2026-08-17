@@ -5,7 +5,15 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import BigInteger, Enum as SQLEnum, ForeignKey, Index, Integer, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 

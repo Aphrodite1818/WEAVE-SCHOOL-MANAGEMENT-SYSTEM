@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
-import { academicLevelService, classService } from "../../services/academicsService";
+import {
+  academicLevelService,
+  classService,
+} from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
 import {
   FormActions,
@@ -15,7 +18,7 @@ import {
 } from "./AcademicWorkspacePrimitives";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
-const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 const emptyLevelForm = { name: "", category: "", position: "" };
 
 function AcademicLevelsWorkspace({ activeTab = "overview" }) {
@@ -41,7 +44,10 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       setClasses(asItems(classRows));
       setCategoryOptions(allowedCategories);
       setLevelForm((current) => {
-        if (allowedCategories.some((option) => option.value === current.category)) return current;
+        if (
+          allowedCategories.some((option) => option.value === current.category)
+        )
+          return current;
         return { ...current, category: allowedCategories[0]?.value || "" };
       });
     } catch (error) {
@@ -49,14 +55,21 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     }
   }, [showError]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const selectOptions = useMemo(
-    () => categoryOptions.map((option) => ({ value: option.value, label: option.label })),
+    () =>
+      categoryOptions.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
     [categoryOptions],
   );
   const categoryLabels = useMemo(
-    () => new Map(categoryOptions.map((option) => [option.value, option.label])),
+    () =>
+      new Map(categoryOptions.map((option) => [option.value, option.label])),
     [categoryOptions],
   );
 
@@ -84,7 +97,12 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
 
   const updateLevel = async (event) => {
     event.preventDefault();
-    if (!editingLevelId || !editingLevelForm?.name.trim() || !editingLevelForm?.category) return;
+    if (
+      !editingLevelId ||
+      !editingLevelForm?.name.trim() ||
+      !editingLevelForm?.category
+    )
+      return;
     setSaving(editingLevelId);
     try {
       await academicLevelService.updateLevel(editingLevelId, {
@@ -97,7 +115,9 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       showSuccess("Academic level updated.");
       await load();
     } catch (error) {
-      showError(getErrorMessage(error, "Could not update this academic level."));
+      showError(
+        getErrorMessage(error, "Could not update this academic level."),
+      );
     } finally {
       setSaving(false);
     }
@@ -117,60 +137,86 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       showSuccess("Empty academic level deleted.");
       await load();
     } catch (error) {
-      showError(getErrorMessage(error, "Could not delete this academic level."));
+      showError(
+        getErrorMessage(error, "Could not delete this academic level."),
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  const workspaceTitle = activeTab === "manage" ? "Manage academic levels" : "Academic levels";
-  const workspaceDescription = activeTab === "manage"
-    ? "Update level names or remove genuinely empty levels."
-    : "Review the category, position, and organizational class distribution.";
+  const workspaceTitle =
+    activeTab === "manage" ? "Manage academic levels" : "Academic levels";
+  const workspaceDescription =
+    activeTab === "manage"
+      ? "Update level names or remove genuinely empty levels."
+      : "Review the category, position, and organizational class distribution.";
 
   return (
     <>
       <WorkspaceGrid
-        editor={activeTab === "create" ? (
+        editor={
+          activeTab === "create" ? (
+            <WorkspacePanel
+              title="Create academic level"
+              description="Levels own curriculum and ordered progression; classes remain optional organization."
+            >
+              <form className="space-y-3" onSubmit={createLevel}>
+                <Input
+                  label="Level name"
+                  value={levelForm.name}
+                  onChange={(event) =>
+                    setLevelForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="JSS1"
+                  required
+                />
+                <SelectControl
+                  label="Category"
+                  value={levelForm.category}
+                  onChange={(value) =>
+                    setLevelForm((current) => ({ ...current, category: value }))
+                  }
+                  options={selectOptions}
+                  placeholder="Select an institution category"
+                  required
+                />
+                <Input
+                  label="Position"
+                  type="number"
+                  min="1"
+                  value={levelForm.position}
+                  onChange={(event) =>
+                    setLevelForm((current) => ({
+                      ...current,
+                      position: event.target.value,
+                    }))
+                  }
+                  required
+                />
+                <FormActions submitting={saving} submitLabel="Create level" />
+              </form>
+            </WorkspacePanel>
+          ) : null
+        }
+        content={
           <WorkspacePanel
-            title="Create academic level"
-            description="Levels own curriculum and ordered progression; classes remain optional organization."
+            title={workspaceTitle}
+            description={workspaceDescription}
           >
-            <form className="space-y-3" onSubmit={createLevel}>
-              <Input
-                label="Level name"
-                value={levelForm.name}
-                onChange={(event) => setLevelForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="JSS1"
-                required
-              />
-              <SelectControl
-                label="Category"
-                value={levelForm.category}
-                onChange={(value) => setLevelForm((current) => ({ ...current, category: value }))}
-                options={selectOptions}
-                placeholder="Select an institution category"
-                required
-              />
-              <Input
-                label="Position"
-                type="number"
-                min="1"
-                value={levelForm.position}
-                onChange={(event) => setLevelForm((current) => ({ ...current, position: event.target.value }))}
-                required
-              />
-              <FormActions submitting={saving} submitLabel="Create level" />
-            </form>
-          </WorkspacePanel>
-        ) : null}
-        content={(
-          <WorkspacePanel title={workspaceTitle} description={workspaceDescription}>
             <div className="grid max-h-[34rem] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
               {levels.map((item) => {
-                const armCount = classes.filter((classroom) => classroom.academic_level_id === item.id).length;
+                const armCount = classes.filter(
+                  (classroom) => classroom.academic_level_id === item.id,
+                ).length;
                 return (
-                  <div key={item.id} className="rounded-2xl border border-border/70 bg-surface p-4">
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-border/70 bg-surface p-4"
+                  >
                     <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <p className="font-semibold text-text">{item.name}</p>
                       <div className="flex flex-wrap items-center gap-2">
@@ -178,25 +224,44 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                           {armCount} arm{armCount === 1 ? "" : "s"}
                         </Badge>
                         <Badge variant="default">
-                          {categoryLabels.get(item.category) || String(item.category || "").replaceAll("_", " ")} · {item.position}
+                          {categoryLabels.get(item.category) ||
+                            String(item.category || "").replaceAll(
+                              "_",
+                              " ",
+                            )}{" "}
+                          · {item.position}
                         </Badge>
                       </div>
                     </div>
                     <p className="mt-2 text-sm text-text-muted">
-                      Automatic progression follows the next configured position. Class and arm are assigned separately.
+                      Automatic progression follows the next configured
+                      position. Class and arm are assigned separately.
                     </p>
                     {activeTab === "manage" && editingLevelId === item.id ? (
-                      <form className="mt-3 space-y-3 border-t border-border/70 pt-3" onSubmit={updateLevel}>
+                      <form
+                        className="mt-3 space-y-3 border-t border-border/70 pt-3"
+                        onSubmit={updateLevel}
+                      >
                         <Input
                           label="Level name"
                           value={editingLevelForm?.name || ""}
-                          onChange={(event) => setEditingLevelForm((current) => ({ ...current, name: event.target.value }))}
+                          onChange={(event) =>
+                            setEditingLevelForm((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
                           required
                         />
                         <SelectControl
                           label="Category"
                           value={editingLevelForm?.category || ""}
-                          onChange={(value) => setEditingLevelForm((current) => ({ ...current, category: value }))}
+                          onChange={(value) =>
+                            setEditingLevelForm((current) => ({
+                              ...current,
+                              category: value,
+                            }))
+                          }
                           options={selectOptions}
                           required
                         />
@@ -205,7 +270,12 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                           type="number"
                           min="1"
                           value={editingLevelForm?.position || ""}
-                          onChange={(event) => setEditingLevelForm((current) => ({ ...current, position: event.target.value }))}
+                          onChange={(event) =>
+                            setEditingLevelForm((current) => ({
+                              ...current,
+                              position: event.target.value,
+                            }))
+                          }
                           required
                         />
                         <FormActions
@@ -255,13 +325,14 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                 <div className="rounded-2xl border border-dashed border-border p-6 text-center">
                   <Library className="mx-auto h-7 w-7 text-text-muted" />
                   <p className="mt-2 text-sm text-text-muted">
-                    No academic levels yet. Use Create Level to add the first one.
+                    No academic levels yet. Use Create Level to add the first
+                    one.
                   </p>
                 </div>
               ) : null}
             </div>
           </WorkspacePanel>
-        )}
+        }
       />
       <TypedConfirmationDialog
         open={Boolean(levelPendingDeletion)}

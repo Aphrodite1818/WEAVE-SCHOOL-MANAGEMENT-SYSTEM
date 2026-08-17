@@ -22,29 +22,144 @@ import SchoolCalendarWorkspace from "../../features/schoolCalendar/components/Sc
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { academicService } from "../../services/academicService";
 
-const workflowAliases={reports:"report-cards",manage:"classes",setup:"sessions","class-structure":"classes"};
-const asItems=(r)=>Array.isArray(r)?r:Array.isArray(r?.items)?r.items:[];
-export default function AcademicWorkflowPage(){
- const {workflow:routeWorkflow="sessions"}=useParams(); const workflow=workflowAliases[routeWorkflow]||routeWorkflow; const {entitlements}=useSubscription(); const bulkAcademicAllowed=Boolean(entitlements?.features?.bulk_academic_operations); const [context,setContext]=useState({currentSession:null,currentTerm:null}); const [loadingContext,setLoadingContext]=useState(true);
- const loadContext=useCallback(async()=>{setLoadingContext(true);try{const [s,t]=await Promise.all([academicService.listSessions({limit:100}),academicService.listTerms({limit:100})]);setContext({currentSession:asItems(s).find(x=>x.is_current)||null,currentTerm:asItems(t).find(x=>x.is_current)||null});}catch{setContext({currentSession:null,currentTerm:null});}finally{setLoadingContext(false);}},[]);
- useEffect(()=>{loadContext();},[loadContext]); const updateContext=useCallback(({currentSession,currentTerm})=>setContext(c=>({currentSession:currentSession===undefined?c.currentSession:currentSession,currentTerm:currentTerm===undefined?c.currentTerm:currentTerm})),[]);
- if(!academicWorkflowConfig[workflow])return <Navigate to="/admin/academic" replace/>;
- const renderWorkspace=(activeTab)=>{const key=`${workflow}:${activeTab}`;
-  if(workflow==="grading"&&activeTab==="assessment-schemes")return <AssessmentConfigWorkspace key={key}/>;
-  if(workflow==="grading")return <GradingScalesWorkspace key={key} activeTab={activeTab}/>;
-  if(workflow==="sessions"&&["overview","open","closing"].includes(activeTab))return <SessionLifecycleWorkspace key="session-lifecycle" activeTab={activeTab} onContextChange={updateContext}/>;
-  if(["sessions","terms","subjects"].includes(workflow))return <AcademicSetupWorkspace key={key} domain={workflow} activeTab={activeTab} onContextChange={updateContext}/>;
-  if(workflow==="levels")return <AcademicLevelsWorkspace key={key} activeTab={activeTab}/>;
-  if(workflow==="arm-labels")return <ArmLabelsWorkspace key={key} activeTab={activeTab}/>;
-  if(workflow==="classes")return <ClassesWorkspace key={key} activeTab={activeTab}/>;
-  if(workflow==="departments")return <DepartmentsWorkspace key={key}/>;
-  if(workflow==="curriculum")return <CurriculumWorkspace key={key}/>;
-  if(workflow==="assignments")return <TeacherAssignmentsWorkspace key={key} activeTab={activeTab}/>;
-  if(workflow==="progression")return <ProgressionWorkspace key="automatic-progression"/>;
-  if(["results","report-cards"].includes(workflow)&&activeTab==="bulk-actions")return <BulkAcademicActionsWorkspace key={`${workflow}-bulk`} domain={workflow} paidAccess={bulkAcademicAllowed} onContextChange={updateContext}/>;
-  if(workflow==="results")return <ResultsWorkspace key="results" activeTab={activeTab} onContextChange={updateContext}/>;
-  if(workflow==="report-cards")return <ReportCardsWorkspace key="report-cards" activeTab={activeTab} onContextChange={updateContext}/>;
-  if(workflow==="school-calendar")return <div key="calendar" className="space-y-4"><SchoolCalendarGuide activeTab={activeTab}/>{activeTab==="events"?<SchoolCalendarEventsWorkspace/>:<SchoolCalendarWorkspace activeTab={activeTab}/>}</div>;
-  return <Navigate to="/admin/academic" replace/>;};
- return <AcademicWorkflowShell workflow={workflow} currentSession={context.currentSession} currentTerm={context.currentTerm} loading={loadingContext}>{renderWorkspace}</AcademicWorkflowShell>;
+const workflowAliases = {
+  reports: "report-cards",
+  manage: "classes",
+  setup: "sessions",
+  "class-structure": "classes",
+};
+const asItems = (r) =>
+  Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : [];
+export default function AcademicWorkflowPage() {
+  const { workflow: routeWorkflow = "sessions" } = useParams();
+  const workflow = workflowAliases[routeWorkflow] || routeWorkflow;
+  const { entitlements } = useSubscription();
+  const bulkAcademicAllowed = Boolean(
+    entitlements?.features?.bulk_academic_operations,
+  );
+  const [context, setContext] = useState({
+    currentSession: null,
+    currentTerm: null,
+  });
+  const [loadingContext, setLoadingContext] = useState(true);
+  const loadContext = useCallback(async () => {
+    setLoadingContext(true);
+    try {
+      const [s, t] = await Promise.all([
+        academicService.listSessions({ limit: 100 }),
+        academicService.listTerms({ limit: 100 }),
+      ]);
+      setContext({
+        currentSession: asItems(s).find((x) => x.is_current) || null,
+        currentTerm: asItems(t).find((x) => x.is_current) || null,
+      });
+    } catch {
+      setContext({ currentSession: null, currentTerm: null });
+    } finally {
+      setLoadingContext(false);
+    }
+  }, []);
+  useEffect(() => {
+    loadContext();
+  }, [loadContext]);
+  const updateContext = useCallback(
+    ({ currentSession, currentTerm }) =>
+      setContext((c) => ({
+        currentSession:
+          currentSession === undefined ? c.currentSession : currentSession,
+        currentTerm: currentTerm === undefined ? c.currentTerm : currentTerm,
+      })),
+    [],
+  );
+  if (!academicWorkflowConfig[workflow])
+    return <Navigate to="/admin/academic" replace />;
+  const renderWorkspace = (activeTab) => {
+    const key = `${workflow}:${activeTab}`;
+    if (workflow === "grading" && activeTab === "assessment-schemes")
+      return <AssessmentConfigWorkspace key={key} />;
+    if (workflow === "grading")
+      return <GradingScalesWorkspace key={key} activeTab={activeTab} />;
+    if (
+      workflow === "sessions" &&
+      ["overview", "open", "closing"].includes(activeTab)
+    )
+      return (
+        <SessionLifecycleWorkspace
+          key="session-lifecycle"
+          activeTab={activeTab}
+          onContextChange={updateContext}
+        />
+      );
+    if (["sessions", "terms", "subjects"].includes(workflow))
+      return (
+        <AcademicSetupWorkspace
+          key={key}
+          domain={workflow}
+          activeTab={activeTab}
+          onContextChange={updateContext}
+        />
+      );
+    if (workflow === "levels")
+      return <AcademicLevelsWorkspace key={key} activeTab={activeTab} />;
+    if (workflow === "arm-labels")
+      return <ArmLabelsWorkspace key={key} activeTab={activeTab} />;
+    if (workflow === "classes")
+      return <ClassesWorkspace key={key} activeTab={activeTab} />;
+    if (workflow === "departments") return <DepartmentsWorkspace key={key} />;
+    if (workflow === "curriculum") return <CurriculumWorkspace key={key} />;
+    if (workflow === "assignments")
+      return <TeacherAssignmentsWorkspace key={key} activeTab={activeTab} />;
+    if (workflow === "progression")
+      return <ProgressionWorkspace key="automatic-progression" />;
+    if (
+      ["results", "report-cards"].includes(workflow) &&
+      activeTab === "bulk-actions"
+    )
+      return (
+        <BulkAcademicActionsWorkspace
+          key={`${workflow}-bulk`}
+          domain={workflow}
+          paidAccess={bulkAcademicAllowed}
+          onContextChange={updateContext}
+        />
+      );
+    if (workflow === "results")
+      return (
+        <ResultsWorkspace
+          key="results"
+          activeTab={activeTab}
+          onContextChange={updateContext}
+        />
+      );
+    if (workflow === "report-cards")
+      return (
+        <ReportCardsWorkspace
+          key="report-cards"
+          activeTab={activeTab}
+          onContextChange={updateContext}
+        />
+      );
+    if (workflow === "school-calendar")
+      return (
+        <div key="calendar" className="space-y-4">
+          <SchoolCalendarGuide activeTab={activeTab} />
+          {activeTab === "events" ? (
+            <SchoolCalendarEventsWorkspace />
+          ) : (
+            <SchoolCalendarWorkspace activeTab={activeTab} />
+          )}
+        </div>
+      );
+    return <Navigate to="/admin/academic" replace />;
+  };
+  return (
+    <AcademicWorkflowShell
+      workflow={workflow}
+      currentSession={context.currentSession}
+      currentTerm={context.currentTerm}
+      loading={loadingContext}
+    >
+      {renderWorkspace}
+    </AcademicWorkflowShell>
+  );
 }

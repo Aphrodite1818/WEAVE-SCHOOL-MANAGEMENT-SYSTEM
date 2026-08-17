@@ -62,8 +62,12 @@ function BillingSignal({ icon: Icon, label, value }) {
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/75">{label}</p>
-        <p className="mt-1 truncate text-sm font-semibold leading-5 text-white">{value || "--"}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/75">
+          {label}
+        </p>
+        <p className="mt-1 truncate text-sm font-semibold leading-5 text-white">
+          {value || "--"}
+        </p>
       </div>
     </div>
   );
@@ -113,7 +117,8 @@ function BillingPage() {
     () => new Map(terms.map((term) => [term.id, term])),
     [terms],
   );
-  const activeEntitlement = history.find((item) => item.status === "active") || null;
+  const activeEntitlement =
+    history.find((item) => item.status === "active") || null;
   const activeTerm = activeEntitlement
     ? termById.get(activeEntitlement.academic_term_id)
     : null;
@@ -141,7 +146,9 @@ function BillingPage() {
     >
       <div className="space-y-5">
         {subscriptionErrors.currentSubscription ? (
-          <Notice tone="warning">{subscriptionErrors.currentSubscription}</Notice>
+          <Notice tone="warning">
+            {subscriptionErrors.currentSubscription}
+          </Notice>
         ) : null}
         {subscriptionErrors.entitlements ? (
           <Notice tone="warning">{subscriptionErrors.entitlements}</Notice>
@@ -164,31 +171,67 @@ function BillingPage() {
                         Per academic term
                       </span>
                     </div>
-                    <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.16em] text-white/75">Effective plan</p>
-                    <h2 className="mt-2 text-3xl font-semibold text-white sm:text-4xl">{formatPlanName(activePlan)}</h2>
+                    <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.16em] text-white/75">
+                      Effective plan
+                    </p>
+                    <h2 className="mt-2 text-3xl font-semibold text-white sm:text-4xl">
+                      {formatPlanName(activePlan)}
+                    </h2>
                     <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
-                      Each entitlement belongs to one academic term. Closing that term closes its plan entitlement; the next term is activated separately.
+                      Each entitlement belongs to one academic term. Closing
+                      that term closes its plan entitlement; the next term is
+                      activated separately.
                     </p>
                   </div>
                   <div className="grid gap-3 md:grid-cols-3">
-                    <BillingSignal icon={CalendarClock} label="Academic term" value={activeTermLabel} />
-                    <BillingSignal icon={CreditCard} label="Provider" value={provider} />
-                    <BillingSignal icon={ShieldCheck} label="Status" value={statusMeta.label} />
+                    <BillingSignal
+                      icon={CalendarClock}
+                      label="Academic term"
+                      value={activeTermLabel}
+                    />
+                    <BillingSignal
+                      icon={CreditCard}
+                      label="Provider"
+                      value={provider}
+                    />
+                    <BillingSignal
+                      icon={ShieldCheck}
+                      label="Status"
+                      value={statusMeta.label}
+                    />
                   </div>
                 </div>
               </Card>
 
               <Card className="p-5 sm:p-6">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">Quick actions</p>
-                <h2 className="mt-2 text-xl font-semibold text-text">Manage term billing</h2>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">
+                  Quick actions
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-text">
+                  Manage term billing
+                </h2>
                 <p className="mt-2 text-sm leading-6 text-text-muted">
-                  Choose a plan for a draft or current term, review capacity, or refresh payment state after checkout.
+                  Choose a plan for a draft or current term, review capacity, or
+                  refresh payment state after checkout.
                 </p>
                 <div className="mt-6 grid gap-3">
-                  <Link to="/admin/billing/plans"><Button className="w-full">View term plans</Button></Link>
-                  <Link to="/admin/usage"><Button variant="outline" className="w-full">View usage</Button></Link>
-                  <Button variant="outline" className="w-full" onClick={refresh} disabled={refreshing}>
-                    <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                  <Link to="/admin/billing/plans">
+                    <Button className="w-full">View term plans</Button>
+                  </Link>
+                  <Link to="/admin/usage">
+                    <Button variant="outline" className="w-full">
+                      View usage
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={refresh}
+                    disabled={refreshing}
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                    />
                     Refresh billing
                   </Button>
                 </div>
@@ -199,23 +242,50 @@ function BillingPage() {
               <Card className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">Current term record</p>
-                    <h2 className="mt-2 text-lg font-semibold text-text">Entitlement details</h2>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">
+                      Current term record
+                    </p>
+                    <h2 className="mt-2 text-lg font-semibold text-text">
+                      Entitlement details
+                    </h2>
                   </div>
                   <ShieldCheck className="h-5 w-5 text-text-muted" />
                 </div>
                 {activeEntitlement ? (
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <Detail label="Plan" value={formatPlanName(activeEntitlement.plan_code)} />
+                    <Detail
+                      label="Plan"
+                      value={formatPlanName(activeEntitlement.plan_code)}
+                    />
                     <Detail label="Academic term" value={activeTermLabel} />
-                    <Detail label="Activated" value={formatDateTime(activeEntitlement.activated_at)} />
-                    <Detail label="Safety expiry" value={formatDateTime(activeEntitlement.safety_expires_at)} />
-                    <Detail label="Provider" value={activeEntitlement.provider || "--"} />
-                    <Detail label="Amount" value={money(activeEntitlement.amount, activeEntitlement.currency)} />
+                    <Detail
+                      label="Activated"
+                      value={formatDateTime(activeEntitlement.activated_at)}
+                    />
+                    <Detail
+                      label="Safety expiry"
+                      value={formatDateTime(
+                        activeEntitlement.safety_expires_at,
+                      )}
+                    />
+                    <Detail
+                      label="Provider"
+                      value={activeEntitlement.provider || "--"}
+                    />
+                    <Detail
+                      label="Amount"
+                      value={money(
+                        activeEntitlement.amount,
+                        activeEntitlement.currency,
+                      )}
+                    />
                   </div>
                 ) : (
                   <div className="mt-5">
-                    <EmptyState title="No active term entitlement" description="Open Academic Setup and activate a plan when the term is ready to open." />
+                    <EmptyState
+                      title="No active term entitlement"
+                      description="Open Academic Setup and activate a plan when the term is ready to open."
+                    />
                   </div>
                 )}
               </Card>
@@ -223,9 +293,16 @@ function BillingPage() {
               <Card className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">Term lifecycle</p>
-                    <h2 className="mt-2 text-lg font-semibold text-text">Plan history</h2>
-                    <p className="mt-1 text-sm text-text-muted">Every Free or paid plan activation recorded for an academic term.</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">
+                      Term lifecycle
+                    </p>
+                    <h2 className="mt-2 text-lg font-semibold text-text">
+                      Plan history
+                    </h2>
+                    <p className="mt-1 text-sm text-text-muted">
+                      Every Free or paid plan activation recorded for an
+                      academic term.
+                    </p>
                   </div>
                 </div>
                 {history.length ? (
@@ -233,21 +310,38 @@ function BillingPage() {
                     {history.map((item) => {
                       const term = termById.get(item.academic_term_id);
                       return (
-                        <div key={item.id} className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div
+                          key={item.id}
+                          className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+                        >
                           <div>
-                            <p className="font-semibold text-text">{formatPlanName(item.plan_code)}</p>
-                            <p className="mt-1 text-sm text-text-muted">{term ? termDisplayName(term) : "Academic term"} · {formatDateTime(item.activated_at)}</p>
+                            <p className="font-semibold text-text">
+                              {formatPlanName(item.plan_code)}
+                            </p>
+                            <p className="mt-1 text-sm text-text-muted">
+                              {term ? termDisplayName(term) : "Academic term"} ·{" "}
+                              {formatDateTime(item.activated_at)}
+                            </p>
                           </div>
                           <div className="text-left sm:text-right">
-                            <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
-                            <p className="mt-1 text-sm font-semibold text-text">{money(item.amount, item.currency)}</p>
+                            <Badge variant={statusVariant(item.status)}>
+                              {item.status}
+                            </Badge>
+                            <p className="mt-1 text-sm font-semibold text-text">
+                              {money(item.amount, item.currency)}
+                            </p>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 ) : (
-                  <div className="mt-5"><EmptyState title="No plan history yet" description="The first term activation will appear here." /></div>
+                  <div className="mt-5">
+                    <EmptyState
+                      title="No plan history yet"
+                      description="The first term activation will appear here."
+                    />
+                  </div>
                 )}
               </Card>
             </section>
@@ -255,12 +349,26 @@ function BillingPage() {
             <Card className="p-5 sm:p-6">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">Transactions</p>
-                  <h2 className="mt-2 text-lg font-semibold text-text">Payment history</h2>
-                  <p className="mt-1 text-sm text-text-muted">Paystack checkout attempts for term-bound paid plans.</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-faint">
+                    Transactions
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold text-text">
+                    Payment history
+                  </h2>
+                  <p className="mt-1 text-sm text-text-muted">
+                    Paystack checkout attempts for term-bound paid plans.
+                  </p>
                 </div>
-                <Button variant="outline" size="small" onClick={refresh} disabled={refreshing}>
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Refresh
+                <Button
+                  variant="outline"
+                  size="small"
+                  onClick={refresh}
+                  disabled={refreshing}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                  />{" "}
+                  Refresh
                 </Button>
               </div>
               {payments.length ? (
@@ -281,12 +389,28 @@ function BillingPage() {
                         const term = termById.get(record.academic_term_id);
                         return (
                           <tr key={record.id}>
-                            <td className="px-4 py-3 text-text">{formatDateTime(record.paid_at || record.created_at)}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-text-muted">{record.reference}</td>
-                            <td className="px-4 py-3 text-text">{term ? termDisplayName(term) : "Academic term"}</td>
-                            <td className="px-4 py-3 text-text">{formatPlanName(record.plan_code)}</td>
-                            <td className="px-4 py-3"><Badge variant={statusVariant(record.status)}>{record.status}</Badge></td>
-                            <td className="px-4 py-3 text-right font-semibold text-text">{money(record.amount, record.currency)}</td>
+                            <td className="px-4 py-3 text-text">
+                              {formatDateTime(
+                                record.paid_at || record.created_at,
+                              )}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs text-text-muted">
+                              {record.reference}
+                            </td>
+                            <td className="px-4 py-3 text-text">
+                              {term ? termDisplayName(term) : "Academic term"}
+                            </td>
+                            <td className="px-4 py-3 text-text">
+                              {formatPlanName(record.plan_code)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant={statusVariant(record.status)}>
+                                {record.status}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-text">
+                              {money(record.amount, record.currency)}
+                            </td>
                           </tr>
                         );
                       })}
@@ -294,7 +418,13 @@ function BillingPage() {
                   </table>
                 </div>
               ) : (
-                <div className="mt-5"><EmptyState icon={FileText} title="No payment records yet" description="Paid term checkout attempts will appear here. Free activations remain in plan history." /></div>
+                <div className="mt-5">
+                  <EmptyState
+                    icon={FileText}
+                    title="No payment records yet"
+                    description="Paid term checkout attempts will appear here. Free activations remain in plan history."
+                  />
+                </div>
               )}
             </Card>
           </>
@@ -307,8 +437,12 @@ function BillingPage() {
 function Detail({ label, value }) {
   return (
     <div className="rounded-[1.1rem] border border-border/70 bg-surface-muted/25 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">{label}</p>
-      <p className="mt-2 text-sm font-semibold leading-6 text-text">{value || "--"}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-text">
+        {value || "--"}
+      </p>
     </div>
   );
 }
@@ -320,7 +454,9 @@ function Notice({ children, tone = "info" }) {
     error: "border-error/30 bg-error-soft text-error",
   }[tone];
   return (
-    <div className={`rounded-2xl border px-4 py-3 text-sm font-medium ${toneClass}`}>
+    <div
+      className={`rounded-2xl border px-4 py-3 text-sm font-medium ${toneClass}`}
+    >
       {children}
     </div>
   );

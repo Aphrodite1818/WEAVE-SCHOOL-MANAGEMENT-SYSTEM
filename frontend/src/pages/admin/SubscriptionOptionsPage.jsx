@@ -26,12 +26,13 @@ const PLAN_RANK = {
 const isPaidPlan = (planCode) =>
   ["plus", "professional", "enterprise"].includes(planCode);
 
-const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 const termLabel = (term) =>
   String(term?.display_name || term?.name || "Academic term")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-const isCheckoutEligibleTerm = (term) => ["draft", "open"].includes(String(term?.status || "").toLowerCase());
+const isCheckoutEligibleTerm = (term) =>
+  ["draft", "open"].includes(String(term?.status || "").toLowerCase());
 
 function SubscriptionOptionsPage() {
   const { planCode } = useSubscription();
@@ -46,9 +47,12 @@ function SubscriptionOptionsPage() {
     checkoutTermId && searchParams.get("intent") === "open-term";
   const requestedPlanCode = searchParams.get("plan");
   const availablePlans = useMemo(
-    () => LANDING_PRICING_PLANS.filter(
-      (plan) => isPaidPlan(plan.planCode) || (checkoutTermId && plan.planCode === "free"),
-    ),
+    () =>
+      LANDING_PRICING_PLANS.filter(
+        (plan) =>
+          isPaidPlan(plan.planCode) ||
+          (checkoutTermId && plan.planCode === "free"),
+      ),
     [checkoutTermId],
   );
   const checkoutTerms = useMemo(
@@ -66,17 +70,24 @@ function SubscriptionOptionsPage() {
         if (!active) return;
         const rows = asItems(response).filter(isCheckoutEligibleTerm);
         setTerms(rows);
-        setSelectedTermId((current) =>
-          current ||
-          rows.find((term) => term.is_current && term.status === "open")?.id ||
-          rows.find((term) => term.status === "draft")?.id ||
-          rows[0]?.id ||
-          "",
+        setSelectedTermId(
+          (current) =>
+            current ||
+            rows.find((term) => term.is_current && term.status === "open")
+              ?.id ||
+            rows.find((term) => term.status === "draft")?.id ||
+            rows[0]?.id ||
+            "",
         );
       })
       .catch((loadError) => {
         if (active) {
-          setError(parseApiError(loadError, "Could not load academic terms for checkout.").message);
+          setError(
+            parseApiError(
+              loadError,
+              "Could not load academic terms for checkout.",
+            ).message,
+          );
         }
       });
     return () => {
@@ -89,7 +100,9 @@ function SubscriptionOptionsPage() {
     setError("");
     try {
       if (!effectiveCheckoutTermId) {
-        setError("Select a draft or open academic term before starting checkout.");
+        setError(
+          "Select a draft or open academic term before starting checkout.",
+        );
         setBusyPlan("");
         return;
       }
@@ -111,10 +124,8 @@ function SubscriptionOptionsPage() {
       window.location.assign(subscriptionService.checkoutRedirectUrl(checkout));
     } catch (checkoutError) {
       setError(
-        parseApiError(
-          checkoutError,
-          "Could not start term-plan checkout.",
-        ).message,
+        parseApiError(checkoutError, "Could not start term-plan checkout.")
+          .message,
       );
       setBusyPlan("");
     }
@@ -167,7 +178,8 @@ function SubscriptionOptionsPage() {
               >
                 {checkoutTerms.map((term) => (
                   <option key={term.id} value={term.id}>
-                    {termLabel(term)} - {String(term.status || "").replaceAll("_", " ")}
+                    {termLabel(term)} -{" "}
+                    {String(term.status || "").replaceAll("_", " ")}
                   </option>
                 ))}
               </select>
@@ -188,7 +200,10 @@ function SubscriptionOptionsPage() {
               hasCurrentPaidPlan &&
               (PLAN_RANK[plan.planCode] ?? 0) <= currentRank;
             const disabled =
-              current || lowerOrEqualMidTerm || !effectiveCheckoutTermId || busyPlan === plan.planCode;
+              current ||
+              lowerOrEqualMidTerm ||
+              !effectiveCheckoutTermId ||
+              busyPlan === plan.planCode;
 
             return (
               <Card
@@ -197,8 +212,12 @@ function SubscriptionOptionsPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xl font-semibold text-text">{plan.name}</p>
-                    <p className="mt-1 text-sm text-text-muted">{plan.bestFor}</p>
+                    <p className="text-xl font-semibold text-text">
+                      {plan.name}
+                    </p>
+                    <p className="mt-1 text-sm text-text-muted">
+                      {plan.bestFor}
+                    </p>
                   </div>
                   {requestedPlanCode === plan.planCode ? (
                     <Badge variant="info">Chosen at registration</Badge>
@@ -214,7 +233,10 @@ function SubscriptionOptionsPage() {
                 </p>
                 <div className="mt-5 space-y-3">
                   {(plan.features || []).slice(0, 8).map((feature) => (
-                    <div key={feature} className="flex gap-2 text-sm text-text-soft">
+                    <div
+                      key={feature}
+                      className="flex gap-2 text-sm text-text-soft"
+                    >
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                       {feature}
                     </div>
@@ -231,11 +253,11 @@ function SubscriptionOptionsPage() {
                       ? "Current term plan"
                       : lowerOrEqualMidTerm
                         ? "Available next term"
-                    : checkoutTermId && plan.planCode === "free"
-                      ? "Activate Free for this term"
-                      : checkoutTermId
-                      ? `Choose ${formatPlanName(plan.planCode)}`
-                          : `Upgrade to ${formatPlanName(plan.planCode)}`}
+                        : checkoutTermId && plan.planCode === "free"
+                          ? "Activate Free for this term"
+                          : checkoutTermId
+                            ? `Choose ${formatPlanName(plan.planCode)}`
+                            : `Upgrade to ${formatPlanName(plan.planCode)}`}
                 </Button>
               </Card>
             );

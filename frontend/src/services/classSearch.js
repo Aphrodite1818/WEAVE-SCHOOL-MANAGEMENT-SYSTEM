@@ -23,12 +23,10 @@ const classSearchHaystacks = (item) => {
     [item?.academic_level_name, item?.department_name, item?.arm_label]
       .filter(Boolean)
       .join(" ");
-  return [item?.name, item?.arm_label, label]
-    .filter(Boolean)
-    .map((value) => ({
-      normalized: normalizeSearchText(value),
-      compact: compactSearchText(value),
-    }));
+  return [item?.name, item?.arm_label, label].filter(Boolean).map((value) => ({
+    normalized: normalizeSearchText(value),
+    compact: compactSearchText(value),
+  }));
 };
 
 export const filterClasses = (items, search) => {

@@ -11,7 +11,7 @@ import {
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
 
-const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 
 function ArmLabelsWorkspace({ activeTab = "overview" }) {
   const { showError, showSuccess } = useToast();
@@ -21,13 +21,17 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
 
   const load = useCallback(async () => {
     try {
-      setArmLabels(asItems(await armLabelService.getArmLabels({ includeArchived: true })));
+      setArmLabels(
+        asItems(await armLabelService.getArmLabels({ includeArchived: true })),
+      );
     } catch (error) {
       showError(getErrorMessage(error, "Could not load arm labels."));
     }
   }, [showError]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const create = async (event) => {
     event.preventDefault();
@@ -47,35 +51,52 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
 
   return (
     <WorkspaceGrid
-      editor={activeTab === "create" ? (
-        <WorkspacePanel
-          title="Add arm label"
-          description="Create one reusable label that can be used across many levels."
-        >
-          <form className="space-y-3" onSubmit={create}>
-            <Input
-              label="Arm label"
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-              placeholder="A"
-              required
-            />
-            <FormActions submitting={saving} submitLabel="Add arm label" />
-          </form>
-        </WorkspacePanel>
-      ) : null}
-      content={(
+      editor={
+        activeTab === "create" ? (
+          <WorkspacePanel
+            title="Add arm label"
+            description="Create one reusable label that can be used across many levels."
+          >
+            <form className="space-y-3" onSubmit={create}>
+              <Input
+                label="Arm label"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="A"
+                required
+              />
+              <FormActions submitting={saving} submitLabel="Add arm label" />
+            </form>
+          </WorkspacePanel>
+        ) : null
+      }
+      content={
         <WorkspacePanel
           title="Arm labels"
           description="Reusable labels available when creating or editing classes."
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {armLabels.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-border/70 bg-surface p-4">
+              <div
+                key={item.id}
+                className="rounded-2xl border border-border/70 bg-surface p-4"
+              >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-lg font-semibold text-text">{item.label}</p>
-                  <Badge variant={item.is_active && !item.archived_at ? "success" : "warning"}>
-                    {item.archived_at ? "Archived" : item.is_active ? "Active" : "Inactive"}
+                  <p className="text-lg font-semibold text-text">
+                    {item.label}
+                  </p>
+                  <Badge
+                    variant={
+                      item.is_active && !item.archived_at
+                        ? "success"
+                        : "warning"
+                    }
+                  >
+                    {item.archived_at
+                      ? "Archived"
+                      : item.is_active
+                        ? "Active"
+                        : "Inactive"}
                   </Badge>
                 </div>
               </div>
@@ -87,7 +108,7 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
             ) : null}
           </div>
         </WorkspacePanel>
-      )}
+      }
     />
   );
 }

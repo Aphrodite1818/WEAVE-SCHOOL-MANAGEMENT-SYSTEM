@@ -4,7 +4,8 @@ export const termLabels = {
   third_term: "Third Term",
 };
 
-export const displayTerm = (value) => termLabels[value] || String(value || "Term").replaceAll("_", " ");
+export const displayTerm = (value) =>
+  termLabels[value] || String(value || "Term").replaceAll("_", " ");
 
 export const displayClass = (item) =>
   item?.display_name ||
@@ -14,7 +15,8 @@ export const displayClass = (item) =>
     item?.arm_label || item?.class_arm,
   ]
     .filter(Boolean)
-    .join(" ") || "Class";
+    .join(" ") ||
+  "Class";
 
 export const displayPerson = (item) =>
   [item?.first_name, item?.last_name].filter(Boolean).join(" ") ||

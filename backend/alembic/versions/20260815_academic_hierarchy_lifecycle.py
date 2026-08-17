@@ -72,16 +72,11 @@ def _constraint_names(table_name: str) -> set[str]:
         return OFFLINE_CONSTRAINT_NAMES.get(table_name, set())
     inspector = sa.inspect(op.get_bind())
     names = {
-        item.get("name")
-        for item in inspector.get_unique_constraints(table_name, schema=SCHEMA)
+        item.get("name") for item in inspector.get_unique_constraints(table_name, schema=SCHEMA)
     }
+    names.update(item.get("name") for item in inspector.get_foreign_keys(table_name, schema=SCHEMA))
     names.update(
-        item.get("name")
-        for item in inspector.get_foreign_keys(table_name, schema=SCHEMA)
-    )
-    names.update(
-        item.get("name")
-        for item in inspector.get_check_constraints(table_name, schema=SCHEMA)
+        item.get("name") for item in inspector.get_check_constraints(table_name, schema=SCHEMA)
     )
     return {name for name in names if name}
 
@@ -90,8 +85,7 @@ def _index_names(table_name: str) -> set[str]:
     if context.is_offline_mode():
         return OFFLINE_INDEX_NAMES.get(table_name, set())
     return {
-        item["name"]
-        for item in sa.inspect(op.get_bind()).get_indexes(table_name, schema=SCHEMA)
+        item["name"] for item in sa.inspect(op.get_bind()).get_indexes(table_name, schema=SCHEMA)
     }
 
 
@@ -244,8 +238,12 @@ def upgrade() -> None:
         sa.Column("archived_at", sa.DateTime(timezone=True)),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.CheckConstraint(
             "archived_at IS NULL OR is_active = false",
             name="ck_departments_archived_requires_inactive",
@@ -271,9 +269,15 @@ def upgrade() -> None:
         sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.CheckConstraint("position IS NULL OR position > 0", name="ck_arm_labels_position_positive"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.CheckConstraint(
+            "position IS NULL OR position > 0", name="ck_arm_labels_position_positive"
+        ),
         sa.CheckConstraint(
             "archived_at IS NULL OR is_active = false",
             name="ck_arm_labels_archived_requires_inactive",
@@ -391,9 +395,7 @@ def upgrade() -> None:
         WHERE enrollment.class_id = class.id
         """
     )
-    op.alter_column(
-        "student_enrollments", "academic_level_id", nullable=False, schema=SCHEMA
-    )
+    op.alter_column("student_enrollments", "academic_level_id", nullable=False, schema=SCHEMA)
     op.create_foreign_key(
         "fk_student_enrollments_academic_level_id",
         "student_enrollments",
@@ -423,12 +425,22 @@ def upgrade() -> None:
         sa.Column("assigned_by_admin_id", sa.UUID()),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(["student_enrollment_id"], ["public.student_enrollments.id"], ondelete="CASCADE"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.ForeignKeyConstraint(
+            ["student_enrollment_id"], ["public.student_enrollments.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["department_id"], ["public.departments.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["effective_from_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["assigned_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["effective_from_term_id"], ["public.academic_terms.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["assigned_by_admin_id"], ["public.tenant_admins.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("id"),
@@ -455,10 +467,18 @@ def upgrade() -> None:
         sa.Column("is_elective", sa.Boolean(), server_default="false", nullable=False),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(["level_subject_id"], ["public.level_subjects.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["academic_term_id"], ["public.academic_terms.id"], ondelete="CASCADE"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.ForeignKeyConstraint(
+            ["level_subject_id"], ["public.level_subjects.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["academic_term_id"], ["public.academic_terms.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["department_id"], ["public.departments.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -516,16 +536,24 @@ def upgrade() -> None:
         sa.Column(
             "action",
             postgresql.ENUM(
-                "progress", "complete", "skip",
-                name="student_progression_item_action", schema=SCHEMA, create_type=False,
+                "progress",
+                "complete",
+                "skip",
+                name="student_progression_item_action",
+                schema=SCHEMA,
+                create_type=False,
             ),
             nullable=False,
         ),
         sa.Column(
             "status",
             postgresql.ENUM(
-                "completed", "blocked", "cancelled",
-                name="student_progression_item_status", schema=SCHEMA, create_type=False,
+                "completed",
+                "blocked",
+                "cancelled",
+                name="student_progression_item_status",
+                schema=SCHEMA,
+                create_type=False,
             ),
             nullable=False,
         ),
@@ -533,29 +561,60 @@ def upgrade() -> None:
         sa.Column("processed_at", sa.DateTime(timezone=True)),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.CheckConstraint(
             "status <> 'completed' OR action IN ('progress', 'complete')",
             name="ck_progression_item_completed_action",
         ),
-        sa.ForeignKeyConstraint(["progression_run_id"], ["public.student_progression_runs.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["progression_run_id"], ["public.student_progression_runs.id"], ondelete="RESTRICT"
+        ),
         sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["from_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["to_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["from_level_id"], ["public.academic_levels.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["to_level_id"], ["public.academic_levels.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["from_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["to_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["from_level_id"], ["public.academic_levels.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["to_level_id"], ["public.academic_levels.id"], ondelete="RESTRICT"
+        ),
         sa.ForeignKeyConstraint(["from_class_id"], ["public.classes.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["to_class_id"], ["public.classes.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("id"),
-        sa.UniqueConstraint("progression_run_id", "student_id", name="uq_progression_item_run_student"),
+        sa.UniqueConstraint(
+            "progression_run_id", "student_id", name="uq_progression_item_run_student"
+        ),
         schema=SCHEMA,
     )
-    op.create_index("ix_progression_items_tenant_run", "student_progression_items", ["tenant_id", "progression_run_id"], schema=SCHEMA)
-    op.create_index("ix_progression_items_tenant_student", "student_progression_items", ["tenant_id", "student_id"], schema=SCHEMA)
-    op.create_index("ix_progression_items_tenant_status", "student_progression_items", ["tenant_id", "status"], schema=SCHEMA)
+    op.create_index(
+        "ix_progression_items_tenant_run",
+        "student_progression_items",
+        ["tenant_id", "progression_run_id"],
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_progression_items_tenant_student",
+        "student_progression_items",
+        ["tenant_id", "student_id"],
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_progression_items_tenant_status",
+        "student_progression_items",
+        ["tenant_id", "status"],
+        schema=SCHEMA,
+    )
 
     op.execute("DROP TYPE IF EXISTS public.academic_level_progression_mode")
     op.execute("DROP TYPE IF EXISTS public.progression_selection_target_type")
@@ -572,8 +631,12 @@ def downgrade() -> None:
         "promote", "graduate", "skip", name="student_progression_item_action", schema=SCHEMA
     )
     old_status = postgresql.ENUM(
-        "promoted", "graduated", "skipped", "failed",
-        name="student_progression_item_status", schema=SCHEMA,
+        "promoted",
+        "graduated",
+        "skipped",
+        "failed",
+        name="student_progression_item_status",
+        schema=SCHEMA,
     )
     old_action.create(bind, checkfirst=True)
     old_status.create(bind, checkfirst=True)
@@ -585,36 +648,97 @@ def downgrade() -> None:
         sa.Column("to_enrollment_id", sa.UUID()),
         sa.Column("from_class_id", sa.UUID(), nullable=False),
         sa.Column("to_class_id", sa.UUID()),
-        sa.Column("action", postgresql.ENUM("promote", "graduate", "skip", name="student_progression_item_action", schema=SCHEMA, create_type=False), nullable=False),
-        sa.Column("status", postgresql.ENUM("promoted", "graduated", "skipped", "failed", name="student_progression_item_status", schema=SCHEMA, create_type=False), nullable=False),
+        sa.Column(
+            "action",
+            postgresql.ENUM(
+                "promote",
+                "graduate",
+                "skip",
+                name="student_progression_item_action",
+                schema=SCHEMA,
+                create_type=False,
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "status",
+            postgresql.ENUM(
+                "promoted",
+                "graduated",
+                "skipped",
+                "failed",
+                name="student_progression_item_status",
+                schema=SCHEMA,
+                create_type=False,
+            ),
+            nullable=False,
+        ),
         sa.Column("reason", sa.String(1000)),
         sa.Column("processed_at", sa.DateTime(timezone=True)),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.ForeignKeyConstraint(["progression_run_id"], ["public.student_progression_runs.id"], ondelete="RESTRICT"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.ForeignKeyConstraint(
+            ["progression_run_id"], ["public.student_progression_runs.id"], ondelete="RESTRICT"
+        ),
         sa.ForeignKeyConstraint(["student_id"], ["public.students.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["from_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["to_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["from_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["to_enrollment_id"], ["public.student_enrollments.id"], ondelete="RESTRICT"
+        ),
         sa.ForeignKeyConstraint(["from_class_id"], ["public.classes.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["to_class_id"], ["public.classes.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("id"),
-        sa.UniqueConstraint("progression_run_id", "student_id", name="uq_progression_item_run_student"),
+        sa.UniqueConstraint(
+            "progression_run_id", "student_id", name="uq_progression_item_run_student"
+        ),
         schema=SCHEMA,
     )
-    op.create_index("ix_progression_items_tenant_run", "student_progression_items", ["tenant_id", "progression_run_id"], schema=SCHEMA)
-    op.create_index("ix_progression_items_tenant_student", "student_progression_items", ["tenant_id", "student_id"], schema=SCHEMA)
-    op.create_index("ix_progression_items_tenant_status", "student_progression_items", ["tenant_id", "status"], schema=SCHEMA)
+    op.create_index(
+        "ix_progression_items_tenant_run",
+        "student_progression_items",
+        ["tenant_id", "progression_run_id"],
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_progression_items_tenant_student",
+        "student_progression_items",
+        ["tenant_id", "student_id"],
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_progression_items_tenant_status",
+        "student_progression_items",
+        ["tenant_id", "status"],
+        schema=SCHEMA,
+    )
 
     op.alter_column("report_cards", "class_id", nullable=False, schema=SCHEMA)
     op.drop_table("subject_offerings", schema=SCHEMA)
     op.drop_table("student_department_assignments", schema=SCHEMA)
-    op.add_column("level_subjects", sa.Column("is_core", sa.Boolean(), server_default="false", nullable=False), schema=SCHEMA)
-    op.drop_index("ix_student_enrollments_tenant_level", table_name="student_enrollments", schema=SCHEMA)
-    op.drop_constraint("fk_student_enrollments_academic_level_id", "student_enrollments", type_="foreignkey", schema=SCHEMA)
+    op.add_column(
+        "level_subjects",
+        sa.Column("is_core", sa.Boolean(), server_default="false", nullable=False),
+        schema=SCHEMA,
+    )
+    op.drop_index(
+        "ix_student_enrollments_tenant_level", table_name="student_enrollments", schema=SCHEMA
+    )
+    op.drop_constraint(
+        "fk_student_enrollments_academic_level_id",
+        "student_enrollments",
+        type_="foreignkey",
+        schema=SCHEMA,
+    )
     op.alter_column("student_enrollments", "class_id", nullable=False, schema=SCHEMA)
     op.drop_column("student_enrollments", "academic_level_id", schema=SCHEMA)
 
@@ -624,19 +748,66 @@ def downgrade() -> None:
     op.drop_column("classes", "department_id", schema=SCHEMA)
     op.alter_column("classes", "arm", nullable=False, schema=SCHEMA)
     op.alter_column("classes", "normalized_arm", nullable=False, schema=SCHEMA)
-    op.create_unique_constraint("uq_classes_tenant_level_arm", "classes", ["tenant_id", "academic_level_id", "normalized_arm"], schema=SCHEMA)
+    op.create_unique_constraint(
+        "uq_classes_tenant_level_arm",
+        "classes",
+        ["tenant_id", "academic_level_id", "normalized_arm"],
+        schema=SCHEMA,
+    )
     op.drop_table("departments", schema=SCHEMA)
 
     op.add_column("academic_levels", sa.Column("next_level_id", sa.UUID()), schema=SCHEMA)
-    op.add_column("academic_levels", sa.Column("is_terminal", sa.Boolean(), server_default="false", nullable=False), schema=SCHEMA)
-    op.create_foreign_key("academic_levels_next_level_id_fkey", "academic_levels", "academic_levels", ["next_level_id"], ["id"], source_schema=SCHEMA, referent_schema=SCHEMA, ondelete="RESTRICT")
-    op.create_check_constraint("ck_academic_levels_next_not_self", "academic_levels", "next_level_id IS NULL OR next_level_id <> id", schema=SCHEMA)
-    op.create_check_constraint("ck_academic_levels_terminal_has_no_next", "academic_levels", "(is_terminal = true AND next_level_id IS NULL) OR is_terminal = false", schema=SCHEMA)
-    op.create_index("ix_academic_levels_tenant_next", "academic_levels", ["tenant_id", "next_level_id"], schema=SCHEMA)
-    op.drop_index("ix_academic_levels_tenant_category_position", table_name="academic_levels", schema=SCHEMA)
-    op.drop_constraint("ck_academic_levels_specialization_term_positive", "academic_levels", type_="check", schema=SCHEMA)
-    op.drop_constraint("ck_academic_levels_position_positive", "academic_levels", type_="check", schema=SCHEMA)
-    op.drop_constraint("uq_academic_levels_tenant_category_position", "academic_levels", type_="unique", schema=SCHEMA)
+    op.add_column(
+        "academic_levels",
+        sa.Column("is_terminal", sa.Boolean(), server_default="false", nullable=False),
+        schema=SCHEMA,
+    )
+    op.create_foreign_key(
+        "academic_levels_next_level_id_fkey",
+        "academic_levels",
+        "academic_levels",
+        ["next_level_id"],
+        ["id"],
+        source_schema=SCHEMA,
+        referent_schema=SCHEMA,
+        ondelete="RESTRICT",
+    )
+    op.create_check_constraint(
+        "ck_academic_levels_next_not_self",
+        "academic_levels",
+        "next_level_id IS NULL OR next_level_id <> id",
+        schema=SCHEMA,
+    )
+    op.create_check_constraint(
+        "ck_academic_levels_terminal_has_no_next",
+        "academic_levels",
+        "(is_terminal = true AND next_level_id IS NULL) OR is_terminal = false",
+        schema=SCHEMA,
+    )
+    op.create_index(
+        "ix_academic_levels_tenant_next",
+        "academic_levels",
+        ["tenant_id", "next_level_id"],
+        schema=SCHEMA,
+    )
+    op.drop_index(
+        "ix_academic_levels_tenant_category_position", table_name="academic_levels", schema=SCHEMA
+    )
+    op.drop_constraint(
+        "ck_academic_levels_specialization_term_positive",
+        "academic_levels",
+        type_="check",
+        schema=SCHEMA,
+    )
+    op.drop_constraint(
+        "ck_academic_levels_position_positive", "academic_levels", type_="check", schema=SCHEMA
+    )
+    op.drop_constraint(
+        "uq_academic_levels_tenant_category_position",
+        "academic_levels",
+        type_="unique",
+        schema=SCHEMA,
+    )
     op.drop_column("academic_levels", "specialization_required_from_term_position", schema=SCHEMA)
     op.drop_column("academic_levels", "position", schema=SCHEMA)
     op.drop_column("academic_levels", "category", schema=SCHEMA)

@@ -40,11 +40,7 @@ class CBTSyncDispatcher:
 
         # Avoid a database lookup if this API instance does not own
         # any CBT machine socket for this tenant.
-        has_connections = (
-            await cbt_connection_manager.has_tenant_connections(
-                tenant_id
-            )
-        )
+        has_connections = await cbt_connection_manager.has_tenant_connections(tenant_id)
 
         if not has_connections:
             return 0

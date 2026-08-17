@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
-import { academicLevelService, departmentService } from "../../services/academicsService";
+import {
+  academicLevelService,
+  departmentService,
+} from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { curriculumService } from "../../services/curriculumService";
@@ -86,7 +89,9 @@ export default function CurriculumWorkspace() {
       );
       setDepartmentId("");
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load this level curriculum."));
+      showError(
+        getErrorMessage(error, "Could not load this level curriculum."),
+      );
     }
   }, [levelId, showError]);
 
@@ -96,7 +101,9 @@ export default function CurriculumWorkspace() {
       return;
     }
     try {
-      setOfferings(items(await curriculumService.listOfferings(scopeSubjectId)));
+      setOfferings(
+        items(await curriculumService.listOfferings(scopeSubjectId)),
+      );
     } catch (error) {
       showError(getErrorMessage(error, "Could not load subject offerings."));
     }
@@ -119,7 +126,8 @@ export default function CurriculumWorkspace() {
     [curriculum],
   );
   const available = subjects.filter(
-    (row) => !attached.has(row.id) && row.is_active !== false && !row.archived_at,
+    (row) =>
+      !attached.has(row.id) && row.is_active !== false && !row.archived_at,
   );
   const termById = useMemo(
     () => new Map(terms.map((row) => [row.id, row])),
@@ -158,7 +166,9 @@ export default function CurriculumWorkspace() {
       });
       await loadLevel();
       showSuccess(
-        row.is_elective ? "Subject is now compulsory." : "Subject is now elective.",
+        row.is_elective
+          ? "Subject is now compulsory."
+          : "Subject is now elective.",
       );
     } catch (error) {
       showError(getErrorMessage(error, "Could not update curriculum subject."));
@@ -183,7 +193,9 @@ export default function CurriculumWorkspace() {
           : "General level offering configured.",
       );
     } catch (error) {
-      showError(getErrorMessage(error, "Could not configure this term offering."));
+      showError(
+        getErrorMessage(error, "Could not configure this term offering."),
+      );
     } finally {
       setSaving("");
     }
@@ -207,7 +219,7 @@ export default function CurriculumWorkspace() {
   return (
     <div className="space-y-4">
       <WorkspaceGrid
-        editor={(
+        editor={
           <WorkspacePanel
             title="Add curriculum subject"
             description="Create each subject once in the school subject pool, then attach it to the academic level here."
@@ -217,16 +229,24 @@ export default function CurriculumWorkspace() {
                 label="Academic level"
                 value={levelId}
                 onChange={setLevelId}
-                options={levels.map((row) => ({ value: row.id, label: row.name }))}
+                options={levels.map((row) => ({
+                  value: row.id,
+                  label: row.name,
+                }))}
                 required
               />
               <SelectControl
                 label="Subject"
                 value={subjectId}
                 onChange={setSubjectId}
-                options={available.map((row) => ({ value: row.id, label: row.name }))}
+                options={available.map((row) => ({
+                  value: row.id,
+                  label: row.name,
+                }))}
                 placeholder={
-                  available.length ? "Select subject" : "All active subjects are attached"
+                  available.length
+                    ? "Select subject"
+                    : "All active subjects are attached"
                 }
                 required
               />
@@ -238,13 +258,16 @@ export default function CurriculumWorkspace() {
                 />
                 Elective subject
               </label>
-              <Button type="submit" disabled={saving === "subject" || !subjectId}>
+              <Button
+                type="submit"
+                disabled={saving === "subject" || !subjectId}
+              >
                 {saving === "subject" ? "Saving…" : "Add to curriculum"}
               </Button>
             </form>
           </WorkspacePanel>
-        )}
-        content={(
+        }
+        content={
           <WorkspacePanel
             title={
               curriculum?.level_name
@@ -260,7 +283,9 @@ export default function CurriculumWorkspace() {
                   className="flex items-center justify-between gap-3 rounded-xl border border-border/70 px-3 py-3"
                 >
                   <div>
-                    <p className="font-semibold text-text">{row.subject_name}</p>
+                    <p className="font-semibold text-text">
+                      {row.subject_name}
+                    </p>
                     <p className="text-xs text-text-muted">
                       {row.is_elective ? "Elective" : "Compulsory"}
                     </p>
@@ -282,11 +307,11 @@ export default function CurriculumWorkspace() {
               ) : null}
             </div>
           </WorkspacePanel>
-        )}
+        }
       />
 
       <WorkspaceGrid
-        editor={(
+        editor={
           <WorkspacePanel
             title="Configure term offering"
             description="General subjects reach every class in the level. A department-specific subject can be offered to one or more departments in the same level."
@@ -331,8 +356,8 @@ export default function CurriculumWorkspace() {
               </Button>
             </form>
           </WorkspacePanel>
-        )}
-        content={(
+        }
+        content={
           <WorkspacePanel
             title="Configured term offerings"
             description="A subject may be general for the term or restricted to one or more departments. Remove the general offering before switching to department-specific scopes. Historical terms are protected."
@@ -371,12 +396,13 @@ export default function CurriculumWorkspace() {
               })}
               {!offerings.length ? (
                 <p className="text-sm text-text-muted">
-                  No term offering is configured for the selected curriculum subject.
+                  No term offering is configured for the selected curriculum
+                  subject.
                 </p>
               ) : null}
             </div>
           </WorkspacePanel>
-        )}
+        }
       />
     </div>
   );

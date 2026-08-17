@@ -1,4 +1,9 @@
-import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import LoadingState from "../../components/shared/LoadingState";
@@ -86,7 +91,9 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
           null;
 
       setSelectedSessionId((current) =>
-        rows.some((item) => item.id === current) ? current : preferred?.id || "",
+        rows.some((item) => item.id === current)
+          ? current
+          : preferred?.id || "",
       );
       onContextChange?.({
         currentSession: rows.find((item) => item.is_current) || null,
@@ -108,16 +115,20 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     try {
       const current = sessions.find((item) => item.id === selectedSessionId);
       if (current?.status === "closing") {
-        const response = await sessionClosureService.getStatus(selectedSessionId);
+        const response =
+          await sessionClosureService.getStatus(selectedSessionId);
         setStatus(response);
         setAudit(response?.audit || null);
       } else {
-        const response = await sessionClosureService.getAudit(selectedSessionId);
+        const response =
+          await sessionClosureService.getAudit(selectedSessionId);
         setAudit(response);
         setStatus(null);
       }
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load the session closure audit."));
+      showError(
+        getErrorMessage(error, "Could not load the session closure audit."),
+      );
     }
   }, [isClosingPage, selectedSessionId, sessions, showError]);
 
@@ -138,7 +149,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   useEffect(() => {
     if (!isClosingPage || !selectedSessionId) return undefined;
 
-    const reconcile = () => Promise.all([loadClosingWorkflow(), loadSessions()]);
+    const reconcile = () =>
+      Promise.all([loadClosingWorkflow(), loadSessions()]);
     const unsubscribers = SESSION_PROGRESSION_REALTIME_EVENTS.map((eventType) =>
       realtimeClient.subscribe(eventType, (message) => {
         if (matchesSessionProgressionEvent(selectedSessionId, message)) {
@@ -148,7 +160,10 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     );
     unsubscribers.push(
       realtimeClient.subscribeConnection((state) => {
-        if (state.status === "reconnected" && selectedSession?.status === "closing") {
+        if (
+          state.status === "reconnected" &&
+          selectedSession?.status === "closing"
+        ) {
           reconcile();
         }
       }),
@@ -185,7 +200,9 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
       await loadSessions();
       if (isClosingPage) await loadClosingWorkflow();
     } catch (error) {
-      showError(getErrorMessage(error, "Could not update progression configuration."));
+      showError(
+        getErrorMessage(error, "Could not update progression configuration."),
+      );
     } finally {
       setBusy("");
     }
@@ -207,7 +224,9 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
       );
       setAudit(response?.audit || null);
       if (!response?.started) {
-        showWarning("The closure audit found items that must be resolved first.");
+        showWarning(
+          "The closure audit found items that must be resolved first.",
+        );
         return;
       }
       showSuccess(
@@ -227,7 +246,9 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     if (!selectedSession) return;
     setBusy("retry");
     try {
-      const response = await sessionClosureService.retryProgression(selectedSession.id);
+      const response = await sessionClosureService.retryProgression(
+        selectedSession.id,
+      );
       setStatus(response);
       setAudit(response?.audit || null);
       showSuccess("Progression was queued again.");
@@ -243,7 +264,9 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     if (!selectedSession) return;
     setBusy("finalize");
     try {
-      const response = await sessionClosureService.finalizeClose(selectedSession.id);
+      const response = await sessionClosureService.finalizeClose(
+        selectedSession.id,
+      );
       const closedName = response?.closed_session?.name || "Session";
       const nextName = response?.next_session?.name;
       showSuccess(
@@ -267,7 +290,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   const run = status?.progression_run;
   const blockers = audit?.blocker_messages || [];
   const canStart = selectedSession?.status === "open" && audit?.is_ready;
-  const canRetry = selectedSession?.status === "closing" && run?.status === "failed";
+  const canRetry =
+    selectedSession?.status === "closing" && run?.status === "failed";
   const canFinalize = Boolean(status?.can_finalize);
 
   const configureModal = (
@@ -342,14 +366,17 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                       <p className="font-medium text-text">Next session</p>
                       <p>
                         {sessions.find(
-                          (item) => item.id === currentSession.next_academic_session_id,
+                          (item) =>
+                            item.id === currentSession.next_academic_session_id,
                         )?.name || "Not configured"}
                       </p>
                     </div>
                   </div>
                 </>
               ) : (
-                <p className="mt-2 text-sm text-text-muted">No active academic session.</p>
+                <p className="mt-2 text-sm text-text-muted">
+                  No active academic session.
+                </p>
               )}
             </div>
             {currentSession?.status === "open" ? (
@@ -375,7 +402,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
           <div>
             <h2 className="section-title">Close academic session</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
-              Review closure readiness, start background level progression, and finalize only after the worker completes successfully.
+              Review closure readiness, start background level progression, and
+              finalize only after the worker completes successfully.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -416,7 +444,11 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
 
         {selectedSession ? (
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Badge variant={selectedSession.status === "closing" ? "warning" : "success"}>
+            <Badge
+              variant={
+                selectedSession.status === "closing" ? "warning" : "success"
+              }
+            >
               {selectedSession.status}
             </Badge>
             {selectedSession.status === "closing" ? (
@@ -469,9 +501,15 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
 
         {requiresTerminalConfirmation && selectedSession?.status === "open" ? (
           <div className="mt-4 rounded-2xl border border-warning/40 bg-warning-soft p-4 text-sm text-amber-950">
-            <p className="font-semibold">Terminal graduation confirmation required</p>
+            <p className="font-semibold">
+              Terminal graduation confirmation required
+            </p>
             <p className="mt-1">
-              {terminalStudents} student{terminalStudents === 1 ? "" : "s"} are in the final configured level of the institution path. Starting closure will graduate them, end their active enrollment, and deactivate student access. Missing intermediate categories never count as graduation.
+              {terminalStudents} student{terminalStudents === 1 ? "" : "s"} are
+              in the final configured level of the institution path. Starting
+              closure will graduate them, end their active enrollment, and
+              deactivate student access. Missing intermediate categories never
+              count as graduation.
             </p>
           </div>
         ) : null}
@@ -481,9 +519,14 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
         <Card className="p-4 sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h3 className="font-semibold text-text">Background progression</h3>
+              <h3 className="font-semibold text-text">
+                Background progression
+              </h3>
               <p className="mt-1 text-sm text-text-muted">
-                The worker progresses students by academic level only. New enrollments have no class placement, and terminal students graduate only when that outcome was explicitly confirmed at closure start.
+                The worker progresses students by academic level only. New
+                enrollments have no class placement, and terminal students
+                graduate only when that outcome was explicitly confirmed at
+                closure start.
               </p>
             </div>
             <Badge
@@ -500,7 +543,10 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-6">
             {runCounts(run).map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-border/70 px-3 py-3">
+              <div
+                key={label}
+                className="rounded-xl border border-border/70 px-3 py-3"
+              >
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                   {label}
                 </p>

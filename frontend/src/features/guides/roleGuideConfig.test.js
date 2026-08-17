@@ -15,9 +15,13 @@ test("every supported dashboard role has a valid page guide", () => {
     assert.equal(guide.route, `/${role}/getting-started`);
     assert.equal(guide.dashboardRoute, `/${role}/dashboard`);
 
-    const expectedStepCount = role === "admin" ? 12 : role === "teacher" ? 3 : 4;
+    const expectedStepCount =
+      role === "admin" ? 12 : role === "teacher" ? 3 : 4;
     assert.equal(guide.steps.length, expectedStepCount);
-    assert.equal(new Set(guide.steps.map((step) => step.id)).size, expectedStepCount);
+    assert.equal(
+      new Set(guide.steps.map((step) => step.id)).size,
+      expectedStepCount,
+    );
 
     for (const step of guide.steps) {
       assert.ok(step.label);

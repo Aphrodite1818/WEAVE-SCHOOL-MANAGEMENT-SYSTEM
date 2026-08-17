@@ -1,4 +1,11 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation } from "react-router-dom";
 import { authSession, getErrorMessage } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
@@ -8,10 +15,16 @@ import {
 } from "./subscriptionConfig";
 import { SubscriptionContext } from "./subscriptionContext";
 
-const normalizeRole = (value) => String(value || "").trim().toLowerCase();
+const normalizeRole = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 const MANAGEMENT_VISIBLE_FEATURES = new Set(["cbt_pairing"]);
 
-const scheduleDeferredWork = (callback, { timeout = 1500, fallbackDelay = 750 } = {}) => {
+const scheduleDeferredWork = (
+  callback,
+  { timeout = 1500, fallbackDelay = 750 } = {},
+) => {
   if (typeof window === "undefined") return () => {};
 
   if (typeof window.requestIdleCallback === "function") {
@@ -60,10 +73,12 @@ export function SubscriptionProvider({ children }) {
         setIsLoading(true);
       }
 
-      const [subscriptionResult, entitlementsResult] = await Promise.allSettled([
-        subscriptionService.getCurrentSubscription(),
-        subscriptionService.getSubscriptionEntitlements(),
-      ]);
+      const [subscriptionResult, entitlementsResult] = await Promise.allSettled(
+        [
+          subscriptionService.getCurrentSubscription(),
+          subscriptionService.getSubscriptionEntitlements(),
+        ],
+      );
 
       const nextErrors = {
         currentSubscription: null,
@@ -128,7 +143,8 @@ export function SubscriptionProvider({ children }) {
     const shouldRefreshAfterPaymentRedirect =
       location.pathname === "/billing/subscription/verify";
     const shouldLoadSubscriptionState =
-      !subscriptionLoadRequestedRef.current || shouldRefreshAfterPaymentRedirect;
+      !subscriptionLoadRequestedRef.current ||
+      shouldRefreshAfterPaymentRedirect;
 
     if (!shouldLoadSubscriptionState) return;
 
@@ -203,7 +219,8 @@ export function SubscriptionProvider({ children }) {
           return {
             allowed: false,
             pending: false,
-            reason: "We couldn't confirm access for this feature. Refresh and try again.",
+            reason:
+              "We couldn't confirm access for this feature. Refresh and try again.",
           };
         }
         return { allowed: true, pending: true, reason: null };
@@ -214,7 +231,8 @@ export function SubscriptionProvider({ children }) {
           return {
             allowed: true,
             pending: false,
-            reason: "Management remains available, but new use requires an eligible plan.",
+            reason:
+              "Management remains available, but new use requires an eligible plan.",
           };
         }
         return {
@@ -226,7 +244,13 @@ export function SubscriptionProvider({ children }) {
 
       return { allowed: true, pending: false, reason: null };
     },
-    [isLoading, isRefreshing, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements],
+    [
+      isLoading,
+      isRefreshing,
+      isTenantAdmin,
+      visibleEntitlements,
+      visibleErrors.entitlements,
+    ],
   );
 
   const getResourceGuard = useCallback(
@@ -249,7 +273,8 @@ export function SubscriptionProvider({ children }) {
           return {
             allowed: false,
             pending: false,
-            reason: "We couldn't confirm your plan limits. Refresh and try again.",
+            reason:
+              "We couldn't confirm your plan limits. Refresh and try again.",
             usage: null,
           };
         }
@@ -279,7 +304,12 @@ export function SubscriptionProvider({ children }) {
         usage: usage || null,
       };
     },
-    [getFeatureGuard, isTenantAdmin, visibleEntitlements, visibleErrors.entitlements],
+    [
+      getFeatureGuard,
+      isTenantAdmin,
+      visibleEntitlements,
+      visibleErrors.entitlements,
+    ],
   );
 
   const value = useMemo(

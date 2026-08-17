@@ -94,9 +94,7 @@ class AcademicCurriculumService:
         tenant_id: uuid.UUID,
         academic_level_id: uuid.UUID,
     ) -> None:
-        level = await AcademicLevelRepository.get_by_id(
-            db, tenant_id, academic_level_id
-        )
+        level = await AcademicLevelRepository.get_by_id(db, tenant_id, academic_level_id)
         tenant = await TenantRepository.get_by_id(db, tenant_id)
         if level is None:
             raise NotFoundException("Academic level not found.")
@@ -142,9 +140,7 @@ class AcademicCurriculumService:
         if class_id is not None:
             query = query.where(StudentSubjectResult.class_id == class_id)
         if curriculum_subject_id is not None:
-            query = query.where(
-                StudentSubjectResult.curriculum_subject_id == curriculum_subject_id
-            )
+            query = query.where(StudentSubjectResult.curriculum_subject_id == curriculum_subject_id)
         result_id = (await db.execute(query.limit(1))).scalar_one_or_none()
         if result_id is not None:
             scope = (
@@ -355,9 +351,7 @@ class AcademicCurriculumService:
                 tenant_id=tenant_id,
                 academic_level_id=curriculum.academic_level_id,
             )
-            department = await DepartmentRepository.get_by_id(
-                db, tenant_id, payload.department_id
-            )
+            department = await DepartmentRepository.get_by_id(db, tenant_id, payload.department_id)
             if (
                 department is None
                 or not department.is_active
@@ -443,9 +437,7 @@ class AcademicCurriculumService:
         ).scalar_one_or_none()
         if row is None:
             raise NotFoundException("Curriculum offering not found.")
-        term = await AcademicCurriculumService._term(
-            db, tenant_id, row.academic_term_id, lock=True
-        )
+        term = await AcademicCurriculumService._term(db, tenant_id, row.academic_term_id, lock=True)
         await AcademicCurriculumService._ensure_term_configuration_mutable(
             db,
             tenant_id=tenant_id,
@@ -496,9 +488,7 @@ class AcademicCurriculumService:
         if not department.is_active or department.archived_at is not None:
             raise ConflictException("Department must be active before it can be assigned.")
         if department.academic_level_id != classroom.academic_level_id:
-            raise ConflictException(
-                "Department and class must belong to the same academic level."
-            )
+            raise ConflictException("Department and class must belong to the same academic level.")
         await AcademicCurriculumService._ensure_department_capability(
             db,
             tenant_id=tenant_id,

@@ -112,9 +112,7 @@ class ReportCardService:
         submitted = await ReportCardService._finalized_results_for_student(
             db, tenant_id, student_id, academic_session_id, academic_term_id
         )
-        submitted_curriculum_subject_ids = {
-            result.curriculum_subject_id for result in submitted
-        }
+        submitted_curriculum_subject_ids = {result.curriculum_subject_id for result in submitted}
         missing: list[str] = []
         for offering in expected:
             if offering.curriculum_subject_id not in submitted_curriculum_subject_ids:

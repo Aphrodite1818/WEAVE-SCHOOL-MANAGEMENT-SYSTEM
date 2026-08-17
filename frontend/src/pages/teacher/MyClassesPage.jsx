@@ -8,21 +8,29 @@ const teacherClassConfig = {
   canCreate: false,
   canUpdate: false,
   canDelete: false,
-  filters: [{ name: "search", label: "Search", placeholder: "Class name or arm" }],
+  filters: [
+    { name: "search", label: "Search", placeholder: "Class name or arm" },
+  ],
   columns: [
-    { key: "academic_level_name", label: "Class", render: (item) => displayClass(item) },
+    {
+      key: "academic_level_name",
+      label: "Class",
+      render: (item) => displayClass(item),
+    },
     { key: "arm_label", label: "Arm", render: (item) => item.arm_label || "-" },
     {
       key: "teacher",
       label: "Class teacher",
-      render: (item) => item.teacher_name || item.class_teacher_name || "Assigned to you",
+      render: (item) =>
+        item.teacher_name || item.class_teacher_name || "Assigned to you",
     },
   ],
-  fetchItems: (filters) => classService.getClasses({
-    search: filters.search,
-    limit: 100,
-    activeOnly: true,
-  }),
+  fetchItems: (filters) =>
+    classService.getClasses({
+      search: filters.search,
+      limit: 100,
+      activeOnly: true,
+    }),
   mapItemToForm: () => ({}),
   getItemLabel: (item) => displayClass(item),
 };

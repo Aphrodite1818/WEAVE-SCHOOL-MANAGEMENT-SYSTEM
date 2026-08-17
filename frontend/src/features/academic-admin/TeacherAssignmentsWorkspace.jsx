@@ -32,8 +32,12 @@ const classLabel = (item) =>
 
 const teacherLabel = (item) => {
   const account = item?.teacher_account || item?.account || {};
-  const name = [account.first_name, account.last_name].filter(Boolean).join(" ");
-  return name || item?.teacher_name || account.email || item?.staff_id || "Teacher";
+  const name = [account.first_name, account.last_name]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    name || item?.teacher_name || account.email || item?.staff_id || "Teacher"
+  );
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -108,7 +112,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       setCurrentTerm(
         nextTerms.find(
           (item) =>
-            item.is_current && String(item.status || "").toLowerCase() === "open",
+            item.is_current &&
+            String(item.status || "").toLowerCase() === "open",
         ) || null,
       );
       setForm((current) => ({
@@ -116,7 +121,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         class_id: current.class_id || nextClasses[0]?.id || "",
       }));
     } catch (err) {
-      const message = getErrorMessage(err, "Could not load teacher assignments.");
+      const message = getErrorMessage(
+        err,
+        "Could not load teacher assignments.",
+      );
       setError(message);
       showError(message);
     } finally {
@@ -160,15 +168,16 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         return;
       }
 
-      const [curriculum, classDepartment, assignmentsResponse] = await Promise.all([
-        curriculumService.getCurriculum(classroom.academic_level_id),
-        curriculumService.getClassDepartment(form.class_id, currentTerm.id),
-        academicService.listTeacherAssignments({
-          class_id: form.class_id,
-          status: "active",
-          limit: 100,
-        }),
-      ]);
+      const [curriculum, classDepartment, assignmentsResponse] =
+        await Promise.all([
+          curriculumService.getCurriculum(classroom.academic_level_id),
+          curriculumService.getClassDepartment(form.class_id, currentTerm.id),
+          academicService.listTeacherAssignments({
+            class_id: form.class_id,
+            status: "active",
+            limit: 100,
+          }),
+        ]);
       const subjects = (curriculum?.subjects || []).filter(
         (item) => item.is_active !== false,
       );
@@ -192,7 +201,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             const offered = offerings.some(
               (offering) =>
                 offering.academic_term_id === currentTerm.id &&
-                (!offering.department_id || offering.department_id === departmentId),
+                (!offering.department_id ||
+                  offering.department_id === departmentId),
             );
             const available =
               !assignedSubjectIds.has(subject.id) ||
@@ -204,7 +214,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     } catch (err) {
       setCurriculumSubjects([]);
       showError(
-        getErrorMessage(err, "Could not load subjects available to this class."),
+        getErrorMessage(
+          err,
+          "Could not load subjects available to this class.",
+        ),
       );
     }
   }, [
@@ -236,7 +249,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           : "";
     setAssignmentPage(0);
     setFilters((current) =>
-      current.status === nextStatus ? current : { ...current, status: nextStatus },
+      current.status === nextStatus
+        ? current
+        : { ...current, status: nextStatus },
     );
     if (activeTab !== "reassign") setEditingAssignmentId("");
     if (activeTab !== "end") setEndingAssignmentId("");
@@ -247,14 +262,17 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     [classes],
   );
   const teacherOptions = useMemo(
-    () => teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })),
+    () =>
+      teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })),
     [teachers],
   );
   const subjectOptions = useMemo(
     () =>
       curriculumSubjects.map((item) => ({
         value: item.id,
-        label: [item.subject_name, item.subject_code].filter(Boolean).join(" · "),
+        label: [item.subject_name, item.subject_code]
+          .filter(Boolean)
+          .join(" · "),
       })),
     [curriculumSubjects],
   );
@@ -286,7 +304,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       showWarning("Select a teacher.");
       return;
     }
-    if (!editingAssignmentId && (!form.curriculum_subject_id || !currentTerm?.id)) {
+    if (
+      !editingAssignmentId &&
+      (!form.curriculum_subject_id || !currentTerm?.id)
+    ) {
       showWarning("Select a class subject in the current open term.");
       return;
     }
@@ -325,9 +346,14 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const endAssignment = async (item) => {
     setSaving(item.id);
     try {
-      const preview = await academicService.getTeacherAssignmentDependencies(item.id);
+      const preview = await academicService.getTeacherAssignmentDependencies(
+        item.id,
+      );
       if (!preview?.can_end) {
-        showError(formatDependencyMessage(preview) || "This assignment cannot be ended.");
+        showError(
+          formatDependencyMessage(preview) ||
+            "This assignment cannot be ended.",
+        );
         return;
       }
       await academicService.endTeacherAssignment(item.id, {
@@ -346,14 +372,21 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
 
   const openDeleteConfirmation = async (item) => {
     try {
-      const preview = await academicService.getTeacherAssignmentDependencies(item.id);
+      const preview = await academicService.getTeacherAssignmentDependencies(
+        item.id,
+      );
       if (!preview?.can_delete) {
-        showError(formatDependencyMessage(preview) || "This assignment cannot be deleted.");
+        showError(
+          formatDependencyMessage(preview) ||
+            "This assignment cannot be deleted.",
+        );
         return;
       }
       setPendingDelete({ item, preview });
     } catch (err) {
-      showError(getErrorMessage(err, "Could not inspect assignment dependencies."));
+      showError(
+        getErrorMessage(err, "Could not inspect assignment dependencies."),
+      );
     }
   };
 
@@ -380,7 +413,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
 
   const editor = (
     <WorkspacePanel
-      title={editingAssignmentId ? "Change assigned teacher" : "Assign subject teacher"}
+      title={
+        editingAssignmentId
+          ? "Change assigned teacher"
+          : "Assign subject teacher"
+      }
       description={
         currentTerm
           ? "Choose a class, one of its subjects for the current term, and a teacher. Level and department rules are resolved automatically."
@@ -407,7 +444,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             label="Subject"
             value={form.curriculum_subject_id}
             onChange={(value) =>
-              setForm((current) => ({ ...current, curriculum_subject_id: value }))
+              setForm((current) => ({
+                ...current,
+                curriculum_subject_id: value,
+              }))
             }
             options={subjectOptions}
             placeholder={
@@ -432,11 +472,18 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           required
         />
         <Input
-          label={editingAssignmentId ? "Replacement effective from" : "Effective from"}
+          label={
+            editingAssignmentId
+              ? "Replacement effective from"
+              : "Effective from"
+          }
           type="date"
           value={form.effective_from}
           onChange={(event) =>
-            setForm((current) => ({ ...current, effective_from: event.target.value }))
+            setForm((current) => ({
+              ...current,
+              effective_from: event.target.value,
+            }))
           }
           required
         />
@@ -445,7 +492,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             type="submit"
             disabled={
               saving === "assignment" ||
-              (!editingAssignmentId && (!currentTerm || subjectOptions.length === 0))
+              (!editingAssignmentId &&
+                (!currentTerm || subjectOptions.length === 0))
             }
           >
             {saving === "assignment"
@@ -507,7 +555,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             { value: "ended", label: "Ended" },
           ]}
           placeholder="All statuses"
-          disabled={activeTab === "reassign" || activeTab === "end" || activeTab === "history"}
+          disabled={
+            activeTab === "reassign" ||
+            activeTab === "end" ||
+            activeTab === "history"
+          }
         />
         <Input
           label="Search"
@@ -520,7 +572,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       {assignments.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-6 text-center">
           <Users className="mx-auto h-7 w-7 text-text-muted" />
-          <p className="mt-3 text-sm font-semibold text-text">No assignments found</p>
+          <p className="mt-3 text-sm font-semibold text-text">
+            No assignments found
+          </p>
           <p className="mt-1 text-sm text-text-muted">
             Create an assignment or adjust the filters.
           </p>
@@ -547,8 +601,14 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                   </Badge>
                 </div>
                 <div className="mt-3 space-y-1 text-sm text-text-muted">
-                  <p>{[item.class_name, item.class_arm].filter(Boolean).join(" ")}</p>
-                  <p>{item.teacher_name || item.teacher_staff_id || "Teacher"}</p>
+                  <p>
+                    {[item.class_name, item.class_arm]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </p>
+                  <p>
+                    {item.teacher_name || item.teacher_staff_id || "Teacher"}
+                  </p>
                   <p>Effective: {formatPeriod(item)}</p>
                 </div>
                 <div className="mt-auto flex flex-wrap gap-2 pt-4">
@@ -635,7 +695,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         onClose={() => setViewingAssignment(null)}
         footer={
           <div className="flex justify-end">
-            <Button type="button" variant="outline" onClick={() => setViewingAssignment(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setViewingAssignment(null)}
+            >
               Close
             </Button>
           </div>
@@ -643,8 +707,18 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       >
         {viewingAssignment ? (
           <div className="space-y-2 text-sm text-text-muted">
-            <p>Teacher: {viewingAssignment.teacher_name || viewingAssignment.teacher_staff_id || "Teacher"}</p>
-            <p>Class: {[viewingAssignment.class_name, viewingAssignment.class_arm].filter(Boolean).join(" ")}</p>
+            <p>
+              Teacher:{" "}
+              {viewingAssignment.teacher_name ||
+                viewingAssignment.teacher_staff_id ||
+                "Teacher"}
+            </p>
+            <p>
+              Class:{" "}
+              {[viewingAssignment.class_name, viewingAssignment.class_arm]
+                .filter(Boolean)
+                .join(" ")}
+            </p>
             <p>Subject: {viewingAssignment.subject_name || "Subject"}</p>
             <p>Effective: {formatPeriod(viewingAssignment)}</p>
             <p>Status: {viewingAssignment.is_active ? "active" : "ended"}</p>
@@ -678,12 +752,19 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           </div>
         }
       >
-        <form id="teacher-reassign-form" className="space-y-3" onSubmit={saveAssignment}>
+        <form
+          id="teacher-reassign-form"
+          className="space-y-3"
+          onSubmit={saveAssignment}
+        >
           <SelectControl
             label="Replacement teacher"
             value={form.teacher_membership_id}
             onChange={(value) =>
-              setForm((current) => ({ ...current, teacher_membership_id: value }))
+              setForm((current) => ({
+                ...current,
+                teacher_membership_id: value,
+              }))
             }
             options={teacherOptions}
             placeholder="Select replacement teacher"
@@ -694,7 +775,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             type="date"
             value={form.effective_from}
             onChange={(event) =>
-              setForm((current) => ({ ...current, effective_from: event.target.value }))
+              setForm((current) => ({
+                ...current,
+                effective_from: event.target.value,
+              }))
             }
             required
           />
@@ -705,7 +789,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         open={Boolean(endingAssignmentId)}
         title="End assignment"
         description="Record the effective end date for this teacher assignment."
-        onClose={saving === endingAssignmentId ? undefined : () => setEndingAssignmentId("")}
+        onClose={
+          saving === endingAssignmentId
+            ? undefined
+            : () => setEndingAssignmentId("")
+        }
         closeOnOverlay={saving !== endingAssignmentId}
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -733,7 +821,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           className="space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
-            const item = assignments.find((assignment) => assignment.id === endingAssignmentId);
+            const item = assignments.find(
+              (assignment) => assignment.id === endingAssignmentId,
+            );
             if (item) endAssignment(item);
           }}
         >
@@ -750,7 +840,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       <TypedConfirmationDialog
         open={Boolean(pendingDelete)}
         title="Delete historical assignment"
-        description={pendingDelete?.item ? formatPeriod(pendingDelete.item) : ""}
+        description={
+          pendingDelete?.item ? formatPeriod(pendingDelete.item) : ""
+        }
         confirmationText={DELETE_TEACHER_ASSIGNMENT}
         confirmLabel="Delete assignment"
         variant="danger"
@@ -773,7 +865,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   }
 
   if (activeTab === "assign") return editor;
-  if (["overview", "history", "end", "reassign"].includes(activeTab)) return review;
+  if (["overview", "history", "end", "reassign"].includes(activeTab))
+    return review;
   return <WorkspaceGrid editor={editor} content={review} />;
 }
 

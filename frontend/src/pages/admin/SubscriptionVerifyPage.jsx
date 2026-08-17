@@ -7,9 +7,7 @@ import Button from "../../components/ui/Button";
 import LoadingState from "../../components/shared/LoadingState";
 import { parseApiError } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
-import {
-  clearSelectedSubscriptionPlan,
-} from "../../features/subscriptions/subscriptionConfig";
+import { clearSelectedSubscriptionPlan } from "../../features/subscriptions/subscriptionConfig";
 import { academicService } from "../../services/academicService";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 
@@ -30,13 +28,14 @@ function SubscriptionVerifyPage() {
       if (!reference) {
         setStatus("error");
         setMessage(
-          "We could not verify this payment. Please try again or contact support."
+          "We could not verify this payment. Please try again or contact support.",
         );
         return;
       }
 
       try {
-        const entitlement = await subscriptionService.verifyTermPayment(reference);
+        const entitlement =
+          await subscriptionService.verifyTermPayment(reference);
         const openIntent = subscriptionService.consumeTermPaymentOpenIntent({
           academicTermId: entitlement?.academic_term_id,
           reference,
@@ -52,7 +51,7 @@ function SubscriptionVerifyPage() {
           } catch (error) {
             openTermError = parseApiError(
               error,
-              "Payment verified, but we could not open the academic term automatically."
+              "Payment verified, but we could not open the academic term automatically.",
             ).message;
           }
         }
@@ -77,7 +76,7 @@ function SubscriptionVerifyPage() {
           openedTerm
             ? "Payment verified. Your academic term is now open."
             : openTermError ||
-                "Payment verified. The plan is funded for this academic term. If the term is still a draft, open it from Academic Terms when setup is ready."
+                "Payment verified. The plan is funded for this academic term. If the term is still a draft, open it from Academic Terms when setup is ready.",
         );
         redirectTimer = window.setTimeout(() => {
           navigate(nextSuccessRoute, { replace: true });
@@ -87,7 +86,7 @@ function SubscriptionVerifyPage() {
 
         const apiError = parseApiError(
           error,
-          "We could not verify this payment. Please try again or contact support."
+          "We could not verify this payment. Please try again or contact support.",
         );
         setStatus("error");
         setMessage(apiError.message);
@@ -145,7 +144,7 @@ function SubscriptionVerifyPage() {
                 onClick={() =>
                   navigate(
                     status === "success" ? successRoute : "/admin/dashboard",
-                    { replace: true }
+                    { replace: true },
                   )
                 }
               >

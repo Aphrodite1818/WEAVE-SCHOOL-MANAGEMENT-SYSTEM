@@ -14,7 +14,8 @@ const ROLE_FORM_CONFIG = {
     {
       key: "institution_type",
       title: "Academic structure",
-      description: "Choose the institution family that determines the academic categories you can configure.",
+      description:
+        "Choose the institution family that determines the academic categories you can configure.",
       fields: [
         {
           name: "institution_type",
@@ -31,7 +32,8 @@ const ROLE_FORM_CONFIG = {
     {
       key: "school_identity",
       title: "School identity",
-      description: "These values come from registration and stay read-only here.",
+      description:
+        "These values come from registration and stay read-only here.",
       fields: [
         { name: "school_name", label: "School name", readOnly: true },
         { name: "email", label: "School email", type: "email", readOnly: true },
@@ -42,15 +44,30 @@ const ROLE_FORM_CONFIG = {
       title: "School profile",
       description: "School details used for student admission setup.",
       fields: [
-        { name: "admission_number_prefix", label: "Admission prefix", required: true, placeholder: "WVS" },
-        { name: "phone", label: "School phone", type: "phone", placeholder: "8012345678" },
+        {
+          name: "admission_number_prefix",
+          label: "Admission prefix",
+          required: true,
+          placeholder: "WVS",
+        },
+        {
+          name: "phone",
+          label: "School phone",
+          type: "phone",
+          placeholder: "8012345678",
+        },
         { name: "address", label: "Address", type: "textarea", required: true },
         { name: "city", label: "City", required: true },
         { name: "state", label: "State", required: true },
         { name: "country", label: "Country" },
         { name: "timezone", label: "Timezone" },
         { name: "language", label: "Language" },
-        { name: "school_bot_whatssap_number", label: "School WhatsApp bot number", type: "phone", placeholder: "8012345678" },
+        {
+          name: "school_bot_whatssap_number",
+          label: "School WhatsApp bot number",
+          type: "phone",
+          placeholder: "8012345678",
+        },
       ],
     },
   ],
@@ -77,10 +94,20 @@ const ROLE_FORM_CONFIG = {
         { name: "email", label: "Email", type: "email", readOnly: true },
         { name: "first_name", label: "First name", required: true },
         { name: "last_name", label: "Last name", required: true },
-        { name: "phone_number", label: "Phone number", type: "phone", placeholder: "8012345678" },
+        {
+          name: "phone_number",
+          label: "Phone number",
+          type: "phone",
+          placeholder: "8012345678",
+        },
         { name: "occupation", label: "Occupation" },
         { name: "address", label: "Address", type: "textarea" },
-        { name: "emergency_phone", label: "Emergency phone", type: "phone", placeholder: "8012345678" },
+        {
+          name: "emergency_phone",
+          label: "Emergency phone",
+          type: "phone",
+          placeholder: "8012345678",
+        },
       ],
     },
   ],
@@ -93,7 +120,12 @@ const ROLE_FORM_CONFIG = {
         { name: "admission_number", label: "Admission number", readOnly: true },
         { name: "first_name", label: "First name", required: true },
         { name: "last_name", label: "Last name", required: true },
-        { name: "date_of_birth", label: "Date of birth", type: "date", readOnly: true },
+        {
+          name: "date_of_birth",
+          label: "Date of birth",
+          type: "date",
+          readOnly: true,
+        },
         {
           name: "gender",
           label: "Gender",
@@ -111,7 +143,8 @@ const ROLE_FORM_CONFIG = {
 
 const EMPTY_FORM_DATA = {};
 
-const getRoleSections = (role) => ROLE_FORM_CONFIG[onboardingService.normalizeRole(role)] || [];
+const getRoleSections = (role) =>
+  ROLE_FORM_CONFIG[onboardingService.normalizeRole(role)] || [];
 
 const buildFormData = (statusData, role) => {
   const currentValues = statusData?.current_values || {};
@@ -174,7 +207,9 @@ function EditableField({ field, value, error, onChange }) {
             </option>
           ))}
         </select>
-        {error && <p className="mt-1.5 text-xs font-medium text-error">{error}</p>}
+        {error && (
+          <p className="mt-1.5 text-xs font-medium text-error">{error}</p>
+        )}
       </div>
     );
   }
@@ -192,7 +227,9 @@ function EditableField({ field, value, error, onChange }) {
           required={field.required}
           placeholder={field.placeholder}
         />
-        {error && <p className="mt-1.5 text-xs font-medium text-error">{error}</p>}
+        {error && (
+          <p className="mt-1.5 text-xs font-medium text-error">{error}</p>
+        )}
       </div>
     );
   }
@@ -237,7 +274,10 @@ function PassportPhotoPreview({ data, role }) {
               : "A round passport photo will appear here once a valid image URL is saved."}
           </p>
           {imageSrc && (
-            <p className="mt-2 truncate text-xs font-medium text-text-faint" title={imageSrc}>
+            <p
+              className="mt-2 truncate text-xs font-medium text-text-faint"
+              title={imageSrc}
+            >
               {imageSrc}
             </p>
           )}
@@ -258,14 +298,19 @@ function ProfileCompletionForm({
   const normalizedRole = onboardingService.normalizeRole(role);
   const callbacksRef = useRef({ onSaved, onProfileStateResolved });
   const [statusData, setStatusData] = useState(initialStatusData);
-  const [formData, setFormData] = useState(() => buildFormData(initialStatusData, normalizedRole));
+  const [formData, setFormData] = useState(() =>
+    buildFormData(initialStatusData, normalizedRole),
+  );
   const [fieldErrors, setFieldErrors] = useState({});
   const [loadError, setLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(!initialStatusData);
   const { showSuccess, showError } = useToast();
 
-  const sections = useMemo(() => getRoleSections(normalizedRole), [normalizedRole]);
+  const sections = useMemo(
+    () => getRoleSections(normalizedRole),
+    [normalizedRole],
+  );
 
   useEffect(() => {
     callbacksRef.current = { onSaved, onProfileStateResolved };
@@ -277,7 +322,10 @@ function ProfileCompletionForm({
     const timeoutId = window.setTimeout(() => {
       setStatusData(initialStatusData);
       setFormData(buildFormData(initialStatusData, normalizedRole));
-      const nextUser = onboardingService.updateSessionUserFromStatus(normalizedRole, initialStatusData);
+      const nextUser = onboardingService.updateSessionUserFromStatus(
+        normalizedRole,
+        initialStatusData,
+      );
       callbacksRef.current.onProfileStateResolved?.({
         completed: !initialStatusData.onboarding_required,
         status: initialStatusData,
@@ -293,7 +341,10 @@ function ProfileCompletionForm({
     let mounted = true;
 
     async function loadStatus() {
-      if (initialStatusData || !onboardingService.supportsRole(normalizedRole)) {
+      if (
+        initialStatusData ||
+        !onboardingService.supportsRole(normalizedRole)
+      ) {
         if (!initialStatusData) {
           setStatusData(null);
           setFormData(EMPTY_FORM_DATA);
@@ -306,12 +357,16 @@ function ProfileCompletionForm({
       setLoadError(null);
 
       try {
-        const nextStatus = await onboardingService.getOnboardingStatus(normalizedRole);
+        const nextStatus =
+          await onboardingService.getOnboardingStatus(normalizedRole);
         if (!mounted) return;
 
         setStatusData(nextStatus);
         setFormData(buildFormData(nextStatus, normalizedRole));
-        const nextUser = onboardingService.updateSessionUserFromStatus(normalizedRole, nextStatus);
+        const nextUser = onboardingService.updateSessionUserFromStatus(
+          normalizedRole,
+          nextStatus,
+        );
         callbacksRef.current.onProfileStateResolved?.({
           completed: !nextStatus?.onboarding_required,
           status: nextStatus,
@@ -319,7 +374,10 @@ function ProfileCompletionForm({
         });
       } catch (error) {
         if (!mounted) return;
-        const parsed = parseApiError(error, "Failed to load your onboarding details.");
+        const parsed = parseApiError(
+          error,
+          "Failed to load your onboarding details.",
+        );
         setLoadError(parsed.message);
       } finally {
         if (mounted) setIsLoading(false);
@@ -364,8 +422,12 @@ function ProfileCompletionForm({
 
       await onboardingService.submitOnboarding(normalizedRole, payload);
       clearDashboardMetricsCache();
-      const nextStatus = await onboardingService.getOnboardingStatus(normalizedRole);
-      const nextUser = onboardingService.updateSessionUserFromStatus(normalizedRole, nextStatus);
+      const nextStatus =
+        await onboardingService.getOnboardingStatus(normalizedRole);
+      const nextUser = onboardingService.updateSessionUserFromStatus(
+        normalizedRole,
+        nextStatus,
+      );
 
       setStatusData(nextStatus);
       setFormData(buildFormData(nextStatus, normalizedRole));
@@ -402,25 +464,34 @@ function ProfileCompletionForm({
         </div>
       )}
 
-      {showMediaPreview ? <PassportPhotoPreview
-        role={normalizedRole}
-        data={{
-          ...(statusData?.current_values || {}),
-          ...formData,
-        }}
-      /> : null}
+      {showMediaPreview ? (
+        <PassportPhotoPreview
+          role={normalizedRole}
+          data={{
+            ...(statusData?.current_values || {}),
+            ...formData,
+          }}
+        />
+      ) : null}
 
       {sections.map((section) => (
-        <div key={section.key} className="space-y-4 rounded-2xl border border-border bg-surface-muted/40 p-4">
+        <div
+          key={section.key}
+          className="space-y-4 rounded-2xl border border-border bg-surface-muted/40 p-4"
+        >
           <div>
             <h3 className="text-sm font-semibold text-text">{section.title}</h3>
             {section.description && (
-              <p className="mt-1 text-xs text-text-muted">{section.description}</p>
+              <p className="mt-1 text-xs text-text-muted">
+                {section.description}
+              </p>
             )}
           </div>
 
           {isLoading ? (
-            <p className="text-sm text-text-muted">Loading profile details...</p>
+            <p className="text-sm text-text-muted">
+              Loading profile details...
+            </p>
           ) : (
             section.fields.map((field) => {
               const value = formData[field.name] ?? "";
@@ -445,7 +516,11 @@ function ProfileCompletionForm({
         </div>
       ))}
 
-      <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoading || !statusData}>
+      <Button
+        type="submit"
+        className="w-full sm:w-auto"
+        disabled={isSubmitting || isLoading || !statusData}
+      >
         {isSubmitting ? "Saving..." : submitLabel}
       </Button>
     </form>

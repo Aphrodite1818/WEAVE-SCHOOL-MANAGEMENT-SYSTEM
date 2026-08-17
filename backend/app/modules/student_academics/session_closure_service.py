@@ -372,8 +372,8 @@ class SessionClosureService:
         else:
             run = existing
             run.status = StudentProgressionRunStatus.PENDING
-            run.terminal_completion_approved = (
-                run.terminal_completion_approved or bool(allow_terminal_completion)
+            run.terminal_completion_approved = run.terminal_completion_approved or bool(
+                allow_terminal_completion
             )
             if run.total_students == 0:
                 run.total_students = len(enrollments)

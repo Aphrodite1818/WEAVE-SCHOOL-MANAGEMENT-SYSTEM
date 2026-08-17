@@ -30,13 +30,22 @@ import Modal from "../../components/ui/Modal";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useToast } from "../../hooks/useToast";
 import academicService from "../../services/academicService";
-import { academicLevelService, classService } from "../../services/academicsService";
+import {
+  academicLevelService,
+  classService,
+} from "../../services/academicsService";
 import { parseApiError } from "../../services/api";
 import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
 
 const PAGE_SIZE = 24;
-const STUDENT_STATUSES = ["active", "suspended", "withdrawn", "graduated", "expelled"];
+const STUDENT_STATUSES = [
+  "active",
+  "suspended",
+  "withdrawn",
+  "graduated",
+  "expelled",
+];
 const GENDER_OPTIONS = ["male", "female"];
 
 const EMPTY_FILTERS = {
@@ -63,20 +72,29 @@ const titleCase = (value) =>
 const formatDate = (value) => {
   if (!value) return "Not set";
   const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleDateString();
 };
 
 const classLabel = (item) =>
   item?.display_name ||
-  [item?.academic_level_name, item?.department_name, item?.arm_label].filter(Boolean).join(" ") ||
+  [item?.academic_level_name, item?.department_name, item?.arm_label]
+    .filter(Boolean)
+    .join(" ") ||
   item?.id ||
   "Class";
 
 const studentClassLabel = (student) =>
-  [student?.class_name, student?.class_arm].filter(Boolean).join(" ") || "Not assigned";
+  [student?.class_name, student?.class_arm].filter(Boolean).join(" ") ||
+  "Not assigned";
 
 const asItems = (response) =>
-  Array.isArray(response) ? response : Array.isArray(response?.items) ? response.items : [];
+  Array.isArray(response)
+    ? response
+    : Array.isArray(response?.items)
+      ? response.items
+      : [];
 
 const lifecycleConfig = {
   suspend: {
@@ -138,8 +156,10 @@ const lifecycleConfig = {
 const actionsForStudent = (student) => {
   if (student.is_archived) return ["restore"];
   const status = String(student.status || "").toLowerCase();
-  if (status === "active") return ["suspend", "withdraw", "expel", "graduate", "archive"];
-  if (status === "suspended") return ["reinstate", "withdraw", "expel", "archive"];
+  if (status === "active")
+    return ["suspend", "withdraw", "expel", "graduate", "archive"];
+  if (status === "suspended")
+    return ["reinstate", "withdraw", "expel", "archive"];
   if (status === "expelled") return ["reinstateExpelled", "archive"];
   return ["archive"];
 };
@@ -183,7 +203,8 @@ function buildAccessNotice(result) {
   if (!result?.access_code) return null;
   return {
     title: "Student access code",
-    description: "Give this one-time code to the student so they can set a new password.",
+    description:
+      "Give this one-time code to the student so they can set a new password.",
     fields: [
       { label: "Student", value: result.full_name || "Student" },
       { label: "Admission number", value: result.admission_number },
@@ -193,7 +214,15 @@ function buildAccessNotice(result) {
   };
 }
 
-function StudentCard({ student, busy, onEdit, onReset, onHistory, onLifecycle, onHardDelete }) {
+function StudentCard({
+  student,
+  busy,
+  onEdit,
+  onReset,
+  onHistory,
+  onLifecycle,
+  onHardDelete,
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const actions = actionsForStudent(student);
 
@@ -205,8 +234,12 @@ function StudentCard({ student, busy, onEdit, onReset, onHistory, onLifecycle, o
             <UserRound className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <h3 className="break-words font-semibold text-text">{displayName(student)}</h3>
-            <p className="mt-1 text-xs text-text-muted">{student.admission_number}</p>
+            <h3 className="break-words font-semibold text-text">
+              {displayName(student)}
+            </h3>
+            <p className="mt-1 text-xs text-text-muted">
+              {student.admission_number}
+            </p>
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -219,19 +252,31 @@ function StudentCard({ student, busy, onEdit, onReset, onHistory, onLifecycle, o
 
       <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-surface-muted/30 px-4 py-3 text-sm">
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">Class</p>
+          <p className="text-xs font-semibold uppercase text-text-muted">
+            Class
+          </p>
           <p className="mt-1 text-text-soft">{studentClassLabel(student)}</p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">Admission</p>
-          <p className="mt-1 text-text-soft">{formatDate(student.admission_date)}</p>
+          <p className="text-xs font-semibold uppercase text-text-muted">
+            Admission
+          </p>
+          <p className="mt-1 text-text-soft">
+            {formatDate(student.admission_date)}
+          </p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">Profile</p>
-          <p className="mt-1 text-text-soft">{titleCase(student.profile_status)}</p>
+          <p className="text-xs font-semibold uppercase text-text-muted">
+            Profile
+          </p>
+          <p className="mt-1 text-text-soft">
+            {titleCase(student.profile_status)}
+          </p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">Credentials</p>
+          <p className="text-xs font-semibold uppercase text-text-muted">
+            Credentials
+          </p>
           <p className="mt-1 text-text-soft">
             {student.password_reset_required ? "Setup required" : "Configured"}
           </p>
@@ -239,14 +284,32 @@ function StudentCard({ student, busy, onEdit, onReset, onHistory, onLifecycle, o
       </div>
 
       <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-        <Button type="button" size="small" variant="outline" onClick={() => onEdit(student)} disabled={busy}>
+        <Button
+          type="button"
+          size="small"
+          variant="outline"
+          onClick={() => onEdit(student)}
+          disabled={busy}
+        >
           Edit profile
         </Button>
-        <Button type="button" size="small" variant="outline" onClick={() => onHistory(student)} disabled={busy}>
+        <Button
+          type="button"
+          size="small"
+          variant="outline"
+          onClick={() => onHistory(student)}
+          disabled={busy}
+        >
           <BookOpen className="h-4 w-4" />
           Class history
         </Button>
-        <Button type="button" size="small" variant="outline" onClick={() => onReset(student)} disabled={busy || student.is_archived}>
+        <Button
+          type="button"
+          size="small"
+          variant="outline"
+          onClick={() => onReset(student)}
+          disabled={busy || student.is_archived}
+        >
           <RotateCcw className="h-4 w-4" />
           Reset code
         </Button>
@@ -257,7 +320,13 @@ function StudentCard({ student, busy, onEdit, onReset, onHistory, onLifecycle, o
           strategy="fixed"
           className="w-64"
           trigger={
-            <Button type="button" size="small" variant="outline" disabled={busy} className="w-full justify-between">
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              disabled={busy}
+              className="w-full justify-between"
+            >
               Lifecycle
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -333,7 +402,8 @@ function StudentDirectoryPage() {
     [levels],
   );
   const sessionOptions = useMemo(
-    () => sessions.map((item) => ({ value: item.id, label: item.name || item.id })),
+    () =>
+      sessions.map((item) => ({ value: item.id, label: item.name || item.id })),
     [sessions],
   );
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -375,7 +445,10 @@ function StudentDirectoryPage() {
 
   useEffect(() => {
     loadReferenceData().catch((requestError) => {
-      setError(parseApiError(requestError, "Failed to load classes and sessions.").message);
+      setError(
+        parseApiError(requestError, "Failed to load classes and sessions.")
+          .message,
+      );
     });
   }, [loadReferenceData]);
 
@@ -384,10 +457,13 @@ function StudentDirectoryPage() {
   }, [loadStudents]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setPage(1);
-      setAppliedFilters({ ...draftFilters });
-    }, draftFilters.search.trim() ? 250 : 0);
+    const timeoutId = window.setTimeout(
+      () => {
+        setPage(1);
+        setAppliedFilters({ ...draftFilters });
+      },
+      draftFilters.search.trim() ? 250 : 0,
+    );
 
     return () => window.clearTimeout(timeoutId);
   }, [draftFilters]);
@@ -410,7 +486,10 @@ function StudentDirectoryPage() {
       setBatchClassId("");
       await refresh();
     } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to assign the selected students.").message);
+      showError(
+        parseApiError(requestError, "Failed to assign the selected students.")
+          .message,
+      );
     } finally {
       setBusyId("");
     }
@@ -436,8 +515,10 @@ function StudentDirectoryPage() {
     setBusyId(editState.student.id);
     setFieldErrors({});
     const payload = Object.fromEntries(
-      Object.entries(editState.form)
-        .map(([key, value]) => [key, value === "" ? null : value]),
+      Object.entries(editState.form).map(([key, value]) => [
+        key,
+        value === "" ? null : value,
+      ]),
     );
     try {
       await studentService.updateAdminStudent(editState.student.id, payload);
@@ -454,7 +535,8 @@ function StudentDirectoryPage() {
   };
 
   const openLifecycle = (student, actionKey) => {
-    const currentSession = sessions.find((item) => item.is_current) || sessions[0];
+    const currentSession =
+      sessions.find((item) => item.is_current) || sessions[0];
     setFieldErrors({});
     setLifecycleState({
       student,
@@ -477,20 +559,27 @@ function StudentDirectoryPage() {
     const config = lifecycleConfig[actionKey];
     const reason = form.reason.trim();
     if (reason.length < 3) {
-      setFieldErrors({ reason: "Enter a reason with at least three characters." });
+      setFieldErrors({
+        reason: "Enter a reason with at least three characters.",
+      });
       return;
     }
     const payload = { reason };
     if (config.usesPromotionHold) payload.promotion_hold = form.promotion_hold;
     if (config.usesEffectiveDate) payload.effective_date = form.effective_date;
-    if (config.usesGraduationDate) payload.graduation_date = form.graduation_date;
+    if (config.usesGraduationDate)
+      payload.graduation_date = form.graduation_date;
     if (config.usesClassSession) {
       payload.target_class_id = form.target_class_id;
       payload.academic_session_id = form.academic_session_id;
       if (!payload.target_class_id || !payload.academic_session_id) {
         setFieldErrors({
-          target_class_id: payload.target_class_id ? undefined : "Choose a class.",
-          academic_session_id: payload.academic_session_id ? undefined : "Choose a session.",
+          target_class_id: payload.target_class_id
+            ? undefined
+            : "Choose a class.",
+          academic_session_id: payload.academic_session_id
+            ? undefined
+            : "Choose a session.",
         });
         return;
       }
@@ -506,11 +595,16 @@ function StudentDirectoryPage() {
         ["restore", "reinstate", "reinstateExpelled"].includes(actionKey) &&
         updatedStudent?.password_reset_required
       ) {
-        showWarning("Student access is restored, but a new access code is still required.");
+        showWarning(
+          "Student access is restored, but a new access code is still required.",
+        );
       }
       await refresh();
     } catch (requestError) {
-      const parsed = parseApiError(requestError, `Failed to ${config.label.toLowerCase()} student.`);
+      const parsed = parseApiError(
+        requestError,
+        `Failed to ${config.label.toLowerCase()} student.`,
+      );
       setFieldErrors(parsed.fieldErrors || {});
       showError(parsed.message);
     } finally {
@@ -527,26 +621,43 @@ function StudentDirectoryPage() {
       setAccessCodeConfirmation(null);
       await refresh();
     } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to generate access code.").message);
+      showError(
+        parseApiError(requestError, "Failed to generate access code.").message,
+      );
     } finally {
       setBusyId("");
     }
   };
 
   const openHistory = async (student) => {
-    setHistoryState({ student, loading: true, items: [], mode: "history", form: null });
+    setHistoryState({
+      student,
+      loading: true,
+      items: [],
+      mode: "history",
+      form: null,
+    });
     try {
       const response = await studentService.getEnrollmentHistory(student.id);
-      setHistoryState({ student, loading: false, items: asItems(response), mode: "history", form: null });
+      setHistoryState({
+        student,
+        loading: false,
+        items: asItems(response),
+        mode: "history",
+        form: null,
+      });
     } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to load class history.").message);
+      showError(
+        parseApiError(requestError, "Failed to load class history.").message,
+      );
       setHistoryState(null);
     }
   };
 
   const startClassChange = () => {
     if (!historyState) return;
-    const currentSession = sessions.find((item) => item.is_current) || sessions[0];
+    const currentSession =
+      sessions.find((item) => item.is_current) || sessions[0];
     setFieldErrors({});
     setHistoryState((current) => ({
       ...current,
@@ -565,10 +676,16 @@ function StudentDirectoryPage() {
     event.preventDefault();
     if (!historyState?.form) return;
     const { student, form } = historyState;
-    if (!form.target_class_id || !form.academic_session_id || form.reason.trim().length < 3) {
+    if (
+      !form.target_class_id ||
+      !form.academic_session_id ||
+      form.reason.trim().length < 3
+    ) {
       setFieldErrors({
         target_class_id: form.target_class_id ? undefined : "Choose a class.",
-        academic_session_id: form.academic_session_id ? undefined : "Choose a session.",
+        academic_session_id: form.academic_session_id
+          ? undefined
+          : "Choose a session.",
         reason: form.reason.trim().length >= 3 ? undefined : "Enter a reason.",
       });
       return;
@@ -580,11 +697,20 @@ function StudentDirectoryPage() {
         reason: form.reason.trim(),
       });
       const response = await studentService.getEnrollmentHistory(student.id);
-      setHistoryState({ student, loading: false, items: asItems(response), mode: "history", form: null });
+      setHistoryState({
+        student,
+        loading: false,
+        items: asItems(response),
+        mode: "history",
+        form: null,
+      });
       showSuccess("Student class changed and enrollment history updated.");
       await refresh();
     } catch (requestError) {
-      const parsed = parseApiError(requestError, "Failed to change student class.");
+      const parsed = parseApiError(
+        requestError,
+        "Failed to change student class.",
+      );
       setFieldErrors(parsed.fieldErrors || {});
       showError(parsed.message);
     } finally {
@@ -593,12 +719,29 @@ function StudentDirectoryPage() {
   };
 
   const inspectHardDelete = async (student) => {
-    setHardDeleteState({ student, loading: true, eligibility: null, reason: "", confirmation: "" });
+    setHardDeleteState({
+      student,
+      loading: true,
+      eligibility: null,
+      reason: "",
+      confirmation: "",
+    });
     try {
-      const eligibility = await studentService.getHardDeleteEligibility(student.id);
-      setHardDeleteState({ student, loading: false, eligibility, reason: "", confirmation: "" });
+      const eligibility = await studentService.getHardDeleteEligibility(
+        student.id,
+      );
+      setHardDeleteState({
+        student,
+        loading: false,
+        eligibility,
+        reason: "",
+        confirmation: "",
+      });
     } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to inspect delete eligibility.").message);
+      showError(
+        parseApiError(requestError, "Failed to inspect delete eligibility.")
+          .message,
+      );
       setHardDeleteState(null);
     }
   };
@@ -606,7 +749,10 @@ function StudentDirectoryPage() {
   const submitHardDelete = async (event) => {
     event.preventDefault();
     if (!hardDeleteState?.eligibility?.eligible) return;
-    if (hardDeleteState.confirmation !== "DELETE_UNUSED_STUDENT" || hardDeleteState.reason.trim().length < 3) {
+    if (
+      hardDeleteState.confirmation !== "DELETE_UNUSED_STUDENT" ||
+      hardDeleteState.reason.trim().length < 3
+    ) {
       showWarning("Enter the exact confirmation text and a reason.");
       return;
     }
@@ -620,7 +766,9 @@ function StudentDirectoryPage() {
       setHardDeleteState(null);
       await refresh();
     } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to hard-delete student.").message);
+      showError(
+        parseApiError(requestError, "Failed to hard-delete student.").message,
+      );
     } finally {
       setBusyId("");
     }
@@ -655,48 +803,85 @@ function StudentDirectoryPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="section-title">Students</h2>
-          <p className="mt-1 text-sm text-text-muted">Create and manage student records.</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Create and manage student records.
+          </p>
         </div>
-        <Button type="button" onClick={() => navigate("/admin/students/create")}>
+        <Button
+          type="button"
+          onClick={() => navigate("/admin/students/create")}
+        >
           <PlusCircle className="h-4 w-4" />
           Create student
         </Button>
       </div>
 
       <Card className="p-4 sm:p-5">
-        <form onSubmit={(event) => event.preventDefault()} className="grid gap-3 md:grid-cols-4 xl:grid-cols-6">
+        <form
+          onSubmit={(event) => event.preventDefault()}
+          className="grid gap-3 md:grid-cols-4 xl:grid-cols-6"
+        >
           <Input
             label="Search"
             value={draftFilters.search}
             placeholder="Name or admission number"
-            onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+            onChange={(event) =>
+              setDraftFilters((current) => ({
+                ...current,
+                search: event.target.value,
+              }))
+            }
           />
           <SelectField
             label="Academic level"
             value={draftFilters.academicLevelId}
-            onChange={(event) => setDraftFilters((current) => ({ ...current, academicLevelId: event.target.value, classId: "" }))}
+            onChange={(event) =>
+              setDraftFilters((current) => ({
+                ...current,
+                academicLevelId: event.target.value,
+                classId: "",
+              }))
+            }
             options={levelOptions}
             placeholder="All levels"
           />
           <SelectField
             label="Class"
             value={draftFilters.classId}
-            onChange={(event) => setDraftFilters((current) => ({ ...current, classId: event.target.value }))}
+            onChange={(event) =>
+              setDraftFilters((current) => ({
+                ...current,
+                classId: event.target.value,
+              }))
+            }
             options={classOptions}
             placeholder="All classes"
           />
           <SelectField
             label="Status"
             value={draftFilters.status}
-            onChange={(event) => setDraftFilters((current) => ({ ...current, status: event.target.value }))}
-            options={STUDENT_STATUSES.map((value) => ({ value, label: titleCase(value) }))}
+            onChange={(event) =>
+              setDraftFilters((current) => ({
+                ...current,
+                status: event.target.value,
+              }))
+            }
+            options={STUDENT_STATUSES.map((value) => ({
+              value,
+              label: titleCase(value),
+            }))}
             placeholder="All statuses"
           />
           <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-border px-3 text-sm font-semibold text-text-soft">
             <input
               type="checkbox"
               checked={draftFilters.includeArchived}
-              onChange={(event) => setDraftFilters((current) => ({ ...current, includeArchived: event.target.checked }))}
+              onChange={(event) =>
+                setDraftFilters((current) => ({
+                  ...current,
+                  includeArchived: event.target.checked,
+                }))
+              }
             />
             Include archived
           </label>
@@ -704,12 +889,25 @@ function StudentDirectoryPage() {
             <input
               type="checkbox"
               checked={draftFilters.unassignedClass}
-              onChange={(event) => setDraftFilters((current) => ({ ...current, unassignedClass: event.target.checked, classId: "" }))}
+              onChange={(event) =>
+                setDraftFilters((current) => ({
+                  ...current,
+                  unassignedClass: event.target.checked,
+                  classId: "",
+                }))
+              }
             />
             Unassigned only
           </label>
           <div className="grid gap-2 self-end">
-            <Button type="button" size="small" variant="outline" onClick={clearFilters}>Clear</Button>
+            <Button
+              type="button"
+              size="small"
+              variant="outline"
+              onClick={clearFilters}
+            >
+              Clear
+            </Button>
           </div>
         </form>
       </Card>
@@ -718,7 +916,9 @@ function StudentDirectoryPage() {
         <p className="text-sm text-text-muted">
           {total} student record{total === 1 ? "" : "s"}
         </p>
-        <p className="text-sm text-text-muted">Page {page} of {pageCount}</p>
+        <p className="text-sm text-text-muted">
+          Page {page} of {pageCount}
+        </p>
       </div>
 
       {selectedStudentIds.length > 0 ? (
@@ -733,7 +933,11 @@ function StudentDirectoryPage() {
                 placeholder="Choose target class"
               />
             </div>
-            <Button type="button" disabled={!batchClassId || busyId === "batch"} onClick={assignSelectedClass}>
+            <Button
+              type="button"
+              disabled={!batchClassId || busyId === "batch"}
+              onClick={assignSelectedClass}
+            >
               {busyId === "batch" ? "Assigning..." : "Assign class"}
             </Button>
           </div>
@@ -742,9 +946,9 @@ function StudentDirectoryPage() {
 
       {students.length === 0 ? (
         <Card className="p-6">
-          <EmptyState 
-            title="No students found" 
-            description="Adjust the filters or create a student." 
+          <EmptyState
+            title="No students found"
+            description="Adjust the filters or create a student."
             actionLabel="Create student"
             onAction={() => navigate("/admin/students/create")}
           />
@@ -757,9 +961,13 @@ function StudentDirectoryPage() {
                 <input
                   type="checkbox"
                   checked={selectedStudentIds.includes(student.id)}
-                  onChange={(event) => setSelectedStudentIds((current) => event.target.checked
-                    ? [...current, student.id]
-                    : current.filter((id) => id !== student.id))}
+                  onChange={(event) =>
+                    setSelectedStudentIds((current) =>
+                      event.target.checked
+                        ? [...current, student.id]
+                        : current.filter((id) => id !== student.id),
+                    )
+                  }
                 />
                 Select for batch class placement
               </label>
@@ -782,26 +990,28 @@ function StudentDirectoryPage() {
           Page {page}/{pageCount}
         </span>
         <div className="ml-auto grid grid-cols-2 gap-2 sm:flex">
-        <Button
-          type="button"
-          variant="outline"
-          size="small"
-          disabled={page <= 1 || loading}
-          onClick={() => setPage((current) => Math.max(1, current - 1))}
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Previous
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="small"
-          disabled={page >= pageCount || loading}
-          onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-        >
-          Next
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="small"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="small"
+            disabled={page >= pageCount || loading}
+            onClick={() =>
+              setPage((current) => Math.min(pageCount, current + 1))
+            }
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -815,18 +1025,92 @@ function StudentDirectoryPage() {
         {editState ? (
           <form onSubmit={submitEdit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Input label="First name" value={editState.form.first_name} required error={fieldErrors.first_name} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, first_name: event.target.value } }))} />
-              <Input label="Last name" value={editState.form.last_name} required error={fieldErrors.last_name} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, last_name: event.target.value } }))} />
-              <SelectField label="Gender" value={editState.form.gender} options={GENDER_OPTIONS.map((value) => ({ value, label: titleCase(value) }))} error={fieldErrors.gender} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, gender: event.target.value } }))} />
-              <Input label="Date of birth" type="date" value={editState.form.date_of_birth} required error={fieldErrors.date_of_birth} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, date_of_birth: event.target.value } }))} />
-              <Input label="State of origin" value={editState.form.state_of_origin} error={fieldErrors.state_of_origin} onChange={(event) => setEditState((current) => ({ ...current, form: { ...current.form, state_of_origin: event.target.value } }))} />
+              <Input
+                label="First name"
+                value={editState.form.first_name}
+                required
+                error={fieldErrors.first_name}
+                onChange={(event) =>
+                  setEditState((current) => ({
+                    ...current,
+                    form: { ...current.form, first_name: event.target.value },
+                  }))
+                }
+              />
+              <Input
+                label="Last name"
+                value={editState.form.last_name}
+                required
+                error={fieldErrors.last_name}
+                onChange={(event) =>
+                  setEditState((current) => ({
+                    ...current,
+                    form: { ...current.form, last_name: event.target.value },
+                  }))
+                }
+              />
+              <SelectField
+                label="Gender"
+                value={editState.form.gender}
+                options={GENDER_OPTIONS.map((value) => ({
+                  value,
+                  label: titleCase(value),
+                }))}
+                error={fieldErrors.gender}
+                onChange={(event) =>
+                  setEditState((current) => ({
+                    ...current,
+                    form: { ...current.form, gender: event.target.value },
+                  }))
+                }
+              />
+              <Input
+                label="Date of birth"
+                type="date"
+                value={editState.form.date_of_birth}
+                required
+                error={fieldErrors.date_of_birth}
+                onChange={(event) =>
+                  setEditState((current) => ({
+                    ...current,
+                    form: {
+                      ...current.form,
+                      date_of_birth: event.target.value,
+                    },
+                  }))
+                }
+              />
+              <Input
+                label="State of origin"
+                value={editState.form.state_of_origin}
+                error={fieldErrors.state_of_origin}
+                onChange={(event) =>
+                  setEditState((current) => ({
+                    ...current,
+                    form: {
+                      ...current.form,
+                      state_of_origin: event.target.value,
+                    },
+                  }))
+                }
+              />
             </div>
             <p className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
-              To change this student's class, open Class history and use Change class so the placement history is updated.
+              To change this student's class, open Class history and use Change
+              class so the placement history is updated.
             </p>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setEditState(null)}>Cancel</Button>
-              <Button type="submit" disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Save changes"}</Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(busyId)}
+                onClick={() => setEditState(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={Boolean(busyId)}>
+                {busyId ? "Saving..." : "Save changes"}
+              </Button>
             </div>
           </form>
         ) : null}
@@ -835,28 +1119,46 @@ function StudentDirectoryPage() {
       <Modal
         open={Boolean(accessCodeConfirmation)}
         title="Generate new access code"
-        description={accessCodeConfirmation ? `Generate a new one-time access code for ${displayName(accessCodeConfirmation)}.` : ""}
+        description={
+          accessCodeConfirmation
+            ? `Generate a new one-time access code for ${displayName(accessCodeConfirmation)}.`
+            : ""
+        }
         onClose={() => !busyId && setAccessCodeConfirmation(null)}
         closeOnOverlay={!busyId}
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setAccessCodeConfirmation(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(busyId)}
+              onClick={() => setAccessCodeConfirmation(null)}
+            >
               Cancel
             </Button>
-            <Button type="button" disabled={Boolean(busyId)} onClick={() => resetAccessCode(accessCodeConfirmation)}>
+            <Button
+              type="button"
+              disabled={Boolean(busyId)}
+              onClick={() => resetAccessCode(accessCodeConfirmation)}
+            >
               {busyId ? "Generating..." : "Generate code"}
             </Button>
           </div>
         }
       >
         <p className="text-sm leading-6 text-text-muted">
-          The old reset code will no longer be useful once a new one is generated. The student's records and class history are not changed.
+          The old reset code will no longer be useful once a new one is
+          generated. The student's records and class history are not changed.
         </p>
       </Modal>
 
       <Modal
         open={Boolean(lifecycleState)}
-        title={lifecycleState ? lifecycleConfig[lifecycleState.actionKey].label : "Student lifecycle"}
+        title={
+          lifecycleState
+            ? lifecycleConfig[lifecycleState.actionKey].label
+            : "Student lifecycle"
+        }
         description="This action is recorded against the student lifecycle."
         onClose={() => !busyId && setLifecycleState(null)}
         closeOnOverlay={!busyId}
@@ -864,35 +1166,140 @@ function StudentDirectoryPage() {
         {lifecycleState ? (
           <form onSubmit={submitLifecycle} className="space-y-4">
             <div className="rounded-xl bg-surface-muted/40 px-4 py-3 text-sm">
-              <p className="font-semibold text-text">{displayName(lifecycleState.student)}</p>
-              <p className="mt-1 text-text-muted">{lifecycleState.student.admission_number}</p>
+              <p className="font-semibold text-text">
+                {displayName(lifecycleState.student)}
+              </p>
+              <p className="mt-1 text-text-muted">
+                {lifecycleState.student.admission_number}
+              </p>
             </div>
             {lifecycleConfig[lifecycleState.actionKey].usesEffectiveDate ? (
-              <Input label="Effective date" type="date" value={lifecycleState.form.effective_date} required error={fieldErrors.effective_date} onChange={(event) => setLifecycleState((current) => ({ ...current, form: { ...current.form, effective_date: event.target.value } }))} />
+              <Input
+                label="Effective date"
+                type="date"
+                value={lifecycleState.form.effective_date}
+                required
+                error={fieldErrors.effective_date}
+                onChange={(event) =>
+                  setLifecycleState((current) => ({
+                    ...current,
+                    form: {
+                      ...current.form,
+                      effective_date: event.target.value,
+                    },
+                  }))
+                }
+              />
             ) : null}
             {lifecycleConfig[lifecycleState.actionKey].usesGraduationDate ? (
-              <Input label="Graduation date" type="date" value={lifecycleState.form.graduation_date} required error={fieldErrors.graduation_date} onChange={(event) => setLifecycleState((current) => ({ ...current, form: { ...current.form, graduation_date: event.target.value } }))} />
+              <Input
+                label="Graduation date"
+                type="date"
+                value={lifecycleState.form.graduation_date}
+                required
+                error={fieldErrors.graduation_date}
+                onChange={(event) =>
+                  setLifecycleState((current) => ({
+                    ...current,
+                    form: {
+                      ...current.form,
+                      graduation_date: event.target.value,
+                    },
+                  }))
+                }
+              />
             ) : null}
             {lifecycleConfig[lifecycleState.actionKey].usesClassSession ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                <SelectField label="Target class" value={lifecycleState.form.target_class_id} options={classOptions} required error={fieldErrors.target_class_id} onChange={(event) => setLifecycleState((current) => ({ ...current, form: { ...current.form, target_class_id: event.target.value } }))} />
-                <SelectField label="Academic session" value={lifecycleState.form.academic_session_id} options={sessionOptions} required error={fieldErrors.academic_session_id} onChange={(event) => setLifecycleState((current) => ({ ...current, form: { ...current.form, academic_session_id: event.target.value } }))} />
+                <SelectField
+                  label="Target class"
+                  value={lifecycleState.form.target_class_id}
+                  options={classOptions}
+                  required
+                  error={fieldErrors.target_class_id}
+                  onChange={(event) =>
+                    setLifecycleState((current) => ({
+                      ...current,
+                      form: {
+                        ...current.form,
+                        target_class_id: event.target.value,
+                      },
+                    }))
+                  }
+                />
+                <SelectField
+                  label="Academic session"
+                  value={lifecycleState.form.academic_session_id}
+                  options={sessionOptions}
+                  required
+                  error={fieldErrors.academic_session_id}
+                  onChange={(event) =>
+                    setLifecycleState((current) => ({
+                      ...current,
+                      form: {
+                        ...current.form,
+                        academic_session_id: event.target.value,
+                      },
+                    }))
+                  }
+                />
               </div>
             ) : null}
             {lifecycleConfig[lifecycleState.actionKey].usesPromotionHold ? (
               <label className="flex items-center gap-2 rounded-xl border border-border px-3 py-3 text-sm text-text-soft">
-                <input type="checkbox" checked={lifecycleState.form.promotion_hold} onChange={(event) => setLifecycleState((current) => ({ ...current, form: { ...current.form, promotion_hold: event.target.checked } }))} />
+                <input
+                  type="checkbox"
+                  checked={lifecycleState.form.promotion_hold}
+                  onChange={(event) =>
+                    setLifecycleState((current) => ({
+                      ...current,
+                      form: {
+                        ...current.form,
+                        promotion_hold: event.target.checked,
+                      },
+                    }))
+                  }
+                />
                 Keep the student on promotion hold while suspended
               </label>
             ) : null}
             <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Reason</span>
-              <textarea className="input-base min-h-28" value={lifecycleState.form.reason} maxLength={500} onChange={(event) => setLifecycleState((current) => ({ ...current, form: { ...current.form, reason: event.target.value } }))} />
-              {fieldErrors.reason ? <span className="mt-1 block text-xs text-error">{fieldErrors.reason}</span> : null}
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
+                Reason
+              </span>
+              <textarea
+                className="input-base min-h-28"
+                value={lifecycleState.form.reason}
+                maxLength={500}
+                onChange={(event) =>
+                  setLifecycleState((current) => ({
+                    ...current,
+                    form: { ...current.form, reason: event.target.value },
+                  }))
+                }
+              />
+              {fieldErrors.reason ? (
+                <span className="mt-1 block text-xs text-error">
+                  {fieldErrors.reason}
+                </span>
+              ) : null}
             </label>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setLifecycleState(null)}>Cancel</Button>
-              <Button type="submit" variant={lifecycleConfig[lifecycleState.actionKey].variant} disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Confirm"}</Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(busyId)}
+                onClick={() => setLifecycleState(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant={lifecycleConfig[lifecycleState.actionKey].variant}
+                disabled={Boolean(busyId)}
+              >
+                {busyId ? "Saving..." : "Confirm"}
+              </Button>
             </div>
           </form>
         ) : null}
@@ -901,7 +1308,11 @@ function StudentDirectoryPage() {
       <Modal
         open={Boolean(historyState)}
         title="Class placement history"
-        description={historyState ? `${displayName(historyState.student)} · ${historyState.student.admission_number}` : ""}
+        description={
+          historyState
+            ? `${displayName(historyState.student)} · ${historyState.student.admission_number}`
+            : ""
+        }
         onClose={() => !busyId && setHistoryState(null)}
         closeOnOverlay={!busyId}
       >
@@ -910,39 +1321,148 @@ function StudentDirectoryPage() {
         ) : historyState?.mode === "change" ? (
           <form onSubmit={submitClassChange} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <SelectField label="Target class" value={historyState.form.target_class_id} options={classOptions} required error={fieldErrors.target_class_id} onChange={(event) => setHistoryState((current) => ({ ...current, form: { ...current.form, target_class_id: event.target.value } }))} />
-              <SelectField label="Academic session" value={historyState.form.academic_session_id} options={sessionOptions} required error={fieldErrors.academic_session_id} onChange={(event) => setHistoryState((current) => ({ ...current, form: { ...current.form, academic_session_id: event.target.value } }))} />
-              <Input label="Effective date" type="date" value={historyState.form.effective_date} required onChange={(event) => setHistoryState((current) => ({ ...current, form: { ...current.form, effective_date: event.target.value } }))} />
-              <SelectField label="Outcome" value={historyState.form.outcome} required options={[{ value: "reclassified", label: "Reclassified" }, { value: "repeated", label: "Repeated" }]} onChange={(event) => setHistoryState((current) => ({ ...current, form: { ...current.form, outcome: event.target.value } }))} />
+              <SelectField
+                label="Target class"
+                value={historyState.form.target_class_id}
+                options={classOptions}
+                required
+                error={fieldErrors.target_class_id}
+                onChange={(event) =>
+                  setHistoryState((current) => ({
+                    ...current,
+                    form: {
+                      ...current.form,
+                      target_class_id: event.target.value,
+                    },
+                  }))
+                }
+              />
+              <SelectField
+                label="Academic session"
+                value={historyState.form.academic_session_id}
+                options={sessionOptions}
+                required
+                error={fieldErrors.academic_session_id}
+                onChange={(event) =>
+                  setHistoryState((current) => ({
+                    ...current,
+                    form: {
+                      ...current.form,
+                      academic_session_id: event.target.value,
+                    },
+                  }))
+                }
+              />
+              <Input
+                label="Effective date"
+                type="date"
+                value={historyState.form.effective_date}
+                required
+                onChange={(event) =>
+                  setHistoryState((current) => ({
+                    ...current,
+                    form: {
+                      ...current.form,
+                      effective_date: event.target.value,
+                    },
+                  }))
+                }
+              />
+              <SelectField
+                label="Outcome"
+                value={historyState.form.outcome}
+                required
+                options={[
+                  { value: "reclassified", label: "Reclassified" },
+                  { value: "repeated", label: "Repeated" },
+                ]}
+                onChange={(event) =>
+                  setHistoryState((current) => ({
+                    ...current,
+                    form: { ...current.form, outcome: event.target.value },
+                  }))
+                }
+              />
             </div>
             <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Reason</span>
-              <textarea className="input-base min-h-24" value={historyState.form.reason} onChange={(event) => setHistoryState((current) => ({ ...current, form: { ...current.form, reason: event.target.value } }))} />
-              {fieldErrors.reason ? <span className="mt-1 block text-xs text-error">{fieldErrors.reason}</span> : null}
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
+                Reason
+              </span>
+              <textarea
+                className="input-base min-h-24"
+                value={historyState.form.reason}
+                onChange={(event) =>
+                  setHistoryState((current) => ({
+                    ...current,
+                    form: { ...current.form, reason: event.target.value },
+                  }))
+                }
+              />
+              {fieldErrors.reason ? (
+                <span className="mt-1 block text-xs text-error">
+                  {fieldErrors.reason}
+                </span>
+              ) : null}
             </label>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setHistoryState((current) => ({ ...current, mode: "history", form: null }))}>Back</Button>
-              <Button type="submit" disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Change class"}</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setHistoryState((current) => ({
+                    ...current,
+                    mode: "history",
+                    form: null,
+                  }))
+                }
+              >
+                Back
+              </Button>
+              <Button type="submit" disabled={Boolean(busyId)}>
+                {busyId ? "Saving..." : "Change class"}
+              </Button>
             </div>
           </form>
         ) : historyState ? (
           <div className="space-y-4">
             <div className="flex justify-end">
-              <Button type="button" size="small" onClick={startClassChange}>Change class</Button>
+              <Button type="button" size="small" onClick={startClassChange}>
+                Change class
+              </Button>
             </div>
             {historyState.items.length === 0 ? (
-              <EmptyState title="No enrollment history" description="No class-placement records were returned." />
+              <EmptyState
+                title="No enrollment history"
+                description="No class-placement records were returned."
+              />
             ) : (
               <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
                 {historyState.items.map((item) => (
-                  <div key={item.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto]">
+                  <div
+                    key={item.id}
+                    className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto]"
+                  >
                     <div>
-                      <p className="font-semibold text-text">{[item.class_name, item.class_arm].filter(Boolean).join(" ") || item.class_id}</p>
-                      <p className="mt-1 text-xs text-text-muted">{item.academic_session_name || item.academic_session_id} · {titleCase(item.outcome)}</p>
+                      <p className="font-semibold text-text">
+                        {[item.class_name, item.class_arm]
+                          .filter(Boolean)
+                          .join(" ") || item.class_id}
+                      </p>
+                      <p className="mt-1 text-xs text-text-muted">
+                        {item.academic_session_name || item.academic_session_id}{" "}
+                        · {titleCase(item.outcome)}
+                      </p>
                     </div>
                     <div className="text-sm text-text-muted sm:text-right">
-                      <p>{formatDate(item.started_on)} – {item.is_current ? "Current" : formatDate(item.ended_on)}</p>
-                      {item.reason ? <p className="mt-1 text-xs">{item.reason}</p> : null}
+                      <p>
+                        {formatDate(item.started_on)} –{" "}
+                        {item.is_current
+                          ? "Current"
+                          : formatDate(item.ended_on)}
+                      </p>
+                      {item.reason ? (
+                        <p className="mt-1 text-xs">{item.reason}</p>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -965,23 +1485,60 @@ function StudentDirectoryPage() {
           <form onSubmit={submitHardDelete} className="space-y-4">
             {hardDeleteState.eligibility?.eligible ? (
               <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-800">
-                This record has no protected dependencies and is eligible for permanent deletion.
+                This record has no protected dependencies and is eligible for
+                permanent deletion.
               </div>
             ) : (
               <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">
-                Permanent deletion is blocked by: {(hardDeleteState.eligibility?.blocking_dependencies || []).join(", ") || "historical dependencies"}. Archive the record instead.
+                Permanent deletion is blocked by:{" "}
+                {(
+                  hardDeleteState.eligibility?.blocking_dependencies || []
+                ).join(", ") || "historical dependencies"}
+                . Archive the record instead.
               </div>
             )}
             {hardDeleteState.eligibility?.eligible ? (
               <>
-                <Input label="Type DELETE_UNUSED_STUDENT" value={hardDeleteState.confirmation} onChange={(event) => setHardDeleteState((current) => ({ ...current, confirmation: event.target.value }))} />
+                <Input
+                  label="Type DELETE_UNUSED_STUDENT"
+                  value={hardDeleteState.confirmation}
+                  onChange={(event) =>
+                    setHardDeleteState((current) => ({
+                      ...current,
+                      confirmation: event.target.value,
+                    }))
+                  }
+                />
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-semibold text-text-soft">Reason</span>
-                  <textarea className="input-base min-h-24" value={hardDeleteState.reason} onChange={(event) => setHardDeleteState((current) => ({ ...current, reason: event.target.value }))} />
+                  <span className="mb-1.5 block text-sm font-semibold text-text-soft">
+                    Reason
+                  </span>
+                  <textarea
+                    className="input-base min-h-24"
+                    value={hardDeleteState.reason}
+                    onChange={(event) =>
+                      setHardDeleteState((current) => ({
+                        ...current,
+                        reason: event.target.value,
+                      }))
+                    }
+                  />
                 </label>
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setHardDeleteState(null)}>Cancel</Button>
-                  <Button type="submit" variant="danger" disabled={Boolean(busyId)}>{busyId ? "Deleting..." : "Permanently delete"}</Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setHardDeleteState(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="danger"
+                    disabled={Boolean(busyId)}
+                  >
+                    {busyId ? "Deleting..." : "Permanently delete"}
+                  </Button>
                 </div>
               </>
             ) : null}

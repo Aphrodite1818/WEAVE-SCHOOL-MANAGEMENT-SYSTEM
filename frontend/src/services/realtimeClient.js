@@ -1,5 +1,8 @@
 import { API_BASE_URL, authSession } from "./api";
-import { markConnectionReady, resetAuthenticationLifecycle } from "./realtimeClientState";
+import {
+  markConnectionReady,
+  resetAuthenticationLifecycle,
+} from "./realtimeClientState";
 
 const READY_STATE_CONNECTING = 0;
 const READY_STATE_OPEN = 1;
@@ -47,7 +50,9 @@ export class RealtimeClient {
   start() {
     if (this.started) return;
     this.started = true;
-    this.unsubscribeToken = this.subscribeToken((token) => this.handleToken(token));
+    this.unsubscribeToken = this.subscribeToken((token) =>
+      this.handleToken(token),
+    );
     this.handleToken(this.getToken());
   }
 
@@ -65,7 +70,8 @@ export class RealtimeClient {
     this.socket = null;
     if (
       socket &&
-      (socket.readyState === READY_STATE_CONNECTING || socket.readyState === READY_STATE_OPEN)
+      (socket.readyState === READY_STATE_CONNECTING ||
+        socket.readyState === READY_STATE_OPEN)
     ) {
       socket.close(NORMAL_CLOSE_CODE, "Session closed");
     }
@@ -122,8 +128,12 @@ export class RealtimeClient {
       this.send({ type: "auth", access_token: token });
     });
 
-    socket.addEventListener("message", (event) => this.handleMessage(socket, event));
-    socket.addEventListener("close", (event) => this.handleClose(socket, event));
+    socket.addEventListener("message", (event) =>
+      this.handleMessage(socket, event),
+    );
+    socket.addEventListener("close", (event) =>
+      this.handleClose(socket, event),
+    );
     socket.addEventListener("error", () => {
       // The close event owns reconnection. Logging here would duplicate browser noise.
     });
@@ -186,7 +196,9 @@ export class RealtimeClient {
       1_000 * 2 ** this.reconnectAttempt,
       this.maxReconnectDelayMs,
     );
-    const jitteredDelay = Math.round(exponentialDelay * (0.8 + Math.random() * 0.4));
+    const jitteredDelay = Math.round(
+      exponentialDelay * (0.8 + Math.random() * 0.4),
+    );
     this.reconnectAttempt += 1;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
@@ -204,7 +216,8 @@ export class RealtimeClient {
     this.socket = null;
     if (
       socket &&
-      (socket.readyState === READY_STATE_CONNECTING || socket.readyState === READY_STATE_OPEN)
+      (socket.readyState === READY_STATE_CONNECTING ||
+        socket.readyState === READY_STATE_OPEN)
     ) {
       socket.close(NORMAL_CLOSE_CODE, "Logged out");
     }
@@ -238,7 +251,8 @@ export class RealtimeClient {
   }
 
   subscribe(eventType, callback) {
-    if (!this.listeners.has(eventType)) this.listeners.set(eventType, new Set());
+    if (!this.listeners.has(eventType))
+      this.listeners.set(eventType, new Set());
     this.listeners.get(eventType).add(callback);
     return () => {
       const callbacks = this.listeners.get(eventType);

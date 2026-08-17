@@ -8,8 +8,13 @@ import AdminGettingStartedPage from "../pages/admin/AdminGettingStartedPage";
 import AdminGettingStartedStepPage from "../pages/admin/AdminGettingStartedStepPage";
 import { getErrorMessage } from "../services/api";
 
-const normalizeButtonText = (button) => String(button?.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
-const leaveAdminSetup = (destination) => leaveGuideRoute("admin", destination, { replace: true });
+const normalizeButtonText = (button) =>
+  String(button?.textContent || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+const leaveAdminSetup = (destination) =>
+  leaveGuideRoute("admin", destination, { replace: true });
 
 function AdminGettingStartedRoute() {
   const guide = useRoleGuide({ role: "admin" });
@@ -21,12 +26,32 @@ function AdminGettingStartedRoute() {
       const button = event.target?.closest?.("button");
       if (!button || button.disabled) return;
       const label = normalizeButtonText(button);
-      if (label === "upgrade plan") { event.preventDefault(); event.stopPropagation(); leaveAdminSetup("/admin/billing/plans"); return; }
-      if (label === "finish later") { event.preventDefault(); event.stopPropagation(); leaveAdminSetup("/admin/dashboard"); return; }
+      if (label === "upgrade plan") {
+        event.preventDefault();
+        event.stopPropagation();
+        leaveAdminSetup("/admin/billing/plans");
+        return;
+      }
+      if (label === "finish later") {
+        event.preventDefault();
+        event.stopPropagation();
+        leaveAdminSetup("/admin/dashboard");
+        return;
+      }
       if (label === "complete setup" || label === "back to dashboard") {
-        event.preventDefault(); event.stopPropagation();
-        try { await guide.finish(); leaveAdminSetup("/admin/dashboard"); }
-        catch (error) { showError(getErrorMessage(error, "Could not save setup completion. Please try again.")); }
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          await guide.finish();
+          leaveAdminSetup("/admin/dashboard");
+        } catch (error) {
+          showError(
+            getErrorMessage(
+              error,
+              "Could not save setup completion. Please try again.",
+            ),
+          );
+        }
       }
     };
     document.addEventListener("click", handleGuideAction, true);

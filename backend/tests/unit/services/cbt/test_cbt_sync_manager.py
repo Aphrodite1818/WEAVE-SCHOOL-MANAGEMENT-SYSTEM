@@ -43,9 +43,7 @@ async def test_new_machine_session_replaces_old_socket_without_stale_unregister(
         message={"type": "cbt.sync.change", "cursor": 7},
     )
     assert delivered is True
-    new_socket.send_json.assert_awaited_once_with(
-        {"type": "cbt.sync.change", "cursor": 7}
-    )
+    new_socket.send_json.assert_awaited_once_with({"type": "cbt.sync.change", "cursor": 7})
 
 
 @pytest.mark.asyncio

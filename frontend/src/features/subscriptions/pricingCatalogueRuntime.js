@@ -1,4 +1,3 @@
-
 import { LANDING_PRICING_PLANS } from "./subscriptionConfig";
 
 const CATALOGUE_STORAGE_KEY = "weave:public-pricing-catalogue";
@@ -47,7 +46,10 @@ export const resetPublicPricingPlans = () => {
   document.documentElement.dataset.pricingCatalogueReady = "false";
 };
 
-export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) => {
+export const applyPublicPricingCatalogue = (
+  catalogue,
+  { persist = true } = {},
+) => {
   const plans = Array.isArray(catalogue?.plans) ? catalogue.plans : [];
   if (!plans.length) return false;
 
@@ -65,8 +67,13 @@ export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) 
       backendPlan.currency || catalogue.currency || "NGN",
     )}${suffix}`;
     presentation.features = Object.entries(backendPlan.features || {})
-      .filter(([feature, enabled]) => enabled === true && !NON_PUBLIC_FEATURES.has(feature))
-      .map(([feature]) => FEATURE_LABELS[feature] || feature.replaceAll("_", " "));
+      .filter(
+        ([feature, enabled]) =>
+          enabled === true && !NON_PUBLIC_FEATURES.has(feature),
+      )
+      .map(
+        ([feature]) => FEATURE_LABELS[feature] || feature.replaceAll("_", " "),
+      );
     presentation.limits = {
       ...unavailableLimits(),
       ...(backendPlan.limits || {}),
@@ -77,7 +84,10 @@ export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) 
   document.documentElement.dataset.pricingCatalogueReady = "true";
   if (persist) {
     try {
-      window.sessionStorage.setItem(CATALOGUE_STORAGE_KEY, JSON.stringify(catalogue));
+      window.sessionStorage.setItem(
+        CATALOGUE_STORAGE_KEY,
+        JSON.stringify(catalogue),
+      );
     } catch {
       // Storage failure must not block pricing display.
     }
@@ -95,7 +105,9 @@ export const hydrateCachedPublicPricingCatalogue = () => {
     const cached = JSON.parse(
       window.sessionStorage.getItem(CATALOGUE_STORAGE_KEY) || "null",
     );
-    return cached ? applyPublicPricingCatalogue(cached, { persist: false }) : false;
+    return cached
+      ? applyPublicPricingCatalogue(cached, { persist: false })
+      : false;
   } catch {
     window.sessionStorage.removeItem(CATALOGUE_STORAGE_KEY);
     return false;

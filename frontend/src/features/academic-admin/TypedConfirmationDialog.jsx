@@ -34,7 +34,12 @@ function TypedConfirmationDialog({
       closeOnOverlay={!isLoading}
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+          >
             Cancel
           </Button>
           <Button
@@ -50,7 +55,9 @@ function TypedConfirmationDialog({
     >
       <div className="space-y-3">
         <p className="text-sm text-text-muted">
-          Type <span className="font-semibold text-text">{confirmationText}</span> to continue.
+          Type{" "}
+          <span className="font-semibold text-text">{confirmationText}</span> to
+          continue.
         </p>
         <Input
           label="Confirmation"

@@ -30,14 +30,24 @@ function AdminGettingStartedStepPage() {
       <Button
         variant="outline"
         size="small"
-        onClick={() => navigate(previous ? `/admin/getting-started/${previous.id}` : "/admin/getting-started")}
+        onClick={() =>
+          navigate(
+            previous
+              ? `/admin/getting-started/${previous.id}`
+              : "/admin/getting-started",
+          )
+        }
       >
         <ArrowLeft className="mr-2 h-4 w-4" />
         {previous ? `Previous: ${previous.shortLabel}` : "All setup steps"}
       </Button>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Button variant="ghost" size="small" onClick={() => navigate(nextDestination)}>
+        <Button
+          variant="ghost"
+          size="small"
+          onClick={() => navigate(nextDestination)}
+        >
           <SkipForward className="mr-2 h-4 w-4" />
           {next ? "Skip for now" : "Review setup"}
         </Button>
@@ -47,7 +57,10 @@ function AdminGettingStartedStepPage() {
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         ) : (
-          <Button size="small" onClick={() => navigate("/admin/getting-started")}>
+          <Button
+            size="small"
+            onClick={() => navigate("/admin/getting-started")}
+          >
             Complete setup
           </Button>
         )}
@@ -56,9 +69,17 @@ function AdminGettingStartedStepPage() {
   );
 
   return (
-    <DashboardLayout role="admin" title={step.label} description={step.description}>
+    <DashboardLayout
+      role="admin"
+      title={step.label}
+      description={step.description}
+    >
       <section className="mx-auto max-w-7xl space-y-4">
-        <Button variant="ghost" size="small" onClick={() => navigate("/admin/getting-started")}>
+        <Button
+          variant="ghost"
+          size="small"
+          onClick={() => navigate("/admin/getting-started")}
+        >
           <ArrowLeft className="mr-2 h-4 w-4" /> All setup steps
         </Button>
 
@@ -71,14 +92,20 @@ function AdminGettingStartedStepPage() {
               <p className="text-xs font-bold uppercase tracking-[0.12em] text-text-faint">
                 Step {index + 1} of {steps.length}
               </p>
-              <h2 className="mt-2 text-xl font-semibold text-text sm:text-2xl">{step.label}</h2>
-              <p className="mt-2 text-sm leading-6 text-text-muted">{step.detail || step.description}</p>
+              <h2 className="mt-2 text-xl font-semibold text-text sm:text-2xl">
+                {step.label}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-text-muted">
+                {step.detail || step.description}
+              </p>
             </div>
           </div>
 
           <div className="mt-6 rounded-2xl border border-border/70 bg-surface-muted/30 p-4">
             <h3 className="font-semibold text-text">What this page controls</h3>
-            <p className="mt-1 text-sm leading-6 text-text-muted">{step.scope}</p>
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              {step.scope}
+            </p>
           </div>
 
           <div className="mt-6">{navigation}</div>

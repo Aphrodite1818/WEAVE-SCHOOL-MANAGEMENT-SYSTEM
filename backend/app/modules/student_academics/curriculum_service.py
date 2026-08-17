@@ -140,9 +140,7 @@ class CurriculumResolutionService:
             term.academic_session_id,
         )
         if enrollment is None:
-            raise ConflictException(
-                "Student enrollment for this academic session is required."
-            )
+            raise ConflictException("Student enrollment for this academic session is required.")
 
         department_id = await CurriculumResolutionService.resolve_department_for_student(
             db,
@@ -181,9 +179,7 @@ class CurriculumResolutionService:
             academic_term_id=academic_term_id,
         )
         elective_ids = {
-            offering.curriculum_subject_id
-            for offering in offerings
-            if offering.is_elective
+            offering.curriculum_subject_id for offering in offerings if offering.is_elective
         }
         if not elective_ids:
             return offerings
@@ -194,8 +190,7 @@ class CurriculumResolutionService:
                     select(StudentSubjectResult.curriculum_subject_id)
                     .join(
                         StudentAssessmentScore,
-                        StudentAssessmentScore.student_subject_result_id
-                        == StudentSubjectResult.id,
+                        StudentAssessmentScore.student_subject_result_id == StudentSubjectResult.id,
                     )
                     .where(
                         StudentSubjectResult.tenant_id == tenant_id,
@@ -211,6 +206,5 @@ class CurriculumResolutionService:
         return [
             offering
             for offering in offerings
-            if not offering.is_elective
-            or offering.curriculum_subject_id in participating
+            if not offering.is_elective or offering.curriculum_subject_id in participating
         ]

@@ -100,12 +100,7 @@ function UsageProgressCard({ item }) {
 }
 
 function UsagePage() {
-  const {
-    entitlements,
-    planCode,
-    isLoading,
-    errors,
-  } = useSubscription();
+  const { entitlements, planCode, isLoading, errors } = useSubscription();
   const usageItems = buildUsageItems(entitlements);
   const limitedUsageItems = usageItems.filter((item) => item.limit !== null);
 
@@ -139,7 +134,9 @@ function UsagePage() {
                 <Badge variant="default">{formatPlanName(planCode)}</Badge>
                 <Badge variant="primary">Usage tracking</Badge>
               </div>
-              <h1 className="text-xl sm:text-2xl font-semibold text-text">Usage Limits</h1>
+              <h1 className="text-xl sm:text-2xl font-semibold text-text">
+                Usage Limits
+              </h1>
               <p className="mt-1 text-sm text-text-muted">
                 Track actual resource usage against your current plan limits.
               </p>

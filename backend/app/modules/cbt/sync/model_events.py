@@ -180,9 +180,7 @@ def _append_refreshes(
     entity_type: CBTSyncEntityType,
 ) -> None:
     model = ENTITY_MODELS[entity_type]
-    entity_ids = session.execute(
-        select(model.id).where(model.tenant_id == tenant_id)
-    ).scalars()
+    entity_ids = session.execute(select(model.id).where(model.tenant_id == tenant_id)).scalars()
     for entity_id in entity_ids:
         _append_identity(
             events,

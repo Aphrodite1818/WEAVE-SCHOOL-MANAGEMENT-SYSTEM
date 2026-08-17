@@ -46,19 +46,23 @@ export const SUBSCRIPTION_STATUS_META = {
   },
   expired: {
     label: "Read-only",
-    message: "Your subscription has expired. Billing remains available, but write actions are restricted.",
+    message:
+      "Your subscription has expired. Billing remains available, but write actions are restricted.",
     badgeVariant: "error",
   },
 };
 
-export const BILLING_INTERVAL_OPTIONS = [{ value: "term", label: "Per academic term" }];
+export const BILLING_INTERVAL_OPTIONS = [
+  { value: "term", label: "Per academic term" },
+];
 
 export const LANDING_PRICING_PLANS = [
   {
     planCode: "free",
     name: "Free",
     bestFor: "Best for smaller school operations",
-    description: "Use Weave term after term within the permanent Free plan limits.",
+    description:
+      "Use Weave term after term within the permanent Free plan limits.",
     pricePerTerm: 0,
     priceLabel: "₦0 per academic term",
     features: [],
@@ -70,7 +74,8 @@ export const LANDING_PRICING_PLANS = [
     planCode: "plus",
     name: "Plus",
     bestFor: "Best for smaller schools",
-    description: "A complete starting point for schools ready to organise students, staff, academic records, portals, and everyday administration in one place.",
+    description:
+      "A complete starting point for schools ready to organise students, staff, academic records, portals, and everyday administration in one place.",
     pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
@@ -82,7 +87,8 @@ export const LANDING_PRICING_PLANS = [
     planCode: "professional",
     name: "Professional",
     bestFor: "Best for growing schools",
-    description: "Greater capacity for established schools managing more students, teachers, classes, records, and operational complexity.",
+    description:
+      "Greater capacity for established schools managing more students, teachers, classes, records, and operational complexity.",
     pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
@@ -95,7 +101,8 @@ export const LANDING_PRICING_PLANS = [
     planCode: "enterprise",
     name: "Enterprise",
     bestFor: "Best for larger schools",
-    description: "Designed for large school operations that need maximum capacity, flexible resource limits, and priority support readiness.",
+    description:
+      "Designed for large school operations that need maximum capacity, flexible resource limits, and priority support readiness.",
     pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
@@ -110,7 +117,9 @@ const SUBSCRIPTION_SELECTION_STORAGE_KEY = "weave_subscription_selection";
 const ATTENTION_STATUSES = new Set(["expired"]);
 
 const canonicalPlanCode = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return PLAN_DISPLAY_NAMES[normalized] ? normalized : "free_trial";
 };
 
@@ -179,7 +188,7 @@ export const saveSelectedSubscriptionPlan = ({
 
   window.sessionStorage.setItem(
     SUBSCRIPTION_SELECTION_STORAGE_KEY,
-    JSON.stringify(payload)
+    JSON.stringify(payload),
   );
 };
 
@@ -188,7 +197,7 @@ export const getSelectedSubscriptionPlan = () => {
 
   try {
     const rawValue = window.sessionStorage.getItem(
-      SUBSCRIPTION_SELECTION_STORAGE_KEY
+      SUBSCRIPTION_SELECTION_STORAGE_KEY,
     );
 
     if (!rawValue) return null;

@@ -78,9 +78,7 @@ class CBTConnectionManager:
     ) -> None:
         async with self._lock:
             connection = self._connections.get(server_id)
-            if not connection or (
-                websocket is not None and connection.websocket is not websocket
-            ):
+            if not connection or (websocket is not None and connection.websocket is not websocket):
                 return
             self._connections.pop(server_id, None)
             ids = self._tenant_servers.get(connection.tenant_id)
@@ -180,10 +178,7 @@ class CBTConnectionManager:
         if not server_ids:
             return 0
         results = await asyncio.gather(
-            *(
-                self.send_to_server(server_id=server_id, message=message)
-                for server_id in server_ids
-            )
+            *(self.send_to_server(server_id=server_id, message=message) for server_id in server_ids)
         )
         return sum(results)
 
@@ -193,10 +188,7 @@ class CBTConnectionManager:
         if not server_ids:
             return 0
         results = await asyncio.gather(
-            *(
-                self.send_to_server(server_id=server_id, message=message)
-                for server_id in server_ids
-            )
+            *(self.send_to_server(server_id=server_id, message=message) for server_id in server_ids)
         )
         return sum(results)
 

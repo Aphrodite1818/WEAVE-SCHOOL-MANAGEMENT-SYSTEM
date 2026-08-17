@@ -44,7 +44,10 @@ const getPairingStatus = (pairingCode) =>
 
 const listServers = async () => {
   const response = await api.get("/cbt/servers");
-  if (typeof window === "undefined" || window.location.pathname !== PAIRING_PAGE_PATH) {
+  if (
+    typeof window === "undefined" ||
+    window.location.pathname !== PAIRING_PAGE_PATH
+  ) {
     return response;
   }
 
@@ -60,7 +63,9 @@ const listServers = async () => {
       return {
         ...response,
         items: Array.isArray(response?.items)
-          ? response.items.filter((server) => String(server.id) === String(status.server_id))
+          ? response.items.filter(
+              (server) => String(server.id) === String(status.server_id),
+            )
           : [],
       };
     }
@@ -78,11 +83,15 @@ const listServers = async () => {
 export const cbtService = {
   createPairingCode,
   getPairingStatus,
-  verifyPairingCode: (payload) => api.post("/cbt/pairing/verify", payload, { auth: false }),
+  verifyPairingCode: (payload) =>
+    api.post("/cbt/pairing/verify", payload, { auth: false }),
   listServers,
-  getServer: (serverId) => api.get(`/cbt/servers/${encodeURIComponent(serverId)}`),
-  suspendServer: (serverId) => api.post(`/cbt/servers/${encodeURIComponent(serverId)}/suspend`),
-  reactivateServer: (serverId) => api.post(`/cbt/servers/${encodeURIComponent(serverId)}/reactivate`),
+  getServer: (serverId) =>
+    api.get(`/cbt/servers/${encodeURIComponent(serverId)}`),
+  suspendServer: (serverId) =>
+    api.post(`/cbt/servers/${encodeURIComponent(serverId)}/suspend`),
+  reactivateServer: (serverId) =>
+    api.post(`/cbt/servers/${encodeURIComponent(serverId)}/reactivate`),
   revokeServer: (serverId, payload = {}) =>
     api.post(`/cbt/servers/${encodeURIComponent(serverId)}/revoke`, payload),
   rotateCredential: (serverId) =>

@@ -21,7 +21,8 @@ const studentName = (student) =>
 const classLabel = (item) => displayClass(item);
 const assignmentLabel = (item) =>
   `${item.subject_name || "Subject"} - ${item.class_name || "Class"} ${item.class_arm || ""}`.trim();
-const subjectLabel = (item) => item.subject_name || item.subject_code || "Subject";
+const subjectLabel = (item) =>
+  item.subject_name || item.subject_code || "Subject";
 
 const rosterTabs = [
   {
@@ -72,7 +73,8 @@ function StudentsPage() {
         setSelectedSubjectId(assignments[0]?.subject_id || "");
         setSelectedAssignmentId(assignments[0]?.id || "");
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err, "Could not load teacher rosters."));
+        if (mounted)
+          setError(getErrorMessage(err, "Could not load teacher rosters."));
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -94,14 +96,20 @@ function StudentsPage() {
   }, [subjectAssignments]);
 
   const filteredAssignments = useMemo(
-    () => subjectAssignments.filter(
-      (assignment) => !selectedSubjectId || assignment.subject_id === selectedSubjectId,
-    ),
+    () =>
+      subjectAssignments.filter(
+        (assignment) =>
+          !selectedSubjectId || assignment.subject_id === selectedSubjectId,
+      ),
     [subjectAssignments, selectedSubjectId],
   );
 
   useEffect(() => {
-    if (!filteredAssignments.some((assignment) => assignment.id === selectedAssignmentId)) {
+    if (
+      !filteredAssignments.some(
+        (assignment) => assignment.id === selectedAssignmentId,
+      )
+    ) {
       const timeoutId = window.setTimeout(() => {
         setSelectedAssignmentId(filteredAssignments[0]?.id || "");
       }, 0);
@@ -125,7 +133,10 @@ function StudentsPage() {
         if (mounted) setClassStudents(response?.items || []);
       } catch (err) {
         if (mounted) setClassStudents([]);
-        if (mounted) setError(getErrorMessage(err, "Could not load class-teacher students."));
+        if (mounted)
+          setError(
+            getErrorMessage(err, "Could not load class-teacher students."),
+          );
       }
     }
     loadClassStudents();
@@ -151,7 +162,9 @@ function StudentsPage() {
       } catch (err) {
         if (mounted) {
           setSubjectStudents([]);
-          setError(getErrorMessage(err, "Could not load subject-teaching roster."));
+          setError(
+            getErrorMessage(err, "Could not load subject-teaching roster."),
+          );
         }
       } finally {
         if (mounted) setIsRosterLoading(false);
@@ -174,7 +187,8 @@ function StudentsPage() {
   const selectedAssignment = subjectAssignments.find(
     (item) => item.id === selectedAssignmentId,
   );
-  const activeTabMeta = rosterTabs.find((tab) => tab.id === activeTab) || rosterTabs[0];
+  const activeTabMeta =
+    rosterTabs.find((tab) => tab.id === activeTab) || rosterTabs[0];
   const ActiveIcon = activeTabMeta.icon;
 
   return (
@@ -208,9 +222,10 @@ function StudentsPage() {
               aria-hidden="true"
               className="absolute bottom-1 top-1 w-[calc(50%-0.25rem)] rounded-xl bg-surface shadow-sm transition-transform duration-300 ease-out"
               style={{
-                transform: activeTab === "class"
-                  ? "translateX(calc(100% + 0.25rem))"
-                  : "translateX(0)",
+                transform:
+                  activeTab === "class"
+                    ? "translateX(calc(100% + 0.25rem))"
+                    : "translateX(0)",
               }}
             />
             {rosterTabs.map((tab) => {
@@ -223,7 +238,9 @@ function StudentsPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
                     "relative z-10 flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition sm:text-sm",
-                    isActive ? "text-primary" : "text-text-muted hover:text-text",
+                    isActive
+                      ? "text-primary"
+                      : "text-text-muted hover:text-text",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -254,7 +271,9 @@ function StudentsPage() {
                     onChange={setSelectedSubjectId}
                   >
                     {subjectOptions.map((subject) => (
-                      <option key={subject.id} value={subject.id}>{subject.label}</option>
+                      <option key={subject.id} value={subject.id}>
+                        {subject.label}
+                      </option>
                     ))}
                   </SelectField>
                   <SelectField
@@ -270,7 +289,11 @@ function StudentsPage() {
                   </SelectField>
                 </div>
                 <RosterList
-                  title={selectedAssignment ? assignmentLabel(selectedAssignment) : "Subject roster"}
+                  title={
+                    selectedAssignment
+                      ? assignmentLabel(selectedAssignment)
+                      : "Subject roster"
+                  }
                   students={subjectStudents}
                   isLoading={isRosterLoading}
                   empty="No students found for this teaching assignment."
@@ -295,7 +318,9 @@ function StudentsPage() {
                     onChange={setSelectedClassId}
                   >
                     {classTeacherClasses.map((item) => (
-                      <option key={item.id} value={item.id}>{classLabel(item)}</option>
+                      <option key={item.id} value={item.id}>
+                        {classLabel(item)}
+                      </option>
                     ))}
                   </SelectField>
                 </div>
@@ -317,7 +342,9 @@ function RosterList({ title, students, empty, isLoading = false }) {
   return (
     <div className="mt-4 rounded-2xl border border-border bg-surface-muted/20 p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3 px-1 py-1">
-        <p className="min-w-0 truncate text-sm font-semibold text-text">{title}</p>
+        <p className="min-w-0 truncate text-sm font-semibold text-text">
+          {title}
+        </p>
         <Badge variant="default">{students.length} students</Badge>
       </div>
       {isLoading ? <LoadingState label="Loading students..." /> : null}
@@ -333,12 +360,16 @@ function RosterList({ title, students, empty, isLoading = false }) {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-text">{studentName(student)}</p>
+                  <p className="truncate text-sm font-semibold text-text">
+                    {studentName(student)}
+                  </p>
                   <p className="mt-1 text-xs text-text-muted">
                     {student.admission_number || "No admission number"}
                   </p>
                 </div>
-                <Badge variant={student.status === "active" ? "success" : "warning"}>
+                <Badge
+                  variant={student.status === "active" ? "success" : "warning"}
+                >
                   {student.status || "student"}
                 </Badge>
               </div>

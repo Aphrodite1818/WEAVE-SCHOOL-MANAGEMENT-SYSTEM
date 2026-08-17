@@ -12,13 +12,22 @@ import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { useToast } from "../../hooks/useToast";
 import academicService from "../../services/academicService";
-import { academicLevelService, classService } from "../../services/academicsService";
+import {
+  academicLevelService,
+  classService,
+} from "../../services/academicsService";
 import { parseApiError } from "../../services/api";
 import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
 
 const GENDER_OPTIONS = ["male", "female"];
-const RELATIONSHIP_OPTIONS = ["father", "mother", "guardian", "sponsor", "other"];
+const RELATIONSHIP_OPTIONS = [
+  "father",
+  "mother",
+  "guardian",
+  "sponsor",
+  "other",
+];
 
 const INITIAL_FORM = {
   first_name: "",
@@ -36,7 +45,8 @@ const titleCase = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-const asItems = (response) => (Array.isArray(response?.items) ? response.items : []);
+const asItems = (response) =>
+  Array.isArray(response?.items) ? response.items : [];
 const cleanOptional = (value) => String(value || "").trim() || null;
 
 const formatDate = (value) => {
@@ -45,11 +55,26 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 };
 
-function SelectField({ label, value, onChange, options, placeholder, error, required }) {
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  error,
+  required,
+}) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-semibold text-text-soft">{label}</span>
-      <select className="input-base" value={value} onChange={onChange} required={required}>
+      <span className="mb-1.5 block text-sm font-semibold text-text-soft">
+        {label}
+      </span>
+      <select
+        className="input-base"
+        value={value}
+        onChange={onChange}
+        required={required}
+      >
         <option value="">{placeholder || "Select"}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -57,7 +82,9 @@ function SelectField({ label, value, onChange, options, placeholder, error, requ
           </option>
         ))}
       </select>
-      {error ? <span className="mt-1 block text-xs text-error">{error}</span> : null}
+      {error ? (
+        <span className="mt-1 block text-xs text-error">{error}</span>
+      ) : null}
     </label>
   );
 }
@@ -72,7 +99,10 @@ function buildAccessNotice(student) {
       { label: "Student", value: student.full_name || displayName(student) },
       { label: "Admission number", value: student.admission_number },
       { label: "Access code", value: code },
-      { label: "Expires", value: formatDate(student.access_code_expires_at || student.expires_at) },
+      {
+        label: "Expires",
+        value: formatDate(student.access_code_expires_at || student.expires_at),
+      },
     ],
   };
 }
@@ -98,9 +128,14 @@ function StudentCreatePage() {
       classes
         .filter((item) => item.academic_level_id === form.academic_level_id)
         .map((item) => ({
-        value: item.id,
-        label: item.display_name || [item.academic_level_name, item.department_name, item.arm_label].filter(Boolean).join(" ") || "Unnamed class",
-      })),
+          value: item.id,
+          label:
+            item.display_name ||
+            [item.academic_level_name, item.department_name, item.arm_label]
+              .filter(Boolean)
+              .join(" ") ||
+            "Unnamed class",
+        })),
     [classes, form.academic_level_id],
   );
   const levelOptions = useMemo(
@@ -114,13 +149,16 @@ function StudentCreatePage() {
       setLoadingContext(true);
       setError("");
       try {
-        const [levelResponse, classResponse, sessionResponse] = await Promise.all([
-          academicLevelService.getLevels({ activeOnly: true }),
-          classService.getClasses({ limit: 100 }),
-          academicService.listSessions({ limit: 100 }),
-        ]);
+        const [levelResponse, classResponse, sessionResponse] =
+          await Promise.all([
+            academicLevelService.getLevels({ activeOnly: true }),
+            classService.getClasses({ limit: 100 }),
+            academicService.listSessions({ limit: 100 }),
+          ]);
         if (!mounted) return;
-        const activeClasses = asItems(classResponse).filter((item) => item.is_active !== false);
+        const activeClasses = asItems(classResponse).filter(
+          (item) => item.is_active !== false,
+        );
         const sessions = asItems(sessionResponse);
         const openCurrent =
           sessions.find(
@@ -134,7 +172,10 @@ function StudentCreatePage() {
         setCurrentSession(openCurrent);
       } catch (requestError) {
         if (!mounted) return;
-        const parsed = parseApiError(requestError, "We couldn't load the student setup details.");
+        const parsed = parseApiError(
+          requestError,
+          "We couldn't load the student setup details.",
+        );
         setError(parsed.message);
         showError(parsed.message);
       } finally {
@@ -169,7 +210,10 @@ function StudentCreatePage() {
         ? current
         : {
             ...current,
-            parents: [...current.parents, { email: "", relationship_type: "guardian" }],
+            parents: [
+              ...current.parents,
+              { email: "", relationship_type: "guardian" },
+            ],
           },
     );
   };
@@ -193,7 +237,9 @@ function StudentCreatePage() {
       .filter((parent) => parent.email);
     const emails = parents.map((parent) => parent.email);
     if (emails.length !== new Set(emails).size) {
-      throw new Error("Each parent invitation must use a different email address.");
+      throw new Error(
+        "Each parent invitation must use a different email address.",
+      );
     }
     return parents;
   };
@@ -205,7 +251,10 @@ function StudentCreatePage() {
       return;
     }
     if (!studentGuard.allowed) {
-      setError(studentGuard.reason || "The current plan does not allow another student.");
+      setError(
+        studentGuard.reason ||
+          "The current plan does not allow another student.",
+      );
       return;
     }
 
@@ -237,7 +286,10 @@ function StudentCreatePage() {
         setError(requestError.message);
         showError(requestError.message);
       } else {
-        const parsed = parseApiError(requestError, "We couldn't create the student.");
+        const parsed = parseApiError(
+          requestError,
+          "We couldn't create the student.",
+        );
         setFieldErrors(parsed.fieldErrors || {});
         setError(parsed.message);
         showError(parsed.message);
@@ -287,9 +339,13 @@ function StudentCreatePage() {
             <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-4 text-sm text-amber-800">
               <p className="font-semibold">No open current academic session</p>
               <p className="mt-1 leading-6">
-                Open the current academic session before creating students so Weave can place them correctly.
+                Open the current academic session before creating students so
+                Weave can place them correctly.
               </p>
-              <Link to="/admin/academic/sessions" className="mt-3 inline-flex font-semibold text-primary">
+              <Link
+                to="/admin/academic/sessions"
+                className="mt-3 inline-flex font-semibold text-primary"
+              >
                 Open Academic Sessions
               </Link>
             </div>
@@ -313,42 +369,117 @@ function StudentCreatePage() {
             <form onSubmit={submit} className="space-y-6">
               <section className="space-y-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-text">Student identity</h2>
+                  <h2 className="text-lg font-semibold text-text">
+                    Student identity
+                  </h2>
                   <p className="mt-1 text-sm text-text-muted">
-                    The admission number and first-login code are created automatically.
+                    The admission number and first-login code are created
+                    automatically.
                   </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Input label="First name" value={form.first_name} required error={fieldErrors.first_name} onChange={(event) => updateField("first_name", event.target.value)} />
-                  <Input label="Last name" value={form.last_name} required error={fieldErrors.last_name} onChange={(event) => updateField("last_name", event.target.value)} />
-                  <SelectField label="Gender" value={form.gender} options={GENDER_OPTIONS.map((value) => ({ value, label: titleCase(value) }))} error={fieldErrors.gender} onChange={(event) => updateField("gender", event.target.value)} />
-                  <Input label="Date of birth" type="date" value={form.date_of_birth} required error={fieldErrors.date_of_birth} onChange={(event) => updateField("date_of_birth", event.target.value)} />
-                  <Input label="State of origin" value={form.state_of_origin} error={fieldErrors.state_of_origin} onChange={(event) => updateField("state_of_origin", event.target.value)} />
+                  <Input
+                    label="First name"
+                    value={form.first_name}
+                    required
+                    error={fieldErrors.first_name}
+                    onChange={(event) =>
+                      updateField("first_name", event.target.value)
+                    }
+                  />
+                  <Input
+                    label="Last name"
+                    value={form.last_name}
+                    required
+                    error={fieldErrors.last_name}
+                    onChange={(event) =>
+                      updateField("last_name", event.target.value)
+                    }
+                  />
+                  <SelectField
+                    label="Gender"
+                    value={form.gender}
+                    options={GENDER_OPTIONS.map((value) => ({
+                      value,
+                      label: titleCase(value),
+                    }))}
+                    error={fieldErrors.gender}
+                    onChange={(event) =>
+                      updateField("gender", event.target.value)
+                    }
+                  />
+                  <Input
+                    label="Date of birth"
+                    type="date"
+                    value={form.date_of_birth}
+                    required
+                    error={fieldErrors.date_of_birth}
+                    onChange={(event) =>
+                      updateField("date_of_birth", event.target.value)
+                    }
+                  />
+                  <Input
+                    label="State of origin"
+                    value={form.state_of_origin}
+                    error={fieldErrors.state_of_origin}
+                    onChange={(event) =>
+                      updateField("state_of_origin", event.target.value)
+                    }
+                  />
                 </div>
               </section>
 
               <section className="border-t border-border/70 pt-5">
-                <h2 className="text-sm font-semibold text-text">Initial placement</h2>
+                <h2 className="text-sm font-semibold text-text">
+                  Initial placement
+                </h2>
                 <p className="mt-1 text-xs text-text-muted">
                   Session: {currentSession?.name || "Unavailable"}
                 </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <SelectField label="Academic level" value={form.academic_level_id} options={levelOptions} placeholder="Select level" required error={fieldErrors.academic_level_id} onChange={(event) => {
-                    updateField("academic_level_id", event.target.value);
-                    updateField("class_id", "");
-                  }} />
-                  <SelectField label="Class (optional)" value={form.class_id} options={classOptions} placeholder="Leave unassigned" error={fieldErrors.class_id} onChange={(event) => updateField("class_id", event.target.value)} />
+                  <SelectField
+                    label="Academic level"
+                    value={form.academic_level_id}
+                    options={levelOptions}
+                    placeholder="Select level"
+                    required
+                    error={fieldErrors.academic_level_id}
+                    onChange={(event) => {
+                      updateField("academic_level_id", event.target.value);
+                      updateField("class_id", "");
+                    }}
+                  />
+                  <SelectField
+                    label="Class (optional)"
+                    value={form.class_id}
+                    options={classOptions}
+                    placeholder="Leave unassigned"
+                    error={fieldErrors.class_id}
+                    onChange={(event) =>
+                      updateField("class_id", event.target.value)
+                    }
+                  />
                 </div>
               </section>
 
               <section className="border-t border-border/70 pt-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-sm font-semibold text-text">Parent invitations</h2>
-                    <p className="mt-1 text-xs text-text-muted">Add up to two parent emails. Each parent can accept the connection to this student.</p>
+                    <h2 className="text-sm font-semibold text-text">
+                      Parent invitations
+                    </h2>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Add up to two parent emails. Each parent can accept the
+                      connection to this student.
+                    </p>
                   </div>
                   {form.parents.length < 2 ? (
-                    <Button type="button" variant="outline" size="small" onClick={addParent}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="small"
+                      onClick={addParent}
+                    >
                       <Plus className="h-4 w-4" />
                       Add parent
                     </Button>
@@ -357,10 +488,41 @@ function StudentCreatePage() {
 
                 <div className="mt-4 space-y-3">
                   {form.parents.map((parent, index) => (
-                    <div key={`parent-${index}`} className="grid gap-3 rounded-2xl border border-border/70 p-4 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end">
-                      <Input label={`Parent ${index + 1} email`} type="email" value={parent.email} error={fieldErrors[`parents.${index}.email`]} onChange={(event) => updateParent(index, "email", event.target.value)} />
-                      <SelectField label="Relationship" value={parent.relationship_type} options={RELATIONSHIP_OPTIONS.map((value) => ({ value, label: titleCase(value) }))} onChange={(event) => updateParent(index, "relationship_type", event.target.value)} />
-                      <Button type="button" variant="outline" size="icon" aria-label="Remove parent" onClick={() => removeParent(index)}>
+                    <div
+                      key={`parent-${index}`}
+                      className="grid gap-3 rounded-2xl border border-border/70 p-4 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end"
+                    >
+                      <Input
+                        label={`Parent ${index + 1} email`}
+                        type="email"
+                        value={parent.email}
+                        error={fieldErrors[`parents.${index}.email`]}
+                        onChange={(event) =>
+                          updateParent(index, "email", event.target.value)
+                        }
+                      />
+                      <SelectField
+                        label="Relationship"
+                        value={parent.relationship_type}
+                        options={RELATIONSHIP_OPTIONS.map((value) => ({
+                          value,
+                          label: titleCase(value),
+                        }))}
+                        onChange={(event) =>
+                          updateParent(
+                            index,
+                            "relationship_type",
+                            event.target.value,
+                          )
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Remove parent"
+                        onClick={() => removeParent(index)}
+                      >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -368,7 +530,11 @@ function StudentCreatePage() {
                 </div>
               </section>
 
-              <Button type="submit" disabled={submitting || creationBlocked} className="w-full sm:w-auto">
+              <Button
+                type="submit"
+                disabled={submitting || creationBlocked}
+                className="w-full sm:w-auto"
+              >
                 {submitting ? "Creating student..." : "Create student"}
               </Button>
             </form>
@@ -376,11 +542,28 @@ function StudentCreatePage() {
         </Card>
 
         <Card className="h-fit p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">Creation requirements</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
+            Creation requirements
+          </h2>
           <div className="mt-4 space-y-3 text-sm text-text-muted">
-            <p>Academic session: <span className="font-semibold text-text">{currentSession?.name || "Missing"}</span></p>
-            <p>Active classes: <span className="font-semibold text-text">{classOptions.length}</span></p>
-            <p>Plan capacity: <span className="font-semibold text-text">{studentGuard.allowed ? "Available" : "Blocked"}</span></p>
+            <p>
+              Academic session:{" "}
+              <span className="font-semibold text-text">
+                {currentSession?.name || "Missing"}
+              </span>
+            </p>
+            <p>
+              Active classes:{" "}
+              <span className="font-semibold text-text">
+                {classOptions.length}
+              </span>
+            </p>
+            <p>
+              Plan capacity:{" "}
+              <span className="font-semibold text-text">
+                {studentGuard.allowed ? "Available" : "Blocked"}
+              </span>
+            </p>
           </div>
         </Card>
       </section>

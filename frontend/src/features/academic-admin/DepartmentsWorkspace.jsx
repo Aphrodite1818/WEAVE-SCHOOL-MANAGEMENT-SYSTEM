@@ -58,8 +58,12 @@ export default function DepartmentsWorkspace() {
         ["draft", "open"].includes(String(term.status || "").toLowerCase()),
       );
       setTerms(termRows);
-      setTermId((current) =>
-        current || termRows.find((term) => term.is_current)?.id || termRows[0]?.id || "",
+      setTermId(
+        (current) =>
+          current ||
+          termRows.find((term) => term.is_current)?.id ||
+          termRows[0]?.id ||
+          "",
       );
     } catch (error) {
       showError(getErrorMessage(error, "Could not load department setup."));
@@ -68,7 +72,9 @@ export default function DepartmentsWorkspace() {
 
   const eligibleLevels = useMemo(() => {
     const allowed = new Set(
-      categories.filter((row) => row.supports_departments).map((row) => row.value),
+      categories
+        .filter((row) => row.supports_departments)
+        .map((row) => row.value),
     );
     return levels.filter((row) => allowed.has(row.category));
   }, [levels, categories]);
@@ -101,13 +107,18 @@ export default function DepartmentsWorkspace() {
       return;
     }
     try {
-      const assignment = await curriculumService.getClassDepartment(classId, termId);
+      const assignment = await curriculumService.getClassDepartment(
+        classId,
+        termId,
+      );
       setCurrentAssignment(assignment || null);
       setDepartmentId(assignment?.department_id || "");
     } catch (error) {
       setCurrentAssignment(null);
       setDepartmentId("");
-      showError(getErrorMessage(error, "Could not load this class specialization."));
+      showError(
+        getErrorMessage(error, "Could not load this class specialization."),
+      );
     }
   }, [classId, termId, showError]);
 
@@ -170,7 +181,9 @@ export default function DepartmentsWorkspace() {
         showSuccess("Class returned to general level placement for this term.");
       }
     } catch (error) {
-      showError(getErrorMessage(error, "Could not update class specialization."));
+      showError(
+        getErrorMessage(error, "Could not update class specialization."),
+      );
       await loadCurrentAssignment();
     } finally {
       setSaving("");
@@ -184,7 +197,7 @@ export default function DepartmentsWorkspace() {
   return (
     <div className="space-y-4">
       <WorkspaceGrid
-        editor={(
+        editor={
           <WorkspacePanel
             title="Add department"
             description="Departments belong to a level. Only institution categories that support specialization appear here."
@@ -194,7 +207,10 @@ export default function DepartmentsWorkspace() {
                 label="Academic level"
                 value={levelId}
                 onChange={setLevelId}
-                options={eligibleLevels.map((row) => ({ value: row.id, label: row.name }))}
+                options={eligibleLevels.map((row) => ({
+                  value: row.id,
+                  label: row.name,
+                }))}
                 required
               />
               <Input
@@ -212,14 +228,16 @@ export default function DepartmentsWorkspace() {
               </Button>
             </form>
           </WorkspacePanel>
-        )}
-        content={(
+        }
+        content={
           <WorkspacePanel
             title="Level departments"
             description="Department definitions are reusable within this level. They do not change a class until you assign one for a specific term."
           >
             {eligibleLevels.length === 0 ? (
-              <p className="text-sm text-text-muted">No configured level supports departments.</p>
+              <p className="text-sm text-text-muted">
+                No configured level supports departments.
+              </p>
             ) : (
               <div className="space-y-2">
                 {departments.map((row) => (
@@ -231,16 +249,18 @@ export default function DepartmentsWorkspace() {
                   </div>
                 ))}
                 {!departments.length ? (
-                  <p className="text-sm text-text-muted">No departments for this level yet.</p>
+                  <p className="text-sm text-text-muted">
+                    No departments for this level yet.
+                  </p>
                 ) : null}
               </div>
             )}
           </WorkspacePanel>
-        )}
+        }
       />
 
       <WorkspaceGrid
-        editor={(
+        editor={
           <WorkspacePanel
             title="Set class specialization"
             description="Specialization is term-specific. Leave Department as General to keep the class directly under its academic level."
@@ -250,7 +270,10 @@ export default function DepartmentsWorkspace() {
                 label="Academic level"
                 value={levelId}
                 onChange={setLevelId}
-                options={eligibleLevels.map((row) => ({ value: row.id, label: row.name }))}
+                options={eligibleLevels.map((row) => ({
+                  value: row.id,
+                  label: row.name,
+                }))}
                 required
               />
               <SelectControl
@@ -261,7 +284,11 @@ export default function DepartmentsWorkspace() {
                   value: row.id,
                   label: classLabel(row),
                 }))}
-                placeholder={levelClasses.length ? "Select class" : "No classes in this level"}
+                placeholder={
+                  levelClasses.length
+                    ? "Select class"
+                    : "No classes in this level"
+                }
                 required
               />
               <SelectControl
@@ -280,7 +307,10 @@ export default function DepartmentsWorkspace() {
                 onChange={setDepartmentId}
                 options={[
                   { value: "", label: "General — no department for this term" },
-                  ...departments.map((row) => ({ value: row.id, label: row.name })),
+                  ...departments.map((row) => ({
+                    value: row.id,
+                    label: row.name,
+                  })),
                 ]}
               />
               <Button
@@ -291,14 +321,16 @@ export default function DepartmentsWorkspace() {
               </Button>
             </form>
           </WorkspacePanel>
-        )}
-        content={(
+        }
+        content={
           <WorkspacePanel
             title="Current term placement"
             description="Changing this setting never progresses a student or changes the class identity. Closed and result-bearing terms are protected from rewrites."
           >
             {!classId || !termId ? (
-              <p className="text-sm text-text-muted">Select a class and term to inspect its placement.</p>
+              <p className="text-sm text-text-muted">
+                Select a class and term to inspect its placement.
+              </p>
             ) : (
               <div className="rounded-xl border border-border/70 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
@@ -315,7 +347,7 @@ export default function DepartmentsWorkspace() {
               </div>
             )}
           </WorkspacePanel>
-        )}
+        }
       />
     </div>
   );

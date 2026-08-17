@@ -32,11 +32,16 @@ export default function useOnboardingGate({ role, enabled = true }) {
       }
 
       try {
-        const status = await onboardingService.getOnboardingStatus(normalizedRole);
+        const status =
+          await onboardingService.getOnboardingStatus(normalizedRole);
         if (!mounted) return;
 
         const required = Boolean(status?.onboarding_required);
-        setOnboardingState({ loading: false, required, status: status || null });
+        setOnboardingState({
+          loading: false,
+          required,
+          status: status || null,
+        });
 
         if (required) {
           setProfileMode("onboarding");
@@ -64,13 +69,19 @@ export default function useOnboardingGate({ role, enabled = true }) {
 
   const handleProfileSaved = (status) => {
     const required = Boolean(status?.onboarding_required);
-    const completedInitialOnboarding = profileMode === "onboarding" && !required;
+    const completedInitialOnboarding =
+      profileMode === "onboarding" && !required;
 
     setOnboardingState({ loading: false, required, status: status || null });
     if (!required) setProfileModalOpen(false);
 
-    if (completedInitialOnboarding && GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole]) {
-      navigate(GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole], { replace: true });
+    if (
+      completedInitialOnboarding &&
+      GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole]
+    ) {
+      navigate(GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole], {
+        replace: true,
+      });
     }
   };
 

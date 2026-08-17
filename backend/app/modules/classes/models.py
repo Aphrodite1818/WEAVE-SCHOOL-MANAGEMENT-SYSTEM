@@ -7,7 +7,17 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SQLEnum, ForeignKey, Index, String, UniqueConstraint, event
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    event,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,20 +57,33 @@ class AcademicLevel(BaseModel):
         nullable=False,
     )
     position: Mapped[int] = mapped_column(nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
 
-    classrooms: Mapped[list["ClassRoom"]] = relationship("ClassRoom", back_populates="academic_level")
-    departments: Mapped[list["Department"]] = relationship("Department", back_populates="academic_level")
+    classrooms: Mapped[list["ClassRoom"]] = relationship(
+        "ClassRoom", back_populates="academic_level"
+    )
+    departments: Mapped[list["Department"]] = relationship(
+        "Department", back_populates="academic_level"
+    )
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "normalized_name", name="uq_academic_levels_tenant_normalized_name"),
-        UniqueConstraint("tenant_id", "category", "position", name="uq_academic_levels_tenant_category_position"),
+        UniqueConstraint(
+            "tenant_id", "normalized_name", name="uq_academic_levels_tenant_normalized_name"
+        ),
+        UniqueConstraint(
+            "tenant_id", "category", "position", name="uq_academic_levels_tenant_category_position"
+        ),
         CheckConstraint("position > 0", name="ck_academic_levels_position_positive"),
-        CheckConstraint("archived_at IS NULL OR is_active = false", name="ck_academic_levels_archived_requires_inactive"),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_academic_levels_archived_requires_inactive",
+        ),
         Index("ix_academic_levels_tenant_active", "tenant_id", "is_active"),
         Index("ix_academic_levels_tenant_category_position", "tenant_id", "category", "position"),
         Index("ix_academic_levels_tenant_archived", "tenant_id", "archived_at"),
@@ -73,20 +96,33 @@ class Department(BaseModel):
     __tablename__ = "departments"
 
     academic_level_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_levels.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=True),
+        ForeignKey("academic_levels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    academic_level: Mapped[AcademicLevel] = relationship("AcademicLevel", back_populates="departments")
+    academic_level: Mapped[AcademicLevel] = relationship(
+        "AcademicLevel", back_populates="departments"
+    )
 
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "academic_level_id", "normalized_name", name="uq_departments_tenant_level_name"
+            "tenant_id",
+            "academic_level_id",
+            "normalized_name",
+            name="uq_departments_tenant_level_name",
         ),
-        CheckConstraint("archived_at IS NULL OR is_active = false", name="ck_departments_archived_requires_inactive"),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_departments_archived_requires_inactive",
+        ),
         Index("ix_departments_tenant_level_active", "tenant_id", "academic_level_id", "is_active"),
     )
 
@@ -98,17 +134,24 @@ class ArmLabel(BaseModel):
 
     label: Mapped[str] = mapped_column(String(20), nullable=False)
     normalized_label: Mapped[str] = mapped_column(String(40), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "normalized_label", name="uq_arm_labels_tenant_label"),
-        CheckConstraint("archived_at IS NULL OR is_active = false", name="ck_arm_labels_archived_requires_inactive"),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false",
+            name="ck_arm_labels_archived_requires_inactive",
+        ),
         Index("ix_arm_labels_tenant_active", "tenant_id", "is_active"),
     )
 
 
-def _populate_academic_level_normalized_fields(_: object, __: object, target: AcademicLevel) -> None:
+def _populate_academic_level_normalized_fields(
+    _: object, __: object, target: AcademicLevel
+) -> None:
     normalized_name = normalized_class_name_key(target.name)
     if normalized_name is None:
         return
@@ -134,13 +177,17 @@ class ClassRoom(BaseModel):
     teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("teacher_memberships.id", ondelete="SET NULL"), nullable=True
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
 
-    academic_level: Mapped[AcademicLevel] = relationship("AcademicLevel", back_populates="classrooms")
+    academic_level: Mapped[AcademicLevel] = relationship(
+        "AcademicLevel", back_populates="classrooms"
+    )
     arm_label_ref: Mapped[ArmLabel] = relationship("ArmLabel", foreign_keys=[arm_label_id])
     teacher_membership: Mapped["TeacherMembership | None"] = relationship(
         "TeacherMembership", foreign_keys=[teacher_membership_id]
@@ -163,8 +210,15 @@ class ClassRoom(BaseModel):
         return f"{self.academic_level_name} {self.arm_label}".strip()
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "academic_level_id", "arm_label_id", name="uq_classes_tenant_level_arm_label"),
-        CheckConstraint("archived_at IS NULL OR is_active = false", name="ck_classes_archived_requires_inactive"),
+        UniqueConstraint(
+            "tenant_id",
+            "academic_level_id",
+            "arm_label_id",
+            name="uq_classes_tenant_level_arm_label",
+        ),
+        CheckConstraint(
+            "archived_at IS NULL OR is_active = false", name="ck_classes_archived_requires_inactive"
+        ),
         Index("ix_classes_tenant_teacher_membership", "tenant_id", "teacher_membership_id"),
         Index("ix_classes_tenant_active", "tenant_id", "is_active"),
         Index("ix_classes_tenant_level", "tenant_id", "academic_level_id"),

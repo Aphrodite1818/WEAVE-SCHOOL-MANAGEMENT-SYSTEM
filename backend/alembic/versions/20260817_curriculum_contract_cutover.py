@@ -219,15 +219,11 @@ def upgrade() -> None:
 
     # Dropping the old columns with CASCADE removes their generated foreign keys,
     # single-column indexes, active-assignment index and old result scope constraint.
-    op.execute(
-        "ALTER TABLE public.teacher_assignments DROP COLUMN level_subject_id CASCADE"
-    )
+    op.execute("ALTER TABLE public.teacher_assignments DROP COLUMN level_subject_id CASCADE")
     op.execute(
         "ALTER TABLE public.teacher_assignment_lifecycle_audits DROP COLUMN level_subject_id CASCADE"
     )
-    op.execute(
-        "ALTER TABLE public.student_subject_results DROP COLUMN level_subject_id CASCADE"
-    )
+    op.execute("ALTER TABLE public.student_subject_results DROP COLUMN level_subject_id CASCADE")
 
     # These tables are obsolete by design. No compatibility views or aliases remain.
     op.execute("DROP TABLE IF EXISTS public.subject_offerings CASCADE")

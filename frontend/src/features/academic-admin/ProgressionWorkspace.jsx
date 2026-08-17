@@ -35,7 +35,10 @@ function ProgressionWorkspace() {
         setCategories(asItems(categoryResponse));
       })
       .catch((error) => {
-        if (active) showError(getErrorMessage(error, "Could not load automatic progression."));
+        if (active)
+          showError(
+            getErrorMessage(error, "Could not load automatic progression."),
+          );
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -51,15 +54,20 @@ function ProgressionWorkspace() {
   );
 
   const categoryIndex = useMemo(
-    () => new Map(orderedCategories.map((category, index) => [category.value, index])),
+    () =>
+      new Map(
+        orderedCategories.map((category, index) => [category.value, index]),
+      ),
     [orderedCategories],
   );
 
   const orderedLevels = useMemo(
     () =>
       [...levels].sort((left, right) => {
-        const leftIndex = categoryIndex.get(left.category) ?? Number.MAX_SAFE_INTEGER;
-        const rightIndex = categoryIndex.get(right.category) ?? Number.MAX_SAFE_INTEGER;
+        const leftIndex =
+          categoryIndex.get(left.category) ?? Number.MAX_SAFE_INTEGER;
+        const rightIndex =
+          categoryIndex.get(right.category) ?? Number.MAX_SAFE_INTEGER;
         return leftIndex - rightIndex || left.position - right.position;
       }),
     [categoryIndex, levels],
@@ -94,7 +102,9 @@ function ProgressionWorkspace() {
       }
 
       const nextCategory = orderedCategories[currentIndex + 1];
-      const nextCategoryLevels = (levelsByCategory.get(nextCategory.value) || [])
+      const nextCategoryLevels = (
+        levelsByCategory.get(nextCategory.value) || []
+      )
         .slice()
         .sort((left, right) => left.position - right.position);
       if (!nextCategoryLevels.length) {
@@ -128,13 +138,19 @@ function ProgressionWorkspace() {
                     {categoryLabel(level.category)} · Position {level.position}
                   </p>
                 </div>
-                <ArrowRight className="hidden h-5 w-5 text-text-faint sm:block" aria-hidden="true" />
+                <ArrowRight
+                  className="hidden h-5 w-5 text-text-faint sm:block"
+                  aria-hidden="true"
+                />
                 {progression?.type === "next" ? (
                   <div>
                     <Badge variant="success">Next level</Badge>
-                    <p className="mt-2 font-semibold text-text">{progression.level.name}</p>
+                    <p className="mt-2 font-semibold text-text">
+                      {progression.level.name}
+                    </p>
                     <p className="mt-1 text-sm text-text-muted">
-                      {categoryLabel(progression.level.category)} · Position {progression.level.position}
+                      {categoryLabel(progression.level.category)} · Position{" "}
+                      {progression.level.position}
                     </p>
                   </div>
                 ) : progression?.type === "terminal" ? (
@@ -150,17 +166,22 @@ function ProgressionWorkspace() {
                     <Badge variant="warning">Setup incomplete</Badge>
                     <p className="mt-2 flex items-center gap-2 font-semibold text-text">
                       <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                      Add a {progression.category.label || categoryLabel(progression.category.value)} level
+                      Add a{" "}
+                      {progression.category.label ||
+                        categoryLabel(progression.category.value)}{" "}
+                      level
                     </p>
                     <p className="mt-1 text-sm text-text-muted">
-                      Weave will not skip a missing institution category or treat it as graduation.
+                      Weave will not skip a missing institution category or
+                      treat it as graduation.
                     </p>
                   </div>
                 ) : (
                   <div>
                     <Badge variant="error">Invalid configuration</Badge>
                     <p className="mt-2 text-sm text-text-muted">
-                      This level uses a category that is not supported by the current institution type.
+                      This level uses a category that is not supported by the
+                      current institution type.
                     </p>
                   </div>
                 )}

@@ -21,7 +21,10 @@ const SCENARIOS = [
   ["upgrade_to_professional", "Upgrade Free to Professional"],
   ["close_term", "Close term entitlement"],
   ["trial_expired", "Expire trial to Free fallback"],
-  ["closed_active_reconciliation", "Repair closed term with active entitlement"],
+  [
+    "closed_active_reconciliation",
+    "Repair closed term with active entitlement",
+  ],
   ["safety_cap_expired", "Expire entitlement at safety cap"],
 ];
 
@@ -58,7 +61,9 @@ function SuperadminSimulationPage() {
       setState(result);
       showSuccess("Term entitlement state loaded.");
     } catch (error) {
-      showError(getErrorMessage(error, "Unable to load term entitlement state."));
+      showError(
+        getErrorMessage(error, "Unable to load term entitlement state."),
+      );
     } finally {
       setBusy(false);
     }
@@ -92,7 +97,9 @@ function SuperadminSimulationPage() {
       setState(result.state);
       showSuccess(result.detail || "Term entitlement reconciled.");
     } catch (error) {
-      showError(getErrorMessage(error, "Unable to reconcile term entitlements."));
+      showError(
+        getErrorMessage(error, "Unable to reconcile term entitlements."),
+      );
     } finally {
       setBusy(false);
     }
@@ -109,40 +116,105 @@ function SuperadminSimulationPage() {
             <div>
               <h2 className="section-title">Term entitlement simulation</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Staging only. Simulated paid events never contact Paystack and never expose provider credentials.
+                Staging only. Simulated paid events never contact Paystack and
+                never expose provider credentials.
               </p>
             </div>
           </div>
 
           <div className="mt-5 space-y-4">
-            <Input label="Tenant ID" value={tenantId} onChange={(event) => setTenantId(event.target.value)} placeholder="Tenant UUID" />
-            <Input label="Academic term ID" value={termId} onChange={(event) => setTermId(event.target.value)} placeholder="Optional; current or latest term is used" />
+            <Input
+              label="Tenant ID"
+              value={tenantId}
+              onChange={(event) => setTenantId(event.target.value)}
+              placeholder="Tenant UUID"
+            />
+            <Input
+              label="Academic term ID"
+              value={termId}
+              onChange={(event) => setTermId(event.target.value)}
+              placeholder="Optional; current or latest term is used"
+            />
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-text-soft" htmlFor="simulation-scenario">Scenario</label>
-              <select id="simulation-scenario" className="input-base w-full" value={scenario} onChange={(event) => setScenario(event.target.value)}>
-                {SCENARIOS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <label
+                className="mb-1.5 block text-sm font-semibold text-text-soft"
+                htmlFor="simulation-scenario"
+              >
+                Scenario
+              </label>
+              <select
+                id="simulation-scenario"
+                className="input-base w-full"
+                value={scenario}
+                onChange={(event) => setScenario(event.target.value)}
+              >
+                {SCENARIOS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-text-soft" htmlFor="simulation-plan">Paid plan</label>
-              <select id="simulation-plan" className="input-base w-full" value={planCode} onChange={(event) => setPlanCode(event.target.value)}>
+              <label
+                className="mb-1.5 block text-sm font-semibold text-text-soft"
+                htmlFor="simulation-plan"
+              >
+                Paid plan
+              </label>
+              <select
+                id="simulation-plan"
+                className="input-base w-full"
+                value={planCode}
+                onChange={(event) => setPlanCode(event.target.value)}
+              >
                 <option value="plus">Plus</option>
                 <option value="professional">Professional</option>
                 <option value="enterprise">Enterprise</option>
               </select>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={runSimulation} disabled={busy}><FlaskConical className="h-4 w-4" />Apply simulation</Button>
-              <Button type="button" variant="outline" onClick={loadState} disabled={busy}>Load state</Button>
-              <Button type="button" variant="outline" onClick={reconcile} disabled={busy}><RefreshCw className="h-4 w-4" />Reconcile</Button>
+              <Button type="button" onClick={runSimulation} disabled={busy}>
+                <FlaskConical className="h-4 w-4" />
+                Apply simulation
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={loadState}
+                disabled={busy}
+              >
+                Load state
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={reconcile}
+                disabled={busy}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reconcile
+              </Button>
             </div>
           </div>
         </Card>
 
         <Card className="p-5 sm:p-6">
           <div className="flex items-center justify-between gap-3">
-            <div><h2 className="section-title">Current term state</h2><p className="mt-1 text-sm text-text-muted">The latest entitlement and payment attempt for the selected tenant term.</p></div>
-            {state ? <Badge variant={state.status === "active" ? "success" : "default"}>{state.status}</Badge> : null}
+            <div>
+              <h2 className="section-title">Current term state</h2>
+              <p className="mt-1 text-sm text-text-muted">
+                The latest entitlement and payment attempt for the selected
+                tenant term.
+              </p>
+            </div>
+            {state ? (
+              <Badge
+                variant={state.status === "active" ? "success" : "default"}
+              >
+                {state.status}
+              </Badge>
+            ) : null}
           </div>
           {state ? (
             <div className="mt-4 rounded-2xl border border-border/70 px-4">
@@ -153,10 +225,17 @@ function SuperadminSimulationPage() {
               <StateRow label="Activated" value={state.activated_at} />
               <StateRow label="Closed" value={state.closed_at} />
               <StateRow label="Safety expiry" value={state.safety_expires_at} />
-              <StateRow label="Payment reference" value={state.payment_reference} />
+              <StateRow
+                label="Payment reference"
+                value={state.payment_reference}
+              />
               <StateRow label="Payment status" value={state.payment_status} />
             </div>
-          ) : <p className="mt-8 text-center text-sm text-text-muted">Load a tenant or apply a scenario to inspect its term state.</p>}
+          ) : (
+            <p className="mt-8 text-center text-sm text-text-muted">
+              Load a tenant or apply a scenario to inspect its term state.
+            </p>
+          )}
         </Card>
       </div>
     </DashboardLayout>

@@ -34,8 +34,9 @@ const PLAN_RANK = {
 const isMobileViewport = () =>
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 767px)").matches;
-const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
-const isCheckoutEligibleTerm = (term) => ["draft", "open"].includes(String(term?.status || "").toLowerCase());
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
+const isCheckoutEligibleTerm = (term) =>
+  ["draft", "open"].includes(String(term?.status || "").toLowerCase());
 const termLabel = (term) =>
   String(term?.display_name || term?.name || "Academic term")
     .replaceAll("_", " ")
@@ -58,7 +59,11 @@ function ResponsiveSubscriptionOptionsPage() {
     };
   }, []);
 
-  return mobile ? <MobileSubscriptionOptionsPage /> : <SubscriptionOptionsPage />;
+  return mobile ? (
+    <MobileSubscriptionOptionsPage />
+  ) : (
+    <SubscriptionOptionsPage />
+  );
 }
 
 function MobileSubscriptionOptionsPage() {
@@ -70,13 +75,17 @@ function MobileSubscriptionOptionsPage() {
     checkoutTermId && searchParams.get("intent") === "open-term";
   const requestedPlanCode = searchParams.get("plan");
   const availablePlans = useMemo(
-    () => LANDING_PRICING_PLANS.filter(
-      (plan) => PAID_PLAN_CODES.has(plan.planCode) || (checkoutTermId && plan.planCode === "free"),
-    ),
+    () =>
+      LANDING_PRICING_PLANS.filter(
+        (plan) =>
+          PAID_PLAN_CODES.has(plan.planCode) ||
+          (checkoutTermId && plan.planCode === "free"),
+      ),
     [checkoutTermId],
   );
   const [activePlanCode, setActivePlanCode] = useState(
-    requestedPlanCode || (PAID_PLAN_CODES.has(planCode) ? planCode : "professional"),
+    requestedPlanCode ||
+      (PAID_PLAN_CODES.has(planCode) ? planCode : "professional"),
   );
   const [busyPlan, setBusyPlan] = useState("");
   const [error, setError] = useState("");
@@ -92,7 +101,8 @@ function MobileSubscriptionOptionsPage() {
   }, [availablePlans, planCode, requestedPlanCode]);
 
   const activePlan =
-    availablePlans.find((plan) => plan.planCode === activePlanCode) || availablePlans[0];
+    availablePlans.find((plan) => plan.planCode === activePlanCode) ||
+    availablePlans[0];
   const checkoutTerms = useMemo(
     () => terms.filter(isCheckoutEligibleTerm),
     [terms],
@@ -114,17 +124,24 @@ function MobileSubscriptionOptionsPage() {
         if (!active) return;
         const rows = asItems(response).filter(isCheckoutEligibleTerm);
         setTerms(rows);
-        setSelectedTermId((current) =>
-          current ||
-          rows.find((term) => term.is_current && term.status === "open")?.id ||
-          rows.find((term) => term.status === "draft")?.id ||
-          rows[0]?.id ||
-          "",
+        setSelectedTermId(
+          (current) =>
+            current ||
+            rows.find((term) => term.is_current && term.status === "open")
+              ?.id ||
+            rows.find((term) => term.status === "draft")?.id ||
+            rows[0]?.id ||
+            "",
         );
       })
       .catch((loadError) => {
         if (active) {
-          setError(parseApiError(loadError, "Could not load academic terms for checkout.").message);
+          setError(
+            parseApiError(
+              loadError,
+              "Could not load academic terms for checkout.",
+            ).message,
+          );
         }
       });
     return () => {
@@ -138,7 +155,9 @@ function MobileSubscriptionOptionsPage() {
     setError("");
     try {
       if (!effectiveCheckoutTermId) {
-        setError("Select a draft or open academic term before starting checkout.");
+        setError(
+          "Select a draft or open academic term before starting checkout.",
+        );
         setBusyPlan("");
         return;
       }
@@ -160,7 +179,8 @@ function MobileSubscriptionOptionsPage() {
       window.location.assign(subscriptionService.checkoutRedirectUrl(checkout));
     } catch (checkoutError) {
       setError(
-        parseApiError(checkoutError, "Could not start term-plan checkout.").message,
+        parseApiError(checkoutError, "Could not start term-plan checkout.")
+          .message,
       );
       setBusyPlan("");
     }
@@ -170,7 +190,8 @@ function MobileSubscriptionOptionsPage() {
     if (busyPlan === activePlan?.planCode) return "Starting...";
     if (isCurrent) return "Current term plan";
     if (lowerOrEqualMidTerm) return "Available next term";
-    if (checkoutTermId && activePlan?.planCode === "free") return "Activate Free for this term";
+    if (checkoutTermId && activePlan?.planCode === "free")
+      return "Activate Free for this term";
     if (checkoutTermId) return `Choose ${formatPlanName(activePlan?.planCode)}`;
     return `Upgrade to ${formatPlanName(activePlan?.planCode)}`;
   })();
@@ -197,7 +218,9 @@ function MobileSubscriptionOptionsPage() {
             <WeaveIcon className="h-11 w-11" decorative />
           </div>
           <h1 className="mt-5 text-3xl font-semibold tracking-tight text-text">
-            {checkoutTermId ? "Choose this term's plan" : "Choose your Weave plan"}
+            {checkoutTermId
+              ? "Choose this term's plan"
+              : "Choose your Weave plan"}
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-text-muted">
             {checkoutTermId
@@ -219,7 +242,8 @@ function MobileSubscriptionOptionsPage() {
               >
                 {checkoutTerms.map((term) => (
                   <option key={term.id} value={term.id}>
-                    {termLabel(term)} - {String(term.status || "").replaceAll("_", " ")}
+                    {termLabel(term)} -{" "}
+                    {String(term.status || "").replaceAll("_", " ")}
                   </option>
                 ))}
               </select>
@@ -232,10 +256,15 @@ function MobileSubscriptionOptionsPage() {
           </section>
         ) : null}
 
-        <section className="mt-7 grid grid-cols-2 gap-3" aria-label="Available plans">
+        <section
+          className="mt-7 grid grid-cols-2 gap-3"
+          aria-label="Available plans"
+        >
           {availablePlans.map((plan, index) => {
             const selected = plan.planCode === activePlan?.planCode;
-            const spanLastCard = availablePlans.length % 2 === 1 && index === availablePlans.length - 1;
+            const spanLastCard =
+              availablePlans.length % 2 === 1 &&
+              index === availablePlans.length - 1;
             return (
               <button
                 key={plan.planCode}
@@ -251,13 +280,19 @@ function MobileSubscriptionOptionsPage() {
                 }`}
               >
                 <span className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-text">{plan.name}</span>
+                  <span className="text-sm font-semibold text-text">
+                    {plan.name}
+                  </span>
                   {requestedPlanCode === plan.planCode ? (
                     <Badge variant="info">Chosen</Badge>
                   ) : null}
                 </span>
-                <span className="mt-2 block text-base font-bold text-text">{plan.priceLabel}</span>
-                <span className="mt-1 block text-xs leading-5 text-text-muted">{plan.bestFor}</span>
+                <span className="mt-2 block text-base font-bold text-text">
+                  {plan.priceLabel}
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-text-muted">
+                  {plan.bestFor}
+                </span>
               </button>
             );
           })}
@@ -268,14 +303,23 @@ function MobileSubscriptionOptionsPage() {
             <section className="mt-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm font-semibold text-text">Everything included</p>
-                  <p className="mt-1 text-sm leading-6 text-text-muted">{activePlan.description}</p>
+                  <p className="text-sm font-semibold text-text">
+                    Everything included
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-text-muted">
+                    {activePlan.description}
+                  </p>
                 </div>
-                {activePlan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
+                {activePlan.highlighted ? (
+                  <Badge variant="primary">Recommended</Badge>
+                ) : null}
               </div>
               <ul className="mt-5 space-y-4">
                 {(activePlan.features || []).map((feature) => (
-                  <li key={feature} className="flex items-start gap-3 text-sm text-text">
+                  <li
+                    key={feature}
+                    className="flex items-start gap-3 text-sm text-text"
+                  >
                     <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                     <span>{feature}</span>
                   </li>
@@ -286,30 +330,43 @@ function MobileSubscriptionOptionsPage() {
             <section className="mt-8 rounded-2xl border border-border/70 bg-surface p-4">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-primary" />
-                <h2 className="text-sm font-semibold text-text">Plan capacity</h2>
+                <h2 className="text-sm font-semibold text-text">
+                  Plan capacity
+                </h2>
               </div>
               <div className="mt-4 divide-y divide-border/70">
-                {Object.entries(activePlan.limits || {}).map(([resource, limit]) => (
-                  <PlanLimit
-                    key={resource}
-                    label={resource.replaceAll("_", " ")}
-                    value={formatLimitValue(limit)}
-                  />
-                ))}
+                {Object.entries(activePlan.limits || {}).map(
+                  ([resource, limit]) => (
+                    <PlanLimit
+                      key={resource}
+                      label={resource.replaceAll("_", " ")}
+                      value={formatLimitValue(limit)}
+                    />
+                  ),
+                )}
               </div>
             </section>
 
-            <div data-mobile-billing-action="true" className="mt-auto bg-background/95 pt-6">
+            <div
+              data-mobile-billing-action="true"
+              className="mt-auto bg-background/95 pt-6"
+            >
               <Button
                 className="min-h-14 w-full rounded-full text-base"
-                disabled={isCurrent || lowerOrEqualMidTerm || !effectiveCheckoutTermId || busyPlan === activePlan.planCode}
+                disabled={
+                  isCurrent ||
+                  lowerOrEqualMidTerm ||
+                  !effectiveCheckoutTermId ||
+                  busyPlan === activePlan.planCode
+                }
                 onClick={activatePlan}
               >
                 <CreditCard className="h-5 w-5" />
                 {actionLabel}
               </Button>
               <p className="mt-3 text-center text-xs leading-5 text-text-muted">
-                One activation per academic term. Paid checkout is handled securely by Paystack.
+                One activation per academic term. Paid checkout is handled
+                securely by Paystack.
               </p>
             </div>
           </>
@@ -334,7 +391,9 @@ function Notice({ children, tone = "info" }) {
     error: "border-error/30 bg-error-soft text-error",
   }[tone];
   return (
-    <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm font-medium ${classes}`}>
+    <div
+      className={`mt-5 rounded-2xl border px-4 py-3 text-sm font-medium ${classes}`}
+    >
       {children}
     </div>
   );

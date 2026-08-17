@@ -20,7 +20,9 @@ const queryString = (params = {}) => {
 
 const readStoredCatalogue = () => {
   try {
-    return JSON.parse(window.sessionStorage.getItem(PUBLIC_CATALOGUE_VALUE_KEY) || "null");
+    return JSON.parse(
+      window.sessionStorage.getItem(PUBLIC_CATALOGUE_VALUE_KEY) || "null",
+    );
   } catch {
     window.sessionStorage.removeItem(PUBLIC_CATALOGUE_VALUE_KEY);
     return null;
@@ -47,14 +49,19 @@ const getPublicPlans = async ({ force = false } = {}) => {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data?.detail || data?.message || "Pricing catalogue unavailable.");
+    const error = new Error(
+      data?.detail || data?.message || "Pricing catalogue unavailable.",
+    );
     error.response = { status: response.status, data };
     throw error;
   }
 
   const etag = response.headers.get("etag");
   if (etag) window.sessionStorage.setItem(PUBLIC_CATALOGUE_ETAG_KEY, etag);
-  window.sessionStorage.setItem(PUBLIC_CATALOGUE_VALUE_KEY, JSON.stringify(data));
+  window.sessionStorage.setItem(
+    PUBLIC_CATALOGUE_VALUE_KEY,
+    JSON.stringify(data),
+  );
   return data;
 };
 
@@ -63,7 +70,9 @@ const resolveCheckoutTermId = async (explicitTermId) => {
 
   const [termsResponse, sessionsResponse] = await Promise.all([
     api.get("/tenant-admin/academics/terms?limit=100"),
-    api.get("/tenant-admin/academics/sessions?limit=100&status=open&is_current=true"),
+    api.get(
+      "/tenant-admin/academics/sessions?limit=100&status=open&is_current=true",
+    ),
   ]);
   const terms = termsResponse?.items || termsResponse || [];
   const sessions = sessionsResponse?.items || sessionsResponse || [];
@@ -111,12 +120,16 @@ const consumeTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
   if (typeof window === "undefined") return null;
 
   try {
-    const rawValue = window.sessionStorage.getItem(TERM_PAYMENT_OPEN_INTENT_KEY);
+    const rawValue = window.sessionStorage.getItem(
+      TERM_PAYMENT_OPEN_INTENT_KEY,
+    );
     if (!rawValue) return null;
 
     const intent = JSON.parse(rawValue);
-    const sameTerm = String(intent?.academicTermId || "") === String(academicTermId || "");
-    const sameReference = String(intent?.reference || "") === String(reference || "");
+    const sameTerm =
+      String(intent?.academicTermId || "") === String(academicTermId || "");
+    const sameReference =
+      String(intent?.reference || "") === String(reference || "");
     if (!sameTerm || !sameReference) return null;
 
     window.sessionStorage.removeItem(TERM_PAYMENT_OPEN_INTENT_KEY);
@@ -130,7 +143,9 @@ const consumeTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
 const checkoutRedirectUrl = (checkout = {}) => {
   const value = String(checkout.authorization_url || "").trim();
   if (!value) {
-    throw new Error("Paystack did not return a checkout link. Please try again.");
+    throw new Error(
+      "Paystack did not return a checkout link. Please try again.",
+    );
   }
   return value;
 };
@@ -148,7 +163,10 @@ export const subscriptionService = {
     api.get("/subscriptions/actor-entitlements", backgroundAuthOptions),
 
   getPaymentHistory: (params = {}) =>
-    api.get(`/subscriptions/payments${queryString(params)}`, backgroundAuthOptions),
+    api.get(
+      `/subscriptions/payments${queryString(params)}`,
+      backgroundAuthOptions,
+    ),
 
   getTermPlanHistory: () =>
     api.get("/subscriptions/terms/history", backgroundAuthOptions),

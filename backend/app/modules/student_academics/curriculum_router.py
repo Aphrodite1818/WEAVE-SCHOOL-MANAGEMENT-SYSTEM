@@ -103,9 +103,7 @@ async def remove_offering(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    await AcademicCurriculumService.remove_offering(
-        db, current_admin.tenant_id, offering_id
-    )
+    await AcademicCurriculumService.remove_offering(db, current_admin.tenant_id, offering_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

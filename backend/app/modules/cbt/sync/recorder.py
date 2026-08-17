@@ -43,9 +43,7 @@ class CBTSyncRecorder:
             tenant_id=tenant_id,
             cursor=cursor,
         ).model_dump_json()
-        await db.execute(
-            select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification))
-        )
+        await db.execute(select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification)))
         return change
 
     @staticmethod
@@ -103,7 +101,5 @@ class CBTSyncRecorder:
             tenant_id=tenant_id,
             cursor=cursor,
         ).model_dump_json()
-        connection.execute(
-            select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification))
-        )
+        connection.execute(select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification)))
         return change_id, cursor

@@ -16,7 +16,8 @@ export function emitNotificationsChanged() {
 const withQuery = (path, params = {}) => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") query.set(key, value);
+    if (value !== undefined && value !== null && value !== "")
+      query.set(key, value);
   });
   const suffix = query.toString();
   return suffix ? `${path}?${suffix}` : path;
@@ -33,22 +34,32 @@ export const notificationService = {
 
 export const messageService = {
   availableRecipients: () => api.get("/communications/available-recipients"),
-  listConversations: (params) => api.get(withQuery("/messages/conversations", params)),
+  listConversations: (params) =>
+    api.get(withQuery("/messages/conversations", params)),
   createConversation: (payload) => api.post("/messages/conversations", payload),
   getConversation: (id) => api.get(`/messages/conversations/${id}`),
-  sendMessage: (id, payload) => api.post(`/messages/conversations/${id}/messages`, payload),
+  sendMessage: (id, payload) =>
+    api.post(`/messages/conversations/${id}/messages`, payload),
   markRead: (id) => api.post(`/messages/conversations/${id}/read`, {}),
 };
 
 const announcementBasePath = (mode) =>
-  mode === "superadmin" ? "/superadmin/announcements" : "/tenant-admin/announcements";
+  mode === "superadmin"
+    ? "/superadmin/announcements"
+    : "/tenant-admin/announcements";
 
 export const communicationAnnouncementService = {
-  list: (mode, params) => api.get(withQuery(announcementBasePath(mode), params)),
+  list: (mode, params) =>
+    api.get(withQuery(announcementBasePath(mode), params)),
   create: (mode, payload) => api.post(announcementBasePath(mode), payload),
-  update: (mode, id, payload) => api.patch(`${announcementBasePath(mode)}/${id}`, payload),
-  preview: (mode, payload) => api.post(`${announcementBasePath(mode)}/preview`, payload),
-  publish: (mode, id, payload = {}) => api.post(`${announcementBasePath(mode)}/${id}/publish`, payload),
-  archive: (mode, id) => api.post(`${announcementBasePath(mode)}/${id}/archive`, {}),
-  cancel: (mode, id) => api.post(`${announcementBasePath(mode)}/${id}/cancel`, {}),
+  update: (mode, id, payload) =>
+    api.patch(`${announcementBasePath(mode)}/${id}`, payload),
+  preview: (mode, payload) =>
+    api.post(`${announcementBasePath(mode)}/preview`, payload),
+  publish: (mode, id, payload = {}) =>
+    api.post(`${announcementBasePath(mode)}/${id}/publish`, payload),
+  archive: (mode, id) =>
+    api.post(`${announcementBasePath(mode)}/${id}/archive`, {}),
+  cancel: (mode, id) =>
+    api.post(`${announcementBasePath(mode)}/${id}/cancel`, {}),
 };

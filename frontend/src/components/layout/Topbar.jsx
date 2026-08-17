@@ -1,10 +1,28 @@
-import { Bell, Building2, ChevronDown, CreditCard, FileText, LogOut, Menu, Moon, Settings, Sun, Trash2, UserRound } from "lucide-react";
+import {
+  Bell,
+  Building2,
+  ChevronDown,
+  CreditCard,
+  FileText,
+  LogOut,
+  Menu,
+  Moon,
+  Settings,
+  Sun,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { formatPlanName } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { NOTIFICATIONS_CHANGED_EVENT, NOTIFICATION_REALTIME_EVENTS, emitNotificationsChanged, notificationService } from "../../services/communicationService";
+import {
+  NOTIFICATIONS_CHANGED_EVENT,
+  NOTIFICATION_REALTIME_EVENTS,
+  emitNotificationsChanged,
+  notificationService,
+} from "../../services/communicationService";
 import { realtimeClient } from "../../services/realtimeClient";
 import { authSession } from "../../services/api";
 import { authService } from "../../services/auth.service";
@@ -29,7 +47,10 @@ const headerIconButtonClass =
 
 function notificationTimestamp(value) {
   if (!value) return "";
-  return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function getUserLabel(user) {
@@ -73,7 +94,7 @@ export default function Topbar({
   const [themeHint, setThemeHint] = useState(() =>
     typeof document === "undefined"
       ? "light"
-      : document.documentElement.dataset.theme || "light"
+      : document.documentElement.dataset.theme || "light",
   );
   const userName = getUserLabel(user);
   const avatarSrc = getUserAvatarSrc(user);
@@ -88,10 +109,7 @@ export default function Topbar({
     : roleSettingsPaths[role] || "/profile";
   const schoolSwitchPath = schoolSwitchPaths[role] || null;
   const resolvedSchoolLogoUrl =
-    schoolLogoUrl ||
-    user?.tenant_logo_url ||
-    user?.tenant?.logo_url ||
-    "";
+    schoolLogoUrl || user?.tenant_logo_url || user?.tenant?.logo_url || "";
   const hasSchoolLogo =
     Boolean(resolvedSchoolLogoUrl) &&
     failedSchoolLogoUrl !== resolvedSchoolLogoUrl &&
@@ -139,13 +157,17 @@ export default function Topbar({
   useEffect(() => {
     if (isAccountScope) return undefined;
 
-    const refreshNotifications = () => setNotificationRefreshKey((value) => value + 1);
+    const refreshNotifications = () =>
+      setNotificationRefreshKey((value) => value + 1);
     window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
     window.addEventListener("focus", refreshNotifications);
     window.addEventListener("weave:pull-refresh", refreshNotifications);
 
     return () => {
-      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refreshNotifications);
+      window.removeEventListener(
+        NOTIFICATIONS_CHANGED_EVENT,
+        refreshNotifications,
+      );
       window.removeEventListener("focus", refreshNotifications);
       window.removeEventListener("weave:pull-refresh", refreshNotifications);
     };
@@ -154,9 +176,11 @@ export default function Topbar({
   useEffect(() => {
     if (isAccountScope) return undefined;
 
-    const refreshNotifications = () => setNotificationRefreshKey((value) => value + 1);
+    const refreshNotifications = () =>
+      setNotificationRefreshKey((value) => value + 1);
     const unsubscribers = NOTIFICATION_REALTIME_EVENTS.map((eventType) =>
-      realtimeClient.subscribe(eventType, refreshNotifications));
+      realtimeClient.subscribe(eventType, refreshNotifications),
+    );
     unsubscribers.push(
       realtimeClient.subscribeConnection((state) => {
         if (state.status === "reconnected") refreshNotifications();
@@ -171,8 +195,15 @@ export default function Topbar({
       setThemeHint(document.documentElement.dataset.theme || "light");
     };
 
-    window.addEventListener("weave:accessibility-preferences-changed", syncThemeHint);
-    return () => window.removeEventListener("weave:accessibility-preferences-changed", syncThemeHint);
+    window.addEventListener(
+      "weave:accessibility-preferences-changed",
+      syncThemeHint,
+    );
+    return () =>
+      window.removeEventListener(
+        "weave:accessibility-preferences-changed",
+        syncThemeHint,
+      );
   }, []);
 
   const handleLogout = async () => {
@@ -185,7 +216,10 @@ export default function Topbar({
 
   const toggleTheme = () => {
     const nextTheme = themeHint === "light" ? "dark" : "light";
-    const preferences = { ...getSavedAccessibilityPreferences(), theme: nextTheme };
+    const preferences = {
+      ...getSavedAccessibilityPreferences(),
+      theme: nextTheme,
+    };
     applyAccessibilityPreferences(preferences);
     saveAccessibilityPreferences(preferences);
     setThemeHint(nextTheme);
@@ -224,8 +258,15 @@ export default function Topbar({
                 onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
               />
             ) : null}
-            <p className={cn("truncate text-base font-bold", isAccountScope ? "text-header-text" : "text-primary")}>
-              {isAccountScope ? "Your schools" : schoolName || roleLabels[role] || "Workspace"}
+            <p
+              className={cn(
+                "truncate text-base font-bold",
+                isAccountScope ? "text-header-text" : "text-primary",
+              )}
+            >
+              {isAccountScope
+                ? "Your schools"
+                : schoolName || roleLabels[role] || "Workspace"}
             </p>
           </div>
           {hasSchoolLogo ? (
@@ -236,10 +277,18 @@ export default function Topbar({
               onError={() => setFailedSchoolLogoUrl(resolvedSchoolLogoUrl)}
             />
           ) : (
-            <WeaveIcon className="hidden h-8 w-8 shrink-0 sm:block" decorative />
+            <WeaveIcon
+              className="hidden h-8 w-8 shrink-0 sm:block"
+              decorative
+            />
           )}
           <div className="hidden min-w-0 sm:block">
-            <p className={cn("truncate text-sm font-bold sm:text-lg", hasSchoolLogo ? "text-primary" : "brand-wordmark")}>
+            <p
+              className={cn(
+                "truncate text-sm font-bold sm:text-lg",
+                hasSchoolLogo ? "text-primary" : "brand-wordmark",
+              )}
+            >
               {hasSchoolLogo ? schoolName || "School workspace" : "Weave"}
             </p>
           </div>
@@ -253,10 +302,10 @@ export default function Topbar({
 
         {role === "superadmin" && (
           <div className="hidden w-full max-w-md items-center justify-center md:flex">
-             <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary shadow-sm">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-primary"></div>
-                Platform Operations
-             </div>
+            <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary shadow-sm">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-primary"></div>
+              Platform Operations
+            </div>
           </div>
         )}
 
@@ -268,31 +317,60 @@ export default function Topbar({
               open={notificationsOpen}
               onOpenChange={setNotificationsOpen}
               trigger={
-                <button type="button" className={cn(headerIconButtonClass, "relative")} aria-label="Open notifications">
+                <button
+                  type="button"
+                  className={cn(headerIconButtonClass, "relative")}
+                  aria-label="Open notifications"
+                >
                   <Bell className="h-4 w-4" />
                   {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none text-white">{unreadCount}</span>
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none text-white">
+                      {unreadCount}
+                    </span>
                   )}
                 </button>
               }
             >
               <div className="space-y-3 p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-text">Notifications</p>
-                  <Link to={notificationPath} className="text-xs font-semibold text-primary" onClick={() => setNotificationsOpen(false)}>View all</Link>
+                  <p className="text-sm font-semibold text-text">
+                    Notifications
+                  </p>
+                  <Link
+                    to={notificationPath}
+                    className="text-xs font-semibold text-primary"
+                    onClick={() => setNotificationsOpen(false)}
+                  >
+                    View all
+                  </Link>
                 </div>
                 {notificationsLoading ? (
-                  <p className="rounded-xl border border-border px-3 py-4 text-sm text-text-muted">Loading notifications...</p>
+                  <p className="rounded-xl border border-border px-3 py-4 text-sm text-text-muted">
+                    Loading notifications...
+                  </p>
                 ) : notificationsError ? (
                   <div className="rounded-xl border border-error/30 bg-error-soft px-3 py-4 text-sm text-error">
                     <p>{notificationsError}</p>
-                    <button type="button" className="mt-2 text-xs font-semibold underline" onClick={() => setNotificationRefreshKey((value) => value + 1)}>Retry</button>
+                    <button
+                      type="button"
+                      className="mt-2 text-xs font-semibold underline"
+                      onClick={() =>
+                        setNotificationRefreshKey((value) => value + 1)
+                      }
+                    >
+                      Retry
+                    </button>
                   </div>
                 ) : notifications.length > 0 ? (
                   notifications.map((item) => (
-                    <div key={item.id} className="rounded-xl border border-border bg-surface px-3 py-2">
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-border bg-surface px-3 py-2"
+                    >
                       <div className="flex items-start gap-2">
-                        <p className="min-w-0 flex-1 line-clamp-1 text-sm font-semibold text-text">{item.title}</p>
+                        <p className="min-w-0 flex-1 line-clamp-1 text-sm font-semibold text-text">
+                          {item.title}
+                        </p>
                         {item.status !== "unread" ? (
                           <button
                             type="button"
@@ -304,12 +382,18 @@ export default function Topbar({
                           </button>
                         ) : null}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">{item.preview}</p>
-                      <p className="mt-1 text-[11px] text-text-faint">{notificationTimestamp(item.delivered_at)}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-text-muted">
+                        {item.preview}
+                      </p>
+                      <p className="mt-1 text-[11px] text-text-faint">
+                        {notificationTimestamp(item.delivered_at)}
+                      </p>
                     </div>
                   ))
                 ) : (
-                  <p className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-text-muted">No notifications yet.</p>
+                  <p className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-text-muted">
+                    No notifications yet.
+                  </p>
                 )}
               </div>
             </Dropdown>
@@ -321,7 +405,11 @@ export default function Topbar({
             className={headerIconButtonClass}
             aria-label="Toggle theme"
           >
-            {themeHint === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {themeHint === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
           </button>
 
           <Dropdown
@@ -330,11 +418,20 @@ export default function Topbar({
             open={accountMenuOpen}
             onOpenChange={setAccountMenuOpen}
             trigger={
-              <button type="button" className="flex h-10 items-center gap-2 rounded-full bg-surface/90 px-2 py-1 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text">
+              <button
+                type="button"
+                className="flex h-10 items-center gap-2 rounded-full bg-surface/90 px-2 py-1 text-text-muted shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-surface-muted hover:text-text"
+              >
                 <Avatar src={avatarSrc} name={userName} size="sm" />
                 <span className="hidden max-w-[10rem] flex-col items-start leading-tight sm:flex">
-                  <span className="max-w-full truncate text-sm font-semibold text-text">{userName}</span>
-                  {showPlanBadge ? <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">{formatPlanName(planCode)}</span> : null}
+                  <span className="max-w-full truncate text-sm font-semibold text-text">
+                    {userName}
+                  </span>
+                  {showPlanBadge ? (
+                    <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                      {formatPlanName(planCode)}
+                    </span>
+                  ) : null}
                 </span>
                 <ChevronDown className="h-4 w-4 text-text-muted" />
               </button>
@@ -345,11 +442,19 @@ export default function Topbar({
                 <div className="flex items-center gap-3">
                   <Avatar src={avatarSrc} name={userName} size="sm" />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-text">{userName}</p>
-                    <p className="truncate text-xs text-text-muted">{roleLabels[role] || "Workspace"}</p>
+                    <p className="truncate text-sm font-semibold text-text">
+                      {userName}
+                    </p>
+                    <p className="truncate text-xs text-text-muted">
+                      {roleLabels[role] || "Workspace"}
+                    </p>
                   </div>
                 </div>
-                {showPlanBadge ? <p className="mt-3 text-xs text-text-muted">{formatPlanName(planCode)}</p> : null}
+                {showPlanBadge ? (
+                  <p className="mt-3 text-xs text-text-muted">
+                    {formatPlanName(planCode)}
+                  </p>
+                ) : null}
               </div>
               <div className="mb-2 grid gap-2">
                 {schoolSwitchPath ? (
@@ -361,7 +466,9 @@ export default function Topbar({
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
                       <Building2 className="h-4 w-4" />
                     </span>
-                    <span className="min-w-0 flex-1 truncate">Switch school</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      Switch school
+                    </span>
                   </Link>
                 ) : null}
                 <Link
@@ -407,7 +514,11 @@ export default function Topbar({
                   <span className="min-w-0 flex-1 truncate">Legal</span>
                 </Link>
               </div>
-              <button type="button" onClick={handleLogout} className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-error hover:bg-error-soft">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-error hover:bg-error-soft"
+              >
                 <LogOut className="h-4 w-4" /> Logout
               </button>
             </div>

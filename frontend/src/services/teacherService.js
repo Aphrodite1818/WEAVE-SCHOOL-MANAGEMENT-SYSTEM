@@ -59,7 +59,9 @@ const putJson = async (endpoint, payload, hasRetried = false) => {
 const subjectsFromAssignments = (assignments = []) => [
   ...new Map(
     assignments
-      .filter((item) => item.subject_id || item.subject_name || item.subject_code)
+      .filter(
+        (item) => item.subject_id || item.subject_name || item.subject_code,
+      )
       .map((item) => [
         item.subject_id || item.subject_name || item.subject_code,
         {
@@ -85,7 +87,8 @@ const normalizeTeacherMembership = (teacher) => {
     phone_number: teacher.phone_number ?? account.phone_number,
     qualification: teacher.qualification ?? account.qualification,
     specialization: teacher.specialization ?? account.specialization,
-    passport_photo_url: teacher.passport_photo_url ?? account.passport_photo_url,
+    passport_photo_url:
+      teacher.passport_photo_url ?? account.passport_photo_url,
     account_status: teacher.account_status ?? account.account_status,
     is_verified: teacher.is_verified ?? account.is_verified,
     is_active: teacher.is_active ?? account.is_active,
@@ -107,17 +110,19 @@ export const teacherService = {
     }),
 
   getInvitationContext: (token) =>
-    api.get(`/teachers/invitations/context?token=${encodeURIComponent(token)}`, {
-      auth: false,
-      clearAuthOnUnauthorized: false,
-      skipAuthRefresh: true,
-    }),
+    api.get(
+      `/teachers/invitations/context?token=${encodeURIComponent(token)}`,
+      {
+        auth: false,
+        clearAuthOnUnauthorized: false,
+        skipAuthRefresh: true,
+      },
+    ),
 
   getTeachers: (options = {}) =>
     api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
 
-  createInvitation: (payload) =>
-    api.post("/teachers/invitations", payload),
+  createInvitation: (payload) => api.post("/teachers/invitations", payload),
 
   listInvitations: (options = {}) =>
     api.get(`/teachers/invitations?${buildInvitationQuery(options)}`),
@@ -140,7 +145,11 @@ export const teacherService = {
   getOffboardingImpact: (membershipId) =>
     api.get(`/teachers/memberships/${membershipId}/offboarding-impact`),
 
-  endMembership: (membershipId, reason, replacementTeacherMembershipId = null) =>
+  endMembership: (
+    membershipId,
+    reason,
+    replacementTeacherMembershipId = null,
+  ) =>
     api.post(`/teachers/memberships/${membershipId}/end`, {
       reason,
       replacement_teacher_membership_id: replacementTeacherMembershipId || null,
@@ -160,7 +169,6 @@ export const teacherService = {
   getMyTeacher: async (requestOptions) =>
     normalizeTeacherMembership(await api.get("/teachers/me", requestOptions)),
 
-
   getMySubjects: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;
     const response = await api.get("/teachers/academics/assignments", {
@@ -175,7 +183,9 @@ export const teacherService = {
       const term = String(queryOptions.search).trim().toLowerCase();
       items = items.filter((item) =>
         [item.name, item.code].some((value) =>
-          String(value || "").toLowerCase().includes(term),
+          String(value || "")
+            .toLowerCase()
+            .includes(term),
         ),
       );
     }

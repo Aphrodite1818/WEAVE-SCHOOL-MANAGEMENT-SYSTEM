@@ -73,9 +73,7 @@ class CBTAcademicSyncService:
         # REPEATABLE READ transaction guarantees that projected rows and the cursor
         # come from the same MVCC boundary.
         async with AsyncSessionLocal() as db:
-            await db.connection(
-                execution_options={"isolation_level": "REPEATABLE READ"}
-            )
+            await db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
             return await CBTAcademicSyncService._build(
                 db,
                 current_server=current_server,
@@ -136,9 +134,7 @@ class CBTAcademicSyncService:
         current_server: AuthenticatedCBTServer,
     ) -> CBTAcademicBootstrapResponse:
         tenant_id = current_server.tenant_id
-        tenant = (
-            await db.execute(select(Tenant).where(Tenant.id == tenant_id))
-        ).scalar_one()
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one()
         server = (
             await db.execute(
                 select(CBTServer).where(
@@ -148,10 +144,13 @@ class CBTAcademicSyncService:
             )
         ).scalar_one()
 
-        model_contracts: tuple[
-            tuple[object, CBTSyncEntityType, type[BaseModel], str], ...
-        ] = (
-            (AcademicSession, CBTSyncEntityType.ACADEMIC_SESSION, CBTAcademicSessionSnapshot, "sessions"),
+        model_contracts: tuple[tuple[object, CBTSyncEntityType, type[BaseModel], str], ...] = (
+            (
+                AcademicSession,
+                CBTSyncEntityType.ACADEMIC_SESSION,
+                CBTAcademicSessionSnapshot,
+                "sessions",
+            ),
             (AcademicTerm, CBTSyncEntityType.ACADEMIC_TERM, CBTAcademicTermSnapshot, "terms"),
             (AcademicLevel, CBTSyncEntityType.ACADEMIC_LEVEL, CBTAcademicLevelSnapshot, "levels"),
             (ArmLabel, CBTSyncEntityType.ARM_LABEL, CBTArmLabelSnapshot, "arm_labels"),

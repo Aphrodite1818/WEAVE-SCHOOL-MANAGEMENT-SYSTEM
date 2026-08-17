@@ -49,7 +49,8 @@ def project_student_enrollment(
     if (
         not enrollment.is_current
         or not academic_session.is_current
-        or academic_session.status not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
+        or academic_session.status
+        not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
         or student.status != AcademicStatus.ACTIVE
         or student.is_archived
         or not _visible(level)

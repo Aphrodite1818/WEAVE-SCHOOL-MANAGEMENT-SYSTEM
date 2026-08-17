@@ -9,7 +9,13 @@ import sqlalchemy as sa
 from pydantic import ValidationError
 
 from app.core.exceptions import ConflictException
-from app.modules.classes.models import AcademicCategory, AcademicLevel, ArmLabel, ClassRoom, Department
+from app.modules.classes.models import (
+    AcademicCategory,
+    AcademicLevel,
+    ArmLabel,
+    ClassRoom,
+    Department,
+)
 from app.modules.classes.schemas import ArmLabelCreate, ClassRoomCreate, ClassRoomUpdate
 from app.modules.classes.service import ArmLabelService, ClassRoomService
 from app.modules.student_academics.curriculum_models import CurriculumSubject

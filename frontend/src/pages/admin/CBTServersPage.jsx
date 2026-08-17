@@ -110,10 +110,12 @@ const formatRelativeTime = (value) => {
   const diffMinutes = Math.round(diffMs / 60000);
 
   if (diffMinutes <= 1) return "Just now";
-  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  if (diffMinutes < 60)
+    return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
 
   const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  if (diffHours < 24)
+    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
 
   const diffDays = Math.round(diffHours / 24);
   if (diffDays < 30) return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
@@ -136,12 +138,18 @@ function StatCard({ icon: Icon, label, value, hint, iconClassName }) {
   return (
     <Card className="rounded-xl border-border/80 p-3 shadow-sm sm:p-4">
       <div className="flex flex-col items-start gap-2.5 sm:gap-3">
-        <div className={`grid h-10 w-10 place-items-center rounded-full sm:h-12 sm:w-12 ${iconClassName}`}>
+        <div
+          className={`grid h-10 w-10 place-items-center rounded-full sm:h-12 sm:w-12 ${iconClassName}`}
+        >
           <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
         </div>
         <div>
-          <p className="text-xs font-medium text-text-muted sm:text-sm">{label}</p>
-          <p className="mt-1 text-2xl font-semibold leading-none text-text sm:text-3xl">{value}</p>
+          <p className="text-xs font-medium text-text-muted sm:text-sm">
+            {label}
+          </p>
+          <p className="mt-1 text-2xl font-semibold leading-none text-text sm:text-3xl">
+            {value}
+          </p>
           <p className="mt-2 hidden text-xs text-text-muted sm:block">{hint}</p>
         </div>
       </div>
@@ -150,7 +158,8 @@ function StatCard({ icon: Icon, label, value, hint, iconClassName }) {
 }
 
 function ToolbarDropdown({ value, onChange, options, className = "" }) {
-  const selectedOption = options.find((option) => option.value === value) || options[0];
+  const selectedOption =
+    options.find((option) => option.value === value) || options[0];
 
   return (
     <Dropdown
@@ -178,7 +187,9 @@ function ToolbarDropdown({ value, onChange, options, className = "" }) {
             }`}
           >
             {option.label}
-            {option.value === value ? <CheckCircle2 className="h-4 w-4" /> : null}
+            {option.value === value ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : null}
           </button>
         ))}
       </div>
@@ -190,8 +201,12 @@ export default function CBTServersPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { showError, showSuccess } = useToast();
-  const { planCode, getFeatureGuard, getResourceGuard, refreshSubscriptionState } =
-    useSubscription();
+  const {
+    planCode,
+    getFeatureGuard,
+    getResourceGuard,
+    refreshSubscriptionState,
+  } = useSubscription();
   const featureGuard = getFeatureGuard(FEATURE_CODES.CBT_PAIRING);
   const resourceGuard = getResourceGuard(RESOURCE_CODES.CBT_SERVERS, {
     featureCode: FEATURE_CODES.CBT_PAIRING,
@@ -219,7 +234,11 @@ export default function CBTServersPage() {
       const items = Array.isArray(response?.items) ? response.items : [];
       setServers(items);
       setSelectedServerId((current) => {
-        if (preserveSelected && current && items.some((item) => item.id === current)) {
+        if (
+          preserveSelected &&
+          current &&
+          items.some((item) => item.id === current)
+        ) {
           return current;
         }
         return items[0]?.id || "";
@@ -243,7 +262,9 @@ export default function CBTServersPage() {
     const requestedServerId = location.state?.selectedServerId;
     if (!requestedServerId || servers.length === 0) return;
 
-    const matchedServer = servers.find((server) => String(server.id) === String(requestedServerId));
+    const matchedServer = servers.find(
+      (server) => String(server.id) === String(requestedServerId),
+    );
     if (matchedServer) {
       setSelectedServerId(matchedServer.id);
       setServerModalOpen(true);
@@ -331,7 +352,10 @@ export default function CBTServersPage() {
   };
 
   const refreshAll = async () => {
-    await Promise.all([loadServers(), refreshSubscriptionState({ silent: true })]);
+    await Promise.all([
+      loadServers(),
+      refreshSubscriptionState({ silent: true }),
+    ]);
   };
 
   const generatePairingCode = async () => {
@@ -346,7 +370,10 @@ export default function CBTServersPage() {
         state: { pairingCode: response, existingServerIds },
       });
     } catch (requestError) {
-      const parsed = parseApiError(requestError, "Could not create a pairing code.");
+      const parsed = parseApiError(
+        requestError,
+        "Could not create a pairing code.",
+      );
       showError(parsed.message);
     } finally {
       setBusyAction("");
@@ -362,8 +389,10 @@ export default function CBTServersPage() {
     if (!confirmState?.serverId) return;
     setBusyAction(`${action}:${confirmState.serverId}`);
     try {
-      if (action === "suspend") await cbtService.suspendServer(confirmState.serverId);
-      if (action === "reactivate") await cbtService.reactivateServer(confirmState.serverId);
+      if (action === "suspend")
+        await cbtService.suspendServer(confirmState.serverId);
+      if (action === "reactivate")
+        await cbtService.reactivateServer(confirmState.serverId);
       if (action === "revoke") {
         await cbtService.revokeServer(confirmState.serverId, {
           reason: revocationReason.trim(),
@@ -373,9 +402,13 @@ export default function CBTServersPage() {
       closeConfirmDialog();
       setRotatedCredential(null);
       await refreshAll();
-      showSuccess(`Server ${action === "reactivate" ? "reactivated" : action === "revoke" ? "revoked" : "suspended"} successfully.`);
+      showSuccess(
+        `Server ${action === "reactivate" ? "reactivated" : action === "revoke" ? "revoked" : "suspended"} successfully.`,
+      );
     } catch (requestError) {
-      showError(parseApiError(requestError, `Could not ${action} server.`).message);
+      showError(
+        parseApiError(requestError, `Could not ${action} server.`).message,
+      );
     } finally {
       setBusyAction("");
     }
@@ -389,7 +422,10 @@ export default function CBTServersPage() {
       await loadServers();
       showSuccess("Server credential rotated.");
     } catch (requestError) {
-      showError(parseApiError(requestError, "Could not rotate server credential.").message);
+      showError(
+        parseApiError(requestError, "Could not rotate server credential.")
+          .message,
+      );
     } finally {
       setBusyAction("");
     }
@@ -420,7 +456,8 @@ export default function CBTServersPage() {
             CBT server pairing is not active on this plan
           </h1>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            CBT server pairing is available on Professional and Enterprise plans only.
+            CBT server pairing is available on Professional and Enterprise plans
+            only.
           </p>
           <Link to="/admin/billing/plans" className="mt-5 inline-flex">
             <Button>View plans</Button>
@@ -438,7 +475,9 @@ export default function CBTServersPage() {
       <div className="space-y-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-[1.65rem] font-semibold tracking-tight text-text">CBT Servers</h1>
+            <h1 className="text-[1.65rem] font-semibold tracking-tight text-text">
+              CBT Servers
+            </h1>
             <p className="mt-1 text-sm text-text-muted">
               Manage and monitor CBT examination servers
             </p>
@@ -492,7 +531,8 @@ export default function CBTServersPage() {
 
         {resourceGuard.allowed === false ? (
           <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-700">
-            {resourceGuard.reason || "This plan cannot pair another CBT server right now."}
+            {resourceGuard.reason ||
+              "This plan cannot pair another CBT server right now."}
           </div>
         ) : null}
 
@@ -524,13 +564,21 @@ export default function CBTServersPage() {
                   <ToolbarDropdown
                     value={sortBy}
                     onChange={setSortBy}
-                    options={Object.entries(SORT_OPTIONS).map(([value, label]) => ({
-                      value,
-                      label: `Sort by: ${label}`,
-                    }))}
+                    options={Object.entries(SORT_OPTIONS).map(
+                      ([value, label]) => ({
+                        value,
+                        label: `Sort by: ${label}`,
+                      }),
+                    )}
                     className="sm:min-w-[190px]"
                   />
-                  <Button variant="outline" size="icon" onClick={refreshAll} disabled={Boolean(busyAction)} aria-label="Refresh servers">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={refreshAll}
+                    disabled={Boolean(busyAction)}
+                    aria-label="Refresh servers"
+                  >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
                 </div>
@@ -579,9 +627,12 @@ export default function CBTServersPage() {
                               <Server className="h-4 w-4" />
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-text">{server.name}</p>
+                              <p className="truncate text-sm font-semibold text-text">
+                                {server.name}
+                              </p>
                               <p className="mt-0.5 text-xs text-text-muted">
-                                {server.client_version || "LAB"}-{String(server.id).slice(0, 4).toUpperCase()}
+                                {server.client_version || "LAB"}-
+                                {String(server.id).slice(0, 4).toUpperCase()}
                               </p>
                             </div>
                           </div>
@@ -592,8 +643,15 @@ export default function CBTServersPage() {
                           />
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-3 pl-[3.25rem] text-xs text-text-muted">
-                          <span className="truncate">Last seen {formatRelativeTime(server.last_seen_at)}{server.last_ip_address ? ` - ${server.last_ip_address}` : ""}</span>
-                          <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-primary">Details <Eye className="h-3.5 w-3.5" /></span>
+                          <span className="truncate">
+                            Last seen {formatRelativeTime(server.last_seen_at)}
+                            {server.last_ip_address
+                              ? ` - ${server.last_ip_address}`
+                              : ""}
+                          </span>
+                          <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-primary">
+                            Details <Eye className="h-3.5 w-3.5" />
+                          </span>
                         </div>
                       </button>
                     );
@@ -603,13 +661,17 @@ export default function CBTServersPage() {
                 <div className="hidden divide-y divide-border/50 lg:block">
                   {filteredServers.map((server) => {
                     const statusMeta = statusMetaFor(server.status);
-                    const selected = String(selectedServerId) === String(server.id);
-                    const detailsHidden = Boolean(hiddenServerDetails[server.id]);
+                    const selected =
+                      String(selectedServerId) === String(server.id);
+                    const detailsHidden = Boolean(
+                      hiddenServerDetails[server.id],
+                    );
                     return (
                       <div
                         key={server.id}
                         onClick={(event) => {
-                          if (event.target.closest("[data-server-actions]")) return;
+                          if (event.target.closest("[data-server-actions]"))
+                            return;
                           setSelectedServerId(server.id);
                           setServerModalOpen(true);
                         }}
@@ -627,7 +689,8 @@ export default function CBTServersPage() {
                                 {server.name}
                               </div>
                               <div className="mt-0.5 text-xs text-text-muted">
-                                {server.client_version || "LAB"}-{String(server.id).slice(0, 4).toUpperCase()}
+                                {server.client_version || "LAB"}-
+                                {String(server.id).slice(0, 4).toUpperCase()}
                               </div>
                             </div>
                           </div>
@@ -640,25 +703,34 @@ export default function CBTServersPage() {
                             />
                           </div>
 
-                          <div className={`text-sm text-text ${detailsHidden ? "invisible" : ""}`}>
+                          <div
+                            className={`text-sm text-text ${detailsHidden ? "invisible" : ""}`}
+                          >
                             <div>{formatRelativeTime(server.last_seen_at)}</div>
                             <div className="mt-1 text-xs text-text-muted">
                               {server.last_ip_address || "--"}
                             </div>
                           </div>
 
-                          <div className={`text-sm text-text ${detailsHidden ? "invisible" : ""}`}>
+                          <div
+                            className={`text-sm text-text ${detailsHidden ? "invisible" : ""}`}
+                          >
                             <div>{formatDate(server.paired_at)}</div>
                             <div className="mt-1 text-xs text-text-muted">
                               {formatTime(server.paired_at)}
                             </div>
                           </div>
 
-                          <div className={`text-sm font-medium text-text ${detailsHidden ? "invisible" : ""}`}>
+                          <div
+                            className={`text-sm font-medium text-text ${detailsHidden ? "invisible" : ""}`}
+                          >
                             {server.client_version || "1.0.0"}
                           </div>
 
-                          <div data-server-actions className="flex items-center gap-2">
+                          <div
+                            data-server-actions
+                            className="flex items-center gap-2"
+                          >
                             <Button
                               variant="outline"
                               size="icon"
@@ -672,7 +744,11 @@ export default function CBTServersPage() {
                               aria-label={`${detailsHidden ? "Show" : "Hide"} inline details for ${server.name}`}
                               aria-pressed={detailsHidden}
                             >
-                              {detailsHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              {detailsHidden ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
                             </Button>
                             <Dropdown
                               open={actionMenuServerId === server.id}
@@ -681,7 +757,11 @@ export default function CBTServersPage() {
                               }
                               className="min-w-52"
                               trigger={
-                                <Button variant="outline" size="icon" aria-label={`Manage ${server.name}`}>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  aria-label={`Manage ${server.name}`}
+                                >
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               }
@@ -689,7 +769,8 @@ export default function CBTServersPage() {
                               <p className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-faint">
                                 Lifecycle actions
                               </p>
-                              {String(server.status).toLowerCase() === "active" ? (
+                              {String(server.status).toLowerCase() ===
+                              "active" ? (
                                 <button
                                   type="button"
                                   className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-text transition hover:bg-warning-soft hover:text-amber-800"
@@ -699,7 +780,8 @@ export default function CBTServersPage() {
                                       action: "suspend",
                                       serverId: server.id,
                                       title: "Suspend this CBT server?",
-                                      description: "The server will remain registered but should stop normal activity until reactivated.",
+                                      description:
+                                        "The server will remain registered but should stop normal activity until reactivated.",
                                       confirmLabel: "Suspend server",
                                     });
                                   }}
@@ -708,7 +790,8 @@ export default function CBTServersPage() {
                                   Suspend server
                                 </button>
                               ) : null}
-                              {String(server.status).toLowerCase() === "suspended" ? (
+                              {String(server.status).toLowerCase() ===
+                              "suspended" ? (
                                 <button
                                   type="button"
                                   className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-text transition hover:bg-success-soft"
@@ -718,7 +801,8 @@ export default function CBTServersPage() {
                                       action: "reactivate",
                                       serverId: server.id,
                                       title: "Reactivate this CBT server?",
-                                      description: "The server will be allowed to resume normal use immediately.",
+                                      description:
+                                        "The server will be allowed to resume normal use immediately.",
                                       confirmLabel: "Reactivate server",
                                     });
                                   }}
@@ -727,7 +811,8 @@ export default function CBTServersPage() {
                                   Reactivate server
                                 </button>
                               ) : null}
-                              {String(server.status).toLowerCase() !== "revoked" ? (
+                              {String(server.status).toLowerCase() !==
+                              "revoked" ? (
                                 <>
                                   <button
                                     type="button"
@@ -746,11 +831,12 @@ export default function CBTServersPage() {
                                     onClick={() => {
                                       setActionMenuServerId("");
                                       setConfirmState({
-                                      action: "revoke",
+                                        action: "revoke",
                                         serverId: server.id,
                                         title: "Revoke this CBT server?",
-                                        description: "This revokes the server and invalidates its active credential. Pair it again if it needs to reconnect later.",
-                                      confirmLabel: "Revoke server",
+                                        description:
+                                          "This revokes the server and invalidates its active credential. Pair it again if it needs to reconnect later.",
+                                        confirmLabel: "Revoke server",
                                       });
                                     }}
                                   >
@@ -759,7 +845,9 @@ export default function CBTServersPage() {
                                   </button>
                                 </>
                               ) : (
-                                <p className="px-3 py-2 text-sm text-text-muted">No actions available.</p>
+                                <p className="px-3 py-2 text-sm text-text-muted">
+                                  No actions available.
+                                </p>
                               )}
                             </Dropdown>
                           </div>
@@ -771,9 +859,13 @@ export default function CBTServersPage() {
 
                 <div className="flex flex-col gap-3 border-t border-border/60 px-5 py-4 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
                   <p>
-                    Showing 1 to {filteredServers.length} of {servers.length} servers
+                    Showing 1 to {filteredServers.length} of {servers.length}{" "}
+                    servers
                   </p>
-                  <div className="hidden shrink-0 items-center gap-2 sm:flex" aria-label="Server pagination">
+                  <div
+                    className="hidden shrink-0 items-center gap-2 sm:flex"
+                    aria-label="Server pagination"
+                  >
                     <button
                       type="button"
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border/70 bg-surface-muted/40 text-text-faint"
@@ -832,7 +924,9 @@ export default function CBTServersPage() {
                   <span
                     className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${selectedStatusMeta.tintClassName}`}
                   >
-                    <span className={`h-2.5 w-2.5 rounded-full ${selectedStatusMeta.dotClassName}`} />
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${selectedStatusMeta.dotClassName}`}
+                    />
                     {selectedStatusMeta.label}
                   </span>
                 </div>
@@ -846,7 +940,8 @@ export default function CBTServersPage() {
                     {selectedServer.name}
                   </h3>
                   <p className="mt-2 text-lg text-text-muted">
-                    {selectedServer.client_version || `LAB-${String(selectedServer.id).slice(0, 4).toUpperCase()}`}
+                    {selectedServer.client_version ||
+                      `LAB-${String(selectedServer.id).slice(0, 4).toUpperCase()}`}
                   </p>
                 </div>
 
@@ -859,7 +954,9 @@ export default function CBTServersPage() {
                         <span>{selectedServer.id}</span>
                         <button
                           type="button"
-                          onClick={() => copyText(selectedServer.id, "Server ID")}
+                          onClick={() =>
+                            copyText(selectedServer.id, "Server ID")
+                          }
                           className="text-text-faint transition hover:text-text"
                           aria-label="Copy server ID"
                         >
@@ -884,7 +981,9 @@ export default function CBTServersPage() {
                     <div>
                       <p className="text-text-faint">Paired By</p>
                       <p className="mt-1 font-medium text-text">
-                        {selectedServer.paired_by_admin_id ? "Admin User" : "--"}
+                        {selectedServer.paired_by_admin_id
+                          ? "Admin User"
+                          : "--"}
                       </p>
                     </div>
                   </div>
@@ -896,7 +995,9 @@ export default function CBTServersPage() {
                       <p className="mt-1 font-medium text-text">
                         {formatRelativeTime(selectedServer.last_seen_at)}
                       </p>
-                      <p className="mt-1 text-text-muted">{selectedServer.last_ip_address || "--"}</p>
+                      <p className="mt-1 text-text-muted">
+                        {selectedServer.last_ip_address || "--"}
+                      </p>
                     </div>
                   </div>
 
@@ -914,7 +1015,9 @@ export default function CBTServersPage() {
                     <AlertCircle className="mt-0.5 h-4 w-4 text-text-faint" />
                     <div>
                       <p className="text-text-faint">Status</p>
-                      <p className="mt-1 font-medium text-text">{selectedStatusMeta.label}</p>
+                      <p className="mt-1 font-medium text-text">
+                        {selectedStatusMeta.label}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -940,7 +1043,8 @@ export default function CBTServersPage() {
                     </Button>
                   ) : null}
 
-                  {String(selectedServer.status).toLowerCase() === "suspended" ? (
+                  {String(selectedServer.status).toLowerCase() ===
+                  "suspended" ? (
                     <Button
                       variant="outline"
                       className="w-full justify-center rounded-xl"
@@ -949,7 +1053,8 @@ export default function CBTServersPage() {
                           action: "reactivate",
                           serverId: selectedServer.id,
                           title: "Reactivate this CBT server?",
-                          description: "The server will be allowed to resume normal use immediately.",
+                          description:
+                            "The server will be allowed to resume normal use immediately.",
                           confirmLabel: "Reactivate server",
                         })
                       }
@@ -976,12 +1081,12 @@ export default function CBTServersPage() {
                         className="w-full justify-center rounded-xl"
                         onClick={() =>
                           setConfirmState({
-                                      action: "revoke",
+                            action: "revoke",
                             serverId: selectedServer.id,
                             title: "Revoke this CBT server?",
                             description:
                               "This revokes the server and invalidates its active credential. Pair it again if it needs to reconnect later.",
-                                      confirmLabel: "Revoke server",
+                            confirmLabel: "Revoke server",
                           })
                         }
                       >
@@ -1005,21 +1110,29 @@ export default function CBTServersPage() {
                         variant="outline"
                         size="icon"
                         onClick={() =>
-                          copyText(rotatedCredential.server_credential, "Server credential")
+                          copyText(
+                            rotatedCredential.server_credential,
+                            "Server credential",
+                          )
                         }
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
                     <p className="mt-3 text-xs text-text-muted">
-                      Rotated {formatDateTime(rotatedCredential.rotated_at)}. Store this on the
-                      local server now because it will not be shown again.
+                      Rotated {formatDateTime(rotatedCredential.rotated_at)}.
+                      Store this on the local server now because it will not be
+                      shown again.
                     </p>
                   </div>
                 ) : null}
 
                 <div className="rounded-2xl border border-border/60 bg-surface-muted/25 px-4 py-3 text-xs text-text-muted">
-                  Plan: {formatPlanName(planCode)}. Limit {usage?.is_unlimited ? "Unlimited" : `${usage?.limit ?? 0} servers`}.
+                  Plan: {formatPlanName(planCode)}. Limit{" "}
+                  {usage?.is_unlimited
+                    ? "Unlimited"
+                    : `${usage?.limit ?? 0} servers`}
+                  .
                 </div>
               </div>
             )}
@@ -1035,7 +1148,8 @@ export default function CBTServersPage() {
         onCancel={closeConfirmDialog}
         onConfirm={() => runServerAction(confirmState?.action)}
         isLoading={Boolean(
-          confirmState && busyAction === `${confirmState.action}:${confirmState.serverId}`,
+          confirmState &&
+          busyAction === `${confirmState.action}:${confirmState.serverId}`,
         )}
         variant={confirmState?.action === "revoke" ? "danger" : "primary"}
       />
@@ -1047,11 +1161,14 @@ export default function CBTServersPage() {
         confirmLabel={confirmState?.confirmLabel}
         variant="danger"
         isLoading={Boolean(
-          confirmState && busyAction === `${confirmState.action}:${confirmState.serverId}`,
+          confirmState &&
+          busyAction === `${confirmState.action}:${confirmState.serverId}`,
         )}
         confirmDisabled={revocationReason.trim().length < 3}
         onCancel={closeConfirmDialog}
-        onConfirm={(confirmationLiteral) => runServerAction("revoke", confirmationLiteral)}
+        onConfirm={(confirmationLiteral) =>
+          runServerAction("revoke", confirmationLiteral)
+        }
       >
         <Input
           label="Reason for revocation"

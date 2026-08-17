@@ -104,13 +104,9 @@ class CBTStaffAuthService:
         raise ForbiddenException(detail="This account is not authorized to use CBT")
 
     @staticmethod
-    def _resolve_admin(
-        *, actor, current_server: AuthenticatedCBTServer
-    ) -> CBTStaffAuthResponse:
+    def _resolve_admin(*, actor, current_server: AuthenticatedCBTServer) -> CBTStaffAuthResponse:
         if actor.tenant_id != current_server.tenant_id:
-            raise ForbiddenException(
-                detail="This account is not authorized for this CBT server"
-            )
+            raise ForbiddenException(detail="This account is not authorized for this CBT server")
 
         return CBTStaffAuthResponse(
             actor_id=actor.actor_id,
@@ -133,15 +129,11 @@ class CBTStaffAuthService:
             current_server.tenant_id,
         )
         if membership is None or membership.status != TeacherMembershipStatus.ACTIVE:
-            raise ForbiddenException(
-                detail="This account is not authorized for this CBT server"
-            )
+            raise ForbiddenException(detail="This account is not authorized for this CBT server")
 
         account = membership.teacher_account
         if account is None:
-            raise ForbiddenException(
-                detail="This account is not authorized for this CBT server"
-            )
+            raise ForbiddenException(detail="This account is not authorized for this CBT server")
 
         return CBTStaffAuthResponse(
             actor_id=account.id,
@@ -164,7 +156,5 @@ class CBTStaffAuthService:
             load_account=False,
         )
         if membership is None:
-            raise ForbiddenException(
-                detail="This account is not authorized to use CBT"
-            )
+            raise ForbiddenException(detail="This account is not authorized to use CBT")
         return membership.teacher_account_id

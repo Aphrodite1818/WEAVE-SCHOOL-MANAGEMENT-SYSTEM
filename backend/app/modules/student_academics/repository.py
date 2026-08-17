@@ -116,9 +116,7 @@ class StudentAcademicRepository:
         filters = [AcademicSession.tenant_id == tenant_id]
         if search:
             filters.append(
-                AcademicSession.name.ilike(
-                    f"%{escape_like(search.strip())}%", escape="\\"
-                )
+                AcademicSession.name.ilike(f"%{escape_like(search.strip())}%", escape="\\")
             )
         if status is not None:
             filters.append(AcademicSession.status == status)
@@ -129,9 +127,7 @@ class StudentAcademicRepository:
         if start_date_to is not None:
             filters.append(AcademicSession.start_date <= start_date_to)
         total = (
-            await db.execute(
-                select(func.count()).select_from(AcademicSession).where(*filters)
-            )
+            await db.execute(select(func.count()).select_from(AcademicSession).where(*filters))
         ).scalar_one()
         rows = (
             (
@@ -158,9 +154,7 @@ class StudentAcademicRepository:
         return await StudentAcademicRepository._save(db, academic_session)
 
     @staticmethod
-    async def create_academic_term(
-        db: AsyncSession, academic_term: AcademicTerm
-    ) -> AcademicTerm:
+    async def create_academic_term(db: AsyncSession, academic_term: AcademicTerm) -> AcademicTerm:
         return await StudentAcademicRepository._save(db, academic_term)
 
     @staticmethod
@@ -197,17 +191,13 @@ class StudentAcademicRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_current_term(
-        db: AsyncSession, tenant_id: uuid.UUID
-    ) -> AcademicTerm | None:
+    async def get_current_term(db: AsyncSession, tenant_id: uuid.UUID) -> AcademicTerm | None:
         return (
             await db.execute(
                 select(AcademicTerm).where(
                     AcademicTerm.tenant_id == tenant_id,
                     AcademicTerm.is_current.is_(True),
-                    AcademicTerm.status.in_(
-                        {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
-                    ),
+                    AcademicTerm.status.in_({AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}),
                 )
             )
         ).scalar_one_or_none()
@@ -315,9 +305,7 @@ class StudentAcademicRepository:
         return list(rows), int(total)
 
     @staticmethod
-    async def save_academic_term(
-        db: AsyncSession, academic_term: AcademicTerm
-    ) -> AcademicTerm:
+    async def save_academic_term(db: AsyncSession, academic_term: AcademicTerm) -> AcademicTerm:
         return await StudentAcademicRepository._save(db, academic_term)
 
     # ------------------------------------------------------------------
@@ -338,9 +326,7 @@ class StudentAcademicRepository:
             filters.append(AcademicTerm.status.in_(statuses))
         return int(
             (
-                await db.execute(
-                    select(func.count()).select_from(AcademicTerm).where(*filters)
-                )
+                await db.execute(select(func.count()).select_from(AcademicTerm).where(*filters))
             ).scalar_one()
         )
 
@@ -386,9 +372,7 @@ class StudentAcademicRepository:
             filters.append(ReportCard.status.in_(statuses))
         return int(
             (
-                await db.execute(
-                    select(func.count()).select_from(ReportCard).where(*filters)
-                )
+                await db.execute(select(func.count()).select_from(ReportCard).where(*filters))
             ).scalar_one()
         )
 
@@ -467,9 +451,7 @@ class StudentAcademicRepository:
     # Grading scales
     # ------------------------------------------------------------------
     @staticmethod
-    async def create_grading_scale(
-        db: AsyncSession, grading_scale: GradingScale
-    ) -> GradingScale:
+    async def create_grading_scale(db: AsyncSession, grading_scale: GradingScale) -> GradingScale:
         return await StudentAcademicRepository._save(db, grading_scale)
 
     @staticmethod
@@ -543,18 +525,14 @@ class StudentAcademicRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def save_grading_scale(
-        db: AsyncSession, grading_scale: GradingScale
-    ) -> GradingScale:
+    async def save_grading_scale(db: AsyncSession, grading_scale: GradingScale) -> GradingScale:
         return await StudentAcademicRepository._save(db, grading_scale)
 
     # ------------------------------------------------------------------
     # Results and component scores
     # ------------------------------------------------------------------
     @staticmethod
-    async def upsert_result(
-        db: AsyncSession, result: StudentSubjectResult
-    ) -> StudentSubjectResult:
+    async def upsert_result(db: AsyncSession, result: StudentSubjectResult) -> StudentSubjectResult:
         return await StudentAcademicRepository._save(db, result)
 
     @staticmethod
@@ -571,14 +549,12 @@ class StudentAcademicRepository:
                     and_(
                         StudentAssessmentScore.tenant_id == tenant_id,
                         StudentAssessmentScore.student_subject_result_id == result.id,
-                        StudentAssessmentScore.assessment_component_id
-                        == AssessmentComponent.id,
+                        StudentAssessmentScore.assessment_component_id == AssessmentComponent.id,
                     ),
                 )
                 .where(
                     AssessmentComponent.tenant_id == tenant_id,
-                    AssessmentComponent.assessment_scheme_id
-                    == result.assessment_scheme_id,
+                    AssessmentComponent.assessment_scheme_id == result.assessment_scheme_id,
                     AssessmentComponent.is_active.is_(True),
                 )
                 .order_by(AssessmentComponent.position.asc())
@@ -625,9 +601,7 @@ class StudentAcademicRepository:
         )
         components_by_scheme: dict[uuid.UUID, list[AssessmentComponent]] = {}
         for component in components:
-            components_by_scheme.setdefault(component.assessment_scheme_id, []).append(
-                component
-            )
+            components_by_scheme.setdefault(component.assessment_scheme_id, []).append(component)
         scores_by_result = {
             (score.student_subject_result_id, score.assessment_component_id): score
             for score in scores
@@ -766,13 +740,9 @@ class StudentAcademicRepository:
         if subject_id is not None:
             filters.append(StudentSubjectResult.subject_id == subject_id)
         if teacher_assignment_id is not None:
-            filters.append(
-                StudentSubjectResult.teacher_assignment_id == teacher_assignment_id
-            )
+            filters.append(StudentSubjectResult.teacher_assignment_id == teacher_assignment_id)
         if academic_session_id is not None:
-            filters.append(
-                StudentSubjectResult.academic_session_id == academic_session_id
-            )
+            filters.append(StudentSubjectResult.academic_session_id == academic_session_id)
         if academic_term_id is not None:
             filters.append(StudentSubjectResult.academic_term_id == academic_term_id)
         if status is not None:
@@ -813,8 +783,7 @@ class StudentAcademicRepository:
                 .select_from(StudentAssessmentScore)
                 .where(
                     StudentAssessmentScore.tenant_id == tenant_id,
-                    StudentAssessmentScore.student_subject_result_id
-                    == StudentSubjectResult.id,
+                    StudentAssessmentScore.student_subject_result_id == StudentSubjectResult.id,
                 )
                 .correlate(StudentSubjectResult)
                 .scalar_subquery()
@@ -897,9 +866,7 @@ class StudentAcademicRepository:
         if exclude_id is not None:
             filters.append(TeacherAssignment.id != exclude_id)
         query = (
-            select(TeacherAssignment)
-            .where(*filters)
-            .order_by(TeacherAssignment.created_at.desc())
+            select(TeacherAssignment).where(*filters).order_by(TeacherAssignment.created_at.desc())
         )
         if lock:
             query = query.with_for_update()
@@ -981,9 +948,7 @@ class StudentAcademicRepository:
         if teacher_id is not None:
             filters.append(TeacherAssignment.teacher_membership_id == teacher_id)
         if curriculum_subject_id is not None:
-            filters.append(
-                TeacherAssignment.curriculum_subject_id == curriculum_subject_id
-            )
+            filters.append(TeacherAssignment.curriculum_subject_id == curriculum_subject_id)
         if class_id is not None:
             filters.append(TeacherAssignment.class_id == class_id)
         if subject_id is not None:
@@ -1111,9 +1076,7 @@ class StudentAcademicRepository:
                 "subject_code": row.subject_code,
                 "teacher_staff_id": row.teacher_staff_id,
                 "teacher_name": " ".join(
-                    part
-                    for part in [row.teacher_first_name, row.teacher_last_name]
-                    if part
+                    part for part in [row.teacher_first_name, row.teacher_last_name] if part
                 )
                 or None,
             }
@@ -1147,10 +1110,8 @@ class StudentAcademicRepository:
     ) -> dict[str, int]:
         from app.modules.report_cards.models import ReportCardSubjectLine
 
-        student_results = (
-            await StudentAcademicRepository.count_scores_for_teacher_assignment(
-                db, tenant_id, teacher_assignment_id
-            )
+        student_results = await StudentAcademicRepository.count_scores_for_teacher_assignment(
+            db, tenant_id, teacher_assignment_id
         )
         report_card_references = (
             await db.execute(
@@ -1158,14 +1119,12 @@ class StudentAcademicRepository:
                 .select_from(ReportCardSubjectLine)
                 .join(
                     StudentSubjectResult,
-                    StudentSubjectResult.id
-                    == ReportCardSubjectLine.student_subject_result_id,
+                    StudentSubjectResult.id == ReportCardSubjectLine.student_subject_result_id,
                 )
                 .where(
                     ReportCardSubjectLine.tenant_id == tenant_id,
                     StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.teacher_assignment_id
-                    == teacher_assignment_id,
+                    StudentSubjectResult.teacher_assignment_id == teacher_assignment_id,
                 )
             )
         ).scalar_one()
@@ -1176,9 +1135,7 @@ class StudentAcademicRepository:
         }
 
     @staticmethod
-    async def delete_teacher_assignment(
-        db: AsyncSession, assignment: TeacherAssignment
-    ) -> None:
+    async def delete_teacher_assignment(db: AsyncSession, assignment: TeacherAssignment) -> None:
         await db.delete(assignment)
         await db.flush()
 
@@ -1188,9 +1145,7 @@ class StudentAcademicRepository:
         audit: TeacherAssignmentLifecycleAudit,
     ) -> TeacherAssignmentLifecycleAudit:
         audit_table = (
-            await db.execute(
-                select(func.to_regclass("public.teacher_assignment_lifecycle_audits"))
-            )
+            await db.execute(select(func.to_regclass("public.teacher_assignment_lifecycle_audits")))
         ).scalar_one()
         if audit_table is None:
             return audit
@@ -1209,8 +1164,7 @@ class StudentAcademicRepository:
                     .select_from(StudentSubjectResult)
                     .where(
                         StudentSubjectResult.tenant_id == tenant_id,
-                        StudentSubjectResult.teacher_assignment_id
-                        == teacher_assignment_id,
+                        StudentSubjectResult.teacher_assignment_id == teacher_assignment_id,
                     )
                 )
             ).scalar_one()
