@@ -1,4 +1,4 @@
-"""Stable CBT projections for teachers and current class-subject assignments."""
+"""Stable CBT projections for admins, teachers, and current class-subject assignments."""
 
 from __future__ import annotations
 
@@ -9,7 +9,11 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.modules.cbt.academics.schemas import CBTTeacherAssignmentSnapshot, CBTTeacherSnapshot
+from app.modules.cbt.academics.schemas import (
+    CBTAdminSnapshot,
+    CBTTeacherAssignmentSnapshot,
+    CBTTeacherSnapshot,
+)
 from app.modules.classes.models import ClassRoom
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
@@ -22,6 +26,7 @@ from app.modules.student_academics.models import (
     AcademicTermStatus,
     TeacherAssignment,
 )
+from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.teachers.models import (
     TeacherAccount,
     TeacherAccountStatus,
@@ -32,6 +37,29 @@ from app.modules.teachers.models import (
 
 def _value(value: Any) -> Any:
     return getattr(value, "value", value)
+
+
+def project_admin(
+    session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
+) -> dict[str, Any] | None:
+    row = session.execute(
+        select(TenantAdmin).where(
+            TenantAdmin.tenant_id == tenant_id,
+            TenantAdmin.id == entity_id,
+        )
+    ).scalar_one_or_none()
+    if (
+        row is None
+        or row.account_status != TenantAdminStatus.ACTIVE
+        or not row.is_active
+        or not row.is_verified
+    ):
+        return None
+    return CBTAdminSnapshot(
+        id=row.id,
+        email=row.email,
+        status=_value(row.account_status),
+    ).model_dump(mode="json")
 
 
 def project_teacher(
