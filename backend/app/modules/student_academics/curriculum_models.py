@@ -50,6 +50,16 @@ class CurriculumOffering(BaseModel):
     academic_term_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False)
     department_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), nullable=True)
     __table_args__ = (
-        UniqueConstraint("tenant_id", "curriculum_subject_id", "academic_term_id", "department_id", name="uq_curriculum_offering_scope"),
+        # PostgreSQL normally treats NULL values as distinct in UNIQUE constraints.
+        # General offerings use department_id=NULL, so NULLS NOT DISTINCT is
+        # required to make the database enforce one canonical offering per scope.
+        UniqueConstraint(
+            "tenant_id",
+            "curriculum_subject_id",
+            "academic_term_id",
+            "department_id",
+            name="uq_curriculum_offering_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
         Index("ix_curriculum_offerings_tenant_term", "tenant_id", "academic_term_id"),
     )
