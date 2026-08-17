@@ -1,3 +1,4 @@
+import AcademicLevelsWorkspace from "../academic-admin/AcademicLevelsWorkspace";
 import AcademicSetupWorkspace from "../academic-admin/AcademicSetupWorkspace";
 import ClassStructureWorkspace from "../academic-admin/ClassStructureWorkspace";
 import CurriculumWorkspace from "../academic-admin/CurriculumWorkspace";
@@ -10,7 +11,7 @@ import TenantBrandingPage from "../../pages/admin/TenantBrandingPage";
 
 export const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
   school_logo: { kind: "branding" },
-  levels: { kind: "structure", domain: "levels", activeTab: "create" },
+  levels: { kind: "levels", activeTab: "create" },
   arms: { kind: "structure", domain: "arm-labels", activeTab: "create" },
   classes: { kind: "structure", domain: "classes", activeTab: "create" },
   departments: { kind: "departments" },
@@ -28,6 +29,7 @@ function AdminGuideTaskWorkspace({ stepId }) {
   if (!config) return null;
 
   if (config.kind === "branding") return <TenantBrandingPage embedded />;
+  if (config.kind === "levels") return <AcademicLevelsWorkspace activeTab={config.activeTab} />;
   if (config.kind === "structure") {
     return <ClassStructureWorkspace domain={config.domain} activeTab={config.activeTab} />;
   }
