@@ -7,10 +7,15 @@ export const sessionClosureService = {
       requestOptions,
     ),
 
-  startClosing: (sessionId, idempotencyKey) =>
+  startClosing: (
+    sessionId,
+    idempotencyKey,
+    allowTerminalCompletion = false,
+  ) =>
     api.post(`/tenant-admin/academics/sessions/${sessionId}/start-closing`, {
       confirmation: "START_SESSION_CLOSING",
       idempotency_key: idempotencyKey,
+      allow_terminal_completion: Boolean(allowTerminalCompletion),
     }),
 
   getStatus: (sessionId, requestOptions) =>
