@@ -5,7 +5,7 @@ Revises: 20260815_offering_backfill
 Create Date: 2026-08-15
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -16,12 +16,28 @@ depends_on = None
 
 SCHEMA = "public"
 
+OFFLINE_TABLE_NAMES = {"arm_labels", "classes"}
+OFFLINE_COLUMN_NAMES = {
+    "classes": {"arm_label_id"},
+}
+OFFLINE_CONSTRAINT_NAMES = {
+    "classes": {"fk_classes_arm_label_id"},
+}
+OFFLINE_INDEX_NAMES = {
+    "arm_labels": {"ix_arm_labels_tenant_active", "ix_arm_labels_tenant_position"},
+    "classes": {"ix_classes_tenant_arm_label", "uq_classes_tenant_level_department_arm"},
+}
+
 
 def _table_names() -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_TABLE_NAMES
     return set(sa.inspect(op.get_bind()).get_table_names(schema=SCHEMA))
 
 
 def _column_names(table_name: str) -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_COLUMN_NAMES.get(table_name, set())
     if table_name not in _table_names():
         return set()
     return {
@@ -31,6 +47,8 @@ def _column_names(table_name: str) -> set[str]:
 
 
 def _constraint_names(table_name: str) -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_CONSTRAINT_NAMES.get(table_name, set())
     if table_name not in _table_names():
         return set()
     inspector = sa.inspect(op.get_bind())
@@ -50,6 +68,8 @@ def _constraint_names(table_name: str) -> set[str]:
 
 
 def _index_names(table_name: str) -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_INDEX_NAMES.get(table_name, set())
     if table_name not in _table_names():
         return set()
     return {

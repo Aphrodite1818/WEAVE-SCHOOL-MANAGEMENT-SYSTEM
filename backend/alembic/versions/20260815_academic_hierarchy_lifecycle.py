@@ -9,7 +9,7 @@ category/position so enrollment history can be retained; administrators can
 then correct that explicit structure in the new setup workflow.
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
@@ -21,12 +21,46 @@ depends_on = None
 
 SCHEMA = "public"
 
+OFFLINE_TABLE_NAMES = {
+    "academic_levels",
+    "classes",
+    "level_subjects",
+    "progression_selection_options",
+    "student_progression_items",
+}
+OFFLINE_COLUMN_NAMES = {
+    "academic_levels": {
+        "next_level_id",
+        "is_terminal",
+        "progression_mode",
+        "selection_target_type",
+    },
+    "classes": {"arm", "normalized_arm"},
+    "level_subjects": {"is_core"},
+}
+OFFLINE_CONSTRAINT_NAMES = {
+    "academic_levels": {
+        "academic_levels_next_level_id_fkey",
+        "ck_academic_levels_next_not_self",
+        "ck_academic_levels_terminal_has_no_next",
+    },
+    "classes": {"uq_classes_tenant_level_arm"},
+}
+OFFLINE_INDEX_NAMES = {
+    "academic_levels": {"ix_academic_levels_tenant_next"},
+    "classes": set(),
+}
+
 
 def _table_names() -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_TABLE_NAMES
     return set(sa.inspect(op.get_bind()).get_table_names(schema=SCHEMA))
 
 
 def _column_names(table_name: str) -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_COLUMN_NAMES.get(table_name, set())
     return {
         column["name"]
         for column in sa.inspect(op.get_bind()).get_columns(table_name, schema=SCHEMA)
@@ -34,6 +68,8 @@ def _column_names(table_name: str) -> set[str]:
 
 
 def _constraint_names(table_name: str) -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_CONSTRAINT_NAMES.get(table_name, set())
     inspector = sa.inspect(op.get_bind())
     names = {
         item.get("name")
@@ -51,6 +87,8 @@ def _constraint_names(table_name: str) -> set[str]:
 
 
 def _index_names(table_name: str) -> set[str]:
+    if context.is_offline_mode():
+        return OFFLINE_INDEX_NAMES.get(table_name, set())
     return {
         item["name"]
         for item in sa.inspect(op.get_bind()).get_indexes(table_name, schema=SCHEMA)

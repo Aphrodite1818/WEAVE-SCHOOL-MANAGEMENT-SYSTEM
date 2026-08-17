@@ -66,8 +66,25 @@ def upgrade() -> None:
         "cbt_sync_changes",
         sa.Column("cursor", sa.BigInteger(), nullable=False),
         sa.Column("entity_id", sa.UUID(), nullable=False),
-        sa.Column("entity_type", sync_entity, nullable=False),
-        sa.Column("operation", sync_operation, nullable=False),
+        sa.Column(
+            "entity_type",
+            postgresql.ENUM(
+                "academic_level", "department", "arm_label", "class", "class_term_department",
+                "academic_session", "academic_term", "subject", "curriculum", "curriculum_subject",
+                "subject_offering", "assessment_scheme", "assessment_component", "teacher",
+                "teacher_assignment", "student_enrollment",
+                name="cbt_sync_entity_type", schema=SCHEMA, create_type=False,
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "operation",
+            postgresql.ENUM(
+                "created", "updated", "deleted",
+                name="cbt_sync_operation", schema=SCHEMA, create_type=False,
+            ),
+            nullable=False,
+        ),
         sa.Column("schema_version", sa.Integer(), server_default="2", nullable=False),
         sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
