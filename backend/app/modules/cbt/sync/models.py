@@ -56,6 +56,11 @@ class CBTSyncTenantState(TimestampMixin, Base):
 class CBTSyncChange(BaseModel):
     __tablename__ = "cbt_sync_changes"
 
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{PUBLIC_SCHEMA}.tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     cursor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     entity_type: Mapped[CBTSyncEntityType] = mapped_column(cbt_sync_entity_enum, nullable=False)
