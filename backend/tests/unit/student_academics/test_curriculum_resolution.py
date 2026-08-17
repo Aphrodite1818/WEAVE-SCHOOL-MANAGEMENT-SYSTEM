@@ -4,13 +4,13 @@ from uuid import uuid4
 
 import pytest
 
+from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.student_academics.curriculum_service import (
     CurriculumResolutionService,
     ResolvedCurriculumOffering,
 )
 from app.modules.student_academics.models import AcademicTermName
 from app.modules.student_academics.service import StudentAcademicService
-from app.modules.classes.repository import AcademicLevelRepository
 
 
 class Result:
@@ -26,17 +26,26 @@ class Result:
 
 
 @pytest.mark.asyncio
-async def test_department_offering_overrides_common_offering_for_same_subject():
+async def test_department_offering_overrides_common_offering_for_same_curriculum_subject():
     tenant_id = uuid4()
     level_id = uuid4()
     term_id = uuid4()
     department_id = uuid4()
-    level_subject = SimpleNamespace(id=uuid4(), subject_id=uuid4())
-    common = SimpleNamespace(department_id=None, is_elective=False)
-    specialized = SimpleNamespace(department_id=department_id, is_elective=False)
+    curriculum_subject = SimpleNamespace(
+        id=uuid4(),
+        subject_id=uuid4(),
+        is_elective=False,
+    )
+    common = SimpleNamespace(id=uuid4(), department_id=None)
+    specialized = SimpleNamespace(id=uuid4(), department_id=department_id)
     db = SimpleNamespace(
         execute=AsyncMock(
-            return_value=Result(rows=[(common, level_subject), (specialized, level_subject)])
+            return_value=Result(
+                rows=[
+                    (common, curriculum_subject),
+                    (specialized, curriculum_subject),
+                ]
+            )
         )
     )
 
@@ -49,35 +58,57 @@ async def test_department_offering_overrides_common_offering_for_same_subject():
     )
 
     assert len(resolved) == 1
+    assert resolved[0].curriculum_subject_id == curriculum_subject.id
+    assert resolved[0].curriculum_offering_id == specialized.id
     assert resolved[0].department_id == department_id
     statement = str(db.execute.await_args.args[0])
-    assert "subject_offerings.tenant_id" in statement
-    assert "level_subjects.tenant_id" in statement
+    assert "curriculum_offerings.tenant_id" in statement
+    assert "curriculum_subjects.tenant_id" in statement
+    assert "curricula.academic_level_id" in statement
+    assert "subject_offerings" not in statement
+    assert "level_subjects" not in statement
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("participating", [False, True])
 async def test_elective_requires_a_meaningful_assessment_score(monkeypatch, participating):
-    normal = ResolvedCurriculumOffering(uuid4(), uuid4(), uuid4(), None, False)
-    elective = ResolvedCurriculumOffering(uuid4(), uuid4(), normal.academic_term_id, None, True)
+    term_id = uuid4()
+    normal = ResolvedCurriculumOffering(
+        curriculum_offering_id=uuid4(),
+        curriculum_subject_id=uuid4(),
+        subject_id=uuid4(),
+        academic_term_id=term_id,
+        department_id=None,
+        is_elective=False,
+    )
+    elective = ResolvedCurriculumOffering(
+        curriculum_offering_id=uuid4(),
+        curriculum_subject_id=uuid4(),
+        subject_id=uuid4(),
+        academic_term_id=term_id,
+        department_id=None,
+        is_elective=True,
+    )
     monkeypatch.setattr(
         CurriculumResolutionService,
         "resolve_student_offerings",
         AsyncMock(return_value=[normal, elective]),
     )
-    scalar_rows = [elective.level_subject_id] if participating else []
+    scalar_rows = [elective.curriculum_subject_id] if participating else []
     db = SimpleNamespace(execute=AsyncMock(return_value=Result(scalars=scalar_rows)))
 
     resolved = await CurriculumResolutionService.resolve_student_curriculum(
         db,
         tenant_id=uuid4(),
         student_id=uuid4(),
-        academic_term_id=normal.academic_term_id,
+        academic_term_id=term_id,
     )
 
     assert normal in resolved
     assert (elective in resolved) is participating
-    assert "student_assessment_scores" in str(db.execute.await_args.args[0])
+    statement = str(db.execute.await_args.args[0])
+    assert "student_assessment_scores" in statement
+    assert "curriculum_subject_id" in statement
 
 
 @pytest.mark.asyncio
@@ -135,8 +166,14 @@ async def test_effective_department_assignment_allows_classless_student(monkeypa
     tenant_id = uuid4()
     session_id = uuid4()
     level_id = uuid4()
-    current = SimpleNamespace(academic_session_id=session_id, name=AcademicTermName.FIRST_TERM)
-    next_term = SimpleNamespace(academic_session_id=session_id, name=AcademicTermName.SECOND_TERM)
+    current = SimpleNamespace(
+        academic_session_id=session_id,
+        name=AcademicTermName.FIRST_TERM,
+    )
+    next_term = SimpleNamespace(
+        academic_session_id=session_id,
+        name=AcademicTermName.SECOND_TERM,
+    )
     enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=None)
     assignment = SimpleNamespace(student_enrollment_id=enrollment.id)
     department = SimpleNamespace(is_active=True, archived_at=None)
@@ -177,8 +214,14 @@ async def test_inactive_department_assignment_does_not_satisfy_specialization_bl
     tenant_id = uuid4()
     session_id = uuid4()
     level_id = uuid4()
-    current = SimpleNamespace(academic_session_id=session_id, name=AcademicTermName.FIRST_TERM)
-    next_term = SimpleNamespace(academic_session_id=session_id, name=AcademicTermName.SECOND_TERM)
+    current = SimpleNamespace(
+        academic_session_id=session_id,
+        name=AcademicTermName.FIRST_TERM,
+    )
+    next_term = SimpleNamespace(
+        academic_session_id=session_id,
+        name=AcademicTermName.SECOND_TERM,
+    )
     enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=None)
     level = SimpleNamespace(
         id=level_id,
