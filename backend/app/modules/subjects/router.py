@@ -24,6 +24,7 @@ from app.modules.subjects.schemas import (
     SubjectUpdate,
 )
 from app.modules.subjects.service import SubjectService
+from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
