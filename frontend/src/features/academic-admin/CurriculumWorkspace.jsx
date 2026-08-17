@@ -50,7 +50,13 @@ export default function CurriculumWorkspace() {
       setSubjects(items(subjectResponse));
       setTerms(termRows);
       setLevelId((current) => current || levelRows[0]?.id || "");
-      setTermId((current) => current || termRows.find((term) => term.is_current)?.id || termRows[0]?.id || "");
+      setTermId(
+        (current) =>
+          current ||
+          termRows.find((term) => term.is_current)?.id ||
+          termRows[0]?.id ||
+          "",
+      );
     } catch (error) {
       showError(getErrorMessage(error, "Could not load curriculum setup."));
     }
@@ -69,7 +75,9 @@ export default function CurriculumWorkspace() {
       ]);
       setCurriculum(curriculumResponse);
       setDepartments(
-        items(departmentResponse).filter((row) => row.is_active !== false && !row.archived_at),
+        items(departmentResponse).filter(
+          (row) => row.is_active !== false && !row.archived_at,
+        ),
       );
       setScopeSubjectId((current) =>
         (curriculumResponse?.subjects || []).some((row) => row.id === current)
@@ -113,7 +121,10 @@ export default function CurriculumWorkspace() {
   const available = subjects.filter(
     (row) => !attached.has(row.id) && row.is_active !== false && !row.archived_at,
   );
-  const termById = useMemo(() => new Map(terms.map((row) => [row.id, row])), [terms]);
+  const termById = useMemo(
+    () => new Map(terms.map((row) => [row.id, row])),
+    [terms],
+  );
   const departmentById = useMemo(
     () => new Map(departments.map((row) => [row.id, row])),
     [departments],
@@ -146,7 +157,9 @@ export default function CurriculumWorkspace() {
         is_elective: !row.is_elective,
       });
       await loadLevel();
-      showSuccess(row.is_elective ? "Subject is now compulsory." : "Subject is now elective.");
+      showSuccess(
+        row.is_elective ? "Subject is now compulsory." : "Subject is now elective.",
+      );
     } catch (error) {
       showError(getErrorMessage(error, "Could not update curriculum subject."));
     } finally {
@@ -212,7 +225,9 @@ export default function CurriculumWorkspace() {
                 value={subjectId}
                 onChange={setSubjectId}
                 options={available.map((row) => ({ value: row.id, label: row.name }))}
-                placeholder={available.length ? "Select subject" : "All active subjects are attached"}
+                placeholder={
+                  available.length ? "Select subject" : "All active subjects are attached"
+                }
                 required
               />
               <label className="flex items-center gap-2 text-sm font-medium text-text">
@@ -231,7 +246,11 @@ export default function CurriculumWorkspace() {
         )}
         content={(
           <WorkspacePanel
-            title={curriculum?.level_name ? `${curriculum.level_name} curriculum` : "Curriculum"}
+            title={
+              curriculum?.level_name
+                ? `${curriculum.level_name} curriculum`
+                : "Curriculum"
+            }
             description="These subjects belong to the level. Term offerings below decide whether each subject is general or department-specific."
           >
             <div className="space-y-2">
@@ -257,7 +276,9 @@ export default function CurriculumWorkspace() {
                 </div>
               ))}
               {!curriculumSubjects.length ? (
-                <p className="text-sm text-text-muted">No subjects have been added yet.</p>
+                <p className="text-sm text-text-muted">
+                  No subjects have been added yet.
+                </p>
               ) : null}
             </div>
           </WorkspacePanel>
@@ -268,7 +289,7 @@ export default function CurriculumWorkspace() {
         editor={(
           <WorkspacePanel
             title="Configure term offering"
-            description="General subjects reach every class in the level. Department-specific subjects reach only classes assigned to that department for the selected term."
+            description="General subjects reach every class in the level. A department-specific subject can be offered to one or more departments in the same level."
           >
             <form className="space-y-3" onSubmit={addOffering}>
               <SelectControl
@@ -314,7 +335,7 @@ export default function CurriculumWorkspace() {
         content={(
           <WorkspacePanel
             title="Configured term offerings"
-            description="A subject has one scope per term. Remove an offering before changing its scope. Historical terms are protected by the backend."
+            description="A subject may be general for the term or restricted to one or more departments. Remove the general offering before switching to department-specific scopes. Historical terms are protected."
           >
             <div className="space-y-2">
               {offerings.map((row) => {
@@ -332,7 +353,9 @@ export default function CurriculumWorkspace() {
                         {term ? termName(term.name) : "Academic term"}
                       </p>
                       <p className="text-xs text-text-muted">
-                        {department ? `${department.name} department` : "General · all classes in level"}
+                        {department
+                          ? `${department.name} department`
+                          : "General · all classes in level"}
                       </p>
                     </div>
                     <Button
