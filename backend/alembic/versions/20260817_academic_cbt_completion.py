@@ -28,24 +28,16 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    # PostgreSQL UNIQUE normally treats NULL as distinct. General curriculum
-    # offerings use department_id=NULL, so NULLS NOT DISTINCT is required to
-    # prevent two canonical General offerings for the same subject and term.
-    op.execute(
-        "ALTER TABLE public.curriculum_offerings "
-        "DROP CONSTRAINT IF EXISTS uq_curriculum_offering_scope"
-    )
-    op.execute(
-        """
-        ALTER TABLE public.curriculum_offerings
-        ADD CONSTRAINT uq_curriculum_offering_scope
-        UNIQUE NULLS NOT DISTINCT (
-            tenant_id,
-            curriculum_subject_id,
-            academic_term_id,
-            department_id
-        )
-        """
+    # The existing four-column unique constraint protects concrete department
+    # offerings. PostgreSQL considers NULL values distinct, so add a partial
+    # unique index to make the General (department_id=NULL) scope canonical too.
+    op.create_index(
+        "uq_curriculum_offering_general_scope",
+        "curriculum_offerings",
+        ["tenant_id", "curriculum_subject_id", "academic_term_id"],
+        unique=True,
+        schema=SCHEMA,
+        postgresql_where=sa.text("department_id IS NULL"),
     )
 
     # Bootstrap v2 now includes active tenant administrators so the local CBT
