@@ -29,8 +29,7 @@ const stripTermCreateOnlyFields = (payload = {}) => {
 
 const buildTeacherAssignmentPayload = (payload = {}) => ({
   class_id: payload.class_id,
-  curriculum_subject_id:
-    payload.curriculum_subject_id || payload.level_subject_id,
+  curriculum_subject_id: payload.curriculum_subject_id,
   academic_term_id: payload.academic_term_id,
   teacher_membership_id: payload.teacher_membership_id || payload.teacher_id,
   ...(payload.effective_from ? { effective_from: payload.effective_from } : {}),
@@ -112,9 +111,7 @@ export const academicService = {
     }),
   deleteTerm: (termId) =>
     api.delete(`/tenant-admin/academics/terms/${termId}`, {
-      body: JSON.stringify({
-        confirmation: "DELETE_ACADEMIC_TERM",
-      }),
+      body: JSON.stringify({ confirmation: "DELETE_ACADEMIC_TERM" }),
       headers: { "Content-Type": "application/json" },
     }),
   listTeacherTerms: (params) =>
