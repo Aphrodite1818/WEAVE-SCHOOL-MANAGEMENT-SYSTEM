@@ -122,6 +122,10 @@ async def test_class_teacher_can_be_explicitly_unassigned() -> None:
             new=AsyncMock(return_value=classroom.arm_label_ref),
         ),
         patch(
+            "app.modules.classes.service.ClassRoomRepository.get_by_level_arm_label",
+            new=AsyncMock(return_value=classroom),
+        ),
+        patch(
             "app.modules.classes.service.ClassRoomRepository.save",
             new=AsyncMock(return_value=classroom),
         ),
