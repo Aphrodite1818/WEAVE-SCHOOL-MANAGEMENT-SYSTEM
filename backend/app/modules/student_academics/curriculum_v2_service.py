@@ -322,20 +322,31 @@ class AcademicCurriculumService:
                     "Department must be active and belong to the curriculum's academic level."
                 )
 
-        # One curriculum subject has one scope per term: either general or one department.
-        existing = (
-            await db.execute(
-                select(CurriculumOffering.id).where(
-                    CurriculumOffering.tenant_id == tenant_id,
-                    CurriculumOffering.curriculum_subject_id == curriculum_subject.id,
-                    CurriculumOffering.academic_term_id == term.id,
+        existing = list(
+            (
+                await db.execute(
+                    select(CurriculumOffering).where(
+                        CurriculumOffering.tenant_id == tenant_id,
+                        CurriculumOffering.curriculum_subject_id == curriculum_subject.id,
+                        CurriculumOffering.academic_term_id == term.id,
+                    )
                 )
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            raise ConflictException(
-                "This curriculum subject already has a term offering. Remove it before changing its scope."
-            )
+            ).scalars()
+        )
+        if payload.department_id is None:
+            if existing:
+                raise ConflictException(
+                    "Remove this subject's department-specific offerings before making it general for the term."
+                )
+        else:
+            if any(row.department_id is None for row in existing):
+                raise ConflictException(
+                    "This subject is already general for the term and therefore already reaches every department."
+                )
+            if any(row.department_id == payload.department_id for row in existing):
+                raise ConflictException(
+                    "This subject is already offered to that department for the term."
+                )
 
         row = CurriculumOffering(
             tenant_id=tenant_id,
