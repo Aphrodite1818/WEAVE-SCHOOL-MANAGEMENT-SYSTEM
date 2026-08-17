@@ -21,7 +21,12 @@ from app.modules.student_academics.curriculum_models import (
     CurriculumOffering,
     CurriculumSubject,
 )
-from app.modules.student_academics.models import AcademicTerm, AcademicTermStatus
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicSessionStatus,
+    AcademicTerm,
+    AcademicTermStatus,
+)
 from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
 from app.modules.subjects.models import Subject
 
@@ -112,12 +117,24 @@ def _eligible_enrollment_ids(
     department_id: uuid.UUID | None,
 ) -> list[uuid.UUID]:
     term = session.execute(
-        select(AcademicTerm).where(
+        select(AcademicTerm, AcademicSession)
+        .join(AcademicSession, AcademicSession.id == AcademicTerm.academic_session_id)
+        .where(
             AcademicTerm.tenant_id == tenant_id,
             AcademicTerm.id == academic_term_id,
+            AcademicSession.tenant_id == tenant_id,
         )
-    ).scalar_one_or_none()
+    ).first()
     if term is None:
+        return []
+    academic_term, academic_session = term
+    if (
+        not academic_session.is_current
+        or academic_session.status
+        not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
+        or not academic_term.is_current
+        or academic_term.status != AcademicTermStatus.OPEN
+    ):
         return []
 
     enrollment_rows = list(
@@ -128,7 +145,7 @@ def _eligible_enrollment_ids(
             .where(
                 StudentEnrollment.tenant_id == tenant_id,
                 StudentEnrollment.academic_level_id == academic_level_id,
-                StudentEnrollment.academic_session_id == term.academic_session_id,
+                StudentEnrollment.academic_session_id == academic_term.academic_session_id,
                 StudentEnrollment.is_current.is_(True),
                 Student.status == AcademicStatus.ACTIVE,
                 Student.is_archived.is_(False),
@@ -182,6 +199,7 @@ def project_subject_offering(
             AcademicLevel,
             Subject,
             AcademicTerm,
+            AcademicSession,
         )
         .join(
             CurriculumSubject,
@@ -191,6 +209,7 @@ def project_subject_offering(
         .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
         .join(Subject, Subject.id == CurriculumSubject.subject_id)
         .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
+        .join(AcademicSession, AcademicSession.id == AcademicTerm.academic_session_id)
         .where(
             CurriculumOffering.tenant_id == tenant_id,
             CurriculumOffering.id == entity_id,
@@ -199,15 +218,19 @@ def project_subject_offering(
             AcademicLevel.tenant_id == tenant_id,
             Subject.tenant_id == tenant_id,
             AcademicTerm.tenant_id == tenant_id,
+            AcademicSession.tenant_id == tenant_id,
         )
     ).first()
     if joined is None:
         return None
-    offering, curriculum_subject, curriculum, level, subject, term = joined
+    offering, curriculum_subject, curriculum, level, subject, term, academic_session = joined
     if (
         not _visible(curriculum_subject)
         or not _visible(level)
         or not _visible(subject)
+        or not academic_session.is_current
+        or academic_session.status
+        not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
         or not term.is_current
         or term.status != AcademicTermStatus.OPEN
     ):
