@@ -15,7 +15,7 @@ from app.core.dependencies.route_guards import (
     get_current_teacher,
     get_current_tenant_admin,
 )
-from app.core.exceptions import ForbiddenException, NotFoundException
+from app.core.exceptions import ForbiddenException
 from app.modules.parents.models import Parent
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.models import (
@@ -107,10 +107,7 @@ CurrentParent: TypeAlias = Annotated[
 ]
 
 
-async def _ensure_academic_setup(
-    db: DbSession,
-    tenant_id: UUID,
-) -> None:
+async def _ensure_academic_setup(db: DbSession, tenant_id: UUID) -> None:
     await SubscriptionFeatureService.ensure_feature_enabled(
         db,
         tenant_id,
@@ -137,10 +134,7 @@ async def create_academic_session(
     )
 
 
-@tenant_admin_router.get(
-    "/sessions",
-    response_model=AcademicSessionListResponse,
-)
+@tenant_admin_router.get("/sessions", response_model=AcademicSessionListResponse)
 async def list_academic_sessions(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
@@ -167,8 +161,7 @@ async def list_academic_sessions(
 
 
 @tenant_admin_router.patch(
-    "/sessions/{session_id}",
-    response_model=AcademicSessionResponse,
+    "/sessions/{session_id}", response_model=AcademicSessionResponse
 )
 async def update_academic_session(
     session_id: UUID,
@@ -201,8 +194,7 @@ async def academic_session_dependencies(
 
 
 @tenant_admin_router.post(
-    "/sessions/{session_id}/open",
-    response_model=AcademicSessionResponse,
+    "/sessions/{session_id}/open", response_model=AcademicSessionResponse
 )
 async def open_academic_session(
     session_id: UUID,
@@ -219,8 +211,7 @@ async def open_academic_session(
 
 
 @tenant_admin_router.delete(
-    "/sessions/{session_id}",
-    response_model=AcademicSessionResponse,
+    "/sessions/{session_id}", response_model=AcademicSessionResponse
 )
 async def delete_academic_session(
     session_id: UUID,
@@ -256,10 +247,7 @@ async def create_academic_term(
     )
 
 
-@tenant_admin_router.get(
-    "/terms",
-    response_model=AcademicTermListResponse,
-)
+@tenant_admin_router.get("/terms", response_model=AcademicTermListResponse)
 async def list_academic_terms(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
@@ -287,10 +275,7 @@ async def list_academic_terms(
     return AcademicTermListResponse(items=items, total=total)
 
 
-@tenant_admin_router.patch(
-    "/terms/{term_id}",
-    response_model=AcademicTermResponse,
-)
+@tenant_admin_router.patch("/terms/{term_id}", response_model=AcademicTermResponse)
 async def update_academic_term(
     term_id: UUID,
     payload: AcademicTermUpdate,
@@ -306,8 +291,7 @@ async def update_academic_term(
 
 
 @tenant_admin_router.get(
-    "/terms/{term_id}/dependencies",
-    response_model=AcademicTermDependencyPreview,
+    "/terms/{term_id}/dependencies", response_model=AcademicTermDependencyPreview
 )
 async def academic_term_dependencies(
     term_id: UUID,
@@ -321,16 +305,14 @@ async def academic_term_dependencies(
     )
 
 
-@tenant_admin_router.post(
-    "/terms/{term_id}/open",
-    response_model=AcademicTermResponse,
-)
+@tenant_admin_router.post("/terms/{term_id}/open", response_model=AcademicTermResponse)
 async def open_academic_term(
     term_id: UUID,
     payload: AcademicTermOpenRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> AcademicTermResponse:
+    _ = payload.confirmation
     return await StudentAcademicService.open_academic_term(
         db,
         current_admin.tenant_id,
@@ -339,16 +321,14 @@ async def open_academic_term(
     )
 
 
-@tenant_admin_router.post(
-    "/terms/{term_id}/close",
-    response_model=AcademicTermResponse,
-)
+@tenant_admin_router.post("/terms/{term_id}/close", response_model=AcademicTermResponse)
 async def close_academic_term(
     term_id: UUID,
     payload: AcademicTermCloseRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> AcademicTermResponse:
+    _ = payload.confirmation
     return await StudentAcademicService.close_academic_term(
         db,
         current_admin.tenant_id,
@@ -358,8 +338,7 @@ async def close_academic_term(
 
 
 @tenant_admin_router.post(
-    "/terms/{term_id}/start-closing",
-    response_model=AcademicTermResponse,
+    "/terms/{term_id}/start-closing", response_model=AcademicTermResponse
 )
 async def start_academic_term_closing(
     term_id: UUID,
@@ -377,8 +356,7 @@ async def start_academic_term_closing(
 
 
 @tenant_admin_router.post(
-    "/terms/{term_id}/finalize-close",
-    response_model=AcademicTermResponse,
+    "/terms/{term_id}/finalize-close", response_model=AcademicTermResponse
 )
 async def finalize_academic_term_close(
     term_id: UUID,
@@ -396,8 +374,7 @@ async def finalize_academic_term_close(
 
 
 @tenant_admin_router.post(
-    "/terms/{term_id}/cancel-closure",
-    response_model=AcademicTermResponse,
+    "/terms/{term_id}/cancel-closure", response_model=AcademicTermResponse
 )
 async def cancel_academic_term_closure(
     term_id: UUID,
@@ -415,10 +392,7 @@ async def cancel_academic_term_closure(
     )
 
 
-@tenant_admin_router.delete(
-    "/terms/{term_id}",
-    response_model=AcademicTermResponse,
-)
+@tenant_admin_router.delete("/terms/{term_id}", response_model=AcademicTermResponse)
 async def delete_academic_term(
     term_id: UUID,
     payload: AcademicTermDeleteRequest,
@@ -453,8 +427,7 @@ async def create_grading_scale(
 
 
 @tenant_admin_router.get(
-    "/grading-scales",
-    response_model=GradingScaleListResponse,
+    "/grading-scales", response_model=GradingScaleListResponse
 )
 async def list_grading_scales(
     db: DbSession,
@@ -474,8 +447,7 @@ async def list_grading_scales(
 
 
 @tenant_admin_router.patch(
-    "/grading-scales/{scale_id}",
-    response_model=GradingScaleResponse,
+    "/grading-scales/{scale_id}", response_model=GradingScaleResponse
 )
 async def update_grading_scale(
     scale_id: UUID,
@@ -492,8 +464,7 @@ async def update_grading_scale(
 
 
 @tenant_admin_router.post(
-    "/grading-scales/{scale_id}/activate",
-    response_model=GradingScaleResponse,
+    "/grading-scales/{scale_id}/activate", response_model=GradingScaleResponse
 )
 async def activate_grading_scale(
     scale_id: UUID,
@@ -508,8 +479,7 @@ async def activate_grading_scale(
 
 
 @tenant_admin_router.post(
-    "/grading-scales/{scale_id}/deactivate",
-    response_model=GradingScaleResponse,
+    "/grading-scales/{scale_id}/deactivate", response_model=GradingScaleResponse
 )
 async def deactivate_grading_scale(
     scale_id: UUID,
@@ -524,8 +494,7 @@ async def deactivate_grading_scale(
 
 
 @tenant_admin_router.get(
-    "/grading-scales/readiness-preview",
-    response_model=GradingScaleReadiness,
+    "/grading-scales/readiness-preview", response_model=GradingScaleReadiness
 )
 async def preview_grading_scale_readiness(
     db: DbSession,
@@ -557,15 +526,14 @@ async def create_teacher_assignment(
 
 
 @tenant_admin_router.get(
-    "/teacher-assignments",
-    response_model=TeacherAssignmentListResponse,
+    "/teacher-assignments", response_model=TeacherAssignmentListResponse
 )
 async def list_teacher_assignments(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
     teacher_membership_id: UUID | None = Query(default=None),
     class_id: UUID | None = Query(default=None),
-    level_subject_id: UUID | None = Query(default=None),
+    curriculum_subject_id: UUID | None = Query(default=None),
     subject_id: UUID | None = Query(default=None),
     status: str | None = Query(default=None, pattern="^(active|ended)$"),
     effective_from_from: date | None = Query(default=None),
@@ -581,7 +549,7 @@ async def list_teacher_assignments(
         current_admin.tenant_id,
         teacher_id=teacher_membership_id,
         class_id=class_id,
-        level_subject_id=level_subject_id,
+        curriculum_subject_id=curriculum_subject_id,
         subject_id=subject_id,
         status=resolved_status,
         effective_from_from=effective_from_from,
@@ -666,10 +634,7 @@ async def delete_teacher_assignment(
     )
 
 
-@tenant_admin_router.post(
-    "/results",
-    response_model=StudentSubjectResultResponse,
-)
+@tenant_admin_router.post("/results", response_model=StudentSubjectResultResponse)
 async def upsert_student_result(
     payload: StudentSubjectResultUpsert,
     db: DbSession,
@@ -682,10 +647,7 @@ async def upsert_student_result(
     )
 
 
-@tenant_admin_router.get(
-    "/results",
-    response_model=StudentSubjectResultListResponse,
-)
+@tenant_admin_router.get("/results", response_model=StudentSubjectResultListResponse)
 async def list_admin_results(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
@@ -724,8 +686,7 @@ async def list_admin_results(
 
 
 @tenant_admin_router.patch(
-    "/results/{result_id}/status",
-    response_model=StudentSubjectResultResponse,
+    "/results/{result_id}/status", response_model=StudentSubjectResultResponse
 )
 async def update_student_result_status(
     result_id: UUID,
@@ -742,8 +703,7 @@ async def update_student_result_status(
 
 
 @tenant_admin_router.post(
-    "/results/{result_id}/reopen",
-    response_model=StudentSubjectResultResponse,
+    "/results/{result_id}/reopen", response_model=StudentSubjectResultResponse
 )
 async def reopen_student_result(
     result_id: UUID,
@@ -759,10 +719,7 @@ async def reopen_student_result(
     )
 
 
-@teacher_router.get(
-    "/assignments",
-    response_model=TeacherAssignmentListResponse,
-)
+@teacher_router.get("/assignments", response_model=TeacherAssignmentListResponse)
 async def list_my_assignments(
     db: DbSession,
     current_teacher: CurrentTeacher,
@@ -777,8 +734,7 @@ async def list_my_assignments(
 
 
 @teacher_router.get(
-    "/assignments/{assignment_id}/students",
-    response_model=StudentListResponse,
+    "/assignments/{assignment_id}/students", response_model=StudentListResponse
 )
 async def list_my_assignment_students(
     assignment_id: UUID,
@@ -797,14 +753,9 @@ async def list_my_assignment_students(
         or assignment.teacher_membership_id != current_teacher.id
         or not assignment.is_active
     ):
-        raise ForbiddenException("You may view students only for your active assignments.")
-    level_subject = await StudentAcademicRepository.get_level_subject_by_id(
-        db,
-        current_teacher.tenant_id,
-        assignment.level_subject_id,
-    )
-    if level_subject is None:
-        raise NotFoundException("Level subject not found.")
+        raise ForbiddenException(
+            "You may view students only for your active assignments."
+        )
     students, total = await StudentService.list_students(
         db,
         current_teacher,
@@ -815,10 +766,7 @@ async def list_my_assignment_students(
     return StudentListResponse(items=students, total=total)
 
 
-@teacher_router.get(
-    "/sessions",
-    response_model=AcademicSessionListResponse,
-)
+@teacher_router.get("/sessions", response_model=AcademicSessionListResponse)
 async def list_teacher_sessions(
     db: DbSession,
     current_teacher: CurrentTeacher,
@@ -834,10 +782,7 @@ async def list_teacher_sessions(
     return AcademicSessionListResponse(items=items, total=total)
 
 
-@teacher_router.get(
-    "/terms",
-    response_model=AcademicTermListResponse,
-)
+@teacher_router.get("/terms", response_model=AcademicTermListResponse)
 async def list_teacher_terms(
     db: DbSession,
     current_teacher: CurrentTeacher,
@@ -855,10 +800,7 @@ async def list_teacher_terms(
     return AcademicTermListResponse(items=items, total=total)
 
 
-@teacher_router.get(
-    "/results",
-    response_model=StudentSubjectResultListResponse,
-)
+@teacher_router.get("/results", response_model=StudentSubjectResultListResponse)
 async def list_teacher_results(
     db: DbSession,
     current_teacher: CurrentTeacher,
@@ -876,10 +818,7 @@ async def list_teacher_results(
     return StudentSubjectResultListResponse(items=items, total=total)
 
 
-@student_router.get(
-    "/results",
-    response_model=StudentSubjectResultListResponse,
-)
+@student_router.get("/results", response_model=StudentSubjectResultListResponse)
 async def list_my_results(
     db: DbSession,
     current_student: CurrentStudent,
@@ -891,10 +830,7 @@ async def list_my_results(
     return StudentSubjectResultListResponse(items=items, total=total)
 
 
-@student_router.get(
-    "/subjects",
-    response_model=StudentSubjectCardListResponse,
-)
+@student_router.get("/subjects", response_model=StudentSubjectCardListResponse)
 async def list_my_subject_cards(
     db: DbSession,
     current_student: CurrentStudent,
@@ -906,8 +842,7 @@ async def list_my_subject_cards(
 
 
 @parent_router.get(
-    "/students/{student_id}/results",
-    response_model=StudentSubjectResultListResponse,
+    "/students/{student_id}/results", response_model=StudentSubjectResultListResponse
 )
 async def list_child_results(
     student_id: UUID,
@@ -923,8 +858,7 @@ async def list_child_results(
 
 
 @parent_router.get(
-    "/students/{student_id}/subjects",
-    response_model=StudentSubjectCardListResponse,
+    "/students/{student_id}/subjects", response_model=StudentSubjectCardListResponse
 )
 async def list_child_subject_cards(
     student_id: UUID,
