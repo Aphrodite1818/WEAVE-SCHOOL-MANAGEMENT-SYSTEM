@@ -1,6 +1,7 @@
 import AcademicLevelsWorkspace from "../academic-admin/AcademicLevelsWorkspace";
 import AcademicSetupWorkspace from "../academic-admin/AcademicSetupWorkspace";
-import ClassStructureWorkspace from "../academic-admin/ClassStructureWorkspace";
+import ArmLabelsWorkspace from "../academic-admin/ArmLabelsWorkspace";
+import ClassesWorkspace from "../academic-admin/ClassesWorkspace";
 import CurriculumWorkspace from "../academic-admin/CurriculumWorkspace";
 import DepartmentsWorkspace from "../academic-admin/DepartmentsWorkspace";
 import ProgressionWorkspace from "../academic-admin/ProgressionWorkspace";
@@ -12,8 +13,8 @@ import TenantBrandingPage from "../../pages/admin/TenantBrandingPage";
 export const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
   school_logo: { kind: "branding" },
   levels: { kind: "levels", activeTab: "create" },
-  arms: { kind: "structure", domain: "arm-labels", activeTab: "create" },
-  classes: { kind: "structure", domain: "classes", activeTab: "create" },
+  arms: { kind: "arm-labels", activeTab: "create" },
+  classes: { kind: "classes", activeTab: "create" },
   departments: { kind: "departments" },
   subjects: { kind: "academic", domain: "subjects", activeTab: "create" },
   curriculum: { kind: "curriculum" },
@@ -30,9 +31,8 @@ function AdminGuideTaskWorkspace({ stepId }) {
 
   if (config.kind === "branding") return <TenantBrandingPage embedded />;
   if (config.kind === "levels") return <AcademicLevelsWorkspace activeTab={config.activeTab} />;
-  if (config.kind === "structure") {
-    return <ClassStructureWorkspace domain={config.domain} activeTab={config.activeTab} />;
-  }
+  if (config.kind === "arm-labels") return <ArmLabelsWorkspace activeTab={config.activeTab} />;
+  if (config.kind === "classes") return <ClassesWorkspace activeTab={config.activeTab} />;
   if (config.kind === "departments") return <DepartmentsWorkspace />;
   if (config.kind === "academic") {
     return <AcademicSetupWorkspace domain={config.domain} activeTab={config.activeTab} />;
