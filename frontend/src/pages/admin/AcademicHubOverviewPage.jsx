@@ -117,14 +117,14 @@ function AcademicHubOverviewPage() {
       ? {
           key: "classes",
           label: "No classes have been created",
-          description: "Create classes before attaching subjects or assigning teachers.",
+          description: "Create level + arm class groups for student and teacher placement. Curriculum subjects attach to levels separately.",
         }
       : null,
     metricNumber(stats.total_subjects, 0) === 0
       ? {
           key: "subjects",
           label: "No subjects have been created",
-          description: "Create the subject catalog before setting class offerings.",
+          description: "Create the school-wide subject pool before attaching subjects to level curricula.",
         }
       : null,
     submittedResults > 0
@@ -157,7 +157,7 @@ function AcademicHubOverviewPage() {
                     Academic Hub
                   </h2>
                   <p className="mt-1 max-w-3xl text-xs leading-5 text-text-muted sm:text-sm sm:leading-6">
-                    A guided workspace for sessions, terms, classes, subjects, teachers, results, calendars, and report cards.
+                    A guided workspace for sessions, terms, levels, classes, curricula, teachers, results, calendars, and report cards.
                   </p>
                 </div>
               </div>
@@ -216,14 +216,14 @@ function AcademicHubOverviewPage() {
             label="Active Classes"
             value={metricNumber(stats.total_classes)}
             status={metricNumber(stats.total_classes, 0) > 0 ? "ready" : "needs attention"}
-            description="Classes available for students, subjects, and teachers."
+            description="Concrete level + arm groups used for student and teacher placement."
           />
           <AcademicOverviewCard
             icon={BookOpen}
             label="Active Subjects"
             value={metricNumber(stats.total_subjects)}
             status={metricNumber(stats.total_subjects, 0) > 0 ? "ready" : "needs attention"}
-            description="Subjects available for class setup and score entry."
+            description="The school-wide subject pool used by level curricula."
           />
           <AcademicOverviewCard
             icon={Users}
