@@ -57,17 +57,19 @@ def upgrade() -> None:
             """
             UPDATE public.teacher_assignments ta
             SET curriculum_subject_id = cs.id
-            FROM public.level_subjects ls
-            JOIN public.classes c ON c.id = ta.class_id
-            JOIN public.curricula cu
-              ON cu.tenant_id = ta.tenant_id
-             AND cu.academic_level_id = c.academic_level_id
-            JOIN public.curriculum_subjects cs
-              ON cs.tenant_id = ta.tenant_id
-             AND cs.curriculum_id = cu.id
-             AND cs.subject_id = ls.subject_id
+            FROM public.level_subjects ls,
+                 public.classes c,
+                 public.curricula cu,
+                 public.curriculum_subjects cs
             WHERE ls.id = ta.level_subject_id
               AND ls.tenant_id = ta.tenant_id
+              AND c.id = ta.class_id
+              AND c.tenant_id = ta.tenant_id
+              AND cu.tenant_id = ta.tenant_id
+              AND cu.academic_level_id = c.academic_level_id
+              AND cs.tenant_id = ta.tenant_id
+              AND cs.curriculum_id = cu.id
+              AND cs.subject_id = ls.subject_id
             """
         )
     )
@@ -76,17 +78,19 @@ def upgrade() -> None:
             """
             UPDATE public.teacher_assignment_lifecycle_audits audit
             SET curriculum_subject_id = cs.id
-            FROM public.level_subjects ls
-            JOIN public.classes c ON c.id = audit.class_id
-            JOIN public.curricula cu
-              ON cu.tenant_id = audit.tenant_id
-             AND cu.academic_level_id = c.academic_level_id
-            JOIN public.curriculum_subjects cs
-              ON cs.tenant_id = audit.tenant_id
-             AND cs.curriculum_id = cu.id
-             AND cs.subject_id = ls.subject_id
+            FROM public.level_subjects ls,
+                 public.classes c,
+                 public.curricula cu,
+                 public.curriculum_subjects cs
             WHERE ls.id = audit.level_subject_id
               AND ls.tenant_id = audit.tenant_id
+              AND c.id = audit.class_id
+              AND c.tenant_id = audit.tenant_id
+              AND cu.tenant_id = audit.tenant_id
+              AND cu.academic_level_id = c.academic_level_id
+              AND cs.tenant_id = audit.tenant_id
+              AND cs.curriculum_id = cu.id
+              AND cs.subject_id = ls.subject_id
             """
         )
     )
@@ -95,17 +99,19 @@ def upgrade() -> None:
             """
             UPDATE public.student_subject_results result
             SET curriculum_subject_id = cs.id
-            FROM public.level_subjects ls
-            JOIN public.classes c ON c.id = result.class_id
-            JOIN public.curricula cu
-              ON cu.tenant_id = result.tenant_id
-             AND cu.academic_level_id = c.academic_level_id
-            JOIN public.curriculum_subjects cs
-              ON cs.tenant_id = result.tenant_id
-             AND cs.curriculum_id = cu.id
-             AND cs.subject_id = ls.subject_id
+            FROM public.level_subjects ls,
+                 public.classes c,
+                 public.curricula cu,
+                 public.curriculum_subjects cs
             WHERE ls.id = result.level_subject_id
               AND ls.tenant_id = result.tenant_id
+              AND c.id = result.class_id
+              AND c.tenant_id = result.tenant_id
+              AND cu.tenant_id = result.tenant_id
+              AND cu.academic_level_id = c.academic_level_id
+              AND cs.tenant_id = result.tenant_id
+              AND cs.curriculum_id = cu.id
+              AND cs.subject_id = ls.subject_id
             """
         )
     )
