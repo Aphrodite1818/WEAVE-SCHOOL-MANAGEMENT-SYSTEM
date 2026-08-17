@@ -1,4 +1,4 @@
-"""Stable CBT projections for subjects, curricula, and term offerings."""
+"""Stable CBT projections for subjects, curricula, and current-term offerings."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from app.modules.student_academics.curriculum_models import (
     CurriculumOffering,
     CurriculumSubject,
 )
+from app.modules.student_academics.models import AcademicTerm, AcademicTermStatus
 from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
 from app.modules.subjects.models import Subject
 
@@ -93,6 +94,15 @@ def _eligible_enrollment_ids(
     academic_term_id: uuid.UUID,
     department_id: uuid.UUID | None,
 ) -> list[uuid.UUID]:
+    term = session.execute(
+        select(AcademicTerm).where(
+            AcademicTerm.tenant_id == tenant_id,
+            AcademicTerm.id == academic_term_id,
+        )
+    ).scalar_one_or_none()
+    if term is None:
+        return []
+
     enrollment_rows = list(
         session.execute(
             select(StudentEnrollment.id, StudentEnrollment.class_id)
@@ -100,6 +110,7 @@ def _eligible_enrollment_ids(
             .where(
                 StudentEnrollment.tenant_id == tenant_id,
                 StudentEnrollment.academic_level_id == academic_level_id,
+                StudentEnrollment.academic_session_id == term.academic_session_id,
                 StudentEnrollment.is_current.is_(True),
                 Student.status == AcademicStatus.ACTIVE,
                 Student.is_archived.is_(False),
@@ -133,21 +144,29 @@ def project_subject_offering(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
     joined = session.execute(
-        select(CurriculumOffering, CurriculumSubject, Curriculum)
+        select(CurriculumOffering, CurriculumSubject, Curriculum, AcademicTerm)
         .join(
             CurriculumSubject,
             CurriculumSubject.id == CurriculumOffering.curriculum_subject_id,
         )
         .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+        .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
         .where(
             CurriculumOffering.tenant_id == tenant_id,
             CurriculumOffering.id == entity_id,
+            CurriculumSubject.tenant_id == tenant_id,
+            Curriculum.tenant_id == tenant_id,
+            AcademicTerm.tenant_id == tenant_id,
         )
     ).first()
     if joined is None:
         return None
-    offering, curriculum_subject, curriculum = joined
-    if not _visible(curriculum_subject):
+    offering, curriculum_subject, curriculum, term = joined
+    if (
+        not _visible(curriculum_subject)
+        or not term.is_current
+        or term.status != AcademicTermStatus.OPEN
+    ):
         return None
     eligible = _eligible_enrollment_ids(
         session,
@@ -197,8 +216,6 @@ def offering_ids_for_level_session(
     academic_level_id: uuid.UUID,
     academic_session_id: uuid.UUID,
 ) -> list[uuid.UUID]:
-    from app.modules.student_academics.models import AcademicTerm
-
     return list(
         session.execute(
             select(CurriculumOffering.id)
