@@ -5,7 +5,6 @@ import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
@@ -25,12 +24,7 @@ const asItems = (response) =>
       ? response.items
       : [];
 
-const emptySessionForm = {
-  name: "",
-  start_date: "",
-  end_date: "",
-  next_academic_session_id: "",
-};
+const emptySessionForm = { next_academic_session_id: "" };
 
 const dateLabel = (value) =>
   value ? new Date(value).toLocaleDateString() : "Not configured";
@@ -136,15 +130,8 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   }, [loadClosingWorkflow]);
 
   useEffect(() => {
-    if (!selectedSession) {
-      setSessionForm(emptySessionForm);
-      return;
-    }
     setSessionForm({
-      name: selectedSession.name || "",
-      start_date: selectedSession.start_date || "",
-      end_date: selectedSession.end_date || "",
-      next_academic_session_id: selectedSession.next_academic_session_id || "",
+      next_academic_session_id: selectedSession?.next_academic_session_id || "",
     });
   }, [selectedSession]);
 
@@ -179,9 +166,6 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   const openConfiguration = (session) => {
     setSelectedSessionId(session.id);
     setSessionForm({
-      name: session.name || "",
-      start_date: session.start_date || "",
-      end_date: session.end_date || "",
       next_academic_session_id: session.next_academic_session_id || "",
     });
     setConfigureOpen(true);
@@ -194,17 +178,14 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
     setBusy("configure");
     try {
       await academicService.updateSession(selectedSession.id, {
-        name: sessionForm.name,
-        start_date: sessionForm.start_date || null,
-        end_date: sessionForm.end_date || null,
         next_academic_session_id: sessionForm.next_academic_session_id || null,
       });
-      showSuccess("Open academic session configuration updated.");
+      showSuccess("Next academic session updated.");
       setConfigureOpen(false);
       await loadSessions();
       if (isClosingPage) await loadClosingWorkflow();
     } catch (error) {
-      showError(getErrorMessage(error, "Could not update the open academic session."));
+      showError(getErrorMessage(error, "Could not update progression configuration."));
     } finally {
       setBusy("");
     }
@@ -229,7 +210,9 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
         showWarning("The closure audit found items that must be resolved first.");
         return;
       }
-      showSuccess("Session moved to closing. Student progression is running in the background.");
+      showSuccess(
+        "Session moved to closing. Student progression is running in the background.",
+      );
       await loadSessions();
       await loadClosingWorkflow();
     } catch (error) {
@@ -290,51 +273,20 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
   const configureModal = (
     <Modal
       open={configureOpen}
-      title="Configure open session"
-      description="Update the session name, dates, or next academic session. Lifecycle state is managed separately."
+      title="Configure progression"
+      description="The current session name and dates are locked after opening. Select the draft session students should progress into when this session closes."
       onClose={busy ? undefined : () => setConfigureOpen(false)}
       closeOnOverlay={!busy}
       footer={null}
     >
       <form className="grid gap-4" onSubmit={updateOpenSession}>
-        <Input
-          label="Session name"
-          value={sessionForm.name}
-          onChange={(event) =>
-            setSessionForm((current) => ({ ...current, name: event.target.value }))
-          }
-          minLength={9}
-          maxLength={9}
-          required
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Start date"
-            type="date"
-            value={sessionForm.start_date}
-            onChange={(event) =>
-              setSessionForm((current) => ({ ...current, start_date: event.target.value }))
-            }
-          />
-          <Input
-            label="End date"
-            type="date"
-            value={sessionForm.end_date}
-            onChange={(event) =>
-              setSessionForm((current) => ({ ...current, end_date: event.target.value }))
-            }
-          />
-        </div>
         <label className="grid gap-1.5 text-sm font-medium text-text">
           <span>Next academic session</span>
           <select
             className="min-h-11 rounded-xl border border-border bg-surface px-3 text-sm text-text"
             value={sessionForm.next_academic_session_id}
             onChange={(event) =>
-              setSessionForm((current) => ({
-                ...current,
-                next_academic_session_id: event.target.value,
-              }))
+              setSessionForm({ next_academic_session_id: event.target.value })
             }
           >
             <option value="">Not configured</option>
@@ -355,7 +307,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
             Cancel
           </Button>
           <Button type="submit" disabled={Boolean(busy)}>
-            {busy === "configure" ? "Saving..." : "Save changes"}
+            {busy === "configure" ? "Saving..." : "Save progression"}
           </Button>
         </div>
       </form>
@@ -406,7 +358,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                 variant="outline"
                 onClick={() => openConfiguration(currentSession)}
               >
-                Configure
+                Configure progression
               </Button>
             ) : null}
           </div>
@@ -456,7 +408,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
                 size="small"
                 onClick={() => openConfiguration(selectedSession)}
               >
-                Configure
+                Configure progression
               </Button>
             ) : null}
           </div>
@@ -519,7 +471,7 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
           <div className="mt-4 rounded-2xl border border-warning/40 bg-warning-soft p-4 text-sm text-amber-950">
             <p className="font-semibold">Terminal graduation confirmation required</p>
             <p className="mt-1">
-              {terminalStudents} student{terminalStudents === 1 ? "" : "s"} are in the final configured level of the institution path. Starting closure will graduate them, end their active enrollment, and deactivate student access. This action is never inferred from a missing intermediate category.
+              {terminalStudents} student{terminalStudents === 1 ? "" : "s"} are in the final configured level of the institution path. Starting closure will graduate them, end their active enrollment, and deactivate student access. Missing intermediate categories never count as graduation.
             </p>
           </div>
         ) : null}
@@ -638,7 +590,11 @@ function SessionLifecycleWorkspace({ activeTab, onContextChange }) {
         description={confirmation?.description}
         confirmationText={confirmation?.confirmationText || ""}
         confirmLabel={confirmation?.confirmLabel}
-        variant={confirmation?.type === "start" || confirmation?.type === "finalize" ? "danger" : "primary"}
+        variant={
+          confirmation?.type === "start" || confirmation?.type === "finalize"
+            ? "danger"
+            : "primary"
+        }
         isLoading={Boolean(busy)}
         onCancel={() => setConfirmation(null)}
         onConfirm={() => {
