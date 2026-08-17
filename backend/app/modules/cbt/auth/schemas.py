@@ -3,28 +3,28 @@
 # ==========================#
 
 
-"""This file is responsible for schema definition for server authentication request and response"""
+"""Schema definitions for CBT machine and staff authentication."""
 
 from typing import Literal
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from resend import Emails
 
 from app.modules.cbt.enums import CBTServerStatus
 
 
 class AuthenticatedCBTServer(BaseModel):
-    """
-    Trusted machine context produced after a CBT server credential
-    has been successfully authenticated
+    """Trusted machine context produced after machine credential authentication.
 
-    Routes should use this context instead of accepting tenant_id or
-    server_id from the local CBT runtime
+    ``credential_id`` deliberately travels with the socket/session context so long-lived
+    transports can prove that the *same* credential which opened the connection is still
+    authorized after server revocation or credential rotation.
     """
 
     model_config = ConfigDict(frozen=True)
 
     server_id: UUID
+    credential_id: UUID
     tenant_id: UUID
     server_name: str
     status: CBTServerStatus
@@ -42,11 +42,8 @@ class CBTStaffAuthResponse(BaseModel):
 
     actor_id: UUID
     membership_id: UUID | None = None
-
     tenant_id: UUID
-
     role: Literal["admin", "teacher"]
-
     email: EmailStr
     first_name: str | None = None
     last_name: str | None = None
