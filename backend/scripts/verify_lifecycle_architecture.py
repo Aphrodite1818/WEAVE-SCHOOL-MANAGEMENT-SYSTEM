@@ -79,14 +79,10 @@ REQUIRED_INDEXES = {
 
 def main() -> None:
     unregistered_models = [
-        model.__name__
-        for model in REQUIRED_MODELS
-        if model.__table__.metadata is not Base.metadata
+        model.__name__ for model in REQUIRED_MODELS if model.__table__.metadata is not Base.metadata
     ]
     if unregistered_models:
-        raise SystemExit(
-            f"Lifecycle models are not centrally registered: {unregistered_models}"
-        )
+        raise SystemExit(f"Lifecycle models are not centrally registered: {unregistered_models}")
 
     route_paths = {route.path for route in app.routes}
     missing_routes = REQUIRED_ROUTES - route_paths
@@ -96,8 +92,7 @@ def main() -> None:
     surviving_legacy_routes = FORBIDDEN_LEGACY_ROUTES & route_paths
     if surviving_legacy_routes:
         raise SystemExit(
-            "Obsolete lifecycle routes are still registered: "
-            f"{sorted(surviving_legacy_routes)}"
+            f"Obsolete lifecycle routes are still registered: {sorted(surviving_legacy_routes)}"
         )
 
     missing_indexes: list[str] = []
@@ -106,9 +101,7 @@ def main() -> None:
         for name in sorted(required_names - actual_names):
             missing_indexes.append(f"{model.__tablename__}.{name}")
     if missing_indexes:
-        raise SystemExit(
-            "Lifecycle database guards are missing: " f"{missing_indexes}"
-        )
+        raise SystemExit(f"Lifecycle database guards are missing: {missing_indexes}")
 
     print(
         "Lifecycle architecture verified:",
