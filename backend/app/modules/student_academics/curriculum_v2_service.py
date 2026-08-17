@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
+from app.modules.classes.category_catalog import category_supports_departments
 from app.modules.classes.repository import (
     AcademicLevelRepository,
     ClassRoomRepository,
@@ -34,6 +35,7 @@ from app.modules.student_academics.models import (
     StudentSubjectResult,
 )
 from app.modules.subjects.models import Subject
+from app.tenant_management.repository import TenantRepository
 
 
 class AcademicCurriculumService:
@@ -84,6 +86,31 @@ class AcademicCurriculumService:
         if term is None:
             raise NotFoundException("Academic term not found.")
         return term
+
+    @staticmethod
+    async def _ensure_department_capability(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        academic_level_id: uuid.UUID,
+    ) -> None:
+        level = await AcademicLevelRepository.get_by_id(
+            db, tenant_id, academic_level_id
+        )
+        tenant = await TenantRepository.get_by_id(db, tenant_id)
+        if level is None:
+            raise NotFoundException("Academic level not found.")
+        if tenant is None or tenant.institution_type is None:
+            raise ConflictException(
+                "Institution type is required before department specialization can be configured."
+            )
+        if not category_supports_departments(
+            tenant.institution_type,
+            level.category,
+        ):
+            raise ConflictException(
+                "Departments are not supported by this academic level category."
+            )
 
     @staticmethod
     async def _ensure_term_configuration_mutable(
@@ -323,6 +350,11 @@ class AcademicCurriculumService:
         )
 
         if payload.department_id is not None:
+            await AcademicCurriculumService._ensure_department_capability(
+                db,
+                tenant_id=tenant_id,
+                academic_level_id=curriculum.academic_level_id,
+            )
             department = await DepartmentRepository.get_by_id(
                 db, tenant_id, payload.department_id
             )
@@ -467,6 +499,11 @@ class AcademicCurriculumService:
             raise ConflictException(
                 "Department and class must belong to the same academic level."
             )
+        await AcademicCurriculumService._ensure_department_capability(
+            db,
+            tenant_id=tenant_id,
+            academic_level_id=classroom.academic_level_id,
+        )
         await AcademicCurriculumService._ensure_term_configuration_mutable(
             db,
             tenant_id=tenant_id,
