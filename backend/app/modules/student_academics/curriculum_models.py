@@ -7,7 +7,7 @@ avoid class-level curriculum duplication and student-level department state.
 from __future__ import annotations
 
 import uuid
-from sqlalchemy import Boolean, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -50,16 +50,22 @@ class CurriculumOffering(BaseModel):
     academic_term_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False)
     department_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), nullable=True)
     __table_args__ = (
-        # PostgreSQL normally treats NULL values as distinct in UNIQUE constraints.
-        # General offerings use department_id=NULL, so NULLS NOT DISTINCT is
-        # required to make the database enforce one canonical offering per scope.
+        # This constraint enforces one row per concrete department. PostgreSQL
+        # treats NULL as distinct, so General offerings need the partial index below.
         UniqueConstraint(
             "tenant_id",
             "curriculum_subject_id",
             "academic_term_id",
             "department_id",
             name="uq_curriculum_offering_scope",
-            postgresql_nulls_not_distinct=True,
+        ),
+        Index(
+            "uq_curriculum_offering_general_scope",
+            "tenant_id",
+            "curriculum_subject_id",
+            "academic_term_id",
+            unique=True,
+            postgresql_where=text("department_id IS NULL"),
         ),
         Index("ix_curriculum_offerings_tenant_term", "tenant_id", "academic_term_id"),
     )
