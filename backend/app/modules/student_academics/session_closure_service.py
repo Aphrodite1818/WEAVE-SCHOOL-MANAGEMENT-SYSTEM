@@ -24,7 +24,6 @@ from app.modules.student_academics.lifecycle_repository import (
     StudentProgressionRepository,
 )
 from app.modules.student_academics.models import (
-    AcademicLifecycleAudit,
     AcademicSession,
     AcademicSessionStatus,
     AcademicTerm,
@@ -245,7 +244,6 @@ class SessionClosureService:
         counts["invalid_class_progression_targets"] = invalid_progression_targets
         counts["terminal_students"] = terminal_students
 
-        # De-duplicate while preserving the exact audit order.
         blockers = list(dict.fromkeys(blockers))
         ready_status = session.status in {
             AcademicSessionStatus.OPEN,
@@ -365,6 +363,7 @@ class SessionClosureService:
                     academic_session_id=session.id,
                     next_academic_session_id=session.next_academic_session_id,
                     idempotency_key=idempotency_key,
+                    terminal_completion_approved=bool(allow_terminal_completion),
                     status=StudentProgressionRunStatus.PENDING,
                     total_students=len(enrollments),
                     initiated_by_admin_id=actor.id,
@@ -373,6 +372,9 @@ class SessionClosureService:
         else:
             run = existing
             run.status = StudentProgressionRunStatus.PENDING
+            run.terminal_completion_approved = (
+                run.terminal_completion_approved or bool(allow_terminal_completion)
+            )
             if run.total_students == 0:
                 run.total_students = len(enrollments)
             run.started_at = None
@@ -397,7 +399,7 @@ class SessionClosureService:
             metadata={
                 "progression_run_id": str(run.id),
                 "closure_audit": audit.model_dump(mode="json"),
-                "terminal_completion_confirmed": bool(allow_terminal_completion),
+                "terminal_completion_confirmed": run.terminal_completion_approved,
             },
         )
         await db.commit()
@@ -410,7 +412,6 @@ class SessionClosureService:
             run_id=str(run.id), tenant_id=str(actor.tenant_id)
         )
         if not queued:
-            # A duplicate ARQ job id means the same run is already safely queued.
             queued = True
 
         return SessionClosureStartResponse(
@@ -422,34 +423,6 @@ class SessionClosureService:
             ),
             queued=queued,
         )
-
-    @staticmethod
-    async def _terminal_completion_confirmed(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        session_id: uuid.UUID,
-        run_id: uuid.UUID,
-    ) -> bool:
-        audit = (
-            await db.execute(
-                select(AcademicLifecycleAudit)
-                .where(
-                    AcademicLifecycleAudit.tenant_id == tenant_id,
-                    AcademicLifecycleAudit.entity_type == "session",
-                    AcademicLifecycleAudit.entity_id == session_id,
-                    AcademicLifecycleAudit.action == "closing_started",
-                )
-                .order_by(AcademicLifecycleAudit.created_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if audit is None or not audit.metadata_json:
-            return False
-        metadata = audit.metadata_json
-        if metadata.get("progression_run_id") != str(run_id):
-            return False
-        return bool(metadata.get("terminal_completion_confirmed", False))
 
     @staticmethod
     async def process_progression_run(
@@ -484,12 +457,9 @@ class SessionClosureService:
         if actor is None:
             raise ConflictException("The administrator who started closure is unavailable.")
 
-        terminal_completion_confirmed = await SessionClosureService._terminal_completion_confirmed(
-            db,
-            tenant_id=tenant_id,
-            session_id=session.id,
-            run_id=run.id,
-        )
+        # The worker trusts only the durable decision attached to this run. Audit
+        # metadata mirrors the decision for traceability but is not the authority.
+        terminal_completion_confirmed = bool(run.terminal_completion_approved)
 
         run.status = StudentProgressionRunStatus.PROCESSING
         run.started_at = run.started_at or _utc_now()
@@ -523,7 +493,7 @@ class SessionClosureService:
                         effective_date=effective_date,
                         allow_terminal_completion=terminal_completion_confirmed,
                     )
-            except Exception as exc:  # one student must not corrupt the full batch
+            except Exception as exc:
                 await StudentProgressionRepository.add_item(
                     db,
                     StudentProgressionItem(
