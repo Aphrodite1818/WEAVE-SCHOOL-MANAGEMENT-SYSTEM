@@ -35,8 +35,6 @@ class SubjectRepository:
         subject_id: UUID,
         teacher_ids: list[UUID],
     ) -> list[TeacherMembershipSubject]:
-        """Create subject capabilities for teacher membership IDs."""
-
         links = [
             TeacherMembershipSubject(
                 tenant_id=tenant_id,
@@ -189,11 +187,9 @@ class SubjectRepository:
     ) -> tuple[list[Subject], int]:
         filters = [Subject.tenant_id == tenant_id]
         if lifecycle_status == "active":
-            filters.append(Subject.is_active.is_(True))
-            filters.append(Subject.archived_at.is_(None))
+            filters.extend([Subject.is_active.is_(True), Subject.archived_at.is_(None)])
         elif lifecycle_status == "inactive":
-            filters.append(Subject.is_active.is_(False))
-            filters.append(Subject.archived_at.is_(None))
+            filters.extend([Subject.is_active.is_(False), Subject.archived_at.is_(None)])
         elif lifecycle_status == "archived":
             filters.append(Subject.archived_at.is_not(None))
         elif is_active is not None:
@@ -211,7 +207,6 @@ class SubjectRepository:
                     Subject.description.ilike(pattern),
                 )
             )
-
         total = (
             await db.execute(select(func.count()).select_from(Subject).where(*filters))
         ).scalar_one()
@@ -256,7 +251,6 @@ class SubjectRepository:
                     Subject.description.ilike(pattern),
                 )
             )
-
         joined = (
             select(Subject)
             .join(
@@ -265,7 +259,9 @@ class SubjectRepository:
             )
             .where(*filters)
         )
-        total = (await db.execute(select(func.count()).select_from(joined.subquery()))).scalar_one()
+        total = (
+            await db.execute(select(func.count()).select_from(joined.subquery()))
+        ).scalar_one()
         result = await db.execute(
             joined.options(*_subject_teacher_load_options())
             .order_by(Subject.name.asc())
@@ -293,19 +289,19 @@ class SubjectRepository:
         subject_id: UUID,
     ) -> dict[str, int]:
         from app.modules.report_cards.models import ReportCardSubjectLine
+        from app.modules.student_academics.curriculum_models import CurriculumSubject
         from app.modules.student_academics.models import (
-            LevelSubject,
             StudentSubjectResult,
             TeacherAssignment,
         )
 
-        level_subject_count = (
+        curriculum_subject_count = (
             await db.execute(
                 select(func.count())
-                .select_from(LevelSubject)
+                .select_from(CurriculumSubject)
                 .where(
-                    LevelSubject.tenant_id == tenant_id,
-                    LevelSubject.subject_id == subject_id,
+                    CurriculumSubject.tenant_id == tenant_id,
+                    CurriculumSubject.subject_id == subject_id,
                 )
             )
         ).scalar_one()
@@ -323,11 +319,14 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
+                .join(
+                    CurriculumSubject,
+                    CurriculumSubject.id == TeacherAssignment.curriculum_subject_id,
+                )
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
-                    LevelSubject.tenant_id == tenant_id,
-                    LevelSubject.subject_id == subject_id,
+                    CurriculumSubject.tenant_id == tenant_id,
+                    CurriculumSubject.subject_id == subject_id,
                 )
             )
         ).scalar_one()
@@ -352,7 +351,7 @@ class SubjectRepository:
             )
         ).scalar_one()
         return {
-            "level_subjects": int(level_subject_count),
+            "curriculum_subjects": int(curriculum_subject_count),
             "teacher_links": int(teacher_link_count),
             "teacher_assignments": int(teacher_assignment_count),
             "results": int(result_count),
@@ -365,17 +364,17 @@ class SubjectRepository:
         tenant_id: UUID,
         subject_id: UUID,
     ) -> dict[str, int]:
-        from app.modules.student_academics.models import LevelSubject, TeacherAssignment
+        from app.modules.student_academics.curriculum_models import CurriculumSubject
+        from app.modules.student_academics.models import TeacherAssignment
 
-        active_level_subject_count = (
+        active_curriculum_subject_count = (
             await db.execute(
                 select(func.count())
-                .select_from(LevelSubject)
+                .select_from(CurriculumSubject)
                 .where(
-                    LevelSubject.tenant_id == tenant_id,
-                    LevelSubject.subject_id == subject_id,
-                    LevelSubject.is_active.is_(True),
-                    LevelSubject.archived_at.is_(None),
+                    CurriculumSubject.tenant_id == tenant_id,
+                    CurriculumSubject.subject_id == subject_id,
+                    CurriculumSubject.is_active.is_(True),
                 )
             )
         ).scalar_one()
@@ -394,18 +393,21 @@ class SubjectRepository:
             await db.execute(
                 select(func.count())
                 .select_from(TeacherAssignment)
-                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
+                .join(
+                    CurriculumSubject,
+                    CurriculumSubject.id == TeacherAssignment.curriculum_subject_id,
+                )
                 .where(
                     TeacherAssignment.tenant_id == tenant_id,
                     TeacherAssignment.is_active.is_(True),
                     TeacherAssignment.effective_to.is_(None),
-                    LevelSubject.tenant_id == tenant_id,
-                    LevelSubject.subject_id == subject_id,
+                    CurriculumSubject.tenant_id == tenant_id,
+                    CurriculumSubject.subject_id == subject_id,
                 )
             )
         ).scalar_one()
         return {
-            "active_level_subjects": int(active_level_subject_count),
+            "active_curriculum_subjects": int(active_curriculum_subject_count),
             "active_teacher_links": int(active_teacher_link_count),
             "active_teacher_assignments": int(active_teacher_assignment_count),
         }
