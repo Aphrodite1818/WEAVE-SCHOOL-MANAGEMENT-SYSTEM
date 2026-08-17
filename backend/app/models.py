@@ -1,15 +1,5 @@
-"""
-Central Registry for SQLAlchemy ORM Models.
-
-This module imports every SQLAlchemy mapped class in the application exactly once.
-It ensures that models are registered properly for mapper configuration in seeders,
-standalone scripts, Alembic migrations, and tests.
-"""
-
-# Tenant Management
+"""Central registry for SQLAlchemy ORM models."""
 import app.tenant_management.models
-
-# Modules
 import app.modules.communications.models
 import app.modules.attendance.models
 import app.modules.auth.models
@@ -28,6 +18,7 @@ import app.modules.results.models
 import app.modules.school_calendar.models
 import app.modules.students.models
 import app.modules.student_academics.models
+import app.modules.student_academics.curriculum_models
 import app.modules.subjects.models
 import app.modules.subscriptions.models
 import app.modules.superadmin.models
@@ -35,6 +26,4 @@ import app.modules.teachers.models
 import app.modules.tenant_admins.models
 import app.modules.tenant_branding.models
 import app.modules.user_guides.models
-
-# Model event registrations must be imported after mapped classes.
 import app.modules.bulk_imports.model_events  # noqa: E402,F401
