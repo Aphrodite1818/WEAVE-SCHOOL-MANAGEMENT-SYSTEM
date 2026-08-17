@@ -23,20 +23,33 @@ CRITICAL_TABLES = {
     "import_jobs",
     "academic_levels",
     "departments",
+    "arm_labels",
     "classes",
-    "level_subjects",
-    "subject_offerings",
-    "student_department_assignments",
+    "curricula",
+    "curriculum_subjects",
+    "curriculum_offerings",
+    "class_term_department_assignments",
     "teacher_assignments",
     "academic_sessions",
     "academic_terms",
     "assessment_schemes",
     "assessment_components",
     "student_subject_results",
+    "cbt_servers",
+    "cbt_server_credentials",
+    "cbt_pairing_codes",
+    "cbt_sync_tenant_states",
+    "cbt_sync_changes",
     "tenant_subscriptions",
     "payment_transactions",
     "term_plan_entitlements",
     "payment_webhook_events",
+}
+
+OBSOLETE_ACADEMIC_TABLES = {
+    "level_subjects",
+    "subject_offerings",
+    "student_department_assignments",
 }
 
 
@@ -49,6 +62,15 @@ def test_model_registry_contains_critical_fresh_schema_tables() -> None:
     assert not missing_tables, (
         f"The fresh migration baseline is missing registered model tables: {sorted(missing_tables)}"
     )
+
+
+def test_model_registry_excludes_obsolete_academic_tables() -> None:
+    """The pre-launch v2 cutover must not keep legacy academic tables registered."""
+
+    configure_mappers()
+    registered_table_names = {table.name for table in Base.metadata.tables.values()}
+    stale_tables = OBSOLETE_ACADEMIC_TABLES & registered_table_names
+    assert not stale_tables, f"Obsolete academic tables remain registered: {sorted(stale_tables)}"
 
 
 def test_model_registry_has_unique_table_keys() -> None:
