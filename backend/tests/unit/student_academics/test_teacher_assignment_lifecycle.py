@@ -27,7 +27,7 @@ def _assignment() -> TeacherAssignment:
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
         class_id=uuid.uuid4(),
-        level_subject_id=uuid.uuid4(),
+        curriculum_subject_id=uuid.uuid4(),
         teacher_membership_id=uuid.uuid4(),
         is_active=True,
         effective_from=date(2026, 1, 10),
