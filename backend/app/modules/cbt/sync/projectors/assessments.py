@@ -1,4 +1,4 @@
-"""Stable CBT projections for assessment schemes and components."""
+"""Stable CBT projections for the tenant's active assessment configuration."""
 
 from __future__ import annotations
 
@@ -12,7 +12,11 @@ from app.modules.cbt.academics.schemas import (
     CBTAssessmentComponentSnapshot,
     CBTAssessmentSchemeSnapshot,
 )
-from app.modules.student_academics.models import AssessmentComponent, AssessmentScheme
+from app.modules.student_academics.models import (
+    AssessmentComponent,
+    AssessmentScheme,
+    AssessmentSchemeStatus,
+)
 
 
 def _value(value: Any) -> Any:
@@ -28,7 +32,7 @@ def project_assessment_scheme(
             AssessmentScheme.id == entity_id,
         )
     ).scalar_one_or_none()
-    if row is None:
+    if row is None or row.status != AssessmentSchemeStatus.ACTIVE:
         return None
     return CBTAssessmentSchemeSnapshot(
         id=row.id,
@@ -40,13 +44,22 @@ def project_assessment_scheme(
 def project_assessment_component(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        select(AssessmentComponent).where(
+    joined = session.execute(
+        select(AssessmentComponent, AssessmentScheme)
+        .join(
+            AssessmentScheme,
+            AssessmentScheme.id == AssessmentComponent.assessment_scheme_id,
+        )
+        .where(
             AssessmentComponent.tenant_id == tenant_id,
             AssessmentComponent.id == entity_id,
+            AssessmentScheme.tenant_id == tenant_id,
         )
-    ).scalar_one_or_none()
-    if row is None or not row.is_active:
+    ).first()
+    if joined is None:
+        return None
+    row, scheme = joined
+    if not row.is_active or scheme.status != AssessmentSchemeStatus.ACTIVE:
         return None
     return CBTAssessmentComponentSnapshot(
         id=row.id,
