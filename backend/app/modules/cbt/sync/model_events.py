@@ -179,18 +179,22 @@ def _expand_account_updates(
         tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
         _PendingIdentity,
     ],
-) -> None:
+) -> set[uuid.UUID]:
+    """Refresh memberships derived from a global teacher-account mutation."""
+
     account_ids = {
         value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value
     }
     if not account_ids:
-        return
+        return set()
     rows = session.execute(
         select(TeacherMembership.tenant_id, TeacherMembership.id).where(
             TeacherMembership.teacher_account_id.in_(account_ids)
         )
     ).all()
+    tenant_ids: set[uuid.UUID] = set()
     for tenant_id, membership_id in rows:
+        tenant_ids.add(tenant_id)
         _append_identity(
             events,
             _PendingIdentity(
@@ -200,6 +204,7 @@ def _expand_account_updates(
                 operation=CBTSyncOperation.UPDATED,
             ),
         )
+    return tenant_ids
 
 
 def _expand_student_updates(
@@ -208,17 +213,21 @@ def _expand_student_updates(
         tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
         _PendingIdentity,
     ],
-) -> None:
+) -> set[uuid.UUID]:
+    """Refresh current enrollment and computed offering eligibility after student changes."""
+
     student_ids = {value for value in session.info.get(_STUDENT_KEY, set()) if value}
     if not student_ids:
-        return
+        return set()
     rows = session.execute(
         select(StudentEnrollment.tenant_id, StudentEnrollment.id).where(
             StudentEnrollment.student_id.in_(student_ids),
             StudentEnrollment.is_current.is_(True),
         )
     ).all()
+    tenant_ids: set[uuid.UUID] = set()
     for tenant_id, enrollment_id in rows:
+        tenant_ids.add(tenant_id)
         _append_identity(
             events,
             _PendingIdentity(
@@ -228,6 +237,14 @@ def _expand_student_updates(
                 operation=CBTSyncOperation.UPDATED,
             ),
         )
+
+    # A student may cease to have a current enrollment in the same transaction
+    # (graduation/archival). The Student object itself still carries tenant_id, so
+    # include it as an eligibility-refresh source even when the query above is empty.
+    for obj in list(session.new) + list(session.dirty) + list(session.deleted):
+        if isinstance(obj, Student) and obj.id in student_ids and obj.tenant_id:
+            tenant_ids.add(obj.tenant_id)
+    return tenant_ids
 
 
 def _offering_ids_for_tenant(session: Session, tenant_id: uuid.UUID) -> list[uuid.UUID]:
@@ -240,24 +257,40 @@ def _offering_ids_for_tenant(session: Session, tenant_id: uuid.UUID) -> list[uui
     )
 
 
-def _expand_derived_offerings(
+def _assignment_ids_for_tenant(session: Session, tenant_id: uuid.UUID) -> list[uuid.UUID]:
+    return list(
+        session.execute(
+            select(TeacherAssignment.id).where(
+                TeacherAssignment.tenant_id == tenant_id,
+                TeacherAssignment.is_active.is_(True),
+                TeacherAssignment.effective_to.is_(None),
+            )
+        ).scalars()
+    )
+
+
+def _expand_derived_contracts(
     session: Session,
     pending_objects: list[_PendingObject],
     events: OrderedDict[
         tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
         _PendingIdentity,
     ],
+    *,
+    student_refresh_tenants: set[uuid.UUID],
+    teacher_refresh_tenants: set[uuid.UUID],
 ) -> None:
-    """Refresh computed offering eligibility after structural mutations.
+    """Refresh projections whose payload is derived from neighboring domain state.
 
-    Eligibility is a projection of curriculum, class specialization and current
-    student enrollment. For these relatively infrequent administrative mutations,
-    refreshing every offering for the affected tenant is intentionally preferred
-    to trying to infer a post-flush old/new scope and risking stale CBT candidates.
-    Curriculum-subject-only changes can remain narrowly scoped.
+    Offering candidate lists depend on current student lifecycle, enrollment,
+    class placement and term specialization. Teacher-assignment visibility depends
+    on the current term and whether its subject is offered to that class. These
+    changes are administrative and relatively infrequent, so tenant-wide refreshes
+    are preferred over fragile old/new-state inference.
     """
 
-    tenant_wide_refreshes: set[uuid.UUID] = set()
+    offering_refresh_tenants: set[uuid.UUID] = set(student_refresh_tenants)
+    assignment_refresh_tenants: set[uuid.UUID] = set(teacher_refresh_tenants)
     narrow_subjects: list[tuple[uuid.UUID, uuid.UUID]] = []
 
     for pending in pending_objects:
@@ -275,11 +308,16 @@ def _expand_derived_offerings(
                 StudentEnrollment,
             ),
         ):
-            tenant_wide_refreshes.add(tenant_id)
+            offering_refresh_tenants.add(tenant_id)
+            assignment_refresh_tenants.add(tenant_id)
+        elif isinstance(obj, AcademicTerm):
+            assignment_refresh_tenants.add(tenant_id)
+        elif isinstance(obj, CurriculumOffering):
+            assignment_refresh_tenants.add(tenant_id)
         elif isinstance(obj, CurriculumSubject):
             narrow_subjects.append((tenant_id, obj.id))
 
-    for tenant_id in tenant_wide_refreshes:
+    for tenant_id in offering_refresh_tenants:
         for offering_id in _offering_ids_for_tenant(session, tenant_id):
             _append_identity(
                 events,
@@ -291,25 +329,55 @@ def _expand_derived_offerings(
                 ),
             )
 
-    for tenant_id, curriculum_subject_id in narrow_subjects:
-        if tenant_id in tenant_wide_refreshes:
-            continue
-        offering_ids = session.execute(
-            select(CurriculumOffering.id).where(
-                CurriculumOffering.tenant_id == tenant_id,
-                CurriculumOffering.curriculum_subject_id == curriculum_subject_id,
-            )
-        ).scalars()
-        for offering_id in offering_ids:
+    for tenant_id in assignment_refresh_tenants:
+        for assignment_id in _assignment_ids_for_tenant(session, tenant_id):
             _append_identity(
                 events,
                 _PendingIdentity(
                     tenant_id=tenant_id,
-                    entity_type=CBTSyncEntityType.SUBJECT_OFFERING,
-                    entity_id=offering_id,
+                    entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
+                    entity_id=assignment_id,
                     operation=CBTSyncOperation.UPDATED,
                 ),
             )
+
+    for tenant_id, curriculum_subject_id in narrow_subjects:
+        if tenant_id not in offering_refresh_tenants:
+            offering_ids = session.execute(
+                select(CurriculumOffering.id).where(
+                    CurriculumOffering.tenant_id == tenant_id,
+                    CurriculumOffering.curriculum_subject_id == curriculum_subject_id,
+                )
+            ).scalars()
+            for offering_id in offering_ids:
+                _append_identity(
+                    events,
+                    _PendingIdentity(
+                        tenant_id=tenant_id,
+                        entity_type=CBTSyncEntityType.SUBJECT_OFFERING,
+                        entity_id=offering_id,
+                        operation=CBTSyncOperation.UPDATED,
+                    ),
+                )
+        if tenant_id not in assignment_refresh_tenants:
+            assignment_ids = session.execute(
+                select(TeacherAssignment.id).where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    TeacherAssignment.curriculum_subject_id == curriculum_subject_id,
+                    TeacherAssignment.is_active.is_(True),
+                    TeacherAssignment.effective_to.is_(None),
+                )
+            ).scalars()
+            for assignment_id in assignment_ids:
+                _append_identity(
+                    events,
+                    _PendingIdentity(
+                        tenant_id=tenant_id,
+                        entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
+                        entity_id=assignment_id,
+                        operation=CBTSyncOperation.UPDATED,
+                    ),
+                )
 
 
 def _materialize_events(session: Session) -> list[_PendingIdentity]:
@@ -317,16 +385,20 @@ def _materialize_events(session: Session) -> list[_PendingIdentity]:
         tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
         _PendingIdentity,
     ] = OrderedDict()
-    pending_objects = list(
-        session.info.get(_PENDING_KEY, OrderedDict()).values()
-    )
+    pending_objects = list(session.info.get(_PENDING_KEY, OrderedDict()).values())
     for pending in pending_objects:
         identity = _identity_from_object(pending)
         if identity is not None:
             _append_identity(events, identity)
-    _expand_account_updates(session, events)
-    _expand_student_updates(session, events)
-    _expand_derived_offerings(session, pending_objects, events)
+    teacher_refresh_tenants = _expand_account_updates(session, events)
+    student_refresh_tenants = _expand_student_updates(session, events)
+    _expand_derived_contracts(
+        session,
+        pending_objects,
+        events,
+        student_refresh_tenants=student_refresh_tenants,
+        teacher_refresh_tenants=teacher_refresh_tenants,
+    )
     return list(events.values())
 
 
