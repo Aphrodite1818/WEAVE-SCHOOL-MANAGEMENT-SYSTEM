@@ -2,10 +2,9 @@
 
 The hook runs on the synchronous Session wrapped by AsyncSession. Business
 writes are flushed first; only then, at the outer transaction commit boundary,
-we project the final state, allocate tenant cursors, insert durable changes and
-schedule PostgreSQL NOTIFY messages. The sync log therefore commits or rolls
-back atomically with the business transaction and works identically in API and
-ARQ worker processes.
+we project the final state and record durable changes through ``CBTSyncRecorder``.
+The sync log therefore commits or rolls back atomically with the business
+transaction and works identically in API and worker processes.
 """
 
 from __future__ import annotations
@@ -15,19 +14,13 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import event, func, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
-from app.modules.cbt.sync.models import CBTSyncChange, CBTSyncTenantState
-from app.modules.cbt.sync.projectors.curriculum import (
-    offering_ids_for_level_session,
-    offering_ids_for_level_term,
-)
 from app.modules.cbt.sync.projectors.registry import project_payload
-from app.modules.cbt.sync.recorder import CBT_SYNC_NOTIFY_CHANNEL
-from app.modules.cbt.sync.schemas import CBTSyncMutation, CBTSyncNotification
+from app.modules.cbt.sync.recorder import CBTSyncRecorder
+from app.modules.cbt.sync.schemas import CBTSyncMutation
 from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
@@ -116,7 +109,8 @@ def _collect_pending(session: Session) -> None:
     if session.info.get(_INTERNAL_KEY):
         return
     pending: OrderedDict[tuple[type[Any], int], _PendingObject] = session.info.setdefault(
-        _PENDING_KEY, OrderedDict()
+        _PENDING_KEY,
+        OrderedDict(),
     )
     candidates = list(session.new) + list(session.dirty) + list(session.deleted)
     for obj in candidates:
@@ -126,7 +120,10 @@ def _collect_pending(session: Session) -> None:
         if type(obj) in MODEL_ENTITY_TYPES:
             key = (type(obj), id(obj))
             previous = pending.get(key)
-            merged = _merge_operation(previous.operation if previous else None, operation)
+            merged = _merge_operation(
+                previous.operation if previous else None,
+                operation,
+            )
             if merged is None:
                 pending.pop(key, None)
             else:
@@ -153,12 +150,18 @@ def _identity_from_object(pending: _PendingObject) -> _PendingIdentity | None:
 
 
 def _append_identity(
-    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
+    events: OrderedDict[
+        tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
+        _PendingIdentity,
+    ],
     identity: _PendingIdentity,
 ) -> None:
     key = (identity.tenant_id, identity.entity_type, identity.entity_id)
     previous = events.get(key)
-    merged = _merge_operation(previous.operation if previous else None, identity.operation)
+    merged = _merge_operation(
+        previous.operation if previous else None,
+        identity.operation,
+    )
     if merged is None:
         events.pop(key, None)
         return
@@ -172,9 +175,14 @@ def _append_identity(
 
 def _expand_account_updates(
     session: Session,
-    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
+    events: OrderedDict[
+        tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
+        _PendingIdentity,
+    ],
 ) -> None:
-    account_ids = {value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value}
+    account_ids = {
+        value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value
+    }
     if not account_ids:
         return
     rows = session.execute(
@@ -196,7 +204,10 @@ def _expand_account_updates(
 
 def _expand_student_updates(
     session: Session,
-    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
+    events: OrderedDict[
+        tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
+        _PendingIdentity,
+    ],
 ) -> None:
     student_ids = {value for value in session.info.get(_STUDENT_KEY, set()) if value}
     if not student_ids:
@@ -219,42 +230,76 @@ def _expand_student_updates(
         )
 
 
+def _offering_ids_for_tenant(session: Session, tenant_id: uuid.UUID) -> list[uuid.UUID]:
+    return list(
+        session.execute(
+            select(CurriculumOffering.id).where(
+                CurriculumOffering.tenant_id == tenant_id
+            )
+        ).scalars()
+    )
+
+
 def _expand_derived_offerings(
     session: Session,
     pending_objects: list[_PendingObject],
-    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
+    events: OrderedDict[
+        tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
+        _PendingIdentity,
+    ],
 ) -> None:
+    """Refresh computed offering eligibility after structural mutations.
+
+    Eligibility is a projection of curriculum, class specialization and current
+    student enrollment. For these relatively infrequent administrative mutations,
+    refreshing every offering for the affected tenant is intentionally preferred
+    to trying to infer a post-flush old/new scope and risking stale CBT candidates.
+    Curriculum-subject-only changes can remain narrowly scoped.
+    """
+
+    tenant_wide_refreshes: set[uuid.UUID] = set()
+    narrow_subjects: list[tuple[uuid.UUID, uuid.UUID]] = []
+
     for pending in pending_objects:
         obj = pending.obj
         tenant_id = getattr(obj, "tenant_id", None)
         if tenant_id is None:
             continue
-        offering_ids: list[uuid.UUID] = []
-        if isinstance(obj, ClassTermDepartmentAssignment):
-            classroom = session.get(ClassRoom, obj.class_id)
-            if classroom is not None:
-                offering_ids = offering_ids_for_level_term(
-                    session,
-                    tenant_id=tenant_id,
-                    academic_level_id=classroom.academic_level_id,
-                    academic_term_id=obj.academic_term_id,
-                )
-        elif isinstance(obj, StudentEnrollment):
-            offering_ids = offering_ids_for_level_session(
-                session,
-                tenant_id=tenant_id,
-                academic_level_id=obj.academic_level_id,
-                academic_session_id=obj.academic_session_id,
-            )
+        if isinstance(
+            obj,
+            (
+                ClassRoom,
+                Department,
+                ClassTermDepartmentAssignment,
+                Curriculum,
+                StudentEnrollment,
+            ),
+        ):
+            tenant_wide_refreshes.add(tenant_id)
         elif isinstance(obj, CurriculumSubject):
-            offering_ids = list(
-                session.execute(
-                    select(CurriculumOffering.id).where(
-                        CurriculumOffering.tenant_id == tenant_id,
-                        CurriculumOffering.curriculum_subject_id == obj.id,
-                    )
-                ).scalars()
+            narrow_subjects.append((tenant_id, obj.id))
+
+    for tenant_id in tenant_wide_refreshes:
+        for offering_id in _offering_ids_for_tenant(session, tenant_id):
+            _append_identity(
+                events,
+                _PendingIdentity(
+                    tenant_id=tenant_id,
+                    entity_type=CBTSyncEntityType.SUBJECT_OFFERING,
+                    entity_id=offering_id,
+                    operation=CBTSyncOperation.UPDATED,
+                ),
             )
+
+    for tenant_id, curriculum_subject_id in narrow_subjects:
+        if tenant_id in tenant_wide_refreshes:
+            continue
+        offering_ids = session.execute(
+            select(CurriculumOffering.id).where(
+                CurriculumOffering.tenant_id == tenant_id,
+                CurriculumOffering.curriculum_subject_id == curriculum_subject_id,
+            )
+        ).scalars()
         for offering_id in offering_ids:
             _append_identity(
                 events,
@@ -268,10 +313,13 @@ def _expand_derived_offerings(
 
 
 def _materialize_events(session: Session) -> list[_PendingIdentity]:
-    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity] = (
-        OrderedDict()
+    events: OrderedDict[
+        tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID],
+        _PendingIdentity,
+    ] = OrderedDict()
+    pending_objects = list(
+        session.info.get(_PENDING_KEY, OrderedDict()).values()
     )
-    pending_objects = list(session.info.get(_PENDING_KEY, OrderedDict()).values())
     for pending in pending_objects:
         identity = _identity_from_object(pending)
         if identity is not None:
@@ -282,7 +330,10 @@ def _materialize_events(session: Session) -> list[_PendingIdentity]:
     return list(events.values())
 
 
-def _normalized_mutation(session: Session, identity: _PendingIdentity) -> CBTSyncMutation | None:
+def _normalized_mutation(
+    session: Session,
+    identity: _PendingIdentity,
+) -> CBTSyncMutation | None:
     if identity.operation == CBTSyncOperation.DELETED:
         return CBTSyncMutation(
             entity_type=identity.entity_type,
@@ -291,6 +342,7 @@ def _normalized_mutation(session: Session, identity: _PendingIdentity) -> CBTSyn
             schema_version=2,
             payload=None,
         )
+
     payload = project_payload(
         session,
         tenant_id=identity.tenant_id,
@@ -319,62 +371,19 @@ def _normalized_mutation(session: Session, identity: _PendingIdentity) -> CBTSyn
 def _write_changes(session: Session, identities: list[_PendingIdentity]) -> None:
     if not identities:
         return
-    connection = session.connection()
-    if connection.dialect.name != "postgresql":
-        # Unit tests may use an in-memory non-PostgreSQL database. The production
-        # transport relies on PostgreSQL row locks and NOTIFY and is intentionally
-        # inert on other dialects.
+    if session.connection().dialect.name != "postgresql":
+        # Production ordering/notification semantics require PostgreSQL. Unit tests
+        # that use SQLite exercise projection and event materialization separately.
         return
 
-    by_tenant: OrderedDict[uuid.UUID, list[CBTSyncMutation]] = OrderedDict()
     for identity in identities:
         mutation = _normalized_mutation(session, identity)
-        if mutation is not None:
-            by_tenant.setdefault(identity.tenant_id, []).append(mutation)
-
-    state_table = CBTSyncTenantState.__table__
-    change_table = CBTSyncChange.__table__
-    for tenant_id, mutations in by_tenant.items():
-        if not mutations:
+        if mutation is None:
             continue
-        connection.execute(
-            pg_insert(state_table)
-            .values(tenant_id=tenant_id, last_cursor=0)
-            .on_conflict_do_nothing(index_elements=[state_table.c.tenant_id])
-        )
-        last_cursor = connection.execute(
-            select(state_table.c.last_cursor)
-            .where(state_table.c.tenant_id == tenant_id)
-            .with_for_update()
-        ).scalar_one()
-        cursor = int(last_cursor)
-        for mutation in mutations:
-            cursor += 1
-            change_id = uuid.uuid4()
-            connection.execute(
-                change_table.insert().values(
-                    id=change_id,
-                    tenant_id=tenant_id,
-                    cursor=cursor,
-                    entity_type=mutation.entity_type.value,
-                    entity_id=mutation.entity_id,
-                    operation=mutation.operation.value,
-                    schema_version=mutation.schema_version,
-                    payload=mutation.payload,
-                    created_at=func.now(),
-                    updated_at=func.now(),
-                )
-            )
-            notification = CBTSyncNotification(
-                change_id=change_id,
-                tenant_id=tenant_id,
-                cursor=cursor,
-            ).model_dump_json()
-            connection.execute(select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification)))
-        connection.execute(
-            update(state_table)
-            .where(state_table.c.tenant_id == tenant_id)
-            .values(last_cursor=cursor, updated_at=func.now())
+        CBTSyncRecorder.record_sync(
+            session,
+            tenant_id=identity.tenant_id,
+            mutation=mutation,
         )
 
 
@@ -391,8 +400,8 @@ def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> Non
 
 def _before_commit(session: Session) -> None:
     # Savepoint commits occur inside progression/bulk workflows. Keep collecting
-    # until the outer transaction so the tenant cursor row is locked only at the
-    # true business commit boundary.
+    # until the outer transaction so one durable sequence describes the true
+    # business commit boundary.
     if session.in_nested_transaction() or session.info.get(_INTERNAL_KEY):
         return
     _collect_pending(session)
@@ -403,6 +412,7 @@ def _before_commit(session: Session) -> None:
     )
     if not has_pending:
         return
+
     session.info[_INTERNAL_KEY] = True
     try:
         session.flush()
