@@ -1,21 +1,11 @@
-# ==========================#
-# cbt.auth.service.py
-# ==========================#
-
-"""This file is responsible for machine level authentication
-It differs from the main authentication system in Weave
-
-It identifies a machine and make sure the machine is valid for
-communicating with weave gateway
-"""
+"""Authentication services used by paired CBT servers."""
 
 from datetime import datetime, timezone
+
+from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.exceptions import ForbiddenException, UnauthorizedException
-from app.modules.cbt.auth.schemas import AuthenticatedCBTServer
-from app.modules.cbt.enums import CBTServerStatus
-from app.modules.cbt.repository import CBTServerCredentialRepository
-from app.modules.cbt.security import hash_server_token
 from app.modules.auth.login_service import AuthService
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.schemas import LoginRequest
@@ -24,54 +14,46 @@ from app.modules.cbt.auth.schemas import (
     CBTStaffAuthResponse,
     CBTStaffLoginRequest,
 )
-from app.modules.teachers.models import TeacherMembershipStatus
-from app.modules.teachers.repository import TeacherMembershipRepository
-from fastapi import BackgroundTasks
+from app.modules.cbt.enums import CBTServerStatus
+from app.modules.cbt.repository import CBTServerCredentialRepository
+from app.modules.cbt.security import hash_server_token
 from app.modules.superadmin.platform_control_service import PlatformControlService
 from app.modules.superadmin.security_response_service import SecurityResponseService
+from app.modules.teachers.models import TeacherMembershipStatus
+from app.modules.teachers.repository import TeacherMembershipRepository
 
 
 class CBTMachineAuthService:
-    """Authenticate paired cbt server credentials"""
+    """Authenticate paired CBT server credentials."""
 
     @staticmethod
     async def authenticate_server(
         db: AsyncSession, *, server_credential: str
     ) -> AuthenticatedCBTServer:
-        """
-        Authenticate a local CBT server using its machine credential
-
-        The credential determines both the server identity and tenant
-        Neither server_id nor tenant_id is accepted from the caller
-        """
+        """Authenticate a machine credential and derive its server and tenant context."""
 
         credential_hash = hash_server_token(server_credential)
-
         resolved = await CBTServerCredentialRepository.get_unrevoked_by_hash_with_server(
             db, credential_hash=credential_hash
         )
-
         if resolved is None:
             raise UnauthorizedException(detail="Invalid CBT server credential")
 
         credential, server = resolved
-
         now = datetime.now(timezone.utc)
 
         if credential.expires_at is not None and credential.expires_at <= now:
             raise UnauthorizedException(detail="Invalid CBT server credential")
-
         if server.status == CBTServerStatus.REVOKED or server.revoked_at is not None:
             raise UnauthorizedException(detail="Invalid CBT server credential")
-
         if server.status == CBTServerStatus.SUSPENDED:
             raise ForbiddenException(detail="CBT Server is suspended")
-
         if server.status != CBTServerStatus.ACTIVE:
             raise ForbiddenException(detail="CBT server is not active")
 
         return AuthenticatedCBTServer(
             server_id=server.id,
+            credential_id=credential.id,
             tenant_id=server.tenant_id,
             server_name=server.name,
             status=server.status,
@@ -79,12 +61,7 @@ class CBTMachineAuthService:
 
 
 class CBTStaffAuthService:
-    """
-    Authenticate Weave staff for use on a specific paired CBT server
-
-    Machine authentication determines the tenant. The human credentials
-    determine the staff identity
-    """
+    """Authenticate Weave staff for use on a specific paired CBT server."""
 
     @staticmethod
     async def authenticate_staff(
@@ -98,7 +75,9 @@ class CBTStaffAuthService:
         actor = await AuthService.authenticate_actor(
             db,
             LoginRequest(
-                identifier=str(payload.email), password=payload.password, remember_me=False
+                identifier=str(payload.email),
+                password=payload.password,
+                remember_me=False,
             ),
             background_tasks=background_tasks,
         )
@@ -106,26 +85,32 @@ class CBTStaffAuthService:
         await SecurityResponseService.enforce_actor_ip_allowed(
             db=db, ip_address=client_ip, actor_type=actor.actor_type
         )
-
         await PlatformControlService.enforce_actor_allowed(db=db, actor_type=actor.actor_type)
 
         if actor.actor_type == AuthSessionActorType.TENANT_ADMIN.value:
-            return CBTStaffAuthService._resolve_admin(actor=actor, current_server=current_server)
-
+            return CBTStaffAuthService._resolve_admin(
+                actor=actor,
+                current_server=current_server,
+            )
         if actor.actor_type in {
             AuthSessionActorType.TEACHER.value,
             AuthSessionActorType.TEACHER_ACCOUNT.value,
         }:
             return await CBTStaffAuthService._resolve_teacher(
-                db=db, actor=actor, current_server=current_server
+                db=db,
+                actor=actor,
+                current_server=current_server,
             )
-
         raise ForbiddenException(detail="This account is not authorized to use CBT")
 
     @staticmethod
-    def _resolve_admin(*, actor, current_server: AuthenticatedCBTServer) -> CBTStaffAuthResponse:
+    def _resolve_admin(
+        *, actor, current_server: AuthenticatedCBTServer
+    ) -> CBTStaffAuthResponse:
         if actor.tenant_id != current_server.tenant_id:
-            raise ForbiddenException(detail="This account is not authorized for this CBT server")
+            raise ForbiddenException(
+                detail="This account is not authorized for this CBT server"
+            )
 
         return CBTStaffAuthResponse(
             actor_id=actor.actor_id,
@@ -142,18 +127,21 @@ class CBTStaffAuthService:
         db: AsyncSession, *, actor, current_server: AuthenticatedCBTServer
     ) -> CBTStaffAuthResponse:
         account_id = await CBTStaffAuthService._resolve_teacher_account_id(db=db, actor=actor)
-
         membership = await TeacherMembershipRepository.get_by_account_and_tenant(
-            db, account_id, current_server.tenant_id
+            db,
+            account_id,
+            current_server.tenant_id,
         )
-
         if membership is None or membership.status != TeacherMembershipStatus.ACTIVE:
-            raise ForbiddenException(detail="This account is not authorized for this CBT server")
+            raise ForbiddenException(
+                detail="This account is not authorized for this CBT server"
+            )
 
         account = membership.teacher_account
-
         if account is None:
-            raise ForbiddenException(detail="This account is not authorized for this CBT server")
+            raise ForbiddenException(
+                detail="This account is not authorized for this CBT server"
+            )
 
         return CBTStaffAuthResponse(
             actor_id=account.id,
@@ -166,17 +154,17 @@ class CBTStaffAuthService:
         )
 
     @staticmethod
-    async def _resolve_teacher_account_id(
-        db: AsyncSession, *, actor
-    ):  # -> Any | UUID:# -> Any | None:
+    async def _resolve_teacher_account_id(db: AsyncSession, *, actor):
         if actor.actor_type == AuthSessionActorType.TEACHER_ACCOUNT.value:
             return actor.actor_id
 
         membership = await TeacherMembershipRepository.get_by_id(
-            db, actor.actor_id, load_account=False
+            db,
+            actor.actor_id,
+            load_account=False,
         )
-
         if membership is None:
-            raise ForbiddenException(detail="This account is not authorized to use CBT")
-
+            raise ForbiddenException(
+                detail="This account is not authorized to use CBT"
+            )
         return membership.teacher_account_id
