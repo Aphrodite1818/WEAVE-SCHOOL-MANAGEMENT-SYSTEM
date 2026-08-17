@@ -34,18 +34,16 @@ import BulkImportRouteGuard from "./BulkImportRouteGuard";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
-const protectedWorkflow = (element) => (
-  <PullRefreshBoundary>{element}</PullRefreshBoundary>
-);
+const protectedWorkflow = (element) => <PullRefreshBoundary>{element}</PullRefreshBoundary>;
 
 export const adminRoutes = (
   <Route element={<RoleGuard allowedRoles={["ADMIN"]} />}>
     <Route path="/admin/billing/plans" element={<ResponsiveSubscriptionOptionsPage />} />
     <Route path="/billing/subscription/verify" element={<SubscriptionVerifyPage />} />
-
     <Route element={<DashboardShell role="admin" />}>
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
       <Route path="/admin/getting-started" element={<AdminGettingStartedRoute />} />
+      <Route path="/admin/getting-started/:step" element={<AdminGettingStartedRoute />} />
       <Route path="/admin/search/:resultKey" element={<AdminSearchDetailPage />} />
       <Route path="/admin/analytics" element={<RoleAnalyticsPage role="admin" />} />
       <Route path="/admin/calendar" element={<SchoolCalendarPage role="admin" />} />
