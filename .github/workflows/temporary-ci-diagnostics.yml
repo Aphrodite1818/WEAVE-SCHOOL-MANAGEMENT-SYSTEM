@@ -38,67 +38,37 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Apply targeted frontend lint fixes
+
+      - name: Fix academic class unit-test fixture
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          def replace(path, old, new):
-              file = Path(path)
-              text = file.read_text()
-              if old not in text:
-                  raise SystemExit(f"Expected source fragment not found in {path}")
-              file.write_text(text.replace(old, new, 1))
-
-          path = "frontend/src/features/academic-admin/TeacherAssignmentsWorkspace.jsx"
-          replace(
-              path,
-              "  const { showSuccess, showError, showWarning } = useToast();\n\n  const loadBase",
-              "  const { showSuccess, showError, showWarning } = useToast();\n  const currentTermId = currentTerm?.id || \"\";\n\n  const loadBase",
-          )
-          replace(path, "    if (!form.class_id || !currentTerm?.id) {", "    if (!form.class_id || !currentTermId) {")
-          replace(path, "          curriculumService.getClassDepartment(form.class_id, currentTerm.id),", "          curriculumService.getClassDepartment(form.class_id, currentTermId),")
-          replace(path, "                offering.academic_term_id === currentTerm.id &&", "                offering.academic_term_id === currentTermId &&")
-          replace(path, "    currentTerm?.id,", "    currentTermId,")
-
-          path = "frontend/src/routes/AdminGettingStartedRoute.jsx"
-          replace(
-              path,
-              "  const guide = useRoleGuide({ role: \"admin\" });\n  const { showError } = useToast();",
-              "  const guide = useRoleGuide({ role: \"admin\" });\n  const { finish } = guide;\n  const { showError } = useToast();",
-          )
-          replace(path, "          await guide.finish();", "          await finish();")
-          replace(path, "  }, [guide.finish, showError]);", "  }, [finish, showError]);")
-
-          path = "frontend/src/pages/shared/RoleGettingStartedPage.jsx"
-          replace(
-              path,
-              "  const guide = useRoleGuide({ role });\n\n  useEffect(() => {",
-              "  const guide = useRoleGuide({ role });\n  const { start } = guide;\n\n  useEffect(() => {",
-          )
-          replace(path, "      guide.start();", "      start();")
-          replace(
-              path,
-              "  }, [guide.guideState?.status, guide.loading, guide.start]);",
-              "  }, [guide.guideState?.status, guide.loading, start]);",
-          )
-
-          path = "frontend/src/pages/admin/AcademicHubOverviewPage.jsx"
-          replace(
-              path,
-              "  const stats = analytics?.stats || {};",
-              "  const stats = useMemo(() => analytics?.stats || {}, [analytics?.stats]);",
-          )
-
-          path = "frontend/src/pages/shared/MessagesPage.jsx"
-          replace(
-              path,
-              "  const currentUser = authSession.getUser() || {};",
-              "  const currentUser = useMemo(() => authSession.getUser() || {}, []);",
-          )
+          path = Path("backend/tests/unit/classes/test_academic_level_architecture.py")
+          text = path.read_text()
+          old = '''        patch(
+            "app.modules.classes.service.ClassRoomRepository.save",
+            new=AsyncMock(return_value=classroom),
+        ),
+    ):
+'''
+          new = '''        patch(
+            "app.modules.classes.service.ClassRoomRepository.get_by_level_arm_label",
+            new=AsyncMock(return_value=classroom),
+        ),
+        patch(
+            "app.modules.classes.service.ClassRoomRepository.save",
+            new=AsyncMock(return_value=classroom),
+        ),
+    ):
+'''
+          if old not in text:
+              raise SystemExit("Expected class fixture fragment not found")
+          path.write_text(text.replace(old, new, 1))
           PY
-      - name: Capture frontend lint
+
+      - name: Capture frontend lint and tests
         shell: bash
         run: |
           cd frontend
@@ -106,7 +76,10 @@ jobs:
           set +e
           npm run lint > ../frontend-lint-diagnostic.txt 2>&1
           echo "frontend_lint_status=$?" >> ../frontend-lint-diagnostic.txt
+          npm test > ../frontend-test-diagnostic.txt 2>&1
+          echo "frontend_test_status=$?" >> ../frontend-test-diagnostic.txt
           exit 0
+
       - name: Capture focused backend tests
         shell: bash
         run: |
@@ -116,11 +89,12 @@ jobs:
           uv run pytest tests/unit/student_academics/test_bulk_academic_actions.py tests/unit/classes/test_academic_level_architecture.py -q --tb=short > ../backend-test-diagnostic.txt 2>&1
           echo "backend_test_status=$?" >> ../backend-test-diagnostic.txt
           exit 0
+
       - name: Commit fixes and diagnostics
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src frontend-lint-diagnostic.txt backend-test-diagnostic.txt
-          git commit -m "fix: resolve academic frontend lint integration"
+          git add backend/tests/unit/classes/test_academic_level_architecture.py frontend-lint-diagnostic.txt frontend-test-diagnostic.txt backend-test-diagnostic.txt
+          git commit -m "test: align academic refactor regression fixtures"
           git push origin HEAD:cbt-sync-module-structure
