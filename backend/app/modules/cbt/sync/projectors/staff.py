@@ -84,10 +84,11 @@ def project_teacher_assignment(
     if assignment_row is None:
         return None
     assignment, membership, account = assignment_row
+    today = date.today()
     if (
         not assignment.is_active
-        or assignment.effective_to is not None
-        or assignment.effective_from > date.today()
+        or assignment.effective_from > today
+        or (assignment.effective_to is not None and assignment.effective_to < today)
         or membership.status != TeacherMembershipStatus.ACTIVE
         or account.account_status != TeacherAccountStatus.ACTIVE
         or not account.is_active
@@ -106,17 +107,23 @@ def project_teacher_assignment(
 
     context = session.execute(
         select(ClassRoom, CurriculumSubject, Curriculum)
-        .join(CurriculumSubject, CurriculumSubject.id == assignment.curriculum_subject_id)
-        .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+        .join(
+            Curriculum,
+            Curriculum.academic_level_id == ClassRoom.academic_level_id,
+        )
+        .join(
+            CurriculumSubject,
+            CurriculumSubject.curriculum_id == Curriculum.id,
+        )
         .where(
             ClassRoom.tenant_id == tenant_id,
             ClassRoom.id == assignment.class_id,
             ClassRoom.is_active.is_(True),
             ClassRoom.archived_at.is_(None),
-            CurriculumSubject.tenant_id == tenant_id,
-            CurriculumSubject.is_active.is_(True),
             Curriculum.tenant_id == tenant_id,
-            Curriculum.academic_level_id == ClassRoom.academic_level_id,
+            CurriculumSubject.tenant_id == tenant_id,
+            CurriculumSubject.id == assignment.curriculum_subject_id,
+            CurriculumSubject.is_active.is_(True),
         )
     ).first()
     if context is None:
