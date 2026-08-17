@@ -131,11 +131,13 @@ def project_class_term_department(
         select(
             ClassTermDepartmentAssignment,
             AcademicTerm,
+            AcademicSession,
             ClassRoom,
             Department,
             AcademicLevel,
         )
         .join(AcademicTerm, AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id)
+        .join(AcademicSession, AcademicSession.id == AcademicTerm.academic_session_id)
         .join(ClassRoom, ClassRoom.id == ClassTermDepartmentAssignment.class_id)
         .join(Department, Department.id == ClassTermDepartmentAssignment.department_id)
         .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
@@ -143,6 +145,7 @@ def project_class_term_department(
             ClassTermDepartmentAssignment.tenant_id == tenant_id,
             ClassTermDepartmentAssignment.id == entity_id,
             AcademicTerm.tenant_id == tenant_id,
+            AcademicSession.tenant_id == tenant_id,
             ClassRoom.tenant_id == tenant_id,
             Department.tenant_id == tenant_id,
             AcademicLevel.tenant_id == tenant_id,
@@ -150,9 +153,12 @@ def project_class_term_department(
     ).first()
     if joined is None:
         return None
-    row, term, classroom, department, level = joined
+    row, term, academic_session, classroom, department, level = joined
     if (
-        not term.is_current
+        not academic_session.is_current
+        or academic_session.status
+        not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
+        or not term.is_current
         or term.status != AcademicTermStatus.OPEN
         or not _visible(classroom)
         or not _visible(department)
