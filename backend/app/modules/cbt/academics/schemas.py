@@ -1,74 +1,183 @@
 """Stable v2 Cloud -> local CBT bootstrap contract."""
 
 from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class SnapshotBase(BaseModel):
-    model_config=ConfigDict(from_attributes=True,use_enum_values=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
 
 class CBTSyncMetadata(SnapshotBase):
-    schema_version:int=2
-    snapshot_id:uuid.UUID
-    generated_at:datetime
-    cursor:int=Field(ge=0)
+    schema_version: int = 2
+    snapshot_id: uuid.UUID
+    generated_at: datetime
+    cursor: int = Field(ge=0)
+
 
 class CBTSchoolSnapshot(SnapshotBase):
-    id:uuid.UUID; name:str; institution_type:str|None=None; timezone:str
+    id: uuid.UUID
+    name: str
+    institution_type: str | None = None
+    timezone: str
+
+
 class CBTServerSnapshot(SnapshotBase):
-    id:uuid.UUID; name:str
+    id: uuid.UUID
+    name: str
+
+
 class CBTAcademicSessionSnapshot(SnapshotBase):
-    id:uuid.UUID; name:str; status:str; is_current:bool
+    id: uuid.UUID
+    name: str
+    status: str
+    is_current: bool
+
+
 class CBTAcademicTermSnapshot(SnapshotBase):
-    id:uuid.UUID; academic_session_id:uuid.UUID; name:str; status:str; is_current:bool
+    id: uuid.UUID
+    academic_session_id: uuid.UUID
+    name: str
+    status: str
+    is_current: bool
+
+
 class CBTAcademicLevelSnapshot(SnapshotBase):
-    id:uuid.UUID; name:str; category:str; position:int
+    id: uuid.UUID
+    name: str
+    category: str
+    position: int
+
+
 class CBTArmLabelSnapshot(SnapshotBase):
-    id:uuid.UUID; label:str
+    id: uuid.UUID
+    label: str
+
+
 class CBTDepartmentSnapshot(SnapshotBase):
-    id:uuid.UUID; academic_level_id:uuid.UUID; name:str
+    id: uuid.UUID
+    academic_level_id: uuid.UUID
+    name: str
+
+
 class CBTClassSnapshot(SnapshotBase):
-    id:uuid.UUID; academic_level_id:uuid.UUID; arm_label_id:uuid.UUID; display_name:str; is_active:bool
+    id: uuid.UUID
+    academic_level_id: uuid.UUID
+    arm_label_id: uuid.UUID
+    display_name: str
+    is_active: bool
+
+
 class CBTClassTermDepartmentSnapshot(SnapshotBase):
-    id:uuid.UUID; class_id:uuid.UUID; academic_term_id:uuid.UUID; department_id:uuid.UUID
+    id: uuid.UUID
+    class_id: uuid.UUID
+    academic_term_id: uuid.UUID
+    department_id: uuid.UUID
+
+
 class CBTSubjectSnapshot(SnapshotBase):
-    id:uuid.UUID; name:str; code:str|None=None; is_active:bool
+    id: uuid.UUID
+    name: str
+    code: str | None = None
+    is_active: bool
+
+
 class CBTCurriculumSnapshot(SnapshotBase):
-    id:uuid.UUID; academic_level_id:uuid.UUID
+    id: uuid.UUID
+    academic_level_id: uuid.UUID
+
+
 class CBTCurriculumSubjectSnapshot(SnapshotBase):
-    id:uuid.UUID; curriculum_id:uuid.UUID; subject_id:uuid.UUID; is_elective:bool; is_active:bool
+    id: uuid.UUID
+    curriculum_id: uuid.UUID
+    subject_id: uuid.UUID
+    is_elective: bool
+    is_active: bool
+
+
 class CBTCurriculumOfferingSnapshot(SnapshotBase):
-    id:uuid.UUID; curriculum_subject_id:uuid.UUID; academic_term_id:uuid.UUID; department_id:uuid.UUID|None=None; eligible_enrollment_ids:list[uuid.UUID]=[]
+    id: uuid.UUID
+    curriculum_subject_id: uuid.UUID
+    academic_term_id: uuid.UUID
+    department_id: uuid.UUID | None = None
+    eligible_enrollment_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
 class CBTAssessmentSchemeSnapshot(SnapshotBase):
-    id:uuid.UUID; name:str; status:str
+    id: uuid.UUID
+    name: str
+    status: str
+
+
 class CBTAssessmentComponentSnapshot(SnapshotBase):
-    id:uuid.UUID; assessment_scheme_id:uuid.UUID; name:str; code:str|None=None; maximum_score:Decimal; position:int; is_active:bool
+    id: uuid.UUID
+    assessment_scheme_id: uuid.UUID
+    name: str
+    code: str | None = None
+    maximum_score: Decimal
+    position: int
+    is_active: bool
+
+
+class CBTAdminSnapshot(SnapshotBase):
+    id: uuid.UUID
+    email: str
+    status: str
+
+
 class CBTTeacherSnapshot(SnapshotBase):
-    id:uuid.UUID; teacher_account_id:uuid.UUID; first_name:str|None=None; last_name:str|None=None; staff_id:str|None=None; status:str
+    id: uuid.UUID
+    teacher_account_id: uuid.UUID
+    first_name: str | None = None
+    last_name: str | None = None
+    staff_id: str | None = None
+    status: str
+
+
 class CBTTeacherAssignmentSnapshot(SnapshotBase):
-    id:uuid.UUID; teacher_membership_id:uuid.UUID; class_id:uuid.UUID; curriculum_subject_id:uuid.UUID; is_active:bool
+    id: uuid.UUID
+    teacher_membership_id: uuid.UUID
+    class_id: uuid.UUID
+    curriculum_subject_id: uuid.UUID
+    is_active: bool
+
+
 class CBTStudentEnrollmentSnapshot(SnapshotBase):
-    id:uuid.UUID; student_id:uuid.UUID; admission_number:str; first_name:str|None=None; last_name:str|None=None; academic_level_id:uuid.UUID; class_id:uuid.UUID|None=None; academic_session_id:uuid.UUID; is_current:bool; student_status:str
+    id: uuid.UUID
+    student_id: uuid.UUID
+    admission_number: str
+    first_name: str | None = None
+    last_name: str | None = None
+    academic_level_id: uuid.UUID
+    class_id: uuid.UUID | None = None
+    academic_session_id: uuid.UUID
+    is_current: bool
+    student_status: str
+
 
 class CBTAcademicBootstrapResponse(SnapshotBase):
-    metadata:CBTSyncMetadata
-    school:CBTSchoolSnapshot
-    server:CBTServerSnapshot
-    sessions:list[CBTAcademicSessionSnapshot]
-    terms:list[CBTAcademicTermSnapshot]
-    levels:list[CBTAcademicLevelSnapshot]
-    arm_labels:list[CBTArmLabelSnapshot]
-    departments:list[CBTDepartmentSnapshot]
-    classes:list[CBTClassSnapshot]
-    class_term_departments:list[CBTClassTermDepartmentSnapshot]
-    subjects:list[CBTSubjectSnapshot]
-    curricula:list[CBTCurriculumSnapshot]
-    curriculum_subjects:list[CBTCurriculumSubjectSnapshot]
-    offerings:list[CBTCurriculumOfferingSnapshot]
-    assessment_schemes:list[CBTAssessmentSchemeSnapshot]
-    assessment_components:list[CBTAssessmentComponentSnapshot]
-    teachers:list[CBTTeacherSnapshot]
-    teacher_assignments:list[CBTTeacherAssignmentSnapshot]
-    student_enrollments:list[CBTStudentEnrollmentSnapshot]
+    metadata: CBTSyncMetadata
+    school: CBTSchoolSnapshot
+    server: CBTServerSnapshot
+    sessions: list[CBTAcademicSessionSnapshot]
+    terms: list[CBTAcademicTermSnapshot]
+    levels: list[CBTAcademicLevelSnapshot]
+    arm_labels: list[CBTArmLabelSnapshot]
+    departments: list[CBTDepartmentSnapshot]
+    classes: list[CBTClassSnapshot]
+    class_term_departments: list[CBTClassTermDepartmentSnapshot]
+    subjects: list[CBTSubjectSnapshot]
+    curricula: list[CBTCurriculumSnapshot]
+    curriculum_subjects: list[CBTCurriculumSubjectSnapshot]
+    offerings: list[CBTCurriculumOfferingSnapshot]
+    assessment_schemes: list[CBTAssessmentSchemeSnapshot]
+    assessment_components: list[CBTAssessmentComponentSnapshot]
+    admins: list[CBTAdminSnapshot]
+    teachers: list[CBTTeacherSnapshot]
+    teacher_assignments: list[CBTTeacherAssignmentSnapshot]
+    student_enrollments: list[CBTStudentEnrollmentSnapshot]
