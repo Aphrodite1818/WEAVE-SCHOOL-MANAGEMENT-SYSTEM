@@ -27,3 +27,4 @@ import app.modules.tenant_admins.models
 import app.modules.tenant_branding.models
 import app.modules.user_guides.models
 import app.modules.bulk_imports.model_events  # noqa: E402,F401
+import app.modules.cbt.sync.model_events  # noqa: E402,F401
