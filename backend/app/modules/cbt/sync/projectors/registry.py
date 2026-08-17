@@ -28,7 +28,11 @@ from app.modules.cbt.sync.projectors.curriculum import (
     project_subject,
     project_subject_offering,
 )
-from app.modules.cbt.sync.projectors.staff import project_teacher, project_teacher_assignment
+from app.modules.cbt.sync.projectors.staff import (
+    project_admin,
+    project_teacher,
+    project_teacher_assignment,
+)
 from app.modules.cbt.sync.projectors.students import project_student_enrollment
 
 Projector = Callable[[Session, uuid.UUID, uuid.UUID], dict[str, Any] | None]
@@ -47,6 +51,7 @@ PROJECTORS: dict[CBTSyncEntityType, Projector] = {
     CBTSyncEntityType.SUBJECT_OFFERING: project_subject_offering,
     CBTSyncEntityType.ASSESSMENT_SCHEME: project_assessment_scheme,
     CBTSyncEntityType.ASSESSMENT_COMPONENT: project_assessment_component,
+    CBTSyncEntityType.ADMIN: project_admin,
     CBTSyncEntityType.TEACHER: project_teacher,
     CBTSyncEntityType.TEACHER_ASSIGNMENT: project_teacher_assignment,
     CBTSyncEntityType.STUDENT_ENROLLMENT: project_student_enrollment,
