@@ -1,0 +1,24 @@
+ImportError while loading conftest '/home/runner/work/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/WEAVE-SCHOOL-MANAGEMENT-SYSTEM/backend/tests/conftest.py'.
+tests/conftest.py:10: in <module>
+    import app.models  # noqa: F401
+    ^^^^^^^^^^^^^^^^^
+app/models.py:30: in <module>
+    import app.modules.bulk_imports.model_events  # noqa: E402,F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/modules/bulk_imports/model_events.py:8: in <module>
+    from app.modules.bulk_imports.sensitive_results import protect_import_metadata
+app/modules/bulk_imports/sensitive_results.py:13: in <module>
+    from app.config.settings import settings
+app/config/settings.py:493: in <module>
+    settings = Settings()  # pyright: ignore[reportCallIssue]
+               ^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pydantic_settings/main.py:247: in __init__
+    super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for Settings
+E   SECRET_KEY
+E     Field required [type=missing, input_value={}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+E   FRONTEND_APP_URL
+E     Field required [type=missing, input_value={}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+backend_test_status=4
