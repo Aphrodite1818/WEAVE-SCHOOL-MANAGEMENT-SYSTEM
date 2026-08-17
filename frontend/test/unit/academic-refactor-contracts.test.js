@@ -32,3 +32,19 @@ test("teacher assignment class selector uses the backend 500-class contract", as
   const source = await read("src/features/academic-admin/TeacherAssignmentsWorkspace.jsx");
   assert.match(source, /getClasses\(\{ limit: 500, activeOnly: true \}\)/);
 });
+
+test("teacher assignment payload is curriculum-subject only", async () => {
+  const source = await read("src/services/academicService.js");
+  assert.match(source, /curriculum_subject_id: payload\.curriculum_subject_id/);
+  assert.doesNotMatch(source, /level_subject_id/);
+});
+
+test("normal and guided level creation share the institution-scoped levels workspace", async () => {
+  const workflowPage = await read("src/pages/admin/AcademicWorkflowPage.jsx");
+  const guideWorkspace = await read("src/features/guides/AdminGuideTaskWorkspace.jsx");
+  const levelsWorkspace = await read("src/features/academic-admin/AcademicLevelsWorkspace.jsx");
+
+  assert.match(workflowPage, /workflow==="levels".*<AcademicLevelsWorkspace/s);
+  assert.match(guideWorkspace, /kind === "levels".*<AcademicLevelsWorkspace/s);
+  assert.match(levelsWorkspace, /academicLevelService\.getCategories\(\)/);
+});
