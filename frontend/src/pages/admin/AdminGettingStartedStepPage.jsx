@@ -1,9 +1,10 @@
-import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, ArrowRight, SkipForward } from "lucide-react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import AdminGuideTaskWorkspace from "../../features/guides/AdminGuideTaskWorkspace";
 import { ROLE_GUIDES } from "../../features/guides/roleGuideConfig";
 
 function AdminGettingStartedStepPage() {
@@ -14,16 +15,49 @@ function AdminGettingStartedStepPage() {
   const step = steps[index];
 
   if (!step) {
-    navigate("/admin/getting-started", { replace: true });
-    return null;
+    return <Navigate to="/admin/getting-started" replace />;
   }
 
   const Icon = step.icon;
+  const previous = steps[index - 1];
   const next = steps[index + 1];
+  const nextDestination = next
+    ? `/admin/getting-started/${next.id}`
+    : "/admin/getting-started";
+
+  const navigation = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <Button
+        variant="outline"
+        size="small"
+        onClick={() => navigate(previous ? `/admin/getting-started/${previous.id}` : "/admin/getting-started")}
+      >
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        {previous ? `Previous: ${previous.shortLabel}` : "All setup steps"}
+      </Button>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Button variant="ghost" size="small" onClick={() => navigate(nextDestination)}>
+          <SkipForward className="mr-2 h-4 w-4" />
+          {next ? "Skip for now" : "Review setup"}
+        </Button>
+        {next ? (
+          <Button size="small" onClick={() => navigate(nextDestination)}>
+            Next: {next.shortLabel}
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        ) : (
+          <Button size="small" onClick={() => navigate("/admin/getting-started")}>
+            Complete setup
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <DashboardLayout role="admin" title={step.label} description={step.description}>
-      <section className="mx-auto max-w-3xl space-y-4">
+      <section className="mx-auto max-w-7xl space-y-4">
         <Button variant="ghost" size="small" onClick={() => navigate("/admin/getting-started")}>
           <ArrowLeft className="mr-2 h-4 w-4" /> All setup steps
         </Button>
@@ -34,7 +68,9 @@ function AdminGettingStartedStepPage() {
               <Icon className="h-6 w-6" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-text-faint">Step {index + 1} of {steps.length}</p>
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-text-faint">
+                Step {index + 1} of {steps.length}
+              </p>
               <h2 className="mt-2 text-xl font-semibold text-text sm:text-2xl">{step.label}</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">{step.detail || step.description}</p>
             </div>
@@ -45,17 +81,14 @@ function AdminGettingStartedStepPage() {
             <p className="mt-1 text-sm leading-6 text-text-muted">{step.scope}</p>
           </div>
 
-          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <Button variant="outline" onClick={() => navigate(step.to)}>{step.actionLabel}</Button>
-            {next ? (
-              <Button variant="ghost" onClick={() => navigate(`/admin/getting-started/${next.id}`)}>
-                Next: {next.shortLabel}<ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            ) : (
-              <Button onClick={() => navigate("/admin/getting-started")}>Complete setup</Button>
-            )}
-          </div>
+          <div className="mt-6">{navigation}</div>
         </Card>
+
+        <div data-admin-guide-workspace={step.id}>
+          <AdminGuideTaskWorkspace stepId={step.id} />
+        </div>
+
+        <Card className="p-4 sm:p-5">{navigation}</Card>
       </section>
     </DashboardLayout>
   );
