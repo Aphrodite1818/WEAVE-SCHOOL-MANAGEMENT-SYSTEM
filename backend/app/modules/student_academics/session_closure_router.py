@@ -56,6 +56,7 @@ async def start_session_closing(
         actor=current_admin,
         session_id=session_id,
         idempotency_key=payload.idempotency_key,
+        allow_terminal_completion=payload.allow_terminal_completion,
     )
 
 
