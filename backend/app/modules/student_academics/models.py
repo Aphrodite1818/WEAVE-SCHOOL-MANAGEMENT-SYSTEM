@@ -1,4 +1,4 @@
-"""Academic sessions, assignments, results, and progression audit models."""
+"""Academic sessions, curriculum assignments, results, and progression audit models."""
 
 from __future__ import annotations
 
@@ -93,9 +93,7 @@ class AcademicLifecycleAudit(BaseModel):
     previous_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     new_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     acting_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -136,14 +134,10 @@ class AcademicSession(BaseModel):
     )
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
     next_academic_session_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("academic_sessions.id", ondelete="RESTRICT"),
-        nullable=True,
+        UUID, ForeignKey("academic_sessions.id", ondelete="RESTRICT"), nullable=True
     )
 
     __table_args__ = (
@@ -179,10 +173,7 @@ class AcademicTerm(BaseModel):
     __tablename__ = "academic_terms"
 
     academic_session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_sessions.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
+        UUID, ForeignKey("academic_sessions.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     name: Mapped[AcademicTermName] = mapped_column(
         SQLEnum(
@@ -207,10 +198,7 @@ class AcademicTerm(BaseModel):
         server_default=AcademicTermStatus.DRAFT.value,
     )
     is_current: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False,
-        server_default="false",
-        nullable=False,
+        Boolean, default=False, server_default="false", nullable=False
     )
     opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closing_started_at: Mapped[datetime | None] = mapped_column(
@@ -218,14 +206,10 @@ class AcademicTerm(BaseModel):
     )
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     opened_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
     closed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
 
     __table_args__ = (
@@ -283,7 +267,9 @@ class GradingScale(BaseModel):
         Boolean, default=True, server_default="true", nullable=False
     )
 
-    __table_args__ = (UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "grade", name="uq_grading_scale_tenant_grade"),
+    )
 
 
 class AssessmentScheme(BaseModel):
@@ -325,9 +311,7 @@ class AssessmentComponent(BaseModel):
     __tablename__ = "assessment_components"
 
     assessment_scheme_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("assessment_schemes.id", ondelete="RESTRICT"),
-        nullable=False,
+        UUID, ForeignKey("assessment_schemes.id", ondelete="RESTRICT"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -358,145 +342,15 @@ class AssessmentComponent(BaseModel):
     )
 
 
-class LevelSubject(BaseModel):
-    __tablename__ = "level_subjects"
-
-    academic_level_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_levels.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("subjects.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default="true", nullable=False
-    )
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "academic_level_id",
-            "subject_id",
-            name="uq_level_subject_tenant_level_subject",
-        ),
-        CheckConstraint(
-            "archived_at IS NULL OR is_active = false",
-            name="ck_level_subjects_archived_requires_inactive",
-        ),
-        Index("ix_level_subjects_tenant_archived", "tenant_id", "archived_at"),
-    )
-
-
-class StudentDepartmentAssignment(BaseModel):
-    """Historical department assignment effective from a specific academic term."""
-
-    __tablename__ = "student_department_assignments"
-
-    student_enrollment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("student_enrollments.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    department_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("departments.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    effective_from_term_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_terms.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    assigned_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "student_enrollment_id",
-            "effective_from_term_id",
-            name="uq_student_department_assignment_effective_term",
-        ),
-        Index(
-            "ix_student_department_assignments_tenant_enrollment",
-            "tenant_id",
-            "student_enrollment_id",
-        ),
-    )
-
-
-class SubjectOffering(BaseModel):
-    """Term-specific curriculum applicability for a level subject."""
-
-    __tablename__ = "subject_offerings"
-
-    level_subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("level_subjects.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    academic_term_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_terms.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    department_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("departments.id", ondelete="RESTRICT"),
-        nullable=True,
-    )
-    is_elective: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="false", nullable=False
-    )
-
-    __table_args__ = (
-        Index(
-            "uq_subject_offering_scope",
-            "tenant_id",
-            "level_subject_id",
-            "academic_term_id",
-            text("COALESCE(department_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
-            unique=True,
-        ),
-        Index(
-            "ix_subject_offerings_tenant_term",
-            "tenant_id",
-            "academic_term_id",
-        ),
-        Index(
-            "ix_subject_offerings_tenant_department",
-            "tenant_id",
-            "department_id",
-        ),
-    )
-
-
 class TeacherAssignment(BaseModel):
     __tablename__ = "teacher_assignments"
 
     class_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("classes.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        UUID, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    level_subject_id: Mapped[uuid.UUID] = mapped_column(
+    curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
-        ForeignKey("level_subjects.id", ondelete="CASCADE"),
+        ForeignKey("curriculum_subjects.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -516,9 +370,9 @@ class TeacherAssignment(BaseModel):
 
     __table_args__ = (
         Index(
-            "uq_teacher_assignment_active_class_level_subject",
+            "uq_teacher_assignment_active_class_curriculum_subject",
             "class_id",
-            "level_subject_id",
+            "curriculum_subject_id",
             unique=True,
             postgresql_where=text("is_active = true"),
         ),
@@ -544,27 +398,20 @@ class TeacherAssignmentLifecycleAudit(BaseModel):
         index=True,
     )
     class_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("classes.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        UUID, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    level_subject_id: Mapped[uuid.UUID] = mapped_column(
+    curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
-        ForeignKey("level_subjects.id", ondelete="CASCADE"),
+        ForeignKey("curriculum_subjects.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     action: Mapped[str] = mapped_column(String(60), nullable=False)
     previous_teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("teacher_memberships.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("teacher_memberships.id", ondelete="SET NULL"), nullable=True
     )
     new_teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("teacher_memberships.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("teacher_memberships.id", ondelete="SET NULL"), nullable=True
     )
     previous_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
     new_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -573,9 +420,7 @@ class TeacherAssignmentLifecycleAudit(BaseModel):
     new_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     new_effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     acting_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
@@ -586,10 +431,10 @@ class TeacherAssignmentLifecycleAudit(BaseModel):
             "assignment_id",
         ),
         Index(
-            "ix_teacher_assignment_audits_tenant_class_level_subject",
+            "ix_teacher_assignment_audits_tenant_class_curriculum_subject",
             "tenant_id",
             "class_id",
-            "level_subject_id",
+            "curriculum_subject_id",
         ),
     )
 
@@ -598,14 +443,10 @@ class StudentProgressionRun(BaseModel):
     __tablename__ = "student_progression_runs"
 
     academic_session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_sessions.id", ondelete="RESTRICT"),
-        nullable=False,
+        UUID, ForeignKey("academic_sessions.id", ondelete="RESTRICT"), nullable=False
     )
     next_academic_session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_sessions.id", ondelete="RESTRICT"),
-        nullable=False,
+        UUID, ForeignKey("academic_sessions.id", ondelete="RESTRICT"), nullable=False
     )
     idempotency_key: Mapped[str] = mapped_column(String(150), nullable=False)
     status: Mapped[StudentProgressionRunStatus] = mapped_column(
@@ -619,49 +460,29 @@ class StudentProgressionRun(BaseModel):
         default=StudentProgressionRunStatus.PENDING,
         server_default=StudentProgressionRunStatus.PENDING.value,
     )
-    total_students: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    promoted_students: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    graduated_students: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    skipped_students: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    pending_students: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
-    failed_students: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    total_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    promoted_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    graduated_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    skipped_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    pending_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    failed_students: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     initiated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
     failure_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id",
-            "idempotency_key",
-            name="uq_student_progression_run_tenant_idempotency",
+            "tenant_id", "idempotency_key", name="uq_student_progression_run_tenant_idempotency"
         ),
         UniqueConstraint(
-            "tenant_id",
-            "academic_session_id",
-            name="uq_student_progression_run_tenant_session",
+            "tenant_id", "academic_session_id", name="uq_student_progression_run_tenant_session"
         ),
         Index("ix_student_progression_runs_tenant_status", "tenant_id", "status"),
         Index(
-            "ix_student_progression_runs_tenant_session",
-            "tenant_id",
-            "academic_session_id",
+            "ix_student_progression_runs_tenant_session", "tenant_id", "academic_session_id"
         ),
         CheckConstraint(
             "total_students >= 0 AND promoted_students >= 0 AND graduated_students >= 0 AND skipped_students >= 0 AND pending_students >= 0 AND failed_students >= 0",
@@ -682,44 +503,28 @@ class StudentProgressionItem(BaseModel):
     __tablename__ = "student_progression_items"
 
     progression_run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("student_progression_runs.id", ondelete="RESTRICT"),
-        nullable=False,
+        UUID, ForeignKey("student_progression_runs.id", ondelete="RESTRICT"), nullable=False
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("students.id", ondelete="RESTRICT"),
-        nullable=False,
+        UUID, ForeignKey("students.id", ondelete="RESTRICT"), nullable=False
     )
     from_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("student_enrollments.id", ondelete="RESTRICT"),
-        nullable=True,
+        UUID, ForeignKey("student_enrollments.id", ondelete="RESTRICT"), nullable=True
     )
     to_enrollment_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("student_enrollments.id", ondelete="RESTRICT"),
-        nullable=True,
+        UUID, ForeignKey("student_enrollments.id", ondelete="RESTRICT"), nullable=True
     )
     from_level_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
-        nullable=False,
+        UUID, ForeignKey("academic_levels.id", ondelete="RESTRICT"), nullable=False
     )
     to_level_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
-        nullable=True,
+        UUID, ForeignKey("academic_levels.id", ondelete="RESTRICT"), nullable=True
     )
     from_class_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("classes.id", ondelete="RESTRICT"),
-        nullable=True,
+        UUID, ForeignKey("classes.id", ondelete="RESTRICT"), nullable=True
     )
     to_class_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("classes.id", ondelete="RESTRICT"),
-        nullable=True,
+        UUID, ForeignKey("classes.id", ondelete="RESTRICT"), nullable=True
     )
     action: Mapped[StudentProgressionItemAction] = mapped_column(
         SQLEnum(
@@ -744,9 +549,7 @@ class StudentProgressionItem(BaseModel):
 
     __table_args__ = (
         UniqueConstraint(
-            "progression_run_id",
-            "student_id",
-            name="uq_progression_item_run_student",
+            "progression_run_id", "student_id", name="uq_progression_item_run_student"
         ),
         Index("ix_progression_items_tenant_run", "tenant_id", "progression_run_id"),
         Index("ix_progression_items_tenant_student", "tenant_id", "student_id"),
@@ -762,22 +565,13 @@ class StudentSubjectResult(BaseModel):
     __tablename__ = "student_subject_results"
 
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("students.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
+        UUID, ForeignKey("students.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     class_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("classes.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
+        UUID, ForeignKey("classes.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("subjects.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
+        UUID, ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     teacher_membership_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
@@ -785,9 +579,9 @@ class StudentSubjectResult(BaseModel):
         nullable=False,
         index=True,
     )
-    level_subject_id: Mapped[uuid.UUID] = mapped_column(
+    curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
-        ForeignKey("level_subjects.id", ondelete="RESTRICT"),
+        ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -810,16 +604,10 @@ class StudentSubjectResult(BaseModel):
         index=True,
     )
     academic_term_id: Mapped[uuid.UUID] = mapped_column(
-        UUID,
-        ForeignKey("academic_terms.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
+        UUID, ForeignKey("academic_terms.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     grading_scale_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("grading_scales.id", ondelete="RESTRICT"),
-        nullable=True,
-        index=True,
+        UUID, ForeignKey("grading_scales.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     assessment_scheme_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
@@ -848,25 +636,21 @@ class StudentSubjectResult(BaseModel):
     submitted_by_actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     locked_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
-        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
-        nullable=True,
+        UUID, ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
 
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
             "student_id",
-            "level_subject_id",
+            "curriculum_subject_id",
             "academic_session_id",
             "academic_term_id",
-            name="uq_student_subject_result_scope",
+            name="uq_student_subject_result_scope_v2",
         ),
         Index("ix_student_subject_results_tenant_student", "tenant_id", "student_id"),
         Index("ix_student_subject_results_tenant_class", "tenant_id", "class_id"),
