@@ -1,0 +1,53 @@
+name: Temporary refactor formatter
+
+on:
+  push:
+    branches:
+      - cbt-sync-module-structure
+    paths:
+      - ".github/workflows/temporary-refactor-format.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format-changed-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: cbt-sync-module-structure
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Format Python files changed from staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin staging
+          mapfile -t files < <(git diff --name-only origin/staging...HEAD -- 'backend/**/*.py' | sed 's#^backend/##')
+          if [ "${#files[@]}" -eq 0 ]; then
+            exit 0
+          fi
+          cd backend
+          uv sync
+          uv run ruff format "${files[@]}"
+          cd ..
+          if git diff --quiet -- backend; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend
+          git commit -m "style: format academic refactor backend"
+          git push origin HEAD:cbt-sync-module-structure
