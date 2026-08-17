@@ -42,7 +42,6 @@ const BLANK_SCALE = {
 };
 const BLANK_SUBJECT = { name: "", code: "", description: "" };
 const CONFIRM_OPEN_SESSION = "OPEN_ACADEMIC_SESSION";
-const CONFIRM_CLOSE_SESSION = "CLOSE_AND_PROGRESS";
 const CONFIRM_OPEN_TERM = "OPEN_ACADEMIC_TERM";
 const CONFIRM_START_TERM_CLOSING = "START_TERM_CLOSING";
 const CONFIRM_FINALIZE_TERM_CLOSE = "FINALIZE_TERM_CLOSE";
@@ -71,12 +70,12 @@ const subjectStatus = (item) =>
   item.archived_at ? "archived" : item.is_active === false ? "inactive" : "active";
 
 const dependencyLabels = {
-  level_subjects: "Curriculum subjects attached to academic levels",
+  curriculum_subjects: "Curriculum subjects attached to academic levels",
   teacher_links: "Teacher capability links",
   teacher_assignments: "Teacher assignments",
   results: "Student result rows",
   report_card_lines: "Report-card subject lines",
-  active_level_subjects: "Active curriculum subjects attached to academic levels",
+  active_curriculum_subjects: "Active curriculum subjects attached to academic levels",
   active_teacher_links: "Active teacher capability links",
   active_teacher_assignments: "Active teacher assignments",
   open_terms: "Open terms",
@@ -223,7 +222,6 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const [editing, setEditing] = useState({ type: "", id: "" });
   const [saving, setSaving] = useState("");
   const [openingSessionId, setOpeningSessionId] = useState("");
-  const [closingSessionId, setClosingSessionId] = useState("");
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [cancelClosureReason, setCancelClosureReason] = useState("");
   const [termPlanPrompt, setTermPlanPrompt] = useState(null);
@@ -404,27 +402,6 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     }
   };
 
-  const startSessionClosing = async (item) => {
-    setClosingSessionId(item.id);
-    try {
-      const preview = await academicService.getSessionDependencies(item.id);
-      if (!preview?.can_progress) {
-        showError(formatDependencyMessage(preview) || "This session cannot be closed yet.");
-        return;
-      }
-      await academicService.startSessionClosing(item.id, {
-        idempotency_key: `session-close-${item.id}-${Date.now()}`,
-      });
-      showSuccess("Academic session closed and next session opened.");
-      await loadWorkspace();
-    } catch (err) {
-      showError(getErrorMessage(err, "Could not close academic session."));
-    } finally {
-      setClosingSessionId("");
-      setPendingConfirmation(null);
-    }
-  };
-
   const deleteSession = async (item) => {
     setSaving(item.id);
     try {
@@ -559,10 +536,6 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
       openSession(pendingConfirmation.item);
       return;
     }
-    if (pendingConfirmation.type === "close-session") {
-      startSessionClosing(pendingConfirmation.item);
-      return;
-    }
     if (pendingConfirmation.type === "delete-session") {
       deleteSession(pendingConfirmation.item);
       return;
@@ -640,7 +613,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         confirmationText: "ACTIVATE_SUBJECT",
         confirmLabel: "Restore to active",
         variant: "success",
-        description: `${item.name} will become active again and available for class setup and teacher assignments.`,
+        description: `${item.name} will become active again and available for curriculum setup and teacher assignments.`,
       },
       deactivate: {
         title: "Deactivate subject",
@@ -816,6 +789,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
           content={activeTab === "create" ? null : (
             <WorkspacePanel
               title="Academic sessions"
+              description="Create and configure sessions here. Use the Progression workspace for staged session closing, terminal graduation approval, and finalization."
             >
             <div className="max-h-[32rem] space-y-3 overflow-y-auto overscroll-contain pr-1">
               {visibleSessions.length === 0 ? (
@@ -864,30 +838,6 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
                             disabled={Boolean(openingSessionId)}
                           >
                             {openingSessionId === item.id ? "Opening..." : "Open session"}
-                          </Button>
-                        ) : null}
-                        {item.status === "open" && item.is_current ? (
-                          <Button
-                            type="button"
-                            size="small"
-                            variant="danger"
-                            onClick={() =>
-                              setPendingConfirmation({
-                                type: "close-session",
-                                item,
-                                title: "Close academic session",
-                                description: `${item.name} -> ${
-                                  sessions.find((session) => session.id === item.next_academic_session_id)?.name ||
-                                  "next configured session"
-                                }`,
-                                confirmationText: CONFIRM_CLOSE_SESSION,
-                                confirmLabel: "Close and progress",
-                                variant: "danger",
-                              })
-                            }
-                            disabled={Boolean(closingSessionId)}
-                          >
-                            {closingSessionId === item.id ? "Closing..." : "Close and progress"}
                           </Button>
                         ) : null}
                         {["draft", "open"].includes(item.status) ? (
@@ -1194,9 +1144,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         isLoading={
           pendingConfirmation?.type === "open-session"
             ? openingSessionId === pendingConfirmation.item?.id
-            : pendingConfirmation?.type === "close-session"
-              ? closingSessionId === pendingConfirmation.item?.id
-              : saving === pendingConfirmation?.item?.id
+            : saving === pendingConfirmation?.item?.id
         }
         onConfirm={runConfirmedAction}
         onCancel={() => {
@@ -1448,7 +1396,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
   const subjectEditor = (
     <WorkspacePanel
       title={editing.type === "subject" ? "Edit subject" : "Create subject"}
-      description="Create each tenant-scoped subject once, then attach it to classes."
+      description="Create each tenant-scoped subject once, then attach it to level curricula."
     >
       <SubjectForm
         form={subjectForm}
@@ -1465,7 +1413,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
     <div>
       <RecordList
         title="Subject catalog"
-        description="Subjects available for attachment to one or more classes."
+        description="Subjects available for one or more level curricula."
         actions={subjectSearchControls}
         items={subjectListItems}
         emptyIcon={BookOpen}
