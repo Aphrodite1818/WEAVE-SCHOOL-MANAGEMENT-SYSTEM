@@ -1,4 +1,4 @@
-"""Academic session, assignment, result, card, and progression schemas."""
+"""Academic session, curriculum-assignment, result, card, and progression schemas."""
 
 from __future__ import annotations
 
@@ -122,14 +122,13 @@ class AcademicTermCreate(InputBase):
     end_date: date | None = None
 
     @model_validator(mode="after")
-    def validate_dates(self) -> AcademicTermCreate:
+    def validate_dates(self):
         if (
             self.start_date is not None
             and self.end_date is not None
             and self.end_date <= self.start_date
         ):
             raise ValueError("end_date must be after start_date")
-
         return self
 
 
@@ -139,17 +138,15 @@ class AcademicTermUpdate(InputBase):
     end_date: date | None = None
 
     @model_validator(mode="after")
-    def validate_update(self) -> AcademicTermUpdate:
+    def validate_update(self):
         if not self.model_fields_set:
             raise ValueError("at least one term field must be provided")
-
         if (
             self.start_date is not None
             and self.end_date is not None
             and self.end_date <= self.start_date
         ):
             raise ValueError("end_date must be after start_date")
-
         return self
 
 
@@ -185,74 +182,13 @@ class AcademicTermResponse(OutputBase):
     name: AcademicTermName
     start_date: date | None = None
     end_date: date | None = None
-
     status: AcademicTermStatus
     is_current: bool
-
     opened_at: datetime | None = None
     closing_started_at: datetime | None = None
     closed_at: datetime | None = None
     opened_by_admin_id: uuid.UUID | None = None
     closed_by_admin_id: uuid.UUID | None = None
-
-    created_at: datetime
-    updated_at: datetime
-
-
-class GradingScaleCreate(InputBase):
-    min_score: Decimal = Field(ge=0, le=100)
-    max_score: Decimal = Field(ge=0, le=100)
-    grade: str = Field(min_length=1, max_length=10)
-    remark: str | None = Field(default=None, max_length=100)
-    is_active: bool = True
-
-    @field_validator("grade", mode="before")
-    @classmethod
-    def normalize_grade_value(cls, value: str) -> str:
-        normalized = normalize_grade(value)
-        if normalized is None:
-            raise ValueError("grade cannot be empty")
-        return normalized
-
-    @model_validator(mode="after")
-    def validate_range(self):
-        if self.min_score > self.max_score:
-            raise ValueError("minimum score cannot exceed maximum score")
-        return self
-
-
-class GradingScaleUpdate(InputBase):
-    min_score: Decimal | None = Field(default=None, ge=0, le=100)
-    max_score: Decimal | None = Field(default=None, ge=0, le=100)
-    grade: str | None = Field(default=None, min_length=1, max_length=10)
-    remark: str | None = Field(default=None, max_length=100)
-    is_active: bool | None = None
-
-    @field_validator("grade", mode="before")
-    @classmethod
-    def normalize_grade_value(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = normalize_grade(value)
-
-
-class AcademicTermResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    academic_session_id: uuid.UUID
-    name: AcademicTermName
-    start_date: date | None = None
-    end_date: date | None = None
-
-    status: AcademicTermStatus
-    is_current: bool
-
-    opened_at: datetime | None = None
-    closing_started_at: datetime | None = None
-    closed_at: datetime | None = None
-    opened_by_admin_id: uuid.UUID | None = None
-    closed_by_admin_id: uuid.UUID | None = None
-
     created_at: datetime
     updated_at: datetime
 
@@ -295,6 +231,18 @@ class GradingScaleUpdate(InputBase):
         if normalized is None:
             raise ValueError("grade cannot be empty")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_range(self):
+        if (
+            self.min_score is not None
+            and self.max_score is not None
+            and self.min_score > self.max_score
+        ):
+            raise ValueError("minimum score cannot exceed maximum score")
+        if not self.model_fields_set:
+            raise ValueError("at least one grading scale field must be provided")
+        return self
 
 
 class GradingScaleResponse(OutputBase):
@@ -322,101 +270,11 @@ class GradingScaleReadiness(OutputBase):
     messages: list[str] = []
 
 
-class LevelSubjectCreate(InputBase):
-    subject_id: uuid.UUID
-
-
-class LevelSubjectBulkCreate(InputBase):
-    subject_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
-
-    @field_validator("subject_ids")
-    @classmethod
-    def subject_ids_must_be_unique(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
-        if len(set(value)) != len(value):
-            raise ValueError("subject_ids must not contain duplicates")
-        return value
-
-
-class LevelSubjectResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    academic_level_id: uuid.UUID
-    academic_level_name: str | None = None
-    subject_id: uuid.UUID
-    subject_name: str | None = None
-    subject_code: str | None = None
-    is_active: bool
-    lifecycle_status: Literal["active", "inactive", "archived"]
-    archived_at: datetime | None = None
-    archived_by_admin_id: uuid.UUID | None = None
-    level_is_active: bool | None = None
-    level_is_archived: bool | None = None
-    subject_is_active: bool | None = None
-    subject_is_archived: bool | None = None
-    can_activate: bool
-    activation_blocker: str | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
-class SubjectOfferingCreate(InputBase):
-    academic_term_id: uuid.UUID
-    department_id: uuid.UUID | None = None
-    is_elective: bool = False
-
-
-class SubjectOfferingResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    level_subject_id: uuid.UUID
-    academic_term_id: uuid.UUID
-    department_id: uuid.UUID | None = None
-    is_elective: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-class StudentDepartmentAssignmentCreate(InputBase):
-    student_enrollment_id: uuid.UUID
-    department_id: uuid.UUID
-    effective_from_term_id: uuid.UUID
-
-
-class StudentDepartmentAssignmentResponse(OutputBase):
-    id: uuid.UUID
-    tenant_id: uuid.UUID
-    student_enrollment_id: uuid.UUID
-    department_id: uuid.UUID
-    effective_from_term_id: uuid.UUID
-    assigned_by_admin_id: uuid.UUID | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
-class LevelSubjectActivateRequest(InputBase):
-    confirmation: Literal["ACTIVATE_LEVEL_SUBJECT"]
-
-
-class LevelSubjectDeactivateRequest(InputBase):
-    confirmation: Literal["DEACTIVATE_LEVEL_SUBJECT"]
-
-
-class LevelSubjectArchiveRequest(InputBase):
-    confirmation: Literal["ARCHIVE_LEVEL_SUBJECT"]
-
-
-class LevelSubjectRestoreRequest(InputBase):
-    confirmation: Literal["RESTORE_LEVEL_SUBJECT"]
-
-
-class LevelSubjectDeleteRequest(InputBase):
-    confirmation: Literal["DELETE_LEVEL_SUBJECT"]
-
-
 class TeacherAssignmentCreate(InputBase):
     teacher_membership_id: uuid.UUID
     class_id: uuid.UUID
-    level_subject_id: uuid.UUID
+    curriculum_subject_id: uuid.UUID
+    academic_term_id: uuid.UUID
     effective_from: date | None = None
 
 
@@ -468,7 +326,7 @@ class AcademicTermDependencyPreview(OutputBase):
 class TeacherAssignmentResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    level_subject_id: uuid.UUID
+    curriculum_subject_id: uuid.UUID
     teacher_membership_id: uuid.UUID
     class_id: uuid.UUID
     class_name: str | None = None
@@ -485,12 +343,17 @@ class TeacherAssignmentResponse(OutputBase):
     updated_at: datetime
 
 
+class StudentAssessmentScoreUpsert(InputBase):
+    assessment_component_id: uuid.UUID
+    score: Decimal | None = Field(default=None, ge=0)
+
+
 class StudentSubjectResultUpsert(InputBase):
     student_id: uuid.UUID
     teacher_assignment_id: uuid.UUID
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
-    component_scores: list["StudentAssessmentScoreUpsert"] = Field(default_factory=list)
+    component_scores: list[StudentAssessmentScoreUpsert] = Field(default_factory=list)
     status: AcademicResultStatus = AcademicResultStatus.DRAFT
 
     @model_validator(mode="after")
@@ -499,11 +362,6 @@ class StudentSubjectResultUpsert(InputBase):
         if len(component_ids) != len(set(component_ids)):
             raise ValueError("assessment components must be unique")
         return self
-
-
-class StudentAssessmentScoreUpsert(InputBase):
-    assessment_component_id: uuid.UUID
-    score: Decimal | None = Field(default=None, ge=0)
 
 
 class AssessmentComponentScoreResponse(OutputBase):
@@ -546,7 +404,7 @@ class StudentSubjectResultResponse(OutputBase):
     subject_code: str | None = None
     teacher_membership_id: uuid.UUID
     teacher_name: str | None = None
-    level_subject_id: uuid.UUID
+    curriculum_subject_id: uuid.UUID
     teacher_assignment_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_session_name: str | None = None
@@ -576,6 +434,7 @@ class StudentSubjectResultResponse(OutputBase):
 class StudentSubjectCardResponse(OutputBase):
     id: uuid.UUID
     result_id: uuid.UUID | None = None
+    curriculum_subject_id: uuid.UUID | None = None
     class_id: uuid.UUID | None = None
     class_name: str | None = None
     class_arm: str | None = None
@@ -671,11 +530,6 @@ class AcademicTermListResponse(OutputBase):
 
 class GradingScaleListResponse(OutputBase):
     items: list[GradingScaleResponse]
-    total: int
-
-
-class LevelSubjectListResponse(OutputBase):
-    items: list[LevelSubjectResponse]
     total: int
 
 
