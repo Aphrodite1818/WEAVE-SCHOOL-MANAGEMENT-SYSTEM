@@ -1,32 +1,27 @@
-# ====================================#
-# backend.app.modules.cbt.sync.enums.py
-# ====================================#
-
+"""Stable wire-level CBT synchronization enums."""
 
 from enum import Enum as PyEnum
 
 
 class CBTSyncOperation(str, PyEnum):
-    """various sync operationis Weave cloud can pass to cbt for processing"""
-
     CREATED = "created"
     UPDATED = "updated"
     DELETED = "deleted"
 
 
 class CBTSyncEntityType(str, PyEnum):
-    """various entities operations can be performed on"""
-
     ACADEMIC_LEVEL = "academic_level"
     DEPARTMENT = "department"
     ARM_LABEL = "arm_label"
     CLASS = "class"
+    CLASS_TERM_DEPARTMENT = "class_term_department"
 
     ACADEMIC_SESSION = "academic_session"
     ACADEMIC_TERM = "academic_term"
 
     SUBJECT = "subject"
-    LEVEL_SUBJECT = "level_subject"
+    CURRICULUM = "curriculum"
+    CURRICULUM_SUBJECT = "curriculum_subject"
     SUBJECT_OFFERING = "subject_offering"
 
     ASSESSMENT_SCHEME = "assessment_scheme"
