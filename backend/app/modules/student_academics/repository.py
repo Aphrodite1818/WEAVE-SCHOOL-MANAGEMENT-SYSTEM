@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
 from app.modules.report_cards.models import ReportCard, ReportCardStatus
-from app.modules.subjects.models import Subject
+from app.modules.student_academics.curriculum_models import CurriculumSubject
 from app.modules.student_academics.models import (
     AcademicLifecycleAudit,
     AcademicResultStatus,
@@ -20,9 +20,7 @@ from app.modules.student_academics.models import (
     AcademicTerm,
     AcademicTermStatus,
     AssessmentComponent,
-    AssessmentScheme,
     GradingScale,
-    LevelSubject,
     StudentAssessmentScore,
     StudentProgressionRun,
     StudentSubjectResult,
@@ -30,6 +28,7 @@ from app.modules.student_academics.models import (
     TeacherAssignmentLifecycleAudit,
 )
 from app.modules.students.models import Student, StudentEnrollment
+from app.modules.subjects.models import Subject
 from app.modules.teachers.models import TeacherAccount, TeacherMembership
 
 FINALIZED_RESULT_STATUSES = (AcademicResultStatus.LOCKED,)
@@ -47,6 +46,9 @@ class StudentAcademicRepository:
         await db.refresh(entity)
         return entity
 
+    # ------------------------------------------------------------------
+    # Sessions and terms
+    # ------------------------------------------------------------------
     @staticmethod
     async def create_academic_session(
         db: AsyncSession, academic_session: AcademicSession
@@ -71,9 +73,7 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def get_academic_session_by_name(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        name: str,
+        db: AsyncSession, tenant_id: uuid.UUID, name: str
     ) -> AcademicSession | None:
         return (
             await db.execute(
@@ -86,8 +86,7 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def get_current_academic_session(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
+        db: AsyncSession, tenant_id: uuid.UUID
     ) -> AcademicSession | None:
         return (
             await db.execute(
@@ -117,7 +116,9 @@ class StudentAcademicRepository:
         filters = [AcademicSession.tenant_id == tenant_id]
         if search:
             filters.append(
-                AcademicSession.name.ilike(f"%{escape_like(search.strip())}%", escape="\\")
+                AcademicSession.name.ilike(
+                    f"%{escape_like(search.strip())}%", escape="\\"
+                )
             )
         if status is not None:
             filters.append(AcademicSession.status == status)
@@ -128,7 +129,9 @@ class StudentAcademicRepository:
         if start_date_to is not None:
             filters.append(AcademicSession.start_date <= start_date_to)
         total = (
-            await db.execute(select(func.count()).select_from(AcademicSession).where(*filters))
+            await db.execute(
+                select(func.count()).select_from(AcademicSession).where(*filters)
+            )
         ).scalar_one()
         rows = (
             (
@@ -155,7 +158,9 @@ class StudentAcademicRepository:
         return await StudentAcademicRepository._save(db, academic_session)
 
     @staticmethod
-    async def create_academic_term(db: AsyncSession, academic_term: AcademicTerm) -> AcademicTerm:
+    async def create_academic_term(
+        db: AsyncSession, academic_term: AcademicTerm
+    ) -> AcademicTerm:
         return await StudentAcademicRepository._save(db, academic_term)
 
     @staticmethod
@@ -193,15 +198,16 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def get_current_term(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
+        db: AsyncSession, tenant_id: uuid.UUID
     ) -> AcademicTerm | None:
         return (
             await db.execute(
                 select(AcademicTerm).where(
                     AcademicTerm.tenant_id == tenant_id,
                     AcademicTerm.is_current.is_(True),
-                    AcademicTerm.status.in_({AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}),
+                    AcademicTerm.status.in_(
+                        {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
+                    ),
                 )
             )
         ).scalar_one_or_none()
@@ -309,9 +315,14 @@ class StudentAcademicRepository:
         return list(rows), int(total)
 
     @staticmethod
-    async def save_academic_term(db: AsyncSession, academic_term: AcademicTerm) -> AcademicTerm:
+    async def save_academic_term(
+        db: AsyncSession, academic_term: AcademicTerm
+    ) -> AcademicTerm:
         return await StudentAcademicRepository._save(db, academic_term)
 
+    # ------------------------------------------------------------------
+    # Lifecycle dependency counts
+    # ------------------------------------------------------------------
     @staticmethod
     async def count_academic_terms(
         db: AsyncSession,
@@ -327,7 +338,9 @@ class StudentAcademicRepository:
             filters.append(AcademicTerm.status.in_(statuses))
         return int(
             (
-                await db.execute(select(func.count()).select_from(AcademicTerm).where(*filters))
+                await db.execute(
+                    select(func.count()).select_from(AcademicTerm).where(*filters)
+                )
             ).scalar_one()
         )
 
@@ -373,15 +386,15 @@ class StudentAcademicRepository:
             filters.append(ReportCard.status.in_(statuses))
         return int(
             (
-                await db.execute(select(func.count()).select_from(ReportCard).where(*filters))
+                await db.execute(
+                    select(func.count()).select_from(ReportCard).where(*filters)
+                )
             ).scalar_one()
         )
 
     @staticmethod
     async def count_enrollments(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        academic_session_id: uuid.UUID,
+        db: AsyncSession, tenant_id: uuid.UUID, academic_session_id: uuid.UUID
     ) -> int:
         return int(
             (
@@ -419,9 +432,7 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def count_inbound_next_sessions(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        academic_session_id: uuid.UUID,
+        db: AsyncSession, tenant_id: uuid.UUID, academic_session_id: uuid.UUID
     ) -> int:
         return int(
             (
@@ -438,8 +449,7 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def add_academic_lifecycle_audit(
-        db: AsyncSession,
-        audit: AcademicLifecycleAudit,
+        db: AsyncSession, audit: AcademicLifecycleAudit
     ) -> AcademicLifecycleAudit:
         db.add(audit)
         await db.flush()
@@ -453,15 +463,18 @@ class StudentAcademicRepository:
     async def delete_academic_term(db: AsyncSession, term: AcademicTerm) -> None:
         await db.delete(term)
 
+    # ------------------------------------------------------------------
+    # Grading scales
+    # ------------------------------------------------------------------
     @staticmethod
-    async def create_grading_scale(db: AsyncSession, grading_scale: GradingScale) -> GradingScale:
+    async def create_grading_scale(
+        db: AsyncSession, grading_scale: GradingScale
+    ) -> GradingScale:
         return await StudentAcademicRepository._save(db, grading_scale)
 
     @staticmethod
     async def get_grading_scale_by_id(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        grading_scale_id: uuid.UUID,
+        db: AsyncSession, tenant_id: uuid.UUID, grading_scale_id: uuid.UUID
     ) -> GradingScale | None:
         return (
             await db.execute(
@@ -474,9 +487,7 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def get_grading_scale_by_grade(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        grade: str,
+        db: AsyncSession, tenant_id: uuid.UUID, grade: str
     ) -> GradingScale | None:
         return (
             await db.execute(
@@ -518,9 +529,7 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def find_grade_for_score(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        score: Decimal,
+        db: AsyncSession, tenant_id: uuid.UUID, score: Decimal
     ) -> GradingScale | None:
         return (
             await db.execute(
@@ -534,11 +543,18 @@ class StudentAcademicRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def save_grading_scale(db: AsyncSession, grading_scale: GradingScale) -> GradingScale:
+    async def save_grading_scale(
+        db: AsyncSession, grading_scale: GradingScale
+    ) -> GradingScale:
         return await StudentAcademicRepository._save(db, grading_scale)
 
+    # ------------------------------------------------------------------
+    # Results and component scores
+    # ------------------------------------------------------------------
     @staticmethod
-    async def upsert_result(db: AsyncSession, result: StudentSubjectResult) -> StudentSubjectResult:
+    async def upsert_result(
+        db: AsyncSession, result: StudentSubjectResult
+    ) -> StudentSubjectResult:
         return await StudentAcademicRepository._save(db, result)
 
     @staticmethod
@@ -555,12 +571,14 @@ class StudentAcademicRepository:
                     and_(
                         StudentAssessmentScore.tenant_id == tenant_id,
                         StudentAssessmentScore.student_subject_result_id == result.id,
-                        StudentAssessmentScore.assessment_component_id == AssessmentComponent.id,
+                        StudentAssessmentScore.assessment_component_id
+                        == AssessmentComponent.id,
                     ),
                 )
                 .where(
                     AssessmentComponent.tenant_id == tenant_id,
-                    AssessmentComponent.assessment_scheme_id == result.assessment_scheme_id,
+                    AssessmentComponent.assessment_scheme_id
+                    == result.assessment_scheme_id,
                     AssessmentComponent.is_active.is_(True),
                 )
                 .order_by(AssessmentComponent.position.asc())
@@ -607,7 +625,9 @@ class StudentAcademicRepository:
         )
         components_by_scheme: dict[uuid.UUID, list[AssessmentComponent]] = {}
         for component in components:
-            components_by_scheme.setdefault(component.assessment_scheme_id, []).append(component)
+            components_by_scheme.setdefault(component.assessment_scheme_id, []).append(
+                component
+            )
         scores_by_result = {
             (score.student_subject_result_id, score.assessment_component_id): score
             for score in scores
@@ -661,9 +681,7 @@ class StudentAcademicRepository:
 
     @staticmethod
     async def get_result_by_id(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        result_id: uuid.UUID,
+        db: AsyncSession, tenant_id: uuid.UUID, result_id: uuid.UUID
     ) -> StudentSubjectResult | None:
         return (
             await db.execute(
@@ -675,14 +693,14 @@ class StudentAcademicRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def _level_subject_id_for_assignment(
+    async def _curriculum_subject_id_for_assignment(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         teacher_assignment_id: uuid.UUID,
     ) -> uuid.UUID | None:
         return (
             await db.execute(
-                select(TeacherAssignment.level_subject_id).where(
+                select(TeacherAssignment.curriculum_subject_id).where(
                     TeacherAssignment.tenant_id == tenant_id,
                     TeacherAssignment.id == teacher_assignment_id,
                 )
@@ -700,17 +718,17 @@ class StudentAcademicRepository:
         *,
         lock: bool = False,
     ) -> StudentSubjectResult | None:
-        level_subject_id = await StudentAcademicRepository._level_subject_id_for_assignment(
-            db,
-            tenant_id,
-            teacher_assignment_id,
+        curriculum_subject_id = (
+            await StudentAcademicRepository._curriculum_subject_id_for_assignment(
+                db, tenant_id, teacher_assignment_id
+            )
         )
-        if level_subject_id is None:
+        if curriculum_subject_id is None:
             return None
         query = select(StudentSubjectResult).where(
             StudentSubjectResult.tenant_id == tenant_id,
             StudentSubjectResult.student_id == student_id,
-            StudentSubjectResult.level_subject_id == level_subject_id,
+            StudentSubjectResult.curriculum_subject_id == curriculum_subject_id,
             StudentSubjectResult.academic_session_id == academic_session_id,
             StudentSubjectResult.academic_term_id == academic_term_id,
         )
@@ -748,9 +766,13 @@ class StudentAcademicRepository:
         if subject_id is not None:
             filters.append(StudentSubjectResult.subject_id == subject_id)
         if teacher_assignment_id is not None:
-            filters.append(StudentSubjectResult.teacher_assignment_id == teacher_assignment_id)
+            filters.append(
+                StudentSubjectResult.teacher_assignment_id == teacher_assignment_id
+            )
         if academic_session_id is not None:
-            filters.append(StudentSubjectResult.academic_session_id == academic_session_id)
+            filters.append(
+                StudentSubjectResult.academic_session_id == academic_session_id
+            )
         if academic_term_id is not None:
             filters.append(StudentSubjectResult.academic_term_id == academic_term_id)
         if status is not None:
@@ -791,7 +813,8 @@ class StudentAcademicRepository:
                 .select_from(StudentAssessmentScore)
                 .where(
                     StudentAssessmentScore.tenant_id == tenant_id,
-                    StudentAssessmentScore.student_subject_result_id == StudentSubjectResult.id,
+                    StudentAssessmentScore.student_subject_result_id
+                    == StudentSubjectResult.id,
                 )
                 .correlate(StudentSubjectResult)
                 .scalar_subquery()
@@ -801,10 +824,11 @@ class StudentAcademicRepository:
             else:
                 filters.append(or_(component_count == 0, score_count != component_count))
         if has_grade is not None:
-            if has_grade:
-                filters.append(StudentSubjectResult.grade.is_not(None))
-            else:
-                filters.append(StudentSubjectResult.grade.is_(None))
+            filters.append(
+                StudentSubjectResult.grade.is_not(None)
+                if has_grade
+                else StudentSubjectResult.grade.is_(None)
+            )
         count_query = select(func.count()).select_from(StudentSubjectResult)
         rows_query = select(StudentSubjectResult)
         if search_term:
@@ -829,166 +853,9 @@ class StudentAcademicRepository:
         )
         return list(rows), int(total)
 
-    @staticmethod
-    async def create_level_subject(db: AsyncSession, level_subject: LevelSubject) -> LevelSubject:
-        return await StudentAcademicRepository._save(db, level_subject)
-
-    @staticmethod
-    async def get_level_subject_by_id(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
-        *,
-        lock: bool = False,
-    ) -> LevelSubject | None:
-        query = select(LevelSubject).where(
-            LevelSubject.tenant_id == tenant_id,
-            LevelSubject.id == level_subject_id,
-        )
-        if lock:
-            query = query.with_for_update()
-        return (await db.execute(query)).scalar_one_or_none()
-
-    @staticmethod
-    async def get_level_subject_by_level_and_subject(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        academic_level_id: uuid.UUID,
-        subject_id: uuid.UUID,
-    ) -> LevelSubject | None:
-        return (
-            await db.execute(
-                select(LevelSubject).where(
-                    LevelSubject.tenant_id == tenant_id,
-                    LevelSubject.academic_level_id == academic_level_id,
-                    LevelSubject.subject_id == subject_id,
-                )
-            )
-        ).scalar_one_or_none()
-
-    @staticmethod
-    async def list_level_subjects(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        *,
-        academic_level_id: uuid.UUID | None = None,
-        active_only: bool = False,
-        include_archived: bool = False,
-        lifecycle_status: str | None = None,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> tuple[list[LevelSubject], int]:
-        filters = [LevelSubject.tenant_id == tenant_id]
-        if academic_level_id is not None:
-            filters.append(LevelSubject.academic_level_id == academic_level_id)
-        if lifecycle_status == "active":
-            filters.append(LevelSubject.is_active.is_(True))
-            filters.append(LevelSubject.archived_at.is_(None))
-        elif lifecycle_status == "inactive":
-            filters.append(LevelSubject.is_active.is_(False))
-            filters.append(LevelSubject.archived_at.is_(None))
-        elif lifecycle_status == "archived":
-            filters.append(LevelSubject.archived_at.is_not(None))
-        if active_only:
-            filters.append(LevelSubject.is_active.is_(True))
-            filters.append(LevelSubject.archived_at.is_(None))
-        if not include_archived and lifecycle_status != "archived":
-            filters.append(LevelSubject.archived_at.is_(None))
-        total = (
-            await db.execute(select(func.count()).select_from(LevelSubject).where(*filters))
-        ).scalar_one()
-        rows = (
-            (
-                await db.execute(
-                    select(LevelSubject)
-                    .where(*filters)
-                    .order_by(LevelSubject.created_at.desc())
-                    .offset(skip)
-                    .limit(limit)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return list(rows), int(total)
-
-    @staticmethod
-    async def save_level_subject(db: AsyncSession, level_subject: LevelSubject) -> LevelSubject:
-        return await StudentAcademicRepository._save(db, level_subject)
-
-    @staticmethod
-    async def delete_level_subject(db: AsyncSession, level_subject: LevelSubject) -> None:
-        await db.delete(level_subject)
-        await db.flush()
-
-    @staticmethod
-    async def count_results_for_level_subject(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
-    ) -> int:
-        result = await db.execute(
-            select(func.count())
-            .select_from(StudentSubjectResult)
-            .where(
-                StudentSubjectResult.tenant_id == tenant_id,
-                StudentSubjectResult.level_subject_id == level_subject_id,
-            )
-        )
-        return int(result.scalar_one())
-
-    @staticmethod
-    async def count_teacher_assignments_for_level_subject(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
-        *,
-        active_only: bool = False,
-    ) -> int:
-        filters = [
-            TeacherAssignment.tenant_id == tenant_id,
-            TeacherAssignment.level_subject_id == level_subject_id,
-        ]
-        if active_only:
-            filters.append(TeacherAssignment.is_active.is_(True))
-        result = await db.execute(
-            select(func.count()).select_from(TeacherAssignment).where(*filters)
-        )
-        return int(result.scalar_one())
-
-    @staticmethod
-    async def count_report_card_lines_for_level_subject(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
-    ) -> int:
-        from app.modules.report_cards.models import ReportCard, ReportCardSubjectLine
-
-        level_subject = await StudentAcademicRepository.get_level_subject_by_id(
-            db,
-            tenant_id,
-            level_subject_id,
-        )
-        if level_subject is None:
-            return 0
-        result = await db.execute(
-            select(func.count())
-            .select_from(ReportCardSubjectLine)
-            .join(ReportCard, ReportCard.id == ReportCardSubjectLine.report_card_id)
-            .where(
-                ReportCardSubjectLine.tenant_id == tenant_id,
-                ReportCard.tenant_id == tenant_id,
-                ReportCard.class_id.in_(
-                    select(ClassRoom.id).where(
-                        ClassRoom.tenant_id == tenant_id,
-                        ClassRoom.academic_level_id == level_subject.academic_level_id,
-                    )
-                ),
-                ReportCardSubjectLine.subject_id == level_subject.subject_id,
-            )
-        )
-        return int(result.scalar_one())
-
+    # ------------------------------------------------------------------
+    # Teacher assignments
+    # ------------------------------------------------------------------
     @staticmethod
     async def create_teacher_assignment(
         db: AsyncSession, assignment: TeacherAssignment
@@ -1012,17 +879,17 @@ class StudentAcademicRepository:
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
-    async def get_active_teacher_assignment_for_level_subject(
+    async def get_active_teacher_assignment_for_curriculum_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
         class_id: uuid.UUID,
         exclude_id: uuid.UUID | None = None,
         lock: bool = False,
     ) -> TeacherAssignment | None:
         filters = [
             TeacherAssignment.tenant_id == tenant_id,
-            TeacherAssignment.level_subject_id == level_subject_id,
+            TeacherAssignment.curriculum_subject_id == curriculum_subject_id,
             TeacherAssignment.class_id == class_id,
             TeacherAssignment.is_active.is_(True),
             TeacherAssignment.effective_to.is_(None),
@@ -1030,17 +897,19 @@ class StudentAcademicRepository:
         if exclude_id is not None:
             filters.append(TeacherAssignment.id != exclude_id)
         query = (
-            select(TeacherAssignment).where(*filters).order_by(TeacherAssignment.created_at.desc())
+            select(TeacherAssignment)
+            .where(*filters)
+            .order_by(TeacherAssignment.created_at.desc())
         )
         if lock:
             query = query.with_for_update()
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
-    async def list_teacher_assignments_for_level_subject(
+    async def list_teacher_assignments_for_curriculum_subject(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
         class_id: uuid.UUID,
         *,
         lock: bool = False,
@@ -1049,7 +918,7 @@ class StudentAcademicRepository:
             select(TeacherAssignment)
             .where(
                 TeacherAssignment.tenant_id == tenant_id,
-                TeacherAssignment.level_subject_id == level_subject_id,
+                TeacherAssignment.curriculum_subject_id == curriculum_subject_id,
                 TeacherAssignment.class_id == class_id,
             )
             .order_by(
@@ -1065,7 +934,7 @@ class StudentAcademicRepository:
     async def get_later_teacher_assignments(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        level_subject_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
         class_id: uuid.UUID,
         effective_from: date,
         *,
@@ -1074,7 +943,7 @@ class StudentAcademicRepository:
     ) -> list[TeacherAssignment]:
         filters = [
             TeacherAssignment.tenant_id == tenant_id,
-            TeacherAssignment.level_subject_id == level_subject_id,
+            TeacherAssignment.curriculum_subject_id == curriculum_subject_id,
             TeacherAssignment.class_id == class_id,
             TeacherAssignment.effective_from > effective_from,
         ]
@@ -1096,7 +965,7 @@ class StudentAcademicRepository:
         *,
         teacher_id: uuid.UUID | None = None,
         class_id: uuid.UUID | None = None,
-        level_subject_id: uuid.UUID | None = None,
+        curriculum_subject_id: uuid.UUID | None = None,
         subject_id: uuid.UUID | None = None,
         status: str | None = None,
         effective_from_from: date | None = None,
@@ -1107,19 +976,25 @@ class StudentAcademicRepository:
     ) -> tuple[list[dict], int]:
         filters = [
             TeacherAssignment.tenant_id == tenant_id,
-            LevelSubject.tenant_id == tenant_id,
+            CurriculumSubject.tenant_id == tenant_id,
         ]
         if teacher_id is not None:
             filters.append(TeacherAssignment.teacher_membership_id == teacher_id)
-        if level_subject_id is not None:
-            filters.append(TeacherAssignment.level_subject_id == level_subject_id)
+        if curriculum_subject_id is not None:
+            filters.append(
+                TeacherAssignment.curriculum_subject_id == curriculum_subject_id
+            )
         if class_id is not None:
             filters.append(TeacherAssignment.class_id == class_id)
         if subject_id is not None:
-            filters.append(LevelSubject.subject_id == subject_id)
+            filters.append(CurriculumSubject.subject_id == subject_id)
         if status == "active":
-            filters.append(TeacherAssignment.is_active.is_(True))
-            filters.append(TeacherAssignment.effective_to.is_(None))
+            filters.extend(
+                [
+                    TeacherAssignment.is_active.is_(True),
+                    TeacherAssignment.effective_to.is_(None),
+                ]
+            )
         elif status == "ended":
             filters.append(
                 or_(
@@ -1132,7 +1007,7 @@ class StudentAcademicRepository:
         if effective_from_to is not None:
             filters.append(TeacherAssignment.effective_from <= effective_from_to)
         if search:
-            pattern = f"%{search.strip()}%"
+            pattern = f"%{escape_like(search.strip())}%"
             teacher_name = func.concat(
                 func.coalesce(TeacherAccount.first_name, ""),
                 " ",
@@ -1140,42 +1015,52 @@ class StudentAcademicRepository:
             )
             filters.append(
                 or_(
-                    teacher_name.ilike(pattern),
-                    TeacherMembership.staff_id.ilike(pattern),
-                    AcademicLevel.name.ilike(pattern),
-                    ArmLabel.label.ilike(pattern),
-                    Subject.name.ilike(pattern),
-                    Subject.code.ilike(pattern),
+                    teacher_name.ilike(pattern, escape="\\"),
+                    TeacherMembership.staff_id.ilike(pattern, escape="\\"),
+                    AcademicLevel.name.ilike(pattern, escape="\\"),
+                    ArmLabel.label.ilike(pattern, escape="\\"),
+                    Subject.name.ilike(pattern, escape="\\"),
+                    Subject.code.ilike(pattern, escape="\\"),
                 )
             )
-        base_query = (
-            select(TeacherAssignment)
-            .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
-            .join(ClassRoom, ClassRoom.id == TeacherAssignment.class_id, isouter=True)
-            .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id, isouter=True)
-            .join(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id, isouter=True)
-            .join(Subject, Subject.id == LevelSubject.subject_id, isouter=True)
-            .join(
-                TeacherMembership,
-                TeacherMembership.id == TeacherAssignment.teacher_membership_id,
-                isouter=True,
+
+        def _base_query():
+            return (
+                select(TeacherAssignment)
+                .join(
+                    CurriculumSubject,
+                    CurriculumSubject.id == TeacherAssignment.curriculum_subject_id,
+                )
+                .join(ClassRoom, ClassRoom.id == TeacherAssignment.class_id, isouter=True)
+                .join(
+                    AcademicLevel,
+                    AcademicLevel.id == ClassRoom.academic_level_id,
+                    isouter=True,
+                )
+                .join(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id, isouter=True)
+                .join(Subject, Subject.id == CurriculumSubject.subject_id, isouter=True)
+                .join(
+                    TeacherMembership,
+                    TeacherMembership.id == TeacherAssignment.teacher_membership_id,
+                    isouter=True,
+                )
+                .join(
+                    TeacherAccount,
+                    TeacherAccount.id == TeacherMembership.teacher_account_id,
+                    isouter=True,
+                )
+                .where(*filters)
             )
-            .join(
-                TeacherAccount,
-                TeacherAccount.id == TeacherMembership.teacher_account_id,
-                isouter=True,
-            )
-            .where(*filters)
-        )
+
         total = (
-            await db.execute(select(func.count()).select_from(base_query.subquery()))
+            await db.execute(select(func.count()).select_from(_base_query().subquery()))
         ).scalar_one()
         rows = (
             await db.execute(
                 select(
                     TeacherAssignment,
                     TeacherAssignment.class_id.label("class_id"),
-                    LevelSubject.subject_id.label("subject_id"),
+                    CurriculumSubject.subject_id.label("subject_id"),
                     AcademicLevel.name.label("class_name"),
                     ArmLabel.label.label("class_arm"),
                     Subject.name.label("subject_name"),
@@ -1184,11 +1069,18 @@ class StudentAcademicRepository:
                     TeacherAccount.first_name.label("teacher_first_name"),
                     TeacherAccount.last_name.label("teacher_last_name"),
                 )
-                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
+                .join(
+                    CurriculumSubject,
+                    CurriculumSubject.id == TeacherAssignment.curriculum_subject_id,
+                )
                 .join(ClassRoom, ClassRoom.id == TeacherAssignment.class_id, isouter=True)
-                .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id, isouter=True)
+                .join(
+                    AcademicLevel,
+                    AcademicLevel.id == ClassRoom.academic_level_id,
+                    isouter=True,
+                )
                 .join(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id, isouter=True)
-                .join(Subject, Subject.id == LevelSubject.subject_id, isouter=True)
+                .join(Subject, Subject.id == CurriculumSubject.subject_id, isouter=True)
                 .join(
                     TeacherMembership,
                     TeacherMembership.id == TeacherAssignment.teacher_membership_id,
@@ -1219,7 +1111,9 @@ class StudentAcademicRepository:
                 "subject_code": row.subject_code,
                 "teacher_staff_id": row.teacher_staff_id,
                 "teacher_name": " ".join(
-                    part for part in [row.teacher_first_name, row.teacher_last_name] if part
+                    part
+                    for part in [row.teacher_first_name, row.teacher_last_name]
+                    if part
                 )
                 or None,
             }
@@ -1238,12 +1132,12 @@ class StudentAcademicRepository:
         tenant_id: uuid.UUID,
         teacher_assignment_id: uuid.UUID,
     ) -> bool:
-        result_count = await StudentAcademicRepository.count_scores_for_teacher_assignment(
-            db,
-            tenant_id,
-            teacher_assignment_id,
+        return (
+            await StudentAcademicRepository.count_scores_for_teacher_assignment(
+                db, tenant_id, teacher_assignment_id
+            )
+            > 0
         )
-        return result_count > 0
 
     @staticmethod
     async def count_teacher_assignment_dependencies(
@@ -1253,10 +1147,10 @@ class StudentAcademicRepository:
     ) -> dict[str, int]:
         from app.modules.report_cards.models import ReportCardSubjectLine
 
-        student_results = await StudentAcademicRepository.count_scores_for_teacher_assignment(
-            db,
-            tenant_id,
-            teacher_assignment_id,
+        student_results = (
+            await StudentAcademicRepository.count_scores_for_teacher_assignment(
+                db, tenant_id, teacher_assignment_id
+            )
         )
         report_card_references = (
             await db.execute(
@@ -1264,12 +1158,14 @@ class StudentAcademicRepository:
                 .select_from(ReportCardSubjectLine)
                 .join(
                     StudentSubjectResult,
-                    StudentSubjectResult.id == ReportCardSubjectLine.student_subject_result_id,
+                    StudentSubjectResult.id
+                    == ReportCardSubjectLine.student_subject_result_id,
                 )
                 .where(
                     ReportCardSubjectLine.tenant_id == tenant_id,
                     StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.teacher_assignment_id == teacher_assignment_id,
+                    StudentSubjectResult.teacher_assignment_id
+                    == teacher_assignment_id,
                 )
             )
         ).scalar_one()
@@ -1280,7 +1176,9 @@ class StudentAcademicRepository:
         }
 
     @staticmethod
-    async def delete_teacher_assignment(db: AsyncSession, assignment: TeacherAssignment) -> None:
+    async def delete_teacher_assignment(
+        db: AsyncSession, assignment: TeacherAssignment
+    ) -> None:
         await db.delete(assignment)
         await db.flush()
 
@@ -1290,7 +1188,9 @@ class StudentAcademicRepository:
         audit: TeacherAssignmentLifecycleAudit,
     ) -> TeacherAssignmentLifecycleAudit:
         audit_table = (
-            await db.execute(select(func.to_regclass("public.teacher_assignment_lifecycle_audits")))
+            await db.execute(
+                select(func.to_regclass("public.teacher_assignment_lifecycle_audits"))
+            )
         ).scalar_one()
         if audit_table is None:
             return audit
@@ -1309,7 +1209,8 @@ class StudentAcademicRepository:
                     .select_from(StudentSubjectResult)
                     .where(
                         StudentSubjectResult.tenant_id == tenant_id,
-                        StudentSubjectResult.teacher_assignment_id == teacher_assignment_id,
+                        StudentSubjectResult.teacher_assignment_id
+                        == teacher_assignment_id,
                     )
                 )
             ).scalar_one()
@@ -1324,19 +1225,19 @@ class StudentAcademicRepository:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> StudentSubjectResult | None:
-        level_subject_id = await StudentAcademicRepository._level_subject_id_for_assignment(
-            db,
-            tenant_id,
-            teacher_assignment_id,
+        curriculum_subject_id = (
+            await StudentAcademicRepository._curriculum_subject_id_for_assignment(
+                db, tenant_id, teacher_assignment_id
+            )
         )
-        if level_subject_id is None:
+        if curriculum_subject_id is None:
             return None
         return (
             await db.execute(
                 select(StudentSubjectResult).where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.student_id == student_id,
-                    StudentSubjectResult.level_subject_id == level_subject_id,
+                    StudentSubjectResult.curriculum_subject_id == curriculum_subject_id,
                     StudentSubjectResult.academic_session_id == academic_session_id,
                     StudentSubjectResult.academic_term_id == academic_term_id,
                 )
