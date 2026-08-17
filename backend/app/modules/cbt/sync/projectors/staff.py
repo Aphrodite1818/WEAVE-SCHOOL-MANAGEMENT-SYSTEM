@@ -1,16 +1,33 @@
-"""Stable CBT projections for teachers and curriculum-subject assignments."""
+"""Stable CBT projections for teachers and current class-subject assignments."""
 
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.cbt.academics.schemas import CBTTeacherAssignmentSnapshot, CBTTeacherSnapshot
-from app.modules.student_academics.models import TeacherAssignment
-from app.modules.teachers.models import TeacherAccount, TeacherMembership
+from app.modules.classes.models import ClassRoom
+from app.modules.student_academics.curriculum_models import (
+    ClassTermDepartmentAssignment,
+    Curriculum,
+    CurriculumOffering,
+    CurriculumSubject,
+)
+from app.modules.student_academics.models import (
+    AcademicTerm,
+    AcademicTermStatus,
+    TeacherAssignment,
+)
+from app.modules.teachers.models import (
+    TeacherAccount,
+    TeacherAccountStatus,
+    TeacherMembership,
+    TeacherMembershipStatus,
+)
 
 
 def _value(value: Any) -> Any:
@@ -31,6 +48,12 @@ def project_teacher(
     if row is None:
         return None
     membership, account = row
+    if (
+        membership.status != TeacherMembershipStatus.ACTIVE
+        or account.account_status != TeacherAccountStatus.ACTIVE
+        or not account.is_active
+    ):
+        return None
     return CBTTeacherSnapshot(
         id=membership.id,
         teacher_account_id=membership.teacher_account_id,
@@ -44,14 +67,86 @@ def project_teacher(
 def project_teacher_assignment(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    assignment = session.execute(
-        select(TeacherAssignment).where(
+    """Expose an assignment only while it is usable by the current open term."""
+
+    assignment_row = session.execute(
+        select(TeacherAssignment, TeacherMembership, TeacherAccount)
+        .join(
+            TeacherMembership,
+            TeacherMembership.id == TeacherAssignment.teacher_membership_id,
+        )
+        .join(TeacherAccount, TeacherAccount.id == TeacherMembership.teacher_account_id)
+        .where(
             TeacherAssignment.tenant_id == tenant_id,
             TeacherAssignment.id == entity_id,
         )
-    ).scalar_one_or_none()
-    if assignment is None or not assignment.is_active or assignment.effective_to is not None:
+    ).first()
+    if assignment_row is None:
         return None
+    assignment, membership, account = assignment_row
+    if (
+        not assignment.is_active
+        or assignment.effective_to is not None
+        or assignment.effective_from > date.today()
+        or membership.status != TeacherMembershipStatus.ACTIVE
+        or account.account_status != TeacherAccountStatus.ACTIVE
+        or not account.is_active
+    ):
+        return None
+
+    term = session.execute(
+        select(AcademicTerm).where(
+            AcademicTerm.tenant_id == tenant_id,
+            AcademicTerm.is_current.is_(True),
+            AcademicTerm.status == AcademicTermStatus.OPEN,
+        )
+    ).scalar_one_or_none()
+    if term is None:
+        return None
+
+    context = session.execute(
+        select(ClassRoom, CurriculumSubject, Curriculum)
+        .join(CurriculumSubject, CurriculumSubject.id == assignment.curriculum_subject_id)
+        .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+        .where(
+            ClassRoom.tenant_id == tenant_id,
+            ClassRoom.id == assignment.class_id,
+            ClassRoom.is_active.is_(True),
+            ClassRoom.archived_at.is_(None),
+            CurriculumSubject.tenant_id == tenant_id,
+            CurriculumSubject.is_active.is_(True),
+            Curriculum.tenant_id == tenant_id,
+            Curriculum.academic_level_id == ClassRoom.academic_level_id,
+        )
+    ).first()
+    if context is None:
+        return None
+
+    classroom, curriculum_subject, _curriculum = context
+    class_department_id = session.execute(
+        select(ClassTermDepartmentAssignment.department_id).where(
+            ClassTermDepartmentAssignment.tenant_id == tenant_id,
+            ClassTermDepartmentAssignment.class_id == classroom.id,
+            ClassTermDepartmentAssignment.academic_term_id == term.id,
+        )
+    ).scalar_one_or_none()
+
+    offering_id = session.execute(
+        select(CurriculumOffering.id)
+        .where(
+            CurriculumOffering.tenant_id == tenant_id,
+            CurriculumOffering.curriculum_subject_id == curriculum_subject.id,
+            CurriculumOffering.academic_term_id == term.id,
+            or_(
+                CurriculumOffering.department_id.is_(None),
+                CurriculumOffering.department_id == class_department_id,
+            ),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if offering_id is None:
+        return None
+
     return CBTTeacherAssignmentSnapshot(
         id=assignment.id,
         teacher_membership_id=assignment.teacher_membership_id,
