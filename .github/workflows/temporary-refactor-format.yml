@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  format-changed-python:
+  format-changed-files:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -30,24 +30,52 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Format Python files changed from staging
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Format changed backend and frontend files
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin staging
-          mapfile -t files < <(git diff --name-only origin/staging...HEAD -- 'backend/**/*.py' | sed 's#^backend/##')
-          if [ "${#files[@]}" -eq 0 ]; then
-            exit 0
+
+          mapfile -t python_candidates < <(git diff --name-only --diff-filter=ACMR origin/staging...HEAD -- 'backend/**/*.py')
+          python_files=()
+          for path in "${python_candidates[@]}"; do
+            if [ -f "$path" ]; then
+              python_files+=("${path#backend/}")
+            fi
+          done
+          if [ "${#python_files[@]}" -gt 0 ]; then
+            cd backend
+            uv sync
+            uv run ruff format "${python_files[@]}"
+            cd ..
           fi
-          cd backend
-          uv sync
-          uv run ruff format "${files[@]}"
-          cd ..
-          if git diff --quiet -- backend; then
+
+          mapfile -t frontend_candidates < <(git diff --name-only --diff-filter=ACMR origin/staging...HEAD -- 'frontend/src/**/*.js' 'frontend/src/**/*.jsx' 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx' 'frontend/src/**/*.css')
+          frontend_files=()
+          for path in "${frontend_candidates[@]}"; do
+            if [ -f "$path" ]; then
+              frontend_files+=("${path#frontend/}")
+            fi
+          done
+          if [ "${#frontend_files[@]}" -gt 0 ]; then
+            cd frontend
+            npm ci
+            npx prettier --write "${frontend_files[@]}"
+            cd ..
+          fi
+
+          if git diff --quiet -- backend frontend; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend
-          git commit -m "style: format academic refactor backend"
+          git add backend frontend
+          git commit -m "style: format academic refactor files"
           git push origin HEAD:cbt-sync-module-structure
