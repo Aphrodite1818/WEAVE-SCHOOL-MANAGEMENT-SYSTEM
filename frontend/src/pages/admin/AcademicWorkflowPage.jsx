@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
+import AcademicLevelsWorkspace from "../../features/academic-admin/AcademicLevelsWorkspace";
 import AcademicSetupWorkspace from "../../features/academic-admin/AcademicSetupWorkspace";
 import AcademicWorkflowShell from "../../features/academic-admin/AcademicWorkflowShell";
 import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentConfigWorkspace";
@@ -32,7 +33,8 @@ export default function AcademicWorkflowPage(){
   if(workflow==="grading")return <GradingScalesWorkspace key={key} activeTab={activeTab}/>;
   if(workflow==="sessions"&&["overview","open","closing"].includes(activeTab))return <SessionLifecycleWorkspace key="session-lifecycle" activeTab={activeTab} onContextChange={updateContext}/>;
   if(["sessions","terms","subjects"].includes(workflow))return <AcademicSetupWorkspace key={key} domain={workflow} activeTab={activeTab} onContextChange={updateContext}/>;
-  if(["levels","classes","arm-labels"].includes(workflow))return <ClassStructureWorkspace key={key} domain={workflow} activeTab={activeTab}/>;
+  if(workflow==="levels")return <AcademicLevelsWorkspace key={key} activeTab={activeTab}/>;
+  if(["classes","arm-labels"].includes(workflow))return <ClassStructureWorkspace key={key} domain={workflow} activeTab={activeTab}/>;
   if(workflow==="departments")return <DepartmentsWorkspace key={key}/>;
   if(workflow==="curriculum")return <CurriculumWorkspace key={key}/>;
   if(workflow==="assignments")return <TeacherAssignmentsWorkspace key={key} activeTab={activeTab}/>;
