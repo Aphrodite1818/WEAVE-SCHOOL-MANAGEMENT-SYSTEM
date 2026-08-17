@@ -56,6 +56,17 @@ class AcademicLevel(BaseModel):
     classrooms: Mapped[list["ClassRoom"]] = relationship("ClassRoom", back_populates="academic_level")
     departments: Mapped[list["Department"]] = relationship("Department", back_populates="academic_level")
 
+    @property
+    def specialization_required_from_term_position(self) -> None:
+        """There is no automatic term threshold for specialization.
+
+        Department assignment is explicitly optional and term-scoped. Academic
+        lifecycle checks that still ask this capability therefore always receive
+        ``None`` rather than imposing a hidden department deadline.
+        """
+
+        return None
+
     __table_args__ = (
         UniqueConstraint("tenant_id", "normalized_name", name="uq_academic_levels_tenant_normalized_name"),
         UniqueConstraint("tenant_id", "category", "position", name="uq_academic_levels_tenant_category_position"),
