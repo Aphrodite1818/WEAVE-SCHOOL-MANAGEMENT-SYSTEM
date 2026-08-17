@@ -449,6 +449,9 @@ class StudentProgressionRun(BaseModel):
         UUID, ForeignKey("academic_sessions.id", ondelete="RESTRICT"), nullable=False
     )
     idempotency_key: Mapped[str] = mapped_column(String(150), nullable=False)
+    terminal_completion_approved: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     status: Mapped[StudentProgressionRunStatus] = mapped_column(
         SQLEnum(
             StudentProgressionRunStatus,
