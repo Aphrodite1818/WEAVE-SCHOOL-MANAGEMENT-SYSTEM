@@ -103,7 +103,7 @@ jobs:
               "/api/v1/tenant-admin/academic/report-cards/bulk/archive",
               "/api/v1/tenant-admin/academic/report-cards/bulk/reopen",
               "/api/v1/academic-levels",
-              "/api/v1/academic-levels/{academic_level_id}/subjects",
+              "/api/v1/tenant-admin/academics/levels/{academic_level_id}/curriculum",
           }
           missing = expected - paths
           assert not missing, f"Missing routes: {sorted(missing)}"
