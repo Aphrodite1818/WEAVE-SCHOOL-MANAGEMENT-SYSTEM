@@ -17,6 +17,7 @@ import {
   formatPlanName,
 } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { academicService } from "../../services/academicService";
 import { parseApiError } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
 import SubscriptionOptionsPage from "./SubscriptionOptionsPage";
@@ -33,6 +34,12 @@ const PLAN_RANK = {
 const isMobileViewport = () =>
   typeof window !== "undefined" &&
   window.matchMedia("(max-width: 767px)").matches;
+const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
+const isCheckoutEligibleTerm = (term) => ["draft", "open"].includes(String(term?.status || "").toLowerCase());
+const termLabel = (term) =>
+  String(term?.display_name || term?.name || "Academic term")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 function ResponsiveSubscriptionOptionsPage() {
   const [mobile, setMobile] = useState(isMobileViewport);
@@ -73,6 +80,8 @@ function MobileSubscriptionOptionsPage() {
   );
   const [busyPlan, setBusyPlan] = useState("");
   const [error, setError] = useState("");
+  const [terms, setTerms] = useState([]);
+  const [selectedTermId, setSelectedTermId] = useState("");
 
   useEffect(() => {
     if (availablePlans.some((plan) => plan.planCode === requestedPlanCode)) {
@@ -84,6 +93,11 @@ function MobileSubscriptionOptionsPage() {
 
   const activePlan =
     availablePlans.find((plan) => plan.planCode === activePlanCode) || availablePlans[0];
+  const checkoutTerms = useMemo(
+    () => terms.filter(isCheckoutEligibleTerm),
+    [terms],
+  );
+  const effectiveCheckoutTermId = checkoutTermId || selectedTermId;
   const isCurrent = !checkoutTermId && activePlan?.planCode === planCode;
   const hasCurrentPaidPlan = PAID_PLAN_CODES.has(planCode);
   const lowerOrEqualMidTerm =
@@ -91,27 +105,59 @@ function MobileSubscriptionOptionsPage() {
     hasCurrentPaidPlan &&
     (PLAN_RANK[activePlan?.planCode] ?? 0) <= (PLAN_RANK[planCode] ?? 0);
 
+  useEffect(() => {
+    if (checkoutTermId) return;
+    let active = true;
+    academicService
+      .listTerms({ limit: 100 })
+      .then((response) => {
+        if (!active) return;
+        const rows = asItems(response).filter(isCheckoutEligibleTerm);
+        setTerms(rows);
+        setSelectedTermId((current) =>
+          current ||
+          rows.find((term) => term.is_current && term.status === "open")?.id ||
+          rows.find((term) => term.status === "draft")?.id ||
+          rows[0]?.id ||
+          "",
+        );
+      })
+      .catch((loadError) => {
+        if (active) {
+          setError(parseApiError(loadError, "Could not load academic terms for checkout.").message);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [checkoutTermId]);
+
   const activatePlan = async () => {
     if (!activePlan || isCurrent || lowerOrEqualMidTerm) return;
     setBusyPlan(activePlan.planCode);
     setError("");
     try {
-      if (activePlan.planCode === "free" && checkoutTermId) {
-        await subscriptionService.activateFreeTerm(checkoutTermId);
+      if (!effectiveCheckoutTermId) {
+        setError("Select a draft or open academic term before starting checkout.");
+        setBusyPlan("");
+        return;
+      }
+      if (activePlan.planCode === "free" && effectiveCheckoutTermId) {
+        await subscriptionService.activateFreeTerm(effectiveCheckoutTermId);
         navigate("/admin/getting-started", { replace: true });
         return;
       }
-      const checkout = await subscriptionService.initializePaidCurrentTermCheckout({
+      const checkout = await subscriptionService.initializeTermCheckout({
         plan_code: activePlan.planCode,
-        academic_term_id: checkoutTermId || undefined,
+        academic_term_id: effectiveCheckoutTermId,
       });
       if (shouldOpenTermAfterPayment) {
         subscriptionService.saveTermPaymentOpenIntent({
-          academicTermId: checkoutTermId,
+          academicTermId: effectiveCheckoutTermId,
           reference: checkout.reference,
         });
       }
-      window.location.assign(checkout.authorization_url);
+      window.location.assign(subscriptionService.checkoutRedirectUrl(checkout));
     } catch (checkoutError) {
       setError(
         parseApiError(checkoutError, "Could not start term-plan checkout.").message,
@@ -161,6 +207,30 @@ function MobileSubscriptionOptionsPage() {
         </section>
 
         {error ? <Notice tone="error">{error}</Notice> : null}
+
+        {!checkoutTermId ? (
+          <section className="mt-5 rounded-2xl border border-border/70 bg-surface p-4">
+            <label className="block text-sm font-semibold text-text">
+              Academic term
+              <select
+                className="input-base mt-2"
+                value={selectedTermId}
+                onChange={(event) => setSelectedTermId(event.target.value)}
+              >
+                {checkoutTerms.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {termLabel(term)} - {String(term.status || "").replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!checkoutTerms.length ? (
+              <p className="mt-2 text-sm text-error">
+                Create or open an academic term before starting checkout.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         <section className="mt-7 grid grid-cols-2 gap-3" aria-label="Available plans">
           {availablePlans.map((plan, index) => {
@@ -232,7 +302,7 @@ function MobileSubscriptionOptionsPage() {
             <div data-mobile-billing-action="true" className="mt-auto bg-background/95 pt-6">
               <Button
                 className="min-h-14 w-full rounded-full text-base"
-                disabled={isCurrent || lowerOrEqualMidTerm || busyPlan === activePlan.planCode}
+                disabled={isCurrent || lowerOrEqualMidTerm || !effectiveCheckoutTermId || busyPlan === activePlan.planCode}
                 onClick={activatePlan}
               >
                 <CreditCard className="h-5 w-5" />

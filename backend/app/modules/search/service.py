@@ -10,10 +10,10 @@ from app.modules.search.schemas import TenantSearchResult
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicTerm,
-    LevelSubject,
     StudentSubjectResult,
     TeacherAssignment,
 )
+from app.modules.student_academics.curriculum_models import CurriculumSubject
 from app.modules.students.models import Student
 from app.modules.subjects.models import Subject
 from app.modules.teachers.models import Teacher, TeacherAccount
@@ -274,15 +274,18 @@ class TenantSearchService:
                     TeacherAssignment,
                     TeacherAssignment.class_id == ClassRoom.id,
                 )
-                .join(LevelSubject, LevelSubject.id == TeacherAssignment.level_subject_id)
-                .join(Subject, Subject.id == LevelSubject.subject_id)
+                .join(
+                    CurriculumSubject,
+                    CurriculumSubject.id == TeacherAssignment.curriculum_subject_id,
+                )
+                .join(Subject, Subject.id == CurriculumSubject.subject_id)
                 .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
                 .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
                 .where(
                     ClassRoom.tenant_id == tenant_id,
                     TeacherAssignment.teacher_membership_id == teacher_id,
                     TeacherAssignment.is_active.is_(True),
-                    LevelSubject.is_active.is_(True),
+                    CurriculumSubject.is_active.is_(True),
                 )
                 .order_by(AcademicLevel.name, ArmLabel.label, Subject.name)
             )

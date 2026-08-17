@@ -489,6 +489,21 @@ export const parseApiError = (error, fallback) => {
     };
   }
 
+  if (!error?.response && error?.name !== "TypeError" && error?.message) {
+    return {
+      status: null,
+      message: error.message,
+      fieldErrors: {},
+      headers: {},
+      retryAfter: null,
+      isNetworkError: false,
+      isAbortError: false,
+      isMaintenanceMode: false,
+      isSecurityBlock: false,
+      technicalMessage: error.message,
+    };
+  }
+
   if (!error?.response) {
     return {
       status: null,

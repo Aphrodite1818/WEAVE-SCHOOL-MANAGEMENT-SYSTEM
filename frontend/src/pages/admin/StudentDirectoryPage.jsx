@@ -30,7 +30,7 @@ import Modal from "../../components/ui/Modal";
 import SearchableSelect from "../../components/ui/SearchableSelect";
 import { useToast } from "../../hooks/useToast";
 import academicService from "../../services/academicService";
-import { academicLevelService, classService, departmentService } from "../../services/academicsService";
+import { academicLevelService, classService } from "../../services/academicsService";
 import { parseApiError } from "../../services/api";
 import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
@@ -307,8 +307,6 @@ function StudentDirectoryPage() {
   const [classes, setClasses] = useState([]);
   const [levels, setLevels] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [terms, setTerms] = useState([]);
-  const [departments, setDepartments] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
@@ -325,10 +323,6 @@ function StudentDirectoryPage() {
   const [accessCodeConfirmation, setAccessCodeConfirmation] = useState(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [batchClassId, setBatchClassId] = useState("");
-  const [departmentAssignment, setDepartmentAssignment] = useState({
-    departmentId: "",
-    effectiveTermId: "",
-  });
 
   const classOptions = useMemo(
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
@@ -345,18 +339,14 @@ function StudentDirectoryPage() {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const loadReferenceData = useCallback(async () => {
-    const [levelResult, classResult, sessionResult, termResult, departmentResult] = await Promise.all([
+    const [levelResult, classResult, sessionResult] = await Promise.all([
       academicLevelService.getLevels({ activeOnly: true }),
       classService.getClasses({ limit: 100 }),
       academicService.listSessions({ limit: 100 }),
-      academicService.listTerms({ limit: 100 }),
-      departmentService.getDepartments(),
     ]);
     setClasses(asItems(classResult));
     setLevels(asItems(levelResult));
     setSessions(asItems(sessionResult));
-    setTerms(asItems(termResult));
-    setDepartments(asItems(departmentResult));
   }, []);
 
   const loadStudents = useCallback(async () => {
@@ -421,30 +411,6 @@ function StudentDirectoryPage() {
       await refresh();
     } catch (requestError) {
       showError(parseApiError(requestError, "Failed to assign the selected students.").message);
-    } finally {
-      setBusyId("");
-    }
-  };
-
-  const assignSelectedDepartment = async () => {
-    const student = students.find((item) => item.id === selectedStudentIds[0]);
-    if (
-      selectedStudentIds.length !== 1 ||
-      !student?.current_enrollment_id ||
-      !departmentAssignment.departmentId ||
-      !departmentAssignment.effectiveTermId
-    ) return;
-    setBusyId("department");
-    try {
-      await academicService.assignStudentDepartment({
-        student_enrollment_id: student.current_enrollment_id,
-        department_id: departmentAssignment.departmentId,
-        effective_from_term_id: departmentAssignment.effectiveTermId,
-      });
-      showSuccess("Student department assignment saved.");
-      setDepartmentAssignment({ departmentId: "", effectiveTermId: "" });
-    } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to assign the student's department.").message);
     } finally {
       setBusyId("");
     }
@@ -771,42 +737,6 @@ function StudentDirectoryPage() {
               {busyId === "batch" ? "Assigning..." : "Assign class"}
             </Button>
           </div>
-          {selectedStudentIds.length === 1 ? (() => {
-            const student = students.find((item) => item.id === selectedStudentIds[0]);
-            const eligibleTerms = terms.filter(
-              (term) => term.academic_session_id === student?.current_academic_session_id,
-            );
-            return (
-              <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-3 sm:items-end">
-                <SelectField
-                  label="Department specialization"
-                  value={departmentAssignment.departmentId}
-                  onChange={(event) => setDepartmentAssignment((current) => ({ ...current, departmentId: event.target.value }))}
-                  options={departments.map((item) => ({ value: item.id, label: item.name }))}
-                  placeholder="Choose department"
-                />
-                <SelectField
-                  label="Effective from term"
-                  value={departmentAssignment.effectiveTermId}
-                  onChange={(event) => setDepartmentAssignment((current) => ({ ...current, effectiveTermId: event.target.value }))}
-                  options={eligibleTerms.map((item) => ({ value: item.id, label: titleCase(item.name) }))}
-                  placeholder="Choose term"
-                />
-                <Button
-                  type="button"
-                  disabled={
-                    !student?.current_enrollment_id ||
-                    !departmentAssignment.departmentId ||
-                    !departmentAssignment.effectiveTermId ||
-                    busyId === "department"
-                  }
-                  onClick={assignSelectedDepartment}
-                >
-                  {busyId === "department" ? "Saving..." : "Assign department"}
-                </Button>
-              </div>
-            );
-          })() : null}
         </Card>
       ) : null}
 

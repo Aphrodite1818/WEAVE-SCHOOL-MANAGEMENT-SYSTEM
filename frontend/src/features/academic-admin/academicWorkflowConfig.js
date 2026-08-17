@@ -1,8 +1,9 @@
 import { BarChart3, BookOpen, CalendarDays, FileText, Layers3, Pencil, Ruler, School, Users } from "lucide-react";
 
 export const academicWorkflowOrder = [
-  "sessions", "terms", "levels", "progression", "arm-labels", "classes", "departments",
-  "subjects", "curriculum", "assignments", "grading", "results", "report-cards", "school-calendar",
+  "sessions", "terms", "levels", "arm-labels", "classes", "departments",
+  "subjects", "curriculum", "assignments", "school-calendar", "grading", "results",
+  "report-cards", "progression",
 ];
 
 export const academicWorkflowConfig = {
@@ -24,12 +25,17 @@ export const academicWorkflowConfig = {
 
 export const academicToneStyles={primary:"bg-primary-soft text-primary",success:"bg-success-soft text-success",warning:"bg-warning-soft text-amber-900",accent:"bg-accent-soft text-accent",neutral:"bg-surface-muted text-text-muted"};
 export const academicWorkflowSummaryCards=[
+ {label:"Sessions",description:"School year lifecycle",to:"/admin/academic/sessions",icon:CalendarDays},
+ {label:"Terms",description:"Term lifecycle and opening",to:"/admin/academic/terms",icon:CalendarDays},
  {label:"Levels",description:"Curriculum category and progression",to:"/admin/academic/levels",icon:Layers3},
+ {label:"Arm Labels",description:"Reusable class arm labels",to:"/admin/academic/arm-labels",icon:School},
  {label:"Classes",description:"Level + arm class groups",to:"/admin/academic/classes",icon:School},
  {label:"Departments",description:"Level specialization",to:"/admin/academic/departments",icon:Users},
  {label:"Subjects",description:"School subject pool",to:"/admin/academic/subjects",icon:BookOpen},
  {label:"Curriculum",description:"Subjects taught at each level",to:"/admin/academic/curriculum",icon:BookOpen},
  {label:"Assignments",description:"Who teaches each class subject",to:"/admin/academic/assignments",icon:Users},
- {label:"Results",description:"Scores and lifecycle",to:"/admin/academic/results",icon:BarChart3},
  {label:"Calendar",description:"Term days and school events",to:"/admin/academic/school-calendar",icon:CalendarDays},
+ {label:"Grading",description:"Assessment and score rules",to:"/admin/academic/grading",icon:Ruler},
+ {label:"Results",description:"Scores and lifecycle",to:"/admin/academic/results",icon:BarChart3},
+ {label:"Reports",description:"Report card generation",to:"/admin/academic/report-cards",icon:FileText},
 ];

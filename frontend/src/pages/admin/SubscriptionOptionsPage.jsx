@@ -1,5 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import PublicLayout from "../../components/layout/PublicLayout";
@@ -11,6 +11,7 @@ import {
   formatPlanName,
 } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { academicService } from "../../services/academicService";
 import { parseApiError } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
 
@@ -25,12 +26,21 @@ const PLAN_RANK = {
 const isPaidPlan = (planCode) =>
   ["plus", "professional", "enterprise"].includes(planCode);
 
+const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
+const termLabel = (term) =>
+  String(term?.display_name || term?.name || "Academic term")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+const isCheckoutEligibleTerm = (term) => ["draft", "open"].includes(String(term?.status || "").toLowerCase());
+
 function SubscriptionOptionsPage() {
   const { planCode } = useSubscription();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [busyPlan, setBusyPlan] = useState("");
   const [error, setError] = useState("");
+  const [terms, setTerms] = useState([]);
+  const [selectedTermId, setSelectedTermId] = useState("");
   const checkoutTermId = searchParams.get("term");
   const shouldOpenTermAfterPayment =
     checkoutTermId && searchParams.get("intent") === "open-term";
@@ -41,27 +51,64 @@ function SubscriptionOptionsPage() {
     ),
     [checkoutTermId],
   );
+  const checkoutTerms = useMemo(
+    () => terms.filter(isCheckoutEligibleTerm),
+    [terms],
+  );
+  const effectiveCheckoutTermId = checkoutTermId || selectedTermId;
+
+  useEffect(() => {
+    if (checkoutTermId) return;
+    let active = true;
+    academicService
+      .listTerms({ limit: 100 })
+      .then((response) => {
+        if (!active) return;
+        const rows = asItems(response).filter(isCheckoutEligibleTerm);
+        setTerms(rows);
+        setSelectedTermId((current) =>
+          current ||
+          rows.find((term) => term.is_current && term.status === "open")?.id ||
+          rows.find((term) => term.status === "draft")?.id ||
+          rows[0]?.id ||
+          "",
+        );
+      })
+      .catch((loadError) => {
+        if (active) {
+          setError(parseApiError(loadError, "Could not load academic terms for checkout.").message);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [checkoutTermId]);
 
   const upgrade = async (targetPlan) => {
     setBusyPlan(targetPlan);
     setError("");
     try {
-      if (targetPlan === "free" && checkoutTermId) {
-        await subscriptionService.activateFreeTerm(checkoutTermId);
+      if (!effectiveCheckoutTermId) {
+        setError("Select a draft or open academic term before starting checkout.");
+        setBusyPlan("");
+        return;
+      }
+      if (targetPlan === "free" && effectiveCheckoutTermId) {
+        await subscriptionService.activateFreeTerm(effectiveCheckoutTermId);
         navigate("/admin/getting-started", { replace: true });
         return;
       }
-      const checkout = await subscriptionService.initializePaidCurrentTermCheckout({
+      const checkout = await subscriptionService.initializeTermCheckout({
         plan_code: targetPlan,
-        academic_term_id: checkoutTermId || undefined,
+        academic_term_id: effectiveCheckoutTermId,
       });
       if (shouldOpenTermAfterPayment) {
         subscriptionService.saveTermPaymentOpenIntent({
-          academicTermId: checkoutTermId,
+          academicTermId: effectiveCheckoutTermId,
           reference: checkout.reference,
         });
       }
-      window.location.assign(checkout.authorization_url);
+      window.location.assign(subscriptionService.checkoutRedirectUrl(checkout));
     } catch (checkoutError) {
       setError(
         parseApiError(
@@ -109,6 +156,30 @@ function SubscriptionOptionsPage() {
           </div>
         ) : null}
 
+        {!checkoutTermId ? (
+          <Card className="mt-5 p-4">
+            <label className="block text-sm font-semibold text-text">
+              Academic term
+              <select
+                className="input-base mt-2"
+                value={selectedTermId}
+                onChange={(event) => setSelectedTermId(event.target.value)}
+              >
+                {checkoutTerms.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {termLabel(term)} - {String(term.status || "").replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!checkoutTerms.length ? (
+              <p className="mt-2 text-sm text-error">
+                Create or open an academic term before starting checkout.
+              </p>
+            ) : null}
+          </Card>
+        ) : null}
+
         <section className="mt-7 grid gap-5 lg:grid-cols-3">
           {availablePlans.map((plan) => {
             const current = !checkoutTermId && plan.planCode === planCode;
@@ -117,7 +188,7 @@ function SubscriptionOptionsPage() {
               hasCurrentPaidPlan &&
               (PLAN_RANK[plan.planCode] ?? 0) <= currentRank;
             const disabled =
-              current || lowerOrEqualMidTerm || busyPlan === plan.planCode;
+              current || lowerOrEqualMidTerm || !effectiveCheckoutTermId || busyPlan === plan.planCode;
 
             return (
               <Card

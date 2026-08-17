@@ -9,10 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
-from app.modules.student_academics.models import (
-    LevelSubject,
-    TeacherAssignment,
-)
+from app.modules.student_academics.curriculum_models import CurriculumSubject
+from app.modules.student_academics.models import TeacherAssignment
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.teachers.repository import (
     TeacherMembershipRepository,
@@ -113,16 +111,16 @@ class TeacherSubjectCapabilityService:
             current_assignment_subjects = set(
                 (
                     await db.execute(
-                        select(LevelSubject.subject_id)
+                        select(CurriculumSubject.subject_id)
                         .join(
                             TeacherAssignment,
-                            TeacherAssignment.level_subject_id == LevelSubject.id,
+                            TeacherAssignment.curriculum_subject_id == CurriculumSubject.id,
                         )
                         .where(
                             TeacherAssignment.tenant_id == actor.tenant_id,
                             TeacherAssignment.teacher_membership_id == membership_id,
                             TeacherAssignment.is_active.is_(True),
-                            LevelSubject.subject_id.in_(removed),
+                            CurriculumSubject.subject_id.in_(removed),
                         )
                     )
                 )

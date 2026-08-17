@@ -1,6 +1,6 @@
 """Remove legacy level-subject academic contracts.
 
-Revision ID: 20260817_curriculum_contract_cutover
+Revision ID: 20260817_curriculum_cutover
 Revises: 20260817_curriculum_v2
 
 This is intentionally a destructive pre-launch cutover. The application contract
@@ -11,7 +11,7 @@ columns or tables for compatibility.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "20260817_curriculum_contract_cutover"
+revision = "20260817_curriculum_cutover"
 down_revision = "20260817_curriculum_v2"
 branch_labels = None
 depends_on = None
@@ -237,6 +237,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     raise RuntimeError(
-        "20260817_curriculum_contract_cutover is intentionally irreversible; "
+        "20260817_curriculum_cutover is intentionally irreversible; "
         "restore a pre-cutover development database if rollback is required."
     )

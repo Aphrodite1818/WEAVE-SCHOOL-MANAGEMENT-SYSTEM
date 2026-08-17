@@ -51,7 +51,7 @@ test("assisted term opening honors registration plan intent", () => {
 
   assert.match(setupPage, /TERM_PLAN_ACTIVATION_REQUIRED/);
   assert.match(setupPage, /plan_code: activation\.suggested_plan/);
-  assert.match(setupPage, /window\.location\.assign\(checkout\.authorization_url\)/);
+  assert.match(setupPage, /window\.location\.assign\(subscriptionService\.checkoutRedirectUrl\(checkout\)\)/);
   assert.match(setupPage, /billing\/plans\?term=/);
   assert.match(registerPage, /selectedPlan\?\.planCode/);
   assert.match(plansPage, /plan\.planCode === "free"/);

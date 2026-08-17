@@ -47,6 +47,14 @@ export const attendanceService = {
       api.get(withQuery("/tenant-admin/attendance/geofences", params), options),
     createGeofence: (payload) =>
       api.post("/tenant-admin/attendance/geofences", payload),
+    updateGeofence: (geofenceId, payload) =>
+      api.patch(`/tenant-admin/attendance/geofences/${geofenceId}`, payload),
+    activateGeofence: (geofenceId) =>
+      api.post(`/tenant-admin/attendance/geofences/${geofenceId}/activate`),
+    deactivateGeofence: (geofenceId) =>
+      api.post(`/tenant-admin/attendance/geofences/${geofenceId}/deactivate`),
+    archiveGeofence: (geofenceId) =>
+      api.post(`/tenant-admin/attendance/geofences/${geofenceId}/archive`),
     previewGeofence: (payload) =>
       api.post("/tenant-admin/attendance/geofences/preview", payload),
     listSheets: (params = {}, options) =>

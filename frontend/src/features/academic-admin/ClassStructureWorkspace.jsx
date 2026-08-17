@@ -6,9 +6,10 @@ import Button from "../../components/ui/Button";
 import MultiSelect from "../../components/ui/MultiSelect";
 import { displayClass } from "../../components/academic/academicDisplay";
 import { useToast } from "../../hooks/useToast";
-import { academicLevelService, armLabelService, classService, departmentService } from "../../services/academicsService";
+import { academicLevelService, armLabelService, classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
+import { curriculumService } from "../../services/curriculumService";
 import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
 import {
@@ -31,7 +32,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const { showError, showSuccess, showWarning } = useToast();
   const [levels, setLevels] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [departments] = useState([]);
   const [armLabels, setArmLabels] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -43,17 +44,14 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const [offeringForm, setOfferingForm] = useState({
     academic_term_id: "",
     department_id: "",
-    is_elective: false,
   });
   const [levelForm, setLevelForm] = useState({
     name: "",
     category: "",
     position: "",
-    specialization_required_from_term_position: "",
   });
-  const [classForm, setClassForm] = useState({ academic_level_id: "", department_id: "", arm_label_id: "", teacher_membership_id: "" });
-  const [departmentName, setDepartmentName] = useState("");
-  const [armLabelForm, setArmLabelForm] = useState({ label: "", position: "" });
+  const [classForm, setClassForm] = useState({ academic_level_id: "", arm_label_id: "", teacher_membership_id: "" });
+  const [armLabelForm, setArmLabelForm] = useState({ label: "" });
   const [subjectForm, setSubjectForm] = useState({ subject_ids: [] });
   const [editingClassId, setEditingClassId] = useState("");
   const [editingLevelId, setEditingLevelId] = useState("");
@@ -63,10 +61,9 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
 
   const load = useCallback(async () => {
     try {
-      const [levelRows, classRows, departmentRows, armLabelRows, subjectRows, teacherRows, termRows] = await Promise.all([
+      const [levelRows, classRows, armLabelRows, subjectRows, teacherRows, termRows] = await Promise.all([
         academicLevelService.getLevels({ includeArchived: true }),
         classService.getClasses({ includeArchived: true }),
-        departmentService.getDepartments(),
         armLabelService.getArmLabels({ includeArchived: true }),
         subjectService.getSubjects({ limit: 100 }),
         teacherService.getTeachers({ limit: 100 }),
@@ -74,7 +71,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       ]);
       setLevels(asItems(levelRows));
       setClasses(asItems(classRows));
-      setDepartments(asItems(departmentRows));
       setArmLabels(asItems(armLabelRows));
       setSubjects(asItems(subjectRows));
       setTeachers(asItems(teacherRows).filter(isAssignableClassTeacher));
@@ -90,7 +86,8 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const loadLevelSubjects = useCallback(async () => {
     if (!selectedLevelId) return setLevelSubjects([]);
     try {
-      setLevelSubjects(asItems(await academicService.listLevelSubjects(selectedLevelId, { include_archived: true })));
+      const response = await curriculumService.getCurriculum(selectedLevelId);
+      setLevelSubjects(asItems(response?.subjects));
     } catch (error) {
       setLevelSubjects([]);
       showError(getErrorMessage(error, "Could not load subjects for this level."));
@@ -106,8 +103,8 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       return;
     }
     let active = true;
-    academicService
-      .listSubjectOfferings(selectedOfferingSubjectId)
+    curriculumService
+      .listOfferings(selectedOfferingSubjectId)
       .then((response) => {
         if (active) setOfferings(asItems(response));
       })
@@ -151,12 +148,8 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       await academicLevelService.createLevel({
         ...levelForm,
         position: Number(levelForm.position),
-        specialization_required_from_term_position:
-          levelForm.specialization_required_from_term_position === ""
-            ? null
-            : Number(levelForm.specialization_required_from_term_position),
       });
-      setLevelForm({ name: "", category: "", position: "", specialization_required_from_term_position: "" });
+      setLevelForm({ name: "", category: "", position: "" });
       showSuccess("Academic level created.");
       await load();
     } catch (error) { showError(getErrorMessage(error, "Could not create academic level.")); }
@@ -172,10 +165,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
         ...editingLevelForm,
         name: editingLevelForm.name.trim(),
         position: Number(editingLevelForm.position),
-        specialization_required_from_term_position:
-          editingLevelForm.specialization_required_from_term_position === ""
-            ? null
-            : Number(editingLevelForm.specialization_required_from_term_position),
       });
       setEditingLevelId("");
       setEditingLevelForm(null);
@@ -222,27 +211,12 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
       } else {
         await classService.createClass(payload);
       }
-      setClassForm({ academic_level_id: "", department_id: "", arm_label_id: "", teacher_membership_id: "" });
+      setClassForm({ academic_level_id: "", arm_label_id: "", teacher_membership_id: "" });
       setEditingClassId("");
       showSuccess(editingClassId ? "Class arm updated." : "Class arm created.");
       await load();
     } catch (error) { showError(getErrorMessage(error, "Could not create class arm.")); }
     finally { setSaving(false); }
-  };
-
-  const createDepartment = async () => {
-    if (!departmentName.trim()) return;
-    setSaving("department");
-    try {
-      await departmentService.createDepartment({ name: departmentName.trim() });
-      setDepartmentName("");
-      showSuccess("Department created.");
-      await load();
-    } catch (error) {
-      showError(getErrorMessage(error, "Could not create department."));
-    } finally {
-      setSaving(false);
-    }
   };
 
   const createArmLabel = async (event) => {
@@ -252,9 +226,8 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     try {
       await armLabelService.createArmLabel({
         label: armLabelForm.label.trim(),
-        position: armLabelForm.position ? Number(armLabelForm.position) : null,
       });
-      setArmLabelForm({ label: "", position: "" });
+      setArmLabelForm({ label: "" });
       showSuccess("Arm label created.");
       await load();
     } catch (error) {
@@ -283,14 +256,12 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   const updateLevelSubjectLifecycle = async (item, action) => {
     setSaving(item.id);
     try {
-      if (action === "activate") await academicService.activateLevelSubject(item.id);
-      if (action === "deactivate") await academicService.deactivateLevelSubject(item.id);
-      if (action === "archive") await academicService.archiveLevelSubject(item.id);
-      if (action === "restore") await academicService.restoreLevelSubject(item.id);
-      showSuccess(`Level subject ${action}d.`);
+      if (action === "activate") await curriculumService.updateSubject(item.id, { is_active: true });
+      if (action === "deactivate") await curriculumService.updateSubject(item.id, { is_active: false });
+      showSuccess(`Curriculum subject ${action}d.`);
       await loadLevelSubjects();
     } catch (error) {
-      showError(getErrorMessage(error, `Could not ${action} this level subject.`));
+      showError(getErrorMessage(error, `Could not ${action} this curriculum subject.`));
     } finally {
       setSaving(false);
     }
@@ -301,13 +272,12 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     if (!selectedOfferingSubjectId || !offeringForm.academic_term_id) return;
     setSaving(true);
     try {
-      await academicService.createSubjectOffering(selectedOfferingSubjectId, {
+      await curriculumService.addOffering(selectedOfferingSubjectId, {
         academic_term_id: offeringForm.academic_term_id,
         department_id: offeringForm.department_id || null,
-        is_elective: offeringForm.is_elective,
       });
-      setOfferings(asItems(await academicService.listSubjectOfferings(selectedOfferingSubjectId)));
-      setOfferingForm((current) => ({ ...current, department_id: "", is_elective: false }));
+      setOfferings(asItems(await curriculumService.listOfferings(selectedOfferingSubjectId)));
+      setOfferingForm((current) => ({ ...current, department_id: "" }));
       showSuccess("Subject offering created.");
     } catch (error) {
       showError(getErrorMessage(error, "Could not create subject offering."));
@@ -321,9 +291,11 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
     if (!selectedLevelId || subjectForm.subject_ids.length === 0) return showWarning("Select a level and at least one subject.");
     setSaving(true);
     try {
-      await academicService.addLevelSubjectsBulk(selectedLevelId, {
-        ...subjectForm,
-      });
+      await Promise.all(
+        subjectForm.subject_ids.map((subjectId) =>
+          curriculumService.addSubject(selectedLevelId, { subject_id: subjectId }),
+        ),
+      );
       setSubjectForm((current) => ({ ...current, subject_ids: [] }));
       showSuccess("Subjects added to the academic level.");
       await loadLevelSubjects();
@@ -374,13 +346,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                   value={levelForm.position}
                   onChange={(event) => setLevelForm((current) => ({ ...current, position: event.target.value }))}
                   required
-                />
-                <Input
-                  label="Specialization required from term position (optional)"
-                  type="number"
-                  min="1"
-                  value={levelForm.specialization_required_from_term_position}
-                  onChange={(event) => setLevelForm((current) => ({ ...current, specialization_required_from_term_position: event.target.value }))}
                 />
                 <FormActions submitting={saving} submitLabel="Create level" />
               </form>
@@ -465,10 +430,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                             name: item.name,
                             category: item.category,
                             position: String(item.position),
-                            specialization_required_from_term_position:
-                              item.specialization_required_from_term_position == null
-                                ? ""
-                                : String(item.specialization_required_from_term_position),
                           });
                         }}
                       >
@@ -532,13 +493,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                 placeholder="A"
                 required
               />
-              <Input
-                label="Display position"
-                type="number"
-                min="1"
-                value={armLabelForm.position}
-                onChange={(event) => setArmLabelForm((current) => ({ ...current, position: event.target.value }))}
-              />
               <FormActions submitting={saving === "arm-label"} submitLabel="Add arm label" />
             </form>
           </WorkspacePanel>
@@ -557,9 +511,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                       {item.archived_at ? "Archived" : item.is_active ? "Active" : "Inactive"}
                     </Badge>
                   </div>
-                  <p className="mt-2 text-sm text-text-muted">
-                    {item.position ? `Position ${item.position}` : "No display position"}
-                  </p>
                 </div>
               ))}
               {!armLabels.length ? (
@@ -588,7 +539,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
         editor={showEditor ? (
           <WorkspacePanel
             title={editingClassId ? "Edit class arm" : "Create class arm"}
-            description="Choose the authoritative level. Arm is optional organizational placement."
+            description="Choose the authoritative level and reusable arm label for this class group."
           >
             <form className="space-y-3" onSubmit={createClass}>
               <SelectControl
@@ -609,26 +560,9 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                   arm_label_id: value,
                 }))}
                 options={armLabelOptions}
-                placeholder="No arm"
+                placeholder="Select arm"
+                required
               />
-              <SelectControl
-                label="Department (optional)"
-                value={classForm.department_id}
-                onChange={(value) => setClassForm((current) => ({ ...current, department_id: value }))}
-                options={departmentOptions}
-                clearable
-              />
-              <div className="rounded-xl border border-border/70 p-3">
-                <Input
-                  label="New department"
-                  value={departmentName}
-                  onChange={(event) => setDepartmentName(event.target.value)}
-                  placeholder="Science"
-                />
-                <Button className="mt-2" type="button" size="small" variant="outline" disabled={!departmentName.trim() || saving === "department"} onClick={createDepartment}>
-                  {saving === "department" ? "Creating..." : "Create department"}
-                </Button>
-              </div>
               <SelectControl
                 label="Class teacher"
                 value={classForm.teacher_membership_id}
@@ -647,7 +581,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                   setEditingClassId("");
                   setClassForm({
                     academic_level_id: "",
-                    department_id: "",
                     arm_label_id: "",
                     teacher_membership_id: "",
                   });
@@ -696,7 +629,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                             setEditingClassId(item.id);
                             setClassForm({
                               academic_level_id: item.academic_level_id,
-                              department_id: item.department_id || "",
                               arm_label_id: item.arm_label_id || "",
                               teacher_membership_id: item.teacher_membership_id || "",
                             });
@@ -801,7 +733,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
         editor={(
           <WorkspacePanel
             title="Create term offering"
-            description="Apply a level subject to a term for every student or only one department. Electives appear after meaningful score participation."
+            description="Apply a curriculum subject to a term for every student or only one department."
           >
             <form className="space-y-3" onSubmit={createSubjectOffering}>
               <SelectControl
@@ -815,7 +747,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                 required
               />
               <SelectControl
-                label="Level subject"
+                label="Curriculum subject"
                 value={selectedOfferingSubjectId}
                 onChange={setSelectedOfferingSubjectId}
                 options={levelSubjectOptions}
@@ -835,18 +767,6 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                 options={departmentOptions}
                 placeholder="All departments"
               />
-              <label className="flex items-start gap-3 rounded-xl border border-border/70 p-3 text-sm text-text">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4"
-                  checked={offeringForm.is_elective}
-                  onChange={(event) => setOfferingForm((current) => ({ ...current, is_elective: event.target.checked }))}
-                />
-                <span>
-                  <span className="font-semibold">Elective subject</span>
-                  <span className="mt-1 block text-text-muted">Participation begins with the first meaningful recorded score.</span>
-                </span>
-              </label>
               <FormActions submitting={saving} submitLabel="Create offering" />
             </form>
           </WorkspacePanel>
@@ -868,8 +788,8 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                           <p className="font-semibold text-text">{String(term?.name || "Academic term").replaceAll("_", " ")}</p>
                           <p className="mt-1 text-sm text-text-muted">{department?.name || "All departments"}</p>
                         </div>
-                        <Badge variant={item.is_elective ? "warning" : "success"}>
-                          {item.is_elective ? "elective" : "expected"}
+                        <Badge variant="success">
+                          expected
                         </Badge>
                       </div>
                     </div>
@@ -877,7 +797,7 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                 })}
               </div>
             ) : (
-              <p className="text-sm text-text-muted">Select a level subject to review its term offerings.</p>
+              <p className="text-sm text-text-muted">Select a curriculum subject to review its term offerings.</p>
             )}
           </WorkspacePanel>
         )}
@@ -886,14 +806,13 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
   }
 
   const filteredLevelSubjects = levelSubjects.filter((item) => {
-    if (activeTab === "active") return item.is_active && !item.archived_at;
-    if (activeTab === "inactive") return !item.is_active && !item.archived_at;
-    if (activeTab === "archived") return Boolean(item.archived_at);
+    if (activeTab === "active") return item.is_active;
+    if (activeTab === "inactive") return !item.is_active;
     return true;
   });
   const levelSubjectTitle = activeTab === "overview"
     ? "Subjects by academic level"
-    : `${activeTab[0].toUpperCase()}${activeTab.slice(1)} level subjects`;
+    : `${activeTab[0].toUpperCase()}${activeTab.slice(1)} curriculum subjects`;
   const levelSubjectDescription = activeTab === "overview"
     ? "Select a level to review its inherited curriculum."
     : "Only mappings in this lifecycle state are shown.";
@@ -927,22 +846,18 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                       </p>
                     </div>
                     <Badge
-                      variant={item.archived_at
-                        ? "warning"
-                        : item.is_active
+                      variant={item.is_active
                           ? "success"
                           : "error"}
                     >
-                      {item.archived_at
-                        ? "archived"
-                        : item.is_active
+                      {item.is_active
                           ? "active"
                           : "inactive"}
                     </Badge>
                   </div>
                   {activeTab !== "overview" ? (
                   <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
-                    {!item.archived_at && item.is_active ? (
+                    {item.is_active ? (
                       <Button
                         size="small"
                         variant="outline"
@@ -953,37 +868,15 @@ function ClassStructureWorkspace({ activeTab = "overview", domain }) {
                         Deactivate
                       </Button>
                     ) : null}
-                    {!item.archived_at && !item.is_active ? (
-                      <>
-                        <Button
-                          size="small"
-                          variant="outline"
-                          className="w-full sm:w-auto"
-                          disabled={saving === item.id}
-                          onClick={() => updateLevelSubjectLifecycle(item, "activate")}
-                        >
-                          Activate
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outline"
-                          className="w-full sm:w-auto"
-                          disabled={saving === item.id}
-                          onClick={() => updateLevelSubjectLifecycle(item, "archive")}
-                        >
-                          Archive
-                        </Button>
-                      </>
-                    ) : null}
-                    {item.archived_at ? (
+                    {!item.is_active ? (
                       <Button
                         size="small"
                         variant="outline"
                         className="w-full sm:w-auto"
                         disabled={saving === item.id}
-                        onClick={() => updateLevelSubjectLifecycle(item, "restore")}
+                        onClick={() => updateLevelSubjectLifecycle(item, "activate")}
                       >
-                        Restore
+                        Activate
                       </Button>
                     ) : null}
                   </div>

@@ -6,7 +6,8 @@ const buildQuery = (options = {}, map = {}) => {
   params.set("skip", String(options.skip ?? 0));
   params.set("limit", String(options.limit ?? 100));
   Object.entries(map).forEach(([key, param]) => {
-    if (options[key] !== undefined && options[key] !== null && options[key] !== "") params.set(param, String(options[key]));
+    const value = options[key] ?? options[param];
+    if (value !== undefined && value !== null && value !== "") params.set(param, String(value));
   });
   return params.toString();
 };

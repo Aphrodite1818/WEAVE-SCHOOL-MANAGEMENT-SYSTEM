@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Archive,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
+  Edit3,
   Lock,
   MapPin,
+  Power,
   RefreshCw,
 } from "lucide-react";
 
@@ -15,6 +18,7 @@ import Button from "../../../components/ui/Button";
 import Card from "../../../components/ui/Card";
 import Input from "../../../components/ui/Input";
 import Modal from "../../../components/ui/Modal";
+import Badge from "../../../components/ui/Badge";
 import { classService } from "../../../services/academicsService";
 import { getErrorMessage, isAbortError } from "../../../services/api";
 import { parentService } from "../../../services/parentService";
@@ -111,6 +115,59 @@ function SheetCard({ sheet, onSubmit, onApprove, onLock, actionBusy }) {
   );
 }
 
+function geofenceStatusVariant(status) {
+  if (status === "active") return "success";
+  if (status === "archived") return "error";
+  return "warning";
+}
+
+function GeofenceRow({ geofence, actionBusy, onEdit, onStatusChange, onArchive }) {
+  const status = String(geofence.status || "active").toLowerCase();
+  const statusBusy = actionBusy === `geofence:${geofence.id}`;
+  const isActive = status === "active";
+  const isArchived = status === "archived";
+
+  return (
+    <div className="rounded-lg border border-border/70 bg-surface px-3 py-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-semibold text-text">{geofence.name}</p>
+            <Badge variant={geofenceStatusVariant(status)}>{titleCase(status)}</Badge>
+            {geofence.is_primary ? <Badge variant="primary">Primary</Badge> : null}
+          </div>
+          <p className="mt-1 text-xs text-text-muted">
+            {geofence.latitude}, {geofence.longitude} - {geofence.radius_m} m
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button size="xs" variant="outline" onClick={() => onEdit(geofence)} disabled={Boolean(actionBusy)}>
+            <Edit3 size={14} />
+            Edit
+          </Button>
+          {!isArchived ? (
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => onStatusChange(geofence, isActive ? "deactivate" : "activate")}
+              disabled={Boolean(actionBusy)}
+            >
+              <Power size={14} />
+              {statusBusy ? "Updating..." : isActive ? "Deactivate" : "Activate"}
+            </Button>
+          ) : null}
+          {!isArchived ? (
+            <Button size="xs" variant="danger" onClick={() => onArchive(geofence)} disabled={Boolean(actionBusy)}>
+              <Archive size={14} />
+              Archive
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ActionConfirmModal({ action, actionBusy, onCancel, onConfirm }) {
   return (
     <Modal
@@ -187,6 +244,7 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState("");
   const [pendingAction, setPendingAction] = useState(null);
+  const [editingGeofenceId, setEditingGeofenceId] = useState("");
   const [geofenceForm, setGeofenceForm] = useState({
     name: "",
     latitude: "",
@@ -194,6 +252,11 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
     radius_m: "150",
     is_primary: true,
   });
+
+  const resetGeofenceForm = () => {
+    setEditingGeofenceId("");
+    setGeofenceForm({ name: "", latitude: "", longitude: "", radius_m: "150", is_primary: true });
+  };
 
   const load = useCallback(async ({ signal } = {}) => {
     setLoading(true);
@@ -225,20 +288,53 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
     return () => controller.abort();
   }, [load]);
 
-  const createGeofence = async () => {
-    setActionBusy("geofence:create");
+  const saveGeofence = async () => {
+    setActionBusy(editingGeofenceId ? `geofence:${editingGeofenceId}` : "geofence:create");
     setError("");
     try {
-      await attendanceService.admin.createGeofence({
+      const payload = {
         ...geofenceForm,
         radius_m: Number(geofenceForm.radius_m),
-      });
-      setGeofenceForm({ name: "", latitude: "", longitude: "", radius_m: "150", is_primary: true });
+      };
+      if (editingGeofenceId) {
+        await attendanceService.admin.updateGeofence(editingGeofenceId, payload);
+      } else {
+        await attendanceService.admin.createGeofence(payload);
+      }
+      resetGeofenceForm();
       await load();
     } catch (err) {
       setError(getErrorMessage(err, "Could not save geofence."));
     } finally {
       setActionBusy("");
+    }
+  };
+
+  const editGeofence = (geofence) => {
+    setEditingGeofenceId(geofence.id);
+    setGeofenceForm({
+      name: geofence.name || "",
+      latitude: geofence.latitude || "",
+      longitude: geofence.longitude || "",
+      radius_m: String(geofence.radius_m || 150),
+      is_primary: Boolean(geofence.is_primary),
+    });
+  };
+
+  const runGeofenceAction = async (geofence, action) => {
+    setActionBusy(`geofence:${geofence.id}`);
+    setError("");
+    try {
+      if (action === "activate") await attendanceService.admin.activateGeofence(geofence.id);
+      if (action === "deactivate") await attendanceService.admin.deactivateGeofence(geofence.id);
+      if (action === "archive") await attendanceService.admin.archiveGeofence(geofence.id);
+      if (editingGeofenceId === geofence.id) resetGeofenceForm();
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not update geofence."));
+    } finally {
+      setActionBusy("");
+      setPendingAction(null);
     }
   };
 
@@ -333,11 +429,63 @@ function AdminAttendance({ rangeStart, rangeEnd }) {
             <Input label="Latitude" value={geofenceForm.latitude} onChange={(event) => setGeofenceForm((current) => ({ ...current, latitude: event.target.value }))} />
             <Input label="Longitude" value={geofenceForm.longitude} onChange={(event) => setGeofenceForm((current) => ({ ...current, longitude: event.target.value }))} />
             <Input label="Radius m" type="number" value={geofenceForm.radius_m} onChange={(event) => setGeofenceForm((current) => ({ ...current, radius_m: event.target.value }))} />
-            <Button className="w-full" onClick={createGeofence} disabled={Boolean(actionBusy)}>
-              <MapPin size={16} />
-              {actionBusy === "geofence:create" ? "Saving..." : "Save geofence"}
-            </Button>
+            <label className="flex items-center gap-2 text-sm font-semibold text-text">
+              <input
+                type="checkbox"
+                checked={geofenceForm.is_primary}
+                onChange={(event) => setGeofenceForm((current) => ({ ...current, is_primary: event.target.checked }))}
+              />
+              Primary geofence
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button className="w-full" onClick={saveGeofence} disabled={Boolean(actionBusy)}>
+                <MapPin size={16} />
+                {actionBusy === "geofence:create" || actionBusy === `geofence:${editingGeofenceId}`
+                  ? "Saving..."
+                  : editingGeofenceId
+                    ? "Update geofence"
+                    : "Save geofence"}
+              </Button>
+              {editingGeofenceId ? (
+                <Button className="w-full sm:w-auto" variant="outline" onClick={resetGeofenceForm} disabled={Boolean(actionBusy)}>
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
           </div>
+        </div>
+        <div className="mt-4 space-y-2">
+          {geofences.length ? geofences.map((geofence) => (
+            <GeofenceRow
+              key={geofence.id}
+              geofence={geofence}
+              actionBusy={actionBusy}
+              onEdit={editGeofence}
+              onStatusChange={(item, action) =>
+                setPendingAction({
+                  title: `${titleCase(action)} geofence`,
+                  description: `${item.name} will be ${action === "activate" ? "available" : "unavailable"} for workforce location checks.`,
+                  confirmLabel: titleCase(action),
+                  busyLabel: "Updating...",
+                  onConfirm: () => runGeofenceAction(item, action),
+                })
+              }
+              onArchive={(item) =>
+                setPendingAction({
+                  title: "Archive geofence",
+                  description: `${item.name} will no longer be used for workforce location checks.`,
+                  confirmLabel: "Archive geofence",
+                  busyLabel: "Archiving...",
+                  variant: "danger",
+                  onConfirm: () => runGeofenceAction(item, "archive"),
+                })
+              }
+            />
+          )) : (
+            <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-text-muted">
+              No geofences configured.
+            </div>
+          )}
         </div>
       </Card>
       <div className="max-h-[560px] space-y-3 overflow-y-auto overscroll-contain pr-1">

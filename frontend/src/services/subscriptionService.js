@@ -127,6 +127,14 @@ const consumeTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
   }
 };
 
+const checkoutRedirectUrl = (checkout = {}) => {
+  const value = String(checkout.authorization_url || "").trim();
+  if (!value) {
+    throw new Error("Paystack did not return a checkout link. Please try again.");
+  }
+  return value;
+};
+
 export const subscriptionService = {
   getPublicPlans,
 
@@ -168,6 +176,8 @@ export const subscriptionService = {
 
   verifyTermPayment: (reference) =>
     api.get(`/subscriptions/terms/verify/${encodeURIComponent(reference)}`),
+
+  checkoutRedirectUrl,
 
   saveTermPaymentOpenIntent,
 

@@ -33,10 +33,10 @@ from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicTerm,
-    LevelSubject,
     StudentSubjectResult,
     TeacherAssignment,
 )
+from app.modules.student_academics.curriculum_models import CurriculumSubject
 from app.modules.students.models import Student, StudentEnrollment, StudentParentLink
 from app.modules.subjects.models import Subject
 from app.modules.subscriptions.models import TenantSubscription
@@ -55,7 +55,7 @@ TENANT_ADMIN_METRIC_MODELS = (
     NotificationDelivery,
     ClassRoom,
     AcademicLevel,
-    LevelSubject,
+    CurriculumSubject,
     ParentAccount,
     ParentMembership,
     ReportCard,

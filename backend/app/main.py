@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 import app.models  # noqa: F401
 from app.config.database import AsyncSessionLocal, engine
-from app.config.logging import get_logger
+from app.config.logging import get_logger, resolve_log_level
 from app.config.sentry import flush_sentry, initialize_sentry
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
@@ -369,5 +369,12 @@ if __name__ == "__main__":
 
     import uvicorn
 
-    logging.basicConfig(level=logging.INFO)
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn_log_level = logging.getLevelName(resolve_log_level()).lower()
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=settings.is_development,
+        log_level=uvicorn_log_level,
+        access_log=settings.is_development,
+    )

@@ -20,7 +20,7 @@ function SubscriptionVerifyPage() {
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Verifying your payment...");
   const [successRoute, setSuccessRoute] = useState("/admin/academic/terms");
-  const reference = searchParams.get("reference");
+  const reference = searchParams.get("reference") || searchParams.get("trxref");
 
   useEffect(() => {
     let mounted = true;

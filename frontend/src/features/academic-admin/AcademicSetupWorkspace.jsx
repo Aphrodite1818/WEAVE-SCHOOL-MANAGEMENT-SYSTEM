@@ -71,12 +71,12 @@ const subjectStatus = (item) =>
   item.archived_at ? "archived" : item.is_active === false ? "inactive" : "active";
 
 const dependencyLabels = {
-  level_subjects: "Subjects attached to academic levels",
+  level_subjects: "Curriculum subjects attached to academic levels",
   teacher_links: "Teacher capability links",
   teacher_assignments: "Teacher assignments",
   results: "Student result rows",
   report_card_lines: "Report-card subject lines",
-  active_level_subjects: "Active subjects attached to academic levels",
+  active_level_subjects: "Active curriculum subjects attached to academic levels",
   active_teacher_links: "Active teacher capability links",
   active_teacher_assignments: "Active teacher assignments",
   open_terms: "Open terms",
@@ -524,7 +524,7 @@ function AcademicSetupWorkspace({ activeTab, onContextChange, domain = "sessions
         academicTermId: termPlanPrompt.term.id,
         reference: checkout.reference,
       });
-      window.location.assign(checkout.authorization_url);
+      window.location.assign(subscriptionService.checkoutRedirectUrl(checkout));
     } catch (error) {
       showError(getErrorMessage(error, "Could not start term payment."));
       setSaving("");
