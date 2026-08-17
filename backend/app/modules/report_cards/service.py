@@ -105,16 +105,19 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[str]:
+        _ = class_id
         expected = await ReportCardService._expected_subject_offerings(
             db, tenant_id, student_id, academic_term_id
         )
         submitted = await ReportCardService._finalized_results_for_student(
             db, tenant_id, student_id, academic_session_id, academic_term_id
         )
-        submitted_subject_ids = {result.subject_id for result in submitted}
+        submitted_curriculum_subject_ids = {
+            result.curriculum_subject_id for result in submitted
+        }
         missing: list[str] = []
         for offering in expected:
-            if offering.subject_id not in submitted_subject_ids:
+            if offering.curriculum_subject_id not in submitted_curriculum_subject_ids:
                 subject = await SubjectRepository.get_subject_by_id(
                     db, tenant_id, offering.subject_id
                 )
@@ -192,9 +195,13 @@ class ReportCardService:
         expected_offerings = await ReportCardService._expected_subject_offerings(
             db, actor.tenant_id, student.id, academic_term_id
         )
-        eligible_level_subject_ids = {offering.level_subject_id for offering in expected_offerings}
+        eligible_curriculum_subject_ids = {
+            offering.curriculum_subject_id for offering in expected_offerings
+        }
         results = [
-            result for result in results if result.level_subject_id in eligible_level_subject_ids
+            result
+            for result in results
+            if result.curriculum_subject_id in eligible_curriculum_subject_ids
         ]
         if not results:
             raise BadRequestException("No locked scores are available for this student.")
