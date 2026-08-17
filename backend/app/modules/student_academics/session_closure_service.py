@@ -24,6 +24,7 @@ from app.modules.student_academics.lifecycle_repository import (
     StudentProgressionRepository,
 )
 from app.modules.student_academics.models import (
+    AcademicLifecycleAudit,
     AcademicSession,
     AcademicSessionStatus,
     AcademicTerm,
@@ -66,6 +67,8 @@ class SessionClosureService:
         "No assessment-record import is pending or processing.",
         "Every current enrollment references an active academic level.",
         "Level category and position determine progression automatically.",
+        "Every non-terminal level has a configured next progression level.",
+        "Terminal completion is explicitly confirmed before graduation is applied.",
         "The next session has at least one configured term.",
         "No progression run is already processing.",
     ]
@@ -171,6 +174,7 @@ class SessionClosureService:
         counts.setdefault("invalid_class_progression_targets", 0)
         counts.setdefault("manual_class_placement_routes", 0)
         counts.setdefault("next_session_terms", 0)
+        counts.setdefault("terminal_students", 0)
 
         next_session = None
         if session.next_academic_session_id is not None:
@@ -207,22 +211,39 @@ class SessionClosureService:
             tenant_id=tenant_id,
             session_id=session_id,
         )
-        invalid_levels = 0
-        checked_levels: set[uuid.UUID] = set()
+        enrollment_counts_by_level: dict[uuid.UUID, int] = {}
         for enrollment in enrollments:
-            if enrollment.academic_level_id in checked_levels:
-                continue
-            checked_levels.add(enrollment.academic_level_id)
-            level = await AcademicLevelRepository.get_by_id(
-                db, tenant_id, enrollment.academic_level_id
+            enrollment_counts_by_level[enrollment.academic_level_id] = (
+                enrollment_counts_by_level.get(enrollment.academic_level_id, 0) + 1
             )
+
+        invalid_levels = 0
+        invalid_progression_targets = 0
+        terminal_students = 0
+        for level_id, student_count in enrollment_counts_by_level.items():
+            level = await AcademicLevelRepository.get_by_id(db, tenant_id, level_id)
             if level is None or not level.is_active or level.archived_at is not None:
                 invalid_levels += 1
-                blockers.append(
-                    f"An active enrollment references invalid level {enrollment.academic_level_id}."
+                blockers.append(f"An active enrollment references invalid level {level_id}.")
+                continue
+            try:
+                target_level = await AcademicProgressionService.resolve_next_level(
+                    db,
+                    tenant_id=tenant_id,
+                    current_level=level,
                 )
+            except ConflictException:
+                invalid_progression_targets += 1
+                blockers.append(
+                    f"{level.name} has no valid next progression level. Complete the academic level configuration before closing the session."
+                )
+                continue
+            if target_level is None:
+                terminal_students += student_count
 
         counts["invalid_enrollment_levels"] = invalid_levels
+        counts["invalid_class_progression_targets"] = invalid_progression_targets
+        counts["terminal_students"] = terminal_students
 
         # De-duplicate while preserving the exact audit order.
         blockers = list(dict.fromkeys(blockers))
@@ -237,6 +258,8 @@ class SessionClosureService:
             dependency_counts=counts,
             blocker_messages=blockers,
             checked_items=list(SessionClosureService.CHECKED_ITEMS),
+            terminal_students=terminal_students,
+            requires_terminal_confirmation=terminal_students > 0,
         )
 
     @staticmethod
@@ -275,6 +298,7 @@ class SessionClosureService:
         actor: TenantAdmin,
         session_id: uuid.UUID,
         idempotency_key: str,
+        allow_terminal_completion: bool = False,
     ) -> SessionClosureStartResponse:
         session = await AcademicSessionLifecycleRepository.get_by_id(
             db, actor.tenant_id, session_id, lock=True
@@ -313,6 +337,15 @@ class SessionClosureService:
                     db, tenant_id=actor.tenant_id, run=existing
                 ),
                 queued=False,
+            )
+        if audit.requires_terminal_confirmation and not allow_terminal_completion:
+            raise ConflictException(
+                "Explicit confirmation is required before terminal students are graduated.",
+                payload={
+                    "dependency_counts": audit.dependency_counts,
+                    "terminal_students": audit.terminal_students,
+                    "requires_terminal_confirmation": True,
+                },
             )
         if session.next_academic_session_id is None:
             raise ConflictException("Configure the next academic session first.")
@@ -364,6 +397,7 @@ class SessionClosureService:
             metadata={
                 "progression_run_id": str(run.id),
                 "closure_audit": audit.model_dump(mode="json"),
+                "terminal_completion_confirmed": bool(allow_terminal_completion),
             },
         )
         await db.commit()
@@ -388,6 +422,34 @@ class SessionClosureService:
             ),
             queued=queued,
         )
+
+    @staticmethod
+    async def _terminal_completion_confirmed(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        session_id: uuid.UUID,
+        run_id: uuid.UUID,
+    ) -> bool:
+        audit = (
+            await db.execute(
+                select(AcademicLifecycleAudit)
+                .where(
+                    AcademicLifecycleAudit.tenant_id == tenant_id,
+                    AcademicLifecycleAudit.entity_type == "session",
+                    AcademicLifecycleAudit.entity_id == session_id,
+                    AcademicLifecycleAudit.action == "closing_started",
+                )
+                .order_by(AcademicLifecycleAudit.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if audit is None or not audit.metadata_json:
+            return False
+        metadata = audit.metadata_json
+        if metadata.get("progression_run_id") != str(run_id):
+            return False
+        return bool(metadata.get("terminal_completion_confirmed", False))
 
     @staticmethod
     async def process_progression_run(
@@ -422,6 +484,13 @@ class SessionClosureService:
         if actor is None:
             raise ConflictException("The administrator who started closure is unavailable.")
 
+        terminal_completion_confirmed = await SessionClosureService._terminal_completion_confirmed(
+            db,
+            tenant_id=tenant_id,
+            session_id=session.id,
+            run_id=run.id,
+        )
+
         run.status = StudentProgressionRunStatus.PROCESSING
         run.started_at = run.started_at or _utc_now()
         run.completed_at = None
@@ -452,6 +521,7 @@ class SessionClosureService:
                         enrollment=enrollment,
                         next_session=next_session,
                         effective_date=effective_date,
+                        allow_terminal_completion=terminal_completion_confirmed,
                     )
             except Exception as exc:  # one student must not corrupt the full batch
                 await StudentProgressionRepository.add_item(
@@ -506,6 +576,7 @@ class SessionClosureService:
             reason=run.failure_reason,
             metadata={
                 "progression_run_id": str(run.id),
+                "terminal_completion_confirmed": terminal_completion_confirmed,
                 "promoted": run.promoted_students,
                 "graduated": run.graduated_students,
                 "skipped": run.skipped_students,
