@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.classes.category_catalog import categories_for
 from app.modules.classes.models import AcademicLevel
 from app.modules.classes.repository import AcademicLevelRepository
-from app.modules.classes.service import ALLOWED_CATEGORIES
 from app.modules.parents.repository import ParentMembershipRepository
 from app.modules.school_calendar.repository import SchoolCalendarRepository
 from app.modules.student_academics.lifecycle_repository import (
@@ -154,29 +154,46 @@ class AcademicProgressionService:
         tenant_id: uuid.UUID,
         current_level: AcademicLevel,
     ) -> AcademicLevel | None:
+        """Resolve the next academic level without inferring class placement.
+
+        Level positions are local to their category. Category ordering comes from the
+        institution catalog. A missing immediately-next category configuration is a
+        setup error, never an implicit graduation or a jump over that category.
+        """
+
         tenant = await TenantRepository.get_by_id(db, tenant_id)
         if tenant is None or tenant.institution_type is None:
             raise ConflictException("Institution type is required for academic progression.")
 
-        allowed = ALLOWED_CATEGORIES[tenant.institution_type]
-        if current_level.category not in allowed:
+        category_definitions = categories_for(tenant.institution_type)
+        allowed_categories = [definition.value for definition in category_definitions]
+        if current_level.category not in allowed_categories:
             raise ConflictException("Current academic level category is invalid for this tenant.")
 
-        levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, active_only=True)
+        levels = await AcademicLevelRepository.list_for_tenant(
+            db, tenant_id, active_only=True
+        )
         same_category = [
             level
             for level in levels
-            if level.category == current_level.category and level.position > current_level.position
+            if level.category == current_level.category
+            and level.position > current_level.position
         ]
         if same_category:
             return min(same_category, key=lambda level: level.position)
 
-        current_category_index = allowed.index(current_level.category)
-        for category in allowed[current_category_index + 1 :]:
-            candidates = [level for level in levels if level.category == category]
-            if candidates:
-                return min(candidates, key=lambda level: level.position)
-        return None
+        current_category_index = allowed_categories.index(current_level.category)
+        if current_category_index == len(allowed_categories) - 1:
+            return None
+
+        next_category = allowed_categories[current_category_index + 1]
+        candidates = [level for level in levels if level.category == next_category]
+        if not candidates:
+            raise ConflictException(
+                "Academic progression is incomplete: configure at least one active "
+                f"{next_category.value.replace('_', ' ').title()} level before closing the session."
+            )
+        return min(candidates, key=lambda level: level.position)
 
     @staticmethod
     async def _downgrade_graduated_parent_access(
@@ -266,6 +283,7 @@ class AcademicProgressionService:
         enrollment: StudentEnrollment,
         next_session: AcademicSession,
         effective_date: date,
+        allow_terminal_completion: bool = False,
     ) -> StudentProgressionItem:
         existing = await StudentProgressionRepository.get_item_by_run_and_student(
             db, run.id, enrollment.student_id, lock=True
@@ -304,6 +322,11 @@ class AcademicProgressionService:
             db, tenant_id=actor.tenant_id, current_level=level
         )
 
+        if target_level is None and not allow_terminal_completion:
+            raise ConflictException(
+                "Terminal academic completion requires explicit administrator confirmation."
+            )
+
         enrollment.is_current = False
         enrollment.ended_on = effective_date
         enrollment.changed_by_admin_id = actor.id
@@ -337,7 +360,7 @@ class AcademicProgressionService:
                     from_class_id=enrollment.class_id,
                     action=StudentProgressionItemAction.COMPLETE,
                     status=StudentProgressionItemStatus.COMPLETED,
-                    reason="Final configured level completed.",
+                    reason="Final configured level completed with administrator confirmation.",
                     processed_at=_utc_now(),
                 ),
             )
