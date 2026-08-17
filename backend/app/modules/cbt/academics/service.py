@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import AsyncSessionLocal
 from app.modules.cbt.academics.schemas import (
+    CBTAdminSnapshot,
     CBTAcademicBootstrapResponse,
     CBTAcademicLevelSnapshot,
     CBTAcademicSessionSnapshot,
@@ -54,6 +55,7 @@ from app.modules.student_academics.models import (
 )
 from app.modules.students.models import StudentEnrollment
 from app.modules.subjects.models import Subject
+from app.modules.tenant_admins.models import TenantAdmin
 from app.modules.teachers.models import TeacherMembership
 from app.tenant_management.models import Tenant
 
@@ -86,6 +88,13 @@ class CBTAcademicSyncService:
         model,
         tenant_id: uuid.UUID,
     ) -> list[uuid.UUID]:
+        """Return candidate ids; projector visibility defines the canonical snapshot.
+
+        Bootstrap intentionally feeds the same projector registry used by incremental
+        sync. Current/active filtering therefore lives in exactly one place and a
+        fresh bootstrap cannot disagree with a sequence of incremental changes.
+        """
+
         return list(
             (
                 await db.execute(
@@ -180,6 +189,7 @@ class CBTAcademicSyncService:
                 CBTAssessmentComponentSnapshot,
                 "assessment_components",
             ),
+            (TenantAdmin, CBTSyncEntityType.ADMIN, CBTAdminSnapshot, "admins"),
             (TeacherMembership, CBTSyncEntityType.TEACHER, CBTTeacherSnapshot, "teachers"),
             (
                 TeacherAssignment,
@@ -242,6 +252,7 @@ class CBTAcademicSyncService:
             offerings=payloads["offerings"],
             assessment_schemes=payloads["assessment_schemes"],
             assessment_components=payloads["assessment_components"],
+            admins=payloads["admins"],
             teachers=payloads["teachers"],
             teacher_assignments=payloads["teacher_assignments"],
             student_enrollments=payloads["student_enrollments"],
