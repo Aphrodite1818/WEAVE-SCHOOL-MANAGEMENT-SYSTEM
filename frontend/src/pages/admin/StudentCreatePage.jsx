@@ -45,8 +45,10 @@ const titleCase = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-const asItems = (response) =>
-  Array.isArray(response?.items) ? response.items : [];
+const asItems = (response) => {
+  if (Array.isArray(response)) return response;
+  return Array.isArray(response?.items) ? response.items : [];
+};
 const cleanOptional = (value) => String(value || "").trim() || null;
 
 const formatDate = (value) => {
@@ -126,7 +128,11 @@ function StudentCreatePage() {
   const classOptions = useMemo(
     () =>
       classes
-        .filter((item) => item.academic_level_id === form.academic_level_id)
+        .filter(
+          (item) =>
+            !form.academic_level_id ||
+            item.academic_level_id === form.academic_level_id,
+        )
         .map((item) => ({
           value: item.id,
           label:
@@ -351,9 +357,12 @@ function StudentCreatePage() {
             </div>
           ) : null}
 
-          {classOptions.length === 0 && !loadingContext ? (
+          {form.academic_level_id &&
+          classOptions.length === 0 &&
+          !loadingContext ? (
             <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-4 text-sm text-amber-800">
-              Create at least one active class before admitting students.
+              No active class exists for this level yet. You can leave the
+              student unassigned and place them in a class later.
             </div>
           ) : null}
 
@@ -554,9 +563,7 @@ function StudentCreatePage() {
             </p>
             <p>
               Active classes:{" "}
-              <span className="font-semibold text-text">
-                {classOptions.length}
-              </span>
+              <span className="font-semibold text-text">{classes.length}</span>
             </p>
             <p>
               Plan capacity:{" "}
