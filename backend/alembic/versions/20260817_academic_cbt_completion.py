@@ -1,14 +1,14 @@
 """Finish academic lifecycle and CBT sync contract invariants.
 
 Revision ID: 20260817_academic_cbt_completion
-Revises: 20260817_department_level_scope
+Revises: 20260817_academic_cleanup
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "20260817_academic_cbt_completion"
-down_revision = "20260817_department_level_scope"
+down_revision = "20260817_academic_cleanup"
 branch_labels = None
 depends_on = None
 SCHEMA = "public"
