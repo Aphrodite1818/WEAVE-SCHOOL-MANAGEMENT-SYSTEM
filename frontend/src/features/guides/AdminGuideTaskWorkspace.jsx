@@ -10,7 +10,7 @@ import SchoolCalendarGuide from "../schoolCalendar/components/SchoolCalendarGuid
 import SchoolCalendarWorkspace from "../schoolCalendar/components/SchoolCalendarWorkspace";
 import TenantBrandingPage from "../../pages/admin/TenantBrandingPage";
 
-export const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
+const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
   school_logo: { kind: "branding" },
   levels: { kind: "levels", activeTab: "create" },
   arms: { kind: "arm-labels", activeTab: "create" },
