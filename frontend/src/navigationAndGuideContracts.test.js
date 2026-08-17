@@ -30,29 +30,50 @@ test("academic structure is not coupled to class or subject subscription quotas"
   assert.doesNotMatch(pricing, /resource:\s*["'](?:classes|subjects)["']/);
 });
 
-test("assisted structure creates a level before adding its class arm", () => {
-  const setupPage = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
+test("admin guided setup keeps configuration inside the selected step", () => {
+  const overview = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
+  const stepPage = readSource("pages", "admin", "AdminGettingStartedStepPage.jsx");
+  const workspace = readSource("features", "guides", "AdminGuideTaskWorkspace.jsx");
+
+  assert.match(overview, /navigate\(`\/admin\/getting-started\/\$\{step\.id\}`\)/);
+  assert.match(stepPage, /<AdminGuideTaskWorkspace stepId=\{step\.id\}/);
+  assert.doesNotMatch(stepPage, /navigate\(step\.to\)/);
+  assert.match(stepPage, /Previous:/);
+  assert.match(stepPage, /Skip for now/);
+  assert.match(stepPage, /Next:/);
+  assert.match(workspace, /levels: \{ kind: "levels", activeTab: "create" \}/);
+  assert.match(workspace, /assignments: \{ kind: "assignments", activeTab: "assign" \}/);
+  assert.match(workspace, /calendar: \{ kind: "calendar", activeTab: "setup" \}/);
+});
+
+test("academic level categories come from the institution-scoped backend catalog", () => {
+  const levelsWorkspace = readSource(
+    "features",
+    "academic-admin",
+    "AcademicLevelsWorkspace.jsx",
+  );
   const academicsService = readSource("services", "academicsService.js");
 
-  assert.match(setupPage, /Create the academic level/);
-  assert.match(setupPage, /academicLevelService\.createLevel\(\{[\s\S]*name: levelForm\.name,[\s\S]*category: levelForm\.category,[\s\S]*position:/);
-  assert.match(setupPage, /Add an arm to the level/);
-  assert.match(setupPage, /academic_level_id: created\.id/);
-  assert.match(setupPage, /armCount === 0/);
-  assert.match(setupPage, /requestSetupRemoval\("level", level\)/);
-  assert.match(academicsService, /setup-assistant\/levels\/\$\{levelId\}\/remove/);
-  assert.doesNotMatch(setupPage, /classForm\.level_name/);
+  assert.match(academicsService, /getCategories: \(\) => api\.get\("\/academic-levels\/categories"\)/);
+  assert.match(levelsWorkspace, /academicLevelService\.getCategories\(\)/);
+  assert.match(levelsWorkspace, /categoryOptions\.map/);
+  assert.doesNotMatch(levelsWorkspace, /value: "JUNIOR_SECONDARY"/);
+  assert.doesNotMatch(levelsWorkspace, /value: "SENIOR_SECONDARY"/);
 });
 
 test("assisted term opening honors registration plan intent", () => {
-  const setupPage = readSource("pages", "admin", "AdminGettingStartedPage.jsx");
+  const academicSetup = readSource(
+    "features",
+    "academic-admin",
+    "AcademicSetupWorkspace.jsx",
+  );
   const registerPage = readSource("pages", "public", "RegisterPage.jsx");
   const plansPage = readSource("pages", "admin", "SubscriptionOptionsPage.jsx");
 
-  assert.match(setupPage, /TERM_PLAN_ACTIVATION_REQUIRED/);
-  assert.match(setupPage, /plan_code: activation\.suggested_plan/);
-  assert.match(setupPage, /window\.location\.assign\(subscriptionService\.checkoutRedirectUrl\(checkout\)\)/);
-  assert.match(setupPage, /billing\/plans\?term=/);
+  assert.match(academicSetup, /TERM_PLAN_ACTIVATION_REQUIRED/);
+  assert.match(academicSetup, /plan_code: termPlanPrompt\.suggested_plan/);
+  assert.match(academicSetup, /window\.location\.assign\(subscriptionService\.checkoutRedirectUrl\(checkout\)\)/);
+  assert.match(academicSetup, /billing\/plans\?term=/);
   assert.match(registerPage, /selectedPlan\?\.planCode/);
   assert.match(plansPage, /plan\.planCode === "free"/);
   assert.match(plansPage, /activateFreeTerm\(checkoutTermId\)/);
