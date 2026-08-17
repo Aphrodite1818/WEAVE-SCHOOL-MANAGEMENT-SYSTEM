@@ -1,4 +1,4 @@
-"""Stable CBT projections for academic structure and periods."""
+"""Stable CBT projections for active academic structure and current periods."""
 
 from __future__ import annotations
 
@@ -19,7 +19,12 @@ from app.modules.cbt.academics.schemas import (
 )
 from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
 from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
-from app.modules.student_academics.models import AcademicSession, AcademicTerm
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicSessionStatus,
+    AcademicTerm,
+    AcademicTermStatus,
+)
 
 
 def _value(value: Any) -> Any:
@@ -57,17 +62,23 @@ def project_department(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
     row = session.execute(
-        select(Department).where(
+        select(Department, AcademicLevel)
+        .join(AcademicLevel, AcademicLevel.id == Department.academic_level_id)
+        .where(
             Department.tenant_id == tenant_id,
             Department.id == entity_id,
+            AcademicLevel.tenant_id == tenant_id,
         )
-    ).scalar_one_or_none()
-    if not _visible(row):
+    ).first()
+    if row is None:
+        return None
+    department, level = row
+    if not _visible(department) or not _visible(level):
         return None
     return CBTDepartmentSnapshot(
-        id=row.id,
-        academic_level_id=row.academic_level_id,
-        name=row.name,
+        id=department.id,
+        academic_level_id=department.academic_level_id,
+        name=department.name,
     ).model_dump(mode="json")
 
 
@@ -95,6 +106,8 @@ def project_class(
         .where(
             ClassRoom.tenant_id == tenant_id,
             ClassRoom.id == entity_id,
+            AcademicLevel.tenant_id == tenant_id,
+            ArmLabel.tenant_id == tenant_id,
         )
     ).first()
     if row is None:
@@ -114,13 +127,19 @@ def project_class(
 def project_class_term_department(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    row = session.execute(
-        select(ClassTermDepartmentAssignment).where(
+    joined = session.execute(
+        select(ClassTermDepartmentAssignment, AcademicTerm)
+        .join(AcademicTerm, AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id)
+        .where(
             ClassTermDepartmentAssignment.tenant_id == tenant_id,
             ClassTermDepartmentAssignment.id == entity_id,
+            AcademicTerm.tenant_id == tenant_id,
         )
-    ).scalar_one_or_none()
-    if row is None:
+    ).first()
+    if joined is None:
+        return None
+    row, term = joined
+    if not term.is_current or term.status != AcademicTermStatus.OPEN:
         return None
     return CBTClassTermDepartmentSnapshot(
         id=row.id,
@@ -139,7 +158,11 @@ def project_academic_session(
             AcademicSession.id == entity_id,
         )
     ).scalar_one_or_none()
-    if row is None:
+    if (
+        row is None
+        or not row.is_current
+        or row.status not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
+    ):
         return None
     return CBTAcademicSessionSnapshot(
         id=row.id,
@@ -158,7 +181,11 @@ def project_academic_term(
             AcademicTerm.id == entity_id,
         )
     ).scalar_one_or_none()
-    if row is None:
+    if (
+        row is None
+        or not row.is_current
+        or row.status not in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
+    ):
         return None
     return CBTAcademicTermSnapshot(
         id=row.id,
