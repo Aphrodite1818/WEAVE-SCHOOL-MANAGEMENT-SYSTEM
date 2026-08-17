@@ -8,6 +8,7 @@ import { useToast } from "../../hooks/useToast";
 import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
+import { curriculumService } from "../../services/curriculumService";
 import { teacherService } from "../../services/teacherService";
 import {
   Input,
@@ -26,7 +27,7 @@ const asItems = (response) =>
 
 const classLabel = (item) =>
   item?.display_name ||
-  [item?.academic_level_name, item?.department_name, item?.arm_label].filter(Boolean).join(" ") ||
+  [item?.academic_level_name, item?.arm_label].filter(Boolean).join(" ") ||
   "Unnamed class";
 
 const teacherLabel = (item) => {
@@ -55,18 +56,24 @@ const formatDependencyMessage = (preview) => {
 function TeacherAssignmentsWorkspace({ activeTab }) {
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [levelSubjects, setLevelSubjects] = useState([]);
+  const [curriculumSubjects, setCurriculumSubjects] = useState([]);
+  const [currentTerm, setCurrentTerm] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [form, setForm] = useState({
     class_id: "",
-    level_subject_id: "",
+    curriculum_subject_id: "",
     teacher_membership_id: "",
     effective_from: today(),
   });
   const [filters, setFilters] = useState({
     class_id: "",
     teacher_membership_id: "",
-    status: activeTab === "reassign" || activeTab === "end" ? "active" : activeTab === "history" ? "ended" : "",
+    status:
+      activeTab === "reassign" || activeTab === "end"
+        ? "active"
+        : activeTab === "history"
+          ? "ended"
+          : "",
     search: "",
   });
   const [assignmentTotal, setAssignmentTotal] = useState(0);
@@ -85,12 +92,15 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     setLoading(true);
     setError(null);
     try {
-      const [classResponse, teacherResponse] = await Promise.all([
+      const [classResponse, teacherResponse, termResponse] = await Promise.all([
         classService.getClasses({ limit: 500, activeOnly: true }),
         teacherService.listMemberships({ limit: 100 }),
+        academicService.listTerms({ is_current: true, limit: 1 }),
       ]);
       const nextClasses = asItems(classResponse);
+      const nextCurrentTerm = asItems(termResponse)[0] || null;
       setClasses(nextClasses);
+      setCurrentTerm(nextCurrentTerm);
       setTeachers(
         asItems(teacherResponse).filter(
           (item) => String(item.status || "active").toLowerCase() === "active",
@@ -133,39 +143,46 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     showError,
   ]);
 
-  const loadLevelSubjects = useCallback(async () => {
+  const loadCurriculumSubjects = useCallback(async () => {
     if (!form.class_id) {
-      setLevelSubjects([]);
+      setCurriculumSubjects([]);
       return;
     }
     try {
       const classroom = classes.find((item) => item.id === form.class_id);
       if (!classroom?.academic_level_id) {
-        setLevelSubjects([]);
+        setCurriculumSubjects([]);
         return;
       }
-      const [subjectsResponse, assignmentsResponse] = await Promise.all([
-        academicService.listLevelSubjects(classroom.academic_level_id, {
-          active_only: true,
-        }),
+      const [curriculumResponse, assignmentsResponse] = await Promise.all([
+        curriculumService.getCurriculum(classroom.academic_level_id),
         academicService.listTeacherAssignments({
           class_id: form.class_id,
           status: "active",
           limit: 100,
         }),
       ]);
-      const subjects = asItems(subjectsResponse);
+      const subjects = (curriculumResponse?.subjects || []).filter(
+        (item) => item.is_active !== false,
+      );
       const activeAssignments = asItems(assignmentsResponse);
-      const assignedSubjectIds = new Set(activeAssignments.map((a) => a.level_subject_id));
-
-      setLevelSubjects(
-        subjects.filter((s) => !assignedSubjectIds.has(s.id) || s.id === form.level_subject_id)
+      const assignedSubjectIds = new Set(
+        activeAssignments.map((item) => item.curriculum_subject_id),
+      );
+      setCurriculumSubjects(
+        subjects.filter(
+          (subject) =>
+            !assignedSubjectIds.has(subject.id) ||
+            subject.id === form.curriculum_subject_id,
+        ),
       );
     } catch (err) {
-      setLevelSubjects([]);
-      showError(getErrorMessage(err, "Could not load subjects for this class level."));
+      setCurriculumSubjects([]);
+      showError(
+        getErrorMessage(err, "Could not load curriculum subjects for this class."),
+      );
     }
-  }, [classes, form.class_id, form.level_subject_id, showError]);
+  }, [classes, form.class_id, form.curriculum_subject_id, showError]);
 
   useEffect(() => {
     loadBase();
@@ -176,8 +193,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   }, [loadAssignments]);
 
   useEffect(() => {
-    loadLevelSubjects();
-  }, [loadLevelSubjects]);
+    loadCurriculumSubjects();
+  }, [loadCurriculumSubjects]);
 
   useEffect(() => {
     const nextStatus =
@@ -208,17 +225,18 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   );
   const subjectOptions = useMemo(
     () =>
-      levelSubjects.map((item) => ({
+      curriculumSubjects.map((item) => ({
         value: item.id,
         label: [item.subject_name, item.subject_code].filter(Boolean).join(" · "),
       })),
-    [levelSubjects],
+    [curriculumSubjects],
   );
+
   const resetForm = () => {
     setEditingAssignmentId("");
     setForm((current) => ({
       class_id: current.class_id,
-      level_subject_id: "",
+      curriculum_subject_id: "",
       teacher_membership_id: "",
       effective_from: today(),
     }));
@@ -229,17 +247,24 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     setEditingAssignmentId(item.id);
     setForm({
       class_id: item.class_id || "",
-      level_subject_id: item.level_subject_id || "",
+      curriculum_subject_id: item.curriculum_subject_id || "",
       teacher_membership_id: item.teacher_membership_id || "",
       effective_from: today(),
     });
-
   };
 
   const saveAssignment = async (event) => {
     event.preventDefault();
-    if (!form.level_subject_id || !form.teacher_membership_id) {
-      showWarning("Select a subject and teacher.");
+    if (!form.teacher_membership_id) {
+      showWarning("Select a teacher.");
+      return;
+    }
+    if (!editingAssignmentId && !form.curriculum_subject_id) {
+      showWarning("Select a curriculum subject.");
+      return;
+    }
+    if (!editingAssignmentId && !currentTerm?.id) {
+      showWarning("Open an academic term before creating teacher assignments.");
       return;
     }
     setSaving("assignment");
@@ -252,7 +277,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       } else {
         await academicService.createTeacherAssignment({
           class_id: form.class_id,
-          level_subject_id: form.level_subject_id,
+          curriculum_subject_id: form.curriculum_subject_id,
+          academic_term_id: currentTerm.id,
           teacher_membership_id: form.teacher_membership_id,
           effective_from: form.effective_from,
         });
@@ -260,10 +286,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       showSuccess(
         editingAssignmentId
           ? "Teacher assignment updated."
-          : "Teacher assigned to class subject.",
+          : "Teacher assigned to curriculum subject.",
       );
       resetForm();
       await loadAssignments();
+      await loadCurriculumSubjects();
     } catch (err) {
       showError(getErrorMessage(err, "Could not save teacher assignment."));
     } finally {
@@ -276,7 +303,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     try {
       const preview = await academicService.getTeacherAssignmentDependencies(item.id);
       if (!preview?.can_end) {
-        showError(formatDependencyMessage(preview) || "This assignment cannot be ended.");
+        showError(
+          formatDependencyMessage(preview) || "This assignment cannot be ended.",
+        );
         return;
       }
       await academicService.endTeacherAssignment(item.id, {
@@ -296,12 +325,16 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     try {
       const preview = await academicService.getTeacherAssignmentDependencies(item.id);
       if (!preview?.can_delete) {
-        showError(formatDependencyMessage(preview) || "This assignment cannot be deleted.");
+        showError(
+          formatDependencyMessage(preview) || "This assignment cannot be deleted.",
+        );
         return;
       }
       setPendingDelete({ item, preview });
     } catch (err) {
-      showError(getErrorMessage(err, "Could not inspect assignment dependencies."));
+      showError(
+        getErrorMessage(err, "Could not inspect assignment dependencies."),
+      );
     }
   };
 
@@ -328,8 +361,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
 
   const editor = (
     <WorkspacePanel
-      title={editingAssignmentId ? "Change assigned teacher" : "Assign subject teacher"}
-      description="Choose the class, subject, teacher, and start date. If a teacher is already assigned, the previous assignment is ended and kept in history."
+      title={
+        editingAssignmentId ? "Change assigned teacher" : "Assign subject teacher"
+      }
+      description="Choose the class, curriculum subject, teacher, and start date. Assignment eligibility is validated against the current term."
     >
       <form className="space-y-3" onSubmit={saveAssignment}>
         <SelectControl
@@ -339,7 +374,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             setForm((current) => ({
               ...current,
               class_id: value,
-              level_subject_id: "",
+              curriculum_subject_id: "",
             }))
           }
           options={classOptions}
@@ -347,19 +382,26 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           disabled={Boolean(editingAssignmentId)}
         />
         <SelectControl
-          label="Class subject"
-          value={form.level_subject_id}
+          label="Curriculum subject"
+          value={form.curriculum_subject_id}
           onChange={(value) =>
-            setForm((current) => ({ ...current, level_subject_id: value }))
+            setForm((current) => ({
+              ...current,
+              curriculum_subject_id: value,
+            }))
           }
           options={subjectOptions}
           placeholder={
             subjectOptions.length === 0
-              ? "No active subjects for this class"
+              ? "No available curriculum subjects"
               : "Select subject"
           }
           required
-          disabled={Boolean(editingAssignmentId) || subjectOptions.length === 0}
+          disabled={
+            Boolean(editingAssignmentId) ||
+            subjectOptions.length === 0 ||
+            !currentTerm?.id
+          }
         />
         <SelectControl
           label="Teacher"
@@ -372,16 +414,31 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           required
         />
         <Input
-          label={editingAssignmentId ? "Replacement effective from" : "Effective from"}
+          label={
+            editingAssignmentId
+              ? "Replacement effective from"
+              : "Effective from"
+          }
           type="date"
           value={form.effective_from}
           onChange={(event) =>
-            setForm((current) => ({ ...current, effective_from: event.target.value }))
+            setForm((current) => ({
+              ...current,
+              effective_from: event.target.value,
+            }))
           }
           required
         />
+        {!currentTerm?.id && !editingAssignmentId ? (
+          <p className="text-sm text-text-muted">
+            Open an academic term before assigning subject teachers.
+          </p>
+        ) : null}
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="submit" disabled={saving === "assignment"}>
+          <Button
+            type="submit"
+            disabled={saving === "assignment" || (!editingAssignmentId && !currentTerm?.id)}
+          >
             {saving === "assignment"
               ? "Saving..."
               : editingAssignmentId
@@ -441,7 +498,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             { value: "ended", label: "Ended" },
           ]}
           placeholder="All statuses"
-          disabled={activeTab === "reassign" || activeTab === "end" || activeTab === "history"}
+          disabled={
+            activeTab === "reassign" ||
+            activeTab === "end" ||
+            activeTab === "history"
+          }
         />
         <Input
           label="Search"
@@ -467,62 +528,63 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                 key={item.id}
                 className="flex min-h-[11rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
               >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="break-words font-semibold text-text">
-                    {item.subject_name || "Subject"}
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {item.subject_code || "No subject code"}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold text-text">
+                      {item.subject_name || "Subject"}
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {item.subject_code || "No subject code"}
+                    </p>
+                  </div>
+                  <Badge variant={item.is_active ? "success" : "error"}>
+                    {item.is_active ? "active" : "inactive"}
+                  </Badge>
                 </div>
-                <Badge variant={item.is_active ? "success" : "error"}>
-                  {item.is_active ? "active" : "inactive"}
-                </Badge>
-              </div>
-              <div className="mt-3 space-y-1 text-sm text-text-muted">
-                <p>{[item.class_name, item.class_arm].filter(Boolean).join(" ")}</p>
-                <p>{item.teacher_name || item.teacher_staff_id || "Teacher"}</p>
-                <p>Effective: {formatPeriod(item)}</p>
-              </div>
-              <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                <Button
-                  type="button"
-                  size="small"
-                  variant="outline"
-                  onClick={() => setViewingAssignment(item)}
-                >
-                  View
-                </Button>
-                {item.is_active ? (
-                  <>
-                    {activeTab === "reassign" ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        onClick={() => openAssignmentEditor(item)}
-                      >
-                        Reassign teacher
-                      </Button>
-                    ) : null}
-                    {activeTab === "end" ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="danger"
-                        disabled={saving === item.id}
-                        onClick={() => {
-                          setEndingAssignmentId(item.id);
-                          setEffectiveTo(item.effective_from || today());
-                        }}
-                      >
-                        End assignment
-                      </Button>
-                    ) : null}
-                  </>
-                ) : (
-                  activeTab === "history" ? (
+                <div className="mt-3 space-y-1 text-sm text-text-muted">
+                  <p>
+                    {[item.class_name, item.class_arm].filter(Boolean).join(" ")}
+                  </p>
+                  <p>{item.teacher_name || item.teacher_staff_id || "Teacher"}</p>
+                  <p>Effective: {formatPeriod(item)}</p>
+                </div>
+                <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    onClick={() => setViewingAssignment(item)}
+                  >
+                    View
+                  </Button>
+                  {item.is_active ? (
+                    <>
+                      {activeTab === "reassign" ? (
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outline"
+                          onClick={() => openAssignmentEditor(item)}
+                        >
+                          Reassign teacher
+                        </Button>
+                      ) : null}
+                      {activeTab === "end" ? (
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="danger"
+                          disabled={saving === item.id}
+                          onClick={() => {
+                            setEndingAssignmentId(item.id);
+                            setEffectiveTo(item.effective_from || today());
+                          }}
+                        >
+                          End assignment
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : activeTab === "history" ? (
                     <Button
                       type="button"
                       size="small"
@@ -532,9 +594,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                     >
                       Delete
                     </Button>
-                  ) : null
-                )}
-              </div>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>
@@ -572,7 +633,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         onClose={() => setViewingAssignment(null)}
         footer={
           <div className="flex justify-end">
-            <Button type="button" variant="outline" onClick={() => setViewingAssignment(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setViewingAssignment(null)}
+            >
               Close
             </Button>
           </div>
@@ -580,8 +645,12 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       >
         {viewingAssignment ? (
           <div className="space-y-2 text-sm text-text-muted">
-            <p>Teacher: {viewingAssignment.teacher_name || viewingAssignment.teacher_staff_id || "Teacher"}</p>
-            <p>Class: {[viewingAssignment.class_name, viewingAssignment.class_arm].filter(Boolean).join(" ")}</p>
+            <p>
+              Teacher: {viewingAssignment.teacher_name || viewingAssignment.teacher_staff_id || "Teacher"}
+            </p>
+            <p>
+              Class: {[viewingAssignment.class_name, viewingAssignment.class_arm].filter(Boolean).join(" ")}
+            </p>
             <p>Subject: {viewingAssignment.subject_name || "Subject"}</p>
             <p>Effective: {formatPeriod(viewingAssignment)}</p>
             <p>Status: {viewingAssignment.is_active ? "active" : "ended"}</p>
@@ -614,7 +683,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           </div>
         }
       >
-        <form id="teacher-reassign-form" className="space-y-3" onSubmit={saveAssignment}>
+        <form
+          id="teacher-reassign-form"
+          className="space-y-3"
+          onSubmit={saveAssignment}
+        >
           <SelectControl
             label="Replacement teacher"
             value={form.teacher_membership_id}
@@ -630,7 +703,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             type="date"
             value={form.effective_from}
             onChange={(event) =>
-              setForm((current) => ({ ...current, effective_from: event.target.value }))
+              setForm((current) => ({
+                ...current,
+                effective_from: event.target.value,
+              }))
             }
             required
           />
@@ -640,7 +716,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         open={Boolean(endingAssignmentId)}
         title="End assignment"
         description="Record the effective end date for this teacher assignment."
-        onClose={saving === endingAssignmentId ? undefined : () => setEndingAssignmentId("")}
+        onClose={
+          saving === endingAssignmentId
+            ? undefined
+            : () => setEndingAssignmentId("")
+        }
         closeOnOverlay={saving !== endingAssignmentId}
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -668,7 +748,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           className="space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
-            const item = assignments.find((assignment) => assignment.id === endingAssignmentId);
+            const item = assignments.find(
+              (assignment) => assignment.id === endingAssignmentId,
+            );
             if (item) endAssignment(item);
           }}
         >
@@ -707,7 +789,14 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   }
 
   if (activeTab === "assign") return editor;
-  if (activeTab === "overview" || activeTab === "history" || activeTab === "end" || activeTab === "reassign") return review;
+  if (
+    activeTab === "overview" ||
+    activeTab === "history" ||
+    activeTab === "end" ||
+    activeTab === "reassign"
+  ) {
+    return review;
+  }
   return <WorkspaceGrid editor={editor} content={review} />;
 }
 
