@@ -22,6 +22,7 @@ class _FakeSession:
         self.dirty: list[object] = []
         self.deleted: list[object] = []
         self.nested_transaction: object | None = None
+        self.flush_count = 0
 
     def is_modified(self, _obj: object, *, include_collections: bool = False) -> bool:
         return True
@@ -31,6 +32,9 @@ class _FakeSession:
 
     def in_nested_transaction(self) -> bool:
         return self.nested_transaction is not None
+
+    def flush(self) -> None:
+        self.flush_count += 1
 
 
 def _level() -> AcademicLevel:
@@ -119,6 +123,44 @@ def test_outer_rollback_clears_all_pending_state() -> None:
     assert model_events._PENDING_KEY not in session.info
     assert model_events._STUDENT_KEY not in session.info
     assert model_events._SAVEPOINT_JOURNALS_KEY not in session.info
+
+
+def test_prepare_commit_materializes_and_consumes_pending_state() -> None:
+    session = _FakeSession()
+    level = _level()
+    session.new = [level]
+    identity = model_events._PendingIdentity(
+        tenant_id=level.tenant_id,
+        entity_type=CBTSyncEntityType.ACADEMIC_LEVEL,
+        entity_id=level.id,
+        operation=CBTSyncOperation.CREATED,
+    )
+
+    with (
+        patch.object(model_events, "_materialize_events", return_value=[identity]),
+        patch.object(model_events, "_write_changes", return_value=1) as write_changes,
+    ):
+        written = model_events.prepare_cbt_sync_commit(session)  # type: ignore[arg-type]
+
+    assert written == 1
+    assert session.flush_count == 1
+    write_changes.assert_called_once_with(session, [identity])
+    assert model_events._PENDING_KEY not in session.info
+    assert model_events._TEACHER_ACCOUNT_KEY not in session.info
+    assert model_events._STUDENT_KEY not in session.info
+    assert model_events._SAVEPOINT_JOURNALS_KEY not in session.info
+    assert model_events._INTERNAL_KEY not in session.info
+
+
+def test_prepare_commit_is_deferred_while_inside_savepoint() -> None:
+    session = _FakeSession()
+    session.nested_transaction = _Transaction(nested=True, parent=object())
+    session.new = [_level()]
+
+    written = model_events.prepare_cbt_sync_commit(session)  # type: ignore[arg-type]
+
+    assert written == 0
+    assert session.flush_count == 0
 
 
 def test_invisible_lifecycle_updates_become_explicit_deletes() -> None:
