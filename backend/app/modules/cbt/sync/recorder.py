@@ -7,7 +7,6 @@ from collections.abc import Sequence
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.modules.cbt.sync.models import CBTSyncChange, CBTSyncTenantState
@@ -26,62 +25,12 @@ class CBTSyncRecorder:
     """
 
     @staticmethod
-    async def record_many(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        mutations: Sequence[CBTSyncMutation],
-    ) -> list[CBTSyncChange]:
-        if not mutations:
-            return []
-
-        state_table = CBTSyncTenantState.__table__
-        await db.execute(
-            pg_insert(state_table)
-            .values(tenant_id=tenant_id, last_cursor=0)
-            .on_conflict_do_nothing(index_elements=[state_table.c.tenant_id])
-        )
-        state = (
-            await db.execute(
-                select(CBTSyncTenantState)
-                .where(CBTSyncTenantState.tenant_id == tenant_id)
-                .with_for_update()
-            )
-        ).scalar_one()
-
-        first_cursor = int(state.last_cursor) + 1
-        changes = [
-            CBTSyncChange(
-                tenant_id=tenant_id,
-                cursor=first_cursor + index,
-                entity_type=mutation.entity_type,
-                entity_id=mutation.entity_id,
-                operation=mutation.operation,
-                schema_version=mutation.schema_version,
-                payload=mutation.payload,
-            )
-            for index, mutation in enumerate(mutations)
-        ]
-        db.add_all(changes)
-        state.last_cursor = first_cursor + len(changes) - 1
-        await db.flush()
-
-        notification = CBTSyncNotification(
-            tenant_id=tenant_id,
-            cursor=state.last_cursor,
-        ).model_dump_json()
-        await db.execute(select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification)))
-        return changes
-
-    @staticmethod
     def record_many_sync(
         db: Session,
         *,
         tenant_id: uuid.UUID,
         mutations: Sequence[CBTSyncMutation],
     ) -> tuple[int, int] | None:
-        """Synchronous batch writer used by SQLAlchemy Session lifecycle events."""
-
         if not mutations:
             return None
 
@@ -103,23 +52,23 @@ class CBTSyncRecorder:
         ).scalar_one()
 
         first_cursor = int(previous_cursor) + 1
-        rows = []
-        for index, mutation in enumerate(mutations):
-            rows.append(
-                {
-                    "id": uuid.uuid4(),
-                    "tenant_id": tenant_id,
-                    "cursor": first_cursor + index,
-                    "entity_type": mutation.entity_type.value,
-                    "entity_id": mutation.entity_id,
-                    "operation": mutation.operation.value,
-                    "schema_version": mutation.schema_version,
-                    "payload": mutation.payload,
-                    "created_at": func.now(),
-                    "updated_at": func.now(),
-                }
-            )
+        rows = [
+            {
+                "id": uuid.uuid4(),
+                "tenant_id": tenant_id,
+                "cursor": first_cursor + index,
+                "entity_type": mutation.entity_type.value,
+                "entity_id": mutation.entity_id,
+                "operation": mutation.operation.value,
+                "schema_version": mutation.schema_version,
+                "payload": mutation.payload,
+            }
+            for index, mutation in enumerate(mutations)
+        ]
 
+        # created_at/updated_at are intentionally omitted here so PostgreSQL uses
+        # the table's timestamp defaults instead of receiving SQL expressions as
+        # asyncpg executemany parameter values.
         connection.execute(change_table.insert(), rows)
         last_cursor = first_cursor + len(rows) - 1
         connection.execute(
