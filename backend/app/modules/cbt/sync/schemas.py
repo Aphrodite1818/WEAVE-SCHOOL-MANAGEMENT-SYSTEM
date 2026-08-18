@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
 
+SYNC_SCHEMA_VERSION = 3
+
 
 class CBTSyncMutation(BaseModel):
     """Internal representation of one CBT-visible business mutation."""
@@ -15,7 +17,7 @@ class CBTSyncMutation(BaseModel):
     entity_type: CBTSyncEntityType
     entity_id: uuid.UUID
     operation: CBTSyncOperation
-    schema_version: int = Field(default=2, ge=1)
+    schema_version: int = Field(default=SYNC_SCHEMA_VERSION, ge=1)
     payload: dict[str, Any] | None = None
 
     @model_validator(mode="after")
@@ -31,7 +33,7 @@ class CBTSyncMutation(BaseModel):
 
 
 class CBTSyncChangeResponse(BaseModel):
-    """Stable event shared by live WebSocket delivery and HTTP recovery."""
+    """One durable synchronization change returned through cursor recovery."""
 
     event_id: uuid.UUID
     cursor: int
@@ -53,8 +55,12 @@ class CBTSyncDeltaResponse(BaseModel):
 
 
 class CBTSyncNotification(BaseModel):
-    """Internal PostgreSQL NOTIFY envelope."""
+    """Tiny PostgreSQL/WebSocket high-water notification.
 
-    change_id: uuid.UUID
+    The durable HTTP change log is the only entity transport. Live channels only
+    advertise the newest committed tenant cursor so repeated notifications can be
+    safely coalesced.
+    """
+
     tenant_id: uuid.UUID
     cursor: int = Field(ge=1)
