@@ -24,7 +24,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v6",
+    ImportResourceType.STUDENTS: "students_v7",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -34,8 +34,8 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "date_of_birth",
         "gender",
         "level",
+        "arm",
         "department",
-        "class",
         "state_of_origin",
         "parent_email_1",
         "parent_relationship_1",
@@ -123,18 +123,21 @@ def create_student_template() -> ImportTemplateDefinition:
                 description="Required. Enter an existing academic level such as JSS1. Do not combine it with the arm.",
             ),
             create_template_column(
+                name="arm",
+                label="Arm",
+                required=True,
+                example="A",
+                description="Required. Enter the arm label only, such as A or B. The backend derives the class from level + arm.",
+            ),
+            create_template_column(
                 name="department",
                 label="Department",
                 required=False,
                 example="Science",
-                description="Optional. Required when the selected class is department-specific, such as Science A.",
-            ),
-            create_template_column(
-                name="class",
-                label="Class",
-                required=False,
-                example="A",
-                description="Optional. Enter an existing organizational class within the selected level, such as A. Leave blank for level-only enrollment.",
+                description=(
+                    "Leave blank for a General class. When the resolved class has a department "
+                    "assignment for the current term, enter that department exactly."
+                ),
             ),
             create_template_column(
                 name="state_of_origin",
@@ -175,9 +178,9 @@ def create_student_template() -> ImportTemplateDefinition:
             "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
-            "Academic level is required. Class placement is optional and remains independent of progression.",
-            "Do not enter or parse a combined value such as JSS1 A in the level column.",
-            "When class is supplied, the backend resolves it within the explicit level and department during dry-run.",
+            "Academic level and arm are required. The backend derives the actual class from level + arm.",
+            "Do not enter combined class names such as JSS1 A. Enter level=JSS1 and arm=A instead.",
+            "Department is term-specific. Leave it blank for General classes; when the class is specialized for the current term, it must match that assignment.",
             "Parent or guardian emails are optional in the current student-creation workflow. If an email is supplied, its matching relationship column is required.",
             "A maximum of two parents or guardians is supported per imported student.",
             "Accepted date formats include YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY, MM-DD-YYYY, and YYYY/MM/DD.",
@@ -249,7 +252,7 @@ def get_template_response(
     resource_type: ImportResourceType,
     file_type: ImportFileType = ImportFileType.XLSX,
 ) -> ImportTemplateResponse:
-    """Return one template response."""
+    """Return one supported import template response."""
 
     template = get_template_definition(resource_type=resource_type)
 
@@ -263,7 +266,7 @@ def list_template_responses(
     *,
     file_type: ImportFileType = ImportFileType.XLSX,
 ) -> list[ImportTemplateResponse]:
-    """Return all supported template responses."""
+    """Return all supported import templates."""
 
     return [
         convert_template_to_response(

@@ -20,8 +20,8 @@ def test_student_access_slips_escape_dynamic_values() -> None:
                 "first_name": "<script>alert(1)</script>",
                 "last_name": '"Quoted" Student & Parent',
                 "admission_number": "<img src=x onerror=alert(1)>",
-                "class_name": "<svg onload=alert(1)>",
-                "class_arm": '" onmouseover="alert(1)',
+                "level": "<svg onload=alert(1)>",
+                "arm": '" onmouseover="alert(1)',
                 "setup_code": "123456",
                 "access_code_expires_at": "2026-07-29T12:00:00Z",
             }
@@ -49,7 +49,7 @@ def test_spreadsheet_formula_prefixes_are_written_as_literals() -> None:
     rows = [
         {
             "first_name": '=HYPERLINK("http://example.test")',
-            "class_name": "+JSS1",
+            "level": "+JSS1",
             "error_message": "@bad formula",
             "row_number": 2,
         }

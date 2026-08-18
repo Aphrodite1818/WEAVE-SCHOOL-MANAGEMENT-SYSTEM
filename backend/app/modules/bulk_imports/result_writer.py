@@ -164,8 +164,9 @@ def create_result_report(
             "first_name",
             "last_name",
             "admission_number",
-            "class_name",
-            "class_arm",
+            "level",
+            "arm",
+            "department",
             "setup_code",
             "access_code_expires_at",
             "parent_invitations_queued",
@@ -215,11 +216,11 @@ def _student_full_name(row: dict[str, Any]) -> str:
 
 
 def _student_class_display(row: dict[str, Any]) -> str:
-    """Build a class display string from a result row."""
+    """Build a derived class display string from level + arm result data."""
 
-    class_name = convert_value_for_csv(row.get("class_name")).strip()
-    class_arm = convert_value_for_csv(row.get("class_arm")).strip()
-    return " ".join(part for part in [class_name, class_arm] if part) or "--"
+    level = convert_value_for_csv(row.get("level")).strip()
+    arm = convert_value_for_csv(row.get("arm")).strip()
+    return " ".join(part for part in [level, arm] if part) or "--"
 
 
 def _student_slip_rows(result_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
