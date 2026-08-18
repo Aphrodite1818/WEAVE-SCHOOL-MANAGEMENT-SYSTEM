@@ -102,14 +102,7 @@ class TeacherOffboardingService:
         membership_id: UUID,
         payload: TeacherOffboardingRequest,
     ) -> TeacherMembershipResponse:
-        """End a membership without rewriting teacher-assignment history.
-
-        Subject responsibility is temporal history. Offboarding therefore ends
-        each active assignment and, when a replacement is supplied, creates a
-        new assignment beginning the following day. This preserves the teacher
-        that actually owned historical results and prevents inclusive-date
-        overlaps between the old and replacement assignments.
-        """
+        """End a membership and preserve curriculum-subject assignment history."""
 
         membership = await TeacherMembershipRepository.get_by_id(
             db,
@@ -137,6 +130,11 @@ class TeacherOffboardingService:
                 raise NotFoundException("Replacement teacher membership not found.")
             if replacement.status != TeacherMembershipStatus.ACTIVE:
                 raise BadRequestException("Replacement teacher membership must be active.")
+            await StudentAcademicService._validate_teacher_capability(
+                db,
+                tenant_id=actor.tenant_id,
+                teacher_membership_id=replacement_id,
+            )
 
         active_assignments = list(
             (
@@ -158,26 +156,7 @@ class TeacherOffboardingService:
         today = date.today()
         replacement_effective_from = today + timedelta(days=1)
 
-        # Validate every subject capability before mutating anything so a single
-        # ineligible subject cannot leave a partially offboarded teacher.
-        if replacement_id is not None:
-            for assignment in active_assignments:
-                level_subject = await StudentAcademicRepository.get_level_subject_by_id(
-                    db,
-                    actor.tenant_id,
-                    assignment.level_subject_id,
-                    lock=True,
-                )
-                if level_subject is None:
-                    raise NotFoundException("Level subject for teacher assignment not found.")
-                await StudentAcademicService._validate_teacher_capability(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    teacher_membership_id=replacement_id,
-                    subject_id=level_subject.subject_id,
-                )
-
-        # Class-teacher ownership is a current pointer rather than subject
+        # Class-teacher ownership is a current pointer rather than temporal subject
         # assignment history, so it may be moved directly after validation.
         await db.execute(
             update(ClassRoom)
@@ -194,6 +173,7 @@ class TeacherOffboardingService:
                     "Teacher offboarding date cannot be before an assignment start date."
                 )
 
+            original_effective_to = assignment.effective_to
             assignment.is_active = False
             assignment.effective_to = today
             await StudentAcademicRepository.save_teacher_assignment(db, assignment)
@@ -204,14 +184,14 @@ class TeacherOffboardingService:
                     tenant_id=actor.tenant_id,
                     assignment_id=assignment.id,
                     class_id=assignment.class_id,
-                    level_subject_id=assignment.level_subject_id,
+                    curriculum_subject_id=assignment.curriculum_subject_id,
                     action="assignment_ended_for_offboarding",
                     previous_teacher_membership_id=membership_id,
                     new_teacher_membership_id=None,
                     previous_state="active",
                     new_state="ended",
                     previous_effective_from=assignment.effective_from,
-                    previous_effective_to=None,
+                    previous_effective_to=original_effective_to,
                     new_effective_from=assignment.effective_from,
                     new_effective_to=today,
                     acting_admin_id=actor.id,
@@ -224,7 +204,7 @@ class TeacherOffboardingService:
                 TeacherAssignment(
                     tenant_id=actor.tenant_id,
                     class_id=assignment.class_id,
-                    level_subject_id=assignment.level_subject_id,
+                    curriculum_subject_id=assignment.curriculum_subject_id,
                     teacher_membership_id=replacement_id,
                     is_active=True,
                     effective_from=replacement_effective_from,
@@ -236,7 +216,7 @@ class TeacherOffboardingService:
                 tenant_id=actor.tenant_id,
                 assignment_id=replacement_assignment.id,
                 class_id=assignment.class_id,
-                level_subject_id=assignment.level_subject_id,
+                curriculum_subject_id=assignment.curriculum_subject_id,
                 action="teacher_reassigned_for_offboarding",
                 previous_teacher_membership_id=membership_id,
                 new_teacher_membership_id=replacement_id,
@@ -250,8 +230,9 @@ class TeacherOffboardingService:
                 reason=payload.reason,
             )
 
-        # end_membership owns the final commit, so the responsibility updates and
-        # membership lifecycle transition remain one database transaction.
+        # end_membership owns the final commit. The model-event collector records
+        # old-assignment tombstones and replacement creates in that same outer
+        # transaction, then dependency-sorts them before allocating sync cursors.
         return await TeacherMembershipService.end_membership(
             db,
             actor=actor,
