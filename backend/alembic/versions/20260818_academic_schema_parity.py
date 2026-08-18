@@ -5,7 +5,6 @@ Revises: 20260817_academic_cbt_completion
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "20260818_academic_schema_parity"
 down_revision = "20260817_academic_cbt_completion"
@@ -15,31 +14,32 @@ SCHEMA = "public"
 
 
 def upgrade() -> None:
-    op.add_column(
-        "student_progression_runs",
-        sa.Column(
-            "pending_students",
-            sa.Integer(),
-            nullable=False,
-            server_default=sa.text("0"),
-        ),
-        schema=SCHEMA,
+    # Some pre-launch development databases already received this column while
+    # the branch was being refactored under the same earlier Alembic revision.
+    # Converge both those databases and clean databases to the same final shape.
+    op.execute(
+        "ALTER TABLE public.student_progression_runs "
+        "ADD COLUMN IF NOT EXISTS pending_students INTEGER"
+    )
+    op.execute(
+        "UPDATE public.student_progression_runs "
+        "SET pending_students = 0 WHERE pending_students IS NULL"
+    )
+    op.execute(
+        "ALTER TABLE public.student_progression_runs "
+        "ALTER COLUMN pending_students SET NOT NULL"
     )
 
     # Rebuild both accounting constraints so database invariants match the
     # runtime model. Pending students are intentionally counted as processed:
     # the run examined them, but an administrator action is still required.
-    op.drop_constraint(
-        "ck_progression_run_nonnegative_counts",
-        "student_progression_runs",
-        type_="check",
-        schema=SCHEMA,
+    op.execute(
+        "ALTER TABLE public.student_progression_runs "
+        "DROP CONSTRAINT IF EXISTS ck_progression_run_nonnegative_counts"
     )
-    op.drop_constraint(
-        "ck_progression_run_count_accounting",
-        "student_progression_runs",
-        type_="check",
-        schema=SCHEMA,
+    op.execute(
+        "ALTER TABLE public.student_progression_runs "
+        "DROP CONSTRAINT IF EXISTS ck_progression_run_count_accounting"
     )
     op.create_check_constraint(
         "ck_progression_run_nonnegative_counts",
@@ -56,13 +56,11 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    # The default is only needed to make the destructive pre-launch migration
-    # safe for any existing development rows; application defaults own new rows.
-    op.alter_column(
-        "student_progression_runs",
-        "pending_students",
-        server_default=None,
-        schema=SCHEMA,
+    # Runtime model defaults own new rows. Remove any temporary or historical
+    # database default left by an earlier pre-launch migration attempt.
+    op.execute(
+        "ALTER TABLE public.student_progression_runs "
+        "ALTER COLUMN pending_students DROP DEFAULT"
     )
 
 
