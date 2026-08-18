@@ -47,6 +47,20 @@ class _PendingObject:
     operation: CBTSyncOperation
 
 
+@dataclass(slots=True)
+class _SavepointJournal:
+    """Remember only state first touched inside one SAVEPOINT.
+
+    Successful savepoints leave the shared pending state intact. A rolled-back
+    savepoint uses this journal to restore exactly what existed before it began,
+    without discarding mutations collected by earlier successful rows.
+    """
+
+    pending_before: dict[tuple[type[Any], int], _PendingObject | None]
+    teacher_accounts_added: set[uuid.UUID]
+    students_added: set[uuid.UUID]
+
+
 @dataclass(frozen=True, slots=True)
 class _PendingIdentity:
     tenant_id: uuid.UUID
@@ -83,6 +97,7 @@ _PENDING_KEY = "cbt_sync_pending_objects"
 _TEACHER_ACCOUNT_KEY = "cbt_sync_teacher_accounts"
 _STUDENT_KEY = "cbt_sync_students"
 _INTERNAL_KEY = "cbt_sync_internal_write"
+_SAVEPOINT_JOURNALS_KEY = "cbt_sync_savepoint_journals"
 _REGISTERED = False
 
 
@@ -111,6 +126,62 @@ def _merge_operation(
     return CBTSyncOperation.UPDATED
 
 
+def _current_savepoint_journal(session: Session) -> _SavepointJournal | None:
+    transaction = session.get_nested_transaction()
+    if transaction is None:
+        return None
+    journals: dict[Any, _SavepointJournal] = session.info.setdefault(
+        _SAVEPOINT_JOURNALS_KEY,
+        {},
+    )
+    return journals.setdefault(
+        transaction,
+        _SavepointJournal(
+            pending_before={},
+            teacher_accounts_added=set(),
+            students_added=set(),
+        ),
+    )
+
+
+def _restore_savepoint_journal(session: Session, transaction: Any) -> None:
+    journals: dict[Any, _SavepointJournal] | None = session.info.get(
+        _SAVEPOINT_JOURNALS_KEY
+    )
+    if not journals:
+        return
+    journal = journals.pop(transaction, None)
+    if journal is None:
+        return
+
+    pending: OrderedDict[tuple[type[Any], int], _PendingObject] = session.info.setdefault(
+        _PENDING_KEY,
+        OrderedDict(),
+    )
+    for key, previous in journal.pending_before.items():
+        if previous is None:
+            pending.pop(key, None)
+        else:
+            pending[key] = previous
+    if not pending:
+        session.info.pop(_PENDING_KEY, None)
+
+    teacher_accounts: set[uuid.UUID] | None = session.info.get(_TEACHER_ACCOUNT_KEY)
+    if teacher_accounts is not None:
+        teacher_accounts.difference_update(journal.teacher_accounts_added)
+        if not teacher_accounts:
+            session.info.pop(_TEACHER_ACCOUNT_KEY, None)
+
+    students: set[uuid.UUID] | None = session.info.get(_STUDENT_KEY)
+    if students is not None:
+        students.difference_update(journal.students_added)
+        if not students:
+            session.info.pop(_STUDENT_KEY, None)
+
+    if not journals:
+        session.info.pop(_SAVEPOINT_JOURNALS_KEY, None)
+
+
 def _collect_pending(session: Session) -> None:
     if session.info.get(_INTERNAL_KEY):
         return
@@ -118,6 +189,7 @@ def _collect_pending(session: Session) -> None:
         _PENDING_KEY,
         OrderedDict(),
     )
+    journal = _current_savepoint_journal(session)
     candidates = list(session.new) + list(session.dirty) + list(session.deleted)
     for obj in candidates:
         operation = _operation_for(session, obj)
@@ -125,6 +197,8 @@ def _collect_pending(session: Session) -> None:
             continue
         if type(obj) in MODEL_ENTITY_TYPES:
             key = (type(obj), id(obj))
+            if journal is not None and key not in journal.pending_before:
+                journal.pending_before[key] = pending.get(key)
             previous = pending.get(key)
             merged = _merge_operation(previous.operation if previous else None, operation)
             if merged is None:
@@ -133,10 +207,19 @@ def _collect_pending(session: Session) -> None:
                 pending[key] = _PendingObject(obj=obj, operation=merged)
         elif isinstance(obj, TeacherAccount):
             if obj.id:
-                session.info.setdefault(_TEACHER_ACCOUNT_KEY, set()).add(obj.id)
+                teacher_accounts: set[uuid.UUID] = session.info.setdefault(
+                    _TEACHER_ACCOUNT_KEY,
+                    set(),
+                )
+                if journal is not None and obj.id not in teacher_accounts:
+                    journal.teacher_accounts_added.add(obj.id)
+                teacher_accounts.add(obj.id)
         elif isinstance(obj, Student):
             if obj.id:
-                session.info.setdefault(_STUDENT_KEY, set()).add(obj.id)
+                students: set[uuid.UUID] = session.info.setdefault(_STUDENT_KEY, set())
+                if journal is not None and obj.id not in students:
+                    journal.students_added.add(obj.id)
+                students.add(obj.id)
 
 
 def _identity_from_object(pending: _PendingObject) -> _PendingIdentity | None:
@@ -461,6 +544,7 @@ def _clear_state(session: Session) -> None:
     session.info.pop(_TEACHER_ACCOUNT_KEY, None)
     session.info.pop(_STUDENT_KEY, None)
     session.info.pop(_INTERNAL_KEY, None)
+    session.info.pop(_SAVEPOINT_JOURNALS_KEY, None)
 
 
 def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> None:
@@ -468,9 +552,9 @@ def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> Non
 
 
 def _before_commit(session: Session) -> None:
-    # Savepoint commits occur inside progression/bulk workflows. Keep collecting
-    # until the outer transaction so one durable sequence describes the true
-    # business commit boundary.
+    # SAVEPOINT commits inside bulk/progression workflows must not publish or
+    # clear the shared collector. Only the outer transaction owns the durable
+    # cursor sequence and PostgreSQL NOTIFY side effect.
     if session.in_nested_transaction() or session.info.get(_INTERNAL_KEY):
         return
     _collect_pending(session)
@@ -491,14 +575,30 @@ def _before_commit(session: Session) -> None:
         session.info.pop(_INTERNAL_KEY, None)
 
 
+def _after_soft_rollback(session: Session, previous_transaction: Any) -> None:
+    """Undo only collector state introduced by a failed SAVEPOINT."""
+
+    if getattr(previous_transaction, "nested", False):
+        _restore_savepoint_journal(session, previous_transaction)
+    elif getattr(previous_transaction, "parent", None) is None:
+        _clear_state(session)
+
+
+def _after_transaction_end(session: Session, transaction: Any) -> None:
+    """Clear collector state only when the outer transaction is truly over."""
+
+    if getattr(transaction, "parent", None) is None:
+        _clear_state(session)
+
+
 def register_cbt_sync_model_events() -> None:
     global _REGISTERED
     if _REGISTERED:
         return
     event.listen(Session, "before_flush", _before_flush)
     event.listen(Session, "before_commit", _before_commit)
-    event.listen(Session, "after_commit", _clear_state)
-    event.listen(Session, "after_rollback", _clear_state)
+    event.listen(Session, "after_soft_rollback", _after_soft_rollback)
+    event.listen(Session, "after_transaction_end", _after_transaction_end)
     _REGISTERED = True
 
 
